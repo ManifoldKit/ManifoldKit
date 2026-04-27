@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 @testable import BaseChatUI
 @testable import BaseChatCore
 @testable import BaseChatInference
@@ -9,11 +10,6 @@ final class ConsumerRuntimeHarness {
         case userDefaultsSuiteAllocationFailed(String)
     }
 
-    private static let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-
     let runtime: BaseChatRuntime
     let chatViewModel: ChatViewModel
     let sessionManager: SessionManagerViewModel
@@ -23,45 +19,82 @@ final class ConsumerRuntimeHarness {
     private let originalConfiguration: BaseChatConfiguration
     private let userDefaultsSuiteName: String
 
-    init(
+    convenience init(
         inferenceService: InferenceService,
         toolApprovalGate: UIToolApprovalGate? = nil,
         foundationModelProvider: (@MainActor () -> Bool)? = nil
     ) throws {
+        try self.init(
+            inferenceService: inferenceService,
+            toolApprovalGate: toolApprovalGate,
+            foundationModelProvider: foundationModelProvider,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+    }
+
+    /// Test-only initializer that lets a caller inject a throwing
+    /// `makeModelContainer` closure, which exercises the rollback/cleanup
+    /// path when bootstrap fails partway through.
+    init(
+        inferenceService: InferenceService,
+        toolApprovalGate: UIToolApprovalGate? = nil,
+        foundationModelProvider: (@MainActor () -> Bool)? = nil,
+        makeModelContainer: @MainActor () throws -> ModelContainer
+    ) throws {
+        // Capture the live configuration before any mutation so the catch path
+        // can roll BaseChatConfiguration.shared back to it untouched.
+        let originalConfiguration = BaseChatConfiguration.shared
+
         let suiteName = "BaseChatConsumerRuntimeHarness-\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             throw Error.userDefaultsSuiteAllocationFailed(suiteName)
         }
 
-        let directory = try Self.makeModelsDirectory()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("consumer-runtime-harness-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
         let configuration = BaseChatConfiguration(
             appName: "Consumer Runtime Harness",
             bundleIdentifier: "com.basechatkit.consumer-runtime-harness.\(UUID().uuidString)"
         )
 
-        originalConfiguration = BaseChatConfiguration.shared
-        userDefaults = defaults
-        userDefaultsSuiteName = suiteName
-        modelsDirectory = directory
-        runtime = try BaseChatRuntime(
-            configuration: configuration,
-            inferenceService: inferenceService,
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
-        )
+        do {
+            let runtime = try BaseChatRuntime(
+                configuration: configuration,
+                inferenceService: inferenceService,
+                makeModelContainer: makeModelContainer
+            )
 
-        let chatViewModel = ChatViewModel(
-            inferenceService: runtime.inferenceService,
-            modelStorage: ModelStorageService(baseDirectory: directory),
-            toolApprovalGate: toolApprovalGate,
-            userDefaults: defaults
-        )
-        chatViewModel.foundationModelProvider = foundationModelProvider
-        chatViewModel.configure(runtime: runtime)
-        self.chatViewModel = chatViewModel
+            let chatViewModel = ChatViewModel(
+                inferenceService: runtime.inferenceService,
+                modelStorage: ModelStorageService(baseDirectory: directory),
+                toolApprovalGate: toolApprovalGate,
+                userDefaults: defaults
+            )
+            chatViewModel.foundationModelProvider = foundationModelProvider
+            chatViewModel.configure(runtime: runtime)
 
-        let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(runtime: runtime)
-        self.sessionManager = sessionManager
+            let sessionManager = SessionManagerViewModel()
+            sessionManager.configure(runtime: runtime)
+
+            self.originalConfiguration = originalConfiguration
+            self.userDefaults = defaults
+            self.userDefaultsSuiteName = suiteName
+            self.modelsDirectory = directory
+            self.runtime = runtime
+            self.chatViewModel = chatViewModel
+            self.sessionManager = sessionManager
+        } catch {
+            // Bootstrap failed after we mutated process-wide state — the
+            // BaseChatRuntime initializer rolls BaseChatConfiguration.shared
+            // back itself, but we still own the UserDefaults suite + temp
+            // directory we allocated above.
+            BaseChatConfiguration.shared = originalConfiguration
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
     }
 
     func cleanup() {
@@ -90,14 +123,5 @@ final class ConsumerRuntimeHarness {
 
     func persistedSessions() throws -> [ChatSessionRecord] {
         try runtime.persistence.fetchSessions()
-    }
-
-    private static func makeModelsDirectory() throws -> URL {
-        let directory = repoRoot
-            .appendingPathComponent("tmp", isDirectory: true)
-            .appendingPathComponent("consumer-runtime-harness", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 }
