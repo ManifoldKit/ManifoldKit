@@ -5,7 +5,7 @@ import BaseChatInference
 /// Shows device memory pressure and RAM usage as a compact indicator in the chat toolbar.
 ///
 /// Mirrors the visual style of `ContextIndicatorView`: a small colored dot indicating
-/// pressure level, followed by a label showing current app memory usage and total device RAM.
+/// pressure level, followed by a label showing the current app memory footprint.
 ///
 /// Color coding follows the OS pressure levels:
 /// - Green (.nominal) — memory is comfortable
@@ -43,13 +43,15 @@ public struct MemoryIndicatorView: View {
         }
     }
 
-    /// Short label shown next to the dot. Shows "X / Y GB" when app usage is available,
-    /// otherwise just the device total.
+    /// Short label shown next to the dot. We deliberately avoid an "X / Y GB"
+    /// fraction because the numerator is this app's footprint while the
+    /// denominator is total device RAM, which users can misread as a system-wide
+    /// usage meter.
     private var compactLabel: String {
-        let totalGB = Double(physicalMemoryBytes) / (1024 * 1024 * 1024)
         if let used = appMemoryBytes {
-            return "\(AppMemoryUsage.format(used)) / \(String(format: "%.0f", totalGB)) GB"
+            return "App \(AppMemoryUsage.format(used))"
         }
+        let totalGB = Double(physicalMemoryBytes) / (1024 * 1024 * 1024)
         return String(format: "%.0f GB RAM", totalGB)
     }
 
@@ -91,6 +93,7 @@ public struct MemoryIndicatorView: View {
         lines.append("Device RAM: \(totalGB) GB")
         if let used = appMemoryBytes {
             lines.append("App footprint: \(AppMemoryUsage.format(used))")
+            lines.append("This is this app only, not total system memory in use.")
         }
         return lines.joined(separator: "\n")
     }

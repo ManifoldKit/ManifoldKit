@@ -40,7 +40,7 @@ enum DemoTools {
         }
 
         registry.register(CalcTool.makeExecutor())
-        registry.register(NowTool.makeExecutor())
+        registry.register(DemoNowTool.makeExecutor())
         registry.register(ReadFileTool.makeExecutor(root: root))
         registry.register(ListDirTool.makeExecutor(root: root))
         registry.register(SampleRepoSearchTool.makeExecutor(root: root))
