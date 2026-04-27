@@ -32,12 +32,12 @@ scripts/fuzz.sh --minutes 5
 
 The wrapper prints a preflight line showing which backends it found (Llama via `~/Documents/Models/`, MLX via `~/Documents/Models/`, Ollama via `localhost:11434`, Foundation via `sw_vers`). If nothing is usable it exits with install hints. The recommended first model is `qwen3.5:4b` — it is a reasoning model and is the most likely to surface fuzzer-relevant behavior on a fresh machine (`ollama pull qwen3.5:4b`).
 
-Direct invocation works too — the wrapper just adds the preflight and the `--with-mlx` extension:
+Direct invocation works too — the wrapper just adds the preflight and the MLX xcodebuild bridge:
 
 ```bash
-swift run fuzz-chat --minutes 5
-swift run fuzz-chat --iterations 200 --backend ollama --quiet
-swift run fuzz-chat --single --seed 42 --model qwen3.5
+swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --minutes 5
+swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --iterations 200 --backend ollama --quiet
+swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --single --seed 42 --model qwen3.5
 ```
 
 Common flags:
@@ -49,7 +49,7 @@ Common flags:
 | `--iterations N` | Iteration cap; runs until either budget is hit. |
 | `--single` | One iteration then exit — useful with `--seed`. |
 | `--seed N` | Deterministic prompt/sampler selection for repro. |
-| `--model <substr>` | Pin to the first installed Ollama model containing `<substr>`. Pass `all` (or omit) to rotate through every installed Ollama model, one per iteration — see [Rotation](#rotation). |
+| `--model <substr>` | Ollama: pin to the first installed model containing `<substr>`; pass `all` (or omit) to rotate through every installed Ollama model. Llama: pin to the first GGUF whose filename contains `<substr>`. `scripts/fuzz.sh --with-mlx` maps the same flag to `MLX_TEST_MODEL` for the xcodebuild-hosted MLX path. |
 | `--detector <ids>` | Comma-separated detector IDs to enable. |
 | `--quiet` | Suppress the per-iteration log line. |
 | `--tools` | Inject `SyntheticToolset` so tool-aware backends have something to call. Pairs with `tool-call-validity` ([#627](https://github.com/roryford/BaseChatKit/issues/627)). |
@@ -61,21 +61,22 @@ Common flags:
 | Backend | Status | Discovery | Notes |
 |---------|--------|-----------|-------|
 | Ollama | Wired | `curl http://localhost:11434/api/tags` | Default backend in v1. |
-| Llama  | Wired | `~/Documents/Models/**/*.gguf` via `HardwareRequirements` | Single-model only: `llama_backend_init` is a process-global one-shot, so `--model all` is a no-op for this backend. |
-| MLX    | Wired (xcodebuild path) | `~/Documents/Models/<dir>/{config.json,*.safetensors,tokenizer.*}` | Requires the xcodebuild path because MLX Metal shaders only compile under Xcode — see `--with-mlx` below. |
+| Llama  | Wired | `~/Documents/Models/**/*.gguf` via `HardwareRequirements` | Single-model only: `llama_backend_init` is a process-global one-shot, so `--model all` is a no-op for this backend. `LLAMA_TEST_MODEL=<substr>` pins a specific file. |
+| MLX    | Wired (xcodebuild path) | `~/Documents/Models/<dir>/{config.json,*.safetensors,tokenizer.*}` | Requires the xcodebuild path because MLX Metal shaders only compile under Xcode — see `--with-mlx` below. `MLX_TEST_MODEL=<substr>` pins a specific snapshot. |
 | Foundation Models | Wired | `sw_vers -productVersion >= 26` | macOS 26+ only. Requires Apple Intelligence to be enabled; otherwise backend creation fails and the run exits early with an error. |
 
-Backend wiring lives behind the `FuzzBackendFactory` protocol. A factory exposes `makeHandle() async throws -> FuzzRunner.BackendHandle`, where `BackendHandle` carries `(backend: any InferenceBackend, modelId: String, modelURL: URL, backendName: String, templateMarkers: RunRecord.MarkerSnapshot)`. To plug a new backend in, conform a `Sendable` struct to `FuzzBackendFactory` and pass it to `FuzzRunner(config:factory:)` — see `OllamaFuzzFactory` in `Sources/fuzz-chat/` for the canonical example. Detectors operate on the resulting `RunRecord` and don't care which backend produced it. Llama, Foundation, and MLX factory conformances are tracked in [#501](https://github.com/roryford/BaseChatKit/issues/501).
+Backend wiring lives behind the `FuzzBackendFactory` protocol. A factory exposes `makeHandle() async throws -> FuzzRunner.BackendHandle`, where `BackendHandle` carries `(backend: any InferenceBackend, modelId: String, modelURL: URL, backendName: String, templateMarkers: RunRecord.MarkerSnapshot)`. The importable real-backend factories live in `Sources/BaseChatFuzzBackends/`, so both `fuzz-chat` and the MLX XCTest host reuse the same bring-up code. Detectors operate on the resulting `RunRecord` and don't care which backend produced it.
 
 ### MLX via xcodebuild
 
-`swift run fuzz-chat --backend mlx` cannot work directly because MLX's Metal shaders are not compiled by SwiftPM. The wrapper's `--with-mlx` flag runs the MLX XCTest fuzz suite separately:
+`swift run fuzz-chat --backend mlx` cannot work directly because MLX's Metal shaders are not compiled by SwiftPM. The wrapper's `--with-mlx` flag (or `--backend mlx`) runs the MLX XCTest fuzz suite separately while forwarding the shared campaign knobs into the test host via environment variables:
 
 ```bash
-scripts/fuzz.sh --with-mlx --minutes 5
+scripts/fuzz.sh --with-mlx --minutes 5 --seed 42 --corpus-subset smoke
+scripts/fuzz.sh --backend mlx --iterations 10 --model gemma
 ```
 
-This invokes `xcodebuild test -scheme BaseChatKit-Package -only-testing BaseChatFuzzTests/MLXFuzzTests` after the swift-run path completes.
+The xcodebuild host reads `BASECHAT_FUZZ_MINUTES`, `BASECHAT_FUZZ_ITERATIONS`, `BASECHAT_FUZZ_SEED`, `BASECHAT_FUZZ_DETECTOR`, `BASECHAT_FUZZ_CORPUS_SUBSET`, `BASECHAT_FUZZ_SESSION_SCRIPTS`, `BASECHAT_FUZZ_TOOLS`, and `MLX_TEST_MODEL`, then feeds the resulting `FuzzConfig` into `FuzzRunner` / `SessionFuzzRunner` with the shared `MLXFuzzFactory`.
 
 ---
 
@@ -89,7 +90,7 @@ Bug shapes diverge per model. The #487 `thinking`-drop only showed up on reasoni
 
 **Determinism.** The discovered model list is sorted by UTF-8 byte order before rotation, so two invocations on the same machine — regardless of the order Ollama reports its models — produce the same iteration-to-model mapping. This is the contract that keeps `--seed N --replay` (#490) meaningful: given a fixed seed and a fixed installed-model list, the rotation sequence is reproducible.
 
-**Llama opt-out.** `LlamaBackend` calls `llama_backend_init` as a process-global one-shot — only one instance per process is supported. Rotation never applies to Llama. The CLI's Llama path is wired (`--backend llama` discovers the first GGUF in `~/Documents/Models/` via `HardwareRequirements.findGGUFModel`) and stays single-model even under `--model all`.
+**Llama opt-out.** `LlamaBackend` calls `llama_backend_init` as a process-global one-shot — only one instance per process is supported. Rotation never applies to Llama. The CLI's Llama path is wired (`--backend llama` discovers the first GGUF in `~/Documents/Models/` via `HardwareRequirements.findGGUFModel`) and stays single-model even under `--model all`; use `--model <substr>` or `LLAMA_TEST_MODEL=<substr>` to pin a specific file.
 
 **Mechanism.** The rotating factory is a `FuzzBackendFactory` conformance that wraps an ordered array of child factories and advances an internal index per `makeHandle()` call. The runner's `init(config:factory:)` contract (#537) is unchanged — rotation is hidden behind the factory boundary. See `RotatingFuzzFactory` in `Sources/BaseChatFuzz/`.
 

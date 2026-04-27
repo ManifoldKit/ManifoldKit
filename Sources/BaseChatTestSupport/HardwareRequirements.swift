@@ -72,25 +72,35 @@ public enum HardwareRequirements {
     /// `preferredSizeRange` (e.g. "7.2B" → 7.2). Falls back to the first
     /// available model if none match the range. Returns `nil` only if the
     /// server is unreachable or has no models.
-    public static func findOllamaModel(preferredSizeRange: ClosedRange<Double> = 6.5...9.0) -> String? {
+    public static func findOllamaModel(
+        preferredSizeRange: ClosedRange<Double> = 6.5...9.0,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
         guard let models = fetchOllamaModels() else { return nil }
         return selectOllamaModel(
             from: models,
             preferredSizeRange: preferredSizeRange,
-            environment: ProcessInfo.processInfo.environment
+            environment: environment
         )
     }
 
     /// Returns the first installed Ollama model whose name contains `substring`,
     /// or `nil` if none match. Returns `nil` if the server is unreachable.
     ///
-    /// Unlike `findOllamaModel(preferredSizeRange:)`, this matches by name only
-    /// and does not consult `parameter_size`. Use for CLI callers that let the
-    /// user nominate a specific model by substring.
-    public static func findOllamaModel(nameContains substring: String) -> String? {
+    /// Unlike `findOllamaModel(preferredSizeRange:environment:)`, this matches by
+    /// name only and does not consult `parameter_size`. Use for callers that let
+    /// the user nominate a specific model by substring.
+    public static func findOllamaModel(
+        nameContains substring: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
         guard let models = fetchOllamaModels() else { return nil }
+        guard let query = normalizedModelSelector(substring) else {
+            return selectOllamaModel(from: models, environment: environment)
+        }
         for model in models {
-            if let name = model["name"] as? String, name.contains(substring) {
+            if let name = model["name"] as? String,
+               name.localizedCaseInsensitiveContains(query) {
                 return name
             }
         }
@@ -123,8 +133,6 @@ public enum HardwareRequirements {
                     return name
                 }
             }
-            // Override was set but not installed — fall through rather than
-            // returning nil so the suite still runs against whatever is there.
         }
         for model in models {
             guard let name = model["name"] as? String,
@@ -146,8 +154,7 @@ public enum HardwareRequirements {
         request.timeoutInterval = 3
 
         let semaphore = DispatchSemaphore(value: 0)
-        // Box to avoid "mutation of captured var in concurrently-executing code" warning.
-        final class Box: @unchecked Sendable { var value: [[String: Any]]?  }
+        final class Box: @unchecked Sendable { var value: [[String: Any]]? }
         let box = Box()
 
         URLSession.shared.dataTask(with: request) { data, response, _ in
@@ -158,8 +165,6 @@ public enum HardwareRequirements {
                   let models = json["models"] as? [[String: Any]] else { return }
             box.value = models
         }.resume()
-        // Timeout slightly above the request timeout to avoid hanging if the
-        // URLSession completion handler is never invoked.
         let result = semaphore.wait(timeout: .now() + 5)
         return result == .success ? box.value : nil
     }
@@ -172,112 +177,146 @@ public enum HardwareRequirements {
     /// 1. `~/Documents/Models/` (default `ModelStorageService` location)
     /// 2. App container `Documents/Models/` directories
     ///
-    /// Returns the URL of the first loadable MLX directory found, or `nil`.
-    public static func findMLXModelDirectory() -> URL? {
-        let fm = FileManager.default
+    /// When `MLX_TEST_MODEL` is set, the first directory whose path contains that
+    /// value wins. Otherwise falls back to `nameContains`, then to the first
+    /// discovered candidate in deterministic path order.
+    public static func findMLXModelDirectory(
+        nameContains substring: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        findMLXModelDirectory(
+            in: modelSearchDirectories(fileManager: .default),
+            nameContains: substring,
+            environment: environment,
+            fileManager: .default
+        )
+    }
 
-        // Collect candidate directories to scan.
-        var searchDirs: [URL] = []
+    static func findMLXModelDirectory(
+        in searchDirs: [URL],
+        nameContains substring: String? = nil,
+        environment: [String: String] = [:],
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let candidates = discoverMLXModelDirectories(in: searchDirs, fileManager: fileManager)
+        return selectFilesystemModel(
+            from: candidates,
+            environmentKey: "MLX_TEST_MODEL",
+            nameContains: substring,
+            environment: environment
+        )
+    }
 
-        // 1. Default ~/Documents/Models/
-        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            searchDirs.append(docs.appendingPathComponent("Models", isDirectory: true))
-        }
-
-        // 2. App container directories: ~/Library/Containers/*/Data/Documents/Models/
-        if let library = fm.urls(for: .libraryDirectory, in: .userDomainMask).first {
-            let containersDir = library.appendingPathComponent("Containers", isDirectory: true)
-            if let containers = try? fm.contentsOfDirectory(
-                at: containersDir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) {
-                for container in containers {
-                    let modelsDir = container
-                        .appendingPathComponent("Data/Documents/Models", isDirectory: true)
-                    searchDirs.append(modelsDir)
-                }
-            }
-        }
-
-        // Scan each directory for valid MLX model subdirectories.
+    static func discoverMLXModelDirectories(
+        in searchDirs: [URL],
+        fileManager: FileManager = .default
+    ) -> [URL] {
+        var results: [URL] = []
         for dir in searchDirs {
-            guard let contents = try? fm.contentsOfDirectory(
+            guard let contents = try? fileManager.contentsOfDirectory(
                 at: dir,
                 includingPropertiesForKeys: [.isDirectoryKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
 
             for candidate in contents {
-                if isValidMLXDirectory(candidate, fileManager: fm) {
-                    return candidate
+                if isValidMLXDirectory(candidate, fileManager: fileManager) {
+                    results.append(candidate)
+                    continue
+                }
+
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+                      isDirectory.boolValue,
+                      let nestedContents = try? fileManager.contentsOfDirectory(
+                        at: candidate,
+                        includingPropertiesForKeys: [.isDirectoryKey],
+                        options: [.skipsHiddenFiles]
+                      ) else { continue }
+
+                for nestedCandidate in nestedContents
+                where isValidMLXDirectory(nestedCandidate, fileManager: fileManager) {
+                    results.append(nestedCandidate)
                 }
             }
         }
-
-        return nil
+        return sortedUniqueURLs(results)
     }
 
     // MARK: - GGUF Models
 
     /// Scans common model directories for a loadable `.gguf` file.
     ///
-    /// Searches the same `Documents/Models/` locations as `findMLXModelDirectory`.
-    /// Returns the URL of the first regular `.gguf` file >= 50 MB — the size
-    /// gate filters out test fixtures (typically a few hundred bytes to a few
-    /// MB) while staying well below any real quantized model. Directories
-    /// that happen to be named with a `.gguf` extension are also rejected.
-    public static func findGGUFModel() -> URL? {
-        let fm = FileManager.default
-        var searchDirs: [URL] = []
+    /// Searches the same `Documents/Models/` locations as `findMLXModelDirectory`,
+    /// including one nested directory level for manually grouped files such as
+    /// `~/Documents/Models/qwen/model.gguf`.
+    ///
+    /// When `LLAMA_TEST_MODEL` is set, the first GGUF whose path contains that
+    /// value wins. Otherwise falls back to `nameContains`, then to the first
+    /// discovered candidate in deterministic path order.
+    public static func findGGUFModel(
+        nameContains substring: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL? {
+        findGGUFModel(
+            in: modelSearchDirectories(fileManager: .default),
+            nameContains: substring,
+            environment: environment,
+            fileManager: .default
+        )
+    }
 
-        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            searchDirs.append(docs.appendingPathComponent("Models", isDirectory: true))
-        }
+    static func findGGUFModel(
+        in searchDirs: [URL],
+        nameContains substring: String? = nil,
+        environment: [String: String] = [:],
+        fileManager: FileManager = .default,
+        minimumModelSize: Int64 = 50 * 1024 * 1024
+    ) -> URL? {
+        let candidates = discoverGGUFModels(
+            in: searchDirs,
+            fileManager: fileManager,
+            minimumModelSize: minimumModelSize
+        )
+        return selectFilesystemModel(
+            from: candidates,
+            environmentKey: "LLAMA_TEST_MODEL",
+            nameContains: substring,
+            environment: environment
+        )
+    }
 
-        if let library = fm.urls(for: .libraryDirectory, in: .userDomainMask).first {
-            let containersDir = library.appendingPathComponent("Containers", isDirectory: true)
-            if let containers = try? fm.contentsOfDirectory(
-                at: containersDir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) {
-                for container in containers {
-                    let modelsDir = container
-                        .appendingPathComponent("Data/Documents/Models", isDirectory: true)
-                    searchDirs.append(modelsDir)
-                }
-            }
-        }
-
-        // Scan each directory (non-recursively) for a `.gguf` file large enough
-        // to be a real model. Test fixtures elsewhere in these directories can
-        // be as small as a few hundred bytes or a few MB, so require at least
-        // 50 MB — well below any real quantized model and well above any fixture.
-        let minimumModelSize: Int64 = 50 * 1024 * 1024
+    static func discoverGGUFModels(
+        in searchDirs: [URL],
+        fileManager: FileManager = .default,
+        minimumModelSize: Int64 = 50 * 1024 * 1024
+    ) -> [URL] {
+        var results: [URL] = []
         for dir in searchDirs {
-            guard let contents = try? fm.contentsOfDirectory(
+            guard let contents = try? fileManager.contentsOfDirectory(
                 at: dir,
-                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
 
-            for candidate in contents where candidate.pathExtension.lowercased() == "gguf" {
-                // Directories named with a `.gguf` extension would otherwise
-                // pass the path-extension filter and fail to load; require
-                // `isRegularFile` explicitly.
-                let values = try? candidate.resourceValues(
-                    forKeys: [.isRegularFileKey, .fileSizeKey]
-                )
-                if values?.isRegularFile == true,
-                   let size = values?.fileSize,
-                   Int64(size) >= minimumModelSize {
-                    return candidate
+            for candidate in contents {
+                appendGGUFModel(candidate, to: &results, minimumModelSize: minimumModelSize)
+
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+                      isDirectory.boolValue,
+                      let nestedContents = try? fileManager.contentsOfDirectory(
+                        at: candidate,
+                        includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                        options: [.skipsHiddenFiles]
+                      ) else { continue }
+
+                for nestedCandidate in nestedContents {
+                    appendGGUFModel(nestedCandidate, to: &results, minimumModelSize: minimumModelSize)
                 }
             }
         }
-
-        return nil
+        return sortedUniqueURLs(results)
     }
 
     /// Checks whether a directory looks like a loadable local MLX snapshot.
@@ -312,5 +351,107 @@ public enum HardwareRequirements {
         let hasTokenizer = fileNames.contains("tokenizer.json") || fileNames.contains("tokenizer.model")
 
         return hasWeights && hasTokenizer
+    }
+
+    static func isValidGGUFModel(
+        _ url: URL,
+        minimumModelSize: Int64 = 50 * 1024 * 1024
+    ) -> Bool {
+        guard url.pathExtension.lowercased() == "gguf" else { return false }
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard values?.isRegularFile == true,
+              let size = values?.fileSize else {
+            return false
+        }
+        return Int64(size) >= minimumModelSize
+    }
+
+    static func selectFilesystemModel(
+        from candidates: [URL],
+        environmentKey: String,
+        nameContains substring: String?,
+        environment: [String: String] = [:]
+    ) -> URL? {
+        let ordered = sortedUniqueURLs(candidates)
+        guard !ordered.isEmpty else { return nil }
+
+        if let override = normalizedModelSelector(environment[environmentKey]),
+           let matched = matchingFilesystemModel(override, in: ordered) {
+            return matched
+        }
+
+        if let substring = normalizedModelSelector(substring),
+           let matched = matchingFilesystemModel(substring, in: ordered) {
+            return matched
+        }
+
+        return ordered.first
+    }
+
+    static func matchingFilesystemModel(_ query: String, in candidates: [URL]) -> URL? {
+        if let exact = candidates.first(where: {
+            $0.lastPathComponent.caseInsensitiveCompare(query) == .orderedSame
+                || $0.deletingPathExtension().lastPathComponent.caseInsensitiveCompare(query) == .orderedSame
+        }) {
+            return exact
+        }
+
+        let lowercasedQuery = query.lowercased()
+        return candidates.first {
+            $0.lastPathComponent.lowercased().contains(lowercasedQuery)
+                || $0.deletingPathExtension().lastPathComponent.lowercased().contains(lowercasedQuery)
+                || $0.path.lowercased().contains(lowercasedQuery)
+        }
+    }
+
+    private static func normalizedModelSelector(_ selector: String?) -> String? {
+        guard var selector else { return nil }
+        selector = selector.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selector.isEmpty else { return nil }
+        guard selector.lowercased() != "all" else { return nil }
+        return selector
+    }
+
+    private static func appendGGUFModel(
+        _ candidate: URL,
+        to results: inout [URL],
+        minimumModelSize: Int64
+    ) {
+        if isValidGGUFModel(candidate, minimumModelSize: minimumModelSize) {
+            results.append(candidate)
+        }
+    }
+
+    private static func sortedUniqueURLs(_ urls: [URL]) -> [URL] {
+        var seen: Set<String> = []
+        let deduped = urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
+        return deduped.sorted {
+            $0.standardizedFileURL.path.localizedStandardCompare($1.standardizedFileURL.path) == .orderedAscending
+        }
+    }
+
+    private static func modelSearchDirectories(fileManager: FileManager) -> [URL] {
+        var searchDirs: [URL] = []
+
+        if let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            searchDirs.append(docs.appendingPathComponent("Models", isDirectory: true))
+        }
+
+        if let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first {
+            let containersDir = library.appendingPathComponent("Containers", isDirectory: true)
+            if let containers = try? fileManager.contentsOfDirectory(
+                at: containersDir,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for container in containers {
+                    searchDirs.append(
+                        container.appendingPathComponent("Data/Documents/Models", isDirectory: true)
+                    )
+                }
+            }
+        }
+
+        return searchDirs
     }
 }

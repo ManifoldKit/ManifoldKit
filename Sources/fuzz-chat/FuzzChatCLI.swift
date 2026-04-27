@@ -1,9 +1,8 @@
 import Foundation
 import BaseChatFuzz
 import BaseChatInference
-import BaseChatTestSupport
 #if Fuzz
-import BaseChatBackends
+import BaseChatFuzzBackends
 #endif
 
 @main
@@ -112,7 +111,7 @@ struct FuzzChatCLI {
         case .ollama:
             #if Fuzz && Ollama
             do {
-                factory = try Self.makeOllamaFactory(modelHint: modelHint)
+                factory = try OllamaFuzzFactory.makeCampaignFactory(modelHint: modelHint)
             } catch {
                 fail(String(describing: error))
             }
@@ -125,7 +124,7 @@ struct FuzzChatCLI {
             factory = ChaosFuzzFactory()
         case .llama:
             #if Llama && Fuzz
-            factory = LlamaFuzzFactory()
+            factory = LlamaFuzzFactory(modelHint: modelHint)
             #else
             fail("Llama backend requires the Fuzz and Llama build traits. Run via: scripts/fuzz.sh")
             #endif
@@ -139,8 +138,10 @@ struct FuzzChatCLI {
             #else
             fail("Foundation backend requires macOS 26+ with FoundationModels and the Fuzz build trait. Run via: scripts/fuzz.sh")
             #endif
-        case .mlx, .all:
-            fail("\(backend.rawValue) backend not yet wired in CLI. Use scripts/fuzz.sh --with-mlx for MLX.")
+        case .mlx:
+            fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh --with-mlx or --backend mlx.")
+        case .all:
+            fail("all backend not yet wired in CLI.")
         }
 
         // Shrink mode: greedy-delta-debug the recorded trigger down to a
@@ -205,44 +206,6 @@ struct FuzzChatCLI {
         // preventing the SIGABRT from ggml-metal resource-set teardown (#391).
         await factory.teardown()
     }
-
-    #if Fuzz && Ollama
-    /// Builds the Ollama-backed factory for the runner.
-    ///
-    /// - When `modelHint` is `nil` or `"all"`: enumerates every installed Ollama
-    ///   model, sorts by UTF-8 byte order, and wraps them in a
-    ///   `RotatingFuzzFactory` so the runner round-robins one model per
-    ///   iteration. The #501 driver: single-model campaigns miss bugs that
-    ///   only surface on a sibling model (e.g., the #487 `thinking` drop).
-    /// - When `modelHint` is a substring: delegates to the existing
-    ///   `OllamaFuzzFactory` which pins to the first match — preserves the
-    ///   pre-#501 behaviour for callers who want a specific target.
-    ///
-    /// Llama is intentionally excluded from rotation: `llama_backend_init` is
-    /// a global, one-instance-per-process constraint, so rotating multiple
-    /// Llama handles in one campaign would trip it. Llama remains unwired in
-    /// the CLI today, and should stay single-model even when it lands.
-    static func makeOllamaFactory(modelHint: String?) throws -> any FuzzBackendFactory {
-        let rotateAll = (modelHint == nil) || (modelHint?.lowercased() == "all")
-        if !rotateAll, let hint = modelHint {
-            // Pin-to-one path: let OllamaFuzzFactory resolve the hint lazily,
-            // matching pre-#501 behaviour and its error messaging.
-            return OllamaFuzzFactory(modelHint: hint)
-        }
-
-        guard let models = HardwareRequirements.listOllamaModels() else {
-            throw CLIError("No Ollama server reachable at http://localhost:11434. Start with: ollama serve")
-        }
-        guard !models.isEmpty else {
-            throw CLIError("No Ollama model installed. Pull one with: ollama pull qwen3.5:4b")
-        }
-        // Sort UTF-8 byte order for deterministic rotation across invocations.
-        // Replay (#490) relies on the index-to-model mapping being stable.
-        let sorted = models.sorted()
-        let children: [any FuzzBackendFactory] = sorted.map { OllamaFuzzFactory(modelHint: $0) }
-        return RotatingFuzzFactory(children: children)
-    }
-    #endif
 
     /// Drives the Replayer and maps its `Outcome` to an exit code + summary line.
     /// Exit codes match the issue brief:
@@ -374,7 +337,7 @@ struct FuzzChatCLI {
         let lines = [
             "fuzz-chat — chat anomaly fuzzer",
             "",
-            "Usage: swift run --traits Fuzz,MLX,Llama fuzz-chat [options]",
+            "Usage: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat [options]",
             "",
             "Options:",
             "  --backend ollama|mock|chaos|llama|foundation|mlx|all   default: ollama",
@@ -383,11 +346,11 @@ struct FuzzChatCLI {
             "  --minutes N         time budget (default 5 if neither flag set)",
             "  --iterations N      iteration budget",
             "  --seed N            RNG seed (default random)",
-            "  --model <substr>    pin to first installed Ollama model containing <substr>.",
+            "  --model <substr>    Ollama: pin to first installed model containing <substr>.",
             "                      Pass `all` (or omit) to rotate through every installed",
-            "                      Ollama model, one per iteration. Rotation is Ollama-only:",
-            "                      Llama has a per-process global init constraint and stays",
-            "                      single-model.",
+            "                      Ollama model, one per iteration. Llama: pin to the",
+            "                      first GGUF whose filename contains <substr>; `all` is",
+            "                      ignored because llama.cpp stays single-model.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",
             "  --quiet             suppress live output (still prints findings)",
@@ -408,12 +371,6 @@ struct FuzzChatCLI {
         ]
         print(lines.joined(separator: "\n"))
     }
-}
-
-struct CLIError: Error, CustomStringConvertible {
-    let message: String
-    init(_ message: String) { self.message = message }
-    var description: String { message }
 }
 
 func fail(_ message: String) -> Never {

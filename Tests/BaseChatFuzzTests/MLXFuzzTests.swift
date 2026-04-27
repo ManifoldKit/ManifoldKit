@@ -1,30 +1,30 @@
-#if MLX && Fuzz
+#if MLX
 import XCTest
-@testable import BaseChatFuzz
-import BaseChatBackends
-import BaseChatInference
+import BaseChatFuzz
+import BaseChatFuzzBackends
 import BaseChatTestSupport
 
-/// XCTest fuzz driver for `MLXBackend`. Runs via the xcodebuild path because
-/// MLX's Metal shaders are only compiled under Xcode — not by SwiftPM.
-///
-/// Run with:
-/// ```
-/// xcodebuild test -scheme BaseChatKit-Package \
-///     -only-testing BaseChatFuzzTests/MLXFuzzTests \
-///     -destination 'platform=macOS'
-/// ```
-/// or via the wrapper:
-/// ```
-/// scripts/fuzz.sh --with-mlx --minutes 1
-/// ```
 final class MLXFuzzTests: XCTestCase {
 
-    private var modelURL: URL!
+    private enum EnvironmentKeys {
+        static let minutes = "BASECHAT_FUZZ_MINUTES"
+        static let iterations = "BASECHAT_FUZZ_ITERATIONS"
+        static let seed = "BASECHAT_FUZZ_SEED"
+        static let detector = "BASECHAT_FUZZ_DETECTOR"
+        static let quiet = "BASECHAT_FUZZ_QUIET"
+        static let sessionScripts = "BASECHAT_FUZZ_SESSION_SCRIPTS"
+        static let corpusSubset = "BASECHAT_FUZZ_CORPUS_SUBSET"
+        static let tools = "BASECHAT_FUZZ_TOOLS"
+        static let model = "MLX_TEST_MODEL"
+    }
+
+    private struct ConfigurationError: Error, CustomStringConvertible {
+        let message: String
+        var description: String { message }
+    }
+
     private var outputDir: URL!
 
-    /// Walks up from this source file to the directory containing `Package.swift`.
-    /// Reliable under both `swift run` (cwd = repo root) and `xcodebuild` (cwd = DerivedData).
     private static func repoRoot() -> URL {
         var dir = URL(fileURLWithPath: #file)
         while dir.path != "/" {
@@ -38,69 +38,133 @@ final class MLXFuzzTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "MLXBackend requires Apple Silicon (arm64)")
-        try XCTSkipUnless(HardwareRequirements.hasMetalDevice,
-                          "MLXBackend requires a Metal GPU device (unavailable in simulator)")
-        guard let found = HardwareRequirements.findMLXModelDirectory() else {
-            throw XCTSkip(
-                "No MLX model found in ~/Documents/Models/. "
-                    + "Download a safetensors model to run MLX fuzz tests."
-            )
-        }
-        modelURL = found
         outputDir = Self.repoRoot().appendingPathComponent("tmp/fuzz", isDirectory: true)
-        // Let the error propagate so setUp() fails loudly if the output directory
-        // cannot be created (e.g. permissions, read-only checkout), rather than
-        // masking the problem and producing a harder-to-diagnose test failure later.
         try FileManager.default.createDirectory(
             at: outputDir,
             withIntermediateDirectories: true
         )
     }
 
-    /// Drives `MLXBackend` for 5 iterations using all registered detectors.
-    /// Findings (if any) land in `tmp/fuzz/INDEX.md` alongside Ollama results.
-    func test_mlxFuzz_runsAtLeastFiveIterations() async throws {
-        let config = FuzzConfig(
-            backend: .mlx,
-            iterations: 5,
-            seed: 42,
-            outputDir: outputDir,
-            quiet: true,
-            corpusSubset: .smoke
-        )
-        let factory = MLXFuzzFactory(modelURL: modelURL)
-        let runner = FuzzRunner(config: config, factory: factory)
-        let reporter = TerminalReporter(quiet: true)
-        let report = await runner.run(reporter: reporter)
+    private func skipUnlessHardwareReady(environment: [String: String]) throws {
+        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
+                          "MLXBackend requires Apple Silicon (arm64)")
+        try XCTSkipUnless(HardwareRequirements.hasMetalDevice,
+                          "MLXBackend requires a Metal GPU device (unavailable in simulator)")
+        guard HardwareRequirements.findMLXModelDirectory(environment: environment) != nil else {
+            throw XCTSkip(
+                "No MLX model found in ~/Documents/Models/. "
+                    + "Set MLX_TEST_MODEL=<name> to pin a specific snapshot, or download a safetensors model to run MLX fuzz tests."
+            )
+        }
+    }
+
+    func test_mlxFuzz_runsConfiguredCampaign() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        try skipUnlessHardwareReady(environment: environment)
+
+        let config = try makeConfig(environment: environment)
+        let factory = MLXFuzzFactory(environment: environment)
+        let reporter = TerminalReporter(quiet: config.quiet)
+
+        let report: FuzzReport
+        if config.sessionScripts {
+            let runner = SessionFuzzRunner(config: config, factory: factory)
+            report = await runner.run(reporter: reporter)
+        } else {
+            let runner = FuzzRunner(config: config, factory: factory)
+            report = await runner.run(reporter: reporter)
+        }
+
         XCTAssertGreaterThanOrEqual(
-            report.totalRuns, 5,
-            "MLX fuzz campaign must complete at least 5 iterations"
+            report.totalRuns,
+            config.iterations ?? 1,
+            "MLX fuzz campaign must complete the configured iteration count, or at least one run for time-based campaigns"
         )
     }
-}
 
-/// `FuzzBackendFactory` that instantiates `MLXBackend` from a local safetensors
-/// directory. Defined here (rather than `Sources/fuzz-chat/`) because `fuzz-chat`
-/// is an executable target and cannot be imported by test targets.
-private struct MLXFuzzFactory: FuzzBackendFactory {
-    let modelURL: URL
+    private func makeConfig(environment: [String: String]) throws -> FuzzConfig {
+        let minutes = try parseOptionalInt(EnvironmentKeys.minutes, environment: environment)
+        let iterations = try parseOptionalInt(EnvironmentKeys.iterations, environment: environment)
+        let seed = try parseOptionalUInt64(EnvironmentKeys.seed, environment: environment) ?? UInt64.random(in: 0...UInt64.max)
+        let detectorFilter = parseDetectorFilter(environment[EnvironmentKeys.detector])
+        let quiet = try parseOptionalBool(EnvironmentKeys.quiet, environment: environment) ?? false
+        let sessionScripts = try parseOptionalBool(EnvironmentKeys.sessionScripts, environment: environment) ?? false
+        let tools = try parseOptionalBool(EnvironmentKeys.tools, environment: environment) ?? false
+        let corpusSubset = try parseCorpusSubset(environment[EnvironmentKeys.corpusSubset]) ?? .full
+        let modelHint = normalizedModelHint(environment[EnvironmentKeys.model])
 
-    @MainActor
-    func makeHandle() async throws -> FuzzRunner.BackendHandle {
-        let backend = MLXBackend()
-        try await backend.loadModel(
-            from: modelURL,
-            plan: .testStub(effectiveContextSize: 4096)
-        )
-        return FuzzRunner.BackendHandle(
-            backend: backend,
-            modelId: modelURL.lastPathComponent,
-            modelURL: modelURL,
-            backendName: "mlx",
-            templateMarkers: nil
+        let effectiveMinutes = minutes == nil && iterations == nil ? 5 : minutes
+        return FuzzConfig(
+            backend: .mlx,
+            minutes: effectiveMinutes,
+            iterations: iterations,
+            seed: seed,
+            modelHint: modelHint,
+            detectorFilter: detectorFilter,
+            outputDir: outputDir,
+            quiet: quiet,
+            sessionScripts: sessionScripts,
+            corpusSubset: corpusSubset,
+            tools: tools
         )
     }
+
+    private func parseOptionalInt(_ key: String, environment: [String: String]) throws -> Int? {
+        guard let raw = environment[key], !raw.isEmpty else { return nil }
+        guard let value = Int(raw) else {
+            throw ConfigurationError(message: "\(key) must be an integer (got: \(raw))")
+        }
+        // Reject non-positive durations/iterations so we don't end up with a
+        // deadline that fires before the first iteration runs (FuzzRunner's
+        // `now >= deadline` check would otherwise terminate the campaign with
+        // zero runs, contradicting the "at least one run" assertion below).
+        guard value > 0 else {
+            throw ConfigurationError(message: "\(key) must be a positive integer (got: \(raw))")
+        }
+        return value
+    }
+
+    private func parseOptionalUInt64(_ key: String, environment: [String: String]) throws -> UInt64? {
+        guard let raw = environment[key], !raw.isEmpty else { return nil }
+        guard let value = UInt64(raw) else {
+            throw ConfigurationError(message: "\(key) must be a UInt64 (got: \(raw))")
+        }
+        return value
+    }
+
+    private func parseOptionalBool(_ key: String, environment: [String: String]) throws -> Bool? {
+        guard let raw = environment[key], !raw.isEmpty else { return nil }
+        switch raw.lowercased() {
+        case "1", "true", "yes":
+            return true
+        case "0", "false", "no":
+            return false
+        default:
+            throw ConfigurationError(message: "\(key) must be one of: 1, 0, true, false, yes, no (got: \(raw))")
+        }
+    }
+
+    private func parseCorpusSubset(_ raw: String?) throws -> Corpus.Subset? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard let subset = Corpus.Subset(rawValue: raw) else {
+            throw ConfigurationError(message: "\(EnvironmentKeys.corpusSubset) must be `full` or `smoke` (got: \(raw))")
+        }
+        return subset
+    }
+
+    private func parseDetectorFilter(_ raw: String?) -> Set<String>? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let detectors = raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let filtered = detectors.filter { !$0.isEmpty }
+        return filtered.isEmpty ? nil : Set(filtered)
+    }
+
+    private func normalizedModelHint(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.lowercased() != "all" else { return nil }
+        return trimmed
+    }
 }
-#endif // MLX && Fuzz
+#endif

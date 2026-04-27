@@ -284,12 +284,32 @@ let package = Package(
         ),
         // Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic.
         // Trait-free so it never pulls MLX/Llama transitively — backend selection
-        // happens in `fuzz-chat` (executable) and `BaseChatFuzzTests` (XCTest harness).
+        // happens in `BaseChatFuzzBackends` (importable real-backend factories),
+        // `fuzz-chat` (CLI), and `BaseChatFuzzTests` (XCTest harness).
         .target(
             name: "BaseChatFuzz",
             dependencies: ["BaseChatInference"],
             path: "Sources/BaseChatFuzz",
             resources: [.process("Resources")]
+        ),
+        // Importable real-backend factories for fuzz campaigns. Shared by the
+        // CLI and the Xcode-hosted MLX fuzz tests so XCTest can reuse the same
+        // wiring without importing the `fuzz-chat` executable target.
+        .target(
+            name: "BaseChatFuzzBackends",
+            dependencies: [
+                "BaseChatFuzz",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+                "BaseChatBackends",
+            ],
+            path: "Sources/BaseChatFuzzBackends",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("Llama", .when(traits: ["Llama"])),
+                .define("Ollama", .when(traits: ["Ollama"])),
+                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+            ]
         ),
         // CLI driver. Wires Ollama, Llama, Foundation; MLX runs via xcodebuild fuzz path.
         // BaseChatBackends is conditional on the Fuzz trait to avoid a llama.framework
@@ -301,7 +321,7 @@ let package = Package(
                 "BaseChatFuzz",
                 "BaseChatInference",
                 "BaseChatTestSupport",
-                .target(name: "BaseChatBackends", condition: .when(traits: ["Fuzz"])),
+                .target(name: "BaseChatFuzzBackends", condition: .when(traits: ["Fuzz"])),
             ],
             path: "Sources/fuzz-chat",
             swiftSettings: [
@@ -316,6 +336,7 @@ let package = Package(
             name: "BaseChatFuzzTests",
             dependencies: [
                 "BaseChatFuzz",
+                "BaseChatFuzzBackends",
                 "BaseChatBackends",
                 "BaseChatInference",
                 "BaseChatTestSupport",

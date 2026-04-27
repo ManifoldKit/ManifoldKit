@@ -236,13 +236,19 @@ BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: ttf
 BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: delay)
 BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: delay)
 BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: stallDuration)
+# HardwareRequirements model-discovery walkers (MLX + GGUF). All directory
+# enumerations are best-effort: an unreadable container/search dir is skipped
+# and discovery continues with the remaining candidates. Mirrors the same
+# pattern used in ModelStorageService and BackgroundDownloadManager. The
+# resourceValues probe is the standard "skip-files-we-can't-stat" pattern.
 BaseChatTestSupport/HardwareRequirements.swift:let configData = try? Data(contentsOf: configURL),
 BaseChatTestSupport/HardwareRequirements.swift:let json = try? JSONSerialization.jsonObject(with: configData) as? [String: Any],
 BaseChatTestSupport/HardwareRequirements.swift:let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-BaseChatTestSupport/HardwareRequirements.swift:if let containers = try? fm.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:guard let contents = try? fm.contentsOfDirectory(
+BaseChatTestSupport/HardwareRequirements.swift:guard let contents = try? fileManager.contentsOfDirectory(
+BaseChatTestSupport/HardwareRequirements.swift:let nestedContents = try? fileManager.contentsOfDirectory(
 BaseChatTestSupport/HardwareRequirements.swift:guard let files = try? fileManager.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:let values = try? candidate.resourceValues(
+BaseChatTestSupport/HardwareRequirements.swift:if let containers = try? fileManager.contentsOfDirectory(
+BaseChatTestSupport/HardwareRequirements.swift:let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
 
 # ---------------------------------------------------------------------------
 # Empty `catch { }` blocks.
