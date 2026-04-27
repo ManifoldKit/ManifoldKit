@@ -145,7 +145,7 @@ swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
 ```
 
-### 3. Configure at app startup
+### 3. Create the runtime at app startup
 
 ```swift
 import BaseChatCore
@@ -154,41 +154,42 @@ import BaseChatUI
 
 @main
 struct MyApp: App {
+    private let runtime: BaseChatRuntime
     @State private var chatViewModel: ChatViewModel
-    @State private var sessionManager = SessionManagerViewModel()
+    @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
-    private let modelContainer: ModelContainer
 
     init() {
-        // 1. Configure the framework
-        BaseChatConfiguration.shared = BaseChatConfiguration(
-            appName: "My Chat App",
-            bundleIdentifier: "com.example.mychatapp"
+        let runtime = try! BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "My Chat App",
+                bundleIdentifier: "com.example.mychatapp"
+            )
         )
+        self.runtime = runtime
 
-        // 2. Create and register backends
-        let inferenceService = InferenceService()
-        DefaultBackends.register(with: inferenceService)
+        DefaultBackends.register(with: runtime.inferenceService)
 
-        // 3. Create view models
-        let vm = ChatViewModel(inferenceService: inferenceService)
+        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
         vm.foundationModelProvider = {
             if #available(iOS 26, macOS 26, *) {
                 return FoundationBackend.isAvailable
             }
             return false
         }
+        vm.configure(runtime: runtime)
         _chatViewModel = State(initialValue: vm)
 
-        // 4. Set up model management (optional — for HuggingFace downloads)
+        let sessionManager = SessionManagerViewModel()
+        sessionManager.configure(runtime: runtime)
+        _sessionManager = State(initialValue: sessionManager)
+
         let downloadManager = BackgroundDownloadManager()
         let hfService = HuggingFaceService()
         _modelManagement = State(initialValue: ModelManagementViewModel(
             huggingFaceService: hfService,
             downloadManager: downloadManager
         ))
-
-        modelContainer = try! ModelContainerFactory.makeContainer()
     }
 
     var body: some Scene {
@@ -198,7 +199,7 @@ struct MyApp: App {
                 .environment(modelManagement)
                 .environment(sessionManager)
         }
-        .modelContainer(modelContainer)
+        .modelContainer(runtime.modelContainer)
     }
 }
 ```
@@ -209,7 +210,6 @@ struct MyApp: App {
 struct ContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(SessionManagerViewModel.self) private var sessionManager
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         NavigationSplitView {
@@ -218,13 +218,10 @@ struct ContentView: View {
             ChatView(showModelManagement: .constant(false))
         }
         .onAppear {
-            viewModel.configure(modelContext: modelContext)
-            sessionManager.configure(modelContext: modelContext)
             viewModel.refreshModels()
-            sessionManager.loadSessions()
 
             if sessionManager.sessions.isEmpty {
-                sessionManager.createSession()
+                _ = try? sessionManager.createSession()
             }
         }
         .onChange(of: sessionManager.activeSession) { _, session in
@@ -261,6 +258,7 @@ struct ContentView: View {
 | Type | Purpose |
 |------|---------|
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend |
+| `BaseChatRuntime` | Preferred bootstrap surface — installs configuration, builds SwiftData persistence, and holds shared services |
 | `BackgroundDownloadManager` | Background model downloads with progress and validation |
 | `ModelStorageService` | Local model file discovery and storage paths |
 | `DeviceCapabilityService` | RAM/chipset queries for model size recommendations |

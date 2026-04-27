@@ -2,10 +2,9 @@
 
 The simplest possible BaseChatKit app. Demonstrates the bare minimum setup:
 
-- Configure `BaseChatConfiguration` at startup
+- Create a `BaseChatRuntime` at startup
 - Register backends with `DefaultBackends.register(with:)`
-- Create a `ChatViewModel` and `SessionManagerViewModel`
-- Set up SwiftData with `ModelContainerFactory.makeContainer()`
+- Configure a `ChatViewModel` and `SessionManagerViewModel` from the runtime
 - Present `ChatView` with environment wiring
 
 ## Running
@@ -16,8 +15,8 @@ The simplest possible BaseChatKit app. Demonstrates the bare minimum setup:
 
 ## What to Look At
 
-- `MinimalExampleApp.swift` — app entry point and backend registration (~35 lines)
-- `MinimalContentView.swift` — wraps `ChatView` with minimal onAppear setup
+- `MinimalExampleApp.swift` — app entry point and runtime assembly
+- `MinimalContentView.swift` — wraps `ChatView` with minimal model refresh / session seeding
 
 ## Next Steps
 
