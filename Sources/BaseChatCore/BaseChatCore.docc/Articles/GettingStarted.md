@@ -132,9 +132,11 @@ let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
 chatViewModel.configure(runtime: runtime)
 ```
 
-If you are supplying your own storage backend, create a
-``ModelContainerFactory`` container and wire it to
-``SwiftDataPersistenceProvider`` manually:
+If you need to construct the SwiftData container yourself — for example to
+share an existing container with another part of the host app, or to
+configure the schema explicitly — build the container with
+``ModelContainerFactory`` and wire it to ``SwiftDataPersistenceProvider``
+manually:
 
 ```swift
 let container = try ModelContainerFactory.makeContainer()
@@ -144,6 +146,12 @@ chatViewModel.configure(persistence: persistence)
 ```
 
 Use ``ModelContainerFactory/makeInMemoryContainer()`` in tests and SwiftUI previews.
+
+Adopters that want a non-SwiftData store (e.g. a network-backed or
+encrypted-blob store) should implement ``ChatPersistenceProvider`` directly
+and pass that instance to `chatViewModel.configure(persistence:)`. Runtime
+support for substituting the persistence layer through ``BaseChatRuntime``
+is tracked separately.
 
 ## Next Steps
 

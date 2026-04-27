@@ -4,7 +4,6 @@ import BaseChatCore
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
-import BaseChatTools
 
 struct DemoContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
