@@ -11,36 +11,33 @@ public enum DefaultBackends {
 
     // MARK: - Static Capability Queries
 
+    /// The build/trait contract compiled into the current binary.
+    public static var compiledBackends: CompiledBackends { .current }
+
+    /// The current binary's runtime-visible build profile.
+    public static var buildProfile: BackendBuildProfile { compiledBackends.buildProfile }
+
+    /// The inference traits compiled into the current binary.
+    public static var enabledTraits: Set<BackendBuildTrait> { compiledBackends.traits }
+
     /// The local model types supported by this build, without requiring
     /// an `InferenceService` instance.
     ///
     /// Useful for static checks before service construction (e.g., in unit tests
     /// or feature-flag evaluation at app startup).
     public static var supportedModelTypes: Set<ModelType> {
-        var types: Set<ModelType> = []
-        #if MLX
-        types.insert(.mlx)
-        #endif
-        #if canImport(FoundationModels)
-        if #available(iOS 26, macOS 26, *) {
-            types.insert(.foundation)
-        }
-        #endif
-        #if Llama
-        types.insert(.gguf)
-        #endif
-        return types
+        compiledBackends.localModelTypes
     }
 
     /// Returns `true` if this build includes a backend for the given local model type.
     public static func canLoad(modelType: ModelType) -> Bool {
-        supportedModelTypes.contains(modelType)
+        compiledBackends.compatibility(for: modelType).isSupported
     }
 
     /// Returns `true` if this build includes a backend for the given API provider.
-    ///
-    /// All cloud API providers are always supported in `BaseChatBackends`.
-    public static func canLoad(provider: APIProvider) -> Bool { true }
+    public static func canLoad(provider: APIProvider) -> Bool {
+        compiledBackends.compatibility(for: provider).isSupported
+    }
 
     // MARK: - Pure Routing Helpers
 

@@ -16,6 +16,7 @@ public struct GenerationSettingsView<APIConfig: View>: View {
     @Environment(\.dismiss) private var dismiss
 
     private var features: BaseChatConfiguration.Features { BaseChatConfiguration.shared.features }
+    private var compiledBackends: CompiledBackends { .current }
 
     @AppStorage("showAdvancedSettings") private var showAdvancedSettings = false
     @State private var isAPIConfigPresented = false
@@ -167,7 +168,7 @@ public struct GenerationSettingsView<APIConfig: View>: View {
                         }
                     }
 
-                    if features.showCloudAPIManagement {
+                    if features.showCloudAPIManagement && compiledBackends.shouldPresentCloudAPIManagement {
                         Section("Cloud APIs") {
                             Button {
                                 isAPIConfigPresented = true

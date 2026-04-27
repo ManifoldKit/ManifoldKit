@@ -55,13 +55,6 @@ public enum APIProvider: String, Codable, CaseIterable, Identifiable, Sendable {
     /// it's data, not behaviour, and `ConversationRecords.selectedEndpointID`
     /// must be able to decode any case regardless of build flavour.
     public static var availableInBuild: [APIProvider] {
-        var result: [APIProvider] = []
-        #if CloudSaaS
-        result.append(contentsOf: [.claude, .openAI, .openAIResponses, .lmStudio, .custom])
-        #endif
-        #if Ollama
-        result.append(.ollama)
-        #endif
-        return result
+        CompiledBackends.current.orderedCloudProviders
     }
 }

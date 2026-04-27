@@ -20,9 +20,10 @@ public struct DownloadableModelRow: View {
     }
 
     /// Compatibility result for this model's type, or `.supported` when no
-    /// capability service is in the environment (backward-compatible fallback).
+    /// capability service is in the environment.
     private var backendCompatibility: ModelCompatibilityResult {
-        capabilityService?.compatibility(for: model.modelType) ?? .supported
+        capabilityService?.compatibility(for: model.modelType)
+            ?? CompiledBackends.current.compatibility(for: model.modelType)
     }
 
     public var body: some View {

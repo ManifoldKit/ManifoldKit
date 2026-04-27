@@ -94,14 +94,15 @@ Add the targets you need:
 
 ### 2. Build modes
 
-BaseChatKit ships four pre-blessed build configurations keyed by use case. Backends are gated behind Swift package traits so consumers in regulated or air-gapped environments can compile out everything that touches the network.
+BaseChatKit ships four pre-blessed build profiles keyed by the network surface a binary exposes. Backends are gated behind Swift package traits so consumers in regulated or air-gapped environments can compile out everything that touches the network.
 
-| Use case | Build command | Backends available |
-|----------|---------------|--------------------|
-| Default consumer app | `swift build` | MLX, Llama, Ollama |
-| Regulated vertical (local-only, no networking) | `swift build --disable-default-traits --traits MLX,Llama` | MLX, Llama |
-| Self-hosted / private datacenter | `swift build --disable-default-traits --traits MLX,Llama,Ollama` | MLX, Llama, Ollama |
-| Full / SaaS-enabled | `swift build --traits MLX,Llama,Ollama,CloudSaaS` | MLX, Llama, Ollama, Claude, OpenAI |
+| Profile | Build command | Build profile at runtime | Remote providers compiled in |
+|---------|---------------|--------------------------|-----------------------------|
+| Default consumer app | `swift build` | `offline` | none |
+| Regulated vertical (local-only, no networking) | `swift build --disable-default-traits --traits MLX,Llama` | `offline` | none |
+| Self-hosted / private datacenter | `swift build --disable-default-traits --traits MLX,Llama,Ollama` | `selfHosted` | Ollama |
+| SaaS-only | `swift build --disable-default-traits --traits MLX,Llama,CloudSaaS` | `saas` | Claude, OpenAI-compatible |
+| Full / SaaS-enabled | `swift build --disable-default-traits --traits MLX,Llama,Ollama,CloudSaaS` | `full` | Ollama, Claude, OpenAI-compatible |
 
 Pass the matching set as `traits:` on your `.package(...)` entry to lock the configuration in a consumer manifest:
 
@@ -118,7 +119,33 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 )
 ```
 
-`CloudSaaS` is opt-in today. **`Ollama` is in the default trait set for the current minor release but moves to opt-in in the next major** — call sites that construct `OllamaBackend()` directly emit a deprecation warning pointing at this table. Route through `DefaultBackends.register(_:)` (which gates Ollama on the trait) or add `Ollama` explicitly to your manifest to silence it. See [#714](https://github.com/roryford/BaseChatKit/issues/714).
+`CloudSaaS` and `Ollama` are opt-in. `swift build` currently compiles the local-only `offline` profile (`MLX`, `Llama`, plus Foundation Models when the OS supports them).
+
+You can inspect the compiled contract at runtime without a custom shim:
+
+```swift
+import BaseChatInference
+
+let compiled = CompiledBackends.current
+
+switch compiled.buildProfile {
+case .offline:
+    // Hide cloud endpoint settings.
+    break
+case .selfHosted, .saas, .full:
+    break
+}
+
+if compiled.shouldPresentModelDownloads {
+    // Show the stock download browser / local-model onboarding.
+}
+
+if compiled.localModelTypes.contains(.mlx) {
+    // Surface MLX-specific copy.
+}
+```
+
+If you already depend on `BaseChatBackends`, the same data is also available via `DefaultBackends.compiledBackends`.
 
 ### 2.1 Optional MCP traits
 

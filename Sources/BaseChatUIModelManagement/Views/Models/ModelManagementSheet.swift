@@ -15,6 +15,7 @@ public struct ModelManagementSheet: View {
     #endif
 
     private var features: BaseChatConfiguration.Features { BaseChatConfiguration.shared.features }
+    private var compiledBackends: CompiledBackends { .current }
     private let initialTab: Tab
     private let recommendedModelIDs: Set<String>?
     private let recommendationTitle: String?
@@ -36,7 +37,7 @@ public struct ModelManagementSheet: View {
 
     private var availableTabs: [Tab] {
         var tabs: [Tab] = [.select]
-        if features.showModelDownload { tabs.append(.download) }
+        if features.showModelDownload && compiledBackends.shouldPresentModelDownloads { tabs.append(.download) }
         if features.showStorageTab { tabs.append(.storage) }
         return tabs
     }
