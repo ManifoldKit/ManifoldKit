@@ -27,7 +27,7 @@ final class SessionManagementUITests: XCTestCase {
     func testDefaultSessionExists() throws {
         showSidebarIfNeeded(app: app)
 
-        // The app creates a default session on first launch (see DemoContentView.onAppear).
+        // The app creates a default session during launch bootstrap.
         // Look for at least one session row — sessions have a title like "New Chat"
         // or a timestamp. We check for any cell in the list.
         let sessionCells = app.cells

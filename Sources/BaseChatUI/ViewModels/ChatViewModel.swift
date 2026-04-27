@@ -708,8 +708,9 @@ public final class ChatViewModel {
         }
     }
 
-    /// Injects the persistence provider. Call once from the view layer
-    /// after the storage backend is available.
+    /// Injects the persistence provider. Call once after the storage backend is
+    /// available, or prefer ``configure(runtime:)`` when bootstrapping through
+    /// ``BaseChatRuntime``.
     public func configure(persistence: ChatPersistenceProvider) {
         sessionController.configure(persistence: persistence)
     }

@@ -16,7 +16,7 @@ The simplest possible BaseChatKit app. Demonstrates the bare minimum setup:
 ## What to Look At
 
 - `MinimalExampleApp.swift` — app entry point and runtime assembly
-- `MinimalContentView.swift` — wraps `ChatView` with minimal model refresh / session seeding
+- `MinimalContentView.swift` — wraps `ChatView` with the thinnest possible shell
 
 ## Next Steps
 

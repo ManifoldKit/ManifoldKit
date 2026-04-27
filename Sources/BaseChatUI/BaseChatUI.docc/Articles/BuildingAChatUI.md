@@ -12,29 +12,51 @@ Create both view models at the app level and share the same `InferenceService` b
 
 ```swift
 import BaseChatCore
+import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
 import SwiftUI
-import SwiftData
 
 @main
 struct MyApp: App {
-    let inferenceService = InferenceService()
+    let runtime: BaseChatRuntime
     let chatVM: ChatViewModel
-    let sessionVM = SessionManagerViewModel()
+    let sessionVM: SessionManagerViewModel
 
     init() {
-        BaseChatConfiguration.shared = BaseChatConfiguration(
-            appName: "MyApp",
-            bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
+        let runtime = try! BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "MyApp",
+                bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
+            )
         )
-        DefaultBackends.register(with: inferenceService)
-        chatVM = ChatViewModel(inferenceService: inferenceService)
+        self.runtime = runtime
+
+        DefaultBackends.register(with: runtime.inferenceService)
+
+        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        chatVM.configure(runtime: runtime)
+        chatVM.refreshModels()
+        self.chatVM = chatVM
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(runtime: runtime)
+        let initialSession = sessionVM.sessions.first ?? (try? sessionVM.createSession())
+        if let initialSession {
+            sessionVM.activeSession = initialSession
+            chatVM.switchToSession(initialSession)
+            chatVM.dispatchSelectedLoad()
+        }
+        self.sessionVM = sessionVM
 
         // Connect session title generation to InferenceService
         chatVM.onFirstMessage = { session, firstMessage in
             Task { @MainActor in
-                await sessionVM.autoRenameSession(session, firstMessage: firstMessage, inferenceService: inferenceService)
+                await sessionVM.autoRenameSession(
+                    session,
+                    firstMessage: firstMessage,
+                    inferenceService: runtime.inferenceService
+                )
             }
         }
     }
@@ -45,7 +67,7 @@ struct MyApp: App {
                 .environment(chatVM)
                 .environment(sessionVM)
         }
-        .modelContainer(try! ModelContainerFactory.makeContainer())
+        .modelContainer(runtime.modelContainer)
     }
 }
 ```
@@ -56,25 +78,26 @@ struct MyApp: App {
 struct RootView: View {
     @Environment(ChatViewModel.self) var chatVM
     @Environment(SessionManagerViewModel.self) var sessionVM
-    @Environment(\.modelContext) var modelContext
 
     var body: some View {
         NavigationSplitView {
             SessionListView()
         } detail: {
-            ChatView()
+            ChatView(
+                showModelManagement: .constant(false),
+                apiConfiguration: { EmptyView() }
+            )
         }
-        .task {
-            let provider = SwiftDataPersistenceProvider(modelContext: modelContext)
-            sessionVM.configure(persistence: provider)
-            chatVM.configure(persistence: provider)
-            chatVM.refreshModels()
+        .onChange(of: sessionVM.activeSession) { _, newSession in
+            guard let newSession, chatVM.activeSession?.id != newSession.id else { return }
+            chatVM.switchToSession(newSession)
+            chatVM.dispatchSelectedLoad()
         }
     }
 }
 ```
 
-Both view models share the same ``SwiftDataPersistenceProvider`` instance so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`.
+Both view models share the same runtime-backed ``SwiftDataPersistenceProvider`` instance, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
 
 ### Switching sessions
 

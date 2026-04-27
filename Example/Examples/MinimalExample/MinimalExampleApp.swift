@@ -1,18 +1,21 @@
 import SwiftUI
 import SwiftData
 import BaseChatCore
+import BaseChatInference
 import BaseChatUI
+import BaseChatUIModelManagement
 import BaseChatBackends
 
-/// The simplest possible BaseChatKit app — under 40 lines.
+/// The simplest possible BaseChatKit app with runtime-first bootstrap.
 ///
-/// This assembles a ``BaseChatRuntime``, registers all built-in backends,
-/// and presents the standard ChatView. No model curation, no custom UI.
+/// This assembles a ``BaseChatRuntime``, registers the built-in backends,
+/// and presents the standard chat + model-management surfaces.
 @main
 struct MinimalExampleApp: App {
     private let runtime: BaseChatRuntime
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
+    @State private var modelManagement: ModelManagementViewModel
 
     init() {
         let runtime = try! BaseChatRuntime(
@@ -33,11 +36,27 @@ struct MinimalExampleApp: App {
             return false
         }
         vm.configure(runtime: runtime)
-        _chatViewModel = State(initialValue: vm)
-
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(runtime: runtime)
+
+        vm.refreshModels()
+
+        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        if let initialSession {
+            sessionManager.activeSession = initialSession
+            vm.switchToSession(initialSession)
+            vm.dispatchSelectedLoad()
+        }
+
+        let downloadManager = BackgroundDownloadManager()
+        let huggingFaceService = HuggingFaceService()
+
+        _chatViewModel = State(initialValue: vm)
         _sessionManager = State(initialValue: sessionManager)
+        _modelManagement = State(initialValue: ModelManagementViewModel(
+            huggingFaceService: huggingFaceService,
+            downloadManager: downloadManager
+        ))
     }
 
     var body: some Scene {
@@ -45,6 +64,7 @@ struct MinimalExampleApp: App {
             MinimalContentView()
                 .environment(chatViewModel)
                 .environment(sessionManager)
+                .environment(modelManagement)
         }
         .modelContainer(runtime.modelContainer)
     }

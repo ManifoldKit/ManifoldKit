@@ -26,8 +26,8 @@ final class DemoScenarioUITests: XCTestCase {
         let app = launchDemoApp(scenario: nil)
         openChatDetailIfNeeded(app: app)
 
-        // The empty state requires an active session; createSession in
-        // DemoContentView.onAppear should have produced one. Wait for chat
+        // The empty state requires an active session; the launch bootstrap
+        // should have produced one before the detail view mounts. Wait for chat
         // input to be ready so we know the detail pane is mounted.
         XCTAssertTrue(waitForChatInputReady(app: app, timeout: 30))
 
@@ -45,7 +45,7 @@ final class DemoScenarioUITests: XCTestCase {
     func test_launchArg_bootsIntoScenarioWithoutCrashing() {
         // A bare smoke test for `--bck-demo-scenario`: the app must reach
         // chat-ready state under the launch arg, proving the scenario lookup
-        // + cold-launch hook in DemoContentView.onAppear didn't fail.
+        // + post-bootstrap cold-launch hook didn't fail.
         // Asserting on tool-call streaming is left to Layer 3 against a real
         // backend.
         let app = launchDemoApp(scenario: "tip-calc")

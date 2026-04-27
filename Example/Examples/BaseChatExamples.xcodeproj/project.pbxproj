@@ -10,10 +10,12 @@
 		09C86A21537F0ED2862D66ED /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
 		34606F73E74AAFC63E24F59A /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
 		40C7626D4A44DD1D18F0A1BF /* BaseChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = 35D03E318932E0724E391E54 /* BaseChatCore */; };
+		5B0A9E6C1A2B3C4D5E6F7081 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */; };
 		6F9A1CA5CA7FF16DB36A5861 /* BaseChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4C28E08B212DBDD057CE27CF /* BaseChatUI */; };
 		79E6928B6CE7E3461758C5D9 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
 		958FF9C8DBB5C5C151DFF5D7 /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
 		9784B251D853FA597B206D29 /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 56CCAAB5544541CD79EE64CD /* BaseChatBackends */; };
+		9B8A7C6D5E4F302918273645 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 6D5E4F302918273645564738 /* BaseChatUIModelManagement */; };
 		A19A3DAEB85A136F8D62D31D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 365ABBF494EF2955A53C327F /* README.md */; };
 		A336FC431FF118C880002B21 /* BaseChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = DE250A4FF8082BF6714FE36C /* BaseChatCore */; };
 		A9BB32CEAF191F5FF101B54C /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 7A5841AF39A6AB3B5022006D /* BaseChatBackends */; };
@@ -38,6 +40,7 @@
 				40C7626D4A44DD1D18F0A1BF /* BaseChatCore in Frameworks */,
 				EFA072F50C91195B4A338E8C /* BaseChatUI in Frameworks */,
 				9784B251D853FA597B206D29 /* BaseChatBackends in Frameworks */,
+				5B0A9E6C1A2B3C4D5E6F7081 /* BaseChatUIModelManagement in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,6 +51,7 @@
 				A336FC431FF118C880002B21 /* BaseChatCore in Frameworks */,
 				6F9A1CA5CA7FF16DB36A5861 /* BaseChatUI in Frameworks */,
 				A9BB32CEAF191F5FF101B54C /* BaseChatBackends in Frameworks */,
+				9B8A7C6D5E4F302918273645 /* BaseChatUIModelManagement in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -110,6 +114,7 @@
 				DE250A4FF8082BF6714FE36C /* BaseChatCore */,
 				4C28E08B212DBDD057CE27CF /* BaseChatUI */,
 				7A5841AF39A6AB3B5022006D /* BaseChatBackends */,
+				6D5E4F302918273645564738 /* BaseChatUIModelManagement */,
 			);
 			productName = MinimalExample_iOS;
 			productReference = 0B803E317BA994107EA819AE /* MinimalExample.app */;
@@ -132,6 +137,7 @@
 				35D03E318932E0724E391E54 /* BaseChatCore */,
 				5D2764E94034C1EB5E482F75 /* BaseChatUI */,
 				56CCAAB5544541CD79EE64CD /* BaseChatBackends */,
+				1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */,
 			);
 			productName = MinimalExample_macOS;
 			productReference = 92BE324A993DAA5220792683 /* MinimalExample.app */;
@@ -461,6 +467,10 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = BaseChatCore;
 		};
+		1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BaseChatUIModelManagement;
+		};
 		4C28E08B212DBDD057CE27CF /* BaseChatUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BaseChatUI;
@@ -472,6 +482,10 @@
 		5D2764E94034C1EB5E482F75 /* BaseChatUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BaseChatUI;
+		};
+		6D5E4F302918273645564738 /* BaseChatUIModelManagement */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BaseChatUIModelManagement;
 		};
 		7A5841AF39A6AB3B5022006D /* BaseChatBackends */ = {
 			isa = XCSwiftPackageProductDependency;
