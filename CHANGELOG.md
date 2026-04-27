@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.13.1](https://github.com/roryford/BaseChatKit/compare/v0.13.0...v0.13.1) (2026-04-27)
+
+### Highlights
+
+#### File-spilling action for oversize tool results
+
+Tool results that exceed a byte threshold can now be diverted to disk and replaced with a path-bearing message, so the agent loop continues without blowing the context window. The pattern mirrors Goose AI's large-response handler — the spilled file stays available for follow-up tools (`read_file`, `grep`, etc.) to act on selectively.
+
+```swift
+let policy = ToolOutputPolicy(
+    threshold: 32_000,
+    action: .spillToFile(threshold: 32_000) { byteCount, url in
+        "Tool result was \(byteCount) bytes; stored at \(url.path) for follow-up reads."
+    }
+)
+```
+
+Spills land under `Caches/BaseChatKit/tool-spills/`; iOS writes use `NSFileProtectionCompleteUntilFirstUserAuthentication`. `ToolSpillReaper.cleanOldSpills(maxAge:)` runs from `InferenceService.init` (default 7 days) so spills don't accumulate across sessions, and IO failure degrades gracefully to truncate semantics with a `Log.inference.warning` rather than trapping. The host app is responsible for registering a file-reading tool — the policy doesn't gate on its presence, by design. See [#846](https://github.com/roryford/BaseChatKit/issues/846), [#859](https://github.com/roryford/BaseChatKit/pull/859).
+
+### Features
+
+- **tools:** new `OversizeAction.spillToFile(threshold:message:)` case on `ToolOutputPolicy`, plus `ToolSpillReaper` reaper wired into `InferenceService.init` ([#846](https://github.com/roryford/BaseChatKit/issues/846), [#859](https://github.com/roryford/BaseChatKit/pull/859))
+- **chore:** address 4 governance findings — README platform floor now matches `Package.swift` (iOS 18 / macOS 15), API-key memory claim narrowed to match `docs/FIPS.md`, `.claude/settings.local.json` moved to per-developer (gitignored), Conventional Commit policy clarified as PR-title-only enforcement ([#833](https://github.com/roryford/BaseChatKit/issues/833), [#859](https://github.com/roryford/BaseChatKit/pull/859))
+
+### Fixes
+
+- **fuzz:** align fuzz backend configuration — extracts real fuzz factories into a shared `BaseChatFuzzBackends` target, rewires `fuzz-chat` and the fuzz tests to use it, and aligns MLX/GGUF model discovery with env-driven overrides so the Xcode-hosted MLX runner reads the same campaign inputs as the shell wrapper ([#857](https://github.com/roryford/BaseChatKit/pull/857))
+
 ## [0.13.0](https://github.com/roryford/BaseChatKit/compare/v0.12.5...v0.13.0) (2026-04-27)
 
 ### Highlights
