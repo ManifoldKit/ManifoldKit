@@ -55,6 +55,31 @@ final class BaseChatRuntimeTests: XCTestCase {
         XCTAssertTrue(runtime.inferenceService === service)
     }
 
+    func test_init_throwingMakeModelContainer_restoresConfiguration() {
+        let originalConfiguration = BaseChatConfiguration.shared
+        defer { BaseChatConfiguration.shared = originalConfiguration }
+
+        let distinctConfiguration = BaseChatConfiguration(
+            appName: "Rollback Test",
+            bundleIdentifier: "com.basechatkit.runtime-tests.rollback.\(UUID().uuidString)"
+        )
+
+        XCTAssertNotEqual(distinctConfiguration.bundleIdentifier, originalConfiguration.bundleIdentifier)
+
+        XCTAssertThrowsError(
+            try BaseChatRuntime(
+                configuration: distinctConfiguration,
+                makeModelContainer: { throw URLError(.cannotOpenFile) }
+            )
+        )
+
+        XCTAssertEqual(
+            BaseChatConfiguration.shared.bundleIdentifier,
+            originalConfiguration.bundleIdentifier,
+            "BaseChatConfiguration.shared should roll back to its prior value when bootstrap throws"
+        )
+    }
+
     func test_persistence_roundTripsSessionsThroughRuntimeProvider() throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }

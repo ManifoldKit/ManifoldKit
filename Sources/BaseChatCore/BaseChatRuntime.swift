@@ -41,20 +41,30 @@ public final class BaseChatRuntime {
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
         onEvent: EventHandler? = nil
     ) throws {
-        BaseChatConfiguration.shared = configuration
-        onEvent?(.configurationInstalled(bundleIdentifier: configuration.bundleIdentifier))
+        // Capture the previous configuration before any mutation so a failure
+        // partway through bootstrap leaves `BaseChatConfiguration.shared`
+        // untouched from the caller's perspective.
+        let previousConfiguration = BaseChatConfiguration.shared
 
-        let resolvedInferenceService = inferenceService ?? InferenceService()
-        self.inferenceService = resolvedInferenceService
-        onEvent?(.inferenceServiceReady)
+        do {
+            BaseChatConfiguration.shared = configuration
+            onEvent?(.configurationInstalled(bundleIdentifier: configuration.bundleIdentifier))
 
-        let resolvedModelContainer = try makeModelContainer()
-        self.modelContainer = resolvedModelContainer
-        onEvent?(.modelContainerReady)
+            let resolvedInferenceService = inferenceService ?? InferenceService()
+            self.inferenceService = resolvedInferenceService
+            onEvent?(.inferenceServiceReady)
 
-        self.diagnostics = diagnostics
-        self.persistence = SwiftDataPersistenceProvider(modelContext: resolvedModelContainer.mainContext)
-        onEvent?(.persistenceReady)
-        onEvent?(.runtimeReady)
+            let resolvedModelContainer = try makeModelContainer()
+            self.modelContainer = resolvedModelContainer
+            onEvent?(.modelContainerReady)
+
+            self.diagnostics = diagnostics
+            self.persistence = SwiftDataPersistenceProvider(modelContext: resolvedModelContainer.mainContext)
+            onEvent?(.persistenceReady)
+            onEvent?(.runtimeReady)
+        } catch {
+            BaseChatConfiguration.shared = previousConfiguration
+            throw error
+        }
     }
 }

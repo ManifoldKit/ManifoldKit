@@ -148,6 +148,7 @@ swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuilti
 ### 3. Create the runtime at app startup
 
 ```swift
+import SwiftData
 import BaseChatCore
 import BaseChatBackends
 import BaseChatUI
