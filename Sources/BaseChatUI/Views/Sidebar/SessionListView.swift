@@ -54,6 +54,20 @@ public struct SessionListView: View {
                                 }
                                 .tint(.blue)
                             }
+                            .contextMenu {
+                                Button {
+                                    renameText = session.title
+                                    sessionToRename = session
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+
+                                Button(role: .destructive) {
+                                    sessionToDelete = session
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                             .onAppear {
                                 // Trigger pagination only for the unfiltered list — search
                                 // results already pull from a wider window in the VM.

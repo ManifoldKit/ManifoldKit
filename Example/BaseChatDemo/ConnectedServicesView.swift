@@ -22,21 +22,20 @@ struct ConnectedServicesView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            Group {
                 if coordinator.catalog.isEmpty {
-                    Section("Connected Services") {
-                        Label(
-                            coordinator.catalogHelpText,
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("connected-services-catalog-empty-message")
+                    ContentUnavailableView {
+                        Label("No services configured", systemImage: "link.badge.plus")
+                    } description: {
+                        Text(coordinator.catalogHelpText)
                     }
+                    .accessibilityIdentifier("connected-services-catalog-empty-message")
                 } else {
-                    Section("Connected Services") {
-                        ForEach(coordinator.catalog, id: \.id) { descriptor in
-                            serviceRow(for: descriptor)
+                    List {
+                        Section("Connected Services") {
+                            ForEach(coordinator.catalog, id: \.id) { descriptor in
+                                serviceRow(for: descriptor)
+                            }
                         }
                     }
                 }
