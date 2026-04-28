@@ -11,7 +11,16 @@ public final class SlowMockBackend: InferenceBackend, @unchecked Sendable {
     private var _isGenerating = false
     private var _tokensToYield: [String] = []
     private var _delayPerToken: Duration = .milliseconds(50)
+    private var _generateCallCount = 0
     private let lifecycle = MockBackendLifecycle()
+
+    /// Number of times `generate(prompt:systemPrompt:config:)` has been invoked.
+    ///
+    /// Lets tests verify guards that should prevent re-entry into generation
+    /// (e.g. `regenerateLastResponse` short-circuiting while `isGenerating`).
+    public var generateCallCount: Int {
+        withStateLock { _generateCallCount }
+    }
 
     public var isModelLoaded: Bool {
         get { withStateLock { _isModelLoaded } }
@@ -67,6 +76,7 @@ public final class SlowMockBackend: InferenceBackend, @unchecked Sendable {
     ) throws -> GenerationStream {
         let (tokens, delay) = withStateLock {
             _isGenerating = true
+            _generateCallCount += 1
             return (_tokensToYield, _delayPerToken)
         }
 
