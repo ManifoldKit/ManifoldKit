@@ -663,7 +663,20 @@ final class ModelManagementViewModelTests: XCTestCase {
         )
     }
 
-    func test_diskSpaceInsufficient_returnsTrue_whenModelExceedsAvailableCapacity() {
+    func test_diskSpaceInsufficient_returnsTrue_whenModelExceedsAvailableCapacity() throws {
+        // Hosted CI runners (and some sandboxed mounts) report
+        // `volumeAvailableCapacityForImportantUsage` as 0/nil. In that case the
+        // production code treats capacity as unknown and returns `false` so the
+        // download button stays enabled — there is no reliable way to assert the
+        // "insufficient" branch. Skip on those volumes rather than masking real
+        // host-disk reporting bugs.
+        let probe = try URL.documentsDirectory
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        try XCTSkipUnless(
+            (probe.volumeAvailableCapacityForImportantUsage ?? 0) > 0,
+            "Volume reports unknown/zero capacity (typical of CI runners); insufficient-capacity branch is not reachable here."
+        )
+
         let vm = ModelManagementViewModel()
         // UInt64.max bytes is guaranteed to exceed any real device's free space.
         let model = DownloadableModel(
@@ -681,7 +694,10 @@ final class ModelManagementViewModelTests: XCTestCase {
 
     func test_diskSpaceInsufficient_returnsFalse_whenModelFitsOnDisk() {
         let vm = ModelManagementViewModel()
-        // 1 byte is guaranteed to fit in available disk space on any real device.
+        // 1 byte either fits in real free space or — on volumes that report
+        // capacity as 0/nil (e.g. hosted CI runners) — falls through the
+        // "unknown capacity" branch which also returns `false`. Either way,
+        // a 1-byte model must never block the download button.
         let model = DownloadableModel(
             repoID: "test/repo",
             fileName: "tiny.gguf",

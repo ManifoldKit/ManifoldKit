@@ -1,13 +1,10 @@
 import SwiftUI
-import SwiftData
-import BaseChatCore
 import BaseChatUI
 import BaseChatUIModelManagement
 
 struct MinimalContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(SessionManagerViewModel.self) private var sessionManager
-    @Environment(\.modelContext) private var modelContext
 
     @State private var isModelManagementPresented = false
 
@@ -23,17 +20,11 @@ struct MinimalContentView: View {
                 }
         }
         .onAppear {
-            let persistence = SwiftDataPersistenceProvider(modelContext: modelContext)
-            viewModel.configure(persistence: persistence)
-            sessionManager.configure(persistence: persistence)
-
             viewModel.refreshModels()
 
             if sessionManager.sessions.isEmpty {
                 _ = try? sessionManager.createSession()
             }
-
-            sessionManager.loadSessions()
         }
     }
 }
