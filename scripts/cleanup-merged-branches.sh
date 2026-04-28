@@ -50,8 +50,9 @@ DELETED_GONE=()
 SKIPPED=()
 
 while IFS= read -r line; do
-    # Strip leading marker (* or space) and trim whitespace
-    branch="$(printf '%s' "$line" | sed 's/^[* ]*//' | awk '{print $1}')"
+    # Strip leading marker (*, +, or space) and trim whitespace.
+    # git branch -vv uses '+' for branches checked out in another worktree.
+    branch="$(printf '%s' "$line" | sed 's/^[+* ]*//' | awk '{print $1}')"
 
     # Never touch main or the current branch
     if [[ "$branch" == "main" || "$branch" == "$CURRENT_BRANCH" ]]; then
