@@ -59,7 +59,7 @@ public struct SessionListView: View {
                                 // results already pull from a wider window in the VM.
                                 if searchText.isEmpty,
                                    session.id == sessionManager.sessions.last?.id {
-                                    sessionManager.loadNextPage()
+                                    Task { await sessionManager.loadNextPage() }
                                 }
                             }
                     }
@@ -90,10 +90,13 @@ public struct SessionListView: View {
             Button("Cancel", role: .cancel) { sessionToRename = nil }
             Button("Rename") {
                 if let session = sessionToRename {
-                    do {
-                        try sessionManager.renameSession(session, title: renameText)
-                    } catch {
-                        errorMessage = "Failed to rename session: \(error.localizedDescription)"
+                    let newTitle = renameText
+                    Task {
+                        do {
+                            try await sessionManager.renameSession(session, title: newTitle)
+                        } catch {
+                            errorMessage = "Failed to rename session: \(error.localizedDescription)"
+                        }
                     }
                 }
                 sessionToRename = nil
@@ -104,10 +107,12 @@ public struct SessionListView: View {
             set: { if !$0 { sessionToDelete = nil } }
         ), presenting: sessionToDelete) { session in
             Button("Delete", role: .destructive) {
-                do {
-                    try sessionManager.deleteSession(session)
-                } catch {
-                    errorMessage = "Failed to delete session: \(error.localizedDescription)"
+                Task {
+                    do {
+                        try await sessionManager.deleteSession(session)
+                    } catch {
+                        errorMessage = "Failed to delete session: \(error.localizedDescription)"
+                    }
                 }
                 sessionToDelete = nil
             }
@@ -189,7 +194,7 @@ public struct SessionListView: View {
         case .titles:
             vm.runTitleSearch(query)
         case .messages:
-            vm.runMessageSearch(query)
+            Task { await vm.runMessageSearch(query) }
         }
     }
 }
