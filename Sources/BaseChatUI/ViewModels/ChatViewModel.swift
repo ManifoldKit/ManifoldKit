@@ -701,7 +701,7 @@ public final class ChatViewModel {
             self?.updateContextEstimate()
         }
         genCoordinator.onSaveMessage = { [weak self] message in
-            try self?.saveMessage(message)
+            try await self?.saveMessage(message)
         }
         genCoordinator.onRemoveMessage = { [weak self] id in
             self?.messages.removeAll(where: { $0.id == id })

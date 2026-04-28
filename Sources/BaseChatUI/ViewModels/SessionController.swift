@@ -60,7 +60,7 @@ final class SessionController {
         )
     }
 
-    func touchActiveSessionUpdatedAt(_ date: Date = Date()) throws {
+    func touchActiveSessionUpdatedAt(_ date: Date = Date()) async throws {
         guard var session = activeSession else { return }
 
         session.updatedAt = date
@@ -69,7 +69,7 @@ final class SessionController {
         guard let persistence = persistenceOrLog("touchActiveSessionUpdatedAt") else { return }
 
         do {
-            try persistence.updateSession(session)
+            try await persistence.updateSession(session)
         } catch ChatPersistenceError.sessionNotFound {
             Log.persistence.warning(
                 "Active session was not yet persisted when updating session timestamp: \(session.id, privacy: .private)"
@@ -80,7 +80,7 @@ final class SessionController {
     func saveSettingsToSession(
         selectedModelID: UUID?,
         selectedEndpointID: UUID?
-    ) throws {
+    ) async throws {
         guard var session = activeSession else { return }
         let persistence = try requirePersistence("saveSettingsToSession")
         session.temperature = temperature
@@ -92,11 +92,11 @@ final class SessionController {
         session.promptTemplate = selectedPromptTemplate
         session.pinnedMessageIDs = pinnedMessageIDs
         session.updatedAt = Date()
-        try persistence.updateSession(session)
+        try await persistence.updateSession(session)
         activeSession = session
     }
 
-    func loadMessages() {
+    func loadMessages() async {
         guard let persistence = persistenceOrLog("loadMessages") else { return }
         guard let sessionID = activeSessionID else {
             messages = []
@@ -105,7 +105,7 @@ final class SessionController {
         }
 
         do {
-            let page = try persistence.fetchRecentMessages(for: sessionID, limit: Self.messagePageSize)
+            let page = try await persistence.fetchRecentMessages(for: sessionID, limit: Self.messagePageSize)
             // Heal orphan tool calls before exposing the transcript: a process
             // killed mid-tool leaves a `.toolCall` part with no matching
             // `.toolResult`, which cloud APIs reject on the next turn. The
@@ -123,7 +123,7 @@ final class SessionController {
     }
 
     @discardableResult
-    func loadOlderMessages() -> UUID? {
+    func loadOlderMessages() async -> UUID? {
         guard !isLoadingOlderMessages, hasOlderMessages else { return nil }
         guard let persistence else { return nil }
         guard let sessionID = activeSessionID else { return nil }
@@ -134,7 +134,7 @@ final class SessionController {
         defer { isLoadingOlderMessages = false }
 
         do {
-            let older = try persistence.fetchMessages(
+            let older = try await persistence.fetchMessages(
                 for: sessionID,
                 before: oldestTimestamp,
                 limit: Self.messagePageSize
@@ -153,27 +153,27 @@ final class SessionController {
         return anchorID
     }
 
-    func saveMessage(_ message: ChatMessageRecord) throws {
+    func saveMessage(_ message: ChatMessageRecord) async throws {
         guard let persistence = persistenceOrLog("saveMessage") else { return }
         do {
-            try persistence.updateMessage(message)
+            try await persistence.updateMessage(message)
         } catch ChatPersistenceError.messageNotFound {
-            try persistence.insertMessage(message)
+            try await persistence.insertMessage(message)
         }
     }
 
-    func updateMessage(_ message: ChatMessageRecord) throws {
+    func updateMessage(_ message: ChatMessageRecord) async throws {
         guard let persistence = persistenceOrLog("updateMessage") else { return }
-        try persistence.updateMessage(message)
+        try await persistence.updateMessage(message)
     }
 
-    func deleteMessage(_ message: ChatMessageRecord) throws {
+    func deleteMessage(_ message: ChatMessageRecord) async throws {
         guard let persistence = persistenceOrLog("deleteMessage") else { return }
-        try persistence.deleteMessage(message.id)
+        try await persistence.deleteMessage(message.id)
     }
 
-    func deleteMessages(for sessionID: UUID) throws {
+    func deleteMessages(for sessionID: UUID) async throws {
         guard let persistence = persistenceOrLog("deleteMessages") else { return }
-        try persistence.deleteMessages(for: sessionID)
+        try await persistence.deleteMessages(for: sessionID)
     }
 }
