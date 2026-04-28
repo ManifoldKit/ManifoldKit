@@ -83,6 +83,8 @@ public final class SessionManagerViewModel {
 
     // Exposed so `SessionListServiceTests` can reach the service directly.
     let service: SessionListService
+    // `nonisolated(unsafe)` required so deinit can cancel the task without
+    // a main-actor hop. Task.cancel() is concurrency-safe (it only sets a flag).
     nonisolated(unsafe) private var eventConsumerTask: Task<Void, Never>?
 
     public init() {
