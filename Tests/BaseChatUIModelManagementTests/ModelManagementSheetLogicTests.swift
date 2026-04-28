@@ -298,6 +298,100 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         XCTAssertTrue(ModelCapabilityTier.capable < .frontier)
     }
 
+    // MARK: - Model selection sorting
+
+    func test_modelSelectionSortOrder_allCases() {
+        XCTAssertEqual(
+            ModelSelectionSortOrder.allCases,
+            [.alphabetical, .type, .size, .capability]
+        )
+    }
+
+    func test_sortModels_alphabetical_ordersByName() {
+        let beta = ModelInfo(
+            name: "Beta",
+            fileName: "beta.gguf",
+            url: URL(fileURLWithPath: "/tmp/beta.gguf"),
+            fileSize: 3 * oneGB,
+            modelType: .gguf
+        )
+        let alpha = ModelInfo(
+            name: "Alpha",
+            fileName: "alpha.gguf",
+            url: URL(fileURLWithPath: "/tmp/alpha.gguf"),
+            fileSize: 6 * oneGB,
+            modelType: .gguf
+        )
+
+        let sorted = ModelSelectionTabView.sortModels([beta, alpha], by: .alphabetical)
+
+        XCTAssertEqual(sorted.map(\.name), ["Alpha", "Beta"])
+    }
+
+    func test_sortModels_type_groupsFoundationThenGGUFThenMLX() {
+        let mlx = ModelInfo(
+            name: "Zulu MLX",
+            fileName: "zulu-mlx",
+            url: URL(fileURLWithPath: "/tmp/zulu-mlx"),
+            fileSize: 4 * oneGB,
+            modelType: .mlx
+        )
+        let gguf = ModelInfo(
+            name: "Alpha GGUF",
+            fileName: "alpha.gguf",
+            url: URL(fileURLWithPath: "/tmp/alpha.gguf"),
+            fileSize: 2 * oneGB,
+            modelType: .gguf
+        )
+        let foundation = ModelInfo.builtInFoundation
+
+        let sorted = ModelSelectionTabView.sortModels([mlx, gguf, foundation], by: .type)
+
+        XCTAssertEqual(sorted.map(\.modelType), [.foundation, .gguf, .mlx])
+    }
+
+    func test_sortModels_size_ordersSmallestFirst() {
+        let large = ModelInfo(
+            name: "Large",
+            fileName: "large.gguf",
+            url: URL(fileURLWithPath: "/tmp/large.gguf"),
+            fileSize: 8 * oneGB,
+            modelType: .gguf
+        )
+        let small = ModelInfo(
+            name: "Small",
+            fileName: "small.gguf",
+            url: URL(fileURLWithPath: "/tmp/small.gguf"),
+            fileSize: 2 * oneGB,
+            modelType: .gguf
+        )
+
+        let sorted = ModelSelectionTabView.sortModels([large, small], by: .size)
+
+        XCTAssertEqual(sorted.map(\.name), ["Small", "Large"])
+    }
+
+    func test_sortModels_capability_ordersStrongestTierFirst() {
+        let minimal = ModelInfo(
+            name: "Minimal",
+            fileName: "minimal.gguf",
+            url: URL(fileURLWithPath: "/tmp/minimal.gguf"),
+            fileSize: 1 * oneGB,
+            modelType: .gguf
+        )
+        let capable = ModelInfo(
+            name: "Capable",
+            fileName: "capable.gguf",
+            url: URL(fileURLWithPath: "/tmp/capable.gguf"),
+            fileSize: 12 * oneGB,
+            modelType: .gguf
+        )
+
+        let sorted = ModelSelectionTabView.sortModels([minimal, capable], by: .capability)
+
+        XCTAssertEqual(sorted.map(\.name), ["Capable", "Minimal"])
+    }
+
     #if canImport(AppKit)
     private func hostedSheetFittingSize(for tab: ModelManagementSheet.Tab) -> CGSize {
         let (vm, _) = makeViewModelWithMock()

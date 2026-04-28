@@ -3,12 +3,26 @@ import BaseChatCore
 import BaseChatInference
 import BaseChatUI
 
+enum ModelSelectionSortOrder: String, CaseIterable, Identifiable {
+    case alphabetical = "Alphabetical"
+    case type = "Type"
+    case size = "Size (Smallest First)"
+    case capability = "Capability / Speed"
+
+    var id: Self { self }
+}
+
 /// Inline model selection content used by `ModelManagementSheet`.
 struct ModelSelectionTabView: View {
 
     @Environment(ChatViewModel.self) private var chatViewModel
+    @State private var sortOrder: ModelSelectionSortOrder = .alphabetical
 
     let onSelect: () -> Void
+
+    var sortedModels: [ModelInfo] {
+        Self.sortModels(chatViewModel.availableModels, by: sortOrder)
+    }
 
     var body: some View {
         List {
@@ -41,7 +55,15 @@ struct ModelSelectionTabView: View {
                 #endif
             } else {
                 Section {
-                    ForEach(chatViewModel.availableModels) { model in
+                    Picker("Sort by", selection: $sortOrder) {
+                        ForEach(ModelSelectionSortOrder.allCases) { order in
+                            Text(order.rawValue).tag(order)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("model-selection-sort-picker")
+
+                    ForEach(sortedModels) { model in
                         ModelSelectionRow(
                             model: model,
                             isSelected: chatViewModel.selectedModel?.id == model.id
@@ -62,6 +84,52 @@ struct ModelSelectionTabView: View {
         .listStyle(.plain)
         #endif
         .accessibilityLabel("Available models")
+    }
+
+    static func sortModels(_ models: [ModelInfo], by order: ModelSelectionSortOrder) -> [ModelInfo] {
+        models.sorted { lhs, rhs in
+            switch order {
+            case .alphabetical:
+                return compareNames(lhs, rhs)
+
+            case .type:
+                let lhsKey = (typeSortRank(for: lhs.modelType), lhs.name)
+                let rhsKey = (typeSortRank(for: rhs.modelType), rhs.name)
+                if lhsKey.0 != rhsKey.0 {
+                    return lhsKey.0 < rhsKey.0
+                }
+                return lhsKey.1.localizedStandardCompare(rhsKey.1) == .orderedAscending
+
+            case .size:
+                if lhs.fileSize != rhs.fileSize {
+                    return lhs.fileSize < rhs.fileSize
+                }
+                return compareNames(lhs, rhs)
+
+            case .capability:
+                let lhsTier = lhs.effectiveCapabilityTier.rawValue
+                let rhsTier = rhs.effectiveCapabilityTier.rawValue
+                if lhsTier != rhsTier {
+                    return lhsTier > rhsTier
+                }
+                if lhs.fileSize != rhs.fileSize {
+                    return lhs.fileSize < rhs.fileSize
+                }
+                return compareNames(lhs, rhs)
+            }
+        }
+    }
+
+    private static func compareNames(_ lhs: ModelInfo, _ rhs: ModelInfo) -> Bool {
+        lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+    }
+
+    private static func typeSortRank(for type: ModelType) -> Int {
+        switch type {
+        case .foundation: return 0
+        case .gguf: return 1
+        case .mlx: return 2
+        }
     }
 }
 
