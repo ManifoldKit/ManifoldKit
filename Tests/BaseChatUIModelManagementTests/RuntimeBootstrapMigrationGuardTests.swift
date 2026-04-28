@@ -35,11 +35,21 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
 
-        // Real piece of state: configure(runtime:) must wire persistence onto
-        // the view model. Sabotage check: zero-out the call inside
-        // `ChatViewModel.configure(runtime:)` and this assertion will fail.
+        // Real architectural invariant: BaseChatRuntime owns a single
+        // ChatPersistenceProvider, and both view models must latch onto that
+        // exact instance when configured from the same runtime. A round-trip
+        // smoke check (persistence != nil) doesn't defend this — it would
+        // pass even if each view model received its own independent provider,
+        // which would silently break cross-view-model session visibility.
+        // Sabotage check: change `configure(runtime:)` on either view model
+        // to wrap `runtime.persistence` in a fresh `SwiftDataPersistenceProvider`
+        // and this identity assertion fails.
         XCTAssertNotNil(chatViewModel.persistence,
-            "configure(runtime:) must install the runtime's persistence provider")
+            "ChatViewModel.configure(runtime:) must install the runtime's persistence provider")
+        XCTAssertNotNil(sessionManager.persistence,
+            "SessionManagerViewModel.configure(runtime:) must install the runtime's persistence provider")
+        XCTAssertTrue((chatViewModel.persistence as AnyObject) === (sessionManager.persistence as AnyObject),
+            "Both view models must share the runtime's single persistence provider instance")
 
         let view = ChatView(
             showModelManagement: .constant(false),

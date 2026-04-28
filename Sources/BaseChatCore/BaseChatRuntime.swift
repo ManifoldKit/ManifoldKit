@@ -18,6 +18,10 @@ import BaseChatInference
 /// custom ``ChatPersistenceProvider`` should construct ``ChatViewModel`` /
 /// ``SessionManagerViewModel`` directly and call `configure(persistence:)` —
 /// runtime support for custom providers is tracked separately.
+///
+/// Adopters needing fine-grained progress signals during bootstrap (e.g. splash-screen UI,
+/// per-phase analytics) should construct the runtime on a background task and observe its
+/// returned properties; an `AsyncSequence` of bootstrap milestones is tracked in #872.
 @MainActor
 public final class BaseChatRuntime {
 

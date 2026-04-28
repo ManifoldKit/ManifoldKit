@@ -206,6 +206,7 @@ import BaseChatUI
 struct ModernApp: App {
     private let runtime: BaseChatRuntime
     @State private var chatViewModel: ChatViewModel
+    @State private var sessionManager: SessionManagerViewModel
 
     init() {
         let runtime = try! BaseChatRuntime(
@@ -216,22 +217,27 @@ struct ModernApp: App {
         )
         self.runtime = runtime
 
-        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
-        vm.configure(runtime: runtime)
-        _chatViewModel = State(initialValue: vm)
+        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        chatVM.configure(runtime: runtime)
+        _chatViewModel = State(initialValue: chatVM)
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(runtime: runtime)
+        _sessionManager = State(initialValue: sessionVM)
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(chatViewModel)
+                .environment(sessionManager)
         }
         .modelContainer(runtime.modelContainer)
     }
 }
 ```
 
-`@Query` and `@Environment(\.modelContext)` views still work because `runtime.modelContainer` is attached to the scene via the standard `.modelContainer(_:)` modifier. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
+Both view models must be configured from the runtime: `ChatViewModel.configure(runtime:)` wires persistence for chat sessions, and `SessionManagerViewModel.configure(runtime:)` wires persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. The MinimalExample app shows the canonical pattern. `@Query` and `@Environment(\.modelContext)` views still work because `runtime.modelContainer` is attached to the scene via the standard `.modelContainer(_:)` modifier. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
 
 Apps using a second ``ModelContainer`` for non-chat data should construct it independently and attach it via a separate `.modelContainer(_:)` modifier alongside `runtime.modelContainer`. The runtime only owns the chat schema:
 

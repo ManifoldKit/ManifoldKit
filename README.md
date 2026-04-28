@@ -323,6 +323,7 @@ import BaseChatUI
 struct ModernApp: App {
     private let runtime: BaseChatRuntime
     @State private var chatViewModel: ChatViewModel
+    @State private var sessionManager: SessionManagerViewModel
 
     init() {
         let runtime = try! BaseChatRuntime(
@@ -333,20 +334,27 @@ struct ModernApp: App {
         )
         self.runtime = runtime
 
-        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
-        vm.configure(runtime: runtime)
-        _chatViewModel = State(initialValue: vm)
+        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        chatVM.configure(runtime: runtime)
+        _chatViewModel = State(initialValue: chatVM)
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(runtime: runtime)
+        _sessionManager = State(initialValue: sessionVM)
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(chatViewModel)
+                .environment(sessionManager)
         }
         .modelContainer(runtime.modelContainer)
     }
 }
 ```
+
+Both view models must be configured from the runtime. `ChatViewModel.configure(runtime:)` wires the persistence provider used by chat sessions; `SessionManagerViewModel.configure(runtime:)` wires both persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. See the MinimalExample app for the canonical wiring.
 
 #### What still works unchanged
 

@@ -4,18 +4,33 @@
 
 ### Highlights
 
-#### Runtime-first bootstrap polish
+#### Runtime bootstrap surface trim — `Event` callback removed
 
-Post-bootstrap follow-ups to the runtime-first migration that landed in the v0.13.x line. `APIProvider.availableInBuild` now resolves through `CompiledBackends.current.orderedCloudProviders`, so any consumer manifest that compiles a non-default trait set (e.g. `CloudSaaS` without `Ollama`, or vice versa) sees a provider list that exactly matches what the build can instantiate — adopters with custom `Package.swift` provider lists may notice a different ordering or membership than before. The Minimal example moves SwiftData fetches out of `App.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation, and the README + DocC `BuildingAChatUI` article gain a "Migrating from `configure(persistence:)`" subsection. `BaseChatRuntime.Event` and the `onEvent` callback are removed (no documented adopter use case at v1) — adopters currently subscribing should drop the argument and rely on the bootstrap's deterministic ordering instead.
+The synchronous `BaseChatRuntime.Event` enum and the `onEvent` callback parameter on `BaseChatRuntime.init` are removed. The callback fired inside `init` so it could not drive UI updates anyway, and no documented adopter was using it; bootstrap order is deterministic and observable through the returned runtime's properties (`inferenceService`, `modelContainer`, `persistence`, `diagnostics`) once the throwing initializer returns.
+
+```swift
+// Before
+let runtime = try BaseChatRuntime(configuration: config) { event in
+    logger.log("\(event)")
+}
+
+// After — drop the trailing closure; inspect the returned runtime instead
+let runtime = try BaseChatRuntime(configuration: config)
+logger.log("inference=\(ObjectIdentifier(runtime.inferenceService))")
+```
+
+Adopters who genuinely need per-phase observability (splash-screen progress UIs, cold-launch analytics) can construct the runtime on a background task; an `AsyncSequence` of bootstrap milestones is tracked as a follow-up.
+
+The Minimal example also moves SwiftData fetches and initial-model dispatch out of `App.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation, and the README + DocC `BuildingAChatUI` article gain a "Migrating from `configure(persistence:)`" subsection covering both `ChatViewModel.configure(runtime:)` and `SessionManagerViewModel.configure(runtime:)`.
 
 ### Fixes
 
 - **example:** move SwiftData fetches and initial-model dispatch out of `MinimalExampleApp.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation
-- **inference:** `APIProvider.availableInBuild` now reroutes through `CompiledBackends.current.orderedCloudProviders`; consumers with custom trait sets may see different membership or ordering
+- **docs:** README + DocC migration prose now configures both `ChatViewModel` and `SessionManagerViewModel` from the runtime, matching the MinimalExample pattern
 
 ### Breaking
 
-- **core:** `BaseChatRuntime.Event` and the `onEvent` callback parameter on `BaseChatRuntime.init` are removed. Drop the `onEvent:` argument from call sites — bootstrap order is fixed and observable through the returned runtime's properties.
+- **core:** `BaseChatRuntime.Event` and the `onEvent` callback parameter on `BaseChatRuntime.init` are removed. If you used `onEvent: { event in logger.log(event) }` for diagnostics, replace by inspecting `runtime.inferenceService` / `runtime.modelContainer` / `runtime.persistence` after the throwing init returns; the bootstrap order is fixed and properties are populated synchronously.
 
 ## [0.13.1](https://github.com/roryford/BaseChatKit/compare/v0.13.0...v0.13.1) (2026-04-27)
 

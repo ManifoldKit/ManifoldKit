@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import BaseChatCore
 @testable import BaseChatInference
 
@@ -66,6 +67,53 @@ final class BaseChatRuntimeTests: XCTestCase {
             originalConfiguration.bundleIdentifier,
             "BaseChatConfiguration.shared should roll back to its prior value when bootstrap throws"
         )
+    }
+
+    func test_init_wiresInferenceServicePersistenceAndContainerToTheSameInstances() throws {
+        // Defends the post-construction wiring identity that the deleted
+        // `Event`-callback ordering test used to defend: the runtime must
+        // expose the *same* InferenceService instance the caller injected,
+        // the *same* ModelContainer instance the closure produced, and a
+        // SwiftDataPersistenceProvider whose modelContext is anchored to
+        // that container's mainContext. Sabotage the assignment of any of
+        // these properties in `BaseChatRuntime.init` and one of the
+        // assertions below will fail.
+        let originalConfiguration = BaseChatConfiguration.shared
+        defer { BaseChatConfiguration.shared = originalConfiguration }
+
+        let injectedInferenceService = InferenceService()
+        let resolvedContainer = try ModelContainerFactory.makeInMemoryContainer()
+        var capturedContainerDuringClosure: ModelContainer?
+
+        let runtime = try BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "Wiring Identity",
+                bundleIdentifier: "com.basechatkit.runtime-tests.wiring.\(UUID().uuidString)"
+            ),
+            inferenceService: injectedInferenceService,
+            makeModelContainer: {
+                capturedContainerDuringClosure = resolvedContainer
+                return resolvedContainer
+            }
+        )
+
+        XCTAssertTrue(runtime.inferenceService === injectedInferenceService,
+            "Runtime must expose the injected InferenceService instance")
+        XCTAssertNotNil(capturedContainerDuringClosure,
+            "makeModelContainer closure must run during bootstrap")
+        XCTAssertTrue(runtime.modelContainer === resolvedContainer,
+            "Runtime's modelContainer must be the instance the closure produced")
+
+        // The persistence provider's modelContext is private, so we defend
+        // its anchoring indirectly: a session inserted through the provider
+        // must be reachable via the runtime's modelContainer.mainContext —
+        // proof that both surfaces are wired to a single coherent store.
+        let session = ChatSessionRecord(title: "Wiring Identity Probe")
+        try runtime.persistence.insertSession(session)
+        let descriptor = FetchDescriptor<ChatSession>()
+        let entitiesViaContainer = try runtime.modelContainer.mainContext.fetch(descriptor)
+        XCTAssertTrue(entitiesViaContainer.contains(where: { $0.id == session.id }),
+            "Session inserted via runtime.persistence must be visible through runtime.modelContainer.mainContext")
     }
 
     func test_persistence_roundTripsSessionsThroughRuntimeProvider() throws {
