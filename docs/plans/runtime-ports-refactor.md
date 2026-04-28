@@ -4,6 +4,33 @@ This is a **plan document**, not implementation. It records the intended shape,
 migration order, and review constraints before code lands so reviewers can
 argue with the architecture instead of reverse-engineering it from the diff.
 
+## Picking this up in a new session
+
+Live artifacts in priority order:
+
+- **This document** — PR #876, branch `docs/runtime-ports-proposal`. The
+  plan. Read top to bottom.
+- **PR #878**, branch `spike/session-list-runtime-pattern` — the Phase 0
+  spike. Validated observation flows (event consumption, search, title
+  generation); bypassed the service for sync writes to keep API
+  source-compatible (mutation flows therefore unproven until Phase 1.0
+  lands). Findings folded into Phase 0 below.
+- No other in-flight branches for this refactor. **v0.13.2** is the
+  baseline (current `main`).
+- Repo: `roryford/BaseChatKit` (private). If picking up outside the
+  working tree: `gh repo clone roryford/BaseChatKit && gh pr checkout 876`.
+
+**Next concrete action: open Phase 1.0 as a PR.** Make
+`ChatPersistenceProvider` `async throws` and convert
+`SessionManagerViewModel` / `ChatViewModel` public command APIs to
+`async throws`. No new use cases. Single-purpose breaking change.
+Unblocks every subsequent extraction. Pre-1.0 means it ships as one
+breaking changelog entry; downstream consumers (Fireside) are
+coordinated via PR description.
+
+After Phase 1.0 lands: productionise the spike (Phase 1.1), then ports
+in the order listed under Phase 1.2.
+
 ## Status
 
 - Branch: `docs/runtime-ports-proposal`
