@@ -15,5 +15,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>BaseChat Demo uses the microphone for on-device voice input.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>BaseChat Demo transcribes speech on-device into chat drafts.</string>
 </dict>
 </plist>

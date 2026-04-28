@@ -16,6 +16,7 @@ let package = Package(
         .library(name: "BaseChatBackends", targets: ["BaseChatBackends"]),
         .library(name: "BaseChatUI", targets: ["BaseChatUI"]),
         .library(name: "BaseChatUIModelManagement", targets: ["BaseChatUIModelManagement"]),
+        .library(name: "BaseChatVoice", targets: ["BaseChatVoice"]),
         .library(name: "BaseChatFuzz", targets: ["BaseChatFuzz"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
         .library(name: "BaseChatTools", targets: ["BaseChatTools"]),
@@ -30,6 +31,7 @@ let package = Package(
         .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
         .trait(name: "MCP", description: "Enable the BaseChatMCP module and MCP client surface."),
         .trait(name: "MCPBuiltinCatalog", description: "Enable BaseChatMCP's built-in catalog descriptors."),
+        .trait(name: "Voice", description: "Enable the BaseChatVoice speech I/O spike and voice composer UI."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds BaseChatBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
@@ -162,6 +164,15 @@ let package = Package(
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
             ]
         ),
+        // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
+        .target(
+            name: "BaseChatVoice",
+            dependencies: ["BaseChatUI"],
+            path: "Sources/BaseChatVoice",
+            swiftSettings: [
+                .define("Voice", .when(traits: ["Voice"])),
+            ]
+        ),
         // Shared test mocks and utilities
         .target(
             name: "BaseChatTestSupport",
@@ -246,6 +257,16 @@ let package = Package(
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .product(name: "ViewInspector", package: "ViewInspector"),
+            ]
+        ),
+        .testTarget(
+            name: "BaseChatVoiceTests",
+            dependencies: [
+                "BaseChatVoice",
+                .product(name: "ViewInspector", package: "ViewInspector"),
+            ],
+            swiftSettings: [
+                .define("Voice", .when(traits: ["Voice"])),
             ]
         ),
         .testTarget(

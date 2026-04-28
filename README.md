@@ -73,6 +73,7 @@ BaseChatUI  ──────────>  BaseChatCore  ───────
 - **BaseChatCore** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, `ChatPersistenceProvider`, and chat export. Depends on `BaseChatInference` but does not re-export it.
 - **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatCore`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
 - **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatCore` (for persistence) and `BaseChatInference` (for inference orchestration).
+- **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
 
 ## Quick Start
 
@@ -173,6 +174,31 @@ Quick checks:
 swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
 ```
+
+### 2.2 Optional voice spike
+
+`BaseChatVoice` is an opt-in module for speech input/output. It plugs into
+`ChatView` through the `composerAccessory:` seam, so `BaseChatUI` stays free of
+audio-framework dependencies while hosts can mount a voice accessory above the
+stock `ChatInputBar`.
+
+```swift
+import BaseChatUI
+import BaseChatVoice
+
+@State private var voice = VoiceConversationController()
+
+ChatView(
+    showModelManagement: $isModelManagementPresented,
+    composerAccessory: { VoiceComposerAccessory(controller: voice) },
+    apiConfiguration: { APIConfigurationView() }
+)
+```
+
+Voice input requires `NSMicrophoneUsageDescription` and
+`NSSpeechRecognitionUsageDescription` in the host app's `Info.plist`. The
+default Apple speech transcriber returns a user-facing error on the simulator,
+so validate the real capture flow on device or macOS hardware.
 
 ### 3. Create the runtime at app startup
 
