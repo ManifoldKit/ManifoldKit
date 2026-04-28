@@ -533,16 +533,24 @@ public final class ModelManagementViewModel {
     /// Whether there is insufficient free disk space to download this model.
     ///
     /// Returns `true` when `model.sizeBytes > 0` and the volume's available capacity
-    /// for important usage is less than `model.sizeBytes`. Returns `false` when the
-    /// size is unknown (`sizeBytes == 0`) or on any filesystem query error, so the
-    /// download button is not blocked unnecessarily.
+    /// for important usage is a positive value less than `model.sizeBytes`. Returns
+    /// `false` when the size is unknown (`sizeBytes == 0`), the volume reports a
+    /// non-positive / missing capacity (e.g. CI runners and some sandboxed mounts
+    /// return 0 for `volumeAvailableCapacityForImportantUsageKey`), or any filesystem
+    /// query error — so the download button is not blocked unnecessarily.
     public func diskSpaceInsufficient(for model: DownloadableModel) -> Bool {
         guard model.sizeBytes > 0 else { return false }
         do {
             let values = try URL.documentsDirectory
                 .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+            // `volumeAvailableCapacityForImportantUsage` can be `nil` on volumes that
+            // don't support the importance heuristic, and is reported as `0` on some
+            // hosted/ephemeral filesystems (notably GitHub macOS runners). Treat both
+            // as "unknown" rather than "zero free bytes" — otherwise even a 1-byte
+            // download would be blocked.
             guard let available = values.volumeAvailableCapacityForImportantUsage,
-                  available >= 0 else {
+                  available > 0 else {
+                Log.download.warning("Disk space query returned non-positive capacity; treating as sufficient")
                 return false
             }
             return UInt64(available) < model.sizeBytes
