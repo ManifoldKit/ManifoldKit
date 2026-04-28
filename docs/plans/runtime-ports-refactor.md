@@ -195,16 +195,33 @@ infrastructure can't lag.
 
 Three phases, all pre-1.0, no deprecation tail.
 
-### Phase 0 — spike + characterization (in flight)
+### Phase 0 — spike + characterization (PR #878 — complete)
 
-Spike: rewrite one slice (`SessionListService`) end-to-end in the
-proposed shape inside the existing target structure (no new targets).
-Validates:
+Spike rewrote the session-list slice in the proposed shape. Findings:
 
-- Sync-port-via-async-use-case actually works.
-- Event-stream pattern covers the surface cleanly.
-- Adapter LOC delta is meaningfully smaller than today.
-- Title generation can be migrated without special handling.
+- **Observation flows validated.** Event consumption pattern works:
+  adapter `Task` consumes `AsyncStream<SessionListEvent>`, 7 event cases
+  cover the surface, no command-response pairs needed. Title generation
+  migrated cleanly via `.titleGenerated`. Search and pagination clean.
+- **Mutation flows NOT validated.** To keep the public `createSession` /
+  `deleteSession` / `renameSession` API source-compatible, the adapter
+  bypassed the service entirely on writes — calling persistence directly
+  and reloading eagerly. The service's mutation commands are dead code
+  in the spike. The closure-bag → events transformation is therefore
+  unproven for write paths until the public command surface becomes
+  `async throws`.
+- **LOC delta: +72%** (375 → 316 adapter + 329 service). Much of the
+  +270 is the dual-write redundancy (eager reload in adapter +
+  `.sessionsLoaded` from service). Going async-first kills the
+  redundancy.
+- **`InferenceService` main-actor coupling unaddressed.** Title
+  generation stays on main; the `async` surface is currently cosmetic.
+  Plan must specify the interaction model (per-call hop vs. nonisolated
+  wrappers) before `ConversationRuntime` extraction.
+- **Service ownership smell.** Spike used `nonisolated(unsafe) var
+  _persistence` because the type was marked `Sendable` with mutable
+  refs. Real implementation must pass persistence at init or be an
+  actor — don't propagate `nonisolated(unsafe)` across the runtime.
 
 Characterization coverage written alongside the spike:
 
@@ -221,32 +238,44 @@ Repo guardrails added in the same PR cycle:
 - CI lint: no new `@Query` / `.modelContext` usage in UI targets.
 - CI lint: no new public API exposing `ModelContext` or `@Model` types.
 
-**Exit criterion**: spike PR demonstrates the pattern works. If the spike
-finds a blocker (event surface explodes, adapter not meaningfully thinner,
-title generation unmigratable) → revisit the plan. **No code moves to a
-new target until this gate passes.**
+**Gate status**: passed with caveats. Direction confirmed; Phase 1 must
+treat async-command APIs and service ownership discipline as
+non-negotiable rather than open questions.
 
 ### Phase 1 — orchestration extracted, targets unchanged
 
 Inside the existing target structure, extract every use case as a plain
 async/event class. Each PR moves one use case + its ports + its tests.
 
-Order — smallest blast radius first:
+**Phase 1.0 — async migration (must come first).** One PR makes
+`ChatPersistenceProvider` `async throws` and changes the existing
+`SessionManagerViewModel` / `ChatViewModel` public command APIs to
+`async throws`. No new use cases yet. This unblocks every subsequent
+extraction and kills the dual-write seam the spike surfaced. Source-
+breaking; pre-1.0 means it ships as one breaking changelog entry.
 
-1. `SessionListService` (the spike, productionised)
-2. `SamplerPresetStore` + adapter (kills the `@Query` leak)
-3. `BenchmarkCache` + adapter (kills `modelContext` public surface)
-4. `ModelManagementService` (absorbs `ModelManagementViewModel`)
-5. `ConversationRuntime` (absorbs `ChatViewModel`'s orchestration; the
-   biggest PR — closure-bag → events transformation)
-6. `EndpointStore` + adapter (kills SwiftData imports in endpoint editor)
+**Phase 1.1 — productionise the spike.** Re-do the session-list
+extraction now that commands are `async throws`. Adapter goes through
+`service.createSession(...)` instead of bypassing it. Service stops
+needing `nonisolated(unsafe)` — persistence passes at init. Validates
+the mutation-flow side of the closure-bag → events transformation
+(which the spike did not).
 
-Each PR keeps the public API of the corresponding view model
-source-compatible. UI adapters wrap the new use cases. Persistence stays
-in `BaseChatCore` for now.
+**Phase 1.2 onward — remaining use cases**, smallest blast radius first:
 
-`ChatPersistenceProvider` becomes `async throws` in the same PR cycle.
-Breaking change announced in the changelog as one entry, not per-method.
+1. `SamplerPresetStore` + adapter (kills the `@Query` leak)
+2. `BenchmarkCache` + adapter (kills `modelContext` public surface)
+3. `ModelManagementService` (absorbs `ModelManagementViewModel`)
+4. `EndpointStore` + adapter (kills SwiftData imports in endpoint editor)
+5. **`InferenceService` interaction prep** — add nonisolated wrappers
+   (or actor-isolated equivalents) for the operations runtime services
+   call from off-main contexts. Specifically: `enqueue`, `tokenizer`
+   access, `capabilities` reads. Keeps `InferenceService` `@MainActor`
+   for view-binding but lets runtime services compose it without a
+   per-call hop.
+6. `ConversationRuntime` (absorbs `ChatViewModel`'s orchestration —
+   the biggest PR; closure-bag → events transformation; LOC budget
+   ~4,500–5,000 vs. 3,621 today). Item 5 is its prerequisite.
 
 **Exit criterion**: no `@Observable` view model owns orchestration
 state. Every state change in UI flows through an event stream.
