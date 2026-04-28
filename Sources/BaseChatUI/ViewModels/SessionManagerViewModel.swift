@@ -74,19 +74,32 @@ public final class SessionManagerViewModel {
 
     /// Injects the persistence provider. Call once from the view layer.
     ///
-    /// `configure` is intentionally synchronous so host bootstrap call sites
-    /// (which run from sync `init` paths in SwiftUI scene setup) can stay
-    /// simple. After Phase 1.0 the initial page load is async, so callers
-    /// must follow `configure` with an explicit `await loadSessions()` (or
-    /// rely on the first `createSession` to refresh the list). The session
-    /// list view also calls `loadSessions` from a `.task { }` modifier on
-    /// first appear, which keeps the on-screen UX unchanged for typical
-    /// hosts.
-    public func configure(persistence: ChatPersistenceProvider, diagnostics: DiagnosticsService? = nil) {
+    /// `autoLoad` is required (no default) so every call site makes an
+    /// explicit choice and the Phase 1.0 behavior change cannot be missed
+    /// silently:
+    ///
+    /// - `autoLoad: true` — schedules `Task { await loadSessions() }` so the
+    ///   session list populates immediately after configure. This is the
+    ///   pre-Phase-1.0 default behavior. Use it from production bootstrap
+    ///   paths (the `BaseChatRuntime` adapter does this for you).
+    /// - `autoLoad: false` — the caller is responsible for calling
+    ///   `await loadSessions()` (or relying on `SessionListView`'s
+    ///   `.task { }` modifier). **Always use this in tests.** The
+    ///   `autoLoad: true` Task is fire-and-forget and will trap SwiftData
+    ///   if the model container deallocates before the fetch runs, which
+    ///   is the typical test teardown shape.
+    public func configure(
+        persistence: ChatPersistenceProvider,
+        autoLoad: Bool,
+        diagnostics: DiagnosticsService? = nil
+    ) {
         guard self.persistence == nil else { return }
         self.persistence = persistence
         self.diagnostics = diagnostics
         Log.persistence.info("SessionManagerViewModel configured")
+        if autoLoad {
+            Task { await loadSessions() }
+        }
     }
 
     /// Creates a new session, inserts it, activates it, and returns it.

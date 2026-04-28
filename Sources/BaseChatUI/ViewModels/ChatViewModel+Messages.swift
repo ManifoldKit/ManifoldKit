@@ -135,12 +135,16 @@ extension ChatViewModel {
 
     /// Stops an in-progress generation.
     ///
-    /// Cancellation is synchronous — the task tear-down and inference-side
-    /// stop happen immediately. The trailing persistence save (capturing
-    /// whatever streamed into the last assistant message before cancel) is
-    /// dispatched on a `Task` so the sync surface stays unchanged for the
-    /// many call sites that fire-and-forget this method (toolbar buttons,
-    /// session-switch teardown, scenePhase handlers).
+    /// **Stays sync intentionally.** Cancellation itself is synchronous — the
+    /// task tear-down and inference-side stop happen immediately. The trailing
+    /// persistence save (capturing whatever streamed into the last assistant
+    /// message before cancel) is dispatched on a fire-and-forget `Task` so
+    /// the sync surface is preserved for the many sync call sites:
+    /// toolbar buttons, session-switch teardown, `scenePhase` handlers, and
+    /// `handleMemoryPressure()`. Converting this to `async throws` would
+    /// require every one of those sites to wrap in `Task { ... }` without
+    /// changing observable semantics. Keep sync; do not "fix" the
+    /// inconsistency in a future refactor.
     public func stopGeneration() {
         generationTask?.cancel()
         generationTask = nil

@@ -20,7 +20,7 @@ final class ChatExportIntegrationTests: XCTestCase {
         context = container.mainContext
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
     }
 
     override func tearDown() async throws {

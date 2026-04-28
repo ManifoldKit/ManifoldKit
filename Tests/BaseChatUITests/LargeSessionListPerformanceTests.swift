@@ -34,7 +34,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
         context = container.mainContext
         persistence = SwiftDataPersistenceProvider(modelContext: context)
         vm = SessionManagerViewModel()
-        vm.configure(persistence: persistence)
+        vm.configure(persistence: persistence, autoLoad: false)
         try await seedLargeFixture()
     }
 
@@ -50,7 +50,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
     func test_perf_initialFirstPageRender() {
         measure {
             let fresh = SessionManagerViewModel()
-            fresh.configure(persistence: persistence)
+            fresh.configure(persistence: persistence, autoLoad: false)
             XCTAssertEqual(fresh.sessions.count, SessionManagerViewModel.sessionsPageSize)
         }
     }
