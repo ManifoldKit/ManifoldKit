@@ -71,6 +71,15 @@ final class ModelAndSettingsControlTests: XCTestCase {
         #endif
     }
 
+    func test_modelManagement_selectTab_hasSortPicker() {
+        let dump = modelManagementDump(tab: .select)
+        XCTAssertTrue(dump.contains("Sort by"), "Select tab should include a sort picker")
+        XCTAssertTrue(dump.contains("Alphabetical"), "Sort picker should expose alphabetical sorting")
+        XCTAssertTrue(dump.contains("Type"), "Sort picker should expose type sorting")
+        XCTAssertTrue(dump.contains("Size (Smallest First)"), "Sort picker should expose size sorting")
+        XCTAssertTrue(dump.contains("Capability / Speed"), "Sort picker should expose capability sorting")
+    }
+
     // MARK: - ModelManagementSheet — Download Tab Content
 
     func test_modelManagement_downloadTab_hasWhyDownloadView() {
