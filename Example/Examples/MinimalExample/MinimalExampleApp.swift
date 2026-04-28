@@ -76,6 +76,9 @@ struct MinimalExampleApp: App {
     @MainActor
     private func bootstrapInitialSession() async {
         chatViewModel.refreshModels()
+        // Phase 1.0: `configure` no longer auto-loads. Pull the first page
+        // here so an existing-session check sees the persisted list.
+        await sessionManager.loadSessions()
 
         let initialSession: ChatSessionRecord?
         if let existing = sessionManager.sessions.first {

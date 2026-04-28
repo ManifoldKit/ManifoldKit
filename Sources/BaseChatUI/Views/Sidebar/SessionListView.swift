@@ -68,6 +68,16 @@ public struct SessionListView: View {
             }
         }
         .animation(.default, value: sessionManager.sessions.isEmpty)
+        .task {
+            // After Phase 1.0 `loadSessions()` is async — `configure` no
+            // longer auto-fires it, so kick off the initial page load on
+            // first appear. `.task { }` fires once per identity and is
+            // cancelled if the view is torn down before completion, which
+            // matches the behaviour we want here.
+            if sessionManager.sessions.isEmpty {
+                await sessionManager.loadSessions()
+            }
+        }
         .searchable(text: $searchText, prompt: "Search chats")
         .searchScopes($searchScope) {
             Text("Titles").tag(SessionSearchScope.titles)

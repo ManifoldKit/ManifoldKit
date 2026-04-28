@@ -57,16 +57,21 @@ final class LargeSessionListPerformanceTests: XCTestCase {
 
     /// Cost of advancing one page on scroll. With SwiftData's fetchOffset,
     /// this should stay flat regardless of where in the list the user scrolls.
-    func test_perf_paginationStep() async {
+    func test_perf_paginationStep() {
         // Pre-load to the same baseline as a real scroll session would.
-        await vm.loadSessions()
+        let preload = expectation(description: "preload")
+        Task {
+            await vm.loadSessions()
+            preload.fulfill()
+        }
+        wait(for: [preload], timeout: 30)
 
         measure {
             // Reset to the first page each iteration so the measurement is
             // independent — otherwise every iteration after the first would
             // be a no-op once the list is exhausted.
             let exp = expectation(description: "pagination step")
-            Task { @MainActor in
+            Task {
                 await vm.loadSessions()
                 await vm.loadNextPage()
                 await vm.loadNextPage()
@@ -78,10 +83,10 @@ final class LargeSessionListPerformanceTests: XCTestCase {
 
     /// End-to-end message search latency at 50K messages — the path users
     /// hit when they type into the search field with "Messages" scope.
-    func test_perf_messageSearchLatency() async {
+    func test_perf_messageSearchLatency() {
         measure {
             let exp = expectation(description: "message search")
-            Task { @MainActor in
+            Task {
                 await vm.runMessageSearch("findme")
                 exp.fulfill()
             }

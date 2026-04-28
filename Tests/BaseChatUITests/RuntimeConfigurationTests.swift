@@ -80,6 +80,10 @@ final class RuntimeConfigurationTests: XCTestCase {
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
         chatViewModel.refreshModels()
+        // Phase 1.0: `configure` no longer auto-fires `loadSessions()`.
+        // Hosts that bypass `SessionListView` (which calls it from
+        // `.task { }`) must load explicitly during bootstrap.
+        await sessionManager.loadSessions()
 
         let resolvedInitial: ChatSessionRecord?
         if let existing = sessionManager.sessions.first {

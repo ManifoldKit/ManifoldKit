@@ -75,7 +75,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// **user-perceived** TTFT, which includes both backend latency and the
     /// `StreamingTokenBatcher` flush delay — exactly what regresses when
     /// either side slows down.
-    func testPerf_timeToFirstToken_realisticBackend() async {
+    func testPerf_timeToFirstToken_realisticBackend() {
         // Fixture: 32 short tokens are plenty to drive the first batch flush.
         // A 100 ms TTFT is the conservative midpoint of a real local-MLX run;
         // jitter is degenerate so per-iteration variance is bounded.
@@ -85,7 +85,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             interToken: .milliseconds(20),
             tokens: tokens
         )
-        let harness = await makeHarness(backend: backend)
+        let harness = makeHarness(backend: backend)
 
         measure {
             let exp = expectation(description: "first character visible")
@@ -94,7 +94,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             // empty assistant message (sendMessage appends a new one each call).
             vm.messages = vm.messages.filter { $0.role == .system }
             vm.inputText = "hello"
-            Task { @MainActor in
+            Task {
                 let send = Task { await vm.sendMessage() }
                 // Tight poll on the MainActor — `messages.last?.content` is
                 // mutated on the main actor by `onMutateMessage`, so any
@@ -124,7 +124,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// Regressions that disable batching (gaps drop near zero with very high
     /// frequency) or that stall the batcher (gaps spike past 50 ms) both
     /// surface here.
-    func testPerf_streamingCadence_5KBResponse() async {
+    func testPerf_streamingCadence_5KBResponse() {
         let tokens = makeFiveKBTokenScript()
         // 8 ms per token gives ~4× the batcher's 33 ms tick: every batch
         // flush carries multiple tokens, exercising the realistic batching
@@ -134,14 +134,14 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             interToken: .milliseconds(8),
             tokens: tokens
         )
-        let harness = await makeHarness(backend: backend)
+        let harness = makeHarness(backend: backend)
 
         measure {
             let exp = expectation(description: "stream completes")
             let vm = harness.vm
             vm.messages = vm.messages.filter { $0.role == .system }
             vm.inputText = "stream please"
-            Task { @MainActor in
+            Task {
                 let send = Task { await vm.sendMessage() }
                 var gaps: [Duration] = []
                 var lastChange = ContinuousClock.now
@@ -194,15 +194,15 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// The backlog matters because a number of code paths iterate the active
     /// message array (context window trimming, scroll anchoring, persistence
     /// upserts) and grow O(n) with history length.
-    func testPerf_endToEndPipeline_withLargeBacklog() async {
+    func testPerf_endToEndPipeline_withLargeBacklog() {
         let tokens = makeFiveKBTokenScript()
         let backend = makeLatencyBackend(
             ttft: .milliseconds(50),
             interToken: .milliseconds(2),
             tokens: tokens
         )
-        let harness = await makeHarness(backend: backend)
-        await seedBacklog(in: harness, messageCount: 200)
+        let harness = makeHarness(backend: backend)
+        seedBacklog(in: harness, messageCount: 200)
 
         measure {
             let exp = expectation(description: "5KB stream end-to-end")
@@ -213,7 +213,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             let seededIDs = Set(vm.messages.map(\.id))
             vm.messages = vm.messages.filter { seededIDs.contains($0.id) }
             vm.inputText = "tell me about the project"
-            Task { @MainActor in
+            Task {
                 await vm.sendMessage()
                 exp.fulfill()
             }
@@ -228,14 +228,14 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// constant overhead. Compared against the end-to-end test, this lets a
     /// future regression be attributed to either the append/persist side or
     /// the streaming side.
-    func testPerf_messageAppend_at200MessageCount() async {
+    func testPerf_messageAppend_at200MessageCount() {
         let backend = makeLatencyBackend(
             ttft: .milliseconds(10),
             interToken: .milliseconds(2),
             tokens: ["A", "B", "C", "D"]
         )
-        let harness = await makeHarness(backend: backend)
-        await seedBacklog(in: harness, messageCount: 200)
+        let harness = makeHarness(backend: backend)
+        seedBacklog(in: harness, messageCount: 200)
         let seededIDs = Set(harness.vm.messages.map(\.id))
 
         measure {
@@ -243,7 +243,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             let vm = harness.vm
             vm.messages = vm.messages.filter { seededIDs.contains($0.id) }
             vm.inputText = "ping"
-            Task { @MainActor in
+            Task {
                 await vm.sendMessage()
                 exp.fulfill()
             }
@@ -279,51 +279,68 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
         let session: ChatSessionRecord
     }
 
-    private func makeHarness(backend: PerceivedLatencyBackend) async -> Harness {
+    private func makeHarness(backend: PerceivedLatencyBackend) -> Harness {
         // `InferenceService(backend:name:)` treats the backend as already
         // loaded, but the backend itself enforces an `_isModelLoaded` guard
         // inside `generate()` — preload it here so tests don't deadlock on
-        // the guard throwing.
-        try? await backend.loadModel(
-            from: URL(fileURLWithPath: "/tmp/integratedperf"),
-            plan: .testStub(effectiveContextSize: 4096)
-        )
+        // the guard throwing. Bridge the async setup back to the sync test
+        // body via expectation so the test function can stay synchronous and
+        // run inside `measure { }` blocks without main-actor reentrancy.
+        let preload = expectation(description: "harness preload")
+        let backendCapture = backend
+        let modelContext = context!
+        nonisolated(unsafe) var harness: Harness!
+        Task {
+            try? await backendCapture.loadModel(
+                from: URL(fileURLWithPath: "/tmp/integratedperf"),
+                plan: .testStub(effectiveContextSize: 4096)
+            )
+            let service = InferenceService(backend: backendCapture, name: "IntegratedPerf")
+            let vm = ChatViewModel(inferenceService: service)
+            vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
 
-        let service = InferenceService(backend: backend, name: "IntegratedPerf")
-        let vm = ChatViewModel(inferenceService: service)
-        vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-
-        let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = (try? await sessionManager.createSession(title: "Perf"))!
-        sessionManager.activeSession = session
-        await vm.switchToSession(session)
-        return Harness(vm: vm, backend: backend, session: session)
+            let sessionManager = SessionManagerViewModel()
+            sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
+            let session = (try? await sessionManager.createSession(title: "Perf"))!
+            sessionManager.activeSession = session
+            await vm.switchToSession(session)
+            harness = Harness(vm: vm, backend: backendCapture, session: session)
+            preload.fulfill()
+        }
+        wait(for: [preload], timeout: 30)
+        return harness
     }
 
     /// Seeds `messageCount` alternating user/assistant rows into the harness's
     /// active session, both in-memory on the VM and persisted via SwiftData.
     /// Done once before `measure { }` so the timed work is the next message,
     /// not the fixture build.
-    private func seedBacklog(in harness: Harness, messageCount: Int) async {
+    private func seedBacklog(in harness: Harness, messageCount: Int) {
         let sessionID = harness.session.id
         let base = Date(timeIntervalSince1970: 1_000_000)
-        for i in 0..<messageCount {
-            let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
-            // ~80 chars each — enough body for context trimming and markdown
-            // rendering to be exercised, but small enough to keep fixture
-            // build reasonable.
-            let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
-            let record = ChatMessageRecord(
-                role: role,
-                content: body,
-                timestamp: base.addingTimeInterval(Double(i)),
-                sessionID: sessionID
-            )
-            harness.vm.messages.append(record)
-            try? await SwiftDataPersistenceProvider(modelContext: context)
-                .insertMessage(record)
+        let exp = expectation(description: "seed backlog")
+        let modelContext = context!
+        let vm = harness.vm
+        Task {
+            let provider = SwiftDataPersistenceProvider(modelContext: modelContext)
+            for i in 0..<messageCount {
+                let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
+                // ~80 chars each — enough body for context trimming and
+                // markdown rendering to be exercised, but small enough to
+                // keep fixture build reasonable.
+                let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
+                let record = ChatMessageRecord(
+                    role: role,
+                    content: body,
+                    timestamp: base.addingTimeInterval(Double(i)),
+                    sessionID: sessionID
+                )
+                vm.messages.append(record)
+                try? await provider.insertMessage(record)
+            }
+            exp.fulfill()
         }
+        wait(for: [exp], timeout: 60)
     }
 
     /// Builds a token script whose total visible content size is approximately

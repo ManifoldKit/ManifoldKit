@@ -73,15 +73,19 @@ public final class SessionManagerViewModel {
     public init() {}
 
     /// Injects the persistence provider. Call once from the view layer.
+    ///
+    /// `configure` is intentionally synchronous so host bootstrap call sites
+    /// (which run from sync `init` paths in SwiftUI scene setup) can stay
+    /// simple. After Phase 1.0 the initial page load is async, so callers
+    /// must follow `configure` with an explicit `await loadSessions()` (or
+    /// rely on the first `createSession` to refresh the list). The session
+    /// list view also calls `loadSessions` from a `.task { }` modifier on
+    /// first appear, which keeps the on-screen UX unchanged for typical
+    /// hosts.
     public func configure(persistence: ChatPersistenceProvider, diagnostics: DiagnosticsService? = nil) {
         guard self.persistence == nil else { return }
         self.persistence = persistence
         self.diagnostics = diagnostics
-        // Configure is sync to keep the host bootstrap call site simple.
-        // Kick off the initial page load on a Task so the surface stays
-        // non-async without losing the eager populate behaviour callers
-        // depend on. The loading state is observed via `sessions`.
-        Task { await loadSessions() }
         Log.persistence.info("SessionManagerViewModel configured")
     }
 

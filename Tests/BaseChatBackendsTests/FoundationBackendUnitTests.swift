@@ -573,7 +573,7 @@ final class FoundationBackendUnitTests: XCTestCase {
     /// caller observes `isGenerating == false` — needs a stub session so a test
     /// can interleave `continuation.yield(.token(...))` with `stopGeneration()`.
     /// #525 tracks adding that hook.
-    func test_stopGeneration_idempotent_synchronous_whenIdle() async {
+    func test_stopGeneration_idempotent_synchronous_whenIdle() {
         XCTAssertFalse(backend.isGenerating, "Precondition")
 
         // Synchronous: stopGeneration returns before the next statement runs.

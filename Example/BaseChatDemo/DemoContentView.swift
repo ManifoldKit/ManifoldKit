@@ -121,6 +121,14 @@ struct DemoContentView: View {
             Task { @MainActor in
                 let hasPendingPayload = await pendingPayloadBuffer?.peek() != nil
 
+                // Phase 1.0: `configure(runtime:)` no longer auto-fires
+                // `loadSessions()`. Pull the first page here so the
+                // empty-state check below sees the actual persisted list,
+                // not the pre-load empty state. Safe to call alongside the
+                // sidebar's own `.task { }` load — main-actor serialisation
+                // makes the second call a no-op against the in-memory state.
+                await sessionManager.loadSessions()
+
                 if !hasPendingPayload && sessionManager.sessions.isEmpty {
                     do {
                         try await sessionManager.createSession()
