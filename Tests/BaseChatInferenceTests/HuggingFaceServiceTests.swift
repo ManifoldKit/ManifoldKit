@@ -6,7 +6,6 @@ import HuggingFace
 final class HuggingFaceServiceTests: XCTestCase {
 
     private var service: HuggingFaceService!
-    private var stubbedURLs: [URL] = []
 
     override func setUp() {
         super.setUp()
@@ -64,30 +63,51 @@ final class HuggingFaceServiceTests: XCTestCase {
     }
 
     override func tearDown() {
-        for url in stubbedURLs {
-            MockURLProtocol.unstub(url: url)
-        }
-        stubbedURLs = []
         service = nil
         CuratedModel.all = []
         super.tearDown()
     }
 
+    /// Tracks per-test stub URLs so the test can `unstub` them in `defer`.
+    /// We avoid `MockURLProtocol.reset()` because parallel suites share
+    /// `MockURLProtocol`'s static stub registry; resetting would clobber
+    /// concurrently-running tests.
+    private struct MockHuggingFaceStubScope {
+        let service: HuggingFaceService
+        let stubbedURLs: [URL]
+
+        func unstubAll() {
+            for url in stubbedURLs {
+                MockURLProtocol.unstub(url: url)
+            }
+        }
+    }
+
+    /// Builds a `HuggingFaceService` whose `HubClient` is pinned to a unique
+    /// per-test hostname (`https://<uuid>.huggingface.test`). Stubs are
+    /// registered against that hostname only, so concurrent tests running
+    /// under `swift test --parallel` cannot collide on the global
+    /// `MockURLProtocol` stub registry.
     private func makeMockService(
         listResponseJSON: String = "[]",
         modelDetailsByRepoID: [String: String] = [:]
-    ) -> HuggingFaceService {
+    ) -> MockHuggingFaceStubScope {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         let session = URLSession(configuration: configuration)
+
+        let uniqueHost = "\(UUID().uuidString.lowercased()).huggingface.test"
+        let hostURL = URL(string: "https://\(uniqueHost)")!
         let hubClient = HubClient(
             session: session,
-            host: URL(string: "https://huggingface.co")!,
+            host: hostURL,
             userAgent: "BaseChatKitTests/1.0",
             cache: nil
         )
 
-        let listURL = URL(string: "https://huggingface.co/api/models")!
+        var stubbedURLs: [URL] = []
+
+        let listURL = URL(string: "https://\(uniqueHost)/api/models")!
         MockURLProtocol.stub(
             url: listURL,
             response: .immediate(
@@ -99,7 +119,7 @@ final class HuggingFaceServiceTests: XCTestCase {
         stubbedURLs.append(listURL)
 
         for (repoID, json) in modelDetailsByRepoID {
-            let detailURL = URL(string: "https://huggingface.co/api/models/\(repoID)")!
+            let detailURL = URL(string: "https://\(uniqueHost)/api/models/\(repoID)")!
             MockURLProtocol.stub(
                 url: detailURL,
                 response: .immediate(
@@ -111,7 +131,10 @@ final class HuggingFaceServiceTests: XCTestCase {
             stubbedURLs.append(detailURL)
         }
 
-        return HuggingFaceService(hubClient: hubClient)
+        return MockHuggingFaceStubScope(
+            service: HuggingFaceService(hubClient: hubClient),
+            stubbedURLs: stubbedURLs
+        )
     }
 
     private func decodeModel(from json: String) throws -> Model {
@@ -396,15 +419,16 @@ final class HuggingFaceServiceTests: XCTestCase {
             }
             """
 
-        let service = makeMockService(
+        let scope = makeMockService(
             listResponseJSON: listResponse,
             modelDetailsByRepoID: [
                 mlxRepoID: mlxDetail,
                 ggufRepoID: ggufDetail,
             ]
         )
+        defer { scope.unstubAll() }
 
-        let results = try await service.searchModels(query: "gemma")
+        let results = try await scope.service.searchModels(query: "gemma")
 
         XCTAssertTrue(
             results.contains(where: { $0.repoID == ggufRepoID && $0.modelType == .gguf }),

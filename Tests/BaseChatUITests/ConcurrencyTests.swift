@@ -290,16 +290,47 @@ final class ConcurrencyTests: XCTestCase {
             await self.vm.sendMessage()
         }
 
-        // Wait for generation to start.
+        // Wait for generation to start AND for the first token to be streamed.
+        // `awaitGenerating(true)` flips when the VM enters the
+        // `waitingForFirstToken` phase, which can fire BEFORE the backend's
+        // generate() is actually invoked (the InferenceService queues the
+        // request). Waiting for the first token guarantees the backend has been
+        // called, so the `generateCallCount` assertion below is meaningful.
         await vm.awaitGenerating(true)
+        await vm.awaitFirstToken()
 
-        // Capture message count before regenerate attempt.
+        // Capture state before the regenerate attempt. The backend must have been
+        // invoked exactly once for the in-flight initial send. A guarded
+        // regenerateLastResponse should NOT trigger a second backend invocation.
+        //
+        // Asserting on messages.count alone is too weak: even without the guard,
+        // regenerateLastResponse removes the trailing empty assistant placeholder
+        // and re-appends a fresh one, netting zero change in count. The
+        // backend-call counter is the contract that actually catches re-entry.
+        XCTAssertEqual(slowBackend.generateCallCount, 1,
+            "Backend should have been called exactly once for the initial send")
         let messageCountBefore = vm.messages.count
+
+        // The guard contract: regenerateLastResponse() must short-circuit
+        // silently. That means:
+        //   1. The backend must not be called a second time.
+        //   2. The function must not enter its message-rewrite path
+        //      (which surfaces a persistence error when it tries to delete
+        //      the still-unpersisted streaming placeholder).
+        //
+        // Asserting on `messages.count` alone is too weak — even without the
+        // guard, the rewrite path tears down and restores the placeholder via
+        // its persistence-failure catch, netting zero change in count.
 
         // Attempt regeneration while generating -- should be silently skipped.
         await vm.regenerateLastResponse()
 
-        // Message count should not change because regenerate was guarded.
+        // Guard contract: no additional backend invocation, no observable
+        // error from a botched message-rewrite, and the message list unchanged.
+        XCTAssertEqual(slowBackend.generateCallCount, 1,
+            "regenerateLastResponse must not call the backend while isGenerating is true")
+        XCTAssertNil(vm.activeError,
+            "regenerateLastResponse must not surface an error while generating; an unguarded re-entry leaks a persistence error from attempting to delete the unpersisted streaming placeholder")
         XCTAssertEqual(vm.messages.count, messageCountBefore,
             "regenerateLastResponse should be a no-op while isGenerating is true")
 
@@ -316,5 +347,7 @@ final class ConcurrencyTests: XCTestCase {
         let lastAssistant = vm.messages.last { $0.role == .assistant }
         XCTAssertEqual(lastAssistant?.content, "regenerated",
             "regenerateLastResponse should work after generation finishes")
+        XCTAssertEqual(slowBackend.generateCallCount, 2,
+            "Post-completion regenerate should call the backend a second time")
     }
 }
