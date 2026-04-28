@@ -88,7 +88,8 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
         let harness = makeHarness(backend: backend)
 
         measure {
-            let exp = expectation(description: "first character visible")
+            let firstTokenExp = expectation(description: "first character visible")
+            let drainExp = expectation(description: "send task drained")
             let vm = harness.vm
             // Reset per-iteration so each measurement starts from a clean
             // empty assistant message (sendMessage appends a new one each call).
@@ -107,10 +108,18 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
                     }
                     try? await Task.sleep(for: .milliseconds(1))
                 }
-                exp.fulfill()
+                firstTokenExp.fulfill()
+                // Drain before signalling so tearDown never races with an
+                // in-flight sendMessage() that still holds the ModelContext.
                 _ = await send.value
+                drainExp.fulfill()
             }
-            wait(for: [exp], timeout: 10)
+            wait(for: [firstTokenExp], timeout: 10)
+            // Stop the clock here — TTFT is the only thing being measured.
+            // The drain wait below is untimed but ensures the Task fully
+            // completes before tearDown releases the ModelContainer.
+            stopMeasuring()
+            wait(for: [drainExp], timeout: 30)
         }
     }
 
