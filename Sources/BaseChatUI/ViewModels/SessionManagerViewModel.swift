@@ -130,9 +130,10 @@ public final class SessionManagerViewModel {
         // commands drop their `@MainActor` isolation. At that point the
         // sink path becomes a cross-actor hazard and the adapter switches
         // to consuming `service.events` from the long-lived consumer task
-        // below. Until then the consumer task drains the stream so it does
-        // not back up and so external `service.events` subscribers see the
-        // full surface even though the adapter does not rely on them.
+        // below. Until then the consumer task only drains the stream so its
+        // unbounded buffer does not grow — `AsyncStream` is single-consumer,
+        // so attaching an adapter and a parallel external `for await` over
+        // `service.events` would race for the same slot.
         let sink: @Sendable (SessionListEvent) -> Void = { [weak self] event in
             MainActor.assumeIsolated {
                 self?.apply(event)

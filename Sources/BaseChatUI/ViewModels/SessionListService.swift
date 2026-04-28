@@ -97,16 +97,23 @@ final class SessionListService: Sendable {
     /// Upper bound on sessions resolved when surfacing message-search hits.
     static let messageSearchSessionResolveCap: Int = 10_000
 
-    /// Async stream of state transitions for external observers (tests,
-    /// debugging tools, future runtime adapters). The adapter
-    /// (`SessionManagerViewModel`) does not consume this stream — it
-    /// installs a synchronous sink via ``setEventSink(_:)`` so state changes
-    /// land in observable state in the same actor hop as the command that
-    /// produced them.
+    /// Async stream of state transitions. The adapter
+    /// (`SessionManagerViewModel`) installs a synchronous sink via
+    /// ``setEventSink(_:)`` so state changes land in observable state in the
+    /// same actor hop as the command that produced them; the adapter also
+    /// runs a long-lived `Task` that drains this stream so its unbounded
+    /// buffer does not grow.
+    ///
+    /// `AsyncStream` is single-consumer by design: tests that drive the
+    /// service directly (no adapter attached) iterate this stream
+    /// themselves. Once an adapter is attached, the adapter's drain task
+    /// owns the consumer slot and external `for await` loops over
+    /// `service.events` will not observe events. Either drive the service
+    /// without an adapter or install your own sink via ``setEventSink(_:)``.
     ///
     /// Phase 1.2 will move the runtime off `@MainActor`; at that point the
-    /// adapter switches to consuming this stream from a long-lived `Task`
-    /// because cross-actor delivery cannot be synchronous.
+    /// adapter switches to consuming this stream from its drain `Task` (the
+    /// sink path becomes a cross-actor hazard) without changing this surface.
     let events: AsyncStream<SessionListEvent>
     private let continuation: AsyncStream<SessionListEvent>.Continuation
 
@@ -203,8 +210,10 @@ final class SessionListService: Sendable {
     }
 
     /// Loads the next page starting at `offset` and emits `.sessionsLoaded`.
-    /// No-op when persistence raises an error — the failure is logged and
-    /// surfaced as `.persistenceFailure`.
+    /// On persistence failure, emits an empty `.sessionsLoaded(_, hasMore: false, offset:)`
+    /// so the adapter clears `hasMoreSessions` (matching Phase 1.0 behaviour
+    /// where a transient page-load failure stopped further pagination), then
+    /// emits `.persistenceFailure` for diagnostics consumers.
     @MainActor
     func loadNextPage(offset: Int) async {
         do {
@@ -213,6 +222,10 @@ final class SessionListService: Sendable {
             emit(.sessionsLoaded(next, hasMore: hasMore, offset: offset))
         } catch {
             Log.persistence.error("Failed to load next sessions page: \(error)")
+            // Reset hasMoreSessions on the adapter so the failed offset is not
+            // retried automatically. Pre-Phase-1.1 behaviour; restoring it
+            // keeps the public surface source-compatible.
+            emit(.sessionsLoaded([], hasMore: false, offset: offset))
             emit(.persistenceFailure(error))
         }
     }

@@ -182,6 +182,39 @@ final class SessionListServiceTests: XCTestCase {
         XCTAssertEqual(records.count, 10)
     }
 
+    func test_loadNextPage_persistenceFailure_emitsResetThenFailure() async throws {
+        try await seedSessions(count: 5)
+        // Wrap the in-memory provider with an error injector so the next
+        // fetch throws. Using the default `fetchSessions(offset:limit:)`
+        // implementation (pages over `fetchSessions()`) means injecting on
+        // `shouldThrowOnFetchSessions` covers the pagination call too.
+        let injector = ErrorInjectingPersistenceProvider(wrapping: persistence)
+        injector.shouldThrowOnFetchSessions = ChatPersistenceError.providerNotConfigured
+        let service = SessionListService(persistence: injector)
+        let collector = EventCollector()
+        service.setEventSink(collector.sink)
+
+        await service.loadNextPage(offset: 50)
+
+        // Phase 1.0 behaviour: a failed page-load resets `hasMoreSessions`
+        // so the user is not stuck retrying. We restore that by emitting an
+        // empty `.sessionsLoaded(_, hasMore: false, offset:)` ahead of the
+        // diagnostic `.persistenceFailure`. Without the reset the adapter
+        // would still believe a next page exists.
+        let events = collector.snapshot()
+        XCTAssertEqual(events.count, 2,
+                       "Expected reset .sessionsLoaded then .persistenceFailure, got \(events)")
+        guard case let .sessionsLoaded(records, hasMore, offset) = events[0] else {
+            XCTFail("Expected .sessionsLoaded reset event, got \(events[0])"); return
+        }
+        XCTAssertEqual(records, [])
+        XCTAssertFalse(hasMore, "Failure must clear hasMore so the adapter stops paginating")
+        XCTAssertEqual(offset, 50, "Reset event must carry the failed offset, not 0")
+        guard case .persistenceFailure = events[1] else {
+            XCTFail("Expected .persistenceFailure second, got \(events[1])"); return
+        }
+    }
+
     func test_fetchPage_doesNotEmit() async throws {
         try await seedSessions(count: 5)
         let collector = attachCollector()
