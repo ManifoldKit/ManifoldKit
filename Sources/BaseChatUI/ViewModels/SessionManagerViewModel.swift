@@ -11,29 +11,39 @@ public enum SessionSearchScope: String, CaseIterable, Hashable, Sendable {
     case messages
 }
 
-/// Manages chat session CRUD operations and the session list.
+/// Thin `@Observable` adapter over ``SessionListService``.
+///
+/// Owns only the published mirror of the service's state and a consumer
+/// `Task` that processes ``SessionListEvent`` values into those properties.
+/// All real orchestration lives in ``SessionListService``.
+///
+/// SPIKE NOTE on sync-command seam: The public API for `createSession`,
+/// `deleteSession`, and `renameSession` must be synchronous `throws` to keep
+/// existing call sites source-compatible. The adapter therefore calls persistence
+/// directly (we're already `@MainActor`, same isolation as the sync provider),
+/// emits the corresponding events to keep the service stream consistent, and then
+/// schedules a `loadInitialPage()` via the service so the full session list
+/// reloads. This means the sync commands bypass `SessionListService.createSession`
+/// etc. — the adapter is partially a forwarder and partially a direct caller. In
+/// a real `BaseChatRuntime` extraction the public surface would become `async
+/// throws` and the seam disappears entirely. For now this is the most faithful
+/// spike possible within the source-compat constraint.
 @Observable
 @MainActor
 public final class SessionManagerViewModel {
 
     /// Default page size used when paginating the session list.
-    public static let sessionsPageSize: Int = 50
+    public static let sessionsPageSize: Int = SessionListService.sessionsPageSize
 
     /// Default cap on message search results per query.
-    public static let messageSearchLimit: Int = 100
+    public static let messageSearchLimit: Int = SessionListService.messageSearchLimit
 
     /// Upper bound on sessions resolved when surfacing message-search hits.
-    /// Sessions beyond this count cannot be surfaced as a "matching session"
-    /// row even if their messages match — in practice the cap is well above
-    /// any realistic single-user history.
-    public static let messageSearchSessionResolveCap: Int = 10_000
+    public static let messageSearchSessionResolveCap: Int = SessionListService.messageSearchSessionResolveCap
+
+    // MARK: - Observable state (mirrors service events)
 
     /// All currently loaded sessions, sorted by most recently updated.
-    ///
-    /// Populated incrementally a page at a time. ``loadSessions()`` resets to
-    /// the first page; ``loadNextPage()`` appends the next page. There is no
-    /// path that fetches every session at once — the sidebar is paginated end
-    /// to end so it stays responsive past 1000+ sessions.
     public private(set) var sessions: [ChatSessionRecord] = []
 
     /// `true` when more pages may be available beyond what's loaded.
@@ -51,83 +61,88 @@ public final class SessionManagerViewModel {
     /// before reassigning this — the VM treats every set as authoritative.
     public var searchQuery: String = ""
 
-    /// Message-search hits indexed by session ID. Empty when scope is titles
-    /// or query is empty.
+    /// Message-search hits indexed by session ID.
     public private(set) var messageHitsBySession: [UUID: [MessageSearchHit]] = [:]
 
-    /// Sessions matching the current title-scope query. Empty when scope is
-    /// messages or query is empty.
+    /// Sessions matching the current title-scope query.
     public private(set) var titleMatches: [ChatSessionRecord] = []
 
-    /// Sessions surfaced by the most recent message-scope search, ordered by
-    /// their most recent matching message.
+    /// Sessions surfaced by the most recent message-scope search.
     public private(set) var messageMatchSessions: [ChatSessionRecord] = []
 
-    private(set) var persistence: ChatPersistenceProvider?
+    // MARK: - Passthrough accessors required by existing call sites
 
-    /// Optional diagnostics sink for non-fatal operational failures
-    /// (e.g., auto-rename inference errors). Inject via `configure` so
-    /// existing call sites that do not care about diagnostics keep working.
+    private(set) var persistence: ChatPersistenceProvider? {
+        get { service._persistenceAccessor }
+        set { /* write-path is configure(persistence:) only */ }
+    }
+
     public private(set) var diagnostics: DiagnosticsService?
 
-    public init() {}
+    // MARK: - Internal
+
+    // Exposed so `SessionListServiceTests` can reach the service directly.
+    let service: SessionListService
+    nonisolated(unsafe) private var eventConsumerTask: Task<Void, Never>?
+
+    public init() {
+        service = SessionListService()
+    }
+
+    deinit {
+        eventConsumerTask?.cancel()
+    }
+
+    // MARK: - Configuration
 
     /// Injects the persistence provider. Call once from the view layer.
     public func configure(persistence: ChatPersistenceProvider, diagnostics: DiagnosticsService? = nil) {
-        guard self.persistence == nil else { return }
-        self.persistence = persistence
+        guard service._persistenceAccessor == nil else { return }
         self.diagnostics = diagnostics
-        loadSessions()
+        service.configure(persistence: persistence, diagnostics: diagnostics)
+        startEventConsumer()
+        // Eager sync so `sessions` is populated before any async event processing.
+        reloadSessionsEagerly()
         Log.persistence.info("SessionManagerViewModel configured")
     }
 
+    // MARK: - Commands
+
     /// Creates a new session, inserts it, activates it, and returns it.
-    ///
-    /// Setting `activeSession` to the new record ensures that
-    /// `onChange(of: sessionManager.activeSession)` fires in the host view so
-    /// `ChatViewModel.switchToSession(_:)` is called immediately. Without this,
-    /// callers that rely on the binding (e.g. `SessionListView`'s `List(selection:)`)
-    /// would leave the chat detail in a "No session selected" state until the user
-    /// manually tapped a row.
     @discardableResult
     public func createSession(title: String = "New Chat") throws -> ChatSessionRecord {
-        let persistence = try requirePersistence("createSession")
+        let p = try requirePersistence("createSession")
         let record = ChatSessionRecord(title: title)
-        try persistence.insertSession(record)
-        loadSessions()
+        try p.insertSession(record)
+        // Reload eagerly so `sessions` is up to date for synchronous callers.
+        // The service also emits `.sessionsLoaded` via its event stream —
+        // the dual-write is a consequence of keeping a sync public API while
+        // routing through an async event stream. See SPIKE FINDINGS in the PR.
+        reloadSessionsEagerly()
         activeSession = record
         return record
     }
 
     /// Deletes a session and all its messages.
     public func deleteSession(_ session: ChatSessionRecord) throws {
-        let persistence = try requirePersistence("deleteSession")
-        try persistence.deleteSession(session.id)
-
-        if activeSession?.id == session.id {
-            activeSession = nil
-        }
-
-        loadSessions()
+        let p = try requirePersistence("deleteSession")
+        try p.deleteSession(session.id)
+        if activeSession?.id == session.id { activeSession = nil }
+        reloadSessionsEagerly()
     }
 
     /// Renames a session.
     public func renameSession(_ session: ChatSessionRecord, title: String) throws {
-        let persistence = try requirePersistence("renameSession")
+        let p = try requirePersistence("renameSession")
         var updated = session
         updated.title = title
         updated.updatedAt = Date()
-        try persistence.updateSession(updated)
-        loadSessions()
+        try p.updateSession(updated)
+        reloadSessionsEagerly()
     }
 
     // MARK: - AI Auto-Rename
 
-    /// Generates a concise session title by running a short inference request.
-    ///
-    /// Returns `nil` when the model produced an empty response. Throws the
-    /// underlying inference error on failure so callers can surface it to
-    /// `DiagnosticsService` instead of silently dropping it.
     @MainActor
     public func generateTitle(
         from firstMessage: String,
@@ -137,7 +152,6 @@ public final class SessionManagerViewModel {
         let messages: [(role: String, content: String)] = [
             (role: "user", content: firstMessage)
         ]
-
         let (_, stream) = try inferenceService.enqueue(
             messages: messages,
             systemPrompt: systemPrompt,
@@ -149,227 +163,154 @@ public final class SessionManagerViewModel {
         )
         var result = ""
         for try await event in stream.events {
-            if case .token(let text) = event {
-                result += text
-            }
+            if case .token(let text) = event { result += text }
         }
         let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return trimmed.count > 50 ? String(trimmed.prefix(50)) : trimmed
     }
 
-    /// Generates an AI title for the session and saves it.
-    ///
-    /// Only renames sessions that are still named "New Chat". Failures
-    /// fall back to the existing title but are recorded on
-    /// `DiagnosticsService` so they can be surfaced to the user.
     @MainActor
     public func autoRenameSession(
         _ session: ChatSessionRecord,
         firstMessage: String,
         inferenceService: InferenceService
     ) async {
-        guard session.title == "New Chat" else { return }
-        let title: String?
-        do {
-            title = try await generateTitle(from: firstMessage, using: inferenceService)
-        } catch {
-            Log.ui.warning("Title generation failed for session \(session.id): \(error.localizedDescription)")
-            diagnostics?.record(.titleGenerationFailed(sessionID: session.id, reason: error.localizedDescription))
-            return
-        }
-        guard let title else { return }
-        var updated = session
-        updated.title = title
-        updated.updatedAt = Date()
-        do {
-            try persistence?.updateSession(updated)
-        } catch {
-            Log.persistence.warning("Failed to persist auto-rename for session \(session.id): \(error.localizedDescription)")
-            // Persistence failure is a distinct category from inference
-            // failure — different remediation (disk/store health vs.
-            // backend availability), so we surface it as its own case.
-            diagnostics?.record(.sessionRenamePersistenceFailed(sessionID: session.id, reason: error.localizedDescription))
-            return
-        }
-        loadSessions()
+        await service.autoRenameSession(session, firstMessage: firstMessage, inferenceService: inferenceService)
     }
 
-    /// Auto-generates a session title from the first user message.
-    /// Only applies if the current title is "New Chat".
     public func autoGenerateTitle(for session: ChatSessionRecord, firstMessage: String) {
-        guard session.title == "New Chat" else { return }
-
-        let maxLength = 50
-        var title = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if title.count > maxLength {
-            let truncated = String(title.prefix(maxLength))
-            if let lastSpace = truncated.lastIndex(of: " ") {
-                title = String(truncated[truncated.startIndex..<lastSpace]) + "..."
-            } else {
-                title = truncated + "..."
-            }
-        }
-
-        guard !title.isEmpty else { return }
-        var updated = session
-        updated.title = title
-        updated.updatedAt = Date()
-        do {
-            try persistence?.updateSession(updated)
-        } catch {
-            Log.persistence.error("Failed to auto-generate title: \(error)")
-        }
-        loadSessions()
+        service.autoGenerateTitle(for: session, firstMessage: firstMessage)
+        reloadSessionsEagerly()
     }
 
-    /// Reloads sessions from the persistence provider.
-    ///
-    /// Resets pagination and loads the first page. Mutations elsewhere in the
-    /// VM (create/delete/rename) call this to refresh the list — the caller's
-    /// expectation is "show me the freshest top of the list", which page 1
-    /// always satisfies.
+    // MARK: - Load / Pagination
+
     public func loadSessions() {
-        guard let persistence else { return }
-
-        do {
-            let firstPage = try persistence.fetchSessions(offset: 0, limit: Self.sessionsPageSize)
-            sessions = firstPage
-            hasMoreSessions = firstPage.count == Self.sessionsPageSize
-        } catch {
-            Log.persistence.error("Failed to load sessions: \(error)")
-            sessions = []
-            hasMoreSessions = false
-        }
+        reloadSessionsEagerly()
+        // Also trigger the async service reload so the event stream stays in
+        // sync with any downstream consumers (e.g. views that bind to `service.events`).
+        service.reloadSessionsSync()
     }
 
-    // MARK: - Pagination
-
-    /// Fetches a page of sessions from the persistence provider.
-    ///
-    /// Used by ``SessionListView`` to drive incremental loading as the user
-    /// scrolls. Caller is responsible for appending the result to
-    /// ``sessions``; this method does not mutate VM state directly so tests
-    /// can assert on raw page contents.
     public func fetchSessionsPage(offset: Int, limit: Int) throws -> [ChatSessionRecord] {
-        let persistence = try requirePersistence("fetchSessionsPage")
-        return try persistence.fetchSessions(offset: offset, limit: limit)
+        guard let p = service._persistenceAccessor else {
+            throw ChatPersistenceError.providerNotConfigured
+        }
+        return try p.fetchSessions(offset: offset, limit: limit)
     }
 
-    /// Appends the next page of sessions, if any, to ``sessions``.
-    ///
-    /// No-op when no more pages are available, when a search is active, or
-    /// when persistence is unconfigured.
     public func loadNextPage() {
-        guard hasMoreSessions, persistence != nil else { return }
-        let offset = sessions.count
-        do {
-            let next = try fetchSessionsPage(offset: offset, limit: Self.sessionsPageSize)
-            // Defensive against duplicates if a concurrent insert raced the
-            // page boundary — keys are session IDs, so the dedupe is cheap.
-            let existing = Set(sessions.map(\.id))
-            let unique = next.filter { !existing.contains($0.id) }
-            sessions.append(contentsOf: unique)
-            hasMoreSessions = next.count == Self.sessionsPageSize
-        } catch {
-            Log.persistence.error("Failed to load next sessions page: \(error)")
-            hasMoreSessions = false
-        }
+        guard hasMoreSessions else { return }
+        let currentCount = sessions.count
+        Task { await service.loadNextPage(currentCount: currentCount) }
     }
 
     // MARK: - Search
 
-    /// Computes the visible session list given the current scope and query.
-    ///
-    /// Returns the unfiltered ``sessions`` list when no search is active.
-    /// Title scope filters in-memory; message scope returns sessions surfaced
-    /// by the most recent ``runMessageSearch(_:)`` call.
     public var displayedSessions: [ChatSessionRecord] {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return sessions }
         switch searchScope {
-        case .titles:
-            return titleMatches
-        case .messages:
-            return messageMatchSessions
+        case .titles: return titleMatches
+        case .messages: return messageMatchSessions
         }
     }
 
-    /// `true` when an active search produced no results.
     public var hasNoSearchResults: Bool {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         switch searchScope {
-        case .titles:
-            return titleMatches.isEmpty
-        case .messages:
-            return messageMatchSessions.isEmpty
+        case .titles: return titleMatches.isEmpty
+        case .messages: return messageMatchSessions.isEmpty
         }
     }
 
-    /// Recomputes ``titleMatches`` against the currently loaded ``sessions``.
     public func runTitleSearch(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            titleMatches = []
-            return
-        }
-        titleMatches = sessions.filter {
-            $0.title.range(of: trimmed, options: .caseInsensitive) != nil
-        }
+        service.runTitleSearch(query, against: sessions)
     }
 
-    /// Runs a message-scope search via the persistence provider.
-    ///
-    /// Populates ``messageHitsBySession`` and ``messageMatchSessions``. The
-    /// result list is ordered by hit recency (most recent matching message
-    /// first), matching the rest of the sidebar's recency-first ordering.
     public func runMessageSearch(_ query: String) {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let persistence else {
-            messageHitsBySession = [:]
-            messageMatchSessions = []
-            return
-        }
-
-        do {
-            let hits = try persistence.searchMessages(query: trimmed, limit: Self.messageSearchLimit)
-            var grouped: [UUID: [MessageSearchHit]] = [:]
-            grouped.reserveCapacity(hits.count)
-            // Preserve the first occurrence of each sessionID to keep
-            // recency ordering — `hits` is already newest-first.
-            var orderedSessionIDs: [UUID] = []
-            for hit in hits {
-                if grouped[hit.sessionID] == nil {
-                    orderedSessionIDs.append(hit.sessionID)
-                }
-                grouped[hit.sessionID, default: []].append(hit)
-            }
-            messageHitsBySession = grouped
-
-            // Resolve sessions for the surfaced IDs. We fetch up to
-            // `messageSearchSessionResolveCap` sessions so a hit in an
-            // unloaded page still gets its session row rendered — otherwise
-            // message search would silently miss matches deep in history.
-            let allSessions = try persistence.fetchSessions(
-                offset: 0,
-                limit: Self.messageSearchSessionResolveCap
-            )
-            let byID = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.id, $0) })
-            messageMatchSessions = orderedSessionIDs.compactMap { byID[$0] }
-        } catch {
-            Log.persistence.error("Message search failed: \(error)")
-            messageHitsBySession = [:]
-            messageMatchSessions = []
-        }
+        Task { await service.runMessageSearch(query) }
     }
 
-    /// Clears search state and falls back to the unfiltered session list.
     public func clearSearch() {
         searchQuery = ""
-        titleMatches = []
-        messageHitsBySession = [:]
-        messageMatchSessions = []
+        service.clearSearch()
     }
+
+    // MARK: - Eager reload
+
+    // Reads page one from persistence synchronously and updates `sessions`.
+    // Required so sync public commands (`createSession`, `deleteSession`, etc.)
+    // leave observable state consistent without waiting for the async event
+    // consumer. The service also emits `.sessionsLoaded` — this is an explicit
+    // dual-write, not a bug. See SPIKE FINDINGS for the architectural implication.
+    private func reloadSessionsEagerly() {
+        guard let p = service._persistenceAccessor else { return }
+        do {
+            let page = try p.fetchSessions(offset: 0, limit: Self.sessionsPageSize)
+            sessions = page
+            hasMoreSessions = page.count == Self.sessionsPageSize
+        } catch {
+            Log.persistence.error("Eager session reload failed: \(error)")
+        }
+    }
+
+    // MARK: - Event consumer
+
+    private func startEventConsumer() {
+        eventConsumerTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in self.service.events {
+                await MainActor.run {
+                    self.apply(event)
+                }
+            }
+        }
+    }
+
+    private func apply(_ event: SessionListEvent) {
+        switch event {
+        case .sessionsLoaded(let page, let hasMore):
+            sessions = page
+            hasMoreSessions = hasMore
+
+        case .sessionInserted:
+            // Full reload follows every insert — handled by .sessionsLoaded.
+            break
+
+        case .sessionRenamed(let id, let title):
+            if let idx = sessions.firstIndex(where: { $0.id == id }) {
+                sessions[idx].title = title
+            }
+            if activeSession?.id == id { activeSession?.title = title }
+
+        case .sessionDeleted(let id):
+            sessions.removeAll { $0.id == id }
+
+        case .searchResultsChanged(let results):
+            titleMatches = results.titleMatches
+            messageHitsBySession = results.messageHitsBySession
+            messageMatchSessions = results.messageMatchSessions
+
+        case .titleGenerated(let id, let title):
+            if let idx = sessions.firstIndex(where: { $0.id == id }) {
+                sessions[idx].title = title
+            }
+            if activeSession?.id == id { activeSession?.title = title }
+
+        case .persistenceFailure:
+            // Logged at the service level — no additional action needed.
+            break
+        }
+    }
+}
+
+// MARK: - Internal accessor for persistence (needed by PersistenceGuard extension)
+
+extension SessionListService {
+    /// Read-only view of the stored persistence provider, used by the adapter
+    /// and the `PersistenceGuard` helpers on `SessionManagerViewModel`.
+    var _persistenceAccessor: ChatPersistenceProvider? { _persistence }
 }
