@@ -147,8 +147,8 @@ extension ChatViewModel {
     ///
     /// ## Requirements
     ///
-    /// ``configure(persistence:)`` must have been called before
-    /// ``IngestionIntent/newSession(preset:)`` is used. Without
+    /// ``configure(runtime:)`` or ``configure(persistence:)`` must have been
+    /// called before ``IngestionIntent/newSession(preset:)`` is used. Without
     /// persistence the call no-ops after logging a warning. The two
     /// non-persisting intents (``IngestionIntent/appendToActive``,
     /// ``IngestionIntent/draft``) work without persistence.

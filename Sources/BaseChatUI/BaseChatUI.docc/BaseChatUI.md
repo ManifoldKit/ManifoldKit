@@ -10,23 +10,40 @@ BaseChatUI provides the view layer for BaseChatKit. It depends only on ``BaseCha
 
 ```swift
 import BaseChatCore
+import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 @main
 struct MyApp: App {
-    let inferenceService = InferenceService()
+    let runtime: BaseChatRuntime
     let chatVM: ChatViewModel
 
     init() {
-        BaseChatConfiguration.shared = BaseChatConfiguration(
-            appName: "MyApp",
-            bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
+        let runtime = try! BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "MyApp",
+                bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
+            )
         )
-        DefaultBackends.register(with: inferenceService)
-        chatVM = ChatViewModel(inferenceService: inferenceService)
+        self.runtime = runtime
+
+        DefaultBackends.register(with: runtime.inferenceService)
+
+        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        chatVM.configure(runtime: runtime)
+        chatVM.refreshModels()
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(runtime: runtime)
+        if let session = sessionVM.sessions.first ?? (try? sessionVM.createSession()) {
+            chatVM.switchToSession(session)
+            chatVM.dispatchSelectedLoad()
+        }
+
+        self.chatVM = chatVM
     }
 
     var body: some Scene {
@@ -34,7 +51,7 @@ struct MyApp: App {
             ContentView()
                 .environment(chatVM)
         }
-        .modelContainer(try! ModelContainerFactory.makeContainer())
+        .modelContainer(runtime.modelContainer)
     }
 }
 ```
@@ -46,7 +63,10 @@ struct ContentView: View {
     @Environment(ChatViewModel.self) var chatVM
 
     var body: some View {
-        ChatView()
+        ChatView(
+            showModelManagement: .constant(false),
+            apiConfiguration: { EmptyView() }
+        )
     }
 }
 ```

@@ -17,9 +17,9 @@ extension ChatViewModel {
     ///
     /// ## Requirements
     ///
-    /// - ``configure(persistence:)`` must have been called. Otherwise this
-    ///   method no-ops after logging a warning — callers should buffer the
-    ///   payload until persistence is ready.
+    /// - ``configure(runtime:)`` or ``configure(persistence:)`` must have been
+    ///   called. Otherwise this method no-ops after logging a warning —
+    ///   callers should buffer the payload until persistence is ready.
     /// - A model or endpoint must be loaded; if not, the usual
     ///   "no model loaded" error surfaces via ``activeError`` and generation
     ///   is not started, matching the compose-bar contract.

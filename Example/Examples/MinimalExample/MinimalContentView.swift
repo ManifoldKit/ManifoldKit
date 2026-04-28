@@ -4,8 +4,7 @@ import BaseChatUIModelManagement
 
 struct MinimalContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
-    @Environment(SessionManagerViewModel.self) private var sessionManager
-
+    @Environment(ModelManagementViewModel.self) private var managementViewModel
     @State private var isModelManagementPresented = false
 
     var body: some View {
@@ -17,14 +16,8 @@ struct MinimalContentView: View {
                 .sheet(isPresented: $isModelManagementPresented) {
                     ModelManagementSheet()
                         .environment(viewModel)
+                        .environment(managementViewModel)
                 }
-        }
-        .onAppear {
-            viewModel.refreshModels()
-
-            if sessionManager.sessions.isEmpty {
-                _ = try? sessionManager.createSession()
-            }
         }
     }
 }

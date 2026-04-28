@@ -115,7 +115,28 @@ See ``ChatViewModel`` in `BaseChatUI` for the primary consumer.
 
 ## Persistence
 
-BaseChatKit persists sessions and messages through ``ChatPersistenceProvider``. The default implementation uses SwiftData. Create a ``ModelContainerFactory`` container and wire it to ``SwiftDataPersistenceProvider``:
+BaseChatKit persists sessions and messages through ``ChatPersistenceProvider``.
+For apps using the built-in SwiftData stack, prefer ``BaseChatRuntime`` so
+configuration, inference, the model container, and persistence come up
+together:
+
+```swift
+let runtime = try BaseChatRuntime(
+    configuration: BaseChatConfiguration(
+        appName: "MyApp",
+        bundleIdentifier: "com.example.myapp"
+    )
+)
+
+let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
+chatViewModel.configure(runtime: runtime)
+```
+
+If you need to construct the SwiftData container yourself — for example to
+share an existing container with another part of the host app, or to
+configure the schema explicitly — build the container with
+``ModelContainerFactory`` and wire it to ``SwiftDataPersistenceProvider``
+manually:
 
 ```swift
 let container = try ModelContainerFactory.makeContainer()
@@ -125,6 +146,12 @@ chatViewModel.configure(persistence: persistence)
 ```
 
 Use ``ModelContainerFactory/makeInMemoryContainer()`` in tests and SwiftUI previews.
+
+Adopters that want a non-SwiftData store (e.g. a network-backed or
+encrypted-blob store) should implement ``ChatPersistenceProvider`` directly
+and pass that instance to `chatViewModel.configure(persistence:)`. Runtime
+support for substituting the persistence layer through ``BaseChatRuntime``
+is tracked separately.
 
 ## Next Steps
 

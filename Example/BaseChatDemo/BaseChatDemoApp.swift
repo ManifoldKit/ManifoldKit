@@ -14,29 +14,26 @@ struct BaseChatDemoApp: App {
     @State private var chatViewModel: ChatViewModel
     @State private var modelManagementViewModel: ModelManagementViewModel
     @State private var sessionManager = SessionManagerViewModel()
+    @State private var runtime: BaseChatRuntime?
     private let inferenceService: InferenceService
     private let toolRegistry: ToolRegistry
     private let sandboxRoot: URL
     private let pendingDemoScenarioID: String?
+    private let runtimeConfiguration: BaseChatConfiguration
 
     /// When `true`, the app was launched with `--uitesting` and should use
     /// an in-memory store, skip auto-model-load, and disable animations.
     private let isUITesting: Bool
 
-    // Created asynchronously in .task to avoid blocking App.init() — SwiftData
-    // container setup (schema compilation + SQLite open) can stall the first
-    // frame for several seconds when done on the main thread.
-    @State private var modelContainer: ModelContainer?
-
     /// Single-slot buffer for inbound payloads that land during the
-    /// cold-launch window where the SwiftData container is still being
-    /// built. ``DemoContentView`` drains it once persistence is wired.
+    /// cold-launch window where the runtime is still being assembled.
+    /// ``DemoContentView`` drains it after the runtime-backed persistence is ready.
     @State private var pendingPayloadBuffer = PendingPayloadBuffer()
 
     /// Staged payload from the Share Extension or Action Extension, read out
-    /// of App Group storage on each foreground transition.  When the SwiftData
-    /// container is ready the payload is ingested immediately; otherwise it
-    /// waits here until the container `Task` completes.
+    /// of App Group storage on each foreground transition. When the runtime is
+    /// ready the payload is ingested immediately; otherwise it waits here until
+    /// the bootstrap `Task` completes.
     @State private var stagedSharePayload: PendingSharePayload?
 
     init() {
@@ -59,10 +56,12 @@ struct BaseChatDemoApp: App {
             UserDefaults.standard.set(true, forKey: "showAdvancedSettings")
         }
         // Configure BaseChatKit for this app
-        BaseChatConfiguration.shared = BaseChatConfiguration(
+        let runtimeConfiguration = BaseChatConfiguration(
             appName: "BaseChat Demo",
             bundleIdentifier: "com.basechatkit.demo"
         )
+        self.runtimeConfiguration = runtimeConfiguration
+        BaseChatConfiguration.shared = runtimeConfiguration
 
         // Populate curated model recommendations
         CuratedModel.all = Self.curatedModels
@@ -210,12 +209,10 @@ struct BaseChatDemoApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let container = modelContainer {
+                if let runtime {
                     DemoContentView(
-                        inferenceService: inferenceService,
                         toolRegistry: toolRegistry,
                         sandboxRoot: sandboxRoot,
-                        skipAutoModelLoad: isUITesting,
                         pendingPayloadBuffer: pendingPayloadBuffer,
                         pendingDemoScenarioID: pendingDemoScenarioID
                     )
@@ -225,7 +222,7 @@ struct BaseChatDemoApp: App {
                     #if os(macOS)
                     .frame(minWidth: 600, minHeight: 400)
                     #endif
-                    .modelContainer(container)
+                    .modelContainer(runtime.modelContainer)
                 } else {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -242,10 +239,12 @@ struct BaseChatDemoApp: App {
                                 await pendingPayloadBuffer.store(seeded)
                             }
 
-                            modelContainer = await Task.detached(priority: .userInitiated) {
+                            let container = await Task.detached(priority: .userInitiated) {
                                 let config = ModelConfiguration("BaseChatDemo", isStoredInMemoryOnly: testing)
                                 return try! ModelContainerFactory.makeContainer(configurations: [config])
                             }.value
+
+                            installRuntime(using: container)
                         }
                 }
             }
@@ -257,8 +256,8 @@ struct BaseChatDemoApp: App {
             // fires .active before the container task completes. The `.task`
             // modifier lives on the inner View (not on `WindowGroup`, which
             // is a `Scene`).
-            .task(id: modelContainer != nil ? 1 : 0) {
-                guard modelContainer != nil, let staged = stagedSharePayload else { return }
+            .task(id: runtime != nil ? 1 : 0) {
+                guard runtime != nil, let staged = stagedSharePayload else { return }
                 stagedSharePayload = nil
                 guard let pendingPayload = pendingPayload(from: staged) else { return }
                 await chatViewModel.ingestPendingPayload(pendingPayload, intent: .newSession(preset: nil))
@@ -301,7 +300,7 @@ struct BaseChatDemoApp: App {
         // If persistence is wired, ingest directly — otherwise hand off
         // to the buffer and let `DemoContentView` pick it up once mount
         // completes.
-        if modelContainer != nil {
+        if runtime != nil {
             Task { @MainActor in
                 await chatViewModel.ingest(payload)
             }
@@ -318,10 +317,10 @@ struct BaseChatDemoApp: App {
     /// Action Extension from the App Group container.
     ///
     /// Called on every foreground transition (`.onChange(of: scenePhase)`).
-    /// When the SwiftData container is ready the payload is passed to
+    /// When the runtime is ready the payload is passed to
     /// ``ChatViewModel/ingestPendingPayload(_:intent:)`` immediately;
     /// otherwise it is stored in ``stagedSharePayload`` and picked up by the
-    /// `.task(id:)` modifier once the container completes.
+    /// `.task(id:)` modifier once bootstrap completes.
     private func checkForPendingSharePayload() {
         guard let defaults = UserDefaults(suiteName: DemoAppGroup.identifier),
               let data = defaults.data(forKey: DemoAppGroup.pendingShareKey),
@@ -331,15 +330,54 @@ struct BaseChatDemoApp: App {
         // Remove before ingesting so a crash during ingest doesn't replay.
         defaults.removeObject(forKey: DemoAppGroup.pendingShareKey)
 
-        if modelContainer != nil {
+        if runtime != nil {
             guard let payload = pendingPayload(from: sharePayload) else { return }
             Task { @MainActor in
                 await chatViewModel.ingestPendingPayload(payload, intent: .newSession(preset: nil))
             }
         } else {
-            // Container still initialising — stage for the .task(id:) drain.
+            // Runtime still initialising — stage for the .task(id:) drain.
             stagedSharePayload = sharePayload
         }
+    }
+
+    @MainActor
+    private func installRuntime(using container: ModelContainer) {
+        let runtime = try! BaseChatRuntime(
+            configuration: runtimeConfiguration,
+            inferenceService: inferenceService,
+            makeModelContainer: { container }
+        )
+
+        chatViewModel.configure(runtime: runtime)
+        sessionManager.configure(runtime: runtime)
+        chatViewModel.onFirstMessage = { [inferenceService] session, text in
+            Task { @MainActor in
+                while chatViewModel.isGenerating {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+                await sessionManager.autoRenameSession(
+                    session,
+                    firstMessage: text,
+                    inferenceService: inferenceService
+                )
+            }
+        }
+
+        if !isUITesting {
+            chatViewModel.refreshModels()
+            chatViewModel.autoSelectFirstRunModel()
+
+            if chatViewModel.selectedModel == nil,
+               let foundation = chatViewModel.availableModels.first(where: { $0.modelType == .foundation }) {
+                chatViewModel.selectedModel = foundation
+            }
+
+            chatViewModel.dispatchSelectedLoad()
+            chatViewModel.startMemoryMonitoring()
+        }
+
+        self.runtime = runtime
     }
 
     /// Converts a ``PendingSharePayload`` (pure Foundation, extension-safe)

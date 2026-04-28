@@ -9,7 +9,6 @@ struct DemoContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(ModelManagementViewModel.self) private var managementViewModel
     @Environment(SessionManagerViewModel.self) private var sessionManager
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @Query(filter: #Predicate<APIEndpoint> { $0.isEnabled }, sort: \APIEndpoint.createdAt)
@@ -21,10 +20,8 @@ struct DemoContentView: View {
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
 
-    let inferenceService: InferenceService
-
-    /// Tool registry shared with `inferenceService`. Held here so the demo
-    /// scenario runner can install scenario-specific variant executors.
+    /// Tool registry shared with the app's inference service. Held here so the
+    /// demo scenario runner can install scenario-specific variant executors.
     let toolRegistry: ToolRegistry
 
     /// Sandbox root the demo's filesystem tools resolve paths against. Held
@@ -32,17 +29,13 @@ struct DemoContentView: View {
     /// a stable temp directory the test harness can inspect.
     let sandboxRoot: URL
 
-    /// When `true`, the auto-model-load and related onAppear work is skipped
-    /// so that UI tests start from a deterministic empty state.
-    var skipAutoModelLoad: Bool = false
-
     /// Buffer holding any ``InboundPayload`` that arrived during the
-    /// cold-launch window, before persistence was wired. Drained once
-    /// the `onAppear` configuration completes.
+    /// cold-launch window, before the runtime finished bootstrapping.
+    /// Drained once the mounted view can safely hand off to `ChatViewModel`.
     var pendingPayloadBuffer: PendingPayloadBuffer?
 
     /// Optional demo-scenario ID supplied via `--bck-demo-scenario`. Resolved
-    /// to a ``DemoScenario`` and run after persistence is wired in `onAppear`.
+    /// to a ``DemoScenario`` and run after the runtime-backed persistence is ready.
     var pendingDemoScenarioID: String?
 
     var body: some View {
@@ -117,42 +110,7 @@ struct DemoContentView: View {
                 preferredCompactColumn = .detail
             }
 
-            let persistence = SwiftDataPersistenceProvider(modelContext: modelContext)
-            viewModel.configure(persistence: persistence)
-            sessionManager.configure(persistence: persistence)
             viewModel.setAvailableEndpoints(cloudEndpoints)
-
-            if !skipAutoModelLoad {
-                viewModel.refreshModels()
-                viewModel.autoSelectFirstRunModel()
-
-                // If no model was selected (e.g. first-run already fired before
-                // backends were configured), fall back to the Foundation model.
-                if viewModel.selectedModel == nil,
-                   let foundation = viewModel.availableModels.first(where: { $0.modelType == .foundation }) {
-                    viewModel.selectedModel = foundation
-                }
-
-                viewModel.startMemoryMonitoring()
-            }
-
-            sessionManager.loadSessions()
-
-            // Wire AI auto-rename: fires after the first user message in a session.
-            // We defer the rename call until generation finishes so the rename
-            // inference request does not compete with the active streaming reply.
-            viewModel.onFirstMessage = { [inferenceService] session, text in
-                Task { @MainActor in
-                    while viewModel.isGenerating {
-                        try? await Task.sleep(nanoseconds: 100_000_000)
-                    }
-                    await sessionManager.autoRenameSession(
-                        session,
-                        firstMessage: text,
-                        inferenceService: inferenceService
-                    )
-                }
-            }
 
             // Seed an empty session and/or drain any buffered payload.
             //
@@ -180,9 +138,7 @@ struct DemoContentView: View {
                 }
 
                 // Drain any payload that arrived during the cold-launch window
-                // where persistence was not yet wired. Runs after the
-                // `viewModel.configure(persistence:)` call above so the ingest
-                // path can safely create sessions.
+                // where the runtime was not ready yet.
                 if let pendingPayloadBuffer, let payload = await pendingPayloadBuffer.drain() {
                     await viewModel.ingest(payload)
                 }

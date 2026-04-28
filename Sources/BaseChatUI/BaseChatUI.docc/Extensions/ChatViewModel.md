@@ -52,6 +52,7 @@
 
 ### Initialization & Setup
 
+- ``configure(runtime:)``
 - ``configure(persistence:)``
 - ``refreshModels()``
 - ``loadSelectedModel()``

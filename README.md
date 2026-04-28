@@ -177,8 +177,10 @@ swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuilti
 ```swift
 import SwiftData
 import BaseChatCore
+import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
+import BaseChatUIModelManagement
 
 @main
 struct MyApp: App {
@@ -206,10 +208,19 @@ struct MyApp: App {
             return false
         }
         vm.configure(runtime: runtime)
+        vm.refreshModels()
         _chatViewModel = State(initialValue: vm)
 
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(runtime: runtime)
+
+        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        if let initialSession {
+            sessionManager.activeSession = initialSession
+            vm.switchToSession(initialSession)
+            vm.dispatchSelectedLoad()
+        }
+
         _sessionManager = State(initialValue: sessionManager)
 
         let downloadManager = BackgroundDownloadManager()
@@ -243,21 +254,24 @@ struct ContentView: View {
         NavigationSplitView {
             SessionListView()
         } detail: {
-            ChatView(showModelManagement: .constant(false))
-        }
-        .onAppear {
-            viewModel.refreshModels()
-
-            if sessionManager.sessions.isEmpty {
-                _ = try? sessionManager.createSession()
-            }
+            ChatView(
+                showModelManagement: .constant(false),
+                apiConfiguration: { APIConfigurationView() }
+            )
         }
         .onChange(of: sessionManager.activeSession) { _, session in
-            if let session { viewModel.switchToSession(session) }
+            guard let session, viewModel.activeSession?.id != session.id else { return }
+            viewModel.switchToSession(session)
+            viewModel.dispatchSelectedLoad()
         }
     }
 }
 ```
+
+If your app still late-binds persistence from `@Environment(\.modelContext)` in
+`.task`/`.onAppear`, move that work into `App.init()` with `BaseChatRuntime`.
+Keep `configure(persistence:)` for advanced cases that provide a custom
+`ChatPersistenceProvider`.
 
 ## Supported Model Types
 
