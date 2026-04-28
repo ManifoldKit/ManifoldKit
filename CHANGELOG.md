@@ -1,36 +1,35 @@
 # Changelog
 
-## Unreleased
+## [0.13.2](https://github.com/roryford/BaseChatKit/compare/v0.13.1...v0.13.2) (2026-04-28)
 
 ### Highlights
 
-#### Runtime bootstrap surface trim — `Event` callback removed
+#### Runtime bootstrap surface for app assembly
 
-The synchronous `BaseChatRuntime.Event` enum and the `onEvent` callback parameter on `BaseChatRuntime.init` are removed. The callback fired inside `init` so it could not drive UI updates anyway, and no documented adopter was using it; bootstrap order is deterministic and observable through the returned runtime's properties (`inferenceService`, `modelContainer`, `persistence`, `diagnostics`) once the throwing initializer returns.
+Previously, apps had to wire `InferenceService`, SwiftData containers, and session management into view lifecycle hooks — code that ran too late for some setup and was scattered across unrelated views. `BaseChatRuntime` in `BaseChatCore` establishes a first-class bootstrap contract: it installs `BaseChatConfiguration`, builds the inference service, SwiftData `ModelContainer`, and `SwiftDataPersistenceProvider` in a fixed order at app-assembly time, then exposes `configure(runtime:)` extensions on both `ChatViewModel` and `SessionManagerViewModel` for wiring everything in one call.
 
 ```swift
-// Before
-let runtime = try BaseChatRuntime(configuration: config) { event in
-    logger.log("\(event)")
-}
-
-// After — drop the trailing closure; inspect the returned runtime instead
-let runtime = try BaseChatRuntime(configuration: config)
-logger.log("inference=\(ObjectIdentifier(runtime.inferenceService))")
+let runtime = try BaseChatRuntime(configuration: .default)
+chatViewModel.configure(runtime: runtime)
+sessionManagerViewModel.configure(runtime: runtime)
 ```
 
-Adopters who genuinely need per-phase observability (splash-screen progress UIs, cold-launch analytics) can construct the runtime on a background task; an `AsyncSequence` of bootstrap milestones is tracked as a follow-up.
+Apps that need a custom `InferenceService` (e.g. a `ToolRegistry` or approval gate) can pass it in; the runtime uses that instance and builds the rest around it. Apps using a custom `ChatPersistenceProvider` should continue calling `configure(persistence:)` directly — full custom-provider support is tracked in [#872](https://github.com/roryford/BaseChatKit/issues/872).
 
-The Minimal example also moves SwiftData fetches and initial-model dispatch out of `App.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation, and the README + DocC `BuildingAChatUI` article gain a "Migrating from `configure(persistence:)`" subsection covering both `ChatViewModel.configure(runtime:)` and `SessionManagerViewModel.configure(runtime:)`.
+A companion `CompiledBackends` contract in `BaseChatInference` gives the runtime a single source of truth for which backends are compiled in (build profile, inference traits, local model types, remote providers), so `DefaultBackends`, `APIProvider.availableInBuild`, and `FrameworkCapabilityService` no longer maintain separate static trait logic. Host apps can switch over `CompiledBackends.current.buildProfile` (`.offline`, `.selfHosted`, `.saas`, `.full`) to decide what UI to show at startup without importing `BaseChatBackends`.
+
+See [#866](https://github.com/roryford/BaseChatKit/pull/866), [#867](https://github.com/roryford/BaseChatKit/pull/867), [#869](https://github.com/roryford/BaseChatKit/pull/869), [#871](https://github.com/roryford/BaseChatKit/pull/871).
+
+### Features
+
+- **core:** new `BaseChatRuntime` type wires inference, SwiftData container, and persistence in a fixed bootstrap order; `configure(runtime:)` extensions on `ChatViewModel` and `SessionManagerViewModel` ([#866](https://github.com/roryford/BaseChatKit/pull/866))
+- **inference:** `CompiledBackends` struct and `BackendBuildProfile` enum consolidate build-trait queries; removes scattered static trait checks from `DefaultBackends`, `APIProvider`, and `FrameworkCapabilityService` ([#867](https://github.com/roryford/BaseChatKit/pull/867))
+- **examples:** MinimalExample and demo app migrated to runtime-first app assembly; README and DocC updated with `BaseChatRuntime` guidance and migration path from `configure(persistence:)` ([#869](https://github.com/roryford/BaseChatKit/pull/869))
 
 ### Fixes
 
-- **example:** move SwiftData fetches and initial-model dispatch out of `MinimalExampleApp.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation
-- **docs:** README + DocC migration prose now configures both `ChatViewModel` and `SessionManagerViewModel` from the runtime, matching the MinimalExample pattern
-
-### Breaking
-
-- **core:** `BaseChatRuntime.Event` and the `onEvent` callback parameter on `BaseChatRuntime.init` are removed. If you used `onEvent: { event in logger.log(event) }` for diagnostics, replace by inspecting `runtime.inferenceService` / `runtime.modelContainer` / `runtime.persistence` after the throwing init returns; the bootstrap order is fixed and properties are populated synchronously.
+- **example:** move SwiftData fetches and initial-model dispatch out of `MinimalExampleApp.init()` into a `.task { }` modifier so the first frame is not blocked on schema compilation ([#871](https://github.com/roryford/BaseChatKit/pull/871))
+- **docs:** README + DocC migration prose now covers both `ChatViewModel.configure(runtime:)` and `SessionManagerViewModel.configure(runtime:)` ([#871](https://github.com/roryford/BaseChatKit/pull/871))
 
 ## [0.13.1](https://github.com/roryford/BaseChatKit/compare/v0.13.0...v0.13.1) (2026-04-27)
 
