@@ -50,6 +50,11 @@ final class RuntimeConfigurationTests: XCTestCase {
         let created = try await sessionManager.createSession(title: "Runtime Session")
         let persistedIDs = try await runtime.persistence.fetchSessions().map(\.id)
         XCTAssertEqual(persistedIDs, [created.id])
+
+        // `configure(runtime:)` schedules a fire-and-forget `loadSessions()`
+        // (autoLoad: true). Drain it before the runtime / SwiftData container
+        // tears down, otherwise the in-flight fetch races teardown and traps.
+        await sessionManager.autoLoadTask?.value
     }
 
     func test_runtimeBootstrap_canSeedAndActivateInitialSessionWithoutViewLifecycleHooks() async throws {
@@ -80,6 +85,10 @@ final class RuntimeConfigurationTests: XCTestCase {
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
         chatViewModel.refreshModels()
+        // `configure(runtime:)` schedules a fire-and-forget `loadSessions()`.
+        // Drain it deterministically so the explicit reload below is the
+        // observed sequence and the in-flight fetch can't race teardown.
+        await sessionManager.autoLoadTask?.value
         // Phase 1.0: `configure` no longer auto-fires `loadSessions()`.
         // Hosts that bypass `SessionListView` (which calls it from
         // `.task { }`) must load explicitly during bootstrap.

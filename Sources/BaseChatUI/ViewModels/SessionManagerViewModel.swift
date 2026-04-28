@@ -70,6 +70,15 @@ public final class SessionManagerViewModel {
     /// existing call sites that do not care about diagnostics keep working.
     public private(set) var diagnostics: DiagnosticsService?
 
+    /// Handle to the fire-and-forget `loadSessions()` Task scheduled by
+    /// `configure(persistence:autoLoad:diagnostics:)` when `autoLoad: true`.
+    ///
+    /// Production bootstrap paths can ignore this. Tests that exercise the
+    /// `autoLoad: true` path must `await autoLoadTask?.value` before tearing
+    /// down the model container — otherwise the in-flight fetch races
+    /// SwiftData teardown and traps with SIGSEGV.
+    public private(set) var autoLoadTask: Task<Void, Never>?
+
     public init() {}
 
     /// Injects the persistence provider. Call once from the view layer.
@@ -84,10 +93,13 @@ public final class SessionManagerViewModel {
     ///   paths (the `BaseChatRuntime` adapter does this for you).
     /// - `autoLoad: false` — the caller is responsible for calling
     ///   `await loadSessions()` (or relying on `SessionListView`'s
-    ///   `.task { }` modifier). **Always use this in tests.** The
+    ///   `.task { }` modifier). **Prefer this in tests.** The
     ///   `autoLoad: true` Task is fire-and-forget and will trap SwiftData
     ///   if the model container deallocates before the fetch runs, which
-    ///   is the typical test teardown shape.
+    ///   is the typical test teardown shape. Tests that must exercise the
+    ///   `autoLoad: true` path (e.g. covering the `configure(runtime:)`
+    ///   adapter) can `await autoLoadTask?.value` to drain the in-flight
+    ///   fetch before teardown.
     public func configure(
         persistence: ChatPersistenceProvider,
         autoLoad: Bool,
@@ -98,7 +110,9 @@ public final class SessionManagerViewModel {
         self.diagnostics = diagnostics
         Log.persistence.info("SessionManagerViewModel configured")
         if autoLoad {
-            Task { await loadSessions() }
+            autoLoadTask = Task { [weak self] in
+                await self?.loadSessions()
+            }
         }
     }
 
