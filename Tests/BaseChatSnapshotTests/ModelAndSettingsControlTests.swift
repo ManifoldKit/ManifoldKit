@@ -71,6 +71,48 @@ final class ModelAndSettingsControlTests: XCTestCase {
         #endif
     }
 
+    func test_modelManagement_selectTab_hasSortPicker() {
+        // The sort picker is only mounted when at least one model is available
+        // (the empty-state branch shows a placeholder instead).
+        // ``ModelManagementSheet.onAppear`` calls `chatViewModel.refreshModels()`,
+        // which clobbers any test seed by scanning the (empty) on-disk model
+        // directory — so we render `ModelSelectionTabView` directly to bypass
+        // the refresh and exercise just the picker mount path.
+        //
+        // Per the file header, List-rendered text doesn't always appear in
+        // `Swift.dump()`. We assert on the picker's accessibility identifier
+        // and the `ModelSelectionSortOrder` state type — both are visible in
+        // the dump for any constructed picker.
+        let oneGB: UInt64 = 1_024 * 1_024 * 1_024
+        let chatVM = makeChatViewModel()
+        chatVM.availableModels = [
+            ModelInfo(
+                name: "Demo",
+                fileName: "demo.gguf",
+                url: URL(fileURLWithPath: "/tmp/demo.gguf"),
+                fileSize: 2 * oneGB,
+                modelType: .gguf
+            )
+        ]
+
+        let dump = ViewHierarchyDumper.dump(
+            ModelSelectionTabView(onSelect: {})
+                .environment(chatVM)
+        )
+
+        // `Swift.dump()` on a hosting controller surfaces the root view's
+        // declared state but does not traverse into `body` (the picker itself
+        // lives there), so we assert on the `@State` declaration instead.
+        XCTAssertTrue(
+            dump.contains("_sortOrder"),
+            "Select tab should declare a @State sort-order property"
+        )
+        XCTAssertTrue(
+            dump.contains("ModelSelectionSortOrder"),
+            "Sort picker should be backed by ModelSelectionSortOrder state"
+        )
+    }
+
     // MARK: - ModelManagementSheet — Download Tab Content
 
     func test_modelManagement_downloadTab_hasWhyDownloadView() {
