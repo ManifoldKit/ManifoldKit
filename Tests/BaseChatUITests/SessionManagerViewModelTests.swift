@@ -30,8 +30,8 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Create
 
     @MainActor
-    func test_createSession_insertsIntoContext() {
-        let session = try! vm.createSession(title: "Test Session")
+    func test_createSession_insertsIntoContext() async {
+        let session = try! await vm.createSession(title: "Test Session")
 
         XCTAssertEqual(session.title, "Test Session")
         XCTAssertEqual(vm.sessions.count, 1)
@@ -39,16 +39,16 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_createSession_defaultTitle() {
-        let session = try! vm.createSession()
+    func test_createSession_defaultTitle() async {
+        let session = try! await vm.createSession()
         XCTAssertEqual(session.title, "New Chat")
     }
 
     @MainActor
-    func test_createSession_activatesSession() throws {
+    func test_createSession_activatesSession() async throws {
         XCTAssertNil(vm.activeSession, "Precondition: no session active before creation")
 
-        let session = try vm.createSession(title: "Auto-Activate Test")
+        let session = try await vm.createSession(title: "Auto-Activate Test")
 
         XCTAssertEqual(vm.activeSession?.id, session.id,
                        "createSession should activate the new session immediately")
@@ -60,18 +60,18 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Delete
 
     @MainActor
-    func test_deleteSession_removesSession() throws {
-        let session = try vm.createSession(title: "To Delete")
+    func test_deleteSession_removesSession() async throws {
+        let session = try await vm.createSession(title: "To Delete")
         XCTAssertEqual(vm.sessions.count, 1)
 
-        try vm.deleteSession(session)
+        try await vm.deleteSession(session)
 
         XCTAssertEqual(vm.sessions.count, 0)
     }
 
     @MainActor
-    func test_deleteSession_removesAssociatedMessages() throws {
-        let session = try vm.createSession()
+    func test_deleteSession_removesAssociatedMessages() async throws {
+        let session = try await vm.createSession()
 
         // Insert messages for this session
         let msg1 = ChatMessage(role: .user, content: "Hello", sessionID: session.id)
@@ -80,7 +80,7 @@ final class SessionManagerViewModelTests: XCTestCase {
         context.insert(msg2)
         try context.save()
 
-        try vm.deleteSession(session)
+        try await vm.deleteSession(session)
 
         // Verify messages are also deleted
         let sessionID = session.id
@@ -92,11 +92,11 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_deleteSession_clearsActiveIfDeleted() throws {
-        let session = try vm.createSession()
+    func test_deleteSession_clearsActiveIfDeleted() async throws {
+        let session = try await vm.createSession()
         vm.activeSession = session
 
-        try vm.deleteSession(session)
+        try await vm.deleteSession(session)
 
         XCTAssertNil(vm.activeSession)
     }
@@ -104,10 +104,10 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Rename
 
     @MainActor
-    func test_renameSession_updatesTitle() throws {
-        let session = try vm.createSession(title: "Original")
+    func test_renameSession_updatesTitle() async throws {
+        let session = try await vm.createSession(title: "Original")
 
-        try vm.renameSession(session, title: "Renamed")
+        try await vm.renameSession(session, title: "Renamed")
 
         let updated = vm.sessions.first { $0.id == session.id }
         XCTAssertEqual(updated?.title, "Renamed")
@@ -116,22 +116,22 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Auto-Generate Title
 
     @MainActor
-    func test_autoGenerateTitle_setsFromFirstMessage() {
-        let session = try! vm.createSession()
+    func test_autoGenerateTitle_setsFromFirstMessage() async {
+        let session = try! await vm.createSession()
         XCTAssertEqual(session.title, "New Chat")
 
-        vm.autoGenerateTitle(for: session, firstMessage: "Tell me about dragons")
+        await vm.autoGenerateTitle(for: session, firstMessage: "Tell me about dragons")
 
         let updated = vm.sessions.first { $0.id == session.id }
         XCTAssertEqual(updated?.title, "Tell me about dragons")
     }
 
     @MainActor
-    func test_autoGenerateTitle_truncatesAtWordBoundary() {
-        let session = try! vm.createSession()
+    func test_autoGenerateTitle_truncatesAtWordBoundary() async {
+        let session = try! await vm.createSession()
         let longMessage = "This is a really long message that should be truncated at a word boundary because it exceeds fifty characters"
 
-        vm.autoGenerateTitle(for: session, firstMessage: longMessage)
+        await vm.autoGenerateTitle(for: session, firstMessage: longMessage)
 
         let updated = vm.sessions.first { $0.id == session.id }!
         XCTAssertTrue(updated.title.count <= 53, "Title should be truncated (50 chars + '...')")
@@ -140,10 +140,10 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_autoGenerateTitle_skipsIfAlreadyNamed() {
-        let session = try! vm.createSession(title: "Custom Title")
+    func test_autoGenerateTitle_skipsIfAlreadyNamed() async {
+        let session = try! await vm.createSession(title: "Custom Title")
 
-        vm.autoGenerateTitle(for: session, firstMessage: "This should be ignored")
+        await vm.autoGenerateTitle(for: session, firstMessage: "This should be ignored")
 
         let updated = vm.sessions.first { $0.id == session.id }
         XCTAssertEqual(updated?.title, "Custom Title",
@@ -151,10 +151,10 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_autoGenerateTitle_handlesEmptyMessage() {
-        let session = try! vm.createSession()
+    func test_autoGenerateTitle_handlesEmptyMessage() async {
+        let session = try! await vm.createSession()
 
-        vm.autoGenerateTitle(for: session, firstMessage: "   ")
+        await vm.autoGenerateTitle(for: session, firstMessage: "   ")
 
         let updated = vm.sessions.first { $0.id == session.id }
         XCTAssertEqual(updated?.title, "New Chat",
@@ -164,12 +164,12 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Sort Order
 
     @MainActor
-    func test_sessions_sortedByUpdatedAtDescending() {
-        _ = try! vm.createSession(title: "Oldest")
-        _ = try! vm.createSession(title: "Middle")
-        _ = try! vm.createSession(title: "Newest")
+    func test_sessions_sortedByUpdatedAtDescending() async {
+        _ = try! await vm.createSession(title: "Oldest")
+        _ = try! await vm.createSession(title: "Middle")
+        _ = try! await vm.createSession(title: "Newest")
 
-        vm.loadSessions()
+        await vm.loadSessions()
 
         XCTAssertEqual(vm.sessions.count, 3)
         XCTAssertEqual(vm.sessions[0].title, "Newest")
@@ -180,9 +180,12 @@ final class SessionManagerViewModelTests: XCTestCase {
     // MARK: - Error Propagation
 
     @MainActor
-    func test_deleteSession_throwsOnMissingSession() {
+    func test_deleteSession_throwsOnMissingSession() async {
         let ghost = ChatSessionRecord(title: "Ghost")
-        XCTAssertThrowsError(try vm.deleteSession(ghost)) { error in
+        do {
+            try await vm.deleteSession(ghost)
+            XCTFail("Expected deleteSession to throw")
+        } catch {
             guard let persistError = error as? ChatPersistenceError,
                   case .sessionNotFound = persistError else {
                 XCTFail("Expected sessionNotFound, got \(error)")
@@ -192,9 +195,12 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_renameSession_throwsOnMissingSession() {
+    func test_renameSession_throwsOnMissingSession() async {
         let ghost = ChatSessionRecord(title: "Ghost")
-        XCTAssertThrowsError(try vm.renameSession(ghost, title: "New Name")) { error in
+        do {
+            try await vm.renameSession(ghost, title: "New Name")
+            XCTFail("Expected renameSession to throw")
+        } catch {
             guard let persistError = error as? ChatPersistenceError,
                   case .sessionNotFound = persistError else {
                 XCTFail("Expected sessionNotFound, got \(error)")
@@ -204,12 +210,19 @@ final class SessionManagerViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_deleteSession_throwDoesNotCorruptSessionList() throws {
-        let session = try vm.createSession(title: "Real")
+    func test_deleteSession_throwDoesNotCorruptSessionList() async throws {
+        let session = try await vm.createSession(title: "Real")
         let ghost = ChatSessionRecord(title: "Ghost")
         XCTAssertEqual(vm.sessions.count, 1)
 
-        XCTAssertThrowsError(try vm.deleteSession(ghost))
+        do {
+            try await vm.deleteSession(ghost)
+            XCTFail("Expected deleteSession to throw for ghost")
+        } catch {
+            // expected
+        }
+
+        _ = session
 
         // The real session should still be present
         XCTAssertEqual(vm.sessions.count, 1)

@@ -56,13 +56,13 @@ final class SessionOverrideTests: XCTestCase {
         temperature: Float? = nil,
         topP: Float? = nil,
         repeatPenalty: Float? = nil
-    ) throws -> ChatSessionRecord {
-        var session = try sessionManager.createSession(title: title)
+    ) async throws -> ChatSessionRecord {
+        var session = try await sessionManager.createSession(title: title)
         session.temperature = temperature
         session.topP = topP
         session.repeatPenalty = repeatPenalty
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -74,7 +74,7 @@ final class SessionOverrideTests: XCTestCase {
     // MARK: - Tests
 
     func test_customOverrides_passedToBackend() async throws {
-        try createAndActivateSession(
+        try await createAndActivateSession(
             title: "Custom",
             temperature: 0.3,
             topP: 0.5,
@@ -90,7 +90,7 @@ final class SessionOverrideTests: XCTestCase {
     }
 
     func test_noOverrides_usesDefaults() async throws {
-        try createAndActivateSession(title: "Default")
+        try await createAndActivateSession(title: "Default")
 
         await sendMessage()
 
@@ -102,7 +102,7 @@ final class SessionOverrideTests: XCTestCase {
 
     func test_switchBackToCustomSession_overridesStillApplied() async throws {
         // Session A: custom overrides
-        let sessionA = try createAndActivateSession(
+        let sessionA = try await createAndActivateSession(
             title: "Session A",
             temperature: 0.3,
             topP: 0.5,
@@ -112,7 +112,7 @@ final class SessionOverrideTests: XCTestCase {
         await sendMessage("From A first")
 
         // Session B: defaults
-        try createAndActivateSession(title: "Session B")
+        try await createAndActivateSession(title: "Session B")
 
         await sendMessage("From B")
 
@@ -122,7 +122,7 @@ final class SessionOverrideTests: XCTestCase {
         XCTAssertEqual(defaultConfig.repeatPenalty, 1.1, accuracy: 0.001)
 
         // Switch back to Session A
-        vm.switchToSession(sessionA)
+        await vm.switchToSession(sessionA)
 
         await sendMessage("From A again")
 

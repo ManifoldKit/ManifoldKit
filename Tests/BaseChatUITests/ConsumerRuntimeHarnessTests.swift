@@ -23,7 +23,7 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             inferenceService: InferenceService(backend: backend, name: "RuntimeMock")
         )
 
-        let session = try harness!.createAndActivateSession(title: "Runtime Session")
+        let session = try await harness!.createAndActivateSession(title: "Runtime Session")
         harness!.chatViewModel.inputText = "What shipped in v1?"
 
         await harness!.chatViewModel.sendMessage()
@@ -32,11 +32,13 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             harness!.chatViewModel.messages.map(\.content),
             ["What shipped in v1?", "Hello from runtime"]
         )
+        let persistedContents = try await harness!.persistedMessages(for: session).map(\.content)
         XCTAssertEqual(
-            try harness!.persistedMessages(for: session).map(\.content),
+            persistedContents,
             ["What shipped in v1?", "Hello from runtime"]
         )
-        XCTAssertEqual(try harness!.persistedSessions().map(\.id), [session.id])
+        let persistedSessionIDs = try await harness!.persistedSessions().map(\.id)
+        XCTAssertEqual(persistedSessionIDs, [session.id])
     }
 
     func test_stopGeneration_persistsPartialAssistantReply() async throws {
@@ -47,7 +49,7 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             inferenceService: InferenceService(backend: backend, name: "RuntimeSlowMock")
         )
 
-        let session = try harness!.createAndActivateSession(title: "Cancellation Session")
+        let session = try await harness!.createAndActivateSession(title: "Cancellation Session")
         harness!.chatViewModel.inputText = "Tell me a story"
         let sendTask = Task { @MainActor in
             await self.harness?.chatViewModel.sendMessage()
@@ -62,8 +64,9 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
         XCTAssertEqual(assistant.role, .assistant)
         XCTAssertFalse(assistant.content.isEmpty)
         XCTAssertNotEqual(assistant.content, backend.tokensToYield.joined())
-        XCTAssertEqual(try harness!.persistedMessages(for: session).count, 2)
-        XCTAssertEqual(try harness!.persistedMessages(for: session).last?.content, assistant.content)
+        let persistedMessages = try await harness!.persistedMessages(for: session)
+        XCTAssertEqual(persistedMessages.count, 2)
+        XCTAssertEqual(persistedMessages.last?.content, assistant.content)
     }
 
     func test_switchingSessions_reloadsPersistedTranscriptForEachSession() async throws {
@@ -74,23 +77,23 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             inferenceService: InferenceService(backend: backend, name: "RuntimeMock")
         )
 
-        let sessionA = try harness!.createAndActivateSession(title: "Session A")
+        let sessionA = try await harness!.createAndActivateSession(title: "Session A")
         backend.tokensToYield = ["Alpha", " reply"]
         harness!.chatViewModel.inputText = "Alpha question"
         await harness!.chatViewModel.sendMessage()
 
-        let sessionB = try harness!.createAndActivateSession(title: "Session B")
+        let sessionB = try await harness!.createAndActivateSession(title: "Session B")
         backend.tokensToYield = ["Beta", " reply"]
         harness!.chatViewModel.inputText = "Beta question"
         await harness!.chatViewModel.sendMessage()
 
-        harness!.switchToSession(sessionA)
+        await harness!.switchToSession(sessionA)
         XCTAssertEqual(
             harness!.chatViewModel.messages.map(\.content),
             ["Alpha question", "Alpha reply"]
         )
 
-        harness!.switchToSession(sessionB)
+        await harness!.switchToSession(sessionB)
         XCTAssertEqual(
             harness!.chatViewModel.messages.map(\.content),
             ["Beta question", "Beta reply"]
@@ -183,7 +186,7 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             )
         )
 
-        _ = try harness!.createAndActivateSession(title: "Tool Session")
+        _ = try await harness!.createAndActivateSession(title: "Tool Session")
         harness!.chatViewModel.inputText = "Check runtime tools"
 
         await harness!.chatViewModel.sendMessage()

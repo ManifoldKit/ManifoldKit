@@ -48,7 +48,7 @@ struct MemoryPressureUnloadE2ETests {
     /// 3. Pressure returns to nominal -> error clears.
     @Test func fullLifecycle_criticalUnloadsThenNominalRecovers() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // --- Phase 1: Healthy state ---
         #expect(vm.inferenceService.isModelLoaded,
@@ -107,9 +107,9 @@ struct MemoryPressureUnloadE2ETests {
     // MARK: - Warning Does Not Unload
 
     /// Warning-level pressure should set an advisory error but NOT unload the model.
-    @Test func warningPressure_doesNotUnloadModel() {
+    @Test func warningPressure_doesNotUnloadModel() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         handler.pressureLevel = .warning
         vm.handleMemoryPressure()
@@ -180,9 +180,9 @@ struct MemoryPressureUnloadE2ETests {
 
     /// Pressure escalating from warning to critical should trigger unload on the
     /// critical transition, not on the initial warning.
-    @Test func escalation_warningThenCritical_unloadsOnCritical() {
+    @Test func escalation_warningThenCritical_unloadsOnCritical() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Step 1: warning -- no unload.
         handler.pressureLevel = .warning
@@ -204,9 +204,9 @@ struct MemoryPressureUnloadE2ETests {
     // MARK: - Repeated Critical Is Idempotent
 
     /// Calling handleMemoryPressure twice at critical level should only unload once.
-    @Test func repeatedCritical_unloadsOnlyOnce() {
+    @Test func repeatedCritical_unloadsOnlyOnce() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         handler.pressureLevel = .critical
         vm.handleMemoryPressure()
@@ -220,9 +220,9 @@ struct MemoryPressureUnloadE2ETests {
 
     /// The view model's `memoryPressureLevel` computed property should always
     /// reflect the handler's current state.
-    @Test func memoryPressureLevel_reflectsHandler() {
+    @Test func memoryPressureLevel_reflectsHandler() async {
         let handler = MemoryPressureHandler()
-        let (vm, _, _) = makeViewModel(handler: handler)
+        let (vm, _, _) = await makeViewModel(handler: handler)
 
         #expect(vm.memoryPressureLevel == .nominal)
 

@@ -46,13 +46,13 @@ extension ChatViewModel {
         // deep-link) can still handoff cleanly.
         let session = ChatSessionRecord(title: "New Chat")
         do {
-            try persistence.insertSession(session)
+            try await persistence.insertSession(session)
         } catch {
             Log.persistence.error("ChatViewModel.ingest failed to insert session: \(error.localizedDescription)")
             surfaceError(error, kind: .persistence)
             return
         }
-        switchToSession(session)
+        await switchToSession(session)
 
         // Seed the prompt and run it through the same path as the compose
         // bar so loading checks, auto-title, and token accounting all stay
@@ -70,7 +70,7 @@ extension ChatViewModel {
             var updated = userMessage
             updated.contentParts.append(contentsOf: payload.attachments)
             do {
-                try updateMessage(updated)
+                try await updateMessage(updated)
                 if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
                     messages[index] = updated
                 }

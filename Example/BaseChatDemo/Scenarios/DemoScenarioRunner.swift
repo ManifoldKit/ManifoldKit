@@ -37,11 +37,11 @@ enum DemoScenarioRunner {
         scenario.configure?(registry)
 
         do {
-            let session = try sessions.createSession(title: scenario.title)
+            let session = try await sessions.createSession(title: scenario.title)
             sessions.activeSession = session
             // Deterministic switch — don't wait on the onChange propagation
             // cycle in DemoContentView. See the sequence doc above.
-            chat.switchToSession(session)
+            await chat.switchToSession(session)
         } catch {
             chat.errorMessage = "Failed to start scenario: \(error.localizedDescription)"
             return

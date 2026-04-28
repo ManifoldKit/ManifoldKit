@@ -36,11 +36,11 @@ final class PinnedMessageIndicatorTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createSession(title: String = "Pin Test") -> ChatSession {
+    private func createSession(title: String = "Pin Test") async -> ChatSession {
         let session = ChatSession(title: title)
         context.insert(session)
         try? context.save()
-        vm.switchToSession(session.toRecord())
+        await vm.switchToSession(session.toRecord())
         return session
     }
 
@@ -53,56 +53,56 @@ final class PinnedMessageIndicatorTests: XCTestCase {
 
     // MARK: - Tests
 
-    func test_isMessagePinned_falseBeforePin() {
-        createSession()
+    func test_isMessagePinned_falseBeforePin() async {
+        await createSession()
         let message = makeMessage()
 
         XCTAssertFalse(vm.isMessagePinned(id: message.id),
                        "A newly created message should not be pinned")
     }
 
-    func test_isMessagePinned_trueAfterPin() {
-        createSession()
+    func test_isMessagePinned_trueAfterPin() async {
+        await createSession()
         let message = makeMessage()
 
-        vm.pinMessage(id: message.id)
+        await vm.pinMessage(id: message.id)
 
         XCTAssertTrue(vm.isMessagePinned(id: message.id),
                       "isMessagePinned should return true after pinMessage")
     }
 
-    func test_isMessagePinned_falseAfterUnpin() {
-        createSession()
+    func test_isMessagePinned_falseAfterUnpin() async {
+        await createSession()
         let message = makeMessage()
 
-        vm.pinMessage(id: message.id)
+        await vm.pinMessage(id: message.id)
         XCTAssertTrue(vm.isMessagePinned(id: message.id), "Precondition: message should be pinned")
 
-        vm.unpinMessage(id: message.id)
+        await vm.unpinMessage(id: message.id)
 
         XCTAssertFalse(vm.isMessagePinned(id: message.id),
                        "isMessagePinned should return false after unpinMessage")
     }
 
-    func test_pinnedMessageIDs_persistedToSession() {
-        let session = createSession()
+    func test_pinnedMessageIDs_persistedToSession() async {
+        let session = await createSession()
         let message = makeMessage()
 
-        vm.pinMessage(id: message.id)
+        await vm.pinMessage(id: message.id)
 
         XCTAssertTrue(session.toRecord().pinnedMessageIDs.contains(message.id),
                       "After pinMessage, the session's pinnedMessageIDs should contain the message's id")
     }
 
-    func test_unpinnedMessage_removedFromSession() {
-        let session = createSession()
+    func test_unpinnedMessage_removedFromSession() async {
+        let session = await createSession()
         let message = makeMessage()
 
-        vm.pinMessage(id: message.id)
+        await vm.pinMessage(id: message.id)
         XCTAssertTrue(session.toRecord().pinnedMessageIDs.contains(message.id),
                       "Precondition: session should contain the pinned id")
 
-        vm.unpinMessage(id: message.id)
+        await vm.unpinMessage(id: message.id)
 
         XCTAssertFalse(session.toRecord().pinnedMessageIDs.contains(message.id),
                        "After unpinMessage, the session's pinnedMessageIDs should no longer contain the id")

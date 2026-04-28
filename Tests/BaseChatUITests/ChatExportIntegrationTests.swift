@@ -51,10 +51,10 @@ final class ChatExportIntegrationTests: XCTestCase {
     private func createAndActivateSession(
         vm: ChatViewModel,
         title: String = "Test Chat"
-    ) throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
+    ) async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -62,8 +62,8 @@ final class ChatExportIntegrationTests: XCTestCase {
 
     func test_multiTurnConversation_markdownExport_containsAllTurns() async throws {
         let backend = makeMockBackend(tokens: ["Hello", " there!"])
-        let vm = makeViewModel(backend: backend)
-        try createAndActivateSession(vm: vm, title: "Story Time")
+        let vm = await makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm, title: "Story Time")
 
         // Turn 1
         vm.inputText = "Hi"
@@ -109,8 +109,8 @@ final class ChatExportIntegrationTests: XCTestCase {
 
     func test_multiTurnConversation_plaintextExport_containsAllTurns() async throws {
         let backend = makeMockBackend(tokens: ["I'm", " fine."])
-        let vm = makeViewModel(backend: backend)
-        try createAndActivateSession(vm: vm, title: "Casual Chat")
+        let vm = await makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm, title: "Casual Chat")
 
         // Turn 1
         vm.inputText = "How are you?"
@@ -145,8 +145,8 @@ final class ChatExportIntegrationTests: XCTestCase {
 
     func test_export_sessionTitle_appearsInBothFormats() async throws {
         let backend = makeMockBackend(tokens: ["Noted."])
-        let vm = makeViewModel(backend: backend)
-        try createAndActivateSession(vm: vm, title: "Important Discussion")
+        let vm = await makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm, title: "Important Discussion")
 
         vm.inputText = "Remember this"
         await vm.sendMessage()
@@ -170,10 +170,10 @@ final class ChatExportIntegrationTests: XCTestCase {
 
     // MARK: - Empty conversation export
 
-    func test_emptyConversation_exportsHeaderOnly() throws {
+    func test_emptyConversation_exportsHeaderOnly() async throws {
         let backend = makeMockBackend(tokens: [])
-        let vm = makeViewModel(backend: backend)
-        try createAndActivateSession(vm: vm, title: "Empty Session")
+        let vm = await makeViewModel(backend: backend)
+        try await createAndActivateSession(vm: vm, title: "Empty Session")
 
         // No messages sent
         let markdown = ChatExportService.export(

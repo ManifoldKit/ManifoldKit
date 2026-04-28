@@ -33,7 +33,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
     private func makeViewModel(
         handler: MemoryPressureHandler = MemoryPressureHandler(),
         mock: MockInferenceBackend = MockInferenceBackend()
-    ) -> (ChatViewModel, MockInferenceBackend, MemoryPressureHandler) {
+    ) async -> (ChatViewModel, MockInferenceBackend, MemoryPressureHandler) {
         mock.isModelLoaded = true
         let service = InferenceService(backend: mock, name: "CacheLifecycleMock")
         let vm = ChatViewModel(
@@ -46,7 +46,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
         let session = ChatSession(title: "Cache Lifecycle")
         context.insert(session)
         try? context.save()
-        vm.switchToSession(session.toRecord())
+        await vm.switchToSession(session.toRecord())
         return (vm, mock, handler)
     }
 
@@ -56,7 +56,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
     /// counts computed with the old tokenizer are not returned after a later
     /// model swap picks up the same message UUIDs.
     func test_unloadModel_clearsTokenCountCache() async {
-        let (vm, _, _) = makeViewModel()
+        let (vm, _, _) = await makeViewModel()
 
         // Populate the cache by sending a message.
         vm.inputText = "Cache population"
@@ -77,7 +77,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
     /// also clear the cache, not just manual unloads.
     func test_memoryPressureCritical_clearsTokenCountCache() async {
         let handler = MemoryPressureHandler()
-        let (vm, _, _) = makeViewModel(handler: handler)
+        let (vm, _, _) = await makeViewModel(handler: handler)
 
         vm.inputText = "Memory pressure cache test"
         await vm.sendMessage()
@@ -99,7 +99,7 @@ final class ChatViewModelCacheLifecycleTests: XCTestCase {
     /// token count for that UUID must be dropped so the next
     /// `updateContextEstimate()` recomputes for the new content.
     func test_editMessage_invalidatesTokenCacheEntry() async {
-        let (vm, mock, _) = makeViewModel()
+        let (vm, mock, _) = await makeViewModel()
 
         // Send a user message and wait for the assistant reply.
         mock.tokensToYield = ["Hi"]

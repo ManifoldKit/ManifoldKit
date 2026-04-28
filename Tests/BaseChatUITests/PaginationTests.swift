@@ -39,10 +39,10 @@ final class PaginationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func makeSession() -> ChatSessionRecord {
+    private func makeSession() async -> ChatSessionRecord {
         let session = ChatSessionRecord(title: "Pagination Test")
-        try! persistence.insertSession(session)
-        vm.switchToSession(session)
+        try! await persistence.insertSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -52,7 +52,7 @@ final class PaginationTests: XCTestCase {
         count: Int,
         sessionID: UUID,
         baseTime: Date = Date(timeIntervalSince1970: 1000)
-    ) -> [ChatMessageRecord] {
+    ) async -> [ChatMessageRecord] {
         var records: [ChatMessageRecord] = []
         for i in 0..<count {
             let msg = ChatMessageRecord(
@@ -61,7 +61,7 @@ final class PaginationTests: XCTestCase {
                 timestamp: baseTime.addingTimeInterval(Double(i)),
                 sessionID: sessionID
             )
-            try! persistence.insertMessage(msg)
+            try! await persistence.insertMessage(msg)
             records.append(msg)
         }
         return records
@@ -69,11 +69,11 @@ final class PaginationTests: XCTestCase {
 
     // MARK: - loadMessages
 
-    func test_loadMessages_loadsRecentPage() {
-        let session = makeSession()
-        let msgs = insertMessages(count: 10, sessionID: session.id)
+    func test_loadMessages_loadsRecentPage() async {
+        let session = await makeSession()
+        let msgs = await insertMessages(count: 10, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertEqual(vm.messages.count, 10)
         XCTAssertEqual(vm.messages.first?.content, msgs.first?.content)
@@ -81,22 +81,22 @@ final class PaginationTests: XCTestCase {
         XCTAssertFalse(vm.hasOlderMessages, "Fewer than pageSize messages means no older messages")
     }
 
-    func test_loadMessages_setsHasOlderMessages_whenFullPage() {
-        let session = makeSession()
-        insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
+    func test_loadMessages_setsHasOlderMessages_whenFullPage() async {
+        let session = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
         XCTAssertTrue(vm.hasOlderMessages, "Full page should indicate older messages may exist")
     }
 
-    func test_loadMessages_setsHasOlderMessages_whenMoreThanPageSize() {
-        let session = makeSession()
+    func test_loadMessages_setsHasOlderMessages_whenMoreThanPageSize() async {
+        let session = await makeSession()
         let totalCount = ChatViewModel.messagePageSize + 20
-        insertMessages(count: totalCount, sessionID: session.id)
+        await insertMessages(count: totalCount, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
         XCTAssertTrue(vm.hasOlderMessages)
@@ -104,12 +104,12 @@ final class PaginationTests: XCTestCase {
         XCTAssertEqual(vm.messages.last?.content, "Message \(totalCount - 1)")
     }
 
-    func test_loadMessages_withNoSession_clearsState() {
+    func test_loadMessages_withNoSession_clearsState() async {
         vm.activeSession = nil
         vm.messages = [ChatMessageRecord(role: .user, content: "stale", sessionID: UUID())]
         vm.hasOlderMessages = true
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertTrue(vm.messages.isEmpty)
         XCTAssertFalse(vm.hasOlderMessages)
@@ -117,15 +117,15 @@ final class PaginationTests: XCTestCase {
 
     // MARK: - loadOlderMessages
 
-    func test_loadOlderMessages_prependsOlderPage() {
-        let session = makeSession()
+    func test_loadOlderMessages_prependsOlderPage() async {
+        let session = await makeSession()
         let totalCount = ChatViewModel.messagePageSize + 20
-        let msgs = insertMessages(count: totalCount, sessionID: session.id)
+        let msgs = await insertMessages(count: totalCount, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
         XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize)
 
-        let anchorID = vm.loadOlderMessages()
+        let anchorID = await vm.loadOlderMessages()
 
         XCTAssertEqual(vm.messages.count, totalCount)
         // Anchor should be the first message from the initial page (index 20 overall).
@@ -133,77 +133,77 @@ final class PaginationTests: XCTestCase {
         XCTAssertEqual(vm.messages.first?.content, "Message 0")
     }
 
-    func test_loadOlderMessages_returnsNil_whenNoOlderMessages() {
-        makeSession()
+    func test_loadOlderMessages_returnsNil_whenNoOlderMessages() async {
+        await makeSession()
 
-        let anchorID = vm.loadOlderMessages()
+        let anchorID = await vm.loadOlderMessages()
         XCTAssertNil(anchorID, "Should return nil when hasOlderMessages is false")
     }
 
-    func test_loadOlderMessages_setsHasOlderToFalse_whenPartialPage() {
-        let session = makeSession()
+    func test_loadOlderMessages_setsHasOlderToFalse_whenPartialPage() async {
+        let session = await makeSession()
         let totalCount = ChatViewModel.messagePageSize + 10
-        insertMessages(count: totalCount, sessionID: session.id)
+        await insertMessages(count: totalCount, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
         XCTAssertTrue(vm.hasOlderMessages)
 
-        vm.loadOlderMessages()
+        await vm.loadOlderMessages()
 
         // Only 10 older messages were loaded, which is less than pageSize.
         XCTAssertFalse(vm.hasOlderMessages, "Partial page means no more older messages")
     }
 
-    func test_loadOlderMessages_setsHasOlderToFalse_whenFetchReturnsEmpty() {
-        let session = makeSession()
+    func test_loadOlderMessages_setsHasOlderToFalse_whenFetchReturnsEmpty() async {
+        let session = await makeSession()
         // Insert exactly messagePageSize -- heuristic says there may be more.
-        insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
+        await insertMessages(count: ChatViewModel.messagePageSize, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
         XCTAssertTrue(vm.hasOlderMessages)
 
-        vm.loadOlderMessages()
+        await vm.loadOlderMessages()
 
         XCTAssertFalse(vm.hasOlderMessages)
     }
 
-    func test_loadOlderMessages_guardsAgainstConcurrentLoads() {
-        let session = makeSession()
+    func test_loadOlderMessages_guardsAgainstConcurrentLoads() async {
+        let session = await makeSession()
         let totalCount = ChatViewModel.messagePageSize + 20
-        insertMessages(count: totalCount, sessionID: session.id)
+        await insertMessages(count: totalCount, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         // Simulate isLoadingOlderMessages being true.
         vm.isLoadingOlderMessages = true
-        let anchorID = vm.loadOlderMessages()
+        let anchorID = await vm.loadOlderMessages()
         XCTAssertNil(anchorID, "Should not load while another load is in progress")
         XCTAssertEqual(vm.messages.count, ChatViewModel.messagePageSize, "Message count should not change")
 
         vm.isLoadingOlderMessages = false
     }
 
-    func test_loadOlderMessages_resetsLoadingFlag() {
-        let session = makeSession()
+    func test_loadOlderMessages_resetsLoadingFlag() async {
+        let session = await makeSession()
         let totalCount = ChatViewModel.messagePageSize + 20
-        insertMessages(count: totalCount, sessionID: session.id)
+        await insertMessages(count: totalCount, sessionID: session.id)
 
-        vm.loadMessages()
-        vm.loadOlderMessages()
+        await vm.loadMessages()
+        await vm.loadOlderMessages()
 
         XCTAssertFalse(vm.isLoadingOlderMessages, "Loading flag should be cleared after load completes")
     }
 
     // MARK: - clearChat resets pagination state
 
-    func test_clearChat_resetsHasOlderMessages() {
-        let session = makeSession()
-        insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
+    func test_clearChat_resetsHasOlderMessages() async {
+        let session = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
         XCTAssertTrue(vm.hasOlderMessages)
 
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertFalse(vm.hasOlderMessages)
         XCTAssertTrue(vm.messages.isEmpty)
@@ -211,26 +211,26 @@ final class PaginationTests: XCTestCase {
 
     // MARK: - Mock call tracking
 
-    func test_loadMessages_callsFetchRecentMessages() {
-        let session = makeSession()
-        insertMessages(count: 5, sessionID: session.id)
+    func test_loadMessages_callsFetchRecentMessages() async {
+        let session = await makeSession()
+        await insertMessages(count: 5, sessionID: session.id)
 
         // Reset count after switchToSession's loadMessages call.
         persistence.fetchRecentMessagesCallCount = 0
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertEqual(persistence.fetchRecentMessagesCallCount, 1)
     }
 
-    func test_loadOlderMessages_callsFetchMessagesBefore() {
-        let session = makeSession()
-        insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
+    func test_loadOlderMessages_callsFetchMessagesBefore() async {
+        let session = await makeSession()
+        await insertMessages(count: ChatViewModel.messagePageSize + 10, sessionID: session.id)
 
-        vm.loadMessages()
+        await vm.loadMessages()
         persistence.fetchMessagesBeforeCallCount = 0
 
-        vm.loadOlderMessages()
+        await vm.loadOlderMessages()
 
         XCTAssertEqual(persistence.fetchMessagesBeforeCallCount, 1)
     }

@@ -112,15 +112,15 @@ final class UserJourneyE2ETests {
 
         // 4. First session + first message — create a session, activate it,
         //    and send a message. User + assistant messages must persist.
-        let session = try sessionManager.createSession(title: "Day One")
+        let session = try await sessionManager.createSession(title: "Day One")
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         // switchToSession resets selectedModel to match the session's
         // selectedModelID, which is still nil for a brand-new session.
         // Re-apply modelA and persist so the session records it.
         vm.selectedModel = modelA
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         backend.tokensToYield = ["Hi", " there"]
         vm.inputText = "Hello"
@@ -206,7 +206,7 @@ final class UserJourneyE2ETests {
         #expect(modelB.id != modelA.id)
 
         vm.selectedModel = modelB
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
         await vm.loadSelectedModel()
         #expect(vm.isModelLoaded)
         #expect(vm.messages.count == 4, "Switching models must not drop conversation history")
@@ -265,13 +265,13 @@ final class UserJourneyE2ETests {
 
         // 9. Session persistence — reload sessions, grab the fresh record,
         //    and verify selectedModelID restored correctly to modelB.
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshSession = try #require(sessionManager.sessions.first { $0.title == "Day One" })
         #expect(freshSession.selectedModelID == modelB.id)
 
         // Switching back through the fresh session record must re-resolve
         // modelB from availableModels (it's still on disk) and reload messages.
-        vm.switchToSession(freshSession)
+        await vm.switchToSession(freshSession)
         #expect(vm.selectedModel?.id == modelB.id)
         // All expected content anchors must round-trip through the reload.
         #expect(
@@ -293,7 +293,7 @@ final class UserJourneyE2ETests {
         // saveSettingsToSession actually reached the store in step 7 — not
         // just the in-memory sessions array that loadSessions() repopulates.
         //
-        // Sabotage verified: removing the `try vm.saveSettingsToSession()` call
+        // Sabotage verified: removing the `try await vm.saveSettingsToSession()` call
         // in step 7 causes the assertion below to fail with
         // `storedSessions.first?.selectedModelID == modelA.id` (or nil) instead
         // of modelB.id, confirming this assertion catches the real persistence

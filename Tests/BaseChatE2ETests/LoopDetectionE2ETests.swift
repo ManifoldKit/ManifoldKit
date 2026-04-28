@@ -24,7 +24,7 @@ struct LoopDetectionE2ETests {
 
     // MARK: - Helpers
 
-    private func makeVM(backend: MockInferenceBackend) throws -> ChatViewModel {
+    private func makeVM(backend: MockInferenceBackend) async throws -> ChatViewModel {
         backend.isModelLoaded = true
         let service = InferenceService(backend: backend, name: "Mock")
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
@@ -33,9 +33,9 @@ struct LoopDetectionE2ETests {
 
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(persistence: persistence)
-        let session = try sessionManager.createSession(title: "Test")
+        let session = try await sessionManager.createSession(title: "Test")
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         return vm
     }
@@ -47,7 +47,7 @@ struct LoopDetectionE2ETests {
         let repeatedChunk = "The world ended now. "
         let totalChunks = 200
         mock.tokensToYield = Array(repeating: repeatedChunk, count: totalChunks)
-        let vm = try makeVM(backend: mock)
+        let vm = try await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()
@@ -87,7 +87,7 @@ struct LoopDetectionE2ETests {
         let repeatedChunk = "The world ended now. "
         let totalChunks = 200
         mock.tokensToYield = Array(repeating: repeatedChunk, count: totalChunks)
-        let vm = try makeVM(backend: mock)
+        let vm = try await makeVM(backend: mock)
         vm.loopDetectionEnabled = false
 
         vm.inputText = "Hello"
@@ -111,7 +111,7 @@ struct LoopDetectionE2ETests {
         let mock = MockInferenceBackend()
         let repeatedChunk = "The world ended now. "
         mock.tokensToYield = Array(repeating: repeatedChunk, count: 200)
-        let vm = try makeVM(backend: mock)
+        let vm = try await makeVM(backend: mock)
         let session = try #require(vm.activeSession)
 
         vm.inputText = "Hello"
@@ -121,7 +121,7 @@ struct LoopDetectionE2ETests {
         let partialContent = assistant.content
 
         // Reload the session to verify persistence round-trip.
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         let reloaded = try #require(
             vm.messages.first(where: { $0.role == .assistant }),

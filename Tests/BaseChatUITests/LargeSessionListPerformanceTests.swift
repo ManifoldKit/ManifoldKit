@@ -35,7 +35,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
         persistence = SwiftDataPersistenceProvider(modelContext: context)
         vm = SessionManagerViewModel()
         vm.configure(persistence: persistence)
-        try seedLargeFixture()
+        try await seedLargeFixture()
     }
 
     override func tearDown() async throws {
@@ -59,15 +59,25 @@ final class LargeSessionListPerformanceTests: XCTestCase {
     /// this should stay flat regardless of where in the list the user scrolls.
     func test_perf_paginationStep() {
         // Pre-load to the same baseline as a real scroll session would.
-        vm.loadSessions()
+        let preload = expectation(description: "preload")
+        Task {
+            await vm.loadSessions()
+            preload.fulfill()
+        }
+        wait(for: [preload], timeout: 30)
 
         measure {
             // Reset to the first page each iteration so the measurement is
             // independent — otherwise every iteration after the first would
             // be a no-op once the list is exhausted.
-            vm.loadSessions()
-            vm.loadNextPage()
-            vm.loadNextPage()
+            let exp = expectation(description: "pagination step")
+            Task {
+                await vm.loadSessions()
+                await vm.loadNextPage()
+                await vm.loadNextPage()
+                exp.fulfill()
+            }
+            wait(for: [exp], timeout: 30)
         }
     }
 
@@ -75,7 +85,12 @@ final class LargeSessionListPerformanceTests: XCTestCase {
     /// hit when they type into the search field with "Messages" scope.
     func test_perf_messageSearchLatency() {
         measure {
-            vm.runMessageSearch("findme")
+            let exp = expectation(description: "message search")
+            Task {
+                await vm.runMessageSearch("findme")
+                exp.fulfill()
+            }
+            wait(for: [exp], timeout: 30)
             XCTAssertFalse(vm.messageMatchSessions.isEmpty,
                            "Fixture must seed at least one matching message")
         }
@@ -85,7 +100,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
 
     /// Seeds 1000 sessions and 50K messages, of which ~10 contain the
     /// "findme" needle so the search test always has work to do.
-    private func seedLargeFixture() throws {
+    private func seedLargeFixture() async throws {
         let base = Date(timeIntervalSince1970: 1_000_000)
         var sessionIDs: [UUID] = []
         sessionIDs.reserveCapacity(sessionCount)
@@ -94,7 +109,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
                 title: "Session \(i)",
                 updatedAt: base.addingTimeInterval(Double(i))
             )
-            try persistence.insertSession(record)
+            try await persistence.insertSession(record)
             sessionIDs.append(record.id)
         }
 
@@ -106,7 +121,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
                 let body = isNeedle
                     ? "Earlier we discussed findme as a topic worth revisiting."
                     : "Generic chat content for session \(i) message \(j)."
-                try persistence.insertMessage(ChatMessageRecord(
+                try await persistence.insertMessage(ChatMessageRecord(
                     role: j.isMultiple(of: 2) ? .user : .assistant,
                     content: body,
                     timestamp: base.addingTimeInterval(Double(i * messagesPerSession + j)),

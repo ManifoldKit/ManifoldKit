@@ -60,9 +60,9 @@ final class PerceivedLatencyDemoTests: XCTestCase {
     }
 
     func test_sendMessage_assemblesFullResponse_withRealisticLatency() async throws {
-        let session = try sessionManager.createSession(title: "Demo")
+        let session = try await sessionManager.createSession(title: "Demo")
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         vm.inputText = "Greet me"
         await vm.sendMessage()

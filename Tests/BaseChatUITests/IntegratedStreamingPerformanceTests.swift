@@ -95,7 +95,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             // empty assistant message (sendMessage appends a new one each call).
             vm.messages = vm.messages.filter { $0.role == .system }
             vm.inputText = "hello"
-            Task { @MainActor in
+            Task {
                 let send = Task { await vm.sendMessage() }
                 // Tight poll on the MainActor — `messages.last?.content` is
                 // mutated on the main actor by `onMutateMessage`, so any
@@ -150,7 +150,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             let vm = harness.vm
             vm.messages = vm.messages.filter { $0.role == .system }
             vm.inputText = "stream please"
-            Task { @MainActor in
+            Task {
                 let send = Task { await vm.sendMessage() }
                 var gaps: [Duration] = []
                 var lastChange = ContinuousClock.now
@@ -222,7 +222,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             let seededIDs = Set(vm.messages.map(\.id))
             vm.messages = vm.messages.filter { seededIDs.contains($0.id) }
             vm.inputText = "tell me about the project"
-            Task { @MainActor in
+            Task {
                 await vm.sendMessage()
                 exp.fulfill()
             }
@@ -252,7 +252,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             let vm = harness.vm
             vm.messages = vm.messages.filter { seededIDs.contains($0.id) }
             vm.inputText = "ping"
-            Task { @MainActor in
+            Task {
                 await vm.sendMessage()
                 exp.fulfill()
             }
@@ -292,27 +292,32 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
         // `InferenceService(backend:name:)` treats the backend as already
         // loaded, but the backend itself enforces an `_isModelLoaded` guard
         // inside `generate()` — preload it here so tests don't deadlock on
-        // the guard throwing.
-        let preload = expectation(description: "backend preload")
+        // the guard throwing. Bridge the async setup back to the sync test
+        // body via expectation so the test function can stay synchronous and
+        // run inside `measure { }` blocks without main-actor reentrancy.
+        let preload = expectation(description: "harness preload")
+        let backendCapture = backend
+        let modelContext = context!
+        nonisolated(unsafe) var harness: Harness!
         Task {
-            try? await backend.loadModel(
+            try? await backendCapture.loadModel(
                 from: URL(fileURLWithPath: "/tmp/integratedperf"),
                 plan: .testStub(effectiveContextSize: 4096)
             )
+            let service = InferenceService(backend: backendCapture, name: "IntegratedPerf")
+            let vm = ChatViewModel(inferenceService: service)
+            vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
+
+            let sessionManager = SessionManagerViewModel()
+            sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
+            let session = (try? await sessionManager.createSession(title: "Perf"))!
+            sessionManager.activeSession = session
+            await vm.switchToSession(session)
+            harness = Harness(vm: vm, backend: backendCapture, session: session)
             preload.fulfill()
         }
-        wait(for: [preload], timeout: 5)
-
-        let service = InferenceService(backend: backend, name: "IntegratedPerf")
-        let vm = ChatViewModel(inferenceService: service)
-        vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-
-        let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = (try? sessionManager.createSession(title: "Perf"))!
-        sessionManager.activeSession = session
-        vm.switchToSession(session)
-        return Harness(vm: vm, backend: backend, session: session)
+        wait(for: [preload], timeout: 30)
+        return harness
     }
 
     /// Seeds `messageCount` alternating user/assistant rows into the harness's
@@ -322,22 +327,29 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     private func seedBacklog(in harness: Harness, messageCount: Int) {
         let sessionID = harness.session.id
         let base = Date(timeIntervalSince1970: 1_000_000)
-        for i in 0..<messageCount {
-            let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
-            // ~80 chars each — enough body for context trimming and markdown
-            // rendering to be exercised, but small enough to keep fixture
-            // build reasonable.
-            let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
-            let record = ChatMessageRecord(
-                role: role,
-                content: body,
-                timestamp: base.addingTimeInterval(Double(i)),
-                sessionID: sessionID
-            )
-            harness.vm.messages.append(record)
-            try? SwiftDataPersistenceProvider(modelContext: context)
-                .insertMessage(record)
+        let exp = expectation(description: "seed backlog")
+        let modelContext = context!
+        let vm = harness.vm
+        Task {
+            let provider = SwiftDataPersistenceProvider(modelContext: modelContext)
+            for i in 0..<messageCount {
+                let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
+                // ~80 chars each — enough body for context trimming and
+                // markdown rendering to be exercised, but small enough to
+                // keep fixture build reasonable.
+                let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
+                let record = ChatMessageRecord(
+                    role: role,
+                    content: body,
+                    timestamp: base.addingTimeInterval(Double(i)),
+                    sessionID: sessionID
+                )
+                vm.messages.append(record)
+                try? await provider.insertMessage(record)
+            }
+            exp.fulfill()
         }
+        wait(for: [exp], timeout: 60)
     }
 
     /// Builds a token script whose total visible content size is approximately

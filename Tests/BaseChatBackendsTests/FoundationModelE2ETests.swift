@@ -48,8 +48,8 @@ final class FoundationModelE2ETests: XCTestCase {
 
         // Create and activate a session
         let record = ChatSessionRecord(title: "E2E Test")
-        try persistence.insertSession(record)
-        vm.switchToSession(record)
+        try await persistence.insertSession(record)
+        await vm.switchToSession(record)
 
         // Load the Foundation model
         let foundationModel = ModelInfo.builtInFoundation
@@ -139,9 +139,9 @@ final class FoundationModelE2ETests: XCTestCase {
         // Simulate a session switch mid-session, which calls resetConversation()
         // and clears FoundationBackend.session. generate() must still work.
         let secondSession = ChatSessionRecord(title: "Second Session")
-        try SwiftDataPersistenceProvider(modelContext: context).insertSession(secondSession)
+        try await SwiftDataPersistenceProvider(modelContext: context).insertSession(secondSession)
 
-        vm.switchToSession(secondSession)  // → resetConversation() → session = nil
+        await vm.switchToSession(secondSession)  // → resetConversation() → session = nil
 
         vm.inputText = "Reply with one word."
         await vm.sendMessage()

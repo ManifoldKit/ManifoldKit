@@ -197,11 +197,13 @@ public struct GenerationSettingsView<APIConfig: View>: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        do {
-                            try viewModel.saveSettingsToSession()
-                        } catch {
-                            Log.persistence.error("Failed to save settings from sheet: \(error)")
-                            viewModel.errorMessage = "Failed to save settings: \(error.localizedDescription)"
+                        Task {
+                            do {
+                                try await viewModel.saveSettingsToSession()
+                            } catch {
+                                Log.persistence.error("Failed to save settings from sheet: \(error)")
+                                viewModel.errorMessage = "Failed to save settings: \(error.localizedDescription)"
+                            }
                         }
                         dismiss()
                     }

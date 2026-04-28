@@ -76,11 +76,19 @@ struct MinimalExampleApp: App {
     @MainActor
     private func bootstrapInitialSession() async {
         chatViewModel.refreshModels()
+        // Phase 1.0: `configure` no longer auto-loads. Pull the first page
+        // here so an existing-session check sees the persisted list.
+        await sessionManager.loadSessions()
 
-        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        let initialSession: ChatSessionRecord?
+        if let existing = sessionManager.sessions.first {
+            initialSession = existing
+        } else {
+            initialSession = try? await sessionManager.createSession()
+        }
         if let initialSession {
             sessionManager.activeSession = initialSession
-            chatViewModel.switchToSession(initialSession)
+            await chatViewModel.switchToSession(initialSession)
             chatViewModel.dispatchSelectedLoad()
         }
     }

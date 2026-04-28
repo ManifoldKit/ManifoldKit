@@ -29,7 +29,7 @@ final class ChatViewModelLoopDetectionTests: XCTestCase {
         // 20-char chunk repeated 30 times = 600 chars, well above thresholds
         let repeatedChunk = "The world ended now. "
         mock.tokensToYield = Array(repeating: repeatedChunk, count: 30)
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()
@@ -47,7 +47,7 @@ final class ChatViewModelLoopDetectionTests: XCTestCase {
         let mock = MockInferenceBackend()
         let repeatedChunk = "The world ended now. "
         mock.tokensToYield = Array(repeating: repeatedChunk, count: 30)
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.loopDetectionEnabled = false
 
         vm.inputText = "Hello"
@@ -97,7 +97,7 @@ final class ChatViewModelLoopDetectionTests: XCTestCase {
             "The ", "quick ", "brown ", "fox ", "jumps ", "over ",
             "the ", "lazy ", "dog. ", "A ", "wonderful ", "sentence."
         ]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()

@@ -7,7 +7,7 @@ import BaseChatInference
 extension ChatViewModel {
 
     /// Switches to a different chat session, loading its messages and settings.
-    public func switchToSession(_ session: ChatSessionRecord) {
+    public func switchToSession(_ session: ChatSessionRecord) async {
         // Stop any active generation for the old session.
         if isGenerating {
             stopGeneration()
@@ -49,14 +49,14 @@ extension ChatViewModel {
         }
 
         showUpgradeHint = false
-        loadMessages()
+        await loadMessages()
         updateContextEstimate()
         Log.ui.info("Switched to session: \(session.title, privacy: .private)")
     }
 
     /// Saves the current generation settings back to the active session.
-    func saveSettingsToSession() throws {
-        try sessionController.saveSettingsToSession(
+    func saveSettingsToSession() async throws {
+        try await sessionController.saveSettingsToSession(
             selectedModelID: selectedModel?.id,
             selectedEndpointID: selectedEndpoint?.id
         )
@@ -132,9 +132,9 @@ extension ChatViewModel {
     // MARK: - Lifecycle
 
     /// Saves all pending changes. Called on app background.
-    public func saveState() {
+    public func saveState() async {
         do {
-            try saveSettingsToSession()
+            try await saveSettingsToSession()
             Log.persistence.info("State saved on background")
         } catch {
             Log.persistence.error("Failed to save state on background: \(error)")

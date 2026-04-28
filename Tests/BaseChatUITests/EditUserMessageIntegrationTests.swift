@@ -54,10 +54,10 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -80,7 +80,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Updates Content In Memory
 
     func test_editMessage_updatesContentInMemory() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         mock.tokensToYield = ["Original", " reply"]
         vm.inputText = "Original question"
@@ -104,7 +104,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Persists To SwiftData
 
     func test_editMessage_persistsChangesToDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Original", " reply"]
         vm.inputText = "Before edit"
@@ -124,7 +124,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Does Not Create Duplicate Messages
 
     func test_editMessage_doesNotCreateDuplicateMessages() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Reply", " one"]
         vm.inputText = "Question"
@@ -150,7 +150,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Preserves Original Message ID
 
     func test_editMessage_preservesOriginalUserMessageID() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Original"
@@ -168,7 +168,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Removes Subsequent Messages And Regenerates
 
     func test_editMessage_removesSubsequentMessagesAndRegenerates() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         // Build a 3-turn conversation (6 messages)
         mock.tokensToYield = ["Reply", " 1"]
@@ -206,7 +206,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit With Same Content Is Idempotent
 
     func test_editMessage_withSameContent_doesNotCorruptState() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Question"
@@ -229,7 +229,7 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Edit Nonexistent Message Is No-Op
 
     func test_editMessage_withInvalidID_isNoOp() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Question"

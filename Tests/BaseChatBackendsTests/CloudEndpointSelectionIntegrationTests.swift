@@ -85,10 +85,10 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     }
 
     @discardableResult
-    private func makeSession(title: String = "Test") throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
+    private func makeSession(title: String = "Test") async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -149,7 +149,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         // https:// is required for non-localhost endpoints per endpoint validation.
         let uniqueHost = UUID().uuidString + ".invalid"
 
-        try makeSession(title: "Cloud Chat")
+        try await makeSession(title: "Cloud Chat")
         let endpoint = APIEndpoint(
             name: "Local LM Studio",
             provider: .lmStudio,
@@ -195,7 +195,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         }
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         freshVM.configure(persistence: persistence)
-        try makeSession(title: "Sabotage Chat")
+        try await makeSession(title: "Sabotage Chat")
         freshVM.selectedEndpoint = endpoint
         await freshVM.loadCloudEndpoint(endpoint)
         freshVM.inputText = "Hi"
@@ -236,7 +236,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
     // MARK: - Session Persistence
 
-    func test_sessionRestoresSelectedEndpoint() throws {
+    func test_sessionRestoresSelectedEndpoint() async throws {
         let endpointA = APIEndpoint(
             name: "Endpoint A",
             provider: .ollama,
@@ -254,31 +254,31 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         vm.setAvailableEndpoints([endpointA, endpointB])
 
         // Session A selects endpoint A.
-        try makeSession(title: "Session A")
+        try await makeSession(title: "Session A")
         vm.selectedEndpoint = endpointA
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Session B selects endpoint B.
-        let sessionB = try sessionManager.createSession(title: "Session B")
+        let sessionB = try await sessionManager.createSession(title: "Session B")
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
         vm.selectedEndpoint = endpointB
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Reload and switch back to session A — endpoint A should restore.
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshA = try XCTUnwrap(sessionManager.sessions.first { $0.title == "Session A" })
         sessionManager.activeSession = freshA
-        vm.switchToSession(freshA)
+        await vm.switchToSession(freshA)
 
         XCTAssertEqual(vm.selectedEndpoint?.id, endpointA.id)
 
         // Sabotage: remove endpoint A from available endpoints and verify
         // the session restore clears the selection gracefully.
         vm.setAvailableEndpoints([endpointB])
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshA2 = try XCTUnwrap(sessionManager.sessions.first { $0.title == "Session A" })
-        vm.switchToSession(freshA2)
+        await vm.switchToSession(freshA2)
         XCTAssertNil(vm.selectedEndpoint, "Endpoint not restored when removed from available endpoints")
     }
 
@@ -295,7 +295,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         try persistEndpoint(endpoint)
         vm.setAvailableEndpoints([endpoint])
 
-        try makeSession(title: "Switch Test")
+        try await makeSession(title: "Switch Test")
 
         // Start with local model.
         vm.selectedModel = localModel
@@ -303,7 +303,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         XCTAssertTrue(vm.isModelLoaded)
         XCTAssertNotNil(vm.selectedModel)
         XCTAssertNil(vm.selectedEndpoint)
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Switch to cloud endpoint.
         vm.selectedEndpoint = endpoint
@@ -311,12 +311,12 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         XCTAssertTrue(vm.isModelLoaded)
         XCTAssertNil(vm.selectedModel, "Local model should be cleared when cloud endpoint is selected")
         XCTAssertNotNil(vm.selectedEndpoint)
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Reload and verify cloud endpoint was persisted.
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshSession = try XCTUnwrap(sessionManager.sessions.first { $0.title == "Switch Test" })
-        vm.switchToSession(freshSession)
+        await vm.switchToSession(freshSession)
         XCTAssertEqual(vm.selectedEndpoint?.id, endpoint.id)
         XCTAssertNil(vm.selectedModel)
 
@@ -324,10 +324,10 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         // the cloud endpoint from the session.
         vm.selectedModel = localModel
         XCTAssertNil(vm.selectedEndpoint, "Selecting local model should clear cloud endpoint")
-        try vm.saveSettingsToSession()
-        sessionManager.loadSessions()
+        try await vm.saveSettingsToSession()
+        await sessionManager.loadSessions()
         let freshSession2 = try XCTUnwrap(sessionManager.sessions.first { $0.title == "Switch Test" })
-        vm.switchToSession(freshSession2)
+        await vm.switchToSession(freshSession2)
         XCTAssertNil(vm.selectedEndpoint, "After saving with local model, endpoint should not restore")
     }
 

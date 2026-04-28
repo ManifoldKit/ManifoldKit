@@ -106,22 +106,22 @@ final class ConsumerRuntimeHarness {
     }
 
     @discardableResult
-    func createAndActivateSession(title: String = "New Chat") throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
-        switchToSession(session)
+    func createAndActivateSession(title: String = "New Chat") async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
+        await switchToSession(session)
         return session
     }
 
-    func switchToSession(_ session: ChatSessionRecord) {
+    func switchToSession(_ session: ChatSessionRecord) async {
         sessionManager.activeSession = session
-        chatViewModel.switchToSession(session)
+        await chatViewModel.switchToSession(session)
     }
 
-    func persistedMessages(for session: ChatSessionRecord) throws -> [ChatMessageRecord] {
-        try runtime.persistence.fetchMessages(for: session.id)
+    func persistedMessages(for session: ChatSessionRecord) async throws -> [ChatMessageRecord] {
+        try await runtime.persistence.fetchMessages(for: session.id)
     }
 
-    func persistedSessions() throws -> [ChatSessionRecord] {
-        try runtime.persistence.fetchSessions()
+    func persistedSessions() async throws -> [ChatSessionRecord] {
+        try await runtime.persistence.fetchSessions()
     }
 }

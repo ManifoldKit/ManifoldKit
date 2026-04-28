@@ -29,7 +29,7 @@ extension ChatViewModel {
         let userMessage = ChatMessageRecord(role: .user, content: text, sessionID: activeSessionID)
         messages.append(userMessage)
         do {
-            try saveMessage(userMessage)
+            try await saveMessage(userMessage)
         } catch {
             Log.persistence.error("Failed to save user message: \(error)")
             surfaceError(error, kind: .persistence)
@@ -39,7 +39,7 @@ extension ChatViewModel {
 
         // Update session timestamp.
         do {
-            try sessionController.touchActiveSessionUpdatedAt()
+            try await sessionController.touchActiveSessionUpdatedAt()
         } catch {
             Log.persistence.error("Failed to persist session timestamp: \(error)")
             surfaceError(error, kind: .persistence)
@@ -47,7 +47,7 @@ extension ChatViewModel {
 
         // Trigger auto-title on the first user message in this session.
         if let session = activeSession, messages.filter({ $0.role == .user }).count == 1 {
-            onFirstMessage?(session, text)
+            await onFirstMessage?(session, text)
         }
 
         // Create an empty assistant message that will be streamed into.
@@ -71,7 +71,7 @@ extension ChatViewModel {
 
         let removed = messages.remove(at: lastAssistantIndex)
         do {
-            try deleteMessage(removed)
+            try await deleteMessage(removed)
         } catch {
             Log.persistence.error("Failed to delete prior assistant message: \(error)")
             surfaceError(error, kind: .persistence)
@@ -98,7 +98,7 @@ extension ChatViewModel {
         let originalMessage = messages[index]
         messages[index].content = newContent
         do {
-            try updateMessage(messages[index])
+            try await updateMessage(messages[index])
         } catch {
             messages[index] = originalMessage
             Log.persistence.error("Failed to update edited message: \(error)")
@@ -115,7 +115,7 @@ extension ChatViewModel {
         messages.removeSubrange((index + 1)...)
         for msg in toRemove {
             do {
-                try deleteMessage(msg)
+                try await deleteMessage(msg)
             } catch {
                 Log.persistence.error("Failed to delete message during edit regeneration: \(error)")
                 surfaceError(error, kind: .persistence)
@@ -134,6 +134,13 @@ extension ChatViewModel {
     }
 
     /// Stops an in-progress generation.
+    ///
+    /// Cancellation is synchronous — the task tear-down and inference-side
+    /// stop happen immediately. The trailing persistence save (capturing
+    /// whatever streamed into the last assistant message before cancel) is
+    /// dispatched on a `Task` so the sync surface stays unchanged for the
+    /// many call sites that fire-and-forget this method (toolbar buttons,
+    /// session-switch teardown, scenePhase handlers).
     public func stopGeneration() {
         generationTask?.cancel()
         generationTask = nil
@@ -144,11 +151,14 @@ extension ChatViewModel {
         // Persist whatever has been generated so far.
         if let lastAssistant = messages.last(where: { $0.role == .assistant }),
            !lastAssistant.content.isEmpty {
-            do {
-                try saveMessage(lastAssistant)
-            } catch {
-                Log.persistence.error("Failed to persist partial assistant message: \(error)")
-                surfaceError(error, kind: .persistence)
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    try await self.saveMessage(lastAssistant)
+                } catch {
+                    Log.persistence.error("Failed to persist partial assistant message: \(error)")
+                    self.surfaceError(error, kind: .persistence)
+                }
             }
         }
         Log.ui.debug("Generation stopped by user")
@@ -157,7 +167,7 @@ extension ChatViewModel {
     /// Clears all messages in the current session.
     ///
     /// Cancels any in-flight generation before clearing to avoid inconsistent UI state.
-    public func clearChat() {
+    public func clearChat() async {
         if isGenerating {
             stopGeneration()
         }
@@ -176,7 +186,7 @@ extension ChatViewModel {
         }
 
         do {
-            try deleteMessages(for: activeSessionID)
+            try await deleteMessages(for: activeSessionID)
             messages.removeAll()
             tokenCountCache.removeAll()
             hasOlderMessages = false
@@ -184,7 +194,7 @@ extension ChatViewModel {
             Log.ui.info("Chat cleared")
         } catch {
             Log.persistence.error("Failed to delete messages while clearing chat: \(error)")
-            loadMessages()
+            await loadMessages()
             tokenCountCache.removeAll()
             updateContextEstimate()
             surfaceError(error, kind: .persistence)
@@ -206,10 +216,10 @@ extension ChatViewModel {
     // MARK: - Message Pinning
 
     /// Marks a message as pinned, preserving it when history is trimmed to fit the context window.
-    public func pinMessage(id messageID: UUID) {
+    public func pinMessage(id messageID: UUID) async {
         pinnedMessageIDs.insert(messageID)
         do {
-            try saveSettingsToSession()
+            try await saveSettingsToSession()
         } catch {
             Log.persistence.error("Failed to save pinned message settings: \(error)")
             surfaceError(error, kind: .persistence)
@@ -217,10 +227,10 @@ extension ChatViewModel {
     }
 
     /// Removes the pin from a message.
-    public func unpinMessage(id messageID: UUID) {
+    public func unpinMessage(id messageID: UUID) async {
         pinnedMessageIDs.remove(messageID)
         do {
-            try saveSettingsToSession()
+            try await saveSettingsToSession()
         } catch {
             Log.persistence.error("Failed to save unpinned message settings: \(error)")
             surfaceError(error, kind: .persistence)

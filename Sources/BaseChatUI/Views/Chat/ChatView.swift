@@ -136,7 +136,7 @@ public struct ChatView<APIConfig: View>: View {
         .alert("Clear Chat", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
-                viewModel.clearChat()
+                Task { await viewModel.clearChat() }
             }
         } message: {
             Text("This will delete all messages in the current chat. This cannot be undone.")
@@ -533,10 +533,10 @@ public struct ChatView<APIConfig: View>: View {
     /// Loads the next page of older messages and scrolls back to the anchor
     /// so the viewport doesn't jump when content is prepended above.
     private func loadOlderAndRestore(proxy: ScrollViewProxy) {
-        guard let anchorID = viewModel.loadOlderMessages() else { return }
-        // Scroll back to the message that was at the top before prepend,
-        // keeping it at the top of the viewport to prevent visible jump.
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            guard let anchorID = await viewModel.loadOlderMessages() else { return }
+            // Scroll back to the message that was at the top before prepend,
+            // keeping it at the top of the viewport to prevent visible jump.
             proxy.scrollTo(anchorID, anchor: .top)
         }
     }

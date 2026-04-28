@@ -43,7 +43,7 @@ final class MultiThinkingBlockTests: XCTestCase {
         ]
         mock.signaturesPerThinkingBlock = ["sig_one", "sig_two"]
         mock.tokensToYield = ["done"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "go"
         await vm.sendMessage()

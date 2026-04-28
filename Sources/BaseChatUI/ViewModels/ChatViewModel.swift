@@ -90,7 +90,7 @@ public final class ChatViewModel {
 
     /// Called when a session might need its title auto-generated.
     /// Set by the view layer to connect to SessionManagerViewModel.
-    public var onFirstMessage: (@MainActor (ChatSessionRecord, String) -> Void)?
+    public var onFirstMessage: (@MainActor (ChatSessionRecord, String) async -> Void)?
 
     // MARK: - First Run / Onboarding
 
@@ -701,7 +701,7 @@ public final class ChatViewModel {
             self?.updateContextEstimate()
         }
         genCoordinator.onSaveMessage = { [weak self] message in
-            try self?.saveMessage(message)
+            try await self?.saveMessage(message)
         }
         genCoordinator.onRemoveMessage = { [weak self] id in
             self?.messages.removeAll(where: { $0.id == id })
