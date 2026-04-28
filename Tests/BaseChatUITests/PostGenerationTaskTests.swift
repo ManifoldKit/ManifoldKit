@@ -50,17 +50,17 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
     // MARK: - Basic Invocation
 
     func test_postGenerationTask_calledAfterGeneration() async {
-        createAndActivateSession()
+        await createAndActivateSession()
         let task = MockPostGenerationTask()
         vm.postGenerationTasks = [task]
 
@@ -74,7 +74,7 @@ final class PostGenerationTaskTests: XCTestCase {
     }
 
     func test_postGenerationTask_receivesCompletedMessage() async {
-        createAndActivateSession()
+        await createAndActivateSession()
         let task = MockPostGenerationTask()
         vm.postGenerationTasks = [task]
 
@@ -88,7 +88,7 @@ final class PostGenerationTaskTests: XCTestCase {
     }
 
     func test_postGenerationTask_receivesActiveSession() async {
-        let session = createAndActivateSession(title: "My Session")
+        let session = await createAndActivateSession(title: "My Session")
         let task = MockPostGenerationTask()
         vm.postGenerationTasks = [task]
 
@@ -102,7 +102,7 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - Execution Order
 
     func test_multiplePostGenerationTasks_runInRegistrationOrder() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         let order = ActorBox<[Int]>([])
         let task1 = OrderCapturingTask(index: 1, box: order)
@@ -122,7 +122,7 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - Error Isolation
 
     func test_throwingTask_doesNotCancelSubsequentTasks() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         struct TestError: Error {}
         let failingTask = MockPostGenerationTask()
@@ -141,7 +141,7 @@ final class PostGenerationTaskTests: XCTestCase {
     }
 
     func test_throwingTask_surfacesErrorInBackgroundTaskError() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         struct TestError: Error, LocalizedError {
             var errorDescription: String? { "Background error" }
@@ -160,7 +160,7 @@ final class PostGenerationTaskTests: XCTestCase {
     }
 
     func test_successfulTask_doesNotSetBackgroundTaskError() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         let task = MockPostGenerationTask()
         vm.postGenerationTasks = [task]
@@ -175,8 +175,8 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - Cancellation on Session Reset
 
     func test_postGenerationTask_cancelledOnSessionReset() async throws {
-        createAndActivateSession(title: "Session A")
-        let sessionB = try! sessionManager.createSession(title: "Session B")
+        await createAndActivateSession(title: "Session A")
+        let sessionB = try! await sessionManager.createSession(title: "Session B")
 
         let slowTask = MockPostGenerationTask()
         slowTask.runDelay = .seconds(10)  // Long enough to remain in-flight during session switch.
@@ -192,7 +192,7 @@ final class PostGenerationTaskTests: XCTestCase {
 
         // Background task is now running (slowTask sleeping for 10 s).
         // Switching session cancels it before quickTask gets a chance to run.
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         // Wait for the cancelled task to finish cooperatively — deterministic, no fixed sleep.
         await inflight?.value
@@ -203,7 +203,7 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - No Task Fired for Empty Response
 
     func test_postGenerationTask_notCalledForEmptyResponse() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         let task = MockPostGenerationTask()
         vm.postGenerationTasks = [task]

@@ -75,7 +75,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// **user-perceived** TTFT, which includes both backend latency and the
     /// `StreamingTokenBatcher` flush delay — exactly what regresses when
     /// either side slows down.
-    func testPerf_timeToFirstToken_realisticBackend() {
+    func testPerf_timeToFirstToken_realisticBackend() async {
         // Fixture: 32 short tokens are plenty to drive the first batch flush.
         // A 100 ms TTFT is the conservative midpoint of a real local-MLX run;
         // jitter is degenerate so per-iteration variance is bounded.
@@ -85,7 +85,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             interToken: .milliseconds(20),
             tokens: tokens
         )
-        let harness = makeHarness(backend: backend)
+        let harness = await makeHarness(backend: backend)
 
         measure {
             let exp = expectation(description: "first character visible")
@@ -124,7 +124,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// Regressions that disable batching (gaps drop near zero with very high
     /// frequency) or that stall the batcher (gaps spike past 50 ms) both
     /// surface here.
-    func testPerf_streamingCadence_5KBResponse() {
+    func testPerf_streamingCadence_5KBResponse() async {
         let tokens = makeFiveKBTokenScript()
         // 8 ms per token gives ~4× the batcher's 33 ms tick: every batch
         // flush carries multiple tokens, exercising the realistic batching
@@ -134,7 +134,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             interToken: .milliseconds(8),
             tokens: tokens
         )
-        let harness = makeHarness(backend: backend)
+        let harness = await makeHarness(backend: backend)
 
         measure {
             let exp = expectation(description: "stream completes")
@@ -194,15 +194,15 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// The backlog matters because a number of code paths iterate the active
     /// message array (context window trimming, scroll anchoring, persistence
     /// upserts) and grow O(n) with history length.
-    func testPerf_endToEndPipeline_withLargeBacklog() {
+    func testPerf_endToEndPipeline_withLargeBacklog() async {
         let tokens = makeFiveKBTokenScript()
         let backend = makeLatencyBackend(
             ttft: .milliseconds(50),
             interToken: .milliseconds(2),
             tokens: tokens
         )
-        let harness = makeHarness(backend: backend)
-        seedBacklog(in: harness, messageCount: 200)
+        let harness = await makeHarness(backend: backend)
+        await seedBacklog(in: harness, messageCount: 200)
 
         measure {
             let exp = expectation(description: "5KB stream end-to-end")
@@ -228,14 +228,14 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// constant overhead. Compared against the end-to-end test, this lets a
     /// future regression be attributed to either the append/persist side or
     /// the streaming side.
-    func testPerf_messageAppend_at200MessageCount() {
+    func testPerf_messageAppend_at200MessageCount() async {
         let backend = makeLatencyBackend(
             ttft: .milliseconds(10),
             interToken: .milliseconds(2),
             tokens: ["A", "B", "C", "D"]
         )
-        let harness = makeHarness(backend: backend)
-        seedBacklog(in: harness, messageCount: 200)
+        let harness = await makeHarness(backend: backend)
+        await seedBacklog(in: harness, messageCount: 200)
         let seededIDs = Set(harness.vm.messages.map(\.id))
 
         measure {
@@ -279,20 +279,15 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
         let session: ChatSessionRecord
     }
 
-    private func makeHarness(backend: PerceivedLatencyBackend) -> Harness {
+    private func makeHarness(backend: PerceivedLatencyBackend) async -> Harness {
         // `InferenceService(backend:name:)` treats the backend as already
         // loaded, but the backend itself enforces an `_isModelLoaded` guard
         // inside `generate()` — preload it here so tests don't deadlock on
         // the guard throwing.
-        let preload = expectation(description: "backend preload")
-        Task {
-            try? await backend.loadModel(
-                from: URL(fileURLWithPath: "/tmp/integratedperf"),
-                plan: .testStub(effectiveContextSize: 4096)
-            )
-            preload.fulfill()
-        }
-        wait(for: [preload], timeout: 5)
+        try? await backend.loadModel(
+            from: URL(fileURLWithPath: "/tmp/integratedperf"),
+            plan: .testStub(effectiveContextSize: 4096)
+        )
 
         let service = InferenceService(backend: backend, name: "IntegratedPerf")
         let vm = ChatViewModel(inferenceService: service)
@@ -300,9 +295,9 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
 
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = (try? sessionManager.createSession(title: "Perf"))!
+        let session = (try? await sessionManager.createSession(title: "Perf"))!
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return Harness(vm: vm, backend: backend, session: session)
     }
 
@@ -310,7 +305,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     /// active session, both in-memory on the VM and persisted via SwiftData.
     /// Done once before `measure { }` so the timed work is the next message,
     /// not the fixture build.
-    private func seedBacklog(in harness: Harness, messageCount: Int) {
+    private func seedBacklog(in harness: Harness, messageCount: Int) async {
         let sessionID = harness.session.id
         let base = Date(timeIntervalSince1970: 1_000_000)
         for i in 0..<messageCount {
@@ -326,7 +321,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
                 sessionID: sessionID
             )
             harness.vm.messages.append(record)
-            try? SwiftDataPersistenceProvider(modelContext: context)
+            try? await SwiftDataPersistenceProvider(modelContext: context)
                 .insertMessage(record)
         }
     }

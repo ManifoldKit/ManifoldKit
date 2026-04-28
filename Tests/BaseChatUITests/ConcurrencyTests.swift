@@ -53,10 +53,10 @@ final class ConcurrencyTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -80,7 +80,7 @@ final class ConcurrencyTests: XCTestCase {
     /// Fire-and-forget 5 messages rapidly. Verify no crash, messages are non-empty,
     /// and isGenerating eventually becomes false.
     func test_rapidSendMessages_doesNotCrash() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         // Fire 5 sends as concurrent tasks without awaiting each one.
         var tasks: [Task<Void, Never>] = []
@@ -117,7 +117,7 @@ final class ConcurrencyTests: XCTestCase {
     /// verifies that the resulting four messages — user₁, assistant₁, user₂,
     /// assistant₂ — have monotonically non-decreasing timestamps.
     func test_messages_maintainChronologicalOrder() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         // Use a fast backend so message timestamps are as tight as possible.
         slowBackend.tokensToYield = ["reply"]
@@ -158,7 +158,7 @@ final class ConcurrencyTests: XCTestCase {
     /// still generating. sendMessage() does NOT guard against isGenerating, so the
     /// second send should also proceed and produce messages.
     func test_sendWhileGenerating_secondSendProceeds() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         // 5 tokens is enough to keep the stream in-flight while the second send
         // races — the test asserts concurrency behavior, not token count.
@@ -199,12 +199,12 @@ final class ConcurrencyTests: XCTestCase {
     /// leak into session B's view.
     func test_switchSession_duringGeneration_noCorruption() async throws {
         // Set up session A.
-        let sessionA = createAndActivateSession(title: "Session A")
+        let sessionA = await createAndActivateSession(title: "Session A")
         slowBackend.tokensToYield = (0..<20).map { "alphaToken\($0) " }
         slowBackend.delayPerToken = .milliseconds(50)
 
         // Pre-populate session B with a known message using a fast backend.
-        let sessionB = try! sessionManager.createSession(title: "Session B")
+        let sessionB = try! await sessionManager.createSession(title: "Session B")
 
         // Start generation on session A.
         vm.inputText = "Alpha question"
@@ -217,7 +217,7 @@ final class ConcurrencyTests: XCTestCase {
 
         // Switch to session B mid-generation.
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         // Session B should have no messages (it was freshly created).
         XCTAssertTrue(vm.messages.isEmpty,
@@ -253,7 +253,7 @@ final class ConcurrencyTests: XCTestCase {
 
         for i in 0..<10 {
             let task = Task { @MainActor in
-                _ = try! self.sessionManager.createSession(title: "Concurrent Session \(i)")
+                _ = try! await self.sessionManager.createSession(title: "Concurrent Session \(i)")
             }
             tasks.append(task)
         }
@@ -278,7 +278,7 @@ final class ConcurrencyTests: XCTestCase {
     /// regenerateLastResponse() guards with `guard !isGenerating else { return }`,
     /// so the regeneration should be silently skipped.
     func test_regenerateWhileGenerating_isGuarded() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         // 5 tokens is enough to hold the stream open while the regenerate races.
         slowBackend.tokensToYield = (0..<5).map { "tok\($0) " }

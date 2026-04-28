@@ -39,9 +39,9 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSession() -> ChatSessionRecord {
+    private func makeSession() async -> ChatSessionRecord {
         let session = ChatSessionRecord(title: "Heal-On-Reload")
-        try! stack.provider.insertSession(session)
+        try! await stack.provider.insertSession(session)
         return session
     }
 
@@ -66,8 +66,8 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
 
     // MARK: - Tests
 
-    func test_sessionReload_synthesisesResultForOrphanToolCall() throws {
-        let session = makeSession()
+    func test_sessionReload_synthesisesResultForOrphanToolCall() async throws {
+        let session = await makeSession()
         let userMsg = ChatMessageRecord(
             role: .user,
             content: "Write a file",
@@ -85,15 +85,15 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1001),
             sessionID: session.id
         )
-        try stack.provider.insertMessage(userMsg)
-        try stack.provider.insertMessage(assistantMsg)
+        try await stack.provider.insertMessage(userMsg)
+        try await stack.provider.insertMessage(assistantMsg)
 
         // Sanity: the persisted transcript has an orphan before reload.
-        let preReload = try stack.provider.fetchMessages(for: session.id)
+        let preReload = try await stack.provider.fetchMessages(for: session.id)
         XCTAssertEqual(orphanCallIDs(in: preReload), ["call-orphan-1"])
 
         // Reload via the ChatViewModel — this is the production code path.
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         // Acceptance: the in-memory transcript no longer has any orphans.
         XCTAssertTrue(
@@ -117,8 +117,8 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
         )
     }
 
-    func test_sessionReload_doesNotTouchPairedToolCall() throws {
-        let session = makeSession()
+    func test_sessionReload_doesNotTouchPairedToolCall() async throws {
+        let session = await makeSession()
         let call = ToolCall(id: "paired-1", toolName: "search", arguments: "{}")
         let result = ToolResult(callId: "paired-1", content: "ok")
         let assistantMsg = ChatMessageRecord(
@@ -127,9 +127,9 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1000),
             sessionID: session.id
         )
-        try stack.provider.insertMessage(assistantMsg)
+        try await stack.provider.insertMessage(assistantMsg)
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(vm.messages.count, 1)
         XCTAssertEqual(

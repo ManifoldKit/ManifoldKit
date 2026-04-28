@@ -77,10 +77,15 @@ struct MinimalExampleApp: App {
     private func bootstrapInitialSession() async {
         chatViewModel.refreshModels()
 
-        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        let initialSession: ChatSessionRecord?
+        if let existing = sessionManager.sessions.first {
+            initialSession = existing
+        } else {
+            initialSession = try? await sessionManager.createSession()
+        }
         if let initialSession {
             sessionManager.activeSession = initialSession
-            chatViewModel.switchToSession(initialSession)
+            await chatViewModel.switchToSession(initialSession)
             chatViewModel.dispatchSelectedLoad()
         }
     }

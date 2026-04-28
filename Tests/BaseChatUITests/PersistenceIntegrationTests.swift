@@ -43,11 +43,11 @@ final class PersistenceIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createSession(title: String = "Persistence Test") -> ChatSession {
+    private func createSession(title: String = "Persistence Test") async -> ChatSession {
         let session = ChatSession(title: title)
         context.insert(session)
         try? context.save()
-        vm.switchToSession(session.toRecord())
+        await vm.switchToSession(session.toRecord())
         return session
     }
 
@@ -73,7 +73,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - loadMessages with No modelContext
 
-    func test_loadMessages_withNoModelContext_returnsEmpty() {
+    func test_loadMessages_withNoModelContext_returnsEmpty() async {
         // Create a VM without configuring modelContext.
         let service = InferenceService(backend: mock, name: "NoContext")
         let unconfiguredVM = ChatViewModel(inferenceService: service)
@@ -83,7 +83,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         let session = ChatSession(title: "Test")
         unconfiguredVM.activeSession = session.toRecord()
 
-        unconfiguredVM.loadMessages()
+        await unconfiguredVM.loadMessages()
 
         XCTAssertTrue(
             unconfiguredVM.messages.isEmpty,
@@ -93,7 +93,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - loadMessages with No activeSession
 
-    func test_loadMessages_withNoActiveSession_clearsMessages() {
+    func test_loadMessages_withNoActiveSession_clearsMessages() async {
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
 
         // Manually add a message to the in-memory messages array.
@@ -103,7 +103,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         // Ensure no active session.
         vm.activeSession = nil
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertTrue(
             vm.messages.isEmpty,
@@ -113,8 +113,8 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - loadMessages Fetches and Sorts by Timestamp
 
-    func test_loadMessages_fetchesAndSortsByTimestamp() {
-        let session = createSession()
+    func test_loadMessages_fetchesAndSortsByTimestamp() async {
+        let session = await createSession()
 
         // Insert messages with explicit timestamps out of order.
         let msg1 = ChatMessage(role: .user, content: "First", sessionID: session.id)
@@ -132,7 +132,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         context.insert(msg2)
         try? context.save()
 
-        vm.loadMessages()
+        await vm.loadMessages()
 
         XCTAssertEqual(vm.messages.count, 3)
         XCTAssertEqual(vm.messages[0].content, "First", "Messages should be sorted by timestamp ascending")
@@ -142,11 +142,11 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - saveMessage Inserts and Can Be Fetched Back
 
-    func test_saveMessage_insertsIntoContextAndFetchesBack() {
-        let session = createSession()
+    func test_saveMessage_insertsIntoContextAndFetchesBack() async {
+        let session = await createSession()
 
         let message = ChatMessage(role: .user, content: "Persisted message", sessionID: session.id)
-        try! vm.saveMessage(message.toRecord())
+        try! await vm.saveMessage(message.toRecord())
 
         let fetched = fetchMessages(for: session.id)
         XCTAssertEqual(fetched.count, 1)
@@ -155,13 +155,13 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(fetched[0].sessionID, session.id)
     }
 
-    func test_saveMessage_multipleMessages_allPersisted() {
-        let session = createSession()
+    func test_saveMessage_multipleMessages_allPersisted() async {
+        let session = await createSession()
 
         let msg1 = ChatMessage(role: .user, content: "User msg", sessionID: session.id)
         let msg2 = ChatMessage(role: .assistant, content: "Assistant msg", sessionID: session.id)
-        try! vm.saveMessage(msg1.toRecord())
-        try! vm.saveMessage(msg2.toRecord())
+        try! await vm.saveMessage(msg1.toRecord())
+        try! await vm.saveMessage(msg2.toRecord())
 
         let fetched = fetchMessages(for: session.id)
         XCTAssertEqual(fetched.count, 2)
@@ -169,30 +169,30 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - deleteMessage Removes from Context
 
-    func test_deleteMessage_removesFromContext() {
-        let session = createSession()
+    func test_deleteMessage_removesFromContext() async {
+        let session = await createSession()
 
         let message = ChatMessage(role: .user, content: "To be deleted", sessionID: session.id)
-        try! vm.saveMessage(message.toRecord())
+        try! await vm.saveMessage(message.toRecord())
         XCTAssertEqual(fetchMessages(for: session.id).count, 1)
 
-        try! vm.deleteMessage(message.toRecord())
+        try! await vm.deleteMessage(message.toRecord())
         XCTAssertEqual(
             fetchMessages(for: session.id).count, 0,
             "Message should be removed from the database after deletion"
         )
     }
 
-    func test_deleteMessage_onlyRemovesTargetMessage() {
-        let session = createSession()
+    func test_deleteMessage_onlyRemovesTargetMessage() async {
+        let session = await createSession()
 
         let msg1 = ChatMessage(role: .user, content: "Keep this", sessionID: session.id)
         let msg2 = ChatMessage(role: .assistant, content: "Delete this", sessionID: session.id)
-        try! vm.saveMessage(msg1.toRecord())
-        try! vm.saveMessage(msg2.toRecord())
+        try! await vm.saveMessage(msg1.toRecord())
+        try! await vm.saveMessage(msg2.toRecord())
         XCTAssertEqual(fetchMessages(for: session.id).count, 2)
 
-        try! vm.deleteMessage(msg2.toRecord())
+        try! await vm.deleteMessage(msg2.toRecord())
 
         let remaining = fetchMessages(for: session.id)
         XCTAssertEqual(remaining.count, 1)
@@ -203,7 +203,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     func test_multiSessionIsolation_messagesDoNotBleed() async {
         // Session A
-        let sessionA = createSession(title: "Session A")
+        let sessionA = await createSession(title: "Session A")
         mock.tokensToYield = ["Alpha", " reply"]
         vm.inputText = "Alpha question"
         await vm.sendMessage()
@@ -212,7 +212,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(sessionAMessages.count, 2)
 
         // Session B
-        let sessionB = createSession(title: "Session B")
+        let sessionB = await createSession(title: "Session B")
         mock.tokensToYield = ["Beta", " reply"]
         vm.inputText = "Beta question"
         await vm.sendMessage()
@@ -231,13 +231,13 @@ final class PersistenceIntegrationTests: XCTestCase {
     }
 
     func test_multiSessionIsolation_switchingReloadsCorrectMessages() async {
-        let sessionA = createSession(title: "Session A")
+        let sessionA = await createSession(title: "Session A")
         mock.tokensToYield = ["A", " response"]
         vm.inputText = "Question for A"
         await vm.sendMessage()
         XCTAssertEqual(vm.messages.count, 2)
 
-        let sessionB = createSession(title: "Session B")
+        let sessionB = await createSession(title: "Session B")
         mock.tokensToYield = ["B", " response"]
         vm.inputText = "Question for B"
         await vm.sendMessage()
@@ -245,12 +245,12 @@ final class PersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(vm.messages[0].content, "Question for B")
 
         // Switch back to A.
-        vm.switchToSession(sessionA.toRecord())
+        await vm.switchToSession(sessionA.toRecord())
         XCTAssertEqual(vm.messages.count, 2)
         XCTAssertEqual(vm.messages[0].content, "Question for A", "Switching should reload session A messages")
 
         // Switch to B.
-        vm.switchToSession(sessionB.toRecord())
+        await vm.switchToSession(sessionB.toRecord())
         XCTAssertEqual(vm.messages.count, 2)
         XCTAssertEqual(vm.messages[0].content, "Question for B", "Switching should reload session B messages")
     }
@@ -258,7 +258,7 @@ final class PersistenceIntegrationTests: XCTestCase {
     // MARK: - Cascade: Deleting a Session Handles Its Messages
 
     func test_deleteSession_removesAssociatedMessages() async throws {
-        let session = createSession(title: "Doomed Session")
+        let session = await createSession(title: "Doomed Session")
         mock.tokensToYield = ["Doomed", " reply"]
         vm.inputText = "Message in doomed session"
         await vm.sendMessage()
@@ -271,7 +271,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         // Use SessionManagerViewModel to delete the session (it handles cascade).
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        try sessionManager.deleteSession(session.toRecord())
+        try await sessionManager.deleteSession(session.toRecord())
 
         XCTAssertEqual(
             fetchMessages(for: sessionID).count, 0,
@@ -285,13 +285,13 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     func test_deleteSession_doesNotAffectOtherSessions() async throws {
         // Create session A with messages.
-        let sessionA = createSession(title: "Survivor")
+        let sessionA = await createSession(title: "Survivor")
         mock.tokensToYield = ["Survivor", " reply"]
         vm.inputText = "Survivor question"
         await vm.sendMessage()
 
         // Create session B with messages.
-        let sessionB = createSession(title: "Victim")
+        let sessionB = await createSession(title: "Victim")
         mock.tokensToYield = ["Victim", " reply"]
         vm.inputText = "Victim question"
         await vm.sendMessage()
@@ -302,7 +302,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         // Delete session B.
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        try sessionManager.deleteSession(sessionB.toRecord())
+        try await sessionManager.deleteSession(sessionB.toRecord())
 
         // Session A should be unaffected.
         XCTAssertEqual(
@@ -317,34 +317,34 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     // MARK: - Typed Record Field Round-Trips
 
-    func test_sessionRecord_promptTemplate_roundTrips() throws {
+    func test_sessionRecord_promptTemplate_roundTrips() async throws {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         var record = ChatSessionRecord(title: "Template Test")
         record.promptTemplate = .llama3
-        try persistence.insertSession(record)
+        try await persistence.insertSession(record)
 
-        let fetched = try persistence.fetchSessions().first { $0.id == record.id }
+        let fetched = try await persistence.fetchSessions().first { $0.id == record.id }
         XCTAssertEqual(fetched?.promptTemplate, .llama3)
     }
 
-    func test_sessionRecord_pinnedMessageIDs_roundTrips() throws {
+    func test_sessionRecord_pinnedMessageIDs_roundTrips() async throws {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         let pinA = UUID()
         let pinB = UUID()
         var record = ChatSessionRecord(title: "Pin Test")
         record.pinnedMessageIDs = [pinA, pinB]
-        try persistence.insertSession(record)
+        try await persistence.insertSession(record)
 
-        let fetched = try persistence.fetchSessions().first { $0.id == record.id }
+        let fetched = try await persistence.fetchSessions().first { $0.id == record.id }
         XCTAssertEqual(fetched?.pinnedMessageIDs, [pinA, pinB])
     }
 
-    func test_sessionRecord_defaults_roundTrip() throws {
+    func test_sessionRecord_defaults_roundTrip() async throws {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         let record = ChatSessionRecord(title: "Defaults Test")
-        try persistence.insertSession(record)
+        try await persistence.insertSession(record)
 
-        let fetched = try persistence.fetchSessions().first { $0.id == record.id }
+        let fetched = try await persistence.fetchSessions().first { $0.id == record.id }
         XCTAssertNil(fetched?.promptTemplate)
         XCTAssertEqual(fetched?.pinnedMessageIDs, [])
     }

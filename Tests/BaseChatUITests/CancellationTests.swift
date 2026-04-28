@@ -50,10 +50,10 @@ final class CancellationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -86,7 +86,7 @@ final class CancellationTests: XCTestCase {
     // MARK: - Tests
 
     func test_stopGeneration_midStream_stopsTokenFlow() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         try await sendAndStopMidStream()
 
@@ -102,7 +102,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_stopGeneration_preservesPartialContent() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         try await sendAndStopMidStream()
 
@@ -115,7 +115,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_stopGeneration_thenRegenerate_thenReload_keepsSingleAssistantRow() async throws {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         try await sendAndStopMidStream()
 
@@ -153,7 +153,7 @@ final class CancellationTests: XCTestCase {
             "Persistence should contain exactly one assistant row after regeneration"
         )
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(vm.messages.count, 2, "Reload should restore only the visible user/assistant pair")
         let assistants = vm.messages.filter { $0.role == .assistant }
@@ -162,7 +162,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_stopGeneration_thenSendAgain_works() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         // First message: stop mid-generation
         try await sendAndStopMidStream(input: "First message")
@@ -185,12 +185,12 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_clearChat_duringGeneration_stopsAndClears() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         vm.inputText = "Hello"
         let sendTask = Task { await vm.sendMessage() }
         await vm.awaitGenerating(true)
-        vm.clearChat()
+        await vm.clearChat()
         await sendTask.value
 
         XCTAssertTrue(vm.messages.isEmpty, "Messages should be empty after clearChat")
@@ -198,7 +198,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_unloadModel_duringGeneration_doesNotCrash() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         slowBackend.tokensToYield = (0..<50).map { "t\($0) " }
         slowBackend.delayPerToken = .milliseconds(30)
@@ -217,7 +217,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_switchModel_duringGeneration_doesNotCrash() async throws {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         slowBackend.tokensToYield = (0..<50).map { "t\($0) " }
         slowBackend.delayPerToken = .milliseconds(30)
@@ -235,7 +235,7 @@ final class CancellationTests: XCTestCase {
     }
 
     func test_isGenerating_falseAfterCompletion() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         slowBackend.tokensToYield = ["a", "b", "c"]
         slowBackend.delayPerToken = .milliseconds(10)

@@ -134,8 +134,8 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
     func test_urlPayload_appendToActive_appendsURLStringToDraft() async {
         // Seed a session and an existing draft.
         let session = ChatSessionRecord(title: "Existing")
-        try? vm.persistence?.insertSession(session)
-        vm.switchToSession(session)
+        try? await vm.persistence?.insertSession(session)
+        await vm.switchToSession(session)
         vm.inputText = "look at this"
 
         let url = URL(string: "https://example.com/article")!
@@ -152,8 +152,8 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
 
     func test_urlPayload_appendToActive_emptyDraft_replacesWithURLString() async {
         let session = ChatSessionRecord(title: "Existing")
-        try? vm.persistence?.insertSession(session)
-        vm.switchToSession(session)
+        try? await vm.persistence?.insertSession(session)
+        await vm.switchToSession(session)
         vm.inputText = ""
 
         let url = URL(string: "https://example.com/article")!
@@ -166,8 +166,8 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
 
     func test_imagePayload_draft_setsEmptyDraftWithoutSending() async {
         let session = ChatSessionRecord(title: "Existing")
-        try? vm.persistence?.insertSession(session)
-        vm.switchToSession(session)
+        try? await vm.persistence?.insertSession(session)
+        await vm.switchToSession(session)
         vm.inputText = "should be replaced"
 
         let imageData = Data([0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes

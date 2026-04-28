@@ -46,7 +46,7 @@ final class SessionAutoRenameTests: XCTestCase {
     // MARK: - Tests
 
     func test_autoRename_updatesSessionTitle() async {
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
         XCTAssertEqual(session.title, "New Chat")
 
         let service = makeInferenceService(tokens: ["Travel", " Planning", " Tips"])
@@ -58,7 +58,7 @@ final class SessionAutoRenameTests: XCTestCase {
     }
 
     func test_autoRename_onError_keepsExistingTitle() async {
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
         XCTAssertEqual(session.title, "New Chat")
 
         let service = makeThrowingInferenceService()
@@ -78,7 +78,7 @@ final class SessionAutoRenameTests: XCTestCase {
             diagnostics: diagnostics
         )
 
-        let session = try freshVM.createSession()
+        let session = try await freshVM.createSession()
         let service = makeThrowingInferenceService()
 
         await freshVM.autoRenameSession(session, firstMessage: "Tell me about dogs", inferenceService: service)
@@ -103,7 +103,7 @@ final class SessionAutoRenameTests: XCTestCase {
         let freshVM = SessionManagerViewModel()
         freshVM.configure(persistence: wrappedPersistence, diagnostics: diagnostics)
 
-        let session = try freshVM.createSession()
+        let session = try await freshVM.createSession()
         wrappedPersistence.shouldThrowOnUpdateSession = ChatPersistenceError.providerNotConfigured
 
         let service = makeInferenceService(tokens: ["Cooking", " Basics"])
@@ -123,7 +123,7 @@ final class SessionAutoRenameTests: XCTestCase {
     }
 
     func test_autoRename_truncatesLongTitle() async {
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
 
         // 60-character title returned by the mock
         let longTitle = "This Is A Very Long Title That Definitely Exceeds Fifty Char"
@@ -139,7 +139,7 @@ final class SessionAutoRenameTests: XCTestCase {
     }
 
     func test_autoRename_trimsWhitespace() async {
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
 
         let service = makeInferenceService(tokens: ["  My Title  \n"])
 
@@ -161,7 +161,7 @@ final class SessionAutoRenameTests: XCTestCase {
         mock.tokensToYield = ["Smart", " Home", " Setup"]
         let service = InferenceService(backend: mock, name: "Mock")
 
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
         XCTAssertEqual(session.title, "New Chat")
 
         await vm.autoRenameSession(session, firstMessage: "How do I set up smart home devices?", inferenceService: service)
@@ -192,7 +192,7 @@ final class SessionAutoRenameTests: XCTestCase {
         _ = activeToken // silence unused-variable warning
 
         // Active slot is now occupied. The next enqueue will stay in requestQueue.
-        let session = try! vm.createSession()
+        let session = try! await vm.createSession()
 
         // Fire autoRenameSession in a background Task so it can call enqueue()
         // without blocking the main actor. We capture the task to cancel later.

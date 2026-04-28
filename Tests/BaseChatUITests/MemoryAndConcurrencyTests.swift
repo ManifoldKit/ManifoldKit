@@ -53,9 +53,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     // MARK: - Test 1: Memory Pressure Warning Level
 
     /// Setting memory pressure to .warning should set an error message but NOT unload the model.
-    func test_handleMemoryPressure_warning_setsErrorButDoesNotUnload() {
+    func test_handleMemoryPressure_warning_setsErrorButDoesNotUnload() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Precondition: no error, model is loaded.
         XCTAssertNil(vm.errorMessage)
@@ -83,9 +83,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     // MARK: - Test 2: Memory Pressure Critical Level
 
     /// Setting memory pressure to .critical should unload the model and set an error message.
-    func test_handleMemoryPressure_critical_unloadsModelAndSetsError() {
+    func test_handleMemoryPressure_critical_unloadsModelAndSetsError() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Precondition: model is loaded.
         XCTAssertTrue(mock.isModelLoaded)
@@ -111,9 +111,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     // MARK: - Test 3: Memory Pressure Nominal After Critical
 
     /// After critical pressure clears back to nominal, the error message should be cleared.
-    func test_handleMemoryPressure_nominalAfterCritical_clearsError() {
+    func test_handleMemoryPressure_nominalAfterCritical_clearsError() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Transition to critical.
         handler.pressureLevel = .critical
@@ -134,9 +134,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
 
     /// handleMemoryPressure should only act when the level actually changes.
     /// Calling it twice with the same level should produce side effects only once.
-    func test_handleMemoryPressure_sameLevelTwice_onlyActsOnce() {
+    func test_handleMemoryPressure_sameLevelTwice_onlyActsOnce() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Transition to critical (first call).
         handler.pressureLevel = .critical
@@ -280,7 +280,7 @@ final class MemoryAndConcurrencyTests: XCTestCase {
         XCTAssertFalse(vm.messages.isEmpty, "Should have messages during generation")
 
         // Clear chat while generating.
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertFalse(vm.isGenerating,
             "isGenerating should be false after clearChat")
@@ -299,9 +299,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     // MARK: - Memory Pressure Transition Tests (named variants)
 
     /// Critical pressure should unload the model; `inferenceService.isModelLoaded` becomes false.
-    func test_handleMemoryPressure_critical_unloadsModel() {
+    func test_handleMemoryPressure_critical_unloadsModel() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         // Precondition: model is loaded.
         XCTAssertTrue(vm.inferenceService.isModelLoaded,
@@ -322,9 +322,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     }
 
     /// Warning pressure should set an error message but leave the model loaded.
-    func test_handleMemoryPressure_warning_setsErrorMessage() {
+    func test_handleMemoryPressure_warning_setsErrorMessage() async {
         let handler = MemoryPressureHandler()
-        let (vm, mock, _) = makeViewModel(handler: handler)
+        let (vm, mock, _) = await makeViewModel(handler: handler)
 
         handler.pressureLevel = .warning
         vm.handleMemoryPressure()
@@ -339,9 +339,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
 
     /// Calling `handleMemoryPressure()` twice with the same non-nominal level should
     /// only produce side effects on the first call; the second call is a no-op.
-    func test_handleMemoryPressure_sameLevel_doesNothing() {
+    func test_handleMemoryPressure_sameLevel_doesNothing() async {
         let handler = MemoryPressureHandler()
-        let (vm, _, _) = makeViewModel(handler: handler)
+        let (vm, _, _) = await makeViewModel(handler: handler)
 
         // Transition to warning — first call sets the error.
         handler.pressureLevel = .warning
@@ -359,9 +359,9 @@ final class MemoryAndConcurrencyTests: XCTestCase {
     }
 
     /// After warning sets an error, returning to nominal should clear the memory error.
-    func test_handleMemoryPressure_returnsToNominal_clearsMemoryError() {
+    func test_handleMemoryPressure_returnsToNominal_clearsMemoryError() async {
         let handler = MemoryPressureHandler()
-        let (vm, _, _) = makeViewModel(handler: handler)
+        let (vm, _, _) = await makeViewModel(handler: handler)
 
         // Step 1: transition to warning to set an error.
         handler.pressureLevel = .warning

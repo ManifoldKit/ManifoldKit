@@ -10,7 +10,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
     // MARK: - Forwarding
 
     func test_dispatch_forwardsActionAndSessionID_toHandler() async throws {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         let handler = MockChatSessionIntentHandler()
         vm.intentHandler = handler
 
@@ -25,7 +25,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
     }
 
     func test_dispatch_forwardsNilSessionID_whenNoActiveSession() async throws {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         let handler = MockChatSessionIntentHandler()
         vm.intentHandler = handler
 
@@ -39,7 +39,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
     }
 
     func test_dispatch_forwardsEveryActionVerbatim() async throws {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         let handler = MockChatSessionIntentHandler()
         vm.intentHandler = handler
 
@@ -59,7 +59,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
     // MARK: - No-op when handler is absent
 
     func test_dispatch_isNoOp_whenHandlerIsNil() async throws {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         XCTAssertNil(vm.intentHandler)
 
         // Must not throw and must complete without observable effect.
@@ -70,7 +70,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
     // MARK: - Error propagation
 
     func test_dispatch_propagatesErrorFromHandler() async {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         let handler = MockChatSessionIntentHandler()
         handler.errorToThrow = TestError.boom
         vm.intentHandler = handler

@@ -41,9 +41,9 @@ final class GenerationCoordinatorTrimReservationTests: XCTestCase {
         sessionManager = SessionManagerViewModel()
         sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
 
-        let session = try sessionManager.createSession(title: "Trim fixture")
+        let session = try await sessionManager.createSession(title: "Trim fixture")
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         sessionID = session.id
     }
 

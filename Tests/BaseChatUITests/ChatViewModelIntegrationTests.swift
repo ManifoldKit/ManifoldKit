@@ -54,10 +54,10 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
     /// Creates a session, activates it, and returns it.
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -81,7 +81,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Full Send → Persist Flow
 
     func test_sendMessage_persistsUserAndAssistantToDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         vm.inputText = "What is Swift?"
         await vm.sendMessage()
@@ -104,11 +104,11 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
     func test_sendMessage_persistsSessionUpdatedAt() async throws {
         let provider = SwiftDataPersistenceProvider(modelContext: context)
-        var session = createAndActivateSession()
+        var session = await createAndActivateSession()
         let originalUpdatedAt = Date(timeIntervalSince1970: 1)
         session.updatedAt = originalUpdatedAt
-        try provider.updateSession(session)
-        vm.switchToSession(session)
+        try await provider.updateSession(session)
+        await vm.switchToSession(session)
 
         vm.inputText = "Update the timestamp"
         await vm.sendMessage()
@@ -124,7 +124,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Multi-Turn Conversation Persistence
 
     func test_multiTurnConversation_allMessagesPersisted() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         // Turn 1
         mock.tokensToYield = ["Reply", " one"]
@@ -158,7 +158,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
     func test_switchSession_reloadsMessagesFromDatabase() async {
         // Create session A with messages
-        let sessionA = createAndActivateSession(title: "Session A")
+        let sessionA = await createAndActivateSession(title: "Session A")
         mock.tokensToYield = ["Alpha", " reply"]
         vm.inputText = "Alpha question"
         await vm.sendMessage()
@@ -166,7 +166,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         XCTAssertEqual(vm.messages.count, 2)
 
         // Create session B with different messages
-        let sessionB = createAndActivateSession(title: "Session B")
+        let sessionB = await createAndActivateSession(title: "Session B")
         mock.tokensToYield = ["Beta", " reply"]
         vm.inputText = "Beta question"
         await vm.sendMessage()
@@ -175,14 +175,14 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         XCTAssertEqual(vm.messages[0].content, "Beta question")
 
         // Switch back to session A — messages should reload from database
-        vm.switchToSession(sessionA)
+        await vm.switchToSession(sessionA)
 
         XCTAssertEqual(vm.messages.count, 2, "Session A should have 2 messages")
         XCTAssertEqual(vm.messages[0].content, "Alpha question", "Should reload session A's messages")
         XCTAssertEqual(vm.messages[1].content, "Alpha reply")
 
         // Switch to session B — verify its messages
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         XCTAssertEqual(vm.messages.count, 2, "Session B should have 2 messages")
         XCTAssertEqual(vm.messages[0].content, "Beta question", "Should reload session B's messages")
@@ -191,7 +191,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Clear Chat Deletes from Database
 
     func test_clearChat_deletesMessagesFromDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Message 1"
@@ -202,7 +202,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         let beforeCount = fetchMessages(for: session.id).count
         XCTAssertEqual(beforeCount, 4, "Should have 4 messages before clearing")
 
-        vm.clearChat()
+        await vm.clearChat()
 
         // Verify in-memory
         XCTAssertTrue(vm.messages.isEmpty)
@@ -215,7 +215,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Regenerate Persists New Response
 
     func test_regenerate_deletesOldAndPersistsNewResponse() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Original", " response"]
         vm.inputText = "Question"
@@ -240,7 +240,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Edit Message Persists Changes
 
     func test_editMessage_updatesAndRegeneratesInDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Original", " reply"]
         vm.inputText = "Original question"
@@ -261,14 +261,14 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Session Settings Persistence
 
     func test_saveSettingsToSession_persistsToDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         vm.temperature = 1.5
         vm.topP = 0.8
         vm.repeatPenalty = 1.3
         vm.systemPrompt = "You are a pirate."
         vm.selectedPromptTemplate = .llama3
-        try! vm.saveSettingsToSession()
+        try! await vm.saveSettingsToSession()
 
         // Fetch session from database and verify
         let dbSessions = fetchSessions()
@@ -287,36 +287,36 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         let defaultPromptTemplate = vm.selectedPromptTemplate
 
         // Session A with custom settings
-        createAndActivateSession(title: "Session A")
+        await createAndActivateSession(title: "Session A")
         vm.temperature = 0.3
         vm.systemPrompt = "Be concise."
         vm.selectedPromptTemplate = .llama3
-        try! vm.saveSettingsToSession()
+        try! await vm.saveSettingsToSession()
         let sessionA = vm.activeSession!
 
         // Session B with different settings
-        createAndActivateSession(title: "Session B")
+        await createAndActivateSession(title: "Session B")
         vm.temperature = 1.8
         vm.systemPrompt = "Be verbose."
         vm.selectedPromptTemplate = .mistral
-        try! vm.saveSettingsToSession()
+        try! await vm.saveSettingsToSession()
         let sessionB = vm.activeSession!
 
         // Switch to A — settings should restore
-        vm.switchToSession(sessionA)
+        await vm.switchToSession(sessionA)
         XCTAssertEqual(vm.temperature, 0.3, "Temperature should restore from session A")
         XCTAssertEqual(vm.systemPrompt, "Be concise.", "System prompt should restore from session A")
         XCTAssertEqual(vm.selectedPromptTemplate, .llama3, "Prompt template should restore from session A")
 
         // Switch to B — settings should restore
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
         XCTAssertEqual(vm.temperature, 1.8, "Temperature should restore from session B")
         XCTAssertEqual(vm.systemPrompt, "Be verbose.", "System prompt should restore from session B")
         XCTAssertEqual(vm.selectedPromptTemplate, .mistral, "Prompt template should restore from session B")
 
         // Session C keeps the default template when it has never saved an override.
-        let sessionC = createAndActivateSession(title: "Session C")
-        vm.switchToSession(sessionC)
+        let sessionC = await createAndActivateSession(title: "Session C")
+        await vm.switchToSession(sessionC)
         XCTAssertEqual(
             vm.selectedPromptTemplate,
             defaultPromptTemplate,
@@ -331,7 +331,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     /// The check fetches ALL `ChatMessage` rows (not scoped by session) to
     /// catch any phantom insert that might slip through.
     func test_emptyResponse_neverPersistedToDatabase() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = []  // Empty stream — no tokens
         vm.inputText = "Anything"
@@ -359,7 +359,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Empty Generation Removes Placeholder
 
     func test_emptyGeneration_doesNotPersistPlaceholder() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = []  // Empty — no tokens yielded
         vm.inputText = "Question"
@@ -378,7 +378,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Generation Error Does Not Corrupt Database
 
     func test_generationError_userMessageStillPersisted() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.shouldThrowOnGenerate = InferenceError.inferenceFailure("Simulated failure")
         vm.inputText = "Question before error"
@@ -395,7 +395,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Context Estimation Updates After Messages
 
     func test_contextEstimate_updatesAfterSendAndClear() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         let baselineTokens = vm.contextUsedTokens
 
@@ -405,28 +405,28 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
         XCTAssertGreaterThan(vm.contextUsedTokens, baselineTokens, "Tokens should increase after sending")
 
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertEqual(vm.contextUsedTokens, baselineTokens, "Tokens should return to baseline after clearing")
     }
 
     // MARK: - Session Creation Through Manager
 
-    func test_sessionManager_createAndDelete_persistsCorrectly() throws {
+    func test_sessionManager_createAndDelete_persistsCorrectly() async throws {
         XCTAssertTrue(fetchSessions().isEmpty, "Should start with no sessions")
 
-        let session = try! sessionManager.createSession(title: "My Chat")
+        let session = try! await sessionManager.createSession(title: "My Chat")
         XCTAssertEqual(fetchSessions().count, 1)
         XCTAssertEqual(fetchSessions().first?.title, "My Chat")
 
-        try sessionManager.deleteSession(session)
+        try await sessionManager.deleteSession(session)
         XCTAssertTrue(fetchSessions().isEmpty, "Session should be deleted from database")
     }
 
     // MARK: - Delete Session Cascades to Messages
 
     func test_deleteSession_removesAllSessionMessages() async throws {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Msg 1"
@@ -436,7 +436,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
         XCTAssertEqual(fetchMessages(for: session.id).count, 4)
 
-        try sessionManager.deleteSession(session)
+        try await sessionManager.deleteSession(session)
 
         XCTAssertEqual(fetchMessages(for: session.id).count, 0,
                        "All messages should be deleted when session is deleted")
@@ -445,20 +445,20 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Auto-Title Generation
 
     func test_autoTitle_setsSessionTitleFromFirstMessage() async {
-        let session = createAndActivateSession()
+        let session = await createAndActivateSession()
 
         // Wire up the onFirstMessage callback like the real app does
         vm.onFirstMessage = { [weak self] session, firstMessage in
-            self?.sessionManager.autoGenerateTitle(for: session, firstMessage: firstMessage)
+            await self?.sessionManager.autoGenerateTitle(for: session, firstMessage: firstMessage)
         }
 
         XCTAssertEqual(session.title, "Test Chat")
 
         // The session title is "Test Chat", not "New Chat", so autoGenerateTitle won't fire.
         // Create a fresh session with default title to test auto-title.
-        let newSession = try! sessionManager.createSession()  // Default title: "New Chat"
+        let newSession = try! await sessionManager.createSession()  // Default title: "New Chat"
         sessionManager.activeSession = newSession
-        vm.switchToSession(newSession)
+        await vm.switchToSession(newSession)
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "What is the meaning of life?"
@@ -474,7 +474,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Export After Persistence
 
     func test_exportChat_includesPersistedMessages() async {
-        createAndActivateSession(title: "Export Test")
+        await createAndActivateSession(title: "Export Test")
 
         mock.tokensToYield = ["The", " answer"]
         vm.inputText = "Tell me something"
@@ -489,7 +489,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Save State Persists Pending Changes
 
     func test_saveState_flushesPendingChanges() async {
-        createAndActivateSession()
+        await createAndActivateSession()
 
         mock.tokensToYield = ["Reply"]
         vm.inputText = "Question"
@@ -497,9 +497,9 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
         // Modify session settings and save
         vm.temperature = 0.1
-        try! vm.saveSettingsToSession()
+        try! await vm.saveSettingsToSession()
 
-        vm.saveState()
+        await vm.saveState()
 
         XCTAssertEqual(vm.activeSession?.temperature, 0.1, "saveState should flush pending changes")
     }

@@ -12,7 +12,7 @@ import XCTest
 @MainActor
 final class ToolApprovalPerfTests: XCTestCase {
 
-    func testPerf_autoApprove_thousandCalls() {
+    func testPerf_autoApprove_thousandCalls() async {
         let gate = AutoApproveGate()
         // Pre-build the calls outside `measure { }` so the harness only
         // times the gate invocations themselves, not fixture setup. Per

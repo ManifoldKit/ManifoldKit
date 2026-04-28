@@ -90,7 +90,7 @@ public final class ChatViewModel {
 
     /// Called when a session might need its title auto-generated.
     /// Set by the view layer to connect to SessionManagerViewModel.
-    public var onFirstMessage: (@MainActor (ChatSessionRecord, String) -> Void)?
+    public var onFirstMessage: (@MainActor (ChatSessionRecord, String) async -> Void)?
 
     // MARK: - First Run / Onboarding
 

@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class RuntimeConfigurationTests: XCTestCase {
 
-    func test_configureRuntime_wiresSharedPersistenceAndDiagnostics() throws {
+    func test_configureRuntime_wiresSharedPersistenceAndDiagnostics() async throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
@@ -47,11 +47,12 @@ final class RuntimeConfigurationTests: XCTestCase {
         XCTAssertTrue(managerPersistence === runtime.persistence)
         XCTAssertTrue(sessionManager.diagnostics === runtime.diagnostics)
 
-        let created = try sessionManager.createSession(title: "Runtime Session")
-        XCTAssertEqual(try runtime.persistence.fetchSessions().map(\.id), [created.id])
+        let created = try await sessionManager.createSession(title: "Runtime Session")
+        let persistedIDs = try await runtime.persistence.fetchSessions().map(\.id)
+        XCTAssertEqual(persistedIDs, [created.id])
     }
 
-    func test_runtimeBootstrap_canSeedAndActivateInitialSessionWithoutViewLifecycleHooks() throws {
+    func test_runtimeBootstrap_canSeedAndActivateInitialSessionWithoutViewLifecycleHooks() async throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
@@ -80,18 +81,24 @@ final class RuntimeConfigurationTests: XCTestCase {
         sessionManager.configure(runtime: runtime)
         chatViewModel.refreshModels()
 
-        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
-        guard let initialSession else {
+        let resolvedInitial: ChatSessionRecord?
+        if let existing = sessionManager.sessions.first {
+            resolvedInitial = existing
+        } else {
+            resolvedInitial = try? await sessionManager.createSession()
+        }
+        guard let initialSession = resolvedInitial else {
             XCTFail("Bootstrap should create or restore an initial session")
             return
         }
 
         sessionManager.activeSession = initialSession
-        chatViewModel.switchToSession(initialSession)
+        await chatViewModel.switchToSession(initialSession)
         chatViewModel.dispatchSelectedLoad()
 
         XCTAssertEqual(sessionManager.activeSession?.id, initialSession.id)
         XCTAssertEqual(chatViewModel.activeSession?.id, initialSession.id)
-        XCTAssertEqual(try runtime.persistence.fetchSessions().map(\.id), [initialSession.id])
+        let persistedIDs = try await runtime.persistence.fetchSessions().map(\.id)
+        XCTAssertEqual(persistedIDs, [initialSession.id])
     }
 }

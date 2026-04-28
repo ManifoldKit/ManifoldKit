@@ -137,7 +137,7 @@ final class ConversationExporterTests: XCTestCase {
 
     // MARK: - SwiftData convenience overload
 
-    func test_export_viaPersistenceProvider_fetchesMessagesInOrder() throws {
+    func test_export_viaPersistenceProvider_fetchesMessagesInOrder() async throws {
         let session = ChatSession(title: "Provider Path")
         stack.context.insert(session)
         try stack.context.save()
@@ -156,10 +156,10 @@ final class ConversationExporterTests: XCTestCase {
             timestamp: Date(timeIntervalSinceReferenceDate: 0),
             sessionID: session.id
         )
-        try stack.provider.insertMessage(later)
-        try stack.provider.insertMessage(earlier)
+        try await stack.provider.insertMessage(later)
+        try await stack.provider.insertMessage(earlier)
 
-        let file = try ConversationExporter.export(
+        let file = try await ConversationExporter.export(
             session: session,
             format: MarkdownExportFormat(),
             provider: stack.provider,

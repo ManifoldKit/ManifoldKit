@@ -54,10 +54,10 @@ final class SessionQueueIsolationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -65,7 +65,7 @@ final class SessionQueueIsolationTests: XCTestCase {
 
     /// Switching sessions discards queued requests belonging to the old session.
     func test_switchSession_discardsQueuedRequestsForOldSession() async throws {
-        let sessionA = try createAndActivateSession(title: "Session A")
+        let sessionA = try await createAndActivateSession(title: "Session A")
 
         // Enqueue a request scoped to session A.
         let (_, stream) = try vm.inferenceService.enqueue(
@@ -74,9 +74,9 @@ final class SessionQueueIsolationTests: XCTestCase {
         )
 
         // Create session B and switch to it.
-        let sessionB = try sessionManager.createSession(title: "Session B")
+        let sessionB = try await sessionManager.createSession(title: "Session B")
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         // Session A's stream should terminate with an error because
         // discardRequests(notMatching:) cancelled it.
@@ -91,7 +91,7 @@ final class SessionQueueIsolationTests: XCTestCase {
 
     /// Active generation is cancelled when switching sessions.
     func test_switchSession_activeGeneration_cancelledOnSwitch() async throws {
-        try createAndActivateSession(title: "Session A")
+        try await createAndActivateSession(title: "Session A")
 
         // Start generation on session A.
         vm.inputText = "question for A"
@@ -102,9 +102,9 @@ final class SessionQueueIsolationTests: XCTestCase {
         XCTAssertTrue(vm.isGenerating, "Should be generating before switch")
 
         // Switch to session B — should stop generation.
-        let sessionB = try sessionManager.createSession(title: "Session B")
+        let sessionB = try await sessionManager.createSession(title: "Session B")
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         XCTAssertFalse(vm.isGenerating, "isGenerating should be false after session switch")
 
@@ -113,7 +113,7 @@ final class SessionQueueIsolationTests: XCTestCase {
 
     /// stopGeneration drains the entire queue (active + queued).
     func test_stopGeneration_drainsEntireQueue() async throws {
-        try createAndActivateSession(title: "Test")
+        try await createAndActivateSession(title: "Test")
 
         // Start generation to make isGenerating true.
         vm.inputText = "first"
@@ -159,7 +159,7 @@ final class SessionQueueIsolationTests: XCTestCase {
 
     /// regenerateLastResponse is a no-op while generation is active (queue busy).
     func test_regenerateWhileQueued_isBlocked() async throws {
-        try createAndActivateSession(title: "Test")
+        try await createAndActivateSession(title: "Test")
 
         // Send a message and let it complete to have an assistant message to regenerate.
         slowBackend.tokensToYield = ["first", " reply"]

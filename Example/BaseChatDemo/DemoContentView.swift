@@ -123,7 +123,7 @@ struct DemoContentView: View {
 
                 if !hasPendingPayload && sessionManager.sessions.isEmpty {
                     do {
-                        try sessionManager.createSession()
+                        try await sessionManager.createSession()
                     } catch {
                         viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
                     }
@@ -177,7 +177,7 @@ struct DemoContentView: View {
                 // mid-stream, wiping the ingested reply. Only re-activate
                 // if the view model is currently on a different session.
                 if viewModel.activeSession?.id != session.id {
-                    viewModel.switchToSession(session)
+                    Task { await viewModel.switchToSession(session) }
                 }
             }
         }
@@ -189,7 +189,7 @@ struct DemoContentView: View {
             // user sees the wrong detail pane.
             guard let newSession else { return }
             if sessionManager.activeSession?.id != newSession.id {
-                sessionManager.loadSessions()
+                Task { await sessionManager.loadSessions() }
                 sessionManager.activeSession = newSession
             }
         }
@@ -319,10 +319,12 @@ struct DemoContentView: View {
     }
 
     private func createSession() {
-        do {
-            try sessionManager.createSession()
-        } catch {
-            viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
+        Task {
+            do {
+                try await sessionManager.createSession()
+            } catch {
+                viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
+            }
         }
     }
 

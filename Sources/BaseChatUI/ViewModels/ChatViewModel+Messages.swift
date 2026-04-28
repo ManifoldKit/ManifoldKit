@@ -47,7 +47,7 @@ extension ChatViewModel {
 
         // Trigger auto-title on the first user message in this session.
         if let session = activeSession, messages.filter({ $0.role == .user }).count == 1 {
-            onFirstMessage?(session, text)
+            await onFirstMessage?(session, text)
         }
 
         // Create an empty assistant message that will be streamed into.

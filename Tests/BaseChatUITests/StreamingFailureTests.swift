@@ -39,10 +39,10 @@ final class StreamingFailureTests: XCTestCase {
     }
 
     @discardableResult
-    private func createAndActivateSession(vm: ChatViewModel, title: String = "Test Chat") -> ChatSessionRecord {
-        let session = try! sessionManager.createSession(title: title)
+    private func createAndActivateSession(vm: ChatViewModel, title: String = "Test Chat") async -> ChatSessionRecord {
+        let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -61,8 +61,8 @@ final class StreamingFailureTests: XCTestCase {
             tokensBeforeError: ["Hello", " world"],
             errorToThrow: InferenceError.inferenceFailure("Simulated mid-stream failure")
         )
-        let vm = makeViewModel(backend: backend)
-        let session = createAndActivateSession(vm: vm)
+        let vm = await makeViewModel(backend: backend)
+        let session = await createAndActivateSession(vm: vm)
 
         vm.inputText = "Say hello"
         await vm.sendMessage()
@@ -89,8 +89,8 @@ final class StreamingFailureTests: XCTestCase {
             tokensBeforeError: ["Hello", " world"],
             errorToThrow: InferenceError.inferenceFailure("Simulated mid-stream failure")
         )
-        let vm = makeViewModel(backend: backend)
-        createAndActivateSession(vm: vm)
+        let vm = await makeViewModel(backend: backend)
+        await createAndActivateSession(vm: vm)
 
         vm.inputText = "Say hello"
         await vm.sendMessage()
@@ -110,8 +110,8 @@ final class StreamingFailureTests: XCTestCase {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true
         backend.tokensToYield = []
-        let vm = makeViewModel(backend: backend)
-        createAndActivateSession(vm: vm)
+        let vm = await makeViewModel(backend: backend)
+        await createAndActivateSession(vm: vm)
 
         vm.inputText = "Say something"
         await vm.sendMessage()
@@ -127,8 +127,8 @@ final class StreamingFailureTests: XCTestCase {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true
         backend.tokensToYield = ["OK"]
-        let vm = makeViewModel(backend: backend)
-        let session = createAndActivateSession(vm: vm)
+        let vm = await makeViewModel(backend: backend)
+        let session = await createAndActivateSession(vm: vm)
 
         vm.inputText = "Quick question"
         await vm.sendMessage()
@@ -152,9 +152,9 @@ final class StreamingFailureTests: XCTestCase {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true
         backend.tokensToYield = tokens
-        let vm = makeViewModel(backend: backend)
+        let vm = await makeViewModel(backend: backend)
         vm.loopDetectionEnabled = false
-        createAndActivateSession(vm: vm)
+        await createAndActivateSession(vm: vm)
 
         vm.inputText = "Generate a lot"
         await vm.sendMessage()
@@ -171,8 +171,8 @@ final class StreamingFailureTests: XCTestCase {
         let backend = MockInferenceBackend()
         backend.isModelLoaded = true
         backend.tokensToYield = ["Hello ", "\u{1F30D}", " caf\u{00E9}", " na\u{00EF}ve"]
-        let vm = makeViewModel(backend: backend)
-        createAndActivateSession(vm: vm)
+        let vm = await makeViewModel(backend: backend)
+        await createAndActivateSession(vm: vm)
 
         vm.inputText = "Unicode test"
         await vm.sendMessage()
