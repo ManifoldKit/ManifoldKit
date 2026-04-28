@@ -40,14 +40,13 @@ linked into the binary.
 
 | Mode      | Default? | Traits enabled                | Backends linked                 |
 |-----------|----------|-------------------------------|---------------------------------|
-| `offline` | No       | `MLX`, `Llama`                | MLX, llama.cpp, Foundation      |
-| `ollama`  | **Yes**  | `MLX`, `Llama`, `Ollama`      | + Ollama HTTP client            |
+| `offline` | **Yes**  | `MLX`, `Llama`                | MLX, llama.cpp, Foundation      |
+| `ollama`  | No       | `MLX`, `Llama`, `Ollama`      | + Ollama HTTP client            |
 | `saas`    | No       | `MLX`, `Llama`, `CloudSaaS`   | + Claude, OpenAI                |
 | `full`    | No       | all of the above              | every backend BCK ships         |
 
-The default trait set today is `MLX, Llama` (per `Package.swift`). `Ollama` is in the
-default-trait set in the **Quick Start** examples; it moves to opt-in in the next
-major. `CloudSaaS` is opt-in today.
+The default trait set today is `MLX, Llama` (per `Package.swift`), which corresponds
+to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
 
 ### Consumer manifest snippets
 

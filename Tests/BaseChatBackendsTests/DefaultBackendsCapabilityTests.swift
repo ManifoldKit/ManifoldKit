@@ -30,15 +30,22 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
-    func test_canLoad_provider_alwaysTrue() {
-        // `DefaultBackends.canLoad(provider:)` reports static availability —
-        // it always returns `true` (provider data lives in BaseChatInference
-        // and is independent of trait gating). The actual factory may still
-        // return `nil` for a provider when its trait is disabled.
+    func test_canLoad_provider_matchesCompiledContract() {
+        let compiled = DefaultBackends.compiledBackends
         for provider in APIProvider.allCases {
-            XCTAssertTrue(DefaultBackends.canLoad(provider: provider),
-                          "Expected \(provider) to always be supported")
+            let expected = compiled.cloudProviders.contains(provider)
+            XCTAssertEqual(
+                DefaultBackends.canLoad(provider: provider),
+                expected,
+                "Expected \(provider) support to match the compiled contract"
+            )
         }
+    }
+
+    func test_compiledBackends_passthroughsMatchStaticQueries() {
+        XCTAssertEqual(DefaultBackends.buildProfile, DefaultBackends.compiledBackends.buildProfile)
+        XCTAssertEqual(DefaultBackends.enabledTraits, DefaultBackends.compiledBackends.traits)
+        XCTAssertEqual(DefaultBackends.supportedModelTypes, DefaultBackends.compiledBackends.localModelTypes)
     }
 
     // MARK: - register(with:) populates declareSupport

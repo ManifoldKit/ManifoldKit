@@ -19,10 +19,13 @@ public struct DownloadableModelRow: View {
         self.model = model
     }
 
-    /// Compatibility result for this model's type, or `.supported` when no
-    /// capability service is in the environment (backward-compatible fallback).
+    /// Resolves backend compatibility from the injected `FrameworkCapabilityService`
+    /// when one is in the environment; otherwise falls back to the compiled-backend
+    /// contract via `CompiledBackends.current.compatibility(for:)`, which can return
+    /// `.unsupported` for backends that were not compiled into the current build.
     private var backendCompatibility: ModelCompatibilityResult {
-        capabilityService?.compatibility(for: model.modelType) ?? .supported
+        capabilityService?.compatibility(for: model.modelType)
+            ?? CompiledBackends.current.compatibility(for: model.modelType)
     }
 
     public var body: some View {

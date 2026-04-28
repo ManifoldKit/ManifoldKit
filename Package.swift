@@ -87,6 +87,8 @@ let package = Package(
             ],
             path: "Sources/BaseChatInference",
             swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
             ]

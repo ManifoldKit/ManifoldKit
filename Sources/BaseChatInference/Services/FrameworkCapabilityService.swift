@@ -67,6 +67,10 @@ public final class FrameworkCapabilityService {
 
     // MARK: - Observable State
 
+    /// Backends compiled into this binary, independent of whether they have
+    /// been registered on the backing `InferenceService` yet.
+    public let compiledBackends: CompiledBackends
+
     /// Describes which backends are registered and available in this build.
     ///
     /// Updated whenever `refresh()` is called (typically after backend registration).
@@ -84,6 +88,7 @@ public final class FrameworkCapabilityService {
     /// to populate `enabledBackends`.
     public init(inferenceService: InferenceService) {
         self.inferenceService = inferenceService
+        self.compiledBackends = .current
         // Start with an empty snapshot; caller invokes refresh() after backend registration.
         self.enabledBackends = EnabledBackends()
     }
