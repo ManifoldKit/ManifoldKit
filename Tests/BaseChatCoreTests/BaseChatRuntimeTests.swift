@@ -5,13 +5,12 @@ import XCTest
 @MainActor
 final class BaseChatRuntimeTests: XCTestCase {
 
-    func test_init_installsConfigurationBeforeBuildingRuntime_andEmitsOrderedEvents() throws {
+    func test_init_installsConfigurationBeforeBuildingModelContainer() throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
         let bundleIdentifier = "com.basechatkit.runtime-tests.\(UUID().uuidString)"
         var bundleIdentifierSeenDuringContainerBuild: String?
-        var events: [BaseChatRuntime.Event] = []
 
         _ = try BaseChatRuntime(
             configuration: BaseChatConfiguration(
@@ -21,21 +20,10 @@ final class BaseChatRuntimeTests: XCTestCase {
             makeModelContainer: {
                 bundleIdentifierSeenDuringContainerBuild = BaseChatConfiguration.shared.bundleIdentifier
                 return try ModelContainerFactory.makeInMemoryContainer()
-            },
-            onEvent: { events.append($0) }
+            }
         )
 
         XCTAssertEqual(bundleIdentifierSeenDuringContainerBuild, bundleIdentifier)
-        XCTAssertEqual(
-            events,
-            [
-                .configurationInstalled(bundleIdentifier: bundleIdentifier),
-                .inferenceServiceReady,
-                .modelContainerReady,
-                .persistenceReady,
-                .runtimeReady,
-            ]
-        )
     }
 
     func test_init_usesInjectedInferenceServiceInstance() throws {

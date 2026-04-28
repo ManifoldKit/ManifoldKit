@@ -18,6 +18,12 @@ struct MinimalExampleApp: App {
     @State private var modelManagement: ModelManagementViewModel
 
     init() {
+        // Building the runtime — and therefore the SwiftData container — in
+        // App.init() is fine here because the Minimal example uses a small
+        // schema. For larger schemas, prefer building the container in a
+        // detached `.task` (see BaseChatDemoApp): SwiftData container setup
+        // (schema compilation + SQLite open) can stall the first frame for
+        // several seconds when done on the main thread.
         let runtime = try! BaseChatRuntime(
             configuration: BaseChatConfiguration(
                 appName: "Minimal Chat",
@@ -39,15 +45,6 @@ struct MinimalExampleApp: App {
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(runtime: runtime)
 
-        vm.refreshModels()
-
-        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
-        if let initialSession {
-            sessionManager.activeSession = initialSession
-            vm.switchToSession(initialSession)
-            vm.dispatchSelectedLoad()
-        }
-
         let downloadManager = BackgroundDownloadManager()
         let huggingFaceService = HuggingFaceService()
 
@@ -65,7 +62,26 @@ struct MinimalExampleApp: App {
                 .environment(chatViewModel)
                 .environment(sessionManager)
                 .environment(modelManagement)
+                .task {
+                    // SwiftData fetches and the initial model load run here
+                    // rather than in App.init(): the @MainActor work below
+                    // touches the persistent store, and doing it during
+                    // initialiser execution stalls the first frame.
+                    await bootstrapInitialSession()
+                }
         }
         .modelContainer(runtime.modelContainer)
+    }
+
+    @MainActor
+    private func bootstrapInitialSession() async {
+        chatViewModel.refreshModels()
+
+        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        if let initialSession {
+            sessionManager.activeSession = initialSession
+            chatViewModel.switchToSession(initialSession)
+            chatViewModel.dispatchSelectedLoad()
+        }
     }
 }

@@ -13,19 +13,13 @@ import BaseChatInference
 /// Apps that need a custom ``InferenceService`` configuration (for example a
 /// `ToolRegistry` or approval gate) can construct that service first and pass
 /// it in. The runtime will keep using the exact instance supplied.
+///
+/// ``BaseChatRuntime`` is the SwiftData-backed bootstrap. Adopters using a
+/// custom ``ChatPersistenceProvider`` should construct ``ChatViewModel`` /
+/// ``SessionManagerViewModel`` directly and call `configure(persistence:)` —
+/// runtime support for custom providers is tracked separately.
 @MainActor
 public final class BaseChatRuntime {
-
-    /// Minimal bootstrap lifecycle contract for runtime assembly.
-    public enum Event: Sendable, Equatable {
-        case configurationInstalled(bundleIdentifier: String)
-        case inferenceServiceReady
-        case modelContainerReady
-        case persistenceReady
-        case runtimeReady
-    }
-
-    public typealias EventHandler = @MainActor (Event) -> Void
 
     public let inferenceService: InferenceService
     public let diagnostics: DiagnosticsService
@@ -38,8 +32,7 @@ public final class BaseChatRuntime {
         configuration: BaseChatConfiguration,
         inferenceService: InferenceService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
-        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
-        onEvent: EventHandler? = nil
+        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) throws {
         // Capture the previous configuration before any mutation so a failure
         // partway through bootstrap leaves `BaseChatConfiguration.shared`
@@ -48,20 +41,15 @@ public final class BaseChatRuntime {
 
         do {
             BaseChatConfiguration.shared = configuration
-            onEvent?(.configurationInstalled(bundleIdentifier: configuration.bundleIdentifier))
 
             let resolvedInferenceService = inferenceService ?? InferenceService()
             self.inferenceService = resolvedInferenceService
-            onEvent?(.inferenceServiceReady)
 
             let resolvedModelContainer = try makeModelContainer()
             self.modelContainer = resolvedModelContainer
-            onEvent?(.modelContainerReady)
 
             self.diagnostics = diagnostics
             self.persistence = SwiftDataPersistenceProvider(modelContext: resolvedModelContainer.mainContext)
-            onEvent?(.persistenceReady)
-            onEvent?(.runtimeReady)
         } catch {
             BaseChatConfiguration.shared = previousConfiguration
             throw error

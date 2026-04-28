@@ -157,6 +157,99 @@ chatVM.postGenerationTasks = [
 
 Tasks run sequentially off `@MainActor`. Errors surface in ``ChatViewModel/backgroundTaskError`` but don't interrupt the session.
 
+### Migrating from `configure(persistence:)`
+
+Pre-runtime BaseChatKit apps wired persistence by reading `@Environment(\.modelContext)` from a root view's `.task` and calling `chatViewModel.configure(persistence:)` once the SwiftData container was attached. ``BaseChatRuntime`` collapses that into a single bootstrap call in `App.init()`.
+
+**Before** — view-lifecycle late-binding:
+
+```swift
+import SwiftData
+import SwiftUI
+import BaseChatCore
+import BaseChatInference
+import BaseChatUI
+
+@main
+struct LegacyApp: App {
+    @State private var chatViewModel = ChatViewModel()
+    let modelContainer: ModelContainer
+
+    init() {
+        modelContainer = try! ModelContainer(for: ChatSessionRecord.self, ChatMessageRecord.self)
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(chatViewModel)
+                .task {
+                    let provider = SwiftDataPersistenceProvider(modelContext: modelContainer.mainContext)
+                    chatViewModel.configure(persistence: provider)
+                }
+        }
+        .modelContainer(modelContainer)
+    }
+}
+```
+
+**After** — runtime-driven bootstrap:
+
+```swift
+import SwiftData
+import SwiftUI
+import BaseChatCore
+import BaseChatInference
+import BaseChatUI
+
+@main
+struct ModernApp: App {
+    private let runtime: BaseChatRuntime
+    @State private var chatViewModel: ChatViewModel
+
+    init() {
+        let runtime = try! BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "My App",
+                bundleIdentifier: "com.example.myapp"
+            )
+        )
+        self.runtime = runtime
+
+        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
+        vm.configure(runtime: runtime)
+        _chatViewModel = State(initialValue: vm)
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(chatViewModel)
+        }
+        .modelContainer(runtime.modelContainer)
+    }
+}
+```
+
+`@Query` and `@Environment(\.modelContext)` views still work because `runtime.modelContainer` is attached to the scene via the standard `.modelContainer(_:)` modifier. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
+
+Apps using a second ``ModelContainer`` for non-chat data should construct it independently and attach it via a separate `.modelContainer(_:)` modifier alongside `runtime.modelContainer`. The runtime only owns the chat schema:
+
+```swift
+import SwiftData
+
+var body: some Scene {
+    WindowGroup {
+        RootView()
+            .environment(chatViewModel)
+    }
+    .modelContainer(runtime.modelContainer)
+    .modelContainer(analyticsContainer)
+}
+```
+
+Keep `configure(persistence:)` for adopters that provide a custom ``ChatPersistenceProvider`` (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. ``BaseChatRuntime`` is the SwiftData-backed bootstrap; runtime support for custom providers is tracked separately.
+
 ## Next Steps
 
 - See ``GenerationSettingsView`` to give users control over temperature and prompt templates

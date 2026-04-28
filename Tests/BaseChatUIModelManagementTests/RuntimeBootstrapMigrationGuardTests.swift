@@ -5,15 +5,20 @@ import SwiftUI
 @testable import BaseChatUI
 @testable import BaseChatUIModelManagement
 
-/// Compile-time guard for the README / MinimalExample runtime bootstrap path.
-///
-/// Host apps should be able to assemble `BaseChatRuntime`, configure the chat
-/// view models from it, and render `ChatView(apiConfiguration:)` without
-/// falling back to view-lifecycle persistence wiring.
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
+
+/// Guards the runtime-bootstrap migration path documented in the README and
+/// the MinimalExample app: assemble a `BaseChatRuntime`, configure the chat
+/// view models from it, mount `ChatView(apiConfiguration:)`, and verify that
+/// runtime-driven persistence is wired without view-lifecycle late-binding.
 final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
 
     @MainActor
-    func test_runtimeBootstrap_chatViewCompositionCompiles() throws {
+    func test_runtimeBootstrap_persistenceWiredBeforeFirstRender() throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
@@ -30,15 +35,32 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
 
-        let view = AnyView(
-            ChatView(
-                showModelManagement: .constant(false),
-                apiConfiguration: { APIConfigurationView() }
-            )
-            .environment(chatViewModel)
-            .environment(sessionManager)
-        )
+        // Real piece of state: configure(runtime:) must wire persistence onto
+        // the view model. Sabotage check: zero-out the call inside
+        // `ChatViewModel.configure(runtime:)` and this assertion will fail.
+        XCTAssertNotNil(chatViewModel.persistence,
+            "configure(runtime:) must install the runtime's persistence provider")
 
-        XCTAssertNotNil(view)
+        let view = ChatView(
+            showModelManagement: .constant(false),
+            apiConfiguration: { APIConfigurationView() }
+        )
+        .environment(chatViewModel)
+        .environment(sessionManager)
+
+        #if canImport(AppKit)
+        let controller = NSHostingController(rootView: view)
+        _ = controller.view
+        controller.view.layoutSubtreeIfNeeded()
+        #elseif canImport(UIKit)
+        let controller = UIHostingController(rootView: view)
+        controller.loadViewIfNeeded()
+        controller.view.layoutIfNeeded()
+        #endif
+
+        // After mount, persistence is still wired — i.e. the view didn't
+        // overwrite or clear it during onAppear.
+        XCTAssertNotNil(chatViewModel.persistence,
+            "ChatView mount must not clobber the runtime-installed persistence")
     }
 }

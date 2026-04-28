@@ -147,6 +147,8 @@ if compiled.localModelTypes.contains(.mlx) {
 
 If you already depend on `BaseChatBackends`, the same data is also available via `DefaultBackends.compiledBackends`.
 
+`CompiledBackends.current` describes what's compiled into the binary based on SwiftPM traits — it answers "could this build ever support backend X?" `FrameworkCapabilityService.enabledBackends` describes what's actually been registered at runtime — "is backend X usable right now?" Gate UI affordances on `enabledBackends` unless you specifically need the compile-time view (e.g., to hide a download tab in a SaaS-only build).
+
 ### 2.1 Optional MCP traits
 
 `BaseChatMCP` ships as its own module (`import BaseChatMCP`). Package traits expose MCP-specific configuration:
@@ -268,10 +270,128 @@ struct ContentView: View {
 }
 ```
 
-If your app still late-binds persistence from `@Environment(\.modelContext)` in
-`.task`/`.onAppear`, move that work into `App.init()` with `BaseChatRuntime`.
-Keep `configure(persistence:)` for advanced cases that provide a custom
-`ChatPersistenceProvider`.
+### Migrating from `configure(persistence:)`
+
+Pre-runtime BaseChatKit apps wired persistence by reading
+`@Environment(\.modelContext)` from a root view's `.task` or `.onAppear` and
+calling `chatViewModel.configure(persistence: SwiftDataPersistenceProvider(...))`
+once the SwiftData container was attached. The runtime collapses that into a
+single bootstrap call.
+
+**Before** — late-binding from a view lifecycle:
+
+```swift
+import SwiftUI
+import SwiftData
+import BaseChatCore
+import BaseChatInference
+import BaseChatUI
+
+@main
+struct LegacyApp: App {
+    @State private var chatViewModel = ChatViewModel()
+    let modelContainer: ModelContainer
+
+    init() {
+        modelContainer = try! ModelContainer(for: ChatSessionRecord.self, ChatMessageRecord.self)
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(chatViewModel)
+                .task {
+                    let provider = SwiftDataPersistenceProvider(modelContext: modelContainer.mainContext)
+                    chatViewModel.configure(persistence: provider)
+                }
+        }
+        .modelContainer(modelContainer)
+    }
+}
+```
+
+**After** — runtime-driven bootstrap in `App.init()`:
+
+```swift
+import SwiftUI
+import SwiftData
+import BaseChatCore
+import BaseChatInference
+import BaseChatUI
+
+@main
+struct ModernApp: App {
+    private let runtime: BaseChatRuntime
+    @State private var chatViewModel: ChatViewModel
+
+    init() {
+        let runtime = try! BaseChatRuntime(
+            configuration: BaseChatConfiguration(
+                appName: "My App",
+                bundleIdentifier: "com.example.myapp"
+            )
+        )
+        self.runtime = runtime
+
+        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
+        vm.configure(runtime: runtime)
+        _chatViewModel = State(initialValue: vm)
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environment(chatViewModel)
+        }
+        .modelContainer(runtime.modelContainer)
+    }
+}
+```
+
+#### What still works unchanged
+
+`@Query` and `@Environment(\.modelContext)` continue to work in your views: the
+`runtime.modelContainer` is attached to the scene with the standard
+`.modelContainer(_:)` modifier, so SwiftData wiring downstream of that scene
+behaves exactly as it did before.
+
+#### Buffering payloads during cold launch
+
+Apps that buffer an inbound payload during cold launch (Share Extension, App
+Intent, deep link) and then drain it once persistence is available should keep
+that pattern. The runtime makes persistence available *before* view rendering,
+so the buffer can drain immediately on first appearance — no `if persistence ==
+nil` race needed in `.task`.
+
+#### Multiple `ModelContainer`s
+
+Apps using a second `ModelContainer` for non-chat data (analytics caches,
+extension state, bookmarks) should continue to construct that container
+independently and attach it to the scene with a separate `.modelContainer(_:)`
+modifier:
+
+```swift
+import SwiftData
+
+var body: some Scene {
+    WindowGroup {
+        RootView()
+            .environment(chatViewModel)
+    }
+    .modelContainer(runtime.modelContainer)
+    .modelContainer(analyticsContainer)
+}
+```
+
+The runtime owns only the chat schema; non-chat schemas stay yours.
+
+#### When to keep `configure(persistence:)`
+
+Keep `configure(persistence:)` for adopters that provide a custom
+``ChatPersistenceProvider`` (e.g. an in-memory test fixture, or a non-SwiftData
+backing store). Construct ``ChatViewModel`` and ``SessionManagerViewModel``
+directly and call `configure(persistence:)` — `BaseChatRuntime` is the
+SwiftData-backed bootstrap and does not yet support custom providers.
 
 ## Supported Model Types
 
