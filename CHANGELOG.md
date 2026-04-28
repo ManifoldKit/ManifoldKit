@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.13.3](https://github.com/roryford/BaseChatKit/compare/v0.13.2...v0.13.3) (2026-04-28)
+
+### Highlights
+
+#### Sort order picker on the Model Selection tab
+
+The Model Selection tab now exposes a sort-order control alongside the search field, with four orderings: `Alphabetical`, `Type`, `Size (Smallest First)`, and `Capability / Speed`. The comparator is extracted as `static ModelSelectionTabView.sortModels(_:by:)` so host apps and tests can drive it directly without mounting the view.
+
+```swift
+let ordered = ModelSelectionTabView.sortModels(
+    models,
+    by: .sizeSmallestFirst
+)
+```
+
+All four orderings have name-based tie-breakers via `localizedStandardCompare`, and the picker selection is `@State` on the view — no host wiring required. See [#879](https://github.com/roryford/BaseChatKit/pull/879).
+
+#### TTFT performance test no longer SIGTRAPs at process exit
+
+`IntegratedStreamingPerformanceTests.testPerf_timeToFirstToken_realisticBackend` was fulfilling its measure-block expectation as soon as the first token arrived, leaving the unstructured `sendMessage()` task in flight past `tearDown()` — the task could then touch an invalidated `ModelContext` and trip a SIGTRAP at process exit. The fix splits the wait into a `firstTokenExp` (timed via `stopMeasuring()`) plus a separate `drainExp` that resolves only after `sendMessage()` fully returns, so the task is always joined inside the measure block.
+
+A side-effect of the new pattern: per-iteration TTFT is now measured cleanly. The previous orphan-task arrangement leaked work between iterations and inflated the average to ~745 ms; corrected runs report ~104 ms with sub-1% relative standard deviation. See [#879](https://github.com/roryford/BaseChatKit/pull/879).
+
+### Features
+
+- **model-management:** `ModelSelectionSortOrder` enum and sort picker on the Model Selection tab; comparator is a public `static` helper on `ModelSelectionTabView` for unit testing ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+
+### Fixes
+
+- **tests:** join the in-flight `sendMessage()` task inside the TTFT measure block so it cannot outlive `tearDown()` and access an invalidated `ModelContext`; corrects per-iteration measurement drift as a side-effect ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+- **demo:** small UX polish to the demo app's sidebar, memory indicator, and connected-services view; new `DemoNowTool` ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+
 ## [0.13.2](https://github.com/roryford/BaseChatKit/compare/v0.13.1...v0.13.2) (2026-04-28)
 
 ### Highlights
