@@ -53,7 +53,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         vm.configure(persistence: persistence)
 
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
     }
 
     override func tearDown() {
@@ -112,7 +112,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         service.registerCloudBackendFactory(cloudFactory)
         let viewModel = ChatViewModel(inferenceService: service)
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
-        viewModel.configure(persistence: persistence)
+        viewModel.configure(persistence: persistence, autoLoad: false)
         return viewModel
     }
 
@@ -194,7 +194,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
-        freshVM.configure(persistence: persistence)
+        freshVM.configure(persistence: persistence, autoLoad: false)
         try await makeSession(title: "Sabotage Chat")
         freshVM.selectedEndpoint = endpoint
         await freshVM.loadCloudEndpoint(endpoint)

@@ -19,7 +19,7 @@ final class StreamingFailureTests: XCTestCase {
         container = try makeInMemoryContainer()
         context = container.mainContext
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
+        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context), autoLoad: false)
     }
 
     override func tearDown() async throws {

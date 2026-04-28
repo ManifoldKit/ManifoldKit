@@ -17,7 +17,7 @@ final class SessionAutoRenameTests: XCTestCase {
         container = try makeInMemoryContainer()
         context = container.mainContext
         vm = SessionManagerViewModel()
-        vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
+        vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context), autoLoad: false)
     }
 
     override func tearDown() async throws {
@@ -75,6 +75,7 @@ final class SessionAutoRenameTests: XCTestCase {
         let freshVM = SessionManagerViewModel()
         freshVM.configure(
             persistence: SwiftDataPersistenceProvider(modelContext: context),
+            autoLoad: false,
             diagnostics: diagnostics
         )
 
@@ -101,7 +102,7 @@ final class SessionAutoRenameTests: XCTestCase {
         let wrappedPersistence = ErrorInjectingPersistenceProvider(wrapping: freshStack.provider)
         let diagnostics = DiagnosticsService()
         let freshVM = SessionManagerViewModel()
-        freshVM.configure(persistence: wrappedPersistence, diagnostics: diagnostics)
+        freshVM.configure(persistence: wrappedPersistence, autoLoad: false, diagnostics: diagnostics)
 
         let session = try await freshVM.createSession()
         wrappedPersistence.shouldThrowOnUpdateSession = ChatPersistenceError.providerNotConfigured

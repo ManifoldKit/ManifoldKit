@@ -270,7 +270,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         // Use SessionManagerViewModel to delete the session (it handles cascade).
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
+        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context), autoLoad: false)
         try await sessionManager.deleteSession(session.toRecord())
 
         XCTAssertEqual(
@@ -301,7 +301,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
         // Delete session B.
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
+        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context), autoLoad: false)
         try await sessionManager.deleteSession(sessionB.toRecord())
 
         // Session A should be unaffected.

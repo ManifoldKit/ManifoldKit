@@ -34,7 +34,7 @@ final class SessionOverrideTests: XCTestCase {
         vm.configure(persistence: persistence)
 
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
     }
 
     override func tearDown() async throws {

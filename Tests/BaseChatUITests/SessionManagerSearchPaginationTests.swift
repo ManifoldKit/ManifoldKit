@@ -23,7 +23,7 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
         context = container.mainContext
         persistence = SwiftDataPersistenceProvider(modelContext: context)
         vm = SessionManagerViewModel()
-        vm.configure(persistence: persistence)
+        vm.configure(persistence: persistence, autoLoad: false)
     }
 
     override func tearDown() async throws {
