@@ -92,8 +92,8 @@ public enum ConversationExporter {
         format: ConversationExportFormat,
         provider: ChatPersistenceProvider,
         directory: URL? = nil
-    ) throws -> ShareableFile {
-        let messages = try provider.fetchMessages(for: session.id)
+    ) async throws -> ShareableFile {
+        let messages = try await provider.fetchMessages(for: session.id)
         return try export(
             session: session.record,
             messages: messages,

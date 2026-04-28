@@ -27,7 +27,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
 
     // MARK: - Sessions
 
-    public func insertSession(_ record: ChatSessionRecord) throws {
+    public func insertSession(_ record: ChatSessionRecord) async throws {
         let session = ChatSession(title: record.title)
         session.id = record.id
         session.createdAt = record.createdAt
@@ -45,7 +45,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         try modelContext.save()
     }
 
-    public func updateSession(_ record: ChatSessionRecord) throws {
+    public func updateSession(_ record: ChatSessionRecord) async throws {
         guard let session = try fetchSwiftDataSession(id: record.id) else {
             throw ChatPersistenceError.sessionNotFound(record.id)
         }
@@ -63,23 +63,23 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         try modelContext.save()
     }
 
-    public func deleteSession(_ sessionID: UUID) throws {
+    public func deleteSession(_ sessionID: UUID) async throws {
         guard let session = try fetchSwiftDataSession(id: sessionID) else {
             throw ChatPersistenceError.sessionNotFound(sessionID)
         }
-        try deleteMessages(for: sessionID)
+        try await deleteMessages(for: sessionID)
         modelContext.delete(session)
         try modelContext.save()
     }
 
-    public func fetchSessions() throws -> [ChatSessionRecord] {
+    public func fetchSessions() async throws -> [ChatSessionRecord] {
         let descriptor = FetchDescriptor<ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
-    public func fetchSessions(offset: Int, limit: Int) throws -> [ChatSessionRecord] {
+    public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
         var descriptor = FetchDescriptor<ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
@@ -93,7 +93,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
 
     // MARK: - Search
 
-    public func searchMessages(query: String, limit: Int) throws -> [MessageSearchHit] {
+    public func searchMessages(query: String, limit: Int) async throws -> [MessageSearchHit] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, limit > 0 else { return [] }
 
@@ -129,7 +129,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
 
     // MARK: - Messages
 
-    public func insertMessage(_ record: ChatMessageRecord) throws {
+    public func insertMessage(_ record: ChatMessageRecord) async throws {
         let message = ChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
         message.id = record.id
         message.timestamp = record.timestamp
@@ -139,7 +139,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         try modelContext.save()
     }
 
-    public func updateMessage(_ record: ChatMessageRecord) throws {
+    public func updateMessage(_ record: ChatMessageRecord) async throws {
         guard let message = try fetchSwiftDataMessage(id: record.id) else {
             throw ChatPersistenceError.messageNotFound(record.id)
         }
@@ -149,7 +149,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         try modelContext.save()
     }
 
-    public func deleteMessage(_ messageID: UUID) throws {
+    public func deleteMessage(_ messageID: UUID) async throws {
         guard let message = try fetchSwiftDataMessage(id: messageID) else {
             throw ChatPersistenceError.messageNotFound(messageID)
         }
@@ -157,7 +157,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         try modelContext.save()
     }
 
-    public func fetchMessages(for sessionID: UUID) throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
         let descriptor = FetchDescriptor<ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
@@ -165,7 +165,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) throws -> [ChatMessageRecord] {
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
         // Fetch newest-first, take `limit`, then reverse to ascending order.
         var descriptor = FetchDescriptor<ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
@@ -176,7 +176,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         return results.reversed().map { $0.toRecord() }
     }
 
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
         // Fetch messages older than `before`, newest-first, take `limit`, then reverse.
         var descriptor = FetchDescriptor<ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID && $0.timestamp < before },
@@ -187,7 +187,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         return results.reversed().map { $0.toRecord() }
     }
 
-    public func deleteMessages(for sessionID: UUID) throws {
+    public func deleteMessages(for sessionID: UUID) async throws {
         let descriptor = FetchDescriptor<ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )
