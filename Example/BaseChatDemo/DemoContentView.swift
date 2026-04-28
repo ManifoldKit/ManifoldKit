@@ -20,7 +20,9 @@ struct DemoContentView: View {
     @State private var isModelManagementPresented = false
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
-    @State private var voiceController = VoiceConversationController()
+    @State private var voiceController = VoiceConversationController(
+        wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat", "base chat"])
+    )
 
     /// Tool registry shared with the app's inference service. Held here so the
     /// demo scenario runner can install scenario-specific variant executors.

@@ -73,6 +73,83 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.liveTranscript, "")
         XCTAssertEqual(transcriber.cancelCalls, 1)
     }
+
+    func test_cancelRecordingClearsWakeWordToast() async {
+        let transcriber = MockSpeechTranscriber()
+        let sleeper = ControlledToastSleeper()
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer(),
+            wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat"]),
+            wakeWordToastDuration: .seconds(1),
+            toastSleeper: { duration in try await sleeper.sleep(for: duration) }
+        )
+
+        await controller.startRecording()
+        await transcriber.emit(text: "hey base chat draft this reply", isFinal: false)
+        await Task.yield()
+
+        XCTAssertNotNil(controller.recentWakeWordDetection)
+
+        controller.cancelRecording()
+
+        XCTAssertNil(controller.recentWakeWordDetection)
+    }
+
+    func test_stopRecordingClearsWakeWordToast() async {
+        let transcriber = MockSpeechTranscriber()
+        transcriber.stopResult = "hey base chat draft this reply"
+        let sleeper = ControlledToastSleeper()
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer(),
+            wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat"]),
+            wakeWordToastDuration: .seconds(1),
+            toastSleeper: { duration in try await sleeper.sleep(for: duration) }
+        )
+
+        await controller.startRecording()
+        await transcriber.emit(text: "hey base chat draft this reply", isFinal: false)
+        await Task.yield()
+
+        XCTAssertNotNil(controller.recentWakeWordDetection)
+
+        _ = await controller.stopRecording()
+
+        XCTAssertNil(controller.recentWakeWordDetection)
+    }
+
+    func test_wakeWordDetectionAppearsAndDismisses() async {
+        let transcriber = MockSpeechTranscriber()
+        let sleeper = ControlledToastSleeper()
+        let controller = VoiceConversationController(
+            transcriber: transcriber,
+            synthesizer: MockSpeechSynthesizer(),
+            wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat"]),
+            wakeWordToastDuration: .seconds(1),
+            toastSleeper: { duration in try await sleeper.sleep(for: duration) }
+        )
+
+        await controller.startRecording()
+        await transcriber.emit(text: "hey base chat summarize this thread", isFinal: false)
+        await Task.yield()
+
+        XCTAssertEqual(
+            controller.recentWakeWordDetection,
+            WakeWordDetection(
+                phrase: "hey base chat",
+                transcript: "hey base chat summarize this thread"
+            )
+        )
+        XCTAssertEqual(sleeper.recordedDurations, [.seconds(1)])
+
+        sleeper.resume()
+        for _ in 0..<20 where controller.recentWakeWordDetection != nil {
+            await Task.yield()
+        }
+
+        XCTAssertNil(controller.recentWakeWordDetection)
+    }
 }
 
 @MainActor
@@ -127,6 +204,24 @@ private final class MockSpeechSynthesizer: SpeechSynthesizing {
     func stopSpeaking() {
         stopCalls += 1
         continuation?.resume(throwing: CancellationError())
+        continuation = nil
+    }
+}
+
+@MainActor
+private final class ControlledToastSleeper {
+    private(set) var recordedDurations: [Duration] = []
+    private var continuation: CheckedContinuation<Void, Error>?
+
+    func sleep(for duration: Duration) async throws {
+        recordedDurations.append(duration)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            self.continuation = continuation
+        }
+    }
+
+    func resume() {
+        continuation?.resume()
         continuation = nil
     }
 }

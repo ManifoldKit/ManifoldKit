@@ -10,6 +10,16 @@ public struct SpeechTranscriptionUpdate: Sendable, Equatable {
     }
 }
 
+public struct WakeWordDetection: Sendable, Equatable {
+    public let phrase: String
+    public let transcript: String
+
+    public init(phrase: String, transcript: String) {
+        self.phrase = phrase
+        self.transcript = transcript
+    }
+}
+
 public enum VoiceAuthorizationStatus: Sendable, Equatable {
     case authorized
     case denied
@@ -78,4 +88,12 @@ public protocol SpeechSynthesizing: AnyObject {
 
     @MainActor
     func stopSpeaking()
+}
+
+public protocol WakeWordDetector: AnyObject {
+    @MainActor
+    func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection?
+
+    @MainActor
+    func reset()
 }
