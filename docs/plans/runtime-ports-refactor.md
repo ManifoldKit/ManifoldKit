@@ -174,6 +174,38 @@ rather than the application layer.
 The combined provider was a v0.x convenience; per-port boundaries make
 selective implementation by hosts (Fireside) cheaper.
 
+#### `MessageStore` post-write hooks
+
+`MessageStore` exposes a hook protocol so cross-cutting persistence
+concerns (graph extraction, indexing, audit) can attach without
+subclassing the store or wrapping it in a delegating impl. Hooks fire
+after the write commits, in registration order.
+
+```swift
+public protocol MessageStorePostWriteHook: Sendable {
+    func messageDidWrite(
+        _ record: ChatMessageRecord,
+        in sessionID: ChatSessionRecord.ID
+    ) async
+}
+
+public protocol MessageStore: Sendable {
+    // CRUD + search methods (async throws) elided …
+    func addPostWriteHook(_ hook: any MessageStorePostWriteHook)
+}
+```
+
+Hooks must not throw — a failing hook cannot roll back a committed
+write. Hook errors are logged via `Log.persistence.error` and otherwise
+swallowed; surfaces that need transactional guarantees compose at the
+use-case layer (`ConversationRuntime`) instead. Fireside's
+`GraphExtractionService` registers as a post-write hook at bootstrap
+time; no `MessageStore` subclass needed.
+
+A symmetric `SessionStorePostWriteHook` is provided for completeness;
+no internal consumer uses it yet, so its shape is provisional until a
+host actually exercises it.
+
 ### Use cases
 
 | Use case | Absorbs | Surface |
@@ -182,6 +214,42 @@ selective implementation by hosts (Fireside) cheaper.
 | `SessionListService` | `SessionManagerViewModel`'s CRUD/search/pagination/title generation | `AsyncSequence<SessionListEvent>` + commands |
 | `ModelManagementService` | `ModelManagementViewModel`'s discovery/download/delete/benchmark | `AsyncSequence<ModelCatalogEvent>` + commands |
 | `PromptContextPipeline` | new — composes `GenerationContextProvider` contributions | `[ContextContribution]` |
+
+#### `ConversationEvent` cases
+
+The closure-bag → events transformation only works if the event surface
+is enumerated up front. The starter set below is the contract Phase 1.2
+must ship; cases may be added during `ConversationRuntime` extraction
+but cannot be removed or renamed without a coordinated breaking-change
+cycle with downstream consumers (Fireside).
+
+```swift
+public enum ConversationEvent: Sendable {
+    // Lifecycle
+    case messageInserted(ChatMessageRecord)
+    case streamStarted(messageID: ChatMessageRecord.ID)
+    case tokenEmitted(messageID: ChatMessageRecord.ID, delta: String)
+    case streamFinished(messageID: ChatMessageRecord.ID, reason: FinishReason)
+    case errorRaised(ConversationError)
+
+    // Context pipeline (Fireside hook points)
+    case beforeContextAssembly(prompt: String, request: PromptContextRequest)
+    case contextAssembled(contributions: [ContextContribution])
+    case afterGeneration(messageID: ChatMessageRecord.ID, finalText: String)
+    case compressionTriggered(removed: [ChatMessageRecord.ID], reason: CompressionReason)
+
+    // Tool calls
+    case toolCallRequested(ToolCall)
+    case toolCallApproved(ToolCall.ID)
+    case toolCallCompleted(ToolCall.ID, ToolResult)
+}
+```
+
+`.beforeContextAssembly`, `.afterGeneration`, and `.compressionTriggered`
+are the integration points Fireside's story/memory pipeline composes
+against. They are load-bearing — removing or renaming any of them is a
+coordinated change with Fireside, not a unilateral rename. The other
+cases are BCK-internal and can evolve more freely.
 
 ### Constraints
 
@@ -340,6 +408,17 @@ Before tagging 1.0:
 - ChatbotUI-iOS builds against the new graph without local patching.
 - Fireside replaces its custom bootstrap with `BaseChatRuntime` +
   custom `MessageStore`/`SessionStore` impls.
+- `GenerationContextProvider` port shape and `ContextContribution` value
+  type are locked at the end of Phase 1.2 and treated as a stable
+  contract for the remainder of the pre-1.0 window. Fireside's
+  `GraphSlotFormatter` outputs become formal `ContextContribution`
+  values without retrofitting. Any change to the `ContextContribution`
+  type after Phase 1.2 ships requires a coordinated PR pair across BCK
+  and Fireside, not a unilateral edit.
+- `MessageStorePostWriteHook` and the load-bearing `ConversationEvent`
+  cases (`.beforeContextAssembly`, `.contextAssembled`,
+  `.afterGeneration`, `.compressionTriggered`) ship in Phase 1.2 and
+  are similarly locked.
 - Read-back test confirms a pre-refactor SwiftData store opens cleanly
   with no data loss.
 - No `@Observable` view model owns orchestration state.
@@ -365,6 +444,61 @@ Before tagging 1.0:
 | SwiftData entity-name drift after module move | Entity names are simple class names, unaffected by module rename. Read-back test against pre-refactor fixture confirms. |
 | `InferenceService` already overlaps with the proposed runtime | Runtime is a thin layer *over* `InferenceService` + ports. Use cases compose existing services; they don't absorb them. |
 | Phase 1 PR sizes balloon (especially `ConversationRuntime`) | Per-use-case PRs with explicit LOC budget; if `ConversationRuntime` > 1500 LOC moved in one PR, split by sub-flow (send vs. regenerate vs. edit). |
+| BCK and Fireside invent parallel abstractions for the same problem | Fireside-migration checklist appendix below pins what changes in each repo per phase. Port-shape PRs require Fireside review before merge. |
+
+## Appendix — Fireside migration checklist
+
+Explicit coordination contract with Fireside (which has its own
+`docs/architecture/runtime-decoupling-migration.md` RFC pushing the same
+direction). This appendix is canonical: if BCK ships a phase that
+requires a Fireside change not listed here, the plan is wrong, not
+Fireside. Conversely, if Fireside lands a change that depends on a port
+shape not pinned here, that PR blocks until the appendix catches up.
+
+### Phase 1.0 — async migration
+
+BCK changes:
+- `ChatPersistenceProvider` methods → `async throws`.
+- Public sync mutators on `ChatViewModel` / `SessionManagerViewModel` → `async throws`.
+
+Fireside changes (same window):
+- Update Fireside's custom `ChatPersistenceProvider` impl signatures to `async throws`.
+- Wrap any sync call sites of the converted view-model mutators in `Task { await … }` or convert the call site to an `async` context.
+- No import rewrites required; `BaseChatCore` is still the import target.
+
+### Phase 1.2 — port extraction
+
+BCK changes:
+- `ChatPersistenceProvider` splits into `SessionStore` + `MessageStore`.
+- `MessageStorePostWriteHook` protocol introduced.
+- `GenerationContextProvider` re-exported from `BaseChatRuntime`; `PromptContextPipeline` use case introduced; `ContextContribution` value type pinned.
+- `ConversationRuntime` ships with the `ConversationEvent` surface enumerated above.
+
+Fireside changes (same window):
+- Replace Fireside's combined provider impl with separate `SessionStore` + `MessageStore` impls.
+- Migrate `GraphExtractionService` from its current attachment mechanism to `MessageStorePostWriteHook` registration at bootstrap.
+- Migrate `GraphSlotFormatter` outputs to formal `ContextContribution` values; register as a `GenerationContextProvider` contributor through `PromptContextPipeline`.
+- Migrate `StoryStore.send(_:)` from closure-callback orchestration to `AsyncSequence<ConversationEvent>` consumption. The four load-bearing cases are `.beforeContextAssembly`, `.contextAssembled`, `.afterGeneration`, `.compressionTriggered`.
+
+### Phase 2 — physical target split
+
+BCK changes:
+- `BaseChatCore` deleted.
+- `BaseChatRuntime` and `BaseChatPersistenceSwiftData` targets created.
+- `BaseChatBootstrap` (renamed) provides the host bootstrap.
+
+Fireside changes (same window):
+- Import rewrites:
+  - `import BaseChatCore` → `import BaseChatRuntime` for orchestration types and ports.
+  - `import BaseChatCore` → `import BaseChatPersistenceSwiftData` only if Fireside still uses the SwiftData persistence impl. If Fireside has fully replaced persistence with custom stores, the dependency on `BaseChatPersistenceSwiftData` can be dropped entirely.
+- Replace Fireside's custom bootstrap with `BaseChatBootstrap` configured with custom `MessageStore` / `SessionStore` instances.
+- Drop any inherited `@Model` type imports — they are no longer reachable through the public surface.
+
+### Coordination protocol
+
+- Each BCK PR in Phases 1.0–1.2 names the Fireside PR that consumes it (and vice versa). Both PRs land in the same review window; merging the BCK PR before the matching Fireside PR is ready breaks Fireside's `main`.
+- Port-shape changes (signatures, event cases, hook protocols, `ContextContribution` shape) require a Fireside reviewer on the BCK PR before merge.
+- The four load-bearing `ConversationEvent` cases and `MessageStorePostWriteHook` are pinned to this appendix. Any deviation is updated here in the same PR that introduces the deviation — the plan is the source of truth, not Slack threads.
 
 ## Why this is worth doing now
 
