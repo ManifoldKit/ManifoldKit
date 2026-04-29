@@ -1,21 +1,23 @@
 import SwiftUI
-import SwiftData
 import BaseChatCore
 import BaseChatInference
 
-/// Picker and management UI for sampler presets within GenerationSettingsView.
+/// Picker and management UI for sampler presets within `GenerationSettingsView`.
+///
+/// Reads and writes presets through a ``SamplerPresetStore`` injected via the
+/// SwiftUI environment (typically from `BaseChatRuntime.samplerPresetStore`).
+/// The view does not import SwiftData — the store is the only persistence
+/// surface visible to the UI.
 public struct SamplerPresetPickerView: View {
 
     @Environment(ChatViewModel.self) private var viewModel
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.samplerPresetStore) private var presetStore
 
-    @Query(sort: \SamplerPreset.createdAt, order: .reverse)
-    private var presets: [SamplerPreset]
-
+    @State private var presets: [SamplerPresetRecord] = []
     @State private var showSaveAlert = false
     @State private var newPresetName = ""
     @State private var showDeleteConfirmation = false
-    @State private var presetToDelete: SamplerPreset?
+    @State private var presetToDelete: SamplerPresetRecord?
 
     public init() {}
 
@@ -61,11 +63,12 @@ public struct SamplerPresetPickerView: View {
                 Label("Save Current as Preset", systemImage: "plus.circle")
             }
         }
+        .task { await refresh() }
         .alert("Save Preset", isPresented: $showSaveAlert) {
             TextField("Preset name", text: $newPresetName)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                saveCurrentAsPreset()
+                Task { await saveCurrentAsPreset() }
             }
             .disabled(newPresetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
@@ -75,7 +78,7 @@ public struct SamplerPresetPickerView: View {
             Button("Cancel", role: .cancel) { presetToDelete = nil }
             Button("Delete", role: .destructive) {
                 if let preset = presetToDelete {
-                    deletePreset(preset)
+                    Task { await deletePreset(preset) }
                 }
                 presetToDelete = nil
             }
@@ -86,45 +89,64 @@ public struct SamplerPresetPickerView: View {
         }
     }
 
-    private func applyPreset(_ preset: SamplerPreset) {
+    // MARK: - Actions
+
+    private func applyPreset(_ preset: SamplerPresetRecord) {
         viewModel.temperature = preset.temperature
         viewModel.topP = preset.topP
         viewModel.repeatPenalty = preset.repeatPenalty
     }
 
-    private func saveCurrentAsPreset() {
+    private func refresh() async {
+        guard let presetStore else { return }
+        do {
+            presets = try await presetStore.fetchPresets()
+        } catch {
+            Log.persistence.error("Failed to fetch sampler presets: \(error)")
+        }
+    }
+
+    private func saveCurrentAsPreset() async {
+        guard let presetStore else { return }
         let name = newPresetName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
-        let preset = SamplerPreset(
+        let record = SamplerPresetRecord(
             name: name,
             temperature: viewModel.temperature,
             topP: viewModel.topP,
             repeatPenalty: viewModel.repeatPenalty
         )
-        modelContext.insert(preset)
-
         do {
-            try modelContext.save()
+            try await presetStore.insertPreset(record)
+            await refresh()
         } catch {
             Log.persistence.error("Failed to save preset: \(error)")
         }
     }
 
-    private func deletePreset(_ preset: SamplerPreset) {
-        modelContext.delete(preset)
+    private func deletePreset(_ preset: SamplerPresetRecord) async {
+        guard let presetStore else { return }
         do {
-            try modelContext.save()
+            try await presetStore.deletePreset(preset.id)
+            await refresh()
         } catch {
             Log.persistence.error("Failed to delete preset: \(error)")
         }
     }
 }
 
-#Preview("Sampler Presets") {
-    Form {
-        SamplerPresetPickerView()
+// MARK: - Environment plumbing
+
+private struct SamplerPresetStoreKey: EnvironmentKey {
+    static let defaultValue: (any SamplerPresetStore)? = nil
+}
+
+extension EnvironmentValues {
+    /// Injection point for the ``SamplerPresetStore`` consumed by
+    /// ``SamplerPresetPickerView``.
+    public var samplerPresetStore: (any SamplerPresetStore)? {
+        get { self[SamplerPresetStoreKey.self] }
+        set { self[SamplerPresetStoreKey.self] = newValue }
     }
-    .environment(ChatViewModel())
-    .modelContainer(for: SamplerPreset.self, inMemory: true)
 }

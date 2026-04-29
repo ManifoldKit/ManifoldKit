@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import BaseChatCore
 import BaseChatInference
 import BaseChatUI
@@ -161,5 +160,4 @@ public struct ModelManagementSheet: View {
     ModelManagementSheet()
         .environment(ChatViewModel())
         .environment(ModelManagementViewModel())
-        .modelContainer(try! ModelContainerFactory.makeInMemoryContainer())
 }

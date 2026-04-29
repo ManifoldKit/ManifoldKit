@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import SwiftData
 import BaseChatCore
 import BaseChatInference
 
@@ -76,11 +75,13 @@ public final class ModelManagementViewModel {
     /// ``runBenchmark(for:)`` call and pre-loaded from ``ModelBenchmarkCache`` on context injection.
     public private(set) var benchmarkResults: [String: ModelBenchmarkResult] = [:]
 
-    /// SwiftData context for persisting benchmark results. Set by the host view on appear.
+    /// Storage-neutral cache for benchmark results. Set by host code at app
+    /// startup (typically `BaseChatRuntime.benchmarkCache`).
     ///
-    /// Assigning this property immediately loads any previously cached results from
-    /// ``ModelBenchmarkCache``, so UI can show historical data without re-running benchmarks.
-    public var modelContext: ModelContext? {
+    /// Assigning this property immediately loads any previously cached results
+    /// so UI can show historical data without re-running benchmarks. Replaces
+    /// the previous public `modelContext: ModelContext?` SwiftData leak.
+    public var benchmarkCache: (any BenchmarkCache)? {
         didSet { loadCachedBenchmarkResults() }
     }
 
@@ -482,16 +483,9 @@ public final class ModelManagementViewModel {
             let result = try await runner.runBenchmark(for: model)
             benchmarkResults[model.fileName] = result
             Log.inference.info("Benchmark complete for \(model.name): \(result.tier.label)")
-            if let ctx = modelContext {
-                // Upsert: remove any stale entry for this file name before inserting the fresh result.
-                let fileName = model.fileName
+            if let cache = benchmarkCache {
                 do {
-                    let existing = try ctx.fetch(FetchDescriptor<ModelBenchmarkCache>(
-                        predicate: #Predicate { $0.modelFileName == fileName }
-                    ))
-                    existing.forEach { ctx.delete($0) }
-                    ctx.insert(ModelBenchmarkCache(modelFileName: fileName, result: result))
-                    try ctx.save()
+                    try await cache.upsert(modelFileName: model.fileName, result: result)
                 } catch {
                     Log.persistence.warning("Failed to persist benchmark result for \(model.name): \(error.localizedDescription)")
                     diagnostics?.record(.benchmarkCacheUnavailable(reason: error.localizedDescription))
@@ -503,17 +497,18 @@ public final class ModelManagementViewModel {
     }
 
     private func loadCachedBenchmarkResults() {
-        guard let ctx = modelContext else { return }
-        let entries: [ModelBenchmarkCache]
-        do {
-            entries = try ctx.fetch(FetchDescriptor<ModelBenchmarkCache>())
-        } catch {
-            Log.persistence.warning("Failed to load cached benchmark results: \(error.localizedDescription)")
-            diagnostics?.record(.benchmarkCacheUnavailable(reason: error.localizedDescription))
-            return
-        }
-        for entry in entries {
-            benchmarkResults[entry.modelFileName] = entry.toResult()
+        guard let cache = benchmarkCache else { return }
+        Task { [weak self] in
+            do {
+                let entries = try await cache.fetchAll()
+                guard let self else { return }
+                for (fileName, result) in entries {
+                    self.benchmarkResults[fileName] = result
+                }
+            } catch {
+                Log.persistence.warning("Failed to load cached benchmark results: \(error.localizedDescription)")
+                self?.diagnostics?.record(.benchmarkCacheUnavailable(reason: error.localizedDescription))
+            }
         }
     }
 

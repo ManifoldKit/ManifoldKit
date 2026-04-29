@@ -1,18 +1,19 @@
 import SwiftUI
 import BaseChatCore
+import BaseChatInference
 
-/// A row displaying a summary of an `APIEndpoint` configuration.
+/// A row displaying a summary of an ``APIEndpointRecord`` configuration.
 ///
 /// Shows the endpoint name, provider badge, model name, and a
-/// ready/incomplete status indicator based on `endpoint.validate()`.
-/// When the endpoint is invalid, the specific
-/// ``APIEndpointValidationReason`` is surfaced as a subtitle so the user
-/// knows what to fix.
+/// ready/incomplete status indicator based on
+/// ``APIEndpointRecord/validateBaseURL()``. When the endpoint is invalid,
+/// the specific ``APIEndpointValidationReason`` is surfaced as a subtitle
+/// so the user knows what to fix.
 public struct APIEndpointRow: View {
 
-    public let endpoint: APIEndpoint
+    public let endpoint: APIEndpointRecord
 
-    public init(endpoint: APIEndpoint) {
+    public init(endpoint: APIEndpointRecord) {
         self.endpoint = endpoint
     }
 
@@ -36,7 +37,7 @@ public struct APIEndpointRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                switch endpoint.validate() {
+                switch endpoint.validateBaseURL() {
                 case .success:
                     Label("Ready", systemImage: "checkmark.circle.fill")
                         .font(.caption)
@@ -48,7 +49,7 @@ public struct APIEndpointRow: View {
                 }
             }
 
-            if case .failure(let reason) = endpoint.validate(),
+            if case .failure(let reason) = endpoint.validateBaseURL(),
                let description = reason.errorDescription {
                 Text(description)
                     .font(.caption2)
@@ -65,7 +66,7 @@ public struct APIEndpointRow: View {
 
     /// Voice-over status string: "Ready" or the specific failure reason.
     private var accessibilityStatus: String {
-        switch endpoint.validate() {
+        switch endpoint.validateBaseURL() {
         case .success:
             return "Ready"
         case .failure(let reason):
@@ -79,10 +80,10 @@ public struct APIEndpointRow: View {
 #Preview("Endpoint Row") {
     List {
         APIEndpointRow(
-            endpoint: APIEndpoint(name: "My OpenAI", provider: .openAI)
+            endpoint: APIEndpointRecord(name: "My OpenAI", provider: .openAI)
         )
         APIEndpointRow(
-            endpoint: APIEndpoint(name: "Local Ollama", provider: .ollama)
+            endpoint: APIEndpointRecord(name: "Local Ollama", provider: .ollama)
         )
     }
 }
