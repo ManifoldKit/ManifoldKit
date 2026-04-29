@@ -5,12 +5,12 @@ import BaseChatInference
 // MARK: - Persistence guard helpers
 //
 // View models in this module repeatedly check `persistence != nil` before
-// touching the configured `ChatPersistenceProvider`. The two helpers below
-// centralize that check so call sites stop reinventing the same `guard let
-// persistence else { Log.persistence.warning(...); return/throw }` block.
+// touching the configured store. The two helpers below centralize that
+// check so call sites stop reinventing the same `guard let persistence else
+// { Log.persistence.warning(...); return/throw }` block.
 //
 // - `requirePersistence(_:)` is for code paths that propagate a missing
-//   provider as a `ChatPersistenceError.providerNotConfigured` to the caller.
+//   store as a `ChatPersistenceError.providerNotConfigured` to the caller.
 // - `persistenceOrLog(_:)` is for code paths that no-op (returning early) when
 //   persistence is unavailable — typically `loadMessages`-style read-or-skip
 //   methods.
@@ -38,7 +38,7 @@ extension SessionController {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) throws -> ChatPersistenceProvider {
+    ) throws -> any SessionStore & MessageStore {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             throw ChatPersistenceError.providerNotConfigured
@@ -50,7 +50,7 @@ extension SessionController {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) -> ChatPersistenceProvider? {
+    ) -> (any SessionStore & MessageStore)? {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             return nil
@@ -64,7 +64,7 @@ extension SessionManagerViewModel {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) throws -> ChatPersistenceProvider {
+    ) throws -> any SessionStore & MessageStore {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             throw ChatPersistenceError.providerNotConfigured
@@ -76,7 +76,7 @@ extension SessionManagerViewModel {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) -> ChatPersistenceProvider? {
+    ) -> (any SessionStore & MessageStore)? {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             return nil
@@ -90,7 +90,7 @@ extension ChatViewModel {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) throws -> ChatPersistenceProvider {
+    ) throws -> any SessionStore & MessageStore {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             throw ChatPersistenceError.providerNotConfigured
@@ -102,7 +102,7 @@ extension ChatViewModel {
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
         line: UInt = #line
-    ) -> ChatPersistenceProvider? {
+    ) -> (any SessionStore & MessageStore)? {
         guard let persistence else {
             logMissingPersistence(context(), fileID: fileID, line: line)
             return nil

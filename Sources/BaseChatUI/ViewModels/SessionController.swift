@@ -17,7 +17,13 @@ final class SessionController {
         let selectedEndpointID: UUID?
     }
 
-    var persistence: ChatPersistenceProvider?
+    /// Persistence is held as a combined `SessionStore & MessageStore`
+    /// existential rather than two separate references — sessions and
+    /// messages travel together at the controller layer (delete-session
+    /// fans out to delete-messages, etc.), and the SwiftData adapter is
+    /// always one object that conforms to both protocols. Hosts that wire
+    /// genuinely separate stores can pass a small composed adapter.
+    var persistence: (any SessionStore & MessageStore)?
     var activeSession: ChatSessionRecord?
     var messages: [ChatMessageRecord] = []
     var systemPrompt: String = ""
@@ -39,7 +45,7 @@ final class SessionController {
         activeSession?.id
     }
 
-    func configure(persistence: ChatPersistenceProvider) {
+    func configure(persistence: any SessionStore & MessageStore) {
         guard self.persistence == nil else { return }
         self.persistence = persistence
         Log.persistence.info("ChatViewModel configured with persistence provider")

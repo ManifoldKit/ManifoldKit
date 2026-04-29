@@ -36,8 +36,9 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         sessionManager.configure(runtime: runtime)
 
         // Real architectural invariant: BaseChatRuntime owns a single
-        // ChatPersistenceProvider, and both view models must latch onto that
-        // exact instance when configured from the same runtime. A round-trip
+        // SessionStore + MessageStore adapter, and both view models must
+        // latch onto that exact instance when configured from the same
+        // runtime. A round-trip
         // smoke check (persistence != nil) doesn't defend this — it would
         // pass even if each view model received its own independent provider,
         // which would silently break cross-view-model session visibility.

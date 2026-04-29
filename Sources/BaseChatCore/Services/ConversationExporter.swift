@@ -85,12 +85,12 @@ public enum ConversationExporter {
     /// should call ``export(session:messages:format:directory:)`` with the
     /// active path they have already materialised.
     ///
-    /// `@MainActor` because ``ChatPersistenceProvider`` is `@MainActor`-isolated.
+    /// `@MainActor` because ``MessageStore`` is `@MainActor`-isolated.
     @MainActor
     public static func export(
         session: ChatSession,
         format: ConversationExportFormat,
-        provider: ChatPersistenceProvider,
+        provider: any MessageStore,
         directory: URL? = nil
     ) async throws -> ShareableFile {
         let messages = try await provider.fetchMessages(for: session.id)

@@ -14,10 +14,11 @@ import BaseChatInference
 /// `ToolRegistry` or approval gate) can construct that service first and pass
 /// it in. The runtime will keep using the exact instance supplied.
 ///
-/// ``BaseChatRuntime`` is the SwiftData-backed bootstrap. Adopters using a
-/// custom ``ChatPersistenceProvider`` should construct ``ChatViewModel`` /
-/// ``SessionManagerViewModel`` directly and call `configure(persistence:)` —
-/// runtime support for custom providers is tracked separately.
+/// ``BaseChatRuntime`` is the SwiftData-backed bootstrap. Adopters using
+/// custom ``SessionStore`` / ``MessageStore`` impls should construct
+/// ``ChatViewModel`` / ``SessionManagerViewModel`` directly and call
+/// `configure(persistence:)` — runtime support for custom stores is tracked
+/// separately.
 ///
 /// Adopters needing fine-grained progress signals during bootstrap (e.g. splash-screen UI,
 /// per-phase analytics) should construct the runtime on a background task and observe its

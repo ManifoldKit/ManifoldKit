@@ -115,8 +115,10 @@ See ``ChatViewModel`` in `BaseChatUI` for the primary consumer.
 
 ## Persistence
 
-BaseChatKit persists sessions and messages through ``ChatPersistenceProvider``.
-For apps using the built-in SwiftData stack, prefer ``BaseChatRuntime`` so
+BaseChatKit persists sessions and messages through the ``SessionStore`` and
+``MessageStore`` ports (split from the previous combined `ChatPersistenceProvider`
+in Phase 1.2 of the runtime ports refactor). For apps using the built-in
+SwiftData stack, prefer ``BaseChatRuntime`` so
 configuration, inference, the model container, and persistence come up
 together:
 
@@ -148,14 +150,14 @@ chatViewModel.configure(persistence: persistence)
 Use ``ModelContainerFactory/makeInMemoryContainer()`` in tests and SwiftUI previews.
 
 Adopters that want a non-SwiftData store (e.g. a network-backed or
-encrypted-blob store) should implement ``ChatPersistenceProvider`` directly
-and pass that instance to `chatViewModel.configure(persistence:)`. Runtime
-support for substituting the persistence layer through ``BaseChatRuntime``
-is tracked separately.
+encrypted-blob store) should implement ``SessionStore`` and ``MessageStore``
+directly and pass an instance that conforms to both to
+`chatViewModel.configure(persistence:)`. Runtime support for substituting
+the persistence layer through ``BaseChatRuntime`` is tracked separately.
 
 ## Next Steps
 
 - See ``BaseChatConfiguration/Features`` for the full list of feature flags
 - See ``GenerationConfig`` for sampling parameters (temperature, top-p, repeat penalty)
 - See ``PromptTemplate`` for the supported chat formatting templates
-- See ``ChatPersistenceProvider`` to implement a custom storage backend
+- See ``SessionStore`` and ``MessageStore`` to implement a custom storage backend

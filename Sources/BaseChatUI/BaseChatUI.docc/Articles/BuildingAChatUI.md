@@ -254,7 +254,7 @@ var body: some Scene {
 }
 ```
 
-Keep `configure(persistence:)` for adopters that provide a custom ``ChatPersistenceProvider`` (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. ``BaseChatRuntime`` is the SwiftData-backed bootstrap; runtime support for custom providers is tracked separately.
+Keep `configure(persistence:)` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. ``BaseChatRuntime`` is the SwiftData-backed bootstrap; runtime support for custom stores is tracked separately.
 
 ## Next Steps
 

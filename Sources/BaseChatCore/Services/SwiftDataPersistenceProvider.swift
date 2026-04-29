@@ -2,15 +2,30 @@ import Foundation
 import BaseChatInference
 import SwiftData
 
-/// Default ``ChatPersistenceProvider`` backed by SwiftData.
+/// Default ``SessionStore`` + ``MessageStore`` adapter backed by SwiftData.
+///
+/// Phase 1.2 of the runtime ports refactor split the previous combined
+/// `ChatPersistenceProvider` into per-port protocols. The SwiftData adapter
+/// stays a single type that conforms to both — sessions and messages live in
+/// the same `ModelContext`, so splitting into two adapter types would only
+/// duplicate the context plumbing without buying a real boundary. Hosts that
+/// want a true per-port impl can wire two custom types of their own.
 ///
 /// Operates on the ``ModelContext`` injected at init time, converting between
-/// SwiftData `@Model` objects and plain ``ChatSessionRecord`` / ``ChatMessageRecord``
-/// value types at the boundary.
+/// SwiftData `@Model` objects and plain ``ChatSessionRecord`` /
+/// ``ChatMessageRecord`` value types at the boundary.
 @MainActor
-public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
+public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
 
     private let modelContext: ModelContext
+
+    // Hook lists are stored as plain arrays. Registration is `@MainActor`
+    // (the protocol is `@MainActor`-isolated), so no lock is required to
+    // mutate; firing happens on the same actor immediately after the write
+    // commits. Phase 1.2 sub-step 5 may revisit this when use cases lift off
+    // main actor.
+    private var messageHooks: [any MessageStorePostWriteHook] = []
+    private var sessionHooks: [any SessionStorePostWriteHook] = []
 
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -43,6 +58,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         session.pinnedMessageIDsRaw = record.pinnedMessageIDs.isEmpty ? nil : record.pinnedMessageIDs.map(\.uuidString).sorted().joined(separator: ",")
         modelContext.insert(session)
         try modelContext.save()
+        await fireSessionHooks(record)
     }
 
     public func updateSession(_ record: ChatSessionRecord) async throws {
@@ -61,6 +77,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         session.contextSizeOverride = record.contextSizeOverride
         session.pinnedMessageIDsRaw = record.pinnedMessageIDs.isEmpty ? nil : record.pinnedMessageIDs.map(\.uuidString).sorted().joined(separator: ",")
         try modelContext.save()
+        await fireSessionHooks(record)
     }
 
     public func deleteSession(_ sessionID: UUID) async throws {
@@ -137,6 +154,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         message.completionTokens = record.completionTokens
         modelContext.insert(message)
         try modelContext.save()
+        await fireMessageHooks(record)
     }
 
     public func updateMessage(_ record: ChatMessageRecord) async throws {
@@ -147,6 +165,7 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
         message.promptTokens = record.promptTokens
         message.completionTokens = record.completionTokens
         try modelContext.save()
+        await fireMessageHooks(record)
     }
 
     public func deleteMessage(_ messageID: UUID) async throws {
@@ -195,6 +214,33 @@ public final class SwiftDataPersistenceProvider: ChatPersistenceProvider {
             modelContext.delete(message)
         }
         try modelContext.save()
+    }
+
+    // MARK: - Hooks
+
+    public func addPostWriteHook(_ hook: any MessageStorePostWriteHook) {
+        messageHooks.append(hook)
+    }
+
+    public func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {
+        sessionHooks.append(hook)
+    }
+
+    /// Fires registered message-write hooks in registration order.
+    /// Hook errors are not surfaceable: hooks must not throw, and a failing
+    /// hook cannot roll back the committed write.
+    private func fireMessageHooks(_ record: ChatMessageRecord) async {
+        guard !messageHooks.isEmpty else { return }
+        for hook in messageHooks {
+            await hook.messageDidWrite(record, in: record.sessionID)
+        }
+    }
+
+    private func fireSessionHooks(_ record: ChatSessionRecord) async {
+        guard !sessionHooks.isEmpty else { return }
+        for hook in sessionHooks {
+            await hook.sessionDidWrite(record)
+        }
     }
 
     // MARK: - Private
