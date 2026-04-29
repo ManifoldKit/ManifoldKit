@@ -77,7 +77,11 @@ extension PromptSlotPosition {
     /// topOfHistory (2) is the highest history position.
     /// atDepth(n): larger n means higher placement (further from latest turn), so smaller index.
     /// bottomOfHistory sits just above the last message; inline follows all messages.
-    func sortIndex(messageCount: Int) -> Int {
+    ///
+    /// Widened to `public` in Phase 1.2 sub-step 2 so that `PromptContextPipeline`
+    /// (in `BaseChatCore`) can use this comparator to merge `[PromptSlot]` from
+    /// multiple `PromptContextProvider`s.
+    public func sortIndex(messageCount: Int) -> Int {
         switch self {
         case .systemPreamble:   return 0
         case .contextSetup:     return 1
