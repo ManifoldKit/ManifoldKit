@@ -24,7 +24,7 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 
 - **Multiple inference backends** — GGUF (llama.cpp), MLX (Apple Silicon), Apple Foundation Models, OpenAI, Claude, Ollama, LM Studio, and custom OpenAI-compatible APIs
 - **Complete SwiftUI interface** — Chat view, session management, model browser, generation settings, export
-- **HuggingFace integration** — Search, browse, and download models directly from the Hub
+- **HuggingFace integration** — Search, browse, and download models directly from the Hub (default-on trait)
 - **Background downloads** — iOS background transfer support with progress tracking and GGUF/MLX validation
 - **SwiftData persistence** — Chat sessions, messages, and API endpoint configuration
 - **Context window management** — Automatic message trimming with token estimation
@@ -51,7 +51,7 @@ BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for 
 
 ## Architecture
 
-BaseChatKit is split into five primary targets with a clean dependency graph:
+BaseChatKit is split into five primary targets plus optional bridge modules:
 
 ```
 BaseChatUI  ──────────>  BaseChatCore  ──────────>  BaseChatInference
@@ -73,6 +73,8 @@ BaseChatUI  ──────────>  BaseChatCore  ───────
 - **BaseChatCore** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, `ChatPersistenceProvider`, and chat export. Depends on `BaseChatInference` but does not re-export it.
 - **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatCore`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
 - **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatCore` (for persistence) and `BaseChatInference` (for inference orchestration).
+- **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
+- **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 
 ## Quick Start
 
@@ -119,7 +121,22 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 )
 ```
 
-`CloudSaaS` and `Ollama` are opt-in. `swift build` currently compiles the local-only `offline` profile (`MLX`, `Llama`, plus Foundation Models when the OS supports them).
+`CloudSaaS` and `Ollama` are opt-in. `HuggingFace` is default-on for backwards compatibility; drop it from `traits:` (or start from `--disable-default-traits`) to remove the stock Hub browser/downloader from the build graph. `AnyLanguageModel` is also opt-in and only needed when you want the bridge target.
+
+For example, a cloud-only consumer can keep the chat UI and local-model loaders out of the download path:
+
+```swift
+.package(
+    url: "https://github.com/roryford/BaseChatKit.git",
+    from: "1.0.0",
+    traits: [
+        .trait(name: "MLX"),
+        .trait(name: "Llama"),
+        .trait(name: "CloudSaaS"),
+        // Omit HuggingFace to hide the stock download browser.
+    ]
+)
+```
 
 You can inspect the compiled contract at runtime without a custom shim:
 
@@ -225,12 +242,7 @@ struct MyApp: App {
 
         _sessionManager = State(initialValue: sessionManager)
 
-        let downloadManager = BackgroundDownloadManager()
-        let hfService = HuggingFaceService()
-        _modelManagement = State(initialValue: ModelManagementViewModel(
-            huggingFaceService: hfService,
-            downloadManager: downloadManager
-        ))
+        _modelManagement = State(initialValue: ModelManagementViewModel.live())
     }
 
     var body: some Scene {
@@ -429,12 +441,12 @@ SwiftData-backed bootstrap and does not yet support custom providers.
 |------|---------|
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend |
 | `BaseChatRuntime` | Preferred bootstrap surface — installs configuration, builds SwiftData persistence, and holds shared services |
-| `BackgroundDownloadManager` | Background model downloads with progress and validation |
+| `BackgroundDownloadManager` | Background model downloads with progress and validation (`BaseChatHuggingFace`) |
 | `ModelStorageService` | Local model file discovery and storage paths |
 | `DeviceCapabilityService` | RAM/chipset queries for model size recommendations |
 | `KeychainService` | Secure API key storage |
 | `ContextWindowManager` | Token estimation and message trimming |
-| `HuggingFaceService` | HuggingFace Hub API (search, model info, download URLs) |
+| `HuggingFaceService` | HuggingFace Hub API (search, model info, download URLs) (`BaseChatHuggingFace`) |
 
 ### Views
 

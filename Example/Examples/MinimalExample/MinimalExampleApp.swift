@@ -5,6 +5,9 @@ import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
 import BaseChatBackends
+#if canImport(BaseChatHuggingFace)
+import BaseChatHuggingFace
+#endif
 
 /// The simplest possible BaseChatKit app with runtime-first bootstrap.
 ///
@@ -45,15 +48,18 @@ struct MinimalExampleApp: App {
         let sessionManager = SessionManagerViewModel()
         sessionManager.configure(runtime: runtime)
 
-        let downloadManager = BackgroundDownloadManager()
-        let huggingFaceService = HuggingFaceService()
-
         _chatViewModel = State(initialValue: vm)
         _sessionManager = State(initialValue: sessionManager)
+        #if canImport(BaseChatHuggingFace)
+        let downloadManager = BackgroundDownloadManager()
+        let huggingFaceService = HuggingFaceService()
         _modelManagement = State(initialValue: ModelManagementViewModel(
             huggingFaceService: huggingFaceService,
             downloadManager: downloadManager
         ))
+        #else
+        _modelManagement = State(initialValue: ModelManagementViewModel.live())
+        #endif
     }
 
     var body: some Scene {

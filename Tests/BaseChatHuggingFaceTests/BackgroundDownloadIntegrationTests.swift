@@ -1,5 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatInference
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 /// Integration tests for BackgroundDownloadManager using real filesystem.
 ///
@@ -567,3 +569,4 @@ final class BackgroundDownloadIntegrationTests: XCTestCase {
         try? FileManager.default.removeItem(at: pendingMetadataURL)
     }
 }
+#endif

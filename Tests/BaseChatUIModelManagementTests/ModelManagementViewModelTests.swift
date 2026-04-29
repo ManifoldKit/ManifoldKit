@@ -203,9 +203,7 @@ final class ModelManagementViewModelTests: XCTestCase {
 
         let vm = ModelManagementViewModel.live(
             huggingFaceService: mock,
-            downloadManager: BackgroundDownloadManager(
-                sessionIdentifier: "com.basechatkit.test.download.\(UUID().uuidString)"
-            )
+            downloadManager: MockDownloadManager()
         )
         vm.searchQuery = "configured"
 
@@ -401,9 +399,7 @@ final class ModelManagementViewModelTests: XCTestCase {
     func test_downloadSync_removesFailedEntry_afterDisplayWindow() async {
         // Inject a failed DownloadState into the manager's activeDownloads so that the
         // sync loop picks it up and eventually sweeps it out of trackedDownloads.
-        let manager = BackgroundDownloadManager(
-            sessionIdentifier: "com.basechatkit.test.download.\(UUID().uuidString)"
-        )
+        let manager = MockDownloadManager()
         let mock = MockHuggingFaceService()
 
         let model = DownloadableModel(

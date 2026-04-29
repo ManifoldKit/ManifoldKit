@@ -16,6 +16,8 @@ let package = Package(
         .library(name: "BaseChatBackends", targets: ["BaseChatBackends"]),
         .library(name: "BaseChatUI", targets: ["BaseChatUI"]),
         .library(name: "BaseChatUIModelManagement", targets: ["BaseChatUIModelManagement"]),
+        .library(name: "BaseChatHuggingFace", targets: ["BaseChatHuggingFace"]),
+        .library(name: "BaseChatAnyLanguageModelBridge", targets: ["BaseChatAnyLanguageModelBridge"]),
         .library(name: "BaseChatFuzz", targets: ["BaseChatFuzz"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
         .library(name: "BaseChatTools", targets: ["BaseChatTools"]),
@@ -23,9 +25,11 @@ let package = Package(
         .library(name: "BaseChatAppIntents", targets: ["BaseChatAppIntents"]),
     ],
     traits: [
-        .default(enabledTraits: ["MLX", "Llama"]),
+        .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
         .trait(name: "MLX", description: "Enable the MLX inference backend (requires Apple Silicon)"),
         .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
+        .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
+        .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
         .trait(name: "Ollama", description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major."),
         .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
         .trait(name: "MCP", description: "Enable the BaseChatMCP module and MCP client surface."),
@@ -43,6 +47,7 @@ let package = Package(
         // mlx-community/gemma-4-* can load.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
         .package(url: "https://github.com/huggingface/swift-huggingface.git", from: "0.9.0"),
+        .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
         // The MLXHuggingFace macro generates `AutoTokenizer.from(modelFolder:)` which lives here.
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.2.0"),
@@ -83,7 +88,6 @@ let package = Package(
             name: "BaseChatInference",
             dependencies: [
                 "BaseChatMacrosPlugin",
-                .product(name: "HuggingFace", package: "swift-huggingface"),
             ],
             path: "Sources/BaseChatInference",
             swiftSettings: [
@@ -91,6 +95,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // MCP: Model Context Protocol client surface and tool bridge.
@@ -134,6 +139,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // UI: SwiftUI views and view models — needs both inference and persistence
@@ -144,6 +150,7 @@ let package = Package(
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // Model management UI: download/storage browser, API endpoint editors,
@@ -155,11 +162,39 @@ let package = Package(
         // enforces this.
         .target(
             name: "BaseChatUIModelManagement",
-            dependencies: ["BaseChatUI", "BaseChatCore", "BaseChatInference"],
+            dependencies: [
+                "BaseChatUI",
+                "BaseChatCore",
+                "BaseChatInference",
+                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
+            ],
             path: "Sources/BaseChatUIModelManagement",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .target(
+            name: "BaseChatHuggingFace",
+            dependencies: [
+                "BaseChatInference",
+                .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
+            ],
+            path: "Sources/BaseChatHuggingFace",
+            swiftSettings: [
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .target(
+            name: "BaseChatAnyLanguageModelBridge",
+            dependencies: [
+                "BaseChatInference",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
+            ],
+            path: "Sources/BaseChatAnyLanguageModelBridge",
+            swiftSettings: [
+                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         // Shared test mocks and utilities
@@ -177,6 +212,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
@@ -203,7 +239,10 @@ let package = Package(
             // from its on-disk source location via `#filePath`, so we don't
             // need to bundle it into the test binary — just tell SwiftPM to
             // ignore it when collecting resources.
-            exclude: ["silent_catch_allowlist.txt"]
+            exclude: ["silent_catch_allowlist.txt"],
+            swiftSettings: [
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
         ),
         // Swift Testing suites split from BaseChatInferenceTests to prevent a
         // libmalloc double-free SIGABRT that occurs when XCTest and Swift Testing
@@ -236,6 +275,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
@@ -256,16 +296,53 @@ let package = Package(
                 "BaseChatCore",
                 "BaseChatInference",
                 "BaseChatTestSupport",
+            ],
+            swiftSettings: [
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .testTarget(
+            name: "BaseChatHuggingFaceTests",
+            dependencies: [
+                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "BaseChatInference",
+                "BaseChatTestSupport",
+                .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
+            ],
+            path: "Tests/BaseChatHuggingFaceTests",
+            swiftSettings: [
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .testTarget(
+            name: "BaseChatAnyLanguageModelBridgeTests",
+            dependencies: [
+                .target(name: "BaseChatAnyLanguageModelBridge", condition: .when(traits: ["AnyLanguageModel"])),
+                "BaseChatInference",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
+            ],
+            path: "Tests/BaseChatAnyLanguageModelBridgeTests",
+            swiftSettings: [
+                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         .testTarget(
             name: "BaseChatE2ETests",
-            dependencies: ["BaseChatBackends", "BaseChatUI", "BaseChatCore", "BaseChatInference", "BaseChatTestSupport", "BaseChatTools"],
+            dependencies: [
+                "BaseChatBackends",
+                "BaseChatUI",
+                "BaseChatCore",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+                "BaseChatTools",
+                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
+            ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
@@ -282,6 +359,7 @@ let package = Package(
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic.
@@ -311,6 +389,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // CLI driver. Wires Ollama, Llama, Foundation; MLX runs via xcodebuild fuzz path.
@@ -331,6 +410,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
         ),
@@ -348,6 +428,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // BaseChatTools: end-to-end tool-calling validation harness.
@@ -378,6 +459,7 @@ let package = Package(
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
@@ -421,6 +503,7 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
     ],

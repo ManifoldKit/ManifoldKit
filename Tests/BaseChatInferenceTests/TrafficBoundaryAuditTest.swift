@@ -98,13 +98,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "BaseChatBackends/PinnedSessionDelegate.swift",
         "BaseChatBackends/DNSRebindingGuard.swift",
 
-        // Model download path — HuggingFace GGUF/MLX downloads. Will move
-        // behind a model-download trait in a future phase; for now the
-        // local-only build assumes models are pre-bundled and these code
-        // paths are not exercised at runtime.
-        "BaseChatInference/Services/BackgroundDownloadManager.swift",
-        "BaseChatInference/Services/BackgroundDownloadManager+URLSessionDelegate.swift",
-        "BaseChatInference/Services/HuggingFaceService.swift",
+        // Model download path — HuggingFace GGUF/MLX downloads.
+        "BaseChatHuggingFace/BackgroundDownloadManager.swift",
+        "BaseChatHuggingFace/BackgroundDownloadManager+URLSessionDelegate.swift",
+        "BaseChatHuggingFace/HuggingFaceService.swift",
         "BaseChatInference/Services/SSEStreamParser.swift",
         "BaseChatUI/ViewModels/ModelManagementViewModel.swift",
 
@@ -134,8 +131,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// **Cap: 12 entries.**
     private static let hostnameAllowlist: Set<String> = [
         "BaseChatBackends/OpenAIBackend.swift",
-        "BaseChatInference/Services/HuggingFaceService.swift",
-        "BaseChatInference/Services/BackgroundDownloadManager.swift",
+        "BaseChatHuggingFace/HuggingFaceService.swift",
+        "BaseChatHuggingFace/BackgroundDownloadManager.swift",
         "BaseChatTestSupport/MockHuggingFaceService.swift",
         // Validation reasons display canonical scheme/host examples in
         // user-facing error strings.

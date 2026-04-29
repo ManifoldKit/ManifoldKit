@@ -3,6 +3,8 @@ import Foundation
 @testable import BaseChatCore
 @testable import BaseChatInference
 import BaseChatTestSupport
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 /// E2E test chaining the full model lifecycle: download files to disk,
 /// validate them, load via a backend, and generate tokens.
@@ -10,6 +12,7 @@ import BaseChatTestSupport
 /// Uses the real filesystem (temp directories) and `MockInferenceBackend`
 /// so the test runs without hardware but exercises the real validation path.
 @Suite("Download -> Validate -> Load -> Generate E2E")
+@MainActor
 struct DownloadValidateLoadGenerateE2ETests {
 
     private let fm = FileManager.default
@@ -191,3 +194,4 @@ struct DownloadValidateLoadGenerateE2ETests {
         #expect(backend.unloadCallCount == 3)
     }
 }
+#endif

@@ -5,6 +5,7 @@ import Foundation
 public enum BackendBuildTrait: String, CaseIterable, Codable, Hashable, Sendable {
     case mlx = "MLX"
     case llama = "Llama"
+    case huggingFace = "HuggingFace"
     case ollama = "Ollama"
     case cloudSaaS = "CloudSaaS"
 }
@@ -72,7 +73,9 @@ public struct CompiledBackends: Sendable, Equatable {
     public var supportsCloudInference: Bool { !cloudProviders.isEmpty }
 
     /// Whether the stock "Download Models" affordance makes sense for this build.
-    public var shouldPresentModelDownloads: Bool { !downloadableModelTypes.isEmpty }
+    public var shouldPresentModelDownloads: Bool {
+        traits.contains(.huggingFace) && !downloadableModelTypes.isEmpty
+    }
 
     /// Whether the stock "Manage Cloud APIs" affordance makes sense for this build.
     public var shouldPresentCloudAPIManagement: Bool { !cloudProviders.isEmpty }
@@ -122,6 +125,10 @@ public struct CompiledBackends: Sendable, Equatable {
         #if Llama
         traits.insert(.llama)
         localModelTypes.insert(.gguf)
+        #endif
+
+        #if HuggingFace
+        traits.insert(.huggingFace)
         #endif
 
         #if canImport(FoundationModels)

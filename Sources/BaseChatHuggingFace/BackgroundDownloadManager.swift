@@ -1,3 +1,5 @@
+#if HuggingFace
+import BaseChatInference
 import Foundation
 import os
 
@@ -12,27 +14,28 @@ import os
 /// Because `URLSessionDownloadDelegate` callbacks arrive on the session's delegate queue
 /// (not the main thread), state mutations are dispatched to `@MainActor`.
 @Observable
-public final class BackgroundDownloadManager: NSObject, @unchecked Sendable {
+@MainActor
+public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, BackgroundDownloadManaging {
 
     // MARK: - Constants
 
     /// The background URL session identifier (derived from BaseChatConfiguration).
-    public static var sessionIdentifier: String {
+    nonisolated public static var sessionIdentifier: String {
         BaseChatConfiguration.shared.downloadSessionIdentifier
     }
 
     /// Minimum free disk space buffer beyond the model size (500 MB).
-    private static let diskSpaceBuffer: UInt64 = 500_000_000
+    nonisolated private static let diskSpaceBuffer: UInt64 = 500_000_000
 
     /// Prefix applied to every temp file the manager creates in the process temp directory.
     ///
     /// Gives the launch-time sweep a safe fingerprint: only files the manager itself
     /// would have written are considered for removal, so cleanup cannot touch
     /// unrelated temp files produced by other subsystems.
-    internal static let tempFilePrefix = "basechatkit-dl-"
+    nonisolated internal static let tempFilePrefix = "basechatkit-dl-"
 
     /// File extension used for temp files that hold the payload of an in-progress download.
-    internal static let tempFileExtension = "download"
+    nonisolated internal static let tempFileExtension = "download"
 
     /// Minimum age at which an orphaned temp file becomes eligible for cleanup.
     ///
@@ -41,7 +44,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable {
     /// deleted out from under itself. The launch sweep skips files newer than
     /// this regardless of in-flight tracking, giving two independent layers of
     /// protection against deleting an active download.
-    internal static let staleTempFileAge: TimeInterval = 24 * 60 * 60
+    nonisolated internal static let staleTempFileAge: TimeInterval = 24 * 60 * 60
 
     // MARK: - Observable State
 
@@ -1142,3 +1145,4 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable {
         }
     }
 }
+#endif

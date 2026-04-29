@@ -1,6 +1,8 @@
 import XCTest
 @testable import BaseChatInference
 import BaseChatTestSupport
+#if HuggingFace
+@testable import BaseChatHuggingFace
 import HuggingFace
 
 final class HuggingFaceServiceTests: XCTestCase {
@@ -662,3 +664,4 @@ final class HuggingFaceDownloadURLTests: XCTestCase {
         XCTAssertEqual(mock.searchCallCount, 1)
     }
 }
+#endif

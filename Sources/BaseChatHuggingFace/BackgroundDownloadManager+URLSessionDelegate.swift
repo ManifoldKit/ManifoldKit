@@ -1,3 +1,5 @@
+#if HuggingFace
+import BaseChatInference
 import Foundation
 import os
 
@@ -5,7 +7,7 @@ import os
 
 extension BackgroundDownloadManager: URLSessionDownloadDelegate {
 
-    public func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didWriteData bytesWritten: Int64,
@@ -34,7 +36,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
-    public func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
@@ -129,7 +131,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
         }
     }
 
-    public func urlSession(
+    nonisolated public func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: Error?
@@ -204,7 +206,7 @@ private extension BackgroundDownloadManager {
     ///   - source: The URL to move from.
     ///   - destination: The URL to move to.
     ///   - maxAttempts: Number of attempts before surfacing the last error.
-    func moveItemWithRetry(from source: URL, to destination: URL, maxAttempts: Int = 3) throws {
+    nonisolated func moveItemWithRetry(from source: URL, to destination: URL, maxAttempts: Int = 3) throws {
         var lastError: Error?
         for attempt in 1...maxAttempts {
             do {
@@ -220,3 +222,4 @@ private extension BackgroundDownloadManager {
         throw lastError!
     }
 }
+#endif
