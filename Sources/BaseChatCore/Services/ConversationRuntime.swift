@@ -46,6 +46,41 @@ public struct SendInput: Sendable {
     }
 }
 
+// MARK: - Regenerate input
+
+/// Input for ``ConversationRuntime/regenerate(_:)``.
+///
+/// No `userText` — regenerate re-runs the last user turn with no new input.
+/// The runtime finds the last assistant message, deletes it, and streams a
+/// fresh response into a new assistant record.
+public struct RegenerateInput: Sendable {
+    public let sessionID: UUID
+    public let systemPrompt: String?
+    public let temperature: Float
+    public let topP: Float
+    public let repeatPenalty: Float
+    public let maxOutputTokens: Int?
+    public let maxThinkingTokens: Int?
+
+    public init(
+        sessionID: UUID,
+        systemPrompt: String? = nil,
+        temperature: Float = 0.7,
+        topP: Float = 0.9,
+        repeatPenalty: Float = 1.1,
+        maxOutputTokens: Int? = 2048,
+        maxThinkingTokens: Int? = nil
+    ) {
+        self.sessionID = sessionID
+        self.systemPrompt = systemPrompt
+        self.temperature = temperature
+        self.topP = topP
+        self.repeatPenalty = repeatPenalty
+        self.maxOutputTokens = maxOutputTokens
+        self.maxThinkingTokens = maxThinkingTokens
+    }
+}
+
 // MARK: - Stream handle
 
 /// Identifier for an in-flight runtime stream.
@@ -262,6 +297,51 @@ public final class ConversationRuntime: Sendable {
         let token = await registry.markCancelled(handle)
         guard let token else { return }
         await inferenceService.cancelAsync(token)
+    }
+
+    /// Deletes the last assistant message for `input.sessionID` and drives
+    /// a fresh generation turn.
+    ///
+    /// Returns immediately with a ``ConversationStreamHandle``; deletion and
+    /// generation work proceed on a detached task and emit events on
+    /// ``events``. Setup failures (no assistant message to replace,
+    /// persistence delete failure) surface to the caller as throws before
+    /// any task is launched; once the task is running, failures route to
+    /// ``ConversationEvent/errorRaised(_:)``.
+    ///
+    /// Cancellation: pass the returned handle to ``cancel(_:)``.
+    @discardableResult
+    public func regenerate(_ input: RegenerateInput) async throws -> ConversationStreamHandle {
+        let handle = ConversationStreamHandle()
+
+        // Fetch history synchronously so we can locate and delete the last
+        // assistant message before returning the handle. Callers observe
+        // ordering: `.messageRemoved` fires before `regenerate` returns, so
+        // adapters that unsubscribe from the old message slot can do so
+        // before the new stream starts.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+
+        guard let lastAssistant = history.last(where: { $0.role == .assistant }) else {
+            throw ConversationError.noAssistantMessageToRegenerate
+        }
+
+        do {
+            try await deleteMessage(lastAssistant.id)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+        emit(.messageRemoved(messageID: lastAssistant.id))
+
+        Task.detached { [self] in
+            await runRegenerateTurn(input: input, handle: handle)
+        }
+
+        return handle
     }
 
     // MARK: Send turn
@@ -496,6 +576,189 @@ public final class ConversationRuntime: Sendable {
 
     }
 
+    // MARK: Regenerate turn
+
+    private func runRegenerateTurn(
+        input: RegenerateInput,
+        handle: ConversationStreamHandle
+    ) async {
+        // 1. Fetch history after deletion — the removed assistant message is
+        //    gone, so context assembly starts from the last user turn.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+        let messageCount = history.count
+
+        // 2. Context assembly hook. `prompt: nil` because regenerate has no
+        //    user-supplied text — the event's label is already `String?`.
+        let request = PromptContextRequest(
+            sessionID: input.sessionID,
+            messageCount: messageCount,
+            userInput: nil
+        )
+        emit(.beforeContextAssembly(prompt: nil, request: request))
+
+        let slots: [PromptSlot]
+        if let pipeline {
+            do {
+                slots = try await pipeline.assemble(messageCount: messageCount)
+            } catch {
+                emit(.errorRaised(.contextAssembly(error)))
+                return
+            }
+        } else {
+            slots = []
+        }
+        emit(.contextAssembled(slots: slots))
+
+        // 3. Build the fresh assistant message slot.
+        var assistantMessage = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            sessionID: input.sessionID
+        )
+        let assistantID = assistantMessage.id
+
+        // 4. Compose system prompt + slots.
+        let composedSystemPrompt = composeSystemPrompt(input.systemPrompt, slots: slots)
+
+        // 5. Translate history to structured form.
+        let structuredHistory: [StructuredMessage] = history.map { record in
+            StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
+        }
+
+        // 6. Enqueue.
+        let token: InferenceService.GenerationRequestToken
+        let stream: GenerationStream
+        do {
+            (token, stream) = try await inferenceService.enqueueAsync(
+                structuredMessages: structuredHistory,
+                systemPrompt: composedSystemPrompt,
+                temperature: input.temperature,
+                topP: input.topP,
+                repeatPenalty: input.repeatPenalty,
+                maxOutputTokens: input.maxOutputTokens,
+                maxThinkingTokens: input.maxThinkingTokens,
+                priority: .userInitiated,
+                sessionID: input.sessionID
+            )
+        } catch {
+            emit(.errorRaised(.inference(error)))
+            return
+        }
+
+        await registry.register(handle: handle, token: token)
+
+        if await registry.isCancelled(handle) {
+            await inferenceService.cancelAsync(token)
+        }
+
+        emit(.streamStarted(messageID: assistantID))
+
+        // 7. Drain the stream — same logic as runSendTurn.
+        var accumulated = ""
+        var emptyResponse = true
+        var streamFailed: ConversationError?
+
+        do {
+            for try await event in stream.events {
+                let cancelled = await isCancelled(handle: handle)
+                if cancelled { break }
+                switch event {
+                case .token(let text):
+                    accumulated += text
+                    emptyResponse = false
+                    emit(.tokenEmitted(messageID: assistantID, delta: text))
+
+                case .thinkingToken, .thinkingComplete, .thinkingSignature,
+                        .toolCall, .toolCallStart, .toolCallArgumentsDelta,
+                        .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
+                        .toolLoopLimitReached, .usage, .prefillProgress,
+                        .kvCacheReuse, .diagnosticThrottle:
+                    continue
+                }
+            }
+        } catch {
+            let cancelled = await isCancelled(handle: handle)
+            if cancelled {
+                streamFailed = .cancelled
+            } else {
+                streamFailed = .inference(error)
+            }
+        }
+
+        // 8. Finalise — same rules as runSendTurn.
+        let cancelled = await isCancelled(handle: handle)
+        await registry.unregister(handle: handle)
+
+        let reason: FinishReason
+        if cancelled {
+            reason = .cancelled
+        } else if let streamFailed {
+            assistantMessage.content = accumulated
+            if !accumulated.isEmpty {
+                do {
+                    try await insertMessage(assistantMessage)
+                    emit(.messageInserted(assistantMessage))
+                } catch {
+                    emit(.errorRaised(.persistence(error)))
+                    emit(.errorRaised(streamFailed))
+                    emit(.streamFinished(messageID: assistantID, reason: .stop))
+                    return
+                }
+            }
+            emit(.errorRaised(streamFailed))
+            emit(.streamFinished(messageID: assistantID, reason: .stop))
+            return
+        } else if emptyResponse {
+            reason = .empty
+        } else {
+            reason = .stop
+        }
+
+        if cancelled {
+            if !accumulated.isEmpty {
+                assistantMessage.content = accumulated
+                do {
+                    try await insertMessage(assistantMessage)
+                    emit(.messageInserted(assistantMessage))
+                } catch {
+                    emit(.errorRaised(.persistence(error)))
+                }
+            }
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            return
+        }
+
+        if reason == .empty {
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            emit(.afterGeneration(messageID: assistantID, finalText: ""))
+            return
+        }
+
+        // Happy path: persist the fresh assistant message.
+        assistantMessage.content = accumulated
+        do {
+            try await insertMessage(assistantMessage)
+            emit(.messageInserted(assistantMessage))
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            return
+        }
+
+        emit(.streamFinished(messageID: assistantID, reason: reason))
+        emit(.afterGeneration(messageID: assistantID, finalText: accumulated))
+
+        if let sessionStore {
+            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
+        }
+    }
+
     // MARK: Helpers
 
     private func emit(_ event: ConversationEvent) {
@@ -520,6 +783,11 @@ public final class ConversationRuntime: Sendable {
     @MainActor
     private func insertMessage(_ message: ChatMessageRecord) async throws {
         try await messageStore.insertMessage(message)
+    }
+
+    @MainActor
+    private func deleteMessage(_ messageID: UUID) async throws {
+        try await messageStore.deleteMessage(messageID)
     }
 
     @MainActor

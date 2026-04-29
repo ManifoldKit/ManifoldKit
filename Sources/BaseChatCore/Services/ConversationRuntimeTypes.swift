@@ -108,6 +108,11 @@ public enum ConversationError: Error, Sendable {
     /// callers that surface persistence-style errors uniformly.
     case providerNotConfigured
 
+    /// `regenerate` was called when no assistant message exists in the
+    /// session. There is nothing to replace — callers should gate the
+    /// regenerate action on the presence of at least one assistant message.
+    case noAssistantMessageToRegenerate
+
     /// Persistence (insert / update / delete) failed.
     case persistence(any Error)
 
@@ -131,6 +136,8 @@ extension ConversationError: LocalizedError {
         switch self {
         case .providerNotConfigured:
             return "ConversationRuntime persistence is not configured."
+        case .noAssistantMessageToRegenerate:
+            return "No assistant message to regenerate — the conversation has no assistant turn yet."
         case let .persistence(error):
             return "Persistence failure during conversation: \(error.localizedDescription)"
         case let .inference(error):

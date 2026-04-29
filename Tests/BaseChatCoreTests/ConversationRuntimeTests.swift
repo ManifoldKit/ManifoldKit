@@ -20,6 +20,10 @@ final class ConversationRuntimeTests: XCTestCase {
     final class RuntimeMessageStore: MessageStore {
         private(set) var messages: [UUID: ChatMessageRecord] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
+        /// When set, the next `deleteMessage` call throws this error instead
+        /// of performing the delete. Cleared after the throw so subsequent
+        /// deletes succeed normally.
+        var deleteError: (any Error)?
 
         func insertMessage(_ message: ChatMessageRecord) async throws {
             messages[message.id] = message
@@ -39,6 +43,10 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         func deleteMessage(_ messageID: UUID) async throws {
+            if let error = deleteError {
+                deleteError = nil
+                throw error
+            }
             guard messages.removeValue(forKey: messageID) != nil else {
                 throw ChatPersistenceError.messageNotFound(messageID)
             }
@@ -479,6 +487,8 @@ final class ConversationRuntimeTests: XCTestCase {
         switch event {
         case let .messageInserted(record):
             return "messageInserted-\(record.role.rawValue)"
+        case let .messageRemoved(messageID):
+            return "messageRemoved(\(messageID))"
         case .streamStarted: return "streamStarted"
         case let .tokenEmitted(_, delta): return "tokenEmitted(\(delta))"
         case let .streamFinished(_, reason):
@@ -497,5 +507,226 @@ final class ConversationRuntimeTests: XCTestCase {
         case .toolCallApproved: return "toolCallApproved"
         case .toolCallCompleted: return "toolCallCompleted"
         }
+    }
+
+    // MARK: - Regenerate happy path
+
+    func test_regenerate_happyPath_replacesLastAssistantMessage() async throws {
+        // Sabotage check (verified manually): if runRegenerateTurn does NOT
+        // delete the old message before fetching history, the old assistant
+        // content would appear in context and the store would have three
+        // messages (user + old assistant + new assistant) instead of two.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["Better", " answer"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        // Seed: one user + one assistant message already in the store.
+        let userMsg = ChatMessageRecord(role: .user, content: "original question", sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "old answer", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg)
+
+        let input = RegenerateInput(sessionID: sessionID)
+        _ = try await runtime.regenerate(input)
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        // Old assistant gone; new one persisted — store has user + new assistant.
+        XCTAssertEqual(store.messages.count, 2, "Old assistant removed, new assistant inserted")
+        let stored = Array(store.messages.values).sorted { $0.timestamp < $1.timestamp }
+        XCTAssertEqual(stored[0].role, .user, "User message preserved")
+        XCTAssertEqual(stored[0].content, "original question")
+        XCTAssertEqual(stored[1].role, .assistant, "Fresh assistant message persisted")
+        XCTAssertEqual(stored[1].content, "Better answer", "New content from stream")
+        XCTAssertNotEqual(stored[1].id, assistantMsg.id, "New assistant has a fresh ID")
+
+        // `.messageRemoved` fires with the old assistant's ID.
+        XCTAssertTrue(events.contains(where: {
+            if case .messageRemoved(let id) = $0 { return id == assistantMsg.id } else { return false }
+        }), "messageRemoved fires with the old assistant message ID")
+
+        // `.beforeContextAssembly` fires with nil prompt.
+        XCTAssertTrue(events.contains(where: {
+            if case .beforeContextAssembly(let prompt, _) = $0 { return prompt == nil } else { return false }
+        }), "beforeContextAssembly fires with nil prompt for regenerate")
+
+        // Standard generation events present.
+        let kinds = events.map(eventKind)
+        XCTAssertTrue(kinds.contains("contextAssembled"), "contextAssembled fires")
+        XCTAssertTrue(kinds.contains("streamStarted"), "streamStarted fires")
+        XCTAssertTrue(kinds.contains("messageInserted-assistant"), "New assistant messageInserted fires")
+        XCTAssertTrue(kinds.contains("streamFinished-stop"), "streamFinished-stop fires")
+        XCTAssertTrue(kinds.contains("afterGeneration"), "afterGeneration fires")
+
+        // `.messageRemoved` must appear before `.streamStarted` — deletion
+        // happens synchronously before the detached task launches.
+        let removedIndex = kinds.firstIndex { $0.hasPrefix("messageRemoved") }
+        let startedIndex = kinds.firstIndex { $0 == "streamStarted" }
+        XCTAssertNotNil(removedIndex, "messageRemoved present")
+        XCTAssertNotNil(startedIndex, "streamStarted present")
+        if let r = removedIndex, let s = startedIndex {
+            XCTAssertLessThan(r, s, "messageRemoved precedes streamStarted")
+        }
+    }
+
+    // MARK: - Regenerate: no assistant message
+
+    func test_regenerate_noAssistantMessage_throws() async throws {
+        // Sabotage check (verified manually): removing the guard that checks
+        // for a last assistant message causes the test to pass without
+        // throwing, failing the XCTAssertThrowsError assertion.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        // Only a user message — no assistant to replace.
+        let userMsg = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+
+        do {
+            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            XCTFail("Expected ConversationError.noAssistantMessageToRegenerate to be thrown")
+        } catch let error as ConversationError {
+            if case .noAssistantMessageToRegenerate = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .noAssistantMessageToRegenerate, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // Store is untouched — only the original user message.
+        XCTAssertEqual(store.messages.count, 1, "Store unchanged when no assistant exists")
+    }
+
+    // MARK: - Regenerate: empty session (also no assistant)
+
+    func test_regenerate_emptySession_throws() async throws {
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        do {
+            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            XCTFail("Expected ConversationError.noAssistantMessageToRegenerate to be thrown")
+        } catch let error as ConversationError {
+            if case .noAssistantMessageToRegenerate = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .noAssistantMessageToRegenerate, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+        XCTAssertEqual(store.messages.count, 0, "Store still empty")
+    }
+
+    // MARK: - Regenerate: delete persistence failure
+
+    func test_regenerate_deleteFails_throwsBeforeEmittingMessageRemoved() async throws {
+        // Sabotage check (verified manually): removing the guard that re-throws
+        // the delete error causes `regenerate` to return a handle instead of
+        // throwing, failing the XCTAssertThrowsError check and the assertion
+        // that no messageRemoved event was emitted.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "a", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg)
+
+        // Poison the store's delete so it throws.
+        store.deleteError = ChatPersistenceError.messageNotFound(assistantMsg.id)
+
+        do {
+            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            XCTFail("Expected ConversationError.persistence to be thrown")
+        } catch let error as ConversationError {
+            if case .persistence = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .persistence, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // `.messageRemoved` must NOT have been emitted — the throw happened
+        // before the emit. Collect events briefly and assert none received.
+        let eventTask = Task { @MainActor [runtime] in
+            var seen: [ConversationEvent] = []
+            for await event in runtime.events {
+                seen.append(event)
+            }
+            return seen
+        }
+        // Let any queued events drain (there should be none).
+        try await Task.sleep(for: .milliseconds(50))
+        eventTask.cancel()
+        // Store is untouched — both messages still present.
+        XCTAssertEqual(store.messages.count, 2, "Store unchanged on delete failure")
+    }
+
+    // MARK: - Regenerate: cancel mid-stream
+
+    func test_regenerate_cancelMidStream_partialContentPersists() async throws {
+        // Sabotage check (verified manually): if cancel is ignored and the
+        // stream drains fully, store.messages[assistant].content == "one two"
+        // (both tokens), and `sawCancelled` remains false — both XCTAssert
+        // calls would fail.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["one", " two"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "old", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg)
+
+        let handle = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+
+        // Cancel after the first token.
+        let cancelTask = Task { @MainActor [runtime] in
+            for await event in runtime.events {
+                if case .tokenEmitted = event {
+                    await runtime.cancel(handle)
+                    break
+                }
+            }
+        }
+        await cancelTask.value
+
+        // Wait for the terminal event.
+        var sawCancelled = false
+        let waitTask = Task { @MainActor [runtime] in
+            for await event in runtime.events {
+                if case .streamFinished(_, .cancelled) = event {
+                    sawCancelled = true
+                    return
+                }
+                if case .streamFinished = event { return }
+            }
+        }
+        _ = try? await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await waitTask.value }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                waitTask.cancel()
+            }
+            try await group.next()
+            group.cancelAll()
+        }
+
+        XCTAssertTrue(sawCancelled, "Cancel propagates to .streamFinished(reason: .cancelled)")
+        // User message present; old assistant gone; partial assistant may exist.
+        let userCount = store.messages.values.filter { $0.role == .user }.count
+        XCTAssertEqual(userCount, 1, "User message preserved")
+        let oldAssistantStillPresent = store.messages[assistantMsg.id] != nil
+        XCTAssertFalse(oldAssistantStillPresent, "Old assistant message was deleted before stream start")
     }
 }
