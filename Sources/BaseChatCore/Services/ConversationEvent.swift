@@ -24,6 +24,10 @@ import BaseChatInference
 // Phase 1.2.5 PR-B adds `.messageRemoved` (the 13th case) and emits it
 // from the regenerate sub-flow when the runtime deletes the last assistant
 // message before replacing it.
+//
+// Phase 1.2.5 PR-C adds `.messageUpdated` (the 14th case) and emits it
+// from the edit sub-flow when the runtime updates an existing message's
+// content in place.
 
 /// Events emitted by ``ConversationRuntime``.
 ///
@@ -52,6 +56,12 @@ public enum ConversationEvent: Sendable {
     /// (e.g. regenerate deletes the last assistant message before replacing
     /// it). Adapters remove the matching message from their view-state array.
     case messageRemoved(messageID: ChatMessageRecord.ID)
+
+    /// A previously persisted message's content was updated in place.
+    /// Fires when the runtime modifies an existing message (e.g. edit
+    /// sub-flow changes a message's content). Adapters update the matching
+    /// message in their view-state array.
+    case messageUpdated(ChatMessageRecord)
 
     /// The runtime queued a generation request and the underlying stream
     /// started. Carries the assistant message ID the stream will write

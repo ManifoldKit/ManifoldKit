@@ -113,6 +113,10 @@ public enum ConversationError: Error, Sendable {
     /// regenerate action on the presence of at least one assistant message.
     case noAssistantMessageToRegenerate
 
+    /// `edit` was called with a message ID that does not exist in the store.
+    /// Callers should verify the message exists before calling `edit`.
+    case messageNotFound(UUID)
+
     /// Persistence (insert / update / delete) failed.
     case persistence(any Error)
 
@@ -138,6 +142,8 @@ extension ConversationError: LocalizedError {
             return "ConversationRuntime persistence is not configured."
         case .noAssistantMessageToRegenerate:
             return "No assistant message to regenerate — the conversation has no assistant turn yet."
+        case let .messageNotFound(id):
+            return "No message with ID \(id) exists in the store."
         case let .persistence(error):
             return "Persistence failure during conversation: \(error.localizedDescription)"
         case let .inference(error):
