@@ -50,6 +50,14 @@ hook signature with Fireside *before* writing the PR. Fireside's
 the protocol shape; landing the protocol without that review risks a
 v0.x churn cycle on a load-bearing surface.
 
+**Precondition before opening sub-step 1**: confirm Fireside's adoption
+of #883 + #885 + #886 has landed (the `configure(persistence:autoLoad:)`
+flip at `AppEnvironmentFactory.swift:168`, custom
+`ChatPersistenceProvider` impl signatures converted to `async throws`,
+stored `onFirstMessage` closures flipped to `async`). If their `main`
+is still on the pre-#883 surface, the BCK Phase 1.2 PR will block on
+their adoption rather than the other way around. Verify before drafting.
+
 After 1.2.1: `GenerationContextProvider` re-export + `PromptContextPipeline`
 use case + `ContextContribution` value type (1.2.2 — locks the context
 contract for the rest of pre-1.0). Then internal port cleanups
@@ -267,9 +275,40 @@ public enum ConversationEvent: Sendable {
 story/memory pipeline composes against. They are load-bearing —
 removing or renaming any of them is a coordinated change with Fireside,
 not a unilateral rename. The other cases are BCK-internal and can
-evolve more freely. The 6-case `SessionListEvent` enum on main (#886)
-is the prior art for shape and naming conventions; `ConversationEvent`
-follows the same patterns.
+evolve more freely.
+
+**Why 12 cases (not collapsed à la `SessionListEvent`).** #886 collapsed
+`.sessionInserted` into `.sessionsLoaded` because every insert was
+immediately followed by a list reload — the adapter ignored the first
+event and only acted on the second. That collapse pattern does not
+apply here: each `ConversationEvent` case represents a distinct
+observable transition that adapters and Fireside both need to act on
+(start vs. finish of a stream is a UI-state phase change; tool-call
+request vs. approval vs. completion are three different user-facing
+moments; the four context-pipeline cases bracket two distinct phases
+of generation). Pre-emptive collapse would re-conflate concerns the
+spike already separated. The starter set ships at 12; cases may be
+added during `ConversationRuntime` extraction if a transition surfaces
+that the starter set missed, but only by widening, never by collapsing.
+
+For shape and naming conventions, `SessionListEvent` on main is the
+worked precedent:
+
+```swift
+public enum SessionListEvent: Sendable {
+    case sessionsLoaded([ChatSessionRecord], hasMore: Bool, offset: Int)
+    case sessionRenamed(UUID, title: String)
+    case sessionDeleted(UUID)
+    case searchResultsChanged(SearchResults)
+    case titleGenerated(UUID, title: String)
+    case persistenceFailure(any Error)
+}
+```
+
+`ConversationEvent` follows the same patterns: associated values rather
+than separate identifier cases, IDs as `UUID` aliases (`ChatMessageRecord.ID`),
+errors carried as the last associated value of the failure case, no
+optional wrapping where a value is always present.
 
 ### Constraints
 
@@ -521,6 +560,12 @@ Fireside changes (same window):
   `MessageStorePostWriteHook` are pinned to this appendix. Any
   deviation is updated here in the same PR that introduces the
   deviation — the plan is the source of truth, not Slack threads.
+- **Exception — internal-only port cleanups (Phase 1.2 sub-step 3).**
+  `SamplerPresetStore`, `BenchmarkCache`, and `EndpointStore` close
+  `@Query` / public `ModelContext` leaks that Fireside does not
+  consume; these PRs do not need a Fireside reviewer or a matching
+  Fireside PR. They still go through normal BCK review, but the
+  cross-repo coordination protocol does not gate them.
 
 ## Why this is worth doing now
 
