@@ -46,15 +46,15 @@ final class ChatInputBarLogicTests: XCTestCase {
         && !vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func test_canSend_falseWhenNoActiveSession() {
-        let vm = makeViewModel()
+    func test_canSend_falseWhenNoActiveSession() async {
+        let vm = await makeViewModel()
         vm.inputText = "Hello"
         // No session, no model
         XCTAssertFalse(canSend(vm), "canSend should be false without an active session")
     }
 
-    func test_canSend_falseWhenNoModelLoaded() {
-        let vm = makeViewModel()
+    func test_canSend_falseWhenNoModelLoaded() async {
+        let vm = await makeViewModel()
         vm.activeSession = ChatSessionRecord(title: "Test")
         vm.inputText = "Hello"
         XCTAssertFalse(vm.isModelLoaded, "Precondition: no model loaded")
@@ -103,13 +103,13 @@ final class ChatInputBarLogicTests: XCTestCase {
         vm.activeSession == nil || !vm.isModelLoaded || vm.isLoading
     }
 
-    func test_textFieldDisabled_whenNoSession() {
-        let vm = makeViewModel()
+    func test_textFieldDisabled_whenNoSession() async {
+        let vm = await makeViewModel()
         XCTAssertTrue(isTextFieldDisabled(vm), "Text field should be disabled without a session")
     }
 
-    func test_textFieldDisabled_whenNoModel() {
-        let vm = makeViewModel()
+    func test_textFieldDisabled_whenNoModel() async {
+        let vm = await makeViewModel()
         vm.activeSession = ChatSessionRecord(title: "Test")
         XCTAssertTrue(isTextFieldDisabled(vm), "Text field should be disabled without a loaded model")
     }
@@ -179,8 +179,8 @@ final class ChatInputBarLogicTests: XCTestCase {
         vm.activeSession == nil || !vm.isModelLoaded || vm.isGenerating || vm.isLoading
     }
 
-    func test_quickActionDisabled_whenNoSession() {
-        let vm = makeViewModel()
+    func test_quickActionDisabled_whenNoSession() async {
+        let vm = await makeViewModel()
         XCTAssertTrue(isQuickActionDisabled(vm), "Quick actions should be disabled without a session")
     }
 

@@ -4,6 +4,7 @@ import BaseChatCore
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
+import BaseChatVoice
 
 struct DemoContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
@@ -19,6 +20,9 @@ struct DemoContentView: View {
     @State private var isModelManagementPresented = false
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
+    @State private var voiceController = VoiceConversationController(
+        wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat", "base chat"])
+    )
 
     /// Tool registry shared with the app's inference service. Held here so the
     /// demo scenario runner can install scenario-specific variant executors.
@@ -53,6 +57,9 @@ struct DemoContentView: View {
             ChatView(
                 showModelManagement: $isModelManagementPresented,
                 emptyState: { ChatEmptyStateView(runScenario: runScenario) },
+                composerAccessory: {
+                    VoiceComposerAccessory(controller: voiceController)
+                },
                 apiConfiguration: { APIConfigurationView() }
             )
                 .toolbar {
@@ -121,9 +128,17 @@ struct DemoContentView: View {
             Task { @MainActor in
                 let hasPendingPayload = await pendingPayloadBuffer?.peek() != nil
 
+                // Phase 1.0: `configure(runtime:)` no longer auto-fires
+                // `loadSessions()`. Pull the first page here so the
+                // empty-state check below sees the actual persisted list,
+                // not the pre-load empty state. Safe to call alongside the
+                // sidebar's own `.task { }` load — main-actor serialisation
+                // makes the second call a no-op against the in-memory state.
+                await sessionManager.loadSessions()
+
                 if !hasPendingPayload && sessionManager.sessions.isEmpty {
                     do {
-                        try sessionManager.createSession()
+                        try await sessionManager.createSession()
                     } catch {
                         viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
                     }
@@ -177,7 +192,7 @@ struct DemoContentView: View {
                 // mid-stream, wiping the ingested reply. Only re-activate
                 // if the view model is currently on a different session.
                 if viewModel.activeSession?.id != session.id {
-                    viewModel.switchToSession(session)
+                    Task { await viewModel.switchToSession(session) }
                 }
             }
         }
@@ -189,7 +204,7 @@ struct DemoContentView: View {
             // user sees the wrong detail pane.
             guard let newSession else { return }
             if sessionManager.activeSession?.id != newSession.id {
-                sessionManager.loadSessions()
+                Task { await sessionManager.loadSessions() }
                 sessionManager.activeSession = newSession
             }
         }
@@ -319,10 +334,12 @@ struct DemoContentView: View {
     }
 
     private func createSession() {
-        do {
-            try sessionManager.createSession()
-        } catch {
-            viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
+        Task {
+            do {
+                try await sessionManager.createSession()
+            } catch {
+                viewModel.errorMessage = "Failed to create session: \(error.localizedDescription)"
+            }
         }
     }
 

@@ -166,7 +166,7 @@ final class GenerationCoordinator {
     var onUpdateContextEstimate: () -> Void = {}
 
     /// Persists a completed message.
-    var onSaveMessage: (ChatMessageRecord) throws -> Void = { _ in }
+    var onSaveMessage: (ChatMessageRecord) async throws -> Void = { _ in }
 
     /// Removes an assistant message from the view model (called for empty responses).
     var onRemoveMessage: (UUID) -> Void = { _ in }
@@ -520,7 +520,7 @@ final class GenerationCoordinator {
                 if !currentMessages[idx].hasVisibleContent && !hasThinkingContent {
                     onRemoveMessage(messageID)
                 } else {
-                    try onSaveMessage(currentMessages[idx])
+                    try await onSaveMessage(currentMessages[idx])
                 }
             } catch {
                 Log.persistence.error("Failed to persist assistant message: \(error)")

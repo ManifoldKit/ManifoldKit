@@ -14,6 +14,8 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
     public var baseURL: String
     public var modelName: String
     public var keychainAccount: String
+    public var createdAt: Date
+    public var isEnabled: Bool
 
     public init(
         id: UUID = UUID(),
@@ -21,7 +23,9 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
         provider: APIProvider,
         baseURL: String? = nil,
         modelName: String? = nil,
-        keychainAccount: String? = nil
+        keychainAccount: String? = nil,
+        createdAt: Date = Date(),
+        isEnabled: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -29,5 +33,7 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
         self.baseURL = baseURL ?? provider.defaultBaseURL
         self.modelName = modelName ?? provider.defaultModelName
         self.keychainAccount = keychainAccount ?? id.uuidString
+        self.createdAt = createdAt
+        self.isEnabled = isEnabled
     }
 }

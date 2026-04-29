@@ -114,8 +114,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_init_defaultState
 
-    func test_init_defaultState() {
-        let vm = makeViewModel()
+    func test_init_defaultState() async {
+        let vm = await makeViewModel()
 
         XCTAssertTrue(vm.availableModels.isEmpty, "availableModels should be empty on init")
         XCTAssertNil(vm.selectedModel, "selectedModel should be nil on init")
@@ -129,11 +129,11 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_refreshModels_populatesAvailableModels
 
-    func test_refreshModels_populatesAvailableModels() throws {
+    func test_refreshModels_populatesAvailableModels() async throws {
         let url = try createFakeGGUF(named: "test-refresh-model.gguf")
         createdFiles.append(url)
 
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         vm.refreshModels()
 
         XCTAssertFalse(vm.availableModels.isEmpty, "availableModels should contain discovered models")
@@ -145,11 +145,11 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_refreshModels_clearsStaleSelection
 
-    func test_refreshModels_clearsStaleSelection() throws {
+    func test_refreshModels_clearsStaleSelection() async throws {
         let url = try createFakeGGUF(named: "test-stale-model.gguf")
         createdFiles.append(url)
 
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         vm.refreshModels()
 
         // Select the discovered model.
@@ -167,7 +167,7 @@ final class ChatViewModelTests: XCTestCase {
     // MARK: - test_loadSelectedModel_noSelection_setsError
 
     func test_loadSelectedModel_noSelection_setsError() async {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         XCTAssertNil(vm.selectedModel)
 
         await vm.loadSelectedModel()
@@ -183,7 +183,7 @@ final class ChatViewModelTests: XCTestCase {
         // `ModelLoadPlan`, which reads `availableMemoryBytes` from an injected
         // environment — pin it low so the plan denies deterministically on any
         // host (the real CI box has far more RAM than the model's weights).
-        let vm = makeViewModel(ramGB: 4)
+        let vm = await makeViewModel(ramGB: 4)
         vm.loadPlanEnvironment = ModelLoadPlan.Environment(
             availableMemoryBytes: { 512 * 1024 * 1024 },  // 512 MB available
             physicalMemoryBytes: 4 * oneGB
@@ -210,7 +210,7 @@ final class ChatViewModelTests: XCTestCase {
     // MARK: - test_sendMessage_emptyInput_doesNothing
 
     func test_sendMessage_emptyInput_doesNothing() async {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         vm.inputText = ""
 
         await vm.sendMessage()
@@ -222,7 +222,7 @@ final class ChatViewModelTests: XCTestCase {
     // MARK: - test_sendMessage_noModelLoaded_setsError
 
     func test_sendMessage_noModelLoaded_setsError() async {
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         vm.activeSession = ChatSessionRecord(title: "Test")
         vm.inputText = "Tell me a story"
 
@@ -263,18 +263,18 @@ final class ChatViewModelTests: XCTestCase {
 
         XCTAssertFalse(vm.messages.isEmpty, "Should have messages after sending")
 
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertTrue(vm.messages.isEmpty, "messages should be empty after clearChat")
     }
 
     // MARK: - test_autoSelectFirstRunModel_selectsFoundation
 
-    func test_autoSelectFirstRunModel_selectsFoundation() {
+    func test_autoSelectFirstRunModel_selectsFoundation() async {
         let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         // Per-instance suite starts empty — no need to clear; the flag is unset by construction.
 
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
 
         // Manually add a foundation model to available models
         // (refreshModels would check actual availability which may not be present in tests).
@@ -302,12 +302,12 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_autoSelectFirstRunModel_doesNotRepeat
 
-    func test_autoSelectFirstRunModel_doesNotRepeat() {
+    func test_autoSelectFirstRunModel_doesNotRepeat() async {
         let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         // Set the flag as if first launch already happened.
         testDefaults.set(true, forKey: firstRunKey)
 
-        let vm = makeViewModel()
+        let vm = await makeViewModel()
         vm.refreshModels()
         vm.autoSelectFirstRunModel()
 
@@ -317,8 +317,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_handleMemoryPressure_nominal_doesNotSetError
 
-    func test_handleMemoryPressure_nominal_doesNotSetError() {
-        let vm = makeViewModel()
+    func test_handleMemoryPressure_nominal_doesNotSetError() async {
+        let vm = await makeViewModel()
 
         vm.handleMemoryPressure()
 
@@ -330,8 +330,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_deviceDescription_returnsNonEmpty
 
-    func test_deviceDescription_returnsNonEmpty() {
-        let vm = makeViewModel(ramGB: 16)
+    func test_deviceDescription_returnsNonEmpty() async {
+        let vm = await makeViewModel(ramGB: 16)
 
         XCTAssertFalse(vm.deviceDescription.isEmpty, "deviceDescription should not be empty")
         XCTAssertTrue(
@@ -342,8 +342,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_recommendedSize_returnsValidRecommendation
 
-    func test_recommendedSize_returnsValidRecommendation() {
-        let vm = makeViewModel(ramGB: 8)
+    func test_recommendedSize_returnsValidRecommendation() async {
+        let vm = await makeViewModel(ramGB: 8)
 
         let recommendation = vm.recommendedSize
         XCTAssertTrue(
@@ -356,8 +356,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_modelsDirectoryPath_returnsNonEmpty
 
-    func test_modelsDirectoryPath_returnsNonEmpty() {
-        let vm = makeViewModel()
+    func test_modelsDirectoryPath_returnsNonEmpty() async {
+        let vm = await makeViewModel()
 
         XCTAssertFalse(vm.modelsDirectoryPath.isEmpty, "modelsDirectoryPath should not be empty")
         // When a custom `baseDirectory:` is passed to ModelStorageService the
@@ -372,8 +372,8 @@ final class ChatViewModelTests: XCTestCase {
 
     // MARK: - test_backendCapabilities_nilWhenNoModel
 
-    func test_backendCapabilities_nilWhenNoModel() {
-        let vm = makeViewModel()
+    func test_backendCapabilities_nilWhenNoModel() async {
+        let vm = await makeViewModel()
         XCTAssertNil(vm.backendCapabilities, "backendCapabilities should be nil when no model loaded")
     }
 
@@ -655,7 +655,7 @@ final class ChatViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.messages.count, 4, "Precondition: should have 4 messages")
 
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertTrue(vm.messages.isEmpty, "All messages should be cleared")
     }

@@ -27,7 +27,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_substitutesTokens_beforeReachingBackend() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "The assistant greets {{name}}."
         vm.systemPromptContext = ["name": "Alice"]
 
@@ -46,7 +46,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_emptyDict_leavesPromptUnchanged() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "Hello {{name}}."
         vm.systemPromptContext = [:]
 
@@ -65,7 +65,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_missingKey_leavesTokenVerbatim() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "Hello {{name}}, your role is {{role}}."
         vm.systemPromptContext = ["name": "Alice"] // role is intentionally absent
 
@@ -84,7 +84,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_replacesAllOccurrencesOfSameToken() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "{{name}} likes {{name}}'s coffee. {{name}} drinks it daily."
         vm.systemPromptContext = ["name": "Alice"]
 
@@ -103,7 +103,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_doesNotRecursivelyExpandValues() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "Hello {{first}}."
         // If substitution were recursive, "{{first}}" would expand to
         // "{{second}}" then to "Bob". Since we guarantee non-recursion, the
@@ -125,7 +125,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_emptyStringValue_substitutesAsEmpty() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "Persona: {{persona}}|end"
         vm.systemPromptContext = ["persona": ""]
 
@@ -189,7 +189,7 @@ final class ChatViewModelSystemPromptContextTests: XCTestCase {
     func test_systemPromptContext_mutationBetweenSends_appliesToSecondPrompt() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok", "ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.systemPrompt = "Talking to {{name}}."
         vm.systemPromptContext = ["name": "Alice"]
 

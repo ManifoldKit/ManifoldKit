@@ -33,26 +33,26 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
     /// Inserts a new chat session.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func insertSession(_ session: ChatSessionRecord) throws
+    func insertSession(_ session: ChatSessionRecord) async throws
 
     /// Updates an existing chat session.
     ///
     /// - Throws:
     ///   - ``ChatPersistenceError/sessionNotFound(_:)`` when the session does not exist.
     ///   - Storage errors from the underlying provider.
-    func updateSession(_ session: ChatSessionRecord) throws
+    func updateSession(_ session: ChatSessionRecord) async throws
 
     /// Deletes a chat session and all associated messages.
     ///
     /// - Throws:
     ///   - ``ChatPersistenceError/sessionNotFound(_:)`` when the session does not exist.
     ///   - Storage errors from the underlying provider.
-    func deleteSession(_ sessionID: UUID) throws
+    func deleteSession(_ sessionID: UUID) async throws
 
     /// Fetches all chat sessions sorted by most-recently-updated.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func fetchSessions() throws -> [ChatSessionRecord]
+    func fetchSessions() async throws -> [ChatSessionRecord]
 
     /// Fetches a page of chat sessions sorted by most-recently-updated.
     ///
@@ -64,7 +64,7 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
     ///   - offset: Index of the first session to return (0-based).
     ///   - limit: Maximum number of sessions to return.
     /// - Throws: Storage errors from the underlying provider.
-    func fetchSessions(offset: Int, limit: Int) throws -> [ChatSessionRecord]
+    func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord]
 
     // MARK: - Search
 
@@ -79,33 +79,33 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
     ///   - query: Substring to search for. Empty queries return no hits.
     ///   - limit: Maximum number of hits to return (UI default: 100).
     /// - Throws: Storage errors from the underlying provider.
-    func searchMessages(query: String, limit: Int) throws -> [MessageSearchHit]
+    func searchMessages(query: String, limit: Int) async throws -> [MessageSearchHit]
 
     // MARK: - Messages
 
     /// Inserts a new chat message.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func insertMessage(_ message: ChatMessageRecord) throws
+    func insertMessage(_ message: ChatMessageRecord) async throws
 
     /// Updates an existing chat message.
     ///
     /// - Throws:
     ///   - ``ChatPersistenceError/messageNotFound(_:)`` when the message does not exist.
     ///   - Storage errors from the underlying provider.
-    func updateMessage(_ message: ChatMessageRecord) throws
+    func updateMessage(_ message: ChatMessageRecord) async throws
 
     /// Deletes a chat message.
     ///
     /// - Throws:
     ///   - ``ChatPersistenceError/messageNotFound(_:)`` when the message does not exist.
     ///   - Storage errors from the underlying provider.
-    func deleteMessage(_ messageID: UUID) throws
+    func deleteMessage(_ messageID: UUID) async throws
 
     /// Fetches messages for a session in timestamp order.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func fetchMessages(for sessionID: UUID) throws -> [ChatMessageRecord]
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord]
 
     /// Fetches the most recent messages for a session, up to `limit`.
     ///
@@ -113,7 +113,7 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
     /// Use ``fetchMessages(for:before:limit:)`` to page backwards from a known timestamp.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func fetchRecentMessages(for sessionID: UUID, limit: Int) throws -> [ChatMessageRecord]
+    func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord]
 
     /// Fetches messages older than `before` for a session, up to `limit`.
     ///
@@ -121,12 +121,12 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
     /// Returns an empty array when no older messages exist.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func fetchMessages(for sessionID: UUID, before: Date, limit: Int) throws -> [ChatMessageRecord]
+    func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord]
 
     /// Deletes all messages for a session.
     ///
     /// - Throws: Storage errors from the underlying provider.
-    func deleteMessages(for sessionID: UUID) throws
+    func deleteMessages(for sessionID: UUID) async throws
 }
 
 // MARK: - Default pagination implementations
@@ -134,21 +134,21 @@ public protocol ChatPersistenceProvider: AnyObject, Sendable {
 extension ChatPersistenceProvider {
 
     /// Default: fetches all messages then returns the last `limit`.
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) throws -> [ChatMessageRecord] {
-        let all = try fetchMessages(for: sessionID)
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
+        let all = try await fetchMessages(for: sessionID)
         return Array(all.suffix(limit))
     }
 
     /// Default: fetches all messages then filters to those before `before`.
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) throws -> [ChatMessageRecord] {
-        let all = try fetchMessages(for: sessionID)
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
+        let all = try await fetchMessages(for: sessionID)
         let older = all.filter { $0.timestamp < before }
         return Array(older.suffix(limit))
     }
 
     /// Default: pages over the full list returned by ``fetchSessions()``.
-    public func fetchSessions(offset: Int, limit: Int) throws -> [ChatSessionRecord] {
-        let all = try fetchSessions()
+    public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+        let all = try await fetchSessions()
         guard offset < all.count else { return [] }
         let end = min(offset + limit, all.count)
         return Array(all[offset..<end])
@@ -157,7 +157,7 @@ extension ChatPersistenceProvider {
     /// Default: returns no hits. Providers that don't implement search opt
     /// out by inheriting this no-op rather than throwing — UI shows the
     /// "No results" empty state, which is the correct behaviour.
-    public func searchMessages(query: String, limit: Int) throws -> [MessageSearchHit] {
+    public func searchMessages(query: String, limit: Int) async throws -> [MessageSearchHit] {
         []
     }
 }

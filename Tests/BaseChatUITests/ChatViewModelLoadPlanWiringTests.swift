@@ -65,7 +65,7 @@ final class ChatViewModelLoadPlanWiringTests: XCTestCase {
             availableMemoryBytes: { 32 * oneGB },
             physicalMemoryBytes: 32 * oneGB
         )
-        let (vm, backend) = makeViewModel(
+        let (vm, backend) = await makeViewModel(
             physicalMemory: 1 * oneGB,  // tiny — canLoadModel would reject
             planEnvironment: env
         )
@@ -88,7 +88,7 @@ final class ChatViewModelLoadPlanWiringTests: XCTestCase {
             availableMemoryBytes: { 128 * 1024 * 1024 },  // 128 MB available
             physicalMemoryBytes: 8 * oneGB
         )
-        let (vm, backend) = makeViewModel(
+        let (vm, backend) = await makeViewModel(
             physicalMemory: 8 * oneGB,
             planEnvironment: env
         )
@@ -118,7 +118,7 @@ final class ChatViewModelLoadPlanWiringTests: XCTestCase {
             availableMemoryBytes: { 32 * oneGB },
             physicalMemoryBytes: 32 * oneGB
         )
-        let (vm, backend) = makeViewModel(
+        let (vm, backend) = await makeViewModel(
             physicalMemory: 32 * oneGB,
             planEnvironment: env
         )
@@ -152,7 +152,7 @@ final class ChatViewModelLoadPlanWiringTests: XCTestCase {
             availableMemoryBytes: { 1 },  // hostile: 1 byte available
             physicalMemoryBytes: 1
         )
-        let (vm, backend) = makeViewModel(
+        let (vm, backend) = await makeViewModel(
             modelType: .foundation,
             physicalMemory: 1,
             planEnvironment: env

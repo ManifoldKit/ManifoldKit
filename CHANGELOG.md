@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.14.0](https://github.com/roryford/BaseChatKit/compare/v0.13.3...v0.14.0) (2026-04-29)
+
+### Highlights
+
+#### Persistence and command APIs are now `async throws`
+
+Phase 0 of the runtime ports refactor showed that synchronous command APIs forced every adapter to dual-write — eager-reload now, consume events later — which undermines the single-source-of-truth event-stream shape that later phases need. v0.14.0 makes the prerequisite breaking move: `ChatPersistenceProvider` protocol methods, and the public mutators on `ChatViewModel` and `SessionManagerViewModel`, are now `async throws`. The result is one consistent async surface that future phases can compose against without compatibility shims.
+
+```swift
+// Before
+sessionManager.configure(persistence: provider)
+sessionManager.createSession(title: "New chat")
+
+// After
+sessionManager.configure(persistence: provider, autoLoad: true)
+try await sessionManager.createSession(title: "New chat")
+```
+
+`SessionManagerViewModel.configure` gains a required `autoLoad: Bool` parameter (no default) so the behavior change is loud at every call site. Pass `true` to preserve pre-Phase-1.0 behavior, `false` if your bootstrap will call `await loadSessions()` itself; `configure(runtime:)` passes `autoLoad: true` automatically. `ChatViewModel.onFirstMessage` is now an `async` closure — typed-variable consumers must drop any `@MainActor` annotation. `stopGeneration()` deliberately stays synchronous so toolbar handlers and `scenePhase` teardown sites do not need `Task { … }` wrappers.
+
+This is Phase 1.0 of the runtime ports refactor. Phase 1.1 (extracting `SessionListService`, already merged) and the upcoming Phase 1.2 `ConversationRuntime` extraction both depend on this surface.
+
+See [#883], [#876].
+
+### ⚠ BREAKING CHANGES
+
+* `ChatPersistenceProvider` and the public command APIs on `ChatViewModel` / `SessionManagerViewModel` are now `async throws` ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+* `SessionManagerViewModel.configure(persistence:)` becomes `configure(persistence:autoLoad:diagnostics:)` with a required `autoLoad` parameter ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+* `ChatViewModel.onFirstMessage` is now an `async` closure ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+
+## [0.13.3](https://github.com/roryford/BaseChatKit/compare/v0.13.2...v0.13.3) (2026-04-28)
+
+### Highlights
+
+#### Sort order picker on the Model Selection tab
+
+The Model Selection tab now exposes a sort-order control alongside the search field, with four orderings: `Alphabetical`, `Type`, `Size (Smallest First)`, and `Capability / Speed`. The comparator is extracted as `static ModelSelectionTabView.sortModels(_:by:)` so host apps and tests can drive it directly without mounting the view.
+
+```swift
+let ordered = ModelSelectionTabView.sortModels(
+    models,
+    by: .sizeSmallestFirst
+)
+```
+
+All four orderings have name-based tie-breakers via `localizedStandardCompare`, and the picker selection is `@State` on the view — no host wiring required. See [#879](https://github.com/roryford/BaseChatKit/pull/879).
+
+#### TTFT performance test no longer SIGTRAPs at process exit
+
+`IntegratedStreamingPerformanceTests.testPerf_timeToFirstToken_realisticBackend` was fulfilling its measure-block expectation as soon as the first token arrived, leaving the unstructured `sendMessage()` task in flight past `tearDown()` — the task could then touch an invalidated `ModelContext` and trip a SIGTRAP at process exit. The fix splits the wait into a `firstTokenExp` (timed via `stopMeasuring()`) plus a separate `drainExp` that resolves only after `sendMessage()` fully returns, so the task is always joined inside the measure block.
+
+A side-effect of the new pattern: per-iteration TTFT is now measured cleanly. The previous orphan-task arrangement leaked work between iterations and inflated the average to ~745 ms; corrected runs report ~104 ms with sub-1% relative standard deviation. See [#879](https://github.com/roryford/BaseChatKit/pull/879).
+
+### Features
+
+- **model-management:** `ModelSelectionSortOrder` enum and sort picker on the Model Selection tab; comparator is a public `static` helper on `ModelSelectionTabView` for unit testing ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+
+### Fixes
+
+- **tests:** join the in-flight `sendMessage()` task inside the TTFT measure block so it cannot outlive `tearDown()` and access an invalidated `ModelContext`; corrects per-iteration measurement drift as a side-effect ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+- **demo:** small UX polish to the demo app's sidebar, memory indicator, and connected-services view; new `DemoNowTool` ([#879](https://github.com/roryford/BaseChatKit/pull/879))
+
 ## [0.13.2](https://github.com/roryford/BaseChatKit/compare/v0.13.1...v0.13.2) (2026-04-28)
 
 ### Highlights

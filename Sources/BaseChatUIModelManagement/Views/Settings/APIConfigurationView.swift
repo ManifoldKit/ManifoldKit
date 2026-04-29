@@ -1,6 +1,5 @@
 import SwiftUI
 #if Ollama || CloudSaaS
-import SwiftData
 import BaseChatCore
 import BaseChatInference
 #endif
@@ -8,8 +7,12 @@ import BaseChatInference
 /// Main settings view for managing cloud API endpoints.
 ///
 /// Presented as a sheet from `GenerationSettingsView`. Lists all configured
-/// `APIEndpoint` entries with swipe-to-delete, and offers an "Add Endpoint"
-/// button that presents `APIEndpointEditorView`.
+/// endpoints with swipe-to-delete, and offers an "Add Endpoint" button that
+/// presents `APIEndpointEditorView`.
+///
+/// Endpoint reads and writes go through the ``EndpointStore`` injected via
+/// the SwiftUI environment (typically `BaseChatRuntime.endpointStore`); the
+/// view itself does not import SwiftData.
 ///
 /// The type itself is **always public** — even when neither `Ollama` nor
 /// `CloudSaaS` traits are enabled — so that consumer migration code like
@@ -21,15 +24,13 @@ public struct APIConfigurationView: View {
 
     #if Ollama || CloudSaaS
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.endpointStore) private var endpointStore
 
-    @Query(sort: \APIEndpoint.createdAt, order: .reverse)
-    private var endpoints: [APIEndpoint]
-
+    @State private var endpoints: [APIEndpointRecord] = []
     @State private var showAddSheet = false
-    @State private var endpointToEdit: APIEndpoint?
+    @State private var endpointToEdit: APIEndpointRecord?
     @State private var showDeleteConfirmation = false
-    @State private var endpointToDelete: APIEndpoint?
+    @State private var endpointToDelete: APIEndpointRecord?
     #endif
 
     public init() {}
@@ -88,17 +89,18 @@ public struct APIConfigurationView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showAddSheet) {
+            .task { await refresh() }
+            .sheet(isPresented: $showAddSheet, onDismiss: { Task { await refresh() } }) {
                 APIEndpointEditorView(endpoint: nil)
             }
-            .sheet(item: $endpointToEdit) { endpoint in
+            .sheet(item: $endpointToEdit, onDismiss: { Task { await refresh() } }) { endpoint in
                 APIEndpointEditorView(endpoint: endpoint)
             }
             .alert("Delete Endpoint", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { endpointToDelete = nil }
                 Button("Delete", role: .destructive) {
                     if let endpoint = endpointToDelete {
-                        deleteEndpoint(endpoint)
+                        Task { await deleteEndpoint(endpoint) }
                     }
                     endpointToDelete = nil
                 }
@@ -117,19 +119,31 @@ public struct APIConfigurationView: View {
     }
 
     #if Ollama || CloudSaaS
-    private func deleteEndpoint(_ endpoint: APIEndpoint) {
+    private func refresh() async {
+        guard let endpointStore else { return }
+        do {
+            endpoints = try await endpointStore.fetchEndpoints()
+        } catch {
+            Log.persistence.error("Failed to fetch endpoints: \(error)")
+        }
+    }
+
+    private func deleteEndpoint(_ endpoint: APIEndpointRecord) async {
+        guard let endpointStore else { return }
+
         // Best-effort Keychain cleanup: if the Keychain delete fails we still
-        // remove the SwiftData record, because leaving the endpoint in the UI
-        // with a dangling key is worse than a potential orphaned Keychain item.
+        // remove the endpoint row, because leaving the endpoint in the UI with
+        // a dangling key is worse than a potential orphaned Keychain item.
         // The failure is logged by KeychainService for diagnostics.
         do {
-            try endpoint.deleteAPIKey()
+            try KeychainService.delete(account: endpoint.keychainAccount)
         } catch {
             Log.persistence.warning("Failed to delete API key from Keychain: \(error.localizedDescription)")
         }
-        modelContext.delete(endpoint)
+
         do {
-            try modelContext.save()
+            try await endpointStore.deleteEndpoint(endpoint.id)
+            await refresh()
         } catch {
             Log.persistence.error("Failed to delete endpoint: \(error)")
         }
@@ -142,6 +156,5 @@ public struct APIConfigurationView: View {
 #if Ollama || CloudSaaS
 #Preview("API Configuration") {
     APIConfigurationView()
-        .modelContainer(for: APIEndpoint.self, inMemory: true)
 }
 #endif

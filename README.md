@@ -75,6 +75,7 @@ BaseChatUI  ──────────>  BaseChatCore  ───────
 - **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatCore` (for persistence) and `BaseChatInference` (for inference orchestration).
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
+- **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
 
 ## Quick Start
 
@@ -190,6 +191,50 @@ Quick checks:
 swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
 ```
+
+### 2.2 Optional voice
+
+`BaseChatVoice` is an opt-in module for speech input/output. It plugs into
+`ChatView` through the `composerAccessory:` seam, so `BaseChatUI` stays free of
+audio-framework dependencies while hosts can mount a voice accessory above the
+stock `ChatInputBar`.
+
+```swift
+ .package(
+     url: "https://github.com/roryford/BaseChatKit.git",
+     from: "1.0.0",
+     traits: [
+         .trait(name: "Voice"),
+     ]
+ )
+```
+
+```swift
+import BaseChatUI
+import BaseChatVoice
+
+@State private var voice = VoiceConversationController(
+    wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat"])
+)
+
+ChatView(
+    showModelManagement: $isModelManagementPresented,
+    composerAccessory: { VoiceComposerAccessory(controller: voice) },
+    apiConfiguration: { APIConfigurationView() }
+)
+```
+
+Voice input requires `NSMicrophoneUsageDescription` and
+`NSSpeechRecognitionUsageDescription` in the host app's `Info.plist`. The
+default Apple speech transcriber returns a user-facing error on the simulator,
+so validate the real capture flow on device or macOS hardware.
+
+Wake-word support is phrase detection over the live Apple Speech transcript,
+not background hotword monitoring while the app is idle. On iOS, the default
+audio-session coordinator activates `.playAndRecord` / `.spokenAudio` with
+`.defaultToSpeaker` and `.duckOthers` while capture is active, then deactivates
+the session when recording stops. Apps with their own audio-session policy can
+inject a custom transcriber or audio-session coordinator.
 
 ### 3. Create the runtime at app startup
 

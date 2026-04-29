@@ -193,7 +193,7 @@ extension ChatViewModel {
             systemPrompt: preset?.systemPrompt ?? ""
         )
         do {
-            try persistence.insertSession(session)
+            try await persistence.insertSession(session)
         } catch {
             Log.persistence.error(
                 "ChatViewModel.ingestPendingPayload failed to insert session: \(error.localizedDescription)"
@@ -201,7 +201,7 @@ extension ChatViewModel {
             surfaceError(error, kind: .persistence)
             return
         }
-        switchToSession(session)
+        await switchToSession(session)
 
         if let preset {
             applyPreset(preset)
@@ -210,7 +210,7 @@ extension ChatViewModel {
             // this, only the live VM state has the preset values and they
             // get lost when the session is reloaded.
             do {
-                try saveSettingsToSession()
+                try await saveSettingsToSession()
             } catch {
                 Log.persistence.warning(
                     "ingestPendingPayload failed to persist preset to session: \(error.localizedDescription)"
@@ -244,7 +244,7 @@ extension ChatViewModel {
             var updated = userMessage
             updated.contentParts.append(contentsOf: attachments)
             do {
-                try updateMessage(updated)
+                try await updateMessage(updated)
                 if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
                     messages[index] = updated
                 }

@@ -1,15 +1,6 @@
 {
-  "originHash" : "df0bc2ca323a3a17961695ac3610daf14bf800ce4d4a2a52f51a95e0cf301a3b",
+  "originHash" : "822e7397ae96dd02d4248ee66c7529690c70da5f6ca71b458bed149c609f53de",
   "pins" : [
-    {
-      "identity" : "anylanguagemodel",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/huggingface/AnyLanguageModel",
-      "state" : {
-        "revision" : "163f3855a53235b4ebeb69cf5e9f228215ae35b5",
-        "version" : "0.8.0"
-      }
-    },
     {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
@@ -20,21 +11,39 @@
       }
     },
     {
-      "identity" : "jsonschema",
+      "identity" : "llama.swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/JSONSchema",
+      "location" : "https://github.com/mattt/llama.swift",
       "state" : {
-        "revision" : "4c6f2467d5bc72b062c7a9b7e4cd77a09635ea8b",
-        "version" : "1.3.1"
+        "revision" : "71e4c6366087d7dc995b387a2cdf931399e1710c",
+        "version" : "2.8954.0"
       }
     },
     {
-      "identity" : "partialjsondecoder",
+      "identity" : "mlx-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/PartialJSONDecoder",
+      "location" : "https://github.com/ml-explore/mlx-swift.git",
       "state" : {
-        "revision" : "e4d389e6bcc6771bb988d1a8a17695d8bfa97172",
-        "version" : "1.0.0"
+        "revision" : "61b9e011e09a62b489f6bd647958f1555bdf2896",
+        "version" : "0.31.3"
+      }
+    },
+    {
+      "identity" : "mlx-swift-lm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ml-explore/mlx-swift-lm.git",
+      "state" : {
+        "revision" : "1c05248bb0899e2a7a4962b84d319cf12f4e12aa",
+        "version" : "3.31.3"
+      }
+    },
+    {
+      "identity" : "swift-asn1",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-asn1.git",
+      "state" : {
+        "revision" : "9f542610331815e29cc3821d3b6f488db8715517",
+        "version" : "1.6.0"
       }
     },
     {
@@ -56,6 +65,15 @@
       }
     },
     {
+      "identity" : "swift-crypto",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-crypto.git",
+      "state" : {
+        "revision" : "bb4ba815dab96d4edc1e0b86d7b9acf9ff973a84",
+        "version" : "4.3.1"
+      }
+    },
+    {
       "identity" : "swift-custom-dump",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/swift-custom-dump",
@@ -65,12 +83,39 @@
       }
     },
     {
+      "identity" : "swift-huggingface",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/huggingface/swift-huggingface.git",
+      "state" : {
+        "revision" : "b721959445b617d0bf03910b2b4aced345fd93bf",
+        "version" : "0.9.0"
+      }
+    },
+    {
+      "identity" : "swift-jinja",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/huggingface/swift-jinja.git",
+      "state" : {
+        "revision" : "0aeefadec459ce8e11a333769950fb86183aca43",
+        "version" : "2.3.5"
+      }
+    },
+    {
       "identity" : "swift-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
       "state" : {
-        "revision" : "f71c8d2a5e74a2c6d11a0fbe324774b5d6084237",
-        "version" : "2.99.0"
+        "revision" : "558f24a4647193b5a0e2104031b71c55d31ff83a",
+        "version" : "2.97.1"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+        "version" : "1.1.1"
       }
     },
     {
@@ -101,6 +146,15 @@
       }
     },
     {
+      "identity" : "swift-transformers",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/huggingface/swift-transformers",
+      "state" : {
+        "revision" : "b38443e44d93eca770f2eb68e2a4d0fa100f9aa2",
+        "version" : "1.3.0"
+      }
+    },
+    {
       "identity" : "viewinspector",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/nalexn/ViewInspector",
@@ -116,6 +170,15 @@
       "state" : {
         "revision" : "dfd70507def84cb5fb821278448a262c6ff2bbad",
         "version" : "1.9.0"
+      }
+    },
+    {
+      "identity" : "yyjson",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ibireme/yyjson.git",
+      "state" : {
+        "revision" : "8b4a38dc994a110abaec8a400615567bd996105f",
+        "version" : "0.12.0"
       }
     }
   ],

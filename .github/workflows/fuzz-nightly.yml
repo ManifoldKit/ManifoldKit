@@ -8,10 +8,10 @@ name: Fuzz (nightly)
 # with Ollama installed and `qwen3.5:4b` pulled. Until such a runner exists,
 # scheduled runs will sit in the queue — see FUZZING.md § CI tiers.
 
+# Schedule disabled: no `[self-hosted, macos, arm64]` runner is registered, so
+# scheduled runs queue for 24h and auto-cancel. Re-enable the cron once a
+# self-hosted Apple-Silicon runner is available (see FUZZING.md § CI tiers).
 on:
-  schedule:
-    # 05:00 UTC daily — quiet window, before the PR-tier traffic ramps.
-    - cron: "0 5 * * *"
   workflow_dispatch:
 
 jobs:

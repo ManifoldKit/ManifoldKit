@@ -65,11 +65,11 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     // MARK: - saveSettingsToSession
 
-    func test_saveSettingsToSession_updatesSessionProperties() throws {
+    func test_saveSettingsToSession_updatesSessionProperties() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
         let session = ChatSessionRecord(title: "Settings Test")
-        try persistence.insertSession(session)
+        try await persistence.insertSession(session)
 
         vm.activeSession = session
         vm.temperature = 0.3
@@ -78,7 +78,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         vm.systemPrompt = "Be concise."
         vm.selectedPromptTemplate = .llama3
 
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         let updated = vm.activeSession!
         XCTAssertEqual(updated.temperature!, 0.3, accuracy: 0.001,
@@ -93,19 +93,19 @@ final class ViewModelEdgeCaseTests: XCTestCase {
                        "Session promptTemplate should match view model value")
     }
 
-    func test_saveSettingsToSession_noActiveSession_isNoop() throws {
+    func test_saveSettingsToSession_noActiveSession_isNoop() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
         // No active session — should not crash.
         vm.temperature = 0.5
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         XCTAssertNil(vm.activeSession, "activeSession should remain nil")
     }
 
     // MARK: - switchToSession
 
-    func test_switchToSession_loadsSessionSettings() throws {
+    func test_switchToSession_loadsSessionSettings() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
         var sessionA = ChatSessionRecord(title: "Session A")
@@ -120,11 +120,11 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         sessionB.repeatPenalty = 1.3
         sessionB.systemPrompt = "Prompt B"
 
-        vm.switchToSession(sessionA)
+        await vm.switchToSession(sessionA)
         XCTAssertEqual(vm.temperature, 0.2, accuracy: 0.001)
         XCTAssertEqual(vm.systemPrompt, "Prompt A")
 
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
         XCTAssertEqual(vm.temperature, 0.9, accuracy: 0.001,
                        "Temperature should reflect session B after switch")
         XCTAssertEqual(vm.topP, 0.95, accuracy: 0.001,
@@ -150,7 +150,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
         let sessionB = ChatSessionRecord(title: "Session B")
 
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         // Session B has no persisted messages, so messages should be empty.
         XCTAssertTrue(vm.messages.isEmpty,
@@ -160,7 +160,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     func test_clearChat_whenPersistenceDeleteFails_reloadsPersistedMessages() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
         let session = ChatSessionRecord(title: "Clear Chat Failure")
-        try persistence.insertSession(session)
+        try await persistence.insertSession(session)
         vm.activeSession = session
 
         vm.inputText = "Hello"
@@ -172,7 +172,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
             XCTFail("Expected an active session after sendMessage")
             return
         }
-        let expectedMessages = try persistence.fetchMessages(for: activeID)
+        let expectedMessages = try await persistence.fetchMessages(for: activeID)
         XCTAssertEqual(expectedMessages.count, 2, "Precondition: the chat should have persisted user and assistant messages")
 
         let deleteError = NSError(
@@ -182,11 +182,11 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         )
         persistence.shouldThrowOnDeleteMessages = deleteError
 
-        vm.clearChat()
+        await vm.clearChat()
 
         XCTAssertEqual(vm.messages.map(\.id), expectedMessages.map(\.id),
                        "clearChat should reload persisted messages when deletion fails")
-        let stillPersisted = try persistence.fetchMessages(for: activeID)
+        let stillPersisted = try await persistence.fetchMessages(for: activeID)
         XCTAssertEqual(stillPersisted.map(\.id), expectedMessages.map(\.id),
                        "Persistence should still contain the original messages after a failed clear")
         XCTAssertNotNil(vm.activeError, "activeError should be set when clear chat fails")
@@ -199,7 +199,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     // MARK: - switchToSession model-selection restoration
 
-    func test_switchToSession_restoresSelectedModel_whenModelInList() throws {
+    func test_switchToSession_restoresSelectedModel_whenModelInList() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
         vm.foundationModelProvider = { true }
@@ -214,7 +214,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         var session = ChatSessionRecord(title: "Model Restore Session")
         session.selectedModelID = foundationModel.id
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(vm.selectedModel?.id, foundationModel.id,
             "selectedModel should be restored to the session's saved model when it exists in availableModels")
@@ -222,7 +222,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
             "Restored model should have the expected type")
     }
 
-    func test_switchToSession_clearsSelectedModel_whenModelNotInList() throws {
+    func test_switchToSession_clearsSelectedModel_whenModelNotInList() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
         vm.foundationModelProvider = { true }
@@ -239,32 +239,32 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         var session = ChatSessionRecord(title: "Missing Model Session")
         session.selectedModelID = missingModelID
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertNil(vm.selectedModel,
             "selectedModel should be cleared when session's model is not in availableModels")
     }
 
-    func test_saveSettingsToSession_persistsSelectedModelID() throws {
+    func test_saveSettingsToSession_persistsSelectedModelID() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
         let model = ModelInfo.builtInFoundation
         let expectedID = model.id
 
         let session = ChatSessionRecord(title: "Persist Model Session")
-        try persistence.insertSession(session)
+        try await persistence.insertSession(session)
 
         vm.activeSession = session
         vm.selectedModel = model
 
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         XCTAssertEqual(vm.activeSession?.selectedModelID, expectedID,
             "saveSettingsToSession should persist the selected model's UUID to the session")
     }
 
-    func test_selectionMutualExclusion_selectingEndpoint_clearsModel() {
-        let vm = makeViewModel()
+    func test_selectionMutualExclusion_selectingEndpoint_clearsModel() async {
+        let vm = await makeViewModel()
         vm.selectedModel = ModelInfo.builtInFoundation
 
         let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
@@ -274,8 +274,8 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         XCTAssertEqual(vm.selectedEndpoint?.id, endpoint.id)
     }
 
-    func test_selectionMutualExclusion_selectingModel_clearsEndpoint() {
-        let vm = makeViewModel()
+    func test_selectionMutualExclusion_selectingModel_clearsEndpoint() async {
+        let vm = await makeViewModel()
         let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
         vm.selectedEndpoint = endpoint
 
@@ -285,7 +285,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         XCTAssertEqual(vm.selectedModel?.id, ModelInfo.builtInFoundation.id)
     }
 
-    func test_switchToSession_restoresSelectedEndpoint_whenEndpointExists() throws {
+    func test_switchToSession_restoresSelectedEndpoint_whenEndpointExists() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
         let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
         vm.setAvailableEndpoints([endpoint])
@@ -295,13 +295,13 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         session.selectedEndpointID = endpoint.id
         session.selectedModelID = ModelInfo.builtInFoundation.id
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(vm.selectedEndpoint?.id, endpoint.id)
         XCTAssertNil(vm.selectedModel, "Endpoint restore should not leak prior model selection")
     }
 
-    func test_switchToSession_clearsSelectedEndpoint_whenEndpointMissing() throws {
+    func test_switchToSession_clearsSelectedEndpoint_whenEndpointMissing() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
         let oldEndpoint = APIEndpoint(name: "Old", provider: .openAI)
         vm.setAvailableEndpoints([oldEndpoint])
@@ -310,47 +310,47 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         var session = ChatSessionRecord(title: "Missing Endpoint Session")
         session.selectedEndpointID = UUID()
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertNil(vm.selectedEndpoint, "Missing endpoint should clear selectedEndpoint")
     }
 
-    func test_switchToSession_doesNotPersistNilSelectionWhenEndpointUnavailable() throws {
+    func test_switchToSession_doesNotPersistNilSelectionWhenEndpointUnavailable() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
         let endpoint = APIEndpoint(name: "Delayed Endpoint", provider: .openAI)
         var session = ChatSessionRecord(title: "Deferred Endpoint Session")
         session.selectedEndpointID = endpoint.id
-        try persistence.insertSession(session)
+        try await persistence.insertSession(session)
         vm.activeSession = session
 
         vm.setAvailableEndpoints([])
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(persistence.updateSessionCallCount, 0,
                        "switchToSession should not auto-persist settings while restoring")
-        let stored = try persistence.fetchSessions().first(where: { $0.id == session.id })
+        let stored = try await persistence.fetchSessions().first(where: { $0.id == session.id })
         XCTAssertEqual(stored?.selectedEndpointID, endpoint.id,
                        "Unresolved endpoint ID should remain persisted until user saves settings")
     }
 
-    func test_saveSettingsToSession_persistsSelectedEndpointID() throws {
+    func test_saveSettingsToSession_persistsSelectedEndpointID() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
         let endpoint = APIEndpoint(name: "Claude", provider: .claude)
         vm.setAvailableEndpoints([endpoint])
 
         let session = ChatSessionRecord(title: "Persist Endpoint Session")
-        try persistence.insertSession(session)
+        try await persistence.insertSession(session)
         vm.activeSession = session
         vm.selectedEndpoint = endpoint
 
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         XCTAssertEqual(vm.activeSession?.selectedEndpointID, endpoint.id)
         XCTAssertNil(vm.activeSession?.selectedModelID, "Endpoint selection should clear model selection")
     }
 
-    func test_switchToSession_usesDefaultsForNilSettings() throws {
+    func test_switchToSession_usesDefaultsForNilSettings() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
         let session = ChatSessionRecord(title: "Defaults Session")
@@ -359,7 +359,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         vm.topP = 0.1
         vm.repeatPenalty = 2.0
 
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
 
         XCTAssertEqual(vm.temperature, 0.7, accuracy: 0.001,
                        "Should fall back to 0.7 default when session temperature is nil")

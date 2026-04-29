@@ -52,7 +52,7 @@ final class GenerationExtensionTests: XCTestCase {
         let mock = TokenTrackingMockBackend()
         mock.tokensToYield = ["Hello", " there"]
         mock.usageToReport = (promptTokens: 10, completionTokens: 5)
-        let vm = makeVM(rawBackend: mock)
+        let vm = await makeVM(rawBackend: mock)
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -74,7 +74,7 @@ final class GenerationExtensionTests: XCTestCase {
             (promptTokens: 10, completionTokens: 5),   // first generation
             (promptTokens: 20, completionTokens: 8),   // second generation
         ]
-        let vm = makeVM(rawBackend: mock)
+        let vm = await makeVM(rawBackend: mock)
 
         // First generation
         vm.inputText = "First question"
@@ -103,7 +103,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_tokenUsage_nilWhenBackendDoesNotProvide() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Reply"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -126,7 +126,7 @@ final class GenerationExtensionTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
         // Backend name must be "Apple" to trigger the hint.
-        let vm = makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: "Apple")
 
         var hintCallbackCalled = false
         vm.onUpgradeHintTriggered = { hintCallbackCalled = true }
@@ -146,7 +146,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        let vm = makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: "Apple")
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -162,7 +162,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        let vm = makeVM(backend: mock, name: "MLX")
+        let vm = await makeVM(backend: mock, name: "MLX")
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -178,7 +178,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["First"]
-        let vm = makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: "Apple")
 
         // First message triggers the hint.
         vm.inputText = "Hi"
@@ -208,7 +208,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = []  // Empty response
-        let vm = makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: "Apple")
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -228,7 +228,7 @@ final class GenerationExtensionTests: XCTestCase {
             requiresPromptTemplate: true,
             supportsSystemPrompt: false
         )
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         // Set a very small context window.
         vm.contextMaxTokens = 100
 
@@ -262,7 +262,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_emptyResponse_removesAssistantPlaceholder() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = []  // Zero tokens
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()
@@ -275,7 +275,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_nonEmptyResponse_persistsAssistantMessage() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hi"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()
@@ -288,7 +288,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_streamingBatching_preservesAllTokensWhenFlushAtCompletion() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["A", "B", "C", "D", "E"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.streamingUpdateInterval = .seconds(60)
         vm.streamingBatchCharacterLimit = 10_000
 
@@ -308,7 +308,7 @@ final class GenerationExtensionTests: XCTestCase {
         // Emit enough single-char tokens to build chunk twice (120 chars total).
         let repeatedText = chunk + chunk
         mock.tokensToYield = repeatedText.map { String($0) }
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
         vm.loopDetectionEnabled = true
         // Use small batch limit so the batcher flushes frequently and detection runs.
         vm.streamingUpdateInterval = .zero
@@ -327,7 +327,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_isGenerating_falseAfterSuccessfulGeneration() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Done"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         XCTAssertFalse(vm.isGenerating, "isGenerating should be false before generation")
 
@@ -340,7 +340,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_isGenerating_falseAfterGenerationError() async {
         let mock = MockInferenceBackend()
         mock.shouldThrowOnGenerate = InferenceError.inferenceFailure("Boom")
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Go"
         await vm.sendMessage()
@@ -350,7 +350,7 @@ final class GenerationExtensionTests: XCTestCase {
 
     func test_isGenerating_falseAfterStreamError() async {
         let errorBackend = MidStreamErrorBackend()
-        let vm = makeVM(rawBackend: errorBackend)
+        let vm = await makeVM(rawBackend: errorBackend)
 
         vm.inputText = "Go"
         await vm.sendMessage()
@@ -363,7 +363,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_generationDidFinish_setsServiceIsGeneratingFalse() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Token"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Test"
         await vm.sendMessage()
@@ -377,7 +377,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_generationDidFinish_calledEvenOnError() async {
         let mock = MockInferenceBackend()
         mock.shouldThrowOnGenerate = InferenceError.inferenceFailure("fail")
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Test"
         await vm.sendMessage()
@@ -393,7 +393,7 @@ final class GenerationExtensionTests: XCTestCase {
     func test_generationStartError_setsErrorMessage() async {
         let mock = MockInferenceBackend()
         mock.shouldThrowOnGenerate = InferenceError.inferenceFailure("backend exploded")
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "Hello"
         await vm.sendMessage()
@@ -409,7 +409,7 @@ final class GenerationExtensionTests: XCTestCase {
 
     func test_streamError_setsErrorMessage() async {
         let errorBackend = MidStreamErrorBackend()
-        let vm = makeVM(rawBackend: errorBackend)
+        let vm = await makeVM(rawBackend: errorBackend)
 
         vm.inputText = "Hello"
         await vm.sendMessage()

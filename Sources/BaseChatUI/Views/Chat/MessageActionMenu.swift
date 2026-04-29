@@ -47,7 +47,7 @@ public struct MessageActionMenuModifier: ViewModifier {
 
     private var pinButton: some View {
         Button {
-            viewModel.pinMessage(id: message.id)
+            Task { await viewModel.pinMessage(id: message.id) }
         } label: {
             Label("Pin", systemImage: "pin")
         }
@@ -55,7 +55,7 @@ public struct MessageActionMenuModifier: ViewModifier {
 
     private var unpinButton: some View {
         Button {
-            viewModel.unpinMessage(id: message.id)
+            Task { await viewModel.unpinMessage(id: message.id) }
         } label: {
             Label("Unpin", systemImage: "pin.slash")
         }

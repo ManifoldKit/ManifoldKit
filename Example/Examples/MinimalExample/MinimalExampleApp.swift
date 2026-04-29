@@ -53,13 +53,15 @@ struct MinimalExampleApp: App {
         #if canImport(BaseChatHuggingFace)
         let downloadManager = BackgroundDownloadManager()
         let huggingFaceService = HuggingFaceService()
-        _modelManagement = State(initialValue: ModelManagementViewModel(
+        let modelManagement = ModelManagementViewModel(
             huggingFaceService: huggingFaceService,
             downloadManager: downloadManager
-        ))
+        )
         #else
-        _modelManagement = State(initialValue: ModelManagementViewModel.live())
+        let modelManagement = ModelManagementViewModel.live()
         #endif
+        modelManagement.benchmarkCache = runtime.benchmarkCache
+        _modelManagement = State(initialValue: modelManagement)
     }
 
     var body: some Scene {
@@ -68,6 +70,8 @@ struct MinimalExampleApp: App {
                 .environment(chatViewModel)
                 .environment(sessionManager)
                 .environment(modelManagement)
+                .environment(\.samplerPresetStore, runtime.samplerPresetStore)
+                .environment(\.endpointStore, runtime.endpointStore)
                 .task {
                     // SwiftData fetches and the initial model load run here
                     // rather than in App.init(): the @MainActor work below
@@ -82,11 +86,19 @@ struct MinimalExampleApp: App {
     @MainActor
     private func bootstrapInitialSession() async {
         chatViewModel.refreshModels()
+        // Phase 1.0: `configure` no longer auto-loads. Pull the first page
+        // here so an existing-session check sees the persisted list.
+        await sessionManager.loadSessions()
 
-        let initialSession = sessionManager.sessions.first ?? (try? sessionManager.createSession())
+        let initialSession: ChatSessionRecord?
+        if let existing = sessionManager.sessions.first {
+            initialSession = existing
+        } else {
+            initialSession = try? await sessionManager.createSession()
+        }
         if let initialSession {
             sessionManager.activeSession = initialSession
-            chatViewModel.switchToSession(initialSession)
+            await chatViewModel.switchToSession(initialSession)
             chatViewModel.dispatchSelectedLoad()
         }
     }

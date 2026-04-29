@@ -39,66 +39,66 @@ public final class ErrorInjectingPersistenceProvider: ChatPersistenceProvider {
         self.wrapped = wrapped
     }
 
-    public func insertSession(_ session: ChatSessionRecord) throws {
+    public func insertSession(_ session: ChatSessionRecord) async throws {
         insertSessionCallCount += 1
         if let error = shouldThrowOnInsertSession { throw error }
-        try wrapped.insertSession(session)
+        try await wrapped.insertSession(session)
     }
 
-    public func updateSession(_ session: ChatSessionRecord) throws {
+    public func updateSession(_ session: ChatSessionRecord) async throws {
         updateSessionCallCount += 1
         if let error = shouldThrowOnUpdateSession { throw error }
-        try wrapped.updateSession(session)
+        try await wrapped.updateSession(session)
     }
 
-    public func deleteSession(_ sessionID: UUID) throws {
+    public func deleteSession(_ sessionID: UUID) async throws {
         deleteSessionCallCount += 1
-        try wrapped.deleteSession(sessionID)
+        try await wrapped.deleteSession(sessionID)
     }
 
-    public func fetchSessions() throws -> [ChatSessionRecord] {
+    public func fetchSessions() async throws -> [ChatSessionRecord] {
         fetchSessionsCallCount += 1
         if let error = shouldThrowOnFetchSessions { throw error }
-        return try wrapped.fetchSessions()
+        return try await wrapped.fetchSessions()
     }
 
-    public func insertMessage(_ message: ChatMessageRecord) throws {
+    public func insertMessage(_ message: ChatMessageRecord) async throws {
         insertMessageCallCount += 1
         if let error = shouldThrowOnInsertMessage { throw error }
-        try wrapped.insertMessage(message)
+        try await wrapped.insertMessage(message)
     }
 
-    public func updateMessage(_ message: ChatMessageRecord) throws {
+    public func updateMessage(_ message: ChatMessageRecord) async throws {
         updateMessageCallCount += 1
-        try wrapped.updateMessage(message)
+        try await wrapped.updateMessage(message)
     }
 
-    public func deleteMessage(_ messageID: UUID) throws {
+    public func deleteMessage(_ messageID: UUID) async throws {
         deleteMessageCallCount += 1
-        try wrapped.deleteMessage(messageID)
+        try await wrapped.deleteMessage(messageID)
     }
 
-    public func fetchMessages(for sessionID: UUID) throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
         fetchMessagesCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
-        return try wrapped.fetchMessages(for: sessionID)
+        return try await wrapped.fetchMessages(for: sessionID)
     }
 
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) throws -> [ChatMessageRecord] {
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
         fetchRecentMessagesCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
-        return try wrapped.fetchRecentMessages(for: sessionID, limit: limit)
+        return try await wrapped.fetchRecentMessages(for: sessionID, limit: limit)
     }
 
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
         fetchMessagesBeforeCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
-        return try wrapped.fetchMessages(for: sessionID, before: before, limit: limit)
+        return try await wrapped.fetchMessages(for: sessionID, before: before, limit: limit)
     }
 
-    public func deleteMessages(for sessionID: UUID) throws {
+    public func deleteMessages(for sessionID: UUID) async throws {
         deleteMessagesCallCount += 1
         if let error = shouldThrowOnDeleteMessages { throw error }
-        try wrapped.deleteMessages(for: sessionID)
+        try await wrapped.deleteMessages(for: sessionID)
     }
 }

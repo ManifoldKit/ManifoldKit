@@ -42,6 +42,11 @@ public struct ChatView<APIConfig: View>: View {
     /// `ChatView` init.
     private let apiConfigurationBuilder: () -> APIConfig
 
+    /// Optional host-supplied accessory rendered above the stock composer.
+    /// This is the integration seam for add-ons such as voice capture without
+    /// forcing `BaseChatUI` to depend on optional sibling modules.
+    private let composerAccessoryBuilder: (() -> AnyView)?
+
     public init(
         showModelManagement: Binding<Bool>,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
@@ -49,6 +54,18 @@ public struct ChatView<APIConfig: View>: View {
         self._showModelManagement = showModelManagement
         self.customEmptyPlaceholder = nil
         self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = nil
+    }
+
+    public init<ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = nil
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
     }
 
     /// Creates a ``ChatView`` with a host-supplied empty-state view rendered
@@ -64,6 +81,19 @@ public struct ChatView<APIConfig: View>: View {
         self._showModelManagement = showModelManagement
         self.customEmptyPlaceholder = AnyView(emptyState())
         self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = nil
+    }
+
+    public init<EmptyContent: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = AnyView(emptyState())
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
     }
 
     // MARK: - Body
@@ -87,7 +117,7 @@ public struct ChatView<APIConfig: View>: View {
             Divider()
                 .accessibilityHidden(true)
 
-            ChatInputBar()
+            composerSection
         }
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
         // The button must be in the view hierarchy (not toolbar) to be always active.
@@ -136,7 +166,7 @@ public struct ChatView<APIConfig: View>: View {
         .alert("Clear Chat", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
-                viewModel.clearChat()
+                Task { await viewModel.clearChat() }
             }
         } message: {
             Text("This will delete all messages in the current chat. This cannot be undone.")
@@ -169,6 +199,16 @@ public struct ChatView<APIConfig: View>: View {
             apiConfigurationBuilder()
         }
         #endif
+    }
+
+    @ViewBuilder
+    private var composerSection: some View {
+        VStack(spacing: 0) {
+            if let composerAccessoryBuilder {
+                composerAccessoryBuilder()
+            }
+            ChatInputBar()
+        }
     }
 
     // MARK: - Error Banner
@@ -533,10 +573,10 @@ public struct ChatView<APIConfig: View>: View {
     /// Loads the next page of older messages and scrolls back to the anchor
     /// so the viewport doesn't jump when content is prepended above.
     private func loadOlderAndRestore(proxy: ScrollViewProxy) {
-        guard let anchorID = viewModel.loadOlderMessages() else { return }
-        // Scroll back to the message that was at the top before prepend,
-        // keeping it at the top of the viewport to prevent visible jump.
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            guard let anchorID = await viewModel.loadOlderMessages() else { return }
+            // Scroll back to the message that was at the top before prepend,
+            // keeping it at the top of the viewport to prevent visible jump.
             proxy.scrollTo(anchorID, anchor: .top)
         }
     }

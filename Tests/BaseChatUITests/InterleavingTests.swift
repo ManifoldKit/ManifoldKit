@@ -36,7 +36,7 @@ final class InterleavingTests: XCTestCase {
         vm.configure(persistence: persistence)
 
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
     }
 
     override func tearDown() async throws {
@@ -54,10 +54,10 @@ final class InterleavingTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
+    private func createAndActivateSession(title: String = "Test Chat") async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -71,7 +71,7 @@ final class InterleavingTests: XCTestCase {
     /// Stops mid-generation then immediately sends a second message.
     /// The first assistant reply should be partial; the second should complete fully.
     func test_stopGeneration_thenImmediateResend_completesSecondGeneration() async throws {
-        try createAndActivateSession()
+        try await createAndActivateSession()
 
         // Start first generation with the slow 20-token stream.
         vm.inputText = "first message"
@@ -125,7 +125,7 @@ final class InterleavingTests: XCTestCase {
     /// then generates on B. Verifies no tokens from A leak into B.
     func test_sessionSwitch_duringGeneration_noContentLeakage() async throws {
         // Session A: slow 20-token stream with identifiable tokens.
-        let sessionA = try createAndActivateSession(title: "Session A")
+        let sessionA = try await createAndActivateSession(title: "Session A")
         slowBackend.tokensToYield = (0..<20).map { "alpha\($0) " }
         slowBackend.delayPerToken = .milliseconds(50)
 
@@ -138,9 +138,9 @@ final class InterleavingTests: XCTestCase {
 
         // Create and switch to session B mid-stream.
         // switchToSession now explicitly stops generation and discards stale queue entries.
-        let sessionB = try sessionManager.createSession(title: "Session B")
+        let sessionB = try await sessionManager.createSession(title: "Session B")
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
 
         // Generation should be stopped and queue cleared after switch.
         XCTAssertFalse(vm.isGenerating, "isGenerating should be false after session switch stops generation")
@@ -173,12 +173,12 @@ final class InterleavingTests: XCTestCase {
             "Should remain on session B after A's generation finishes")
 
         // Verify persistence: session A has its user message.
-        let sessionAPersistedMessages = try persistence.fetchMessages(for: sessionA.id)
+        let sessionAPersistedMessages = try await persistence.fetchMessages(for: sessionA.id)
         XCTAssertTrue(sessionAPersistedMessages.contains { $0.role == .user && $0.content == "question for A" },
             "Session A should have its user message persisted")
 
         // Verify persistence: session B has a complete user + assistant turn.
-        let sessionBPersistedMessages = try persistence.fetchMessages(for: sessionB.id)
+        let sessionBPersistedMessages = try await persistence.fetchMessages(for: sessionB.id)
         let sessionBUser = sessionBPersistedMessages.filter { $0.role == .user }
         let sessionBAssistant = sessionBPersistedMessages.filter { $0.role == .assistant }
         XCTAssertEqual(sessionBUser.count, 1, "Session B should have 1 user message persisted")
@@ -193,7 +193,7 @@ final class InterleavingTests: XCTestCase {
     /// Verifies the old stream is cancelled cleanly, no orphaned assistant row
     /// survives, and the new model is loaded when the switch completes.
     func test_switchModel_midStream_cancelsAndReloads() async throws {
-        let session = try createAndActivateSession()
+        let session = try await createAndActivateSession()
 
         // Configure a long token stream so generation is still running when we switch.
         slowBackend.tokensToYield = (0..<40).map { "tok\($0) " }
@@ -242,7 +242,7 @@ final class InterleavingTests: XCTestCase {
         //    generation must not have been duplicated. There should be at most one
         //    assistant message in the session.
         let sessionID = session.id
-        let allMessages = try persistence.fetchMessages(for: sessionID)
+        let allMessages = try await persistence.fetchMessages(for: sessionID)
         let assistantRows = allMessages.filter { $0.role == .assistant }
         XCTAssertLessThanOrEqual(
             assistantRows.count, 1,
@@ -265,7 +265,7 @@ final class InterleavingTests: XCTestCase {
     /// Starts generation, stops it, then triggers a model reload.
     /// Verifies generation is stopped and the new model loads successfully.
     func test_rapidModelSwap_duringGeneration_stopsAndReloads() async throws {
-        try createAndActivateSession()
+        try await createAndActivateSession()
 
         // Start generation with slow tokens.
         vm.inputText = "Hello"

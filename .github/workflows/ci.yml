@@ -188,11 +188,15 @@ jobs:
       # execution avoids that and `--parallel` would still need a UI-test-only
       # carve-out, which negates most of the speedup anyway.
       - name: Test — XCTest suites (Core + UI + UIModelManagement + MCP + Backends + Inference + TestSupport)
-        timeout-minutes: 25
+        timeout-minutes: 12
         run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatInferenceTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
 
+      # `if: always()` so a failing XCTest step still surfaces Swift Testing
+      # failures in the same run — otherwise breakage in both harnesses costs
+      # two re-push cycles to triage. The job still fails because step 1 failed.
       - name: Test — Inference (Swift Testing, isolated process)
-        timeout-minutes: 25
+        if: always()
+        timeout-minutes: 12
         run: scripts/test.sh --filter BaseChatInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       - name: Stage test diagnostics

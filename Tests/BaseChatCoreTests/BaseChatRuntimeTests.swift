@@ -69,7 +69,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         )
     }
 
-    func test_init_wiresInferenceServicePersistenceAndContainerToTheSameInstances() throws {
+    func test_init_wiresInferenceServicePersistenceAndContainerToTheSameInstances() async throws {
         // Defends the post-construction wiring identity that the deleted
         // `Event`-callback ordering test used to defend: the runtime must
         // expose the *same* InferenceService instance the caller injected,
@@ -109,14 +109,14 @@ final class BaseChatRuntimeTests: XCTestCase {
         // must be reachable via the runtime's modelContainer.mainContext —
         // proof that both surfaces are wired to a single coherent store.
         let session = ChatSessionRecord(title: "Wiring Identity Probe")
-        try runtime.persistence.insertSession(session)
+        try await runtime.persistence.insertSession(session)
         let descriptor = FetchDescriptor<ChatSession>()
         let entitiesViaContainer = try runtime.modelContainer.mainContext.fetch(descriptor)
         XCTAssertTrue(entitiesViaContainer.contains(where: { $0.id == session.id }),
             "Session inserted via runtime.persistence must be visible through runtime.modelContainer.mainContext")
     }
 
-    func test_persistence_roundTripsSessionsThroughRuntimeProvider() throws {
+    func test_persistence_roundTripsSessionsThroughRuntimeProvider() async throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
@@ -129,8 +129,9 @@ final class BaseChatRuntimeTests: XCTestCase {
         )
         let session = ChatSessionRecord(title: "Runtime Session")
 
-        try runtime.persistence.insertSession(session)
+        try await runtime.persistence.insertSession(session)
 
-        XCTAssertEqual(try runtime.persistence.fetchSessions().map(\.id), [session.id])
+        let sessions = try await runtime.persistence.fetchSessions()
+        XCTAssertEqual(sessions.map(\.id), [session.id])
     }
 }

@@ -45,7 +45,7 @@ final class ModelSelectionE2ETests {
         vm.configure(persistence: persistence)
 
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
     }
 
     deinit {
@@ -54,10 +54,10 @@ final class ModelSelectionE2ETests {
 
     // MARK: - Helpers
 
-    private func makeSession(title: String = "Test") throws -> ChatSessionRecord {
-        let session = try sessionManager.createSession(title: title)
+    private func makeSession(title: String = "Test") async throws -> ChatSessionRecord {
+        let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
-        vm.switchToSession(session)
+        await vm.switchToSession(session)
         return session
     }
 
@@ -131,7 +131,7 @@ final class ModelSelectionE2ETests {
 
     @Test("After loading, sendMessage generates a response")
     func selectLoadSend_producesResponse() async throws {
-        try makeSession()
+        try await makeSession()
 
         let model = ModelInfo(
             name: "Test GGUF",
@@ -260,7 +260,7 @@ final class ModelSelectionE2ETests {
     // MARK: - Session Persistence
 
     @Test("Selected model ID is persisted to session and restored on switch-back")
-    func sessionRestoresSelectedModel() throws {
+    func sessionRestoresSelectedModel() async throws {
         // Write two distinct GGUFs so each session can have a different model.
         try writeGGUF(named: "model-a.gguf")
         try writeGGUF(named: "model-b.gguf")
@@ -271,25 +271,25 @@ final class ModelSelectionE2ETests {
         let modelB = models[1]
 
         // Session A selects model A.
-        try makeSession(title: "Session A")
+        try await makeSession(title: "Session A")
         vm.selectedModel = modelA
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Session B selects model B.
-        let sessionB = try sessionManager.createSession(title: "Session B")
+        let sessionB = try await sessionManager.createSession(title: "Session B")
         sessionManager.activeSession = sessionB
-        vm.switchToSession(sessionB)
+        await vm.switchToSession(sessionB)
         vm.selectedModel = modelB
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // Reload sessions from persistence so we have fresh records with the
         // saved selectedModelIDs (ChatSessionRecord is a value type).
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshA = try #require(sessionManager.sessions.first { $0.title == "Session A" })
 
         // Switch back to session A using the fresh record — model A should restore.
         sessionManager.activeSession = freshA
-        vm.switchToSession(freshA)
+        await vm.switchToSession(freshA)
         #expect(vm.selectedModel?.id == modelA.id)
 
         // Sabotage: delete model A's file so availableModels drops it,
@@ -298,12 +298,12 @@ final class ModelSelectionE2ETests {
         try FileManager.default.removeItem(at: modelAURL)
         vm.refreshModels()
         let freshA2 = try #require(sessionManager.sessions.first { $0.title == "Session A" })
-        vm.switchToSession(freshA2)
+        await vm.switchToSession(freshA2)
         #expect(vm.selectedModel == nil, "Model not restored when not in availableModels")
     }
 
     @Test("Selected model survives refreshModels rescan (regression: random UUID bug)")
-    func selectedModel_survivesRefreshModels() throws {
+    func selectedModel_survivesRefreshModels() async throws {
         // This is the exact scenario that broke with random UUIDs:
         // select → save → refreshModels() rebuilds the list → selection must persist.
         try writeGGUF(named: "stable-id-test.gguf")
@@ -311,9 +311,9 @@ final class ModelSelectionE2ETests {
 
         let model = try #require(vm.availableModels.first)
         let originalID = model.id
-        try makeSession(title: "Stable ID Session")
+        try await makeSession(title: "Stable ID Session")
         vm.selectedModel = model
-        try vm.saveSettingsToSession()
+        try await vm.saveSettingsToSession()
 
         // refreshModels() re-discovers from disk — IDs must be stable.
         vm.refreshModels()
@@ -322,9 +322,9 @@ final class ModelSelectionE2ETests {
         #expect(vm.selectedModel?.id == originalID, "Model ID must be identical after rescan")
 
         // Also verify the session restore path after a rescan.
-        sessionManager.loadSessions()
+        await sessionManager.loadSessions()
         let freshSession = try #require(sessionManager.sessions.first { $0.title == "Stable ID Session" })
-        vm.switchToSession(freshSession)
+        await vm.switchToSession(freshSession)
         #expect(vm.selectedModel?.id == originalID, "Session restore must find the model after rescan")
     }
 }

@@ -82,7 +82,7 @@ final class PersistenceGuardTests: XCTestCase {
     func test_sessionManager_requirePersistence_returnsProviderWhenConfigured() throws {
         let sut = SessionManagerViewModel()
         let provider = provider()
-        sut.configure(persistence: provider)
+        sut.configure(persistence: provider, autoLoad: false)
         let resolved = try sut.requirePersistence("ctx")
         XCTAssertTrue(resolved === provider)
     }
@@ -95,7 +95,7 @@ final class PersistenceGuardTests: XCTestCase {
     func test_sessionManager_persistenceOrLog_returnsProviderWhenConfigured() {
         let sut = SessionManagerViewModel()
         let provider = provider()
-        sut.configure(persistence: provider)
+        sut.configure(persistence: provider, autoLoad: false)
         let resolved = sut.persistenceOrLog("ctx")
         XCTAssertNotNil(resolved)
         XCTAssertTrue(resolved === provider)

@@ -79,12 +79,12 @@ final class SidebarAndSheetControlTests: XCTestCase {
 
     // MARK: - SessionListView: With Sessions
 
-    func test_sessionListView_withSessions_showsSessionRows() throws {
+    func test_sessionListView_withSessions_showsSessionRows() async throws {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
-        try sessionManager.createSession(title: "Test Chat Session")
+        sessionManager.configure(persistence: persistence, autoLoad: false)
+        try await sessionManager.createSession(title: "Test Chat Session")
 
         let dump = ViewHierarchyDumper.dump(
             SessionListView()
@@ -97,13 +97,13 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
-    func test_sessionListView_withSessions_showsList() throws {
+    func test_sessionListView_withSessions_showsList() async throws {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
-        try sessionManager.createSession(title: "Session Alpha")
-        try sessionManager.createSession(title: "Session Beta")
+        sessionManager.configure(persistence: persistence, autoLoad: false)
+        try await sessionManager.createSession(title: "Session Alpha")
+        try await sessionManager.createSession(title: "Session Beta")
 
         let dump = ViewHierarchyDumper.dump(
             SessionListView()
@@ -120,12 +120,12 @@ final class SidebarAndSheetControlTests: XCTestCase {
         )
     }
 
-    func test_sessionListView_withSessions_containsSessionRowView() throws {
+    func test_sessionListView_withSessions_containsSessionRowView() async throws {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
-        try sessionManager.createSession(title: "Any Session")
+        sessionManager.configure(persistence: persistence, autoLoad: false)
+        try await sessionManager.createSession(title: "Any Session")
 
         let dump = ViewHierarchyDumper.dump(
             SessionListView()

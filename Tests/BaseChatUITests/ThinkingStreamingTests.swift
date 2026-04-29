@@ -40,7 +40,7 @@ final class ThinkingStreamingTests: XCTestCase {
         // mutations, plus the placeholder insert and the finalize write.
         mock.thinkingTokensToYield = ["Let", " me", " think", " about", " this"]
         mock.tokensToYield = ["done"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         // Wrap onMutateMessage so we record the thinking-part text after each
         // mutation, distinguishing pre-finalize states from the authoritative
@@ -112,7 +112,7 @@ final class ThinkingStreamingTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.thinkingTokensToYield = ["a", "b", "c", "d", "e"]
         mock.tokensToYield = ["ok"]
-        let vm = makeVM(backend: mock)
+        let vm = await makeVM(backend: mock)
 
         vm.inputText = "hi"
         await vm.sendMessage()

@@ -43,18 +43,18 @@ final class ContextEstimationIntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func createSession(title: String = "Context Test") -> ChatSession {
+    private func createSession(title: String = "Context Test") async -> ChatSession {
         let session = ChatSession(title: title)
         context.insert(session)
         try? context.save()
-        vm.switchToSession(session.toRecord())
+        await vm.switchToSession(session.toRecord())
         return session
     }
 
     // MARK: - Empty Conversation
 
-    func test_contextEstimation_emptyConversation() {
-        createSession()
+    func test_contextEstimation_emptyConversation() async {
+        await createSession()
 
         // With no messages and an empty system prompt, used tokens should be minimal.
         // The heuristic tokenizer returns max(1, text.count / 4) — empty string yields 1.
@@ -66,7 +66,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     // MARK: - Single User Message
 
     func test_contextEstimation_singleUserMessage() async {
-        createSession()
+        await createSession()
 
         mock.tokensToYield = ["Hi"]
         vm.inputText = "Hello world"
@@ -84,7 +84,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     // MARK: - Multi-Turn Conversation
 
     func test_contextEstimation_multiTurnConversation() async {
-        createSession()
+        await createSession()
 
         // Turn 1
         mock.tokensToYield = ["First", " reply"]
@@ -112,10 +112,10 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     // MARK: - System Prompt Included
 
     func test_contextEstimation_withSystemPrompt() async {
-        let session = createSession()
+        let session = await createSession()
         session.systemPrompt = "You are a helpful assistant that provides concise answers."
 
-        vm.switchToSession(session.toRecord())
+        await vm.switchToSession(session.toRecord())
         let tokensWithSystemPrompt = vm.contextUsedTokens
 
         // The system prompt has ~56 characters → max(1, 56/4) = 14 tokens.
@@ -139,7 +139,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     // MARK: - Token Cache Population
 
     func test_tokenCache_isPopulatedAfterEstimation() async {
-        createSession()
+        await createSession()
 
         mock.tokensToYield = ["Reply", " here"]
         vm.inputText = "Cache test message"
@@ -158,7 +158,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     }
 
     func test_tokenCache_returnsSameResult_onSecondEstimation() async {
-        createSession()
+        await createSession()
 
         mock.tokensToYield = ["Cached", " reply"]
         vm.inputText = "Consistency check"
@@ -182,8 +182,8 @@ final class ContextEstimationIntegrationTests: XCTestCase {
 
     // MARK: - Context Percentage Calculation
 
-    func test_contextUsageRatio_atVariousFillLevels() {
-        createSession()
+    func test_contextUsageRatio_atVariousFillLevels() async {
+        await createSession()
 
         // With default contextMaxTokens (from backend: 4096) and no messages,
         // usage should be near zero.
@@ -204,8 +204,8 @@ final class ContextEstimationIntegrationTests: XCTestCase {
         XCTAssertEqual(vm.contextUsageRatio, 0.0, accuracy: 0.001, "Empty context should be 0.0")
     }
 
-    func test_contextUsageRatio_zeroMaxTokens_returnsZero() {
-        createSession()
+    func test_contextUsageRatio_zeroMaxTokens_returnsZero() async {
+        await createSession()
 
         vm.contextMaxTokens = 0
         vm.contextUsedTokens = 100
@@ -253,7 +253,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
         let session = ChatSession(title: "Vendor Test")
         context.insert(session)
         try? context.save()
-        vendorVM.switchToSession(session.toRecord())
+        await vendorVM.switchToSession(session.toRecord())
 
         tokenizingMock.tokensToYield = ["Reply"]
         vendorVM.inputText = "anything"
@@ -269,7 +269,7 @@ final class ContextEstimationIntegrationTests: XCTestCase {
     func test_contextEstimation_fallsBackToHeuristicWhenNoTokenizerVendor() async {
         // Standard MockInferenceBackend does NOT conform to TokenizerVendor.
         // Context estimation should use the heuristic.
-        createSession()
+        await createSession()
         mock.tokensToYield = ["Hi"]
         vm.inputText = "Hello world"
         await vm.sendMessage()

@@ -197,7 +197,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
     func test_handleMemoryPressureCritical_preemptsPendingLoadAndSuppressesLateCompletion() async {
         let handler = MemoryPressureHandler()
         let backend = ControlledLoadBackend()
-        let vm = makeViewModel(handler: handler) { service in
+        let vm = await makeViewModel(handler: handler) { service in
             service.registerBackendFactory { modelType in
                 guard modelType == .gguf else { return nil }
                 return backend
