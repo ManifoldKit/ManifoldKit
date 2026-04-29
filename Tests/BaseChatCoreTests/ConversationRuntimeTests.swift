@@ -656,7 +656,10 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         // `.messageRemoved` must NOT have been emitted — the throw happened
-        // before the emit. Collect events briefly and assert none received.
+        // before the emit. `runtime.events` is an unbounded AsyncStream; any
+        // event emitted before this point is already in the buffer. Start a
+        // collector, sleep briefly to let the buffer drain, cancel the
+        // collector, then read its partial result and assert it is empty.
         let eventTask = Task { @MainActor [runtime] in
             var seen: [ConversationEvent] = []
             for await event in runtime.events {
@@ -664,9 +667,15 @@ final class ConversationRuntimeTests: XCTestCase {
             }
             return seen
         }
-        // Let any queued events drain (there should be none).
         try await Task.sleep(for: .milliseconds(50))
         eventTask.cancel()
+        // Await the cancelled task — since it's non-throwing, this returns
+        // whatever was collected before cancellation propagated.
+        let seenEvents = await eventTask.value
+        XCTAssertFalse(
+            seenEvents.contains(where: { if case .messageRemoved = $0 { return true } else { return false } }),
+            "messageRemoved must not be emitted when delete fails before the emit line"
+        )
         // Store is untouched — both messages still present.
         XCTAssertEqual(store.messages.count, 2, "Store unchanged on delete failure")
     }
