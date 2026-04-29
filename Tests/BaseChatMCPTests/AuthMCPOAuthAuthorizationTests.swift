@@ -1134,29 +1134,66 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
             """.utf8
         ), statusCode: 200, headers: ["Content-Type": "application/json"]))
 
-        // Track the order: authorizationRequired must arrive before authorize() is called.
-        actor OrderTracker {
-            var authRequiredSeenBeforeBrowser = false
-            var authRequiredEventCount = 0
-            var authRequiredSeenCount = 0
-
-            func recordAuthRequired() { authRequiredSeenCount += 1 }
-            func recordBrowserOpen(seen: Int) { authRequiredSeenBeforeBrowser = seen > 0 }
-            func incrementEventCount() { authRequiredEventCount += 1 }
-        }
-        let tracker = OrderTracker()
-
+        // The contract under test: the production code must yield
+        // `.authorizationRequired` *before* it calls `redirectListener.authorize(...)`.
+        //
+        // The previous version launched an unstructured `Task` from inside
+        // the listener handler and read a counter mutated from a separate
+        // consumer `Task`. That has two scheduling-dependent dependencies:
+        // (1) the recordBrowserOpen Task must run *after* the consumer
+        // Task has dequeued the event, and (2) the assertion must run after
+        // both. Under heavy CI load (this PR adds new nonisolated wrappers
+        // that increase concurrent activity in the same test process)
+        // either ordering can flip and the assertion fails.
+        //
+        // The fix uses a deterministic handshake: the consumer task signals
+        // a continuation as soon as it observes the authorizationRequired
+        // event, and the listener handler awaits that continuation before
+        // returning. If the production code yielded the event before
+        // invoking the listener (the contract), the consumer dequeues the
+        // event and signals before the handler resumes. If the production
+        // code regressed and yielded after invoking the listener, the
+        // handler would block forever — caught by the surrounding test
+        // timeout.
         let (stream, continuation) = AsyncStream<MCPConnectionEvent>.makeStream()
+
+        actor State {
+            var authRequiredEventCount = 0
+            var seenBeforeBrowser = false
+            private var continuation: CheckedContinuation<Void, Never>?
+
+            func incrementCount() { authRequiredEventCount += 1 }
+            func markSeenBeforeBrowser() { seenBeforeBrowser = true }
+
+            func waitForAuthRequired() async {
+                if authRequiredEventCount > 0 { return }
+                await withCheckedContinuation { c in
+                    self.continuation = c
+                }
+            }
+
+            func signalAuthRequiredObserved() {
+                continuation?.resume()
+                continuation = nil
+            }
+        }
+        let state = State()
 
         // descriptor with no pinned issuer — TOFU path.
         let descriptor = makeDescriptor(issuer: nil)
-        let listener = RedirectListenerMock { authorizationURL in
-            // Record browser-open moment; the event must have already been yielded.
+        let listener = RedirectListenerMock(asyncHandler: { authorizationURL in
             let items = URLComponents(url: authorizationURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            let state = items.first(where: { $0.name == "state" })?.value ?? ""
-            Task { await tracker.recordBrowserOpen(seen: await tracker.authRequiredSeenCount) }
-            return URL(string: "basechat://oauth/callback?code=abc&state=\(state)")!
-        }
+            let stateValue = items.first(where: { $0.name == "state" })?.value ?? ""
+
+            // Wait until the consumer task has observed authorizationRequired
+            // before allowing authorize() to return. If production code
+            // yields before invoking the listener (the contract), the
+            // consumer drains the buffer and signals immediately.
+            await state.waitForAuthRequired()
+            await state.markSeenBeforeBrowser()
+
+            return URL(string: "basechat://oauth/callback?code=abc&state=\(stateValue)")!
+        })
 
         let authorization = MCPOAuthAuthorization(
             descriptor: descriptor,
@@ -1168,12 +1205,11 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
             eventContinuation: continuation
         )
 
-        // Collect events in a background task concurrently with the auth flow.
         let collectTask = Task {
             for await event in stream {
                 if case .authorizationRequired(let sid, _) = event, sid == serverID {
-                    await tracker.recordAuthRequired()
-                    await tracker.incrementEventCount()
+                    await state.incrementCount()
+                    await state.signalAuthRequiredObserved()
                 }
             }
         }
@@ -1182,9 +1218,9 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
         continuation.finish()
         await collectTask.value
 
-        let count = await tracker.authRequiredEventCount
+        let count = await state.authRequiredEventCount
         XCTAssertEqual(count, 1, "Expected exactly one authorizationRequired event for TOFU flow")
-        let seenFirst = await tracker.authRequiredSeenBeforeBrowser
+        let seenFirst = await state.seenBeforeBrowser
         XCTAssertTrue(seenFirst, "authorizationRequired must be emitted before the browser opens")
     }
 
@@ -1227,10 +1263,16 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
 }
 
 private actor RedirectListenerMock: MCPOAuthRedirectListener {
-    private let handler: (URL) -> URL
+    private let handler: @Sendable (URL) async -> URL
 
-    init(handler: @escaping (URL) -> URL) {
-        self.handler = handler
+    init(handler: @escaping @Sendable (URL) -> URL) {
+        self.handler = { url in handler(url) }
+    }
+
+    /// Async handler variant — used by the TOFU ordering test, which needs
+    /// to observe the AsyncStream from inside the listener callback.
+    init(asyncHandler: @escaping @Sendable (URL) async -> URL) {
+        self.handler = asyncHandler
     }
 
     func authorize(
@@ -1240,7 +1282,7 @@ private actor RedirectListenerMock: MCPOAuthRedirectListener {
     ) async throws -> URL {
         _ = callbackURLScheme
         _ = prefersEphemeralSession
-        return handler(authorizationURL)
+        return await handler(authorizationURL)
     }
 }
 
