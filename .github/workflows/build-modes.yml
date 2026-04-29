@@ -11,6 +11,18 @@ name: Build modes + binary symbol audit
 #    on-demand trigger — it only fires when a PR actually edits trait-gated
 #    source, Package.swift, or this workflow's own configuration. Doc-only
 #    PRs and unrelated source edits don't trigger it.
+#  - **PR vs schedule matrix split.** On `pull_request`, the matrix runs only
+#    `[saas, full]`; on `schedule` (and `workflow_dispatch`) it runs all four
+#    `[offline, ollama, saas, full]`. Rationale: `full` enables the strict
+#    trait superset (`MLX,Llama,Ollama,CloudSaaS`) so any compile-time
+#    regression that the offline or ollama legs would catch also breaks the
+#    full leg — running them on every qualifying PR is duplicate macos-15
+#    spend. `saas` is retained on PRs because it carries a CloudSaaS-only
+#    test step (`BaseChatBackendsTests --traits CloudSaaS`) that is real
+#    signal not covered by ci.yml. The full 4-mode build+audit matrix
+#    continues nightly so the procurement-evidence requirement (90-day
+#    per-mode artifacts) is unchanged. Saves ~28 macos-min per qualifying PR
+#    (2 legs × ~14 min wall instead of 4).
 #  - All four modes run on `macos-15` (10x billing): the package depends on
 #    `os` (Apple-only) and SwiftUI throughout `BaseChatUI`/
 #    `BaseChatUIModelManagement`, so a Linux compile leg is structurally
@@ -55,7 +67,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [offline, ollama, saas, full]
+        # On PRs: only saas + full. `full` is a strict trait superset that
+        # catches every compile-time regression the offline/ollama legs would;
+        # `saas` carries a CloudSaaS-only test slice not covered by ci.yml.
+        # On schedule/workflow_dispatch: all four modes for the procurement-
+        # evidence artifact set. See the cost-discipline block at the top.
+        mode: ${{ github.event_name == 'pull_request' && fromJSON('["saas", "full"]') || fromJSON('["offline", "ollama", "saas", "full"]') }}
 
     steps:
       - name: Checkout
