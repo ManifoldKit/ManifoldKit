@@ -48,12 +48,15 @@ struct MinimalExampleApp: App {
         let downloadManager = BackgroundDownloadManager()
         let huggingFaceService = HuggingFaceService()
 
-        _chatViewModel = State(initialValue: vm)
-        _sessionManager = State(initialValue: sessionManager)
-        _modelManagement = State(initialValue: ModelManagementViewModel(
+        let modelManagement = ModelManagementViewModel(
             huggingFaceService: huggingFaceService,
             downloadManager: downloadManager
-        ))
+        )
+        modelManagement.benchmarkCache = runtime.benchmarkCache
+
+        _chatViewModel = State(initialValue: vm)
+        _sessionManager = State(initialValue: sessionManager)
+        _modelManagement = State(initialValue: modelManagement)
     }
 
     var body: some Scene {
@@ -62,6 +65,8 @@ struct MinimalExampleApp: App {
                 .environment(chatViewModel)
                 .environment(sessionManager)
                 .environment(modelManagement)
+                .environment(\.samplerPresetStore, runtime.samplerPresetStore)
+                .environment(\.endpointStore, runtime.endpointStore)
                 .task {
                     // SwiftData fetches and the initial model load run here
                     // rather than in App.init(): the @MainActor work below

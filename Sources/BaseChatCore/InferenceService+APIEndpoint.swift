@@ -22,7 +22,9 @@ extension APIEndpoint {
             provider: provider,
             baseURL: baseURL,
             modelName: modelName,
-            keychainAccount: keychainAccount
+            keychainAccount: keychainAccount,
+            createdAt: createdAt,
+            isEnabled: isEnabled
         )
     }
 }

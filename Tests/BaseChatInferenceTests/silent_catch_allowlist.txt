@@ -351,3 +351,14 @@ BaseChatBackends/LlamaToolCallParser.swift:guard let data = try? JSONSerializati
 # "session not active" error to the user; the route is reclaimed regardless.
 # Mirrors the pattern in Apple's own AVAudioSession sample code.
 BaseChatVoice/Services/VoiceAudioSessionCoordinator.swift:try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
+# ---------------------------------------------------------------------------
+# BaseChatUIModelManagement — endpoint editor rollback
+# ---------------------------------------------------------------------------
+
+# Best-effort Keychain cleanup when the EndpointStore insert fails after a
+# Keychain key was just stored. Throwing here would obscure the real error
+# (the failed row insert), so we swallow the cleanup failure — leaving an
+# orphan Keychain item that the bootstrap reaper will sweep on next launch.
+BaseChatUIModelManagement/Views/Settings/APIEndpointEditorView.swift:try? KeychainService.delete(account: newRecord.keychainAccount)
+BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? KeychainService.delete(account: record.keychainAccount)

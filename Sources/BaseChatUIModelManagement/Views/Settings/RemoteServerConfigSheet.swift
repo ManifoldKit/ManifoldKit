@@ -6,25 +6,26 @@ import BaseChatInference
 /// Sheet for manually configuring a remote inference server connection.
 ///
 /// Lets users enter a server URL, optional API key, and backend type for a
-/// remote inference endpoint.
+/// remote inference endpoint. Persists through the ``EndpointStore`` injected
+/// via the SwiftUI environment; the view does not import SwiftData.
 ///
 /// ## Usage
 ///
 /// ```swift
 /// .sheet(isPresented: $showRemoteConfig) {
-///     RemoteServerConfigSheet { endpoint in
-///         // use endpoint
+///     RemoteServerConfigSheet { record in
+///         // use record
 ///     }
-///     .modelContext(container.mainContext)
+///     .environment(\.endpointStore, runtime.endpointStore)
 /// }
 /// ```
 public struct RemoteServerConfigSheet: View {
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.endpointStore) private var endpointStore
 
-    /// Called when the user saves the configuration, passing the created endpoint.
-    public var onSave: ((APIEndpoint) -> Void)?
+    /// Called when the user saves the configuration, passing the created record.
+    public var onSave: ((APIEndpointRecord) -> Void)?
 
     @State private var serverURL: String = ""
     @State private var apiKey: String = ""
@@ -32,7 +33,7 @@ public struct RemoteServerConfigSheet: View {
     @State private var backendType: BackendType = .openAICompatible
     @State private var errorMessage: String?
 
-    public init(onSave: ((APIEndpoint) -> Void)? = nil) {
+    public init(onSave: ((APIEndpointRecord) -> Void)? = nil) {
         self.onSave = onSave
     }
 
@@ -80,7 +81,7 @@ public struct RemoteServerConfigSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button("Save") { Task { await save() } }
                         .disabled(!isValid)
                 }
             }
@@ -158,7 +159,12 @@ public struct RemoteServerConfigSheet: View {
         return false
     }
 
-    private func save() {
+    private func save() async {
+        guard let endpointStore else {
+            errorMessage = "Endpoint store is not configured."
+            return
+        }
+
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedModel = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
             .nonEmpty ?? backendType.apiProvider.defaultModelName
@@ -175,20 +181,18 @@ public struct RemoteServerConfigSheet: View {
             break
         }
 
-        let endpoint = APIEndpoint(
+        let record = APIEndpointRecord(
             name: "\(backendType.rawValue) — \(resolvedModel)",
             provider: backendType.apiProvider,
             baseURL: trimmedURL,
             modelName: resolvedModel
         )
-        modelContext.insert(endpoint)
 
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedKey.isEmpty {
             do {
-                try endpoint.setAPIKey(trimmedKey)
+                try KeychainService.store(key: trimmedKey, account: record.keychainAccount)
             } catch {
-                modelContext.delete(endpoint)
                 // `KeychainError.localizedDescription` already reads as a
                 // complete sentence — don't prepend another "Could not save…"
                 // prefix and double the wording.
@@ -198,10 +202,14 @@ public struct RemoteServerConfigSheet: View {
         }
 
         do {
-            try modelContext.save()
-            onSave?(endpoint)
+            try await endpointStore.insertEndpoint(record)
+            onSave?(record)
             dismiss()
         } catch {
+            // Best-effort Keychain cleanup if the row insert fails.
+            if !trimmedKey.isEmpty {
+                try? KeychainService.delete(account: record.keychainAccount)
+            }
             errorMessage = error.localizedDescription.isEmpty
                 ? "Failed to save the server configuration."
                 : error.localizedDescription
@@ -217,7 +225,5 @@ private extension String {
 
 #Preview("Remote Server Config") {
     RemoteServerConfigSheet()
-        .modelContainer(for: APIEndpoint.self, inMemory: true)
 }
 #endif
-
