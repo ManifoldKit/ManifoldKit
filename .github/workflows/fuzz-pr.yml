@@ -38,17 +38,27 @@ jobs:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        # Key is intentionally aligned with ci.yml's `xcode-26.3-spm-…` so this
+        # job and the per-PR ci.yml job on the same PR share the SwiftPM
+        # artifact cache (notably the prebuilt llama.cpp xcframework). Whichever
+        # job runs first warms the cache for the other. The legacy
+        # `xcode-26.3-fuzz-spm-` prefix is retained as a restore-key so existing
+        # caches still match during the transition.
+        # `.build/debug` is excluded for the same reason ci.yml excludes it:
+        # SwiftPM module fingerprints embed absolute paths + compiler timestamps,
+        # so restored object files are invalidated on every fresh ephemeral
+        # runner — caching it produces 0 incremental savings and wastes the
+        # 10 GB per-repo cache quota.
         uses: actions/cache@v5
         with:
           path: |
             .build/artifacts
             .build/checkouts
             .build/repositories
-            .build/debug
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-fuzz-spm-${{ hashFiles('Package.resolved') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-fuzz-spm-
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-fuzz-spm-
 
       # MockInferenceBackend + ChaosBackend do not need MLX or Llama, but the
       # fuzz-chat executable's dependency graph pulls `BaseChatBackends` in.
