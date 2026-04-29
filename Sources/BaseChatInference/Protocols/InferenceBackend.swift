@@ -90,7 +90,9 @@ public struct GenerationConfig: Sendable, Codable {
 
     /// Requests backend-specific JSON-object-only generation for this call.
     ///
-    /// Defaults to `false`. Backends that do not support structured output, or
+    /// Runtime-only flag: defaults to `false` and is intentionally excluded
+    /// from Codable persistence, matching other per-request hints like
+    /// ``thinkingMarkers``. Backends that do not support structured output, or
     /// have not implemented JSON-mode wiring yet, silently ignore this flag.
     public var jsonMode: Bool
 
@@ -255,7 +257,7 @@ public struct GenerationConfig: Sendable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case temperature, topP, repeatPenalty, maxTokens, topK, typicalP, maxOutputTokens
-        case tools, toolChoice, maxThinkingTokens, jsonMode, maxToolIterations, grammar
+        case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar
         case yieldEveryNTokens
         case streamPrefillProgress
         case minP, repetitionPenalty, seed
@@ -277,7 +279,9 @@ public struct GenerationConfig: Sendable, Codable {
         tools = (try c.decodeIfPresent([ToolDefinition].self, forKey: .tools)) ?? []
         toolChoice = (try c.decodeIfPresent(ToolChoice.self, forKey: .toolChoice)) ?? .auto
         maxThinkingTokens = try c.decodeIfPresent(Int.self, forKey: .maxThinkingTokens)
-        jsonMode = (try c.decodeIfPresent(Bool.self, forKey: .jsonMode)) ?? false
+        // jsonMode is a per-request runtime hint; persisted payloads always decode
+        // with the canonical default regardless of any legacy on-disk key.
+        jsonMode = false
         streamPrefillProgress = (try c.decodeIfPresent(Bool.self, forKey: .streamPrefillProgress)) ?? false
         // maxToolIterations landed after the original shape; default to 10 when absent and
         // clamp any persisted zero/negative value to the minimum of 1.
@@ -314,7 +318,6 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encode(tools, forKey: .tools)
         try c.encode(toolChoice, forKey: .toolChoice)
         try c.encodeIfPresent(maxThinkingTokens, forKey: .maxThinkingTokens)
-        try c.encode(jsonMode, forKey: .jsonMode)
         try c.encode(streamPrefillProgress, forKey: .streamPrefillProgress)
         try c.encode(maxToolIterations, forKey: .maxToolIterations)
         try c.encodeIfPresent(grammar, forKey: .grammar)

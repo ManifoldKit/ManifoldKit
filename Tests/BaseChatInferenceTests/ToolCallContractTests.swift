@@ -134,7 +134,8 @@ final class ToolCallContractTests: XCTestCase {
     }
 
     func test_generationConfig_existingProperties_unaffected() throws {
-        // Adding tools/toolChoice/jsonMode fields must not break existing serialised GenerationConfig values.
+        // Adding tools/toolChoice plus the runtime-only jsonMode field must not
+        // break existing serialised GenerationConfig values.
         let config = GenerationConfig(temperature: 0.8, topP: 0.95, maxOutputTokens: 512)
 
         let encoded = try JSONEncoder().encode(config)
@@ -149,7 +150,7 @@ final class ToolCallContractTests: XCTestCase {
         XCTAssertFalse(decoded.jsonMode)
     }
 
-    func test_generationConfig_roundTrips_jsonMode() throws {
+    func test_generationConfig_codable_omitsRuntimeOnlyJsonMode() throws {
         let config = GenerationConfig(
             temperature: 0.8,
             topP: 0.95,
@@ -158,14 +159,17 @@ final class ToolCallContractTests: XCTestCase {
         )
 
         let encoded = try JSONEncoder().encode(config)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: encoded)
 
-        XCTAssertTrue(decoded.jsonMode)
+        XCTAssertNil(json["jsonMode"])
+        XCTAssertFalse(decoded.jsonMode)
     }
 
     func test_generationConfig_decodesLegacyJSON_withoutToolsOrToolChoice() throws {
-        // Payloads serialised before the tools/toolChoice/jsonMode fields were introduced must
-        // decode successfully, falling back to the canonical defaults ([] / .auto / false).
+        // Payloads serialised before the tools/toolChoice fields were introduced
+        // must decode successfully, falling back to the canonical defaults
+        // ([] / .auto / false for the runtime-only jsonMode flag).
         // Sabotage check: using `decode` instead of `decodeIfPresent` in init(from:)
         // causes a keyNotFound DecodingError here.
         let legacyJSON = """

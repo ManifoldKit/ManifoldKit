@@ -164,6 +164,10 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             "max_tokens": config.maxOutputTokens ?? 2048
         ]
         if config.jsonMode {
+            // OpenAI-native providers accept `response_format`; Ollama's
+            // OpenAI-compatible adapter looks for the legacy top-level
+            // `format: "json"` switch.
+            body["format"] = "json"
             body["response_format"] = ["type": "json_object"]
         }
 
