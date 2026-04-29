@@ -108,7 +108,10 @@ final class CompiledBackendsTests: XCTestCase {
     func test_presentationFlags_followCompiledSets() {
         let compiled = CompiledBackends.current
 
-        XCTAssertEqual(compiled.shouldPresentModelDownloads, !compiled.downloadableModelTypes.isEmpty)
+        XCTAssertEqual(
+            compiled.shouldPresentModelDownloads,
+            compiled.traits.contains(.huggingFace) && !compiled.downloadableModelTypes.isEmpty
+        )
         XCTAssertEqual(compiled.shouldPresentCloudAPIManagement, !compiled.cloudProviders.isEmpty)
     }
 

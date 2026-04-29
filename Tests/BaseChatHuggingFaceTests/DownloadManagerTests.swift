@@ -1,5 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatInference
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 @MainActor
 final class DownloadManagerTests: XCTestCase {
@@ -603,3 +605,4 @@ final class DownloadManagerTests: XCTestCase {
         )
     }
 }
+#endif

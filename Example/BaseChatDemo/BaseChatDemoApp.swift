@@ -6,6 +6,9 @@ import BaseChatUI
 import BaseChatUIModelManagement
 import BaseChatBackends
 import BaseChatTools
+#if canImport(BaseChatHuggingFace)
+import BaseChatHuggingFace
+#endif
 
 @main
 struct BaseChatDemoApp: App {
@@ -130,12 +133,16 @@ struct BaseChatDemoApp: App {
         }
         _chatViewModel = State(initialValue: vm)
 
+        #if canImport(BaseChatHuggingFace)
         let downloadManager = BackgroundDownloadManager()
         let hfService = HuggingFaceService()
         _modelManagementViewModel = State(initialValue: ModelManagementViewModel(
             huggingFaceService: hfService,
             downloadManager: downloadManager
         ))
+        #else
+        _modelManagementViewModel = State(initialValue: ModelManagementViewModel.live())
+        #endif
     }
 
     // MARK: - Curated Models

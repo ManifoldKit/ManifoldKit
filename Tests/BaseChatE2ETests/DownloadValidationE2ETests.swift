@@ -3,6 +3,8 @@ import Foundation
 @testable import BaseChatCore
 @testable import BaseChatInference
 import BaseChatTestSupport
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 /// E2E tests for the download validation pipeline using the real filesystem.
 ///
@@ -10,6 +12,7 @@ import BaseChatTestSupport
 /// `BackgroundDownloadManager.validateDownloadedFile(at:modelType:)`,
 /// and cleans up afterwards.
 @Suite("Download Validation E2E")
+@MainActor
 struct DownloadValidationE2ETests {
 
     private let fm = FileManager.default
@@ -218,3 +221,4 @@ struct DownloadValidationE2ETests {
         #expect(afterRemoval?.isEmpty == true)
     }
 }
+#endif

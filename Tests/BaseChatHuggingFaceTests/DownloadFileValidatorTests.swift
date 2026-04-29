@@ -1,5 +1,7 @@
 import XCTest
 @testable import BaseChatInference
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 final class DownloadFileValidatorTests: XCTestCase {
 
@@ -100,3 +102,4 @@ final class DownloadFileValidatorTests: XCTestCase {
         XCTAssertThrowsError(try DownloadFileValidator().validate(at: url, modelType: .mlx))
     }
 }
+#endif

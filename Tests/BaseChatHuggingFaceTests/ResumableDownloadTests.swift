@@ -1,5 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatInference
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 /// Unit tests for resumable download support in BackgroundDownloadManager.
 ///
@@ -479,3 +481,4 @@ final class ResumableDownloadTests: XCTestCase {
         )
     }
 }
+#endif

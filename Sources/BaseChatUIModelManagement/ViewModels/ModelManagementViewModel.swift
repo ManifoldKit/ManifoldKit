@@ -2,6 +2,9 @@ import Foundation
 import Observation
 import BaseChatCore
 import BaseChatInference
+#if HuggingFace
+import BaseChatHuggingFace
+#endif
 
 public enum ModelImportError: LocalizedError, Equatable {
     case unsupportedFormat
@@ -46,7 +49,7 @@ public final class ModelManagementViewModel {
     // MARK: - Services
 
     private let huggingFaceService: (any HuggingFaceServiceProtocol)?
-    private let downloadManager: BackgroundDownloadManager?
+    private let downloadManager: (any BackgroundDownloadManaging)?
     private let deviceCapability: DeviceCapabilityService
     private let modelStorage: ModelStorageService
     private let diagnostics: DiagnosticsService?
@@ -104,7 +107,7 @@ public final class ModelManagementViewModel {
 
     public init(
         huggingFaceService: (any HuggingFaceServiceProtocol)? = nil,
-        downloadManager: BackgroundDownloadManager? = nil,
+        downloadManager: (any BackgroundDownloadManaging)? = nil,
         deviceCapability: DeviceCapabilityService = DeviceCapabilityService(),
         modelStorage: ModelStorageService = ModelStorageService(),
         diagnostics: DiagnosticsService? = nil,
@@ -120,20 +123,32 @@ public final class ModelManagementViewModel {
 
     /// Creates a production-ready model manager with search and downloads enabled.
     public static func live(
-        huggingFaceService: any HuggingFaceServiceProtocol = HuggingFaceService(),
-        downloadManager: BackgroundDownloadManager = BackgroundDownloadManager(),
+        huggingFaceService: (any HuggingFaceServiceProtocol)? = nil,
+        downloadManager: (any BackgroundDownloadManaging)? = nil,
         deviceCapability: DeviceCapabilityService = DeviceCapabilityService(),
         modelStorage: ModelStorageService = ModelStorageService(),
         diagnostics: DiagnosticsService? = nil
     ) -> ModelManagementViewModel {
-        downloadManager.reconnectBackgroundSession()
+        #if HuggingFace
+        let resolvedService = huggingFaceService ?? HuggingFaceService()
+        let resolvedDownloadManager = downloadManager ?? BackgroundDownloadManager()
+        resolvedDownloadManager.reconnectBackgroundSession()
         return ModelManagementViewModel(
+            huggingFaceService: resolvedService,
+            downloadManager: resolvedDownloadManager,
+            deviceCapability: deviceCapability,
+            modelStorage: modelStorage,
+            diagnostics: diagnostics
+        )
+        #else
+        ModelManagementViewModel(
             huggingFaceService: huggingFaceService,
             downloadManager: downloadManager,
             deviceCapability: deviceCapability,
             modelStorage: modelStorage,
             diagnostics: diagnostics
         )
+        #endif
     }
 
     /// Creates a lightweight model manager for Xcode previews.

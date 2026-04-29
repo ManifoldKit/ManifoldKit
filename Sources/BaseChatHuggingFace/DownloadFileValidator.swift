@@ -1,3 +1,5 @@
+#if HuggingFace
+import BaseChatInference
 import Foundation
 import os
 
@@ -96,3 +98,4 @@ struct DownloadFileValidator {
         }
     }
 }
+#endif

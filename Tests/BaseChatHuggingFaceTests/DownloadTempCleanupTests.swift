@@ -1,5 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatInference
+#if HuggingFace
+@testable import BaseChatHuggingFace
 
 /// Integration tests for `BackgroundDownloadManager.cleanupStaleTempFiles()`.
 ///
@@ -224,3 +226,4 @@ final class DownloadTempCleanupTests: XCTestCase {
         XCTAssertEqual(BackgroundDownloadManager.tempFileExtension, "download")
     }
 }
+#endif
