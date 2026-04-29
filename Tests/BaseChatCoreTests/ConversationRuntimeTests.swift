@@ -336,8 +336,6 @@ final class ConversationRuntimeTests: XCTestCase {
     // MARK: - Cancellation
 
     func test_send_cancel_propagatesAndEndsStream() async throws {
-        // Use the SlowMockBackend so we have an in-flight stream to cancel
-        // before it completes naturally.
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["one", "two", "three", "four", "five"]
         let (runtime, store, _, _) = makeRuntime(mock: mock)
@@ -370,7 +368,7 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
         // Bound the wait so a hung test fails fast rather than spinning.
-        let waited = try? await withThrowingTaskGroup(of: Void.self) { group in
+        _ = try? await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await waitTask.value }
             group.addTask {
                 try await Task.sleep(for: .seconds(5))
@@ -379,7 +377,6 @@ final class ConversationRuntimeTests: XCTestCase {
             try await group.next()
             group.cancelAll()
         }
-        _ = waited
 
         XCTAssertTrue(sawCancelled,
                       "Cancel propagates to .streamFinished(reason: .cancelled)")

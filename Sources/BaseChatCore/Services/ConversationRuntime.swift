@@ -240,13 +240,12 @@ public final class ConversationRuntime: Sendable {
             await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
         }
 
-
         // Detach the streaming work onto an unstructured task so `send`
         // returns the handle promptly. The task captures `self` strongly
         // for the duration of the turn — releases via the registry when
         // the turn ends.
-        Task.detached { [weak self] in
-            await self?.runSendTurn(input: input, handle: handle)
+        Task.detached { [self] in
+            await runSendTurn(input: input, handle: handle)
         }
 
         return handle
