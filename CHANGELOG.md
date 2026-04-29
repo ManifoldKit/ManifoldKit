@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.14.1](https://github.com/roryford/BaseChatKit/compare/v0.14.0...v0.14.1) (2026-04-29)
+
+### Highlights
+
+#### `BaseChatVoice` — opt-in speech input for chat composers
+
+A new `Voice` trait gates a `BaseChatVoice` module that adds speech-to-text input, wake-word phrase detection, and a `WakeWordToast` UI accessory. The module slots into the existing composer-accessory seam, so a chat surface can adopt voice input without restructuring its view hierarchy. Wake-word detection runs on-device only.
+
+The trait is opt-in; consumers that don't enable it pay no compile or binary cost. Hosts that turn it on must declare `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription` in `Info.plist` and accept the documented simulator-microphone limitation. The demo app's voice accessory wiring shows the integration end-to-end.
+
+See [#445](https://github.com/roryford/BaseChatKit/issues/445), [#887](https://github.com/roryford/BaseChatKit/pull/887).
+
+#### Trait-gate HuggingFace; add opt-in `AnyLanguageModel` bridge
+
+The HuggingFace search/download/validation surface moves out of `BaseChatInference` into a dedicated `BaseChatHuggingFace` target behind the default-on `HuggingFace` trait. Consumers that don't need the stock downloader can pass `--disable-default-traits` to drop it from the build graph entirely while keeping the surrounding inference orchestration. Existing consumers see no behavior change because the trait is default-on.
+
+A new opt-in `AnyLanguageModel` trait adds a thin `InferenceBackend` adapter that bridges any `AnyLanguageModel`-conforming provider into BaseChatKit's inference pipeline, without folding those integrations into BaseChatKit proper. The bridge is default-off because it pulls a new transitive dependency.
+
+See [#280](https://github.com/roryford/BaseChatKit/issues/280), [#896](https://github.com/roryford/BaseChatKit/pull/896).
+
+### Features
+
+- **voice:** new `BaseChatVoice` module behind the opt-in `Voice` trait — speech-to-text input, wake-word detection, `WakeWordToast` composer accessory, demo-app voice wiring, and required-permission docs ([#887](https://github.com/roryford/BaseChatKit/pull/887))
+- **inference:** HuggingFace surface moved into a dedicated `BaseChatHuggingFace` target behind the default-on `HuggingFace` trait; protocol hooks remain in `BaseChatInference` so UI/examples compile with or without it ([#896](https://github.com/roryford/BaseChatKit/pull/896))
+- **inference:** new opt-in `BaseChatAnyLanguageModelBridge` target behind the `AnyLanguageModel` trait, exposing a thin `InferenceBackend` adapter and dedicated tests ([#896](https://github.com/roryford/BaseChatKit/pull/896))
+
 ## [0.14.0](https://github.com/roryford/BaseChatKit/compare/v0.13.3...v0.14.0) (2026-04-29)
 
 ### Highlights
