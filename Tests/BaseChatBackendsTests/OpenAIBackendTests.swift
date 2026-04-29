@@ -140,7 +140,7 @@ final class OpenAIBackendTests: XCTestCase {
                      "plan.effectiveContextSize must not appear in the request body")
     }
 
-    func test_buildRequest_jsonModeEnabled_addsResponseFormat() throws {
+    func test_buildRequest_jsonModeEnabled_addsFormatAndResponseFormat() throws {
         let backend = OpenAIBackend()
         backend.configure(
             baseURL: URL(string: "https://api.openai.com")!,
@@ -155,12 +155,13 @@ final class OpenAIBackendTests: XCTestCase {
         )
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["format"] as? String, "json")
         let responseFormat = try XCTUnwrap(json["response_format"] as? [String: Any])
 
         XCTAssertEqual(responseFormat["type"] as? String, "json_object")
     }
 
-    func test_buildRequest_jsonModeDisabled_omitsResponseFormat() throws {
+    func test_buildRequest_jsonModeDisabled_omitsFormatAndResponseFormat() throws {
         let backend = OpenAIBackend()
         backend.configure(
             baseURL: URL(string: "https://api.openai.com")!,
@@ -176,6 +177,7 @@ final class OpenAIBackendTests: XCTestCase {
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
 
+        XCTAssertNil(json["format"])
         XCTAssertNil(json["response_format"])
     }
 
