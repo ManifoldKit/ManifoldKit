@@ -46,7 +46,7 @@ BCK is a **library with a reference runtime, not a runtime with ports.**
 This stance is load-bearing for everything below; if it changes the
 whole plan changes.
 
-- BCK ships ports (`MessageStore`, `SessionStore`, `GenerationContextProvider`,
+- BCK ships ports (`MessageStore`, `SessionStore`, `PromptContextProvider`,
   etc.) and a reference use case (`ConversationRuntime`) that composes
   them into a turn loop.
 - `ConversationRuntime` is **optional**. Demo and ChatbotUI-iOS adopt
@@ -58,7 +58,7 @@ whole plan changes.
   consumers (Fireside) get a different, narrower contract.
 - `ContextContribution` as an aggregate value type lives in the
   consumer (Fireside has `[PromptSlot] + realCost`). BCK ships
-  `PromptSlot` (already does), the `GenerationContextProvider` port,
+  `PromptSlot` (already does), the new `PromptContextProvider` port,
   and `PromptContextPipeline` as a passive merge over `[PromptSlot]`.
   No competing aggregate type in BCK.
 
@@ -88,7 +88,7 @@ is settled — see `MessageStore post-write hooks` below. Fireside's
 the turn-orchestrator layer, see Fireside appendix); the hook ships as
 a low-level primitive available to consumers who want it.
 
-After 1.2.1: `GenerationContextProvider` re-export + `PromptContextPipeline`
+After 1.2.1: `PromptContextProvider` port + `PromptContextPipeline`
 passive-merge use case (1.2.2 — no new value type ships). Then
 `ConversationRuntime` extraction as the optional reference use case at
 1.2.5. Phase 1.2 sub-steps 3 (internal port cleanups) and 4
@@ -114,7 +114,7 @@ hosted in Inference). The Phase 1.0 work (#883, #885) formalised the
 async surface across the persistence and command boundary; Phase 1.1
 (#886) extracted session-list orchestration into a service with an
 event stream. What remains is the broader port extraction
-(`MessageStore`, `GenerationContextProvider`, `ConversationRuntime`,
+(`MessageStore`, `PromptContextProvider`, `ConversationRuntime`,
 etc.) and the physical target split (`BaseChatRuntime` /
 `BaseChatPersistenceSwiftData` / delete `BaseChatCore`).
 
@@ -208,7 +208,7 @@ class rename and the new target arrive together.
 | 3 | **Records at the boundary.** | `ChatSessionRecord`, `ChatMessageRecord`, `APIEndpointRecord` already live in Inference. Every port traffics in records, not `@Model` types. |
 | 4 | **Events out, commands in.** | Use cases expose `AsyncSequence<Event>` for state changes and `async throws` commands for actions. UI adapters subscribe and republish — no closure-bag wiring across boundaries. |
 | 5 | **Secrets and network policy stay out of runtime.** | Keychain, `URLSession`, trust delegates, OAuth live in Inference (where they already are) or in adapters. |
-| 6 | **Context injection is a first-class port.** | Fireside needs a structured way to supply story/memory/profile context. `GenerationContextProvider` already exists in Inference — runtime exposes a port that wraps it. |
+| 6 | **Context injection is a first-class port.** | Fireside needs a structured way to supply story/memory/profile context. `PromptContextProvider` is the new slot-contributor port introduced in Phase 1.2 sub-step 2; consumers conform and the runtime composes them via `PromptContextPipeline`. |
 | 7 | **Ports are async at the use-case surface, sync at the implementation.** | `ChatPersistenceProvider` is already `async throws` (#883); the rule still applies to every new port added in Phase 1.2. SwiftData `ModelContext` is `@MainActor`-bound; `async` at the boundary lets the use case yield without blocking. |
 
 ## Proposed runtime surface
@@ -224,7 +224,7 @@ class rename and the new target arrive together.
 | `BenchmarkCache` | `ModelManagementViewModel.modelContext: ModelContext?` |
 | `ModelCatalog` | `ModelManagementViewModel`'s direct disk inspection |
 | `TitleGenerator` | `SessionManagerViewModel.generateTitle` calling `InferenceService` directly |
-| `GenerationContextProvider` (re-exported) | already exists in Inference — runtime exposes it |
+| `PromptContextProvider` | new — the slot-contributor port for context assembly. (Distinct from the internal `GenerationContextProvider` in `BaseChatInference`, which is a `@MainActor`-bound model-state provider used by `GenerationCoordinator` — that protocol stays internal and unchanged.) |
 | `ToolSource` | generalises today's `MCPToolSource` pattern |
 
 `ChatPersistenceProvider` is split into `SessionStore` + `MessageStore`.
@@ -288,7 +288,7 @@ Use cases compose ports into a turn loop or other workflow. They are
 | `SessionListService` | ✅ shipped (#886, `Sources/BaseChatUI/ViewModels/SessionListService.swift`) | `SessionManagerViewModel`'s CRUD/search/pagination/title generation | `AsyncStream<SessionListEvent>` + commands |
 | `ConversationRuntime` | forward-looking, **optional reference** | `ChatViewModel`'s send/cancel/regenerate/edit/branch logic, `GenerationCoordinator` (UI-side), `ModelLoadCoordinator` | `AsyncSequence<ConversationEvent>` + commands |
 | `ModelManagementService` | forward-looking | `ModelManagementViewModel`'s discovery/download/delete/benchmark | `AsyncSequence<ModelCatalogEvent>` + commands |
-| `PromptContextPipeline` | forward-looking | new — passive merge over `[PromptSlot]` from registered `GenerationContextProvider`s | `[PromptSlot]` |
+| `PromptContextPipeline` | ✅ shipped (#TBD, sub-step 2; `Sources/BaseChatCore/Services/PromptContextPipeline.swift`) | new — passive merge over `[PromptSlot]` from registered `PromptContextProvider`s | `[PromptSlot]` |
 
 #### `ConversationEvent` cases
 
@@ -434,16 +434,22 @@ review.
    store. Hook signature settled per Fireside's reply — no further
    co-design needed before opening the PR.
 
-2. **`GenerationContextProvider` re-export + `PromptContextPipeline`
-   passive-merge use case.** Re-exports the existing
-   `GenerationContextProvider` port from `BaseChatRuntime` and adds a
-   passive merge use case that takes `[PromptSlot]` from each
-   registered provider, sorts by `position`, and returns the assembled
-   list. **No new value type** — `[PromptSlot]` is the boundary
-   primitive (already in BCK). Consumers that want a richer aggregate
-   (Fireside's `ContextContribution` with budget accounting and
-   `realCost`) keep that aggregate in their own module. LOC budget:
-   ~250.
+2. **`PromptContextProvider` port + `PromptContextPipeline` passive-merge
+   use case.** Introduces `PromptContextProvider` as a new public
+   protocol in `BaseChatInference` (`Sendable`, no `@MainActor` pin,
+   bare `messageCount: Int` argument; throws propagate). Pairs it with
+   `PromptContextPipeline` in `BaseChatCore` — a passive merge use case
+   that asks each registered provider for slots, concatenates, sorts by
+   `PromptSlotPosition.sortIndex(messageCount:)`, and returns the
+   assembled `[PromptSlot]`. **No new value type** — `[PromptSlot]` is
+   the boundary primitive (already in BCK). The new protocol is
+   deliberately named to avoid colliding with the existing internal
+   `GenerationContextProvider` (`@MainActor`-bound, `AnyObject`-constrained
+   model-state provider used by `GenerationCoordinator`); they have
+   different shapes, different consumers, and live alongside each
+   other. Consumers that want a richer aggregate (Fireside's
+   `ContextContribution` with budget accounting and `realCost`) keep
+   that aggregate in their own module. LOC budget: ~250.
 
 3. ✅ **Internal port cleanups: `SamplerPresetStore`, `BenchmarkCache`,
    `EndpointStore`** — in review as #890. Kills the remaining `@Query`
@@ -518,7 +524,7 @@ Before tagging 1.0:
 - ChatbotUI-iOS builds against the new graph without local patching.
 - Fireside replaces its custom bootstrap with `BaseChatRuntime` +
   custom `MessageStore` / `SessionStore` impls.
-- `GenerationContextProvider` port shape is locked at the end of Phase
+- `PromptContextProvider` port shape is locked at the end of Phase
   1.2 and treated as a stable contract for the remainder of the pre-1.0
   window. The boundary primitive is `[PromptSlot]` (already in BCK).
   Fireside's `GraphSlotFormatter` outputs continue to be wrapped in
@@ -584,11 +590,12 @@ BCK changes:
 - `ChatPersistenceProvider` splits into `SessionStore` + `MessageStore`.
 - `MessageStorePostWriteHook` protocol introduced as a low-level
   primitive.
-- `GenerationContextProvider` re-exported from `BaseChatRuntime`;
-  `PromptContextPipeline` passive-merge use case introduced over
-  `[PromptSlot]`. **No competing `ContextContribution` aggregate
-  ships from BCK** — Fireside's existing aggregate in `FiresideMemory`
-  remains the source of truth on the consumer side.
+- `PromptContextProvider` introduced as a new public port in
+  `BaseChatInference`; `PromptContextPipeline` passive-merge use case
+  introduced over `[PromptSlot]` in `BaseChatCore` (will move to
+  `BaseChatRuntime` in Phase 2). **No competing `ContextContribution`
+  aggregate ships from BCK** — Fireside's existing aggregate in
+  `FiresideMemory` remains the source of truth on the consumer side.
 - `ConversationRuntime` ships as the **optional reference** use case,
   with the `ConversationEvent` surface enumerated above.
 
@@ -608,7 +615,7 @@ than the earlier draft of this plan implied.
   graph extraction has the wrong unit of work for it.
 - **Not migrating**: `GraphSlotFormatter` outputs stay in Fireside's
   `ContextContribution` aggregate. Fireside conforms to BCK's
-  `GenerationContextProvider` port returning `[PromptSlot]`; the
+  `PromptContextProvider` port returning `[PromptSlot]`; the
   surrounding budget accounting and `realCost` tracking remain in
   `FiresideMemory`. No retrofit required.
 - **Not migrating**: `StoryStore.send(_:)` continues to drive
