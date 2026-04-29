@@ -36,7 +36,9 @@ name: Build modes + binary symbol audit
 
 on:
   schedule:
-    # 05:30 UTC daily — after nightly-slow-tests (04:30) and fuzz-nightly (05:00).
+    # 05:30 UTC daily — after nightly-slow-tests (04:30). (fuzz-nightly
+    # previously held the 05:00 UTC slot but is now dispatch-only pending a
+    # self-hosted Apple-Silicon runner.)
     - cron: "30 5 * * *"
   workflow_dispatch:
   pull_request:

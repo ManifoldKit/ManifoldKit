@@ -11,7 +11,8 @@ name: Nightly slow tests
 
 on:
   schedule:
-    # 04:30 UTC daily — quiet window, before fuzz-nightly at 05:00 UTC.
+    # 04:30 UTC daily — quiet window. (fuzz-nightly's 05:00 UTC slot is
+    # currently dispatch-only pending a self-hosted Apple-Silicon runner.)
     - cron: "30 4 * * *"
   workflow_dispatch:
 
