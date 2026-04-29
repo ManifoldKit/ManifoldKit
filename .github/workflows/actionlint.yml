@@ -26,16 +26,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "stable"
-
       - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+        id: install_actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
 
       - name: Lint GitHub Actions workflows
-        run: |
-          set -euo pipefail
-          ACTIONLINT_BIN="$(go env GOPATH)/bin/actionlint"
-          "$ACTIONLINT_BIN" -color
+        run: ${{ steps.install_actionlint.outputs.executable }} -color
