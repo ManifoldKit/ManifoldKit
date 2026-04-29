@@ -48,6 +48,7 @@
 		BF0027000000000000000000 /* AppIntentToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10023000000000000000000 /* AppIntentToolsView.swift */; };
 		BF0029000000000000000000 /* DemoNowTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10024000000000000000000 /* DemoNowTool.swift */; };
 		BF0028000000000000000000 /* BaseChatAppIntents in Frameworks */ = {isa = PBXBuildFile; productRef = F30008000000000000000000 /* BaseChatAppIntents */; };
+		BF0029000000000000000000 /* BaseChatVoice in Frameworks */ = {isa = PBXBuildFile; productRef = F30009000000000000000000 /* BaseChatVoice */; };
 		BF0030000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
 		BF0031000000000000000000 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10031000000000000000000 /* ShareViewController.swift */; };
 		BF0032000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
@@ -141,6 +142,7 @@
 				BF0006000000000000000000 /* BaseChatTools in Frameworks */,
 				BF0020000000000000000000 /* BaseChatMCP in Frameworks */,
 				BF0028000000000000000000 /* BaseChatAppIntents in Frameworks */,
+				BF0029000000000000000000 /* BaseChatVoice in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -317,6 +319,7 @@
 				F30004000000000000000000 /* BaseChatTools */,
 				F30005000000000000000000 /* BaseChatMCP */,
 				F30008000000000000000000 /* BaseChatAppIntents */,
+				F30009000000000000000000 /* BaseChatVoice */,
 			);
 			productName = BaseChatDemo;
 			productReference = F10003000000000000000000 /* BaseChatDemo.app */;
@@ -933,6 +936,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
 			productName = BaseChatAppIntents;
+		};
+		F30009000000000000000000 /* BaseChatVoice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
+			productName = BaseChatVoice;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

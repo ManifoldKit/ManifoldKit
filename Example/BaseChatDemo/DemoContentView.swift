@@ -4,6 +4,7 @@ import BaseChatCore
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
+import BaseChatVoice
 
 struct DemoContentView: View {
     @Environment(ChatViewModel.self) private var viewModel
@@ -19,6 +20,9 @@ struct DemoContentView: View {
     @State private var isModelManagementPresented = false
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
+    @State private var voiceController = VoiceConversationController(
+        wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat", "base chat"])
+    )
 
     /// Tool registry shared with the app's inference service. Held here so the
     /// demo scenario runner can install scenario-specific variant executors.
@@ -53,6 +57,9 @@ struct DemoContentView: View {
             ChatView(
                 showModelManagement: $isModelManagementPresented,
                 emptyState: { ChatEmptyStateView(runScenario: runScenario) },
+                composerAccessory: {
+                    VoiceComposerAccessory(controller: voiceController)
+                },
                 apiConfiguration: { APIConfigurationView() }
             )
                 .toolbar {
