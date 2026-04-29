@@ -875,12 +875,18 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(store.messages.count, 2, "Store unchanged when update fails")
     }
 
-    // MARK: - Edit: partial delete failure
+    // MARK: - Edit: delete failure on first trailing message
 
-    func test_edit_partialDeleteFailure_throwsAfterPartialDeletion() async throws {
+    func test_edit_firstDeleteFails_throwsBeforeAnyTrailingDeletion() async throws {
         // Sabotage check (verified manually): removing the re-throw on deleteMessage
         // failure causes the method to continue deleting and return a handle, failing
-        // both the XCTAssertThrowsError and the messageRemoved count assertion.
+        // the XCTAssertThrowsError check.
+        //
+        // RuntimeMessageStore.deleteError fires on the next call then self-clears.
+        // Setting it here means the first delete call (for trailing1) throws immediately,
+        // so zero trailing messages are removed. The update commits before the delete
+        // loop runs, so .messageUpdated is emitted and the store reflects the new
+        // content even though the throw follows.
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
@@ -891,34 +897,16 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(trailing1)
         try await store.insertMessage(trailing2)
 
-        // Collect events while the synchronous edit runs. We want to see exactly
-        // one messageRemoved (for trailing1) but no messageRemoved for trailing2.
+        // Collect events so we can verify .messageUpdated fired before the
+        // delete failure and that no .messageRemoved events were emitted.
+        var collectedEvents: [ConversationEvent] = []
         let eventCollector = Task { @MainActor [runtime] in
-            var seen: [ConversationEvent] = []
             for await event in runtime.events {
-                seen.append(event)
+                collectedEvents.append(event)
             }
-            return seen
         }
 
-        // Poison the store so the second delete (trailing2) throws.
-        // trailing1 delete succeeds; trailing2 delete throws.
-        // `deleteError` fires once (on the first deleteMessage call after it's set).
-        // We need the first delete to succeed, second to fail.
-        // So set the error after the first delete succeeds by using a counter approach.
-        // RuntimeMessageStore clears deleteError after throwing — set it now so
-        // trailing1 succeeds (no error set yet) and trailing2 fails.
-        // Wait: deleteError fires on the NEXT call then clears. So we need trailing1
-        // to succeed, trailing2 to fail. Set after trailing1 would succeed... but
-        // we can't interleave. Instead: we need to set the error so trailing2 gets it.
-        // The messages are sorted by timestamp: trailing1 < trailing2 (inserted in order).
-        // deleteError fires on the NEXT call and clears. So if we set it now,
-        // trailing1 (the first delete call) will throw. That tests 0-of-2 scenario.
-        // For 1-of-2, we'd need a counter. Let's use a simpler approach: store the
-        // second message ID and override deleteMessage to throw on that ID.
-        // The current RuntimeMessageStore only supports one-shot deleteError.
-        // This test verifies 0-of-2 (first delete fails): throws before emitting
-        // any messageRemoved (for trailing messages).
+        // Poison: first delete call throws, leaving both trailing messages in place.
         store.deleteError = ChatPersistenceError.messageNotFound(trailing1.id)
 
         do {
@@ -938,14 +926,23 @@ final class ConversationRuntimeTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         eventCollector.cancel()
 
-        // Update succeeded (user message was updated before delete was attempted),
-        // but trailing messages are not fully deleted. The user message update
-        // committed; store now has: user (updated) + trailing1 + trailing2
-        // (trailing1 failed to delete so it's still present).
+        // The update committed before the delete attempt: store has user (with new
+        // content) + both trailing messages (neither was deleted).
         XCTAssertEqual(store.messages.count, 3,
-                       "Both trailing messages still in store after first-delete failure")
+                       "Both trailing messages still in store when first delete fails")
         XCTAssertEqual(store.messages[userMsg.id]?.content, "edited",
                        "User message content was updated before the delete failure")
+
+        // .messageUpdated fired — the update completed before the delete loop ran.
+        XCTAssertTrue(collectedEvents.contains(where: {
+            if case .messageUpdated(let record) = $0 { return record.id == userMsg.id } else { return false }
+        }), ".messageUpdated fired for the edited message before the delete failure")
+
+        // No .messageRemoved events — the first delete threw before anything was removed.
+        let removedCount = collectedEvents.filter { event in
+            if case .messageRemoved = event { return true } else { return false }
+        }.count
+        XCTAssertEqual(removedCount, 0, "No .messageRemoved events when first delete fails")
     }
 
     // MARK: - Regenerate: cancel mid-stream
