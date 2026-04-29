@@ -270,12 +270,26 @@ public final class ConversationRuntime: Sendable {
         input: SendInput,
         handle: ConversationStreamHandle
     ) async {
-        // 1. Context assembly hook. Always emit `.beforeContextAssembly` and
+        // 1. Build history first — one store fetch covers both the message
+        //    count for context assembly and the structured messages for
+        //    enqueueAsync. By the time we get here, the user message we
+        //    just inserted is in the store (insertMessage awaited above).
+        //    We do not include the empty assistant slot — it is not yet
+        //    inserted.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+        let messageCount = history.count
+
+        // 2. Context assembly hook. Always emit `.beforeContextAssembly` and
         //    `.contextAssembled` so adapters that pin against these events
         //    see them on every turn — even when no providers are registered
         //    (slots = []). Stable event ordering matters more than skipping
         //    a no-op emission.
-        let messageCount = await fetchMessageCount(sessionID: input.sessionID)
         let request = PromptContextRequest(
             sessionID: input.sessionID,
             messageCount: messageCount,
@@ -296,7 +310,7 @@ public final class ConversationRuntime: Sendable {
         }
         emit(.contextAssembled(slots: slots))
 
-        // 2. Build the assistant message slot up front so token deltas can
+        // 3. Build the assistant message slot up front so token deltas can
         //    reference its id from the first emitted token.
         var assistantMessage = ChatMessageRecord(
             role: .assistant,
@@ -305,25 +319,11 @@ public final class ConversationRuntime: Sendable {
         )
         let assistantID = assistantMessage.id
 
-        // 3. Build history. Fetch the persisted messages for this session;
-        //    by the time we get here, the user message we just inserted is
-        //    in the store (insertMessage awaited above). We do not include
-        //    the empty assistant slot — it is not yet inserted.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.sessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-
-        // 4. Compose system prompt + slots. Slots whose `position.sortIndex`
-        //    sorts ahead of message history get prepended into the system
-        //    prompt as plain text; runtime-managed structured-slot routing
-        //    is a follow-up. PR-A keeps this minimal: slots are appended
-        //    after the caller-supplied system prompt, separated by a blank
-        //    line. Hosts that want richer slot routing run their own
-        //    pipeline outside the runtime today.
+        // 4. Compose system prompt + slots. Slot text is appended after the
+        //    caller-supplied base prompt (separated by a blank line).
+        //    Position-aware splicing is a follow-up — PR-A keeps this
+        //    minimal and lets callers that need richer routing run their
+        //    own assembler outside the runtime.
         let composedSystemPrompt = composeSystemPrompt(input.systemPrompt, slots: slots)
 
         // 5. Translate history to structured form for `enqueueAsync`.
@@ -353,8 +353,14 @@ public final class ConversationRuntime: Sendable {
         }
 
         await registry.register(handle: handle, token: token)
-        defer {
-            Task { [registry] in await registry.unregister(handle: handle) }
+
+        // If cancel(_:) raced ahead of register — i.e., the caller cancelled
+        // between send returning and this point — the markCancelled call
+        // returned nil (nothing to cancel at that time). Issue cancelAsync
+        // now so backend work doesn't continue running while the runtime
+        // has stopped consuming the stream.
+        if await registry.isCancelled(handle) {
+            await inferenceService.cancelAsync(token)
         }
 
         emit(.streamStarted(messageID: assistantID))
@@ -404,7 +410,14 @@ public final class ConversationRuntime: Sendable {
         //    visible content and was not cancelled, drop it — matches the
         //    `ChatViewModel`/`GenerationCoordinator` rule that keeps the
         //    transcript clean of empty turns.
+        //
+        //    Unregister before emitting terminal events so that any
+        //    cancel(_:) called after this point is a documented no-op
+        //    rather than a late-cancel that could still mark the handle
+        //    cancelled and confuse observers.
         let cancelled = await isCancelled(handle: handle)
+        await registry.unregister(handle: handle)
+
         let reason: FinishReason
         if cancelled {
             reason = .cancelled
@@ -514,21 +527,6 @@ public final class ConversationRuntime: Sendable {
         try await messageStore.fetchMessages(for: sessionID)
     }
 
-    private func fetchMessageCount(sessionID: UUID) async -> Int {
-        do {
-            let messages = try await fetchMessages(sessionID: sessionID)
-            return messages.count
-        } catch {
-            // Persistence errors here surface on the next operation that
-            // throws; for messageCount we fall back to 0 so context
-            // assembly still runs.
-            Log.persistence.warning(
-                "ConversationRuntime: failed to fetch message count, defaulting to 0: \(error.localizedDescription)"
-            )
-            return 0
-        }
-    }
-
     @MainActor
     private func touchSession(sessionStore: any SessionStore, sessionID: UUID) async {
         do {
@@ -547,13 +545,12 @@ public final class ConversationRuntime: Sendable {
     }
 
     private func composeSystemPrompt(_ base: String?, slots: [PromptSlot]) -> String? {
-        // Concatenate enabled slot bodies into a plain-text prefix on top of
-        // the caller-supplied system prompt. PR-A keeps the routing minimal:
-        // every enabled slot's `content` is appended in order, separated by
-        // blank lines. Position-aware splicing into history (e.g.,
-        // `.atDepth(n)`, `.bottomOfHistory`) is a follow-up — runtime callers
-        // that need richer routing run their own ``PromptAssembler`` outside
-        // the runtime today.
+        // Append enabled slot bodies after the caller-supplied system prompt,
+        // separated by blank lines. PR-A keeps the routing minimal — every
+        // enabled slot's `content` is appended in order. Position-aware
+        // splicing into history (e.g., `.atDepth(n)`, `.bottomOfHistory`)
+        // is a follow-up; callers that need richer routing today run their
+        // own ``PromptAssembler`` outside the runtime.
         let slotText = slots
             .filter { $0.isEnabled }
             .map(\.content)

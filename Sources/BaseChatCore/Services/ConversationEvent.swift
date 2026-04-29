@@ -65,21 +65,27 @@ public enum ConversationEvent: Sendable {
     // MARK: Context pipeline (runtime hook points)
 
     /// Fires immediately before the runtime asks ``PromptContextPipeline``
-    /// to assemble slots. Carries the user's prompt text (when applicable)
-    /// and the request shape providers will see. Load-bearing for
-    /// runtime-using consumers — adapters pin behaviour against this case.
-    case beforeContextAssembly(prompt: String, request: PromptContextRequest)
+    /// to assemble slots. Carries the user's prompt text when available
+    /// (non-nil for send sub-flows; `nil` for regenerate / edit sub-flows
+    /// that have no user-supplied text) and the request shape providers
+    /// will see. Load-bearing for runtime-using consumers — adapters pin
+    /// behaviour against this case.
+    case beforeContextAssembly(prompt: String?, request: PromptContextRequest)
 
     /// Fires after slots are assembled, before the request is enqueued.
     /// Carries the merged `[PromptSlot]` so adapters can introspect what's
     /// about to be sent (debug overlays, prompt inspectors). Load-bearing.
     case contextAssembled(slots: [PromptSlot])
 
-    /// Fires after the assistant message has been finalised and persisted.
-    /// `finalText` is the full visible-content body (concatenated text
-    /// parts, thinking blocks excluded). Load-bearing — adapters key
-    /// post-turn work (analytics, summarisation) against this case rather
-    /// than chasing `.streamFinished` and re-fetching the message.
+    /// Fires after generation has completed and the runtime has determined
+    /// the turn's final visible output. `finalText` is the full
+    /// visible-content body (concatenated text parts, thinking blocks
+    /// excluded) and may be empty. Consumers must not assume the assistant
+    /// message was persisted when this event fires — empty generations fire
+    /// `afterGeneration` without creating a stored assistant record for
+    /// `messageID`. Load-bearing — adapters key post-turn work (analytics,
+    /// summarisation) against this case rather than chasing
+    /// `.streamFinished` and re-fetching the message.
     case afterGeneration(messageID: ChatMessageRecord.ID, finalText: String)
 
     /// History was compressed (older messages dropped to fit the context
