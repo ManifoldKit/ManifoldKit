@@ -1,0 +1,571 @@
+import Foundation
+import BaseChatInference
+
+// MARK: - Send input
+//
+// PR-A only ships the ``send`` sub-flow. Regenerate / edit / branch land in
+// PR-B / PR-C respectively (separate inputs and command methods, same event
+// surface).
+
+/// Input for ``ConversationRuntime/send(_:)``.
+///
+/// Carries the user-supplied text plus the generation knobs the runtime
+/// forwards to ``InferenceService/enqueueAsync(...)``. The `sessionID` is
+/// required — the runtime is session-scoped at the call site (Phase 1.2's
+/// public stance), and turning a no-session call into a "generic" turn
+/// would require a parallel error path consumers shouldn't have to
+/// pattern-match.
+public struct SendInput: Sendable {
+    public let sessionID: UUID
+    public let userText: String
+    public let systemPrompt: String?
+    public let temperature: Float
+    public let topP: Float
+    public let repeatPenalty: Float
+    public let maxOutputTokens: Int?
+    public let maxThinkingTokens: Int?
+
+    public init(
+        sessionID: UUID,
+        userText: String,
+        systemPrompt: String? = nil,
+        temperature: Float = 0.7,
+        topP: Float = 0.9,
+        repeatPenalty: Float = 1.1,
+        maxOutputTokens: Int? = 2048,
+        maxThinkingTokens: Int? = nil
+    ) {
+        self.sessionID = sessionID
+        self.userText = userText
+        self.systemPrompt = systemPrompt
+        self.temperature = temperature
+        self.topP = topP
+        self.repeatPenalty = repeatPenalty
+        self.maxOutputTokens = maxOutputTokens
+        self.maxThinkingTokens = maxThinkingTokens
+    }
+}
+
+// MARK: - Stream handle
+
+/// Identifier for an in-flight runtime stream.
+///
+/// Returned from ``ConversationRuntime/send(_:)`` and passed back to
+/// ``ConversationRuntime/cancel(_:)`` to cancel a specific in-flight turn.
+/// Per-runtime unique; not stable across runtime instances.
+public struct ConversationStreamHandle: Sendable, Hashable {
+    public let id: UUID
+    public init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
+// MARK: - In-flight stream registry
+//
+// Holds the mutable state ConversationRuntime needs across actor hops: the
+// set of in-flight stream handles and their underlying inference tokens, so
+// `cancel(_:)` can target the right backend call and the send loop can
+// detect cancellation.
+//
+// An actor (rather than a lock) because cancel is `async` already (it has
+// to hop to @MainActor to call `cancelAsync`) and the bookkeeping reads
+// cleanly with structured concurrency. Performance is a non-issue — this
+// state is touched twice per turn.
+
+actor InFlightStreamRegistry {
+    private var entries: [UUID: InferenceService.GenerationRequestToken] = [:]
+    private var cancelled: Set<UUID> = []
+
+    func register(handle: ConversationStreamHandle, token: InferenceService.GenerationRequestToken) {
+        entries[handle.id] = token
+    }
+
+    func unregister(handle: ConversationStreamHandle) {
+        entries.removeValue(forKey: handle.id)
+        cancelled.remove(handle.id)
+    }
+
+    /// Marks a handle cancelled and returns its inference token (if any) so
+    /// the caller can issue ``InferenceService/cancelAsync(_:)`` against it.
+    /// Returns `nil` when the handle has already been unregistered or was
+    /// never registered (cancel races with stream completion are normal).
+    func markCancelled(_ handle: ConversationStreamHandle) -> InferenceService.GenerationRequestToken? {
+        cancelled.insert(handle.id)
+        return entries[handle.id]
+    }
+
+    func isCancelled(_ handle: ConversationStreamHandle) -> Bool {
+        cancelled.contains(handle.id)
+    }
+}
+
+// MARK: - ConversationRuntime
+
+/// Composes the runtime ports (`MessageStore`, `SessionStore`,
+/// `InferenceService`, `PromptContextPipeline`) into a turn loop and
+/// surfaces lifecycle as ``ConversationEvent`` values.
+///
+/// **Optional reference use case.** Demo and ChatbotUI-iOS adopt;
+/// Fireside drives the ports directly (see the Phase 1.2 plan doc's
+/// Stance section). Hosts that want a `ChatViewModel`-style adapter
+/// continue to use that shape; hosts that want their own UI layer can
+/// consume this class directly.
+///
+/// ## Concurrency
+///
+/// Plain `final class` — not `@Observable`, not `@MainActor`-pinned at
+/// the type level. Methods that touch `@MainActor` ports hop on demand
+/// using the nonisolated wrappers from `InferenceService+Nonisolated`.
+/// In-flight state lives behind ``InFlightStreamRegistry`` (an actor),
+/// not a lock; bookkeeping is touched at most twice per turn so the
+/// extra hops are not a hot path.
+///
+/// ## Event delivery
+///
+/// The ``events`` stream is constructed once per runtime instance and is
+/// single-consumer. Callers either iterate it directly (tests) or install
+/// an adapter that drains it into observable state
+/// (`ChatViewModel`-shaped consumers). The stream is unbounded — adapters
+/// must drain it on a long-lived task or the buffer grows.
+///
+/// ## Scope (PR-A)
+///
+/// PR-A ships the scaffolding plus the ``send(_:)`` sub-flow. Regenerate /
+/// edit / branch are not implemented yet — they ship in PR-B / PR-C with
+/// matching `ConversationEvent` coverage. PR-A also does not yet absorb
+/// the streaming-token batcher, thinking-block disclosure, loop detection,
+/// or tool-dispatch loop from `GenerationCoordinator`; those stay on the
+/// `ChatViewModel` adapter for now and migrate into the runtime in
+/// follow-up PRs.
+public final class ConversationRuntime: Sendable {
+
+    // MARK: Ports
+
+    private let messageStore: any MessageStore
+    private let sessionStore: (any SessionStore)?
+    private let inferenceService: InferenceService
+    private let pipeline: PromptContextPipeline?
+
+    // MARK: Event stream
+
+    /// Lifecycle event stream. Single-consumer by design — see the type
+    /// docs.
+    public let events: AsyncStream<ConversationEvent>
+    private let continuation: AsyncStream<ConversationEvent>.Continuation
+
+    // MARK: In-flight state
+
+    private let registry = InFlightStreamRegistry()
+
+    // MARK: Init
+
+    /// Creates a runtime that composes the supplied ports.
+    ///
+    /// - Parameters:
+    ///   - messageStore: Required. Persists user and assistant messages
+    ///     across the turn loop. Hooks registered on this store fire for
+    ///     every write the runtime makes.
+    ///   - sessionStore: Optional. When provided, the runtime touches the
+    ///     active session's `updatedAt` after a successful send so the
+    ///     sidebar's "most recent" ordering reflects activity. PR-A keeps
+    ///     this optional because callers using the runtime as a pure
+    ///     message-stream surface may not own session metadata.
+    ///   - inferenceService: Required. Used via the nonisolated wrappers
+    ///     introduced by #893 (`enqueueAsync`, `cancelAsync`).
+    ///   - pipeline: Optional. When `nil`, the runtime emits
+    ///     `.beforeContextAssembly` and `.contextAssembled(slots: [])`
+    ///     to keep the event sequence stable, then enqueues with no extra
+    ///     slots. When present, the pipeline is queried before each turn
+    ///     and the resulting slots are surfaced via `.contextAssembled`.
+    public init(
+        messageStore: any MessageStore,
+        sessionStore: (any SessionStore)? = nil,
+        inferenceService: InferenceService,
+        pipeline: PromptContextPipeline? = nil
+    ) {
+        self.messageStore = messageStore
+        self.sessionStore = sessionStore
+        self.inferenceService = inferenceService
+        self.pipeline = pipeline
+        var cap: AsyncStream<ConversationEvent>.Continuation!
+        self.events = AsyncStream(bufferingPolicy: .unbounded) { cap = $0 }
+        self.continuation = cap
+    }
+
+    deinit {
+        continuation.finish()
+    }
+
+    // MARK: Commands
+
+    /// Sends a user message and drives one generation turn.
+    ///
+    /// Returns immediately with a ``ConversationStreamHandle``; the
+    /// generation work proceeds on a detached task and emits events on
+    /// ``events``. The call is `async throws` so synchronous setup
+    /// failures (no session, persistence misconfigured) surface to the
+    /// caller before any task is launched; once the task is running,
+    /// failures route to ``ConversationEvent/errorRaised(_:)``.
+    ///
+    /// Cancellation: pass the returned handle to ``cancel(_:)``. The
+    /// in-flight stream terminates with
+    /// ``ConversationEvent/streamFinished(messageID:reason:)`` carrying
+    /// ``FinishReason/cancelled``.
+    @discardableResult
+    public func send(_ input: SendInput) async throws -> ConversationStreamHandle {
+        let handle = ConversationStreamHandle()
+
+        // Persist the user message synchronously so the caller observes
+        // ordering (`messageInserted(user)` before `send` returns) — the
+        // stream task fires off after this point. Persistence failures
+        // throw out so the caller can surface them; matching ChatViewModel's
+        // current shape where a user-message persistence failure aborts the
+        // turn before any assistant work runs.
+        let userMessage = ChatMessageRecord(
+            role: .user,
+            content: input.userText,
+            sessionID: input.sessionID
+        )
+        do {
+            try await insertMessage(userMessage)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+        emit(.messageInserted(userMessage))
+
+        // Touch session updatedAt — best-effort. Persistence errors here
+        // are logged and continue; the runtime should not lose a turn over
+        // a sidebar-ordering failure.
+        if let sessionStore {
+            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
+        }
+
+
+        // Detach the streaming work onto an unstructured task so `send`
+        // returns the handle promptly. The task captures `self` strongly
+        // for the duration of the turn — releases via the registry when
+        // the turn ends.
+        Task.detached { [weak self] in
+            await self?.runSendTurn(input: input, handle: handle)
+        }
+
+        return handle
+    }
+
+    /// Cancels an in-flight stream identified by `handle`.
+    ///
+    /// Idempotent — cancelling an already-cancelled or already-finished
+    /// handle is a no-op. The stream fires its terminal
+    /// ``ConversationEvent/streamFinished(messageID:reason:)`` with
+    /// ``FinishReason/cancelled`` once the cancel propagates through the
+    /// underlying inference layer.
+    public func cancel(_ handle: ConversationStreamHandle) async {
+        let token = await registry.markCancelled(handle)
+        guard let token else { return }
+        await inferenceService.cancelAsync(token)
+    }
+
+    // MARK: Send turn
+
+    private func runSendTurn(
+        input: SendInput,
+        handle: ConversationStreamHandle
+    ) async {
+        // 1. Context assembly hook. Always emit `.beforeContextAssembly` and
+        //    `.contextAssembled` so adapters that pin against these events
+        //    see them on every turn — even when no providers are registered
+        //    (slots = []). Stable event ordering matters more than skipping
+        //    a no-op emission.
+        let messageCount = await fetchMessageCount(sessionID: input.sessionID)
+        let request = PromptContextRequest(
+            sessionID: input.sessionID,
+            messageCount: messageCount,
+            userInput: input.userText
+        )
+        emit(.beforeContextAssembly(prompt: input.userText, request: request))
+
+        let slots: [PromptSlot]
+        if let pipeline {
+            do {
+                slots = try await pipeline.assemble(messageCount: messageCount)
+            } catch {
+                emit(.errorRaised(.contextAssembly(error)))
+                return
+            }
+        } else {
+            slots = []
+        }
+        emit(.contextAssembled(slots: slots))
+
+        // 2. Build the assistant message slot up front so token deltas can
+        //    reference its id from the first emitted token.
+        var assistantMessage = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            sessionID: input.sessionID
+        )
+        let assistantID = assistantMessage.id
+
+        // 3. Build history. Fetch the persisted messages for this session;
+        //    by the time we get here, the user message we just inserted is
+        //    in the store (insertMessage awaited above). We do not include
+        //    the empty assistant slot — it is not yet inserted.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+
+        // 4. Compose system prompt + slots. Slots whose `position.sortIndex`
+        //    sorts ahead of message history get prepended into the system
+        //    prompt as plain text; runtime-managed structured-slot routing
+        //    is a follow-up. PR-A keeps this minimal: slots are appended
+        //    after the caller-supplied system prompt, separated by a blank
+        //    line. Hosts that want richer slot routing run their own
+        //    pipeline outside the runtime today.
+        let composedSystemPrompt = composeSystemPrompt(input.systemPrompt, slots: slots)
+
+        // 5. Translate history to structured form for `enqueueAsync`.
+        let structuredHistory: [StructuredMessage] = history.map { record in
+            StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
+        }
+
+        // 6. Enqueue. Use the nonisolated wrapper so we don't have to be
+        //    on @MainActor here.
+        let token: InferenceService.GenerationRequestToken
+        let stream: GenerationStream
+        do {
+            (token, stream) = try await inferenceService.enqueueAsync(
+                structuredMessages: structuredHistory,
+                systemPrompt: composedSystemPrompt,
+                temperature: input.temperature,
+                topP: input.topP,
+                repeatPenalty: input.repeatPenalty,
+                maxOutputTokens: input.maxOutputTokens,
+                maxThinkingTokens: input.maxThinkingTokens,
+                priority: .userInitiated,
+                sessionID: input.sessionID
+            )
+        } catch {
+            emit(.errorRaised(.inference(error)))
+            return
+        }
+
+        await registry.register(handle: handle, token: token)
+        defer {
+            Task { [registry] in await registry.unregister(handle: handle) }
+        }
+
+        emit(.streamStarted(messageID: assistantID))
+
+        // 7. Drain the stream. This loop deliberately does *not* re-implement
+        //    GenerationCoordinator's batching, thinking-block disclosure,
+        //    loop detection, or tool-dispatch behaviour. PR-A handles the
+        //    happy path (visible tokens) and treats other event types as
+        //    pass-throughs onto the assistant message's content parts.
+        //    Subsequent PRs migrate the richer behaviours into the runtime.
+        var accumulated = ""
+        var emptyResponse = true
+        var streamFailed: ConversationError?
+
+        do {
+            for try await event in stream.events {
+                let cancelled = await isCancelled(handle: handle)
+                if cancelled { break }
+                switch event {
+                case .token(let text):
+                    accumulated += text
+                    emptyResponse = false
+                    emit(.tokenEmitted(messageID: assistantID, delta: text))
+
+                case .thinkingToken, .thinkingComplete, .thinkingSignature,
+                        .toolCall, .toolCallStart, .toolCallArgumentsDelta,
+                        .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
+                        .toolLoopLimitReached, .usage, .prefillProgress,
+                        .kvCacheReuse, .diagnosticThrottle:
+                    // Out of scope for PR-A. Tool-call routing through the
+                    // runtime ships in a follow-up; usage / prefill /
+                    // diagnostic events are observed by adapters that want
+                    // them via direct InferenceService observation today.
+                    continue
+                }
+            }
+        } catch {
+            let cancelled = await isCancelled(handle: handle)
+            if cancelled {
+                streamFailed = .cancelled
+            } else {
+                streamFailed = .inference(error)
+            }
+        }
+
+        // 8. Finalise the assistant message. If the stream produced no
+        //    visible content and was not cancelled, drop it — matches the
+        //    `ChatViewModel`/`GenerationCoordinator` rule that keeps the
+        //    transcript clean of empty turns.
+        let cancelled = await isCancelled(handle: handle)
+        let reason: FinishReason
+        if cancelled {
+            reason = .cancelled
+        } else if let streamFailed {
+            // An inference error during streaming. Persist whatever we have
+            // (parity with ChatViewModel.stopGeneration's partial-save
+            // behaviour) and emit error. We do not collapse this into
+            // `.streamFinished(reason: .empty)` because consumers need to
+            // know the run failed.
+            assistantMessage.content = accumulated
+            if !accumulated.isEmpty {
+                do {
+                    try await insertMessage(assistantMessage)
+                    emit(.messageInserted(assistantMessage))
+                } catch {
+                    emit(.errorRaised(.persistence(error)))
+                    emit(.errorRaised(streamFailed))
+                    emit(.streamFinished(messageID: assistantID, reason: .stop))
+                    return
+                }
+            }
+            emit(.errorRaised(streamFailed))
+            emit(.streamFinished(messageID: assistantID, reason: .stop))
+            return
+        } else if emptyResponse {
+            reason = .empty
+        } else {
+            reason = .stop
+        }
+
+        if cancelled {
+            // On cancel, persist whatever streamed in so far if non-empty —
+            // matches ChatViewModel.stopGeneration's behaviour.
+            if !accumulated.isEmpty {
+                assistantMessage.content = accumulated
+                do {
+                    try await insertMessage(assistantMessage)
+                    emit(.messageInserted(assistantMessage))
+                } catch {
+                    emit(.errorRaised(.persistence(error)))
+                    // Fall through and still emit streamFinished — the
+                    // cancellation outcome is the load-bearing signal here.
+                }
+            }
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            return
+        }
+
+        if reason == .empty {
+            // Drop the empty assistant message. No persistence happens; we
+            // emit the terminal events and return.
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            emit(.afterGeneration(messageID: assistantID, finalText: ""))
+            return
+        }
+
+        // Happy path: persist the assistant message.
+        assistantMessage.content = accumulated
+        do {
+            try await insertMessage(assistantMessage)
+            emit(.messageInserted(assistantMessage))
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            emit(.streamFinished(messageID: assistantID, reason: reason))
+            return
+        }
+
+        emit(.streamFinished(messageID: assistantID, reason: reason))
+        emit(.afterGeneration(messageID: assistantID, finalText: accumulated))
+
+        // Touch session timestamp again so the sidebar reflects the
+        // assistant turn's recency (parity with ChatViewModel's behaviour).
+        if let sessionStore {
+            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
+        }
+
+    }
+
+    // MARK: Helpers
+
+    private func emit(_ event: ConversationEvent) {
+        continuation.yield(event)
+    }
+
+    /// Combines the registry-recorded cancel state with the structured-
+    /// concurrency cancel signal. Either source ending the stream maps to
+    /// ``FinishReason/cancelled``.
+    private func isCancelled(handle: ConversationStreamHandle) async -> Bool {
+        if Task.isCancelled { return true }
+        return await registry.isCancelled(handle)
+    }
+
+    // `MessageStore` and `SessionStore` are `@MainActor`-bound protocols
+    // (the SwiftData adapter requires it). The runtime is not on
+    // `@MainActor` itself, so the helpers below are `@MainActor`-annotated
+    // and `await`-called from non-main contexts to hop. Keeping the hop
+    // centralised here also makes the dispatch surface easy to swap if
+    // Phase 2 lifts the protocols off main.
+
+    @MainActor
+    private func insertMessage(_ message: ChatMessageRecord) async throws {
+        try await messageStore.insertMessage(message)
+    }
+
+    @MainActor
+    private func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
+        try await messageStore.fetchMessages(for: sessionID)
+    }
+
+    private func fetchMessageCount(sessionID: UUID) async -> Int {
+        do {
+            let messages = try await fetchMessages(sessionID: sessionID)
+            return messages.count
+        } catch {
+            // Persistence errors here surface on the next operation that
+            // throws; for messageCount we fall back to 0 so context
+            // assembly still runs.
+            Log.persistence.warning(
+                "ConversationRuntime: failed to fetch message count, defaulting to 0: \(error.localizedDescription)"
+            )
+            return 0
+        }
+    }
+
+    @MainActor
+    private func touchSession(sessionStore: any SessionStore, sessionID: UUID) async {
+        do {
+            // SessionStore does not expose a single-record fetch today;
+            // fetch the page and find ours. The cost is acceptable —
+            // touchSession runs at most twice per turn.
+            let sessions = try await sessionStore.fetchSessions()
+            guard var session = sessions.first(where: { $0.id == sessionID }) else { return }
+            session.updatedAt = Date()
+            try await sessionStore.updateSession(session)
+        } catch {
+            Log.persistence.warning(
+                "ConversationRuntime: touchSession failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func composeSystemPrompt(_ base: String?, slots: [PromptSlot]) -> String? {
+        // Concatenate enabled slot bodies into a plain-text prefix on top of
+        // the caller-supplied system prompt. PR-A keeps the routing minimal:
+        // every enabled slot's `content` is appended in order, separated by
+        // blank lines. Position-aware splicing into history (e.g.,
+        // `.atDepth(n)`, `.bottomOfHistory`) is a follow-up — runtime callers
+        // that need richer routing run their own ``PromptAssembler`` outside
+        // the runtime today.
+        let slotText = slots
+            .filter { $0.isEnabled }
+            .map(\.content)
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        switch (base, slotText.isEmpty) {
+        case (nil, true): return nil
+        case (nil, false): return slotText
+        case (let base?, true): return base.isEmpty ? nil : base
+        case (let base?, false):
+            return base.isEmpty ? slotText : "\(base)\n\n\(slotText)"
+        }
+    }
+}
