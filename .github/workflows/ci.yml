@@ -190,19 +190,27 @@ jobs:
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
       - name: Test — XCTest suites (Core + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
-        timeout-minutes: 25
+        timeout-minutes: 12
         run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
       # with per-instance suite names, and HuggingFaceServiceTests scopes
       # MockURLProtocol stubs to per-test unique hosts with targeted unstub
       # teardown. That makes the target safe to run under swift test --parallel.
+      #
+      # `if: always()` mirrors the Swift Testing step below so a failing batch
+      # above still surfaces inference failures in the same run.
       - name: Test — Inference (XCTest, parallel)
-        timeout-minutes: 25
+        if: always()
+        timeout-minutes: 12
         run: scripts/test.sh --filter BaseChatInferenceTests --disable-default-traits --skip-update --parallel
 
+      # `if: always()` so a failing XCTest step still surfaces Swift Testing
+      # failures in the same run — otherwise breakage in both harnesses costs
+      # two re-push cycles to triage. The job still fails because step 1 failed.
       - name: Test — Inference (Swift Testing, isolated process)
-        timeout-minutes: 25
+        if: always()
+        timeout-minutes: 12
         run: scripts/test.sh --filter BaseChatInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       - name: Stage test diagnostics

@@ -3,17 +3,20 @@ import SwiftUI
 import BaseChatCore
 import BaseChatInference
 
-/// Editor for creating or editing an `APIEndpoint`.
+/// Editor for creating or editing an ``APIEndpointRecord``.
 ///
 /// When `endpoint` is `nil`, creates a new endpoint on save.
 /// When editing, populates fields from the existing endpoint.
 /// Provider selection dynamically updates the base URL and model defaults.
+///
+/// Reads and writes go through the ``EndpointStore`` injected via the SwiftUI
+/// environment. The view does not import SwiftData.
 public struct APIEndpointEditorView: View {
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.endpointStore) private var endpointStore
 
-    public let endpoint: APIEndpoint? // nil = creating new
+    public let endpoint: APIEndpointRecord? // nil = creating new
 
     @State private var name: String = ""
     @State private var provider: APIProvider = .openAI
@@ -24,7 +27,7 @@ public struct APIEndpointEditorView: View {
 
     private var isEditing: Bool { endpoint != nil }
 
-    public init(endpoint: APIEndpoint?) {
+    public init(endpoint: APIEndpointRecord?) {
         self.endpoint = endpoint
     }
 
@@ -103,7 +106,7 @@ public struct APIEndpointEditorView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button("Save") { Task { await save() } }
                         .disabled(
                             name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             || modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -139,7 +142,12 @@ public struct APIEndpointEditorView: View {
         }
     }
 
-    private func save() {
+    private func save() async {
+        guard let endpointStore else {
+            validationError = "Endpoint store is not configured."
+            return
+        }
+
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
 
@@ -160,18 +168,18 @@ public struct APIEndpointEditorView: View {
         }
 
         validationError = nil
-        var createdEndpoint: APIEndpoint?
 
         if let endpoint {
-            // Update existing
-            endpoint.name = trimmedName
-            endpoint.provider = provider
-            endpoint.baseURL = trimmedURL.isEmpty ? provider.defaultBaseURL : trimmedURL
-            endpoint.modelName = resolvedModelName
+            // Update existing record
+            var updated = endpoint
+            updated.name = trimmedName
+            updated.provider = provider
+            updated.baseURL = trimmedURL.isEmpty ? provider.defaultBaseURL : trimmedURL
+            updated.modelName = resolvedModelName
 
             if !apiKey.isEmpty {
                 do {
-                    try endpoint.setAPIKey(apiKey)
+                    try KeychainService.store(key: apiKey, account: updated.keychainAccount)
                 } catch {
                     // `KeychainError.localizedDescription` already reads as a
                     // complete sentence (e.g. "Couldn't store the API key in
@@ -180,41 +188,44 @@ public struct APIEndpointEditorView: View {
                     return
                 }
             }
+
+            do {
+                try await endpointStore.updateEndpoint(updated)
+                dismiss()
+            } catch {
+                validationError = error.localizedDescription.isEmpty
+                    ? "Failed to save the endpoint configuration."
+                    : error.localizedDescription
+            }
         } else {
-            // Create new
-            let newEndpoint = APIEndpoint(
+            // Create a new record
+            let newRecord = APIEndpointRecord(
                 name: trimmedName,
                 provider: provider,
                 baseURL: trimmedURL.isEmpty ? nil : trimmedURL,
                 modelName: resolvedModelName
             )
-            modelContext.insert(newEndpoint)
-            createdEndpoint = newEndpoint
 
             if !apiKey.isEmpty {
                 do {
-                    try newEndpoint.setAPIKey(apiKey)
+                    try KeychainService.store(key: apiKey, account: newRecord.keychainAccount)
                 } catch {
-                    modelContext.delete(newEndpoint)
-                    // `KeychainError.localizedDescription` already reads as a
-                    // complete sentence (e.g. "Couldn't store the API key in
-                    // the Keychain: The device appears to be locked…").
                     validationError = error.localizedDescription
                     return
                 }
             }
-        }
 
-        do {
-            try modelContext.save()
-            dismiss()
-        } catch {
-            if let createdEndpoint {
-                modelContext.delete(createdEndpoint)
+            do {
+                try await endpointStore.insertEndpoint(newRecord)
+                dismiss()
+            } catch {
+                // Best-effort cleanup of the just-stored Keychain item if the
+                // row insert fails — leaves no orphan.
+                try? KeychainService.delete(account: newRecord.keychainAccount)
+                validationError = error.localizedDescription.isEmpty
+                    ? "Failed to save the endpoint configuration."
+                    : error.localizedDescription
             }
-            validationError = error.localizedDescription.isEmpty
-                ? "Failed to save the endpoint configuration."
-                : error.localizedDescription
         }
     }
 }
@@ -223,7 +234,5 @@ public struct APIEndpointEditorView: View {
 
 #Preview("Add Endpoint") {
     APIEndpointEditorView(endpoint: nil)
-        .modelContainer(for: APIEndpoint.self, inMemory: true)
 }
 #endif
-

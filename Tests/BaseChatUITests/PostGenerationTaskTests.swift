@@ -35,7 +35,7 @@ final class PostGenerationTaskTests: XCTestCase {
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
 
         sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
+        sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: context), autoLoad: false)
     }
 
     override func tearDown() async throws {

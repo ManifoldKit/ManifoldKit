@@ -83,7 +83,7 @@ final class SidebarAndSheetControlTests: XCTestCase {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
         try await sessionManager.createSession(title: "Test Chat Session")
 
         let dump = ViewHierarchyDumper.dump(
@@ -101,7 +101,7 @@ final class SidebarAndSheetControlTests: XCTestCase {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
         try await sessionManager.createSession(title: "Session Alpha")
         try await sessionManager.createSession(title: "Session Beta")
 
@@ -124,7 +124,7 @@ final class SidebarAndSheetControlTests: XCTestCase {
         let container = try makeInMemoryContainer()
         let persistence = SwiftDataPersistenceProvider(modelContext: container.mainContext)
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
         try await sessionManager.createSession(title: "Any Session")
 
         let dump = ViewHierarchyDumper.dump(

@@ -83,11 +83,12 @@ public struct SessionListView: View {
         }
         .animation(.default, value: sessionManager.sessions.isEmpty)
         .task {
-            // After Phase 1.0 `loadSessions()` is async — `configure` no
-            // longer auto-fires it, so kick off the initial page load on
-            // first appear. `.task { }` fires once per identity and is
-            // cancelled if the view is torn down before completion, which
-            // matches the behaviour we want here.
+            // Hosts that configure with `autoLoad: false` (notably tests, but
+            // any caller that wants control of bootstrap timing) rely on this
+            // first-appear load. The `isEmpty` guard makes it a no-op when
+            // `configure(runtime:)` (or `autoLoad: true`) already populated
+            // the list — `.task` fires once per identity and is cancelled on
+            // teardown, which is the behaviour we want for either path.
             if sessionManager.sessions.isEmpty {
                 await sessionManager.loadSessions()
             }

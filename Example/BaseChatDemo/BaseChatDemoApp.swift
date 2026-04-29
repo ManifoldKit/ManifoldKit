@@ -219,6 +219,8 @@ struct BaseChatDemoApp: App {
                     .environment(chatViewModel)
                     .environment(modelManagementViewModel)
                     .environment(sessionManager)
+                    .environment(\.samplerPresetStore, runtime.samplerPresetStore)
+                    .environment(\.endpointStore, runtime.endpointStore)
                     #if os(macOS)
                     .frame(minWidth: 600, minHeight: 400)
                     #endif
@@ -351,6 +353,7 @@ struct BaseChatDemoApp: App {
 
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
+        modelManagementViewModel.benchmarkCache = runtime.benchmarkCache
         chatViewModel.onFirstMessage = { [inferenceService] session, text in
             Task { @MainActor in
                 while chatViewModel.isGenerating {

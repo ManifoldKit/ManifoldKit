@@ -29,6 +29,9 @@ public final class BaseChatRuntime {
     public let diagnostics: DiagnosticsService
     public let modelContainer: ModelContainer
     public let persistence: SwiftDataPersistenceProvider
+    public let samplerPresetStore: SwiftDataSamplerPresetStore
+    public let benchmarkCache: SwiftDataBenchmarkCache
+    public let endpointStore: SwiftDataEndpointStore
 
     public var modelContext: ModelContext { modelContainer.mainContext }
 
@@ -53,7 +56,11 @@ public final class BaseChatRuntime {
             self.modelContainer = resolvedModelContainer
 
             self.diagnostics = diagnostics
-            self.persistence = SwiftDataPersistenceProvider(modelContext: resolvedModelContainer.mainContext)
+            let mainContext = resolvedModelContainer.mainContext
+            self.persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+            self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+            self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+            self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
         } catch {
             BaseChatConfiguration.shared = previousConfiguration
             throw error

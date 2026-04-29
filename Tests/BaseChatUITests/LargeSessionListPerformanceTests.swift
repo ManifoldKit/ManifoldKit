@@ -34,7 +34,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
         context = container.mainContext
         persistence = SwiftDataPersistenceProvider(modelContext: context)
         vm = SessionManagerViewModel()
-        vm.configure(persistence: persistence)
+        vm.configure(persistence: persistence, autoLoad: false)
         try await seedLargeFixture()
     }
 
@@ -49,8 +49,17 @@ final class LargeSessionListPerformanceTests: XCTestCase {
     /// Initial sidebar render — only the first page should be materialised.
     func test_perf_initialFirstPageRender() {
         measure {
+            // Phase 1.0: `configure` is opt-in for the initial load. Drive
+            // the first-page fetch explicitly so the measurement still covers
+            // the same end-to-end path the sidebar exercises on first render.
             let fresh = SessionManagerViewModel()
-            fresh.configure(persistence: persistence)
+            fresh.configure(persistence: persistence, autoLoad: false)
+            let exp = expectation(description: "first page render")
+            Task {
+                await fresh.loadSessions()
+                exp.fulfill()
+            }
+            wait(for: [exp], timeout: 30)
             XCTAssertEqual(fresh.sessions.count, SessionManagerViewModel.sessionsPageSize)
         }
     }

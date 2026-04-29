@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.14.0](https://github.com/roryford/BaseChatKit/compare/v0.13.3...v0.14.0) (2026-04-29)
+
+### Highlights
+
+#### Persistence and command APIs are now `async throws`
+
+Phase 0 of the runtime ports refactor showed that synchronous command APIs forced every adapter to dual-write — eager-reload now, consume events later — which undermines the single-source-of-truth event-stream shape that later phases need. v0.14.0 makes the prerequisite breaking move: `ChatPersistenceProvider` protocol methods, and the public mutators on `ChatViewModel` and `SessionManagerViewModel`, are now `async throws`. The result is one consistent async surface that future phases can compose against without compatibility shims.
+
+```swift
+// Before
+sessionManager.configure(persistence: provider)
+sessionManager.createSession(title: "New chat")
+
+// After
+sessionManager.configure(persistence: provider, autoLoad: true)
+try await sessionManager.createSession(title: "New chat")
+```
+
+`SessionManagerViewModel.configure` gains a required `autoLoad: Bool` parameter (no default) so the behavior change is loud at every call site. Pass `true` to preserve pre-Phase-1.0 behavior, `false` if your bootstrap will call `await loadSessions()` itself; `configure(runtime:)` passes `autoLoad: true` automatically. `ChatViewModel.onFirstMessage` is now an `async` closure — typed-variable consumers must drop any `@MainActor` annotation. `stopGeneration()` deliberately stays synchronous so toolbar handlers and `scenePhase` teardown sites do not need `Task { … }` wrappers.
+
+This is Phase 1.0 of the runtime ports refactor. Phase 1.1 (extracting `SessionListService`, already merged) and the upcoming Phase 1.2 `ConversationRuntime` extraction both depend on this surface.
+
+See [#883], [#876].
+
+### ⚠ BREAKING CHANGES
+
+* `ChatPersistenceProvider` and the public command APIs on `ChatViewModel` / `SessionManagerViewModel` are now `async throws` ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+* `SessionManagerViewModel.configure(persistence:)` becomes `configure(persistence:autoLoad:diagnostics:)` with a required `autoLoad` parameter ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+* `ChatViewModel.onFirstMessage` is now an `async` closure ([#883](https://github.com/roryford/BaseChatKit/issues/883))
+
 ## [0.13.3](https://github.com/roryford/BaseChatKit/compare/v0.13.2...v0.13.3) (2026-04-28)
 
 ### Highlights

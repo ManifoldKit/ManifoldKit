@@ -340,3 +340,25 @@ BaseChatBackends/LlamaToolCallParser.swift:let decoded = try? JSONSerialization.
 # JSONSerialization rejects — caller falls back to "{}", same shape as
 # the JSON-fallback path's empty-arg fallback.
 BaseChatBackends/LlamaToolCallParser.swift:guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
+
+# ---------------------------------------------------------------------------
+# BaseChatVoice
+# ---------------------------------------------------------------------------
+
+# Best-effort audio-session deactivation. iOS may already be tearing down the
+# session (route change, app backgrounded, interruption ended) by the time we
+# call this on stop/cancel. Throwing here would only surface a benign
+# "session not active" error to the user; the route is reclaimed regardless.
+# Mirrors the pattern in Apple's own AVAudioSession sample code.
+BaseChatVoice/Services/VoiceAudioSessionCoordinator.swift:try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+
+# ---------------------------------------------------------------------------
+# BaseChatUIModelManagement — endpoint editor rollback
+# ---------------------------------------------------------------------------
+
+# Best-effort Keychain cleanup when the EndpointStore insert fails after a
+# Keychain key was just stored. Throwing here would obscure the real error
+# (the failed row insert), so we swallow the cleanup failure — leaving an
+# orphan Keychain item that the bootstrap reaper will sweep on next launch.
+BaseChatUIModelManagement/Views/Settings/APIEndpointEditorView.swift:try? KeychainService.delete(account: newRecord.keychainAccount)
+BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? KeychainService.delete(account: record.keychainAccount)

@@ -309,7 +309,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
             vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
 
             let sessionManager = SessionManagerViewModel()
-            sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext))
+            sessionManager.configure(persistence: SwiftDataPersistenceProvider(modelContext: modelContext), autoLoad: false)
             let session = (try? await sessionManager.createSession(title: "Perf"))!
             sessionManager.activeSession = session
             await vm.switchToSession(session)

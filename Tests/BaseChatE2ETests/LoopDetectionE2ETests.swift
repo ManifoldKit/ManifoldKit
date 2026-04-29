@@ -32,7 +32,7 @@ struct LoopDetectionE2ETests {
         vm.configure(persistence: persistence)
 
         let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(persistence: persistence)
+        sessionManager.configure(persistence: persistence, autoLoad: false)
         let session = try await sessionManager.createSession(title: "Test")
         sessionManager.activeSession = session
         await vm.switchToSession(session)
