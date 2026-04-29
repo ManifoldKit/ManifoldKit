@@ -1,5 +1,4 @@
 import Foundation
-import BaseChatCore
 import BaseChatInference
 
 // MARK: - Event surface
@@ -76,7 +75,7 @@ public struct SearchResults: Sendable {
 /// type level. Internal state is `private`; all external state changes go out
 /// as events on ``events``. Commands are `async throws`.
 ///
-/// `ChatPersistenceProvider`, `DiagnosticsService`, and `InferenceService` are
+/// `SessionStore`, `DiagnosticsService`, and `InferenceService` are
 /// `@MainActor`-isolated `Sendable` references. The service holds them as
 /// `let` references injected at init and hops to `@MainActor` on demand
 /// inside command bodies. This keeps `SessionListService` itself off the
@@ -117,13 +116,21 @@ final class SessionListService: Sendable {
     let events: AsyncStream<SessionListEvent>
     private let continuation: AsyncStream<SessionListEvent>.Continuation
 
-    private let persistence: ChatPersistenceProvider
+    // The service primarily orchestrates session-scope work (CRUD,
+    // pagination, title generation), but the message-scope search the UI
+    // surfaces also lives here for now — splitting `runMessageSearch` out
+    // would force the adapter to fan one user search across two services.
+    // Held as a combined existential so callers can pass a single adapter
+    // (the SwiftData impl conforms to both); a future move into a runtime
+    // package may split this back into separate references when it also
+    // splits the message-search use case off.
+    private let persistence: any SessionStore & MessageStore
     private let diagnostics: DiagnosticsService?
 
     private let sinkBox = EventSinkBox()
 
     init(
-        persistence: ChatPersistenceProvider,
+        persistence: any SessionStore & MessageStore,
         diagnostics: DiagnosticsService? = nil
     ) {
         self.persistence = persistence
@@ -159,7 +166,7 @@ final class SessionListService: Sendable {
     /// Creates a new session, persists it, and emits `.sessionsLoaded`.
     ///
     /// Commands are `@MainActor`-isolated for Phase 1.1: the underlying
-    /// `ChatPersistenceProvider` and `DiagnosticsService` are `@MainActor`-
+    /// `SessionStore` and `DiagnosticsService` are `@MainActor`-
     /// bound, and isolating the command bodies on `@MainActor` keeps event
     /// emission ordered with respect to the adapter's main-actor consumer
     /// without needing a buffered AsyncStream barrier. Phase 1.2 step 5 lifts

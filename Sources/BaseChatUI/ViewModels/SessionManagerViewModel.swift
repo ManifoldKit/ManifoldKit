@@ -71,8 +71,8 @@ public final class SessionManagerViewModel {
     /// Exposed for `PersistenceGuard` and call sites that need to assert
     /// configuration. Reads through to the underlying service's persistence
     /// reference (or `nil` when unconfigured).
-    var persistence: ChatPersistenceProvider? { _persistence }
-    private var _persistence: ChatPersistenceProvider?
+    var persistence: (any SessionStore & MessageStore)? { _persistence }
+    private var _persistence: (any SessionStore & MessageStore)?
 
     public init() {}
 
@@ -100,7 +100,7 @@ public final class SessionManagerViewModel {
     ///   adapter) can `await autoLoadTask?.value` to drain the in-flight
     ///   fetch before teardown.
     public func configure(
-        persistence: ChatPersistenceProvider,
+        persistence: any SessionStore & MessageStore,
         autoLoad: Bool,
         diagnostics: DiagnosticsService? = nil
     ) {

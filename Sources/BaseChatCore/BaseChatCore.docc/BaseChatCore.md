@@ -18,7 +18,7 @@ App
  │    ├── LlamaBackend  (via BaseChatBackends)
  │    ├── FoundationBackend (via BaseChatBackends)
  │    └── CloudBackends (Claude, OpenAI, Ollama, …)
- └── ChatPersistenceProvider        ← SwiftData or custom storage
+ └── SessionStore + MessageStore    ← SwiftData or custom storage
 ```
 
 Backends are registered as factories so BaseChatCore stays free of any direct MLX, llama.cpp, or Foundation Models import. See <doc:GettingStarted> for the full wiring example.
@@ -66,7 +66,10 @@ Backends are registered as factories so BaseChatCore stays free of any direct ML
 
 ### Chat Sessions & Persistence
 
-- ``ChatPersistenceProvider``
+- ``SessionStore``
+- ``MessageStore``
+- ``MessageStorePostWriteHook``
+- ``SessionStorePostWriteHook``
 - ``ChatSessionRecord``
 - ``ChatMessageRecord``
 - ``ChatPersistenceError``

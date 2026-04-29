@@ -72,7 +72,7 @@ public final class ChatViewModel {
 
     let sessionController: SessionController
 
-    var persistence: ChatPersistenceProvider? {
+    var persistence: (any SessionStore & MessageStore)? {
         get { sessionController.persistence }
         set { sessionController.persistence = newValue }
     }
@@ -708,10 +708,14 @@ public final class ChatViewModel {
         }
     }
 
-    /// Injects the persistence provider. Call once after the storage backend is
+    /// Injects the persistence stores. Call once after the storage backend is
     /// available, or prefer ``configure(runtime:)`` when bootstrapping through
     /// ``BaseChatRuntime``.
-    public func configure(persistence: ChatPersistenceProvider) {
+    ///
+    /// Accepts a combined ``SessionStore`` + ``MessageStore`` existential —
+    /// the SwiftData adapter conforms to both, and hosts that want to wire
+    /// genuinely separate stores can pass a small composed adapter.
+    public func configure(persistence: any SessionStore & MessageStore) {
         sessionController.configure(persistence: persistence)
     }
 

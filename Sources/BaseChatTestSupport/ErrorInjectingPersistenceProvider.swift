@@ -1,20 +1,19 @@
 import Foundation
-import BaseChatCore
 import BaseChatInference
 
-/// Test double that wraps any ``ChatPersistenceProvider`` and adds two
-/// facilities the real provider cannot offer: per-method error injection
-/// and call counting.
+/// Test double that wraps any combined ``SessionStore`` + ``MessageStore``
+/// adapter and adds two facilities the real adapter cannot offer: per-method
+/// error injection and call counting.
 ///
 /// Pair it with ``InMemoryPersistenceHarness`` when a test needs to assert
 /// that a view model handles persistence failures correctly, or that it
 /// routed through the persistence layer the expected number of times.
 /// All other persistence behaviour (CRUD, ordering, pagination) is the
-/// real provider's, so tests written against this wrapper stay honest.
+/// real adapter's, so tests written against this wrapper stay honest.
 @MainActor
-public final class ErrorInjectingPersistenceProvider: ChatPersistenceProvider {
+public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore {
 
-    private let wrapped: any ChatPersistenceProvider
+    private let wrapped: any SessionStore & MessageStore
 
     public var shouldThrowOnInsertSession: Error?
     public var shouldThrowOnUpdateSession: Error?
@@ -35,7 +34,7 @@ public final class ErrorInjectingPersistenceProvider: ChatPersistenceProvider {
     public var fetchMessagesBeforeCallCount = 0
     public var deleteMessagesCallCount = 0
 
-    public init(wrapping wrapped: any ChatPersistenceProvider) {
+    public init(wrapping wrapped: any SessionStore & MessageStore) {
         self.wrapped = wrapped
     }
 

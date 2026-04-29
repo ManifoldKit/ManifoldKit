@@ -25,7 +25,7 @@ final class PersistenceGuardTests: XCTestCase {
         try await super.tearDown()
     }
 
-    private func provider() -> ChatPersistenceProvider {
+    private func provider() -> any SessionStore & MessageStore {
         SwiftDataPersistenceProvider(modelContext: container.mainContext)
     }
 
