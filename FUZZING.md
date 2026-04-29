@@ -362,7 +362,7 @@ The `expires` field is strict — past that date the PR job fails even if the ha
 
 ### Nightly tier — `.github/workflows/fuzz-nightly.yml`
 
-- **When:** every day at 05:00 UTC, plus `workflow_dispatch`.
+- **When:** `workflow_dispatch` only. The daily `05:00 UTC` cron was disabled until a self-hosted Apple-Silicon runner is provisioned — scheduled runs were queueing for 24h and auto-cancelling. Re-enable the `schedule:` block in `fuzz-nightly.yml` once a `[self-hosted, macos, arm64]` runner is registered.
 - **Runner:** `[self-hosted, macos, arm64]` — see [self-hosted runner requirements](#self-hosted-runner-requirements).
 - **Budget:** 10 wall-clock minutes.
 - **Backend:** real Ollama `qwen3.5:4b`. The seed is derived from `github.run_number` so each nightly run samples a different slice of the mutator space.
@@ -371,7 +371,7 @@ The `expires` field is strict — past that date the PR job fails even if the ha
 
 ### Weekly tier — `.github/workflows/fuzz-weekly.yml`
 
-- **When:** every Sunday at 07:00 UTC, plus `workflow_dispatch`.
+- **When:** `workflow_dispatch` only. The Sunday `07:00 UTC` cron was disabled alongside the nightly tier until a self-hosted Apple-Silicon runner is provisioned. Re-enable the `schedule:` block in `fuzz-weekly.yml` once a runner is registered.
 - **Runner:** `[self-hosted, macos, arm64]`.
 - **Budget:** 30 wall-clock minutes.
 - **Backend:** `--backend ollama --model all` — rotates through every installed Ollama model per iteration. This is the explicit sibling-coverage sweep; bugs that only fire on a non-default model surface here.

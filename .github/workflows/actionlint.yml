@@ -28,7 +28,9 @@ jobs:
 
       - name: Install actionlint
         id: install_actionlint
-        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7
+        # Pin the bootstrap script to the same release tag as the binary so a
+        # compromised `main` on rhysd/actionlint cannot swap the download URL.
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
 
       - name: Lint GitHub Actions workflows
         run: ${{ steps.install_actionlint.outputs.executable }} -color
