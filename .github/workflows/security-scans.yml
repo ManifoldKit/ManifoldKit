@@ -4,19 +4,25 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - ".github/**"
+      - "scripts/**"
+      - "docs/**"
+      - "Example/**"
       - "Sources/**"
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
-      - ".github/workflows/security-scans.yml"
   push:
     branches: [main]
     paths:
+      - ".github/**"
+      - "scripts/**"
+      - "docs/**"
+      - "Example/**"
       - "Sources/**"
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
-      - ".github/workflows/security-scans.yml"
 
 concurrency:
   group: security-${{ github.event_name }}-${{ github.ref }}
@@ -41,8 +47,8 @@ jobs:
       - name: Fail on newly introduced vulnerable dependencies
         # continue-on-error: the action exits non-zero when the repo's dependency
         # graph isn't enabled yet (requires one-time opt-in in repo Settings >
-        # Code security and analysis). Once enabled this will enforce correctly;
-        # until then we don't want it to block merges.
+        # Advanced Security > Dependency graph). Once enabled this should be
+        # switched to fail-closed by removing continue-on-error.
         continue-on-error: true
         uses: actions/dependency-review-action@v4
         with:
@@ -65,5 +71,7 @@ jobs:
       - name: Scan changed commits for leaked secrets
         uses: trufflesecurity/trufflehog@v3.95.2
         with:
+          # Pin the scanner image tag so the composite action doesn't pull latest.
+          version: v3.95.2
           # Keep signal high by failing only on verifiable active secrets.
           extra_args: --results=verified
