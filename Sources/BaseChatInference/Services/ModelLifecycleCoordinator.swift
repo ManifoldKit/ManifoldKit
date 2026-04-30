@@ -216,8 +216,10 @@ final class ModelLifecycleCoordinator {
         installProgressHandler(on: newBackend, for: request)
         do {
             let url = modelInfo.url
+            let mmprojURL = modelInfo.mmprojURL
             let dispatchPlan = effectivePlan
             try await Task.detached(priority: .userInitiated) {
+                (newBackend as? MultimodalProjectorConfigurable)?.setMmprojURL(mmprojURL)
                 try await newBackend.loadModel(from: url, plan: dispatchPlan)
             }.value
         } catch {

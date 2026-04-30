@@ -22,6 +22,12 @@ public struct CuratedModel: Identifiable, Sendable {
     public let contextSize: Int32
     public let promptTemplate: PromptTemplate
     public let description: String
+    /// Companion multimodal projector filename, if this is a vision-capable model.
+    ///
+    /// When non-nil, the download UI should fetch this file from the same ``repoID``
+    /// alongside ``fileName``. The coordinator passes the downloaded URL to the backend
+    /// via ``MultimodalProjectorConfigurable``.
+    public let mmprojFileName: String?
 
     public init(
         id: String,
@@ -33,7 +39,8 @@ public struct CuratedModel: Identifiable, Sendable {
         recommendedFor: Set<ModelSizeRecommendation>,
         contextSize: Int32,
         promptTemplate: PromptTemplate,
-        description: String
+        description: String,
+        mmprojFileName: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -45,6 +52,7 @@ public struct CuratedModel: Identifiable, Sendable {
         self.contextSize = contextSize
         self.promptTemplate = promptTemplate
         self.description = description
+        self.mmprojFileName = mmprojFileName
     }
 
     /// The curated model list to display in model discovery UI.

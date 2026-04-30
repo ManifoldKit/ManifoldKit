@@ -362,3 +362,15 @@ BaseChatVoice/Services/VoiceAudioSessionCoordinator.swift:try? AVAudioSession.sh
 # orphan Keychain item that the bootstrap reaper will sweep on next launch.
 BaseChatUIModelManagement/Views/Settings/APIEndpointEditorView.swift:try? KeychainService.delete(account: newRecord.keychainAccount)
 BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? KeychainService.delete(account: record.keychainAccount)
+
+
+# ---------------------------------------------------------------------------
+# BaseChatInference — ModelInfo mmproj companion detection
+# ---------------------------------------------------------------------------
+
+# Best-effort directory scan when auto-detecting an mmproj companion file.
+# On first launch there may be no parent directory yet (new download target),
+# or the directory may be inaccessible due to sandbox restrictions.
+# A nil `candidates` produces an empty array via `?? []`, so `mmprojURL`
+# stays nil — the backend safely operates in text-only mode.
+BaseChatInference/Models/ModelInfo.swift:let candidates = (try? FileManager.default.contentsOfDirectory(
