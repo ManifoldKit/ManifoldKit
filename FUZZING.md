@@ -332,7 +332,7 @@ Use it for regression testing after changes to tool-calling logic in `BaseChatTo
 
 ## CI tiers
 
-The fuzzer runs on three tiers so each PR pays a small, bounded cost and larger
+The fuzzer runs on four tiers so each PR pays a small, bounded cost and larger
 investments are scheduled rather than blocking merges.
 
 ### PR tier — `.github/workflows/fuzz-pr.yml`
@@ -368,6 +368,15 @@ The `expires` field is strict — past that date the PR job fails even if the ha
 - **Backend:** real Ollama `qwen3.5:4b`. The seed is derived from `github.run_number` so each nightly run samples a different slice of the mutator space.
 - **Gate:** the job fails if `tmp/fuzz/index.json` contains any `confirmed`-severity finding. `flaky`-severity findings are uploaded as artefacts and do not fail the build (they are leads, not regressions).
 - **Artefacts:** the full `tmp/fuzz/` tree uploads to `fuzz-nightly-findings-<run-id>` every run.
+
+### Hosted heartbeat tier — `.github/workflows/fuzz-hosted-heartbeat.yml`
+
+- **When:** daily schedule (`06:35 UTC`) and `workflow_dispatch`.
+- **Runner:** `macos-15` (GitHub-hosted).
+- **Budget:** bounded deterministic smoke campaigns: `--iterations 80` on `mock`, then `--iterations 80` on `chaos`.
+- **Backend:** `--backend mock` and `--backend chaos` only — no Ollama dependency and no self-hosted hardware.
+- **Gate:** advisory heartbeat only. The workflow is intentionally non-required; it is used to catch harness regressions/flakes between manual self-hosted runs.
+- **Artefacts:** uploads `tmp/fuzz/` to `fuzz-hosted-heartbeat-findings-<run-id>` on every run.
 
 ### Weekly tier — `.github/workflows/fuzz-weekly.yml`
 
