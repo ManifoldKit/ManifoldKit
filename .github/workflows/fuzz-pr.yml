@@ -23,6 +23,9 @@ concurrency:
   group: fuzz-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: macos-15
