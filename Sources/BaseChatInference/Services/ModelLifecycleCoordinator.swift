@@ -353,6 +353,10 @@ final class ModelLifecycleCoordinator {
         backend?.resetConversation()
     }
 
+    func secureWipe() {
+        backend?.secureWipe()
+    }
+
     // MARK: - Compatibility
 
     func compatibility(for modelType: ModelType) -> ModelCompatibilityResult {

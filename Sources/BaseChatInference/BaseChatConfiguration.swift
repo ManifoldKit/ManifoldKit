@@ -74,6 +74,25 @@ public struct BaseChatConfiguration: Sendable {
     /// namespace independently and don't want their fixtures reaped.
     public var keychainReaperEnabled: Bool
 
+    /// Opt-in flag for hardware-backed key wrapping via
+    /// ``SecureEnclaveKeyManager``.
+    ///
+    /// > Important: As of this release, no first-party BaseChatKit code path
+    /// > reads this flag — it is reserved for future framework wiring and for
+    /// > host apps that key their own SE-backed flows off a single setting.
+    /// > Apps that want SE-wrapped storage today should call
+    /// > ``SecureEnclaveKeyManager/shared`` directly and gate on this flag
+    /// > themselves.
+    ///
+    /// The SE is only available on physical devices; on simulators and
+    /// environments where the SE is unavailable,
+    /// ``SecureEnclaveKeyManager/isAvailable`` returns `false` and operations
+    /// gracefully throw ``SecureEnclaveError/notAvailable`` rather than
+    /// crashing.
+    ///
+    /// Defaults to `false` for conservative rollout.
+    public var useSecureEnclave: Bool
+
     /// Controls how ``PinnedSessionDelegate`` treats custom hosts that have no
     /// pins configured in ``PinnedSessionDelegate/pinnedHosts``.
     ///
@@ -96,7 +115,8 @@ public struct BaseChatConfiguration: Sendable {
         fileProtectionClass: FileProtectionType? = .completeUntilFirstUserAuthentication,
         sseStreamLimits: SSEStreamLimits = .default,
         keychainReaperEnabled: Bool = true,
-        customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault
+        customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault,
+        useSecureEnclave: Bool = false
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
@@ -106,6 +126,7 @@ public struct BaseChatConfiguration: Sendable {
         self.sseStreamLimits = sseStreamLimits
         self.keychainReaperEnabled = keychainReaperEnabled
         self.customHostTrustPolicy = customHostTrustPolicy
+        self.useSecureEnclave = useSecureEnclave
     }
 
     // MARK: - Derived identifiers

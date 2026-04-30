@@ -1156,6 +1156,31 @@ extension MLXBackend {
             invalidatePromptCacheLocked()
         }
     }
+
+    /// Evicts pooled Metal GPU buffers that may contain KV-cache residue from
+    /// prior inference turns.
+    ///
+    /// MLX does not expose an API to explicitly zero Metal `MTLBuffer` contents
+    /// after the fact; the best available measure is to evict all pooled buffers
+    /// via `Memory.clearCache()` so they are returned to the OS rather than
+    /// reused by the next request. This is the same call made by
+    /// ``unloadModel()``. The prompt-cache state is also invalidated so the next
+    /// ``generate(_:config:)`` call starts fresh.
+    ///
+    /// **Note**: this provides an eviction guarantee, NOT a zero guarantee. Any
+    /// residue in currently-active Metal allocations (e.g. mid-stream) is
+    /// not affected.
+    public func secureWipe() {
+        let hasRuntime = withStateLock { () -> Bool in
+            invalidatePromptCacheLocked()
+            return _hasInitializedRuntime
+        }
+        #if MLX
+        if hasRuntime {
+            Memory.clearCache()
+        }
+        #endif
+    }
 }
 
 // MARK: - StructuredHistoryReceiver

@@ -27,9 +27,9 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
     public let promptTemplate: PromptTemplate?
     /// One-line description for UI.
     public let description: String?
-    /// Companion multimodal projector filename, if this is a vision-capable model.
+    /// Companion multimodal projector filename to download from the same repo.
     ///
-    /// When non-nil, the download UI should fetch this file from the same ``repoID``
+    /// When non-nil, the downloader fetches `mmprojFileName` from ``repoID``
     /// alongside ``fileName``. Mirrors ``CuratedModel/mmprojFileName`` for curated entries.
     public let mmprojFileName: String?
 

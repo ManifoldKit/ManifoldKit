@@ -281,6 +281,41 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         return ephemeral
     }
 
+    /// Retrieves the API key as a zeroing ``SecureBytes`` buffer.
+    ///
+    /// On the Keychain path, this avoids allocating a transient Swift `String`
+    /// by using ``KeychainService/retrieveSecure(account:)``, which copies the
+    /// raw bytes directly into a ``SecureBytes`` buffer backed by `memset_s`
+    /// zeroing on deallocation.
+    ///
+    /// On the ephemeral path, the long-lived ``SecureBytes`` held by
+    /// ``_ephemeralAPIKey`` is buffer-copied into a fresh ``SecureBytes`` via
+    /// ``SecureBytes/init(copying:)`` — no transient Swift `String` is
+    /// materialized at any point, preserving the zeroing guarantee end-to-end.
+    ///
+    /// Returns `nil` when no key is configured.
+    package func resolveAPIKeySecure() -> SecureBytes? {
+        enum Plan {
+            case keychain(String)
+            case clone(SecureBytes)
+            case none
+        }
+        // Snapshot the ephemeral SecureBytes reference (or keychain account)
+        // under the lock. We retain the SecureBytes by reference rather than
+        // reading its bytes here so the buffer copy happens outside the lock,
+        // and we don't hold the lock across Keychain I/O.
+        let plan: Plan = withStateLock {
+            if let account = _keychainAccount { return .keychain(account) }
+            if let source = _ephemeralAPIKey { return .clone(source) }
+            return .none
+        }
+        switch plan {
+        case .keychain(let account): return KeychainService.retrieveSecure(account: account)
+        case .clone(let source):     return SecureBytes(copying: source)
+        case .none:                  return nil
+        }
+    }
+
     // MARK: - ConversationHistoryReceiver
 
     public func setConversationHistory(_ messages: [(role: String, content: String)]) {

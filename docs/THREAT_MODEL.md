@@ -98,9 +98,9 @@ considered hostile on the far side and what BCK validates as data crosses.
     `.standardized.path` prefix check.
   - 24-hour stale-temp sweep in `BackgroundDownloadManager.cleanupStaleTempFiles()`.
 - **Not mitigated:** macOS at-rest encryption is FileVault (out-of-process); BCK
-  does no extra sealing on macOS. KV-cache residue (asset 4) is not zeroed on
-  session switch (see [#714](https://github.com/roryford/BaseChatKit/issues/714)
-  Phase 5).
+  does no extra sealing on macOS. MLX Metal KV-cache buffers are evicted (not
+  zeroed) on session switch — explicit zeroing is not available via the current
+  MLX API. `LlamaBackend` zero-wipes KV tensors via `llama_memory_clear(mem, true)`.
 
 ### B3. Build time ↔ run time
 
@@ -187,13 +187,18 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
 
 - **Threat:** A debugger, a corrupt log dump, or a memory-mapped log harvests
   prompts, keys, or KV-cache state from the running process.
-- **Mitigations:** API keys read just-in-time (no stored properties);
+- **Mitigations:** API keys read just-in-time (no stored properties); on the
+  Keychain read path, secrets are wrapped in ``SecureBytes`` (a `memset_s`-backed
+  zeroing buffer) rather than a plain Swift `String`.
   `Log.*` calls use `privacy: .private` for credentials/prompts and `.public`
-  only for stable identifiers (host, file name, OSStatus).
+  only for stable identifiers (host, file name, OSStatus).  On session end or
+  `clearChat()`, `LlamaBackend.secureWipe()` zero-wipes KV tensor data; the
+  `SecureEnclaveKeyManager` provides hardware-backed P-256 key wrapping on
+  capable devices.
 - **Gaps:** `os_log` `.private` is enforced by Console redaction, not memory
   protection. Sysdiagnose with elevated entitlements recovers redacted strings.
-  Key zeroization on free is not implemented;
-  see [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5.
+  MLX Metal buffers cannot be explicitly zeroed via the current MLX Swift API —
+  `Memory.clearCache()` evicts pooled allocations but does not write zeros.
 
 ### Supply chain
 
@@ -280,9 +285,15 @@ scope.
   pinned by SwiftPM revision. Binary checksum pinning would defend against a
   compromised release tarball.
 - **Build-provenance attestation.** No SLSA-style attestation today.
-- **Secure Enclave / FIPS / key zeroization.** API keys are read into Swift `String`
-  for request signing; relying on ARC + Foundation/Security.framework zeroing on
-  free.
+- **Secure Enclave / FIPS / key zeroization.** *(Partially mitigated.)* The
+  Keychain read path now wraps secrets in ``SecureBytes`` (`memset_s` zeroing on
+  deallocation) rather than a plain Swift `String`.
+  ``SecureEnclaveKeyManager`` provides a hardware-backed P-256 SE keypair for
+  wrap/unwrap on capable devices (opt-in via `BaseChatConfiguration.useSecureEnclave`).
+  ``LlamaBackend.secureWipe()`` calls `llama_memory_clear(mem, true)` to zero KV
+  tensor data. **Remaining gap:** MLX Metal buffers cannot be explicitly zeroed via
+  the current MLX Swift API; `Memory.clearCache()` evicts pooled allocations but
+  does not guarantee zero-filling.
 - **SBOM.** No published Software Bill of Materials.
 - **GGUF signed-manifest verification.** Tracked separately at
   [#367](https://github.com/roryford/BaseChatKit/issues/367).

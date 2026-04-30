@@ -116,7 +116,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         guard baseURL != nil else {
             throw CloudBackendError.invalidURL("No base URL configured")
         }
-        guard let key = resolveAPIKey(), !key.isEmpty else {
+        guard let key = resolveAPIKeySecure(), !key.stringValue.isEmpty else {
             throw CloudBackendError.missingAPIKey
         }
         setIsModelLoaded(true)
@@ -133,9 +133,10 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         guard let baseURL else {
             throw CloudBackendError.invalidURL("No base URL configured")
         }
-        guard let apiKey = resolveAPIKey(), !apiKey.isEmpty else {
+        guard let apiKeySecure = resolveAPIKeySecure(), !apiKeySecure.stringValue.isEmpty else {
             throw CloudBackendError.missingAPIKey
         }
+        let apiKey = apiKeySecure.stringValue
 
         let messagesURL = baseURL.appendingPathComponent("v1/messages")
 

@@ -357,6 +357,22 @@ public final class InferenceService {
         lifecycle.resetConversation()
     }
 
+    /// Zeroes any KV-cache residue held by the active backend.
+    ///
+    /// Call after ``resetConversation()`` to close the window during which
+    /// prior-turn key/value tensors remain in process memory. Each backend
+    /// provides the best zeroing guarantee its runtime allows:
+    ///
+    /// - **LlamaBackend**: calls `llama_memory_clear(mem, true)` which zeros
+    ///   the actual KV tensor data (key and value matrices).
+    /// - **MLXBackend**: calls `Memory.clearCache()` to evict pooled Metal
+    ///   GPU buffers; explicit zeroing is not available via the current MLX API.
+    /// - **Cloud and Foundation backends**: no-op (secrets handled by
+    ///   ``SecureBytes`` on the keychain read path).
+    public func secureWipe() {
+        lifecycle.secureWipe()
+    }
+
     // MARK: - Tokenizer
 
     public var tokenizer: (any TokenizerProvider)? {

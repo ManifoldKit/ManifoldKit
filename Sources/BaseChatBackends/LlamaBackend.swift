@@ -473,6 +473,27 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         }
     }
 
+    /// Zeros the KV tensor data in the active llama.cpp context.
+    ///
+    /// Unlike ``resetConversation()``, which passes `false` to
+    /// `llama_memory_clear` (metadata-only clear), this passes `true` to
+    /// write zeros into the underlying key and value matrices. This closes the
+    /// window during which prior-session KV tensors remain in process memory.
+    ///
+    /// The KV state cache pointer is also nil-ed so the next
+    /// ``generate(_:config:)`` call starts with a fresh context.
+    public func secureWipe() {
+        let capturedContext = withStateLock { () -> OpaquePointer? in
+            sessionKVState = nil
+            return context
+        }
+        if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
+            // true = zero the actual KV tensor data (key + value matrices),
+            // not just the positional/sequence metadata.
+            llama_memory_clear(mem, true)
+        }
+    }
+
     public func unloadModel() {
         // Signal the decode loop to stop before acquiring stateLock. The atomic
         // write is visible to the background task immediately, so the loop can

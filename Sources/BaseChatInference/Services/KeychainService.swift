@@ -139,6 +139,34 @@ public enum KeychainService {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Retrieves an API key for the given account identifier, keeping the
+    /// secret in a zeroing ``SecureBytes`` buffer rather than a plain `String`.
+    ///
+    /// Prefer this over ``retrieve(account:)`` on any path that feeds directly
+    /// into an HTTP header or other security-sensitive context. The returned
+    /// ``SecureBytes`` value owns a `memset_s`-zeroed buffer; it does **not**
+    /// allocate a transient Swift `String` internally.
+    ///
+    /// Returns `nil` if the account is not found in the Keychain.
+    package static func retrieveSecure(account: String) -> SecureBytes? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess, let data = result as? Data else {
+            return nil
+        }
+
+        return SecureBytes(data)
+    }
+
     /// Deletes an API key for the given account identifier.
     ///
     /// `errSecItemNotFound` is treated as success — deleting something that

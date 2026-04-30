@@ -18,6 +18,7 @@ extension ChatViewModel {
 
         let selectionState = sessionController.activateSession(session)
         inferenceService.resetConversation()
+        inferenceService.secureWipe()
         inferenceService.selectedPromptTemplate = sessionController.selectedPromptTemplate
 
         // Discard any queued requests that belong to a different session.

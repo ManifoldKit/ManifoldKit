@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-import BaseChatInference
+@testable import BaseChatInference
 @testable import BaseChatBackends
 
 #if Ollama || CloudSaaS
