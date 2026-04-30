@@ -254,19 +254,14 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // install. We only need to verify model is loaded up front — the
         // captured pointers are accessed through the re-read, not these
         // outer locals.
-        guard isModelLoaded, context != nil, vocab != nil, model != nil else {
-            throw InferenceError.inferenceFailure("No model loaded")
-        }
-        guard !withStateLock({ isGenerating }) else {
-            throw InferenceError.alreadyGenerating
-        }
-
-        // Detect image parts in the current structured history.
-        // When an mmproj companion is staged, `supportsVision` is `true` so the
-        // coordinator routes image-bearing turns here. Actual multimodal decoding
-        // requires CLIP / mtmd C APIs not present in the bundled xcframework
-        // (mattt/llama.swift 2.8772.0, llama.cpp build b8772). Throw a clear,
-        // actionable error until a future xcframework upgrade adds those headers.
+        // Reject image-bearing turns before any other state check so the caller
+        // gets the actionable xcframework-limitation message regardless of
+        // whether a model happens to be loaded. The check is independent of
+        // model state — it only inspects the structured history we cached
+        // from the coordinator. CLIP / mtmd C APIs are not present in the
+        // bundled xcframework (mattt/llama.swift 2.8772.0, llama.cpp build
+        // b8772); upgrading to a build that exposes clip.h / mtmd.h will
+        // unblock real image embedding.
         let history = withStateLock { _structuredHistory }
         let hasImageParts = history.contains { msg in
             msg.parts.contains {
@@ -281,6 +276,13 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
                 + "clip.h / mtmd.h. Upgrade the LlamaSwift dependency to a build that "
                 + "exposes those headers to enable image token embedding."
             )
+        }
+
+        guard isModelLoaded, context != nil, vocab != nil, model != nil else {
+            throw InferenceError.inferenceFailure("No model loaded")
+        }
+        guard !withStateLock({ isGenerating }) else {
+            throw InferenceError.alreadyGenerating
         }
 
         // Tokenize up front (pure vocab lookup — doesn't touch context KV
@@ -468,27 +470,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // positional state is gone before the next turn decodes from position 0.
         if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
             llama_memory_clear(mem, false)
-        }
-    }
-
-    /// Zeros the KV tensor data in the active llama.cpp context.
-    ///
-    /// Unlike ``resetConversation()``, which passes `false` to
-    /// `llama_memory_clear` (metadata-only clear), this passes `true` to
-    /// write zeros into the underlying key and value matrices. This closes the
-    /// window during which prior-session KV tensors remain in process memory.
-    ///
-    /// The KV state cache pointer is also nil-ed so the next
-    /// ``generate(_:config:)`` call starts with a fresh context.
-    public func secureWipe() {
-        let capturedContext = withStateLock { () -> OpaquePointer? in
-            sessionKVState = nil
-            return context
-        }
-        if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
-            // true = zero the actual KV tensor data (key + value matrices),
-            // not just the positional/sequence metadata.
-            llama_memory_clear(mem, true)
         }
     }
 

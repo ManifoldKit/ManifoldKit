@@ -983,10 +983,8 @@ final class LlamaBackendTests: XCTestCase {
 
     func test_generate_withImageParts_throwsInferenceFailure() {
         let backend = LlamaBackend()
-        // Stage an mmproj URL so the backend advertises supportsVision = true.
         backend.setMmprojURL(URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf"))
 
-        // Feed a structured history that contains an image part.
         let imageData = Data([0xFF, 0xD8, 0xFF]) // JPEG magic bytes
         let history: [StructuredMessage] = [
             StructuredMessage(role: "user", parts: [
@@ -996,28 +994,22 @@ final class LlamaBackendTests: XCTestCase {
         ]
         backend.setStructuredHistory(history)
 
-        // generate() should throw immediately — no model is loaded, so we'll
-        // hit the "No model loaded" guard first. Force-load the check by
-        // injecting a model-loaded workaround is not possible without a real
-        // GGUF. We verify the image-part rejection in the integration path
-        // indirectly: the structured history is cached and the guard fires
-        // before `isModelLoaded` in the image check.
-        //
-        // To confirm the image guard message specifically, use a sabotage check:
-        // comment out the image-part throw and verify the test fails.
+        // The image guard runs before the model-loaded guard so a caller hits
+        // the actionable xcframework-limitation message even when no model is
+        // loaded. Asserting on the message text proves we hit the image guard
+        // and not the generic "No model loaded" path.
         XCTAssertThrowsError(
             try backend.generate(prompt: "Describe this image:", systemPrompt: nil, config: GenerationConfig())
         ) { error in
-            guard let inferenceError = error as? InferenceError else {
-                XCTFail("Expected InferenceError, got \(error)")
+            guard let inferenceError = error as? InferenceError,
+                  case let .inferenceFailure(message) = inferenceError else {
+                XCTFail("Expected InferenceError.inferenceFailure, got \(error)")
                 return
             }
-            if case .inferenceFailure = inferenceError {
-                // Expected — either "No model loaded" (model guard fires first on unloaded
-                // backend) or the xcframework-limitation message (model guard passes).
-            } else {
-                XCTFail("Expected inferenceFailure, got \(inferenceError)")
-            }
+            XCTAssertTrue(message.contains("multimodal image inference is not yet available"),
+                          "expected image-guard message, got: \(message)")
+            XCTAssertTrue(message.contains("clip.h"),
+                          "error message must reference the missing headers so a developer knows the fix")
         }
     }
 }
