@@ -184,18 +184,3 @@ public protocol TokenCountingBackend: AnyObject {
     ///   or if tokenization fails (e.g., vocabulary is unavailable).
     func countTokens(_ text: String) throws -> Int
 }
-
-/// Adopted by local backends that support a multimodal projector (mmproj) companion file.
-///
-/// ``ModelLifecycleCoordinator`` calls ``setMmprojURL(_:)`` with the URL from
-/// ``ModelInfo/mmprojURL`` before each ``InferenceBackend/loadModel(from:plan:)`` call.
-/// Conformers that receive a non-nil URL should set ``BackendCapabilities/supportsVision``
-/// to `true` in their `capabilities` implementation.
-///
-/// - Note: Passing `nil` clears the projector, returning the backend to text-only mode.
-///   ``ModelLifecycleCoordinator`` always calls this before load so the projector state
-///   stays in sync with the loaded model file.
-public protocol MultimodalProjectorConfigurable: AnyObject {
-    /// Sets (or clears) the mmproj companion file URL for the next ``InferenceBackend/loadModel(from:plan:)`` call.
-    func setMmprojURL(_ url: URL?)
-}

@@ -19,17 +19,6 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     public let fileSize: UInt64
     public let modelType: ModelType
 
-    // MARK: - Multimodal
-
-    /// URL of the mmproj (multimodal projector) companion file, when present alongside the main GGUF.
-    ///
-    /// Populated automatically by ``init(ggufURL:)`` when a `mmproj*.gguf` sibling is found in
-    /// the same directory. Backends that conform to ``MultimodalProjectorConfigurable`` receive
-    /// this URL from ``ModelLifecycleCoordinator`` before ``InferenceBackend/loadModel(from:plan:)``.
-    ///
-    /// `nil` for text-only models and for non-GGUF model types.
-    public var mmprojURL: URL?
-
     // MARK: - GGUF Metadata (populated for .gguf models)
 
     /// The prompt template detected from GGUF metadata (chat template or architecture).
@@ -126,22 +115,6 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
 
         // Static tier estimate; may be upgraded by a benchmark result later.
         self.capabilityTier = ModelCapabilityTier.estimate(from: self)
-
-        // Auto-detect a companion mmproj file in the same directory.
-        // Only scans when the model filename does not start with "mmproj" so
-        // projector files don't try to find their own companion.
-        if !url.lastPathComponent.lowercased().hasPrefix("mmproj") {
-            let parentDir = url.deletingLastPathComponent()
-            let candidates = (try? FileManager.default.contentsOfDirectory(
-                at: parentDir,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )) ?? []
-            self.mmprojURL = candidates.first {
-                $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
-                $0.pathExtension.lowercased() == "gguf"
-            }
-        }
     }
 
     // MARK: - MLX Initializer
@@ -214,7 +187,6 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         url: URL,
         fileSize: UInt64,
         modelType: ModelType,
-        mmprojURL: URL? = nil,
         detectedPromptTemplate: PromptTemplate? = nil,
         detectedContextLength: Int? = nil,
         modelArchitecture: String? = nil,
@@ -229,7 +201,6 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.url = url
         self.fileSize = fileSize
         self.modelType = modelType
-        self.mmprojURL = mmprojURL
         self.detectedPromptTemplate = detectedPromptTemplate
         self.detectedContextLength = detectedContextLength
         self.modelArchitecture = modelArchitecture

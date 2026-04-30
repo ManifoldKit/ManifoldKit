@@ -43,7 +43,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
-        let hasMMProj = withStateLock { _mmprojURL != nil }
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
         return BackendCapabilities(
@@ -62,8 +61,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             isRemote: false,
             supportsKVCachePersistence: true,
             supportsGrammarConstrainedSampling: true,
-            supportsThinking: true,
-            supportsVision: hasMMProj
+            supportsThinking: true
         )
     }
 
@@ -89,23 +87,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     /// Guarded by `stateLock`. Set by `setLoadProgressHandler(_:)` before each load.
     private var _loadProgressHandler: (@Sendable (Double) async -> Void)?
-
-    // MARK: - Multimodal Projector
-
-    /// URL of the mmproj companion file, set by ``MultimodalProjectorConfigurable`` before each load.
-    ///
-    /// Guarded by `stateLock`. Non-nil when a vision-capable model's projector is staged for load.
-    /// Cleared by ``unloadModel()``. When non-nil, ``capabilities`` advertises `supportsVision = true`.
-    ///
-    /// - Note: The bundled mattt/llama.swift 2.8772.0 (llama.cpp build b8772) does not expose
-    ///   the CLIP / mmproj C APIs (`clip.h`, `mtmd.h`). The URL is stored so `supportsVision`
-    ///   accurately reflects the projector's presence for model-selection UI; actual image token
-    ///   embedding will be wired when the xcframework is upgraded to a build that includes those headers.
-    private var _mmprojURL: URL?
-
-    /// Structured history set by ``StructuredHistoryReceiver``. Guarded by `stateLock`.
-    /// Used in ``generate(prompt:systemPrompt:config:)`` to detect image parts in the current turn.
-    private var _structuredHistory: [StructuredMessage] = []
 
     /// Owns the serialized model-load path and the C-level parameter/progress-callback bridging.
     private let modelLoader = LlamaModelLoader()
@@ -283,28 +264,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         }
         guard !withStateLock({ isGenerating }) else {
             throw InferenceError.alreadyGenerating
-        }
-
-        // Detect image parts in the current structured history.
-        // When an mmproj companion is staged, `supportsVision` is `true` so the
-        // coordinator routes image-bearing turns here. Actual multimodal decoding
-        // requires CLIP / mtmd C APIs not present in the bundled xcframework
-        // (mattt/llama.swift 2.8772.0, llama.cpp build b8772). Throw a clear,
-        // actionable error until a future xcframework upgrade adds those headers.
-        let history = withStateLock { _structuredHistory }
-        let hasImageParts = history.contains { msg in
-            msg.parts.contains {
-                if case .image = $0 { return true }
-                return false
-            }
-        }
-        if hasImageParts {
-            throw InferenceError.inferenceFailure(
-                "LlamaBackend: multimodal image inference is not yet available. "
-                + "The vendored llama.cpp xcframework (build b8772) does not include "
-                + "clip.h / mtmd.h. Upgrade the LlamaSwift dependency to a build that "
-                + "exposes those headers to enable image token embedding."
-            )
         }
 
         // Tokenize up front (pure vocab lookup — doesn't touch context KV
@@ -541,8 +500,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         isGenerating = false
         sessionKVState = nil
         _autoDetectedThinkingMarkers = nil
-        _mmprojURL = nil
-        _structuredHistory = []
         stateLock.unlock()
 
         capturedTask?.cancel()
@@ -670,30 +627,6 @@ extension LlamaBackend: TokenCountingBackend {
             throw InferenceError.inferenceFailure("countTokens: llama_tokenize failed for text of length \(text.utf8.count)")
         }
         return text.isEmpty ? 0 : Int(count)
-    }
-}
-
-// MARK: - MultimodalProjectorConfigurable
-
-extension LlamaBackend: MultimodalProjectorConfigurable {
-    /// Stages the mmproj companion URL before the next ``loadModel(from:plan:)`` call.
-    ///
-    /// Called by ``ModelLifecycleCoordinator`` with ``ModelInfo/mmprojURL`` before loading.
-    /// When non-nil, ``capabilities`` advertises `supportsVision = true` so the coordinator
-    /// routes image-bearing turns to this backend. Actual image embedding requires a future
-    /// xcframework upgrade — see the comment on ``_mmprojURL``.
-    public func setMmprojURL(_ url: URL?) {
-        withStateLock { _mmprojURL = url }
-    }
-}
-
-// MARK: - StructuredHistoryReceiver
-
-extension LlamaBackend: StructuredHistoryReceiver {
-    /// Caches the structured conversation history so ``generate(prompt:systemPrompt:config:)``
-    /// can detect image parts and surface a clear error when they are present.
-    public func setStructuredHistory(_ messages: [StructuredMessage]) {
-        withStateLock { _structuredHistory = messages }
     }
 }
 #endif
