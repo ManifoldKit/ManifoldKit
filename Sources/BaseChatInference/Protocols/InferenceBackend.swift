@@ -418,8 +418,23 @@ public protocol InferenceBackend: AnyObject, Sendable {
     /// Backends that maintain multi-turn conversation history (e.g. Foundation)
     /// should clear it here. The default implementation is a no-op.
     func resetConversation()
+
+    /// Zeroes any in-memory KV-cache residue produced by previous inference
+    /// calls on this backend.
+    ///
+    /// The default implementation is a no-op. Backends that hold hot KV state
+    /// between turns (``LlamaBackend``, ``MLXBackend``) override this to
+    /// scrub the residue as best the underlying runtime allows.
+    ///
+    /// Call this:
+    /// - Immediately after ``resetConversation()`` on a session clear.
+    /// - When switching away from a session (before loading the next session's
+    ///   context), so the previous turn's data does not persist in the KV
+    ///   buffers.
+    func secureWipe()
 }
 
 extension InferenceBackend {
     public func resetConversation() {}
+    public func secureWipe() {}
 }

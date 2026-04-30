@@ -74,6 +74,21 @@ public struct BaseChatConfiguration: Sendable {
     /// namespace independently and don't want their fixtures reaped.
     public var keychainReaperEnabled: Bool
 
+    /// Controls whether ``SecureEnclaveKeyManager`` is used for hardware-backed
+    /// key wrapping.
+    ///
+    /// When `true`, the framework will attempt to use the Secure Enclave (via
+    /// ``SecureEnclaveKeyManager``) for additional key-protection operations.
+    /// The SE is only available on physical devices; on simulators and
+    /// environments where the SE is unavailable,
+    /// ``SecureEnclaveKeyManager/isAvailable`` returns `false` and operations
+    /// gracefully throw ``SecureEnclaveError/notAvailable`` rather than
+    /// crashing.
+    ///
+    /// Defaults to `false` for conservative rollout. Enable in deployments that
+    /// require hardware-attested key binding.
+    public var useSecureEnclave: Bool
+
     /// Controls how ``PinnedSessionDelegate`` treats custom hosts that have no
     /// pins configured in ``PinnedSessionDelegate/pinnedHosts``.
     ///
@@ -96,7 +111,8 @@ public struct BaseChatConfiguration: Sendable {
         fileProtectionClass: FileProtectionType? = .completeUntilFirstUserAuthentication,
         sseStreamLimits: SSEStreamLimits = .default,
         keychainReaperEnabled: Bool = true,
-        customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault
+        customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault,
+        useSecureEnclave: Bool = false
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
@@ -106,6 +122,7 @@ public struct BaseChatConfiguration: Sendable {
         self.sseStreamLimits = sseStreamLimits
         self.keychainReaperEnabled = keychainReaperEnabled
         self.customHostTrustPolicy = customHostTrustPolicy
+        self.useSecureEnclave = useSecureEnclave
     }
 
     // MARK: - Derived identifiers

@@ -274,6 +274,11 @@ extension ChatViewModel {
             stopGeneration()
         }
 
+        // Reset the inference context and wipe any KV-cache residue so
+        // prior-session key/value tensors do not linger in process memory.
+        inferenceService.resetConversation()
+        inferenceService.secureWipe()
+
         // Cancel any in-flight post-generation background tasks.
         backgroundTask?.cancel()
         backgroundTask = nil
