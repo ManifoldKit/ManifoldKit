@@ -125,6 +125,62 @@ public struct EditInput: Sendable {
     }
 }
 
+// MARK: - Branch input
+
+/// Input for ``ConversationRuntime/branch(_:)``.
+///
+/// Forks a conversation at a chosen message. The runtime copies messages from
+/// `sourceSessionID` up to and including `branchMessageID` into a new session
+/// identified by `newSessionID`, then optionally triggers a generation turn on
+/// the new session if the last copied message is a user message.
+public struct BranchInput: Sendable {
+    /// The session to fork from.
+    public let sourceSessionID: UUID
+    /// The message to branch at (inclusive — this message is copied into the
+    /// new session).
+    public let branchMessageID: UUID
+    /// The caller-supplied ID for the new session.
+    public let newSessionID: UUID
+    /// Title for the new session. `nil` preserves the source session's title.
+    public let newSessionTitle: String?
+    /// When `true` and the last copied message is `.user`, the runtime
+    /// triggers a generation turn on the new session after copying.
+    public let generateAfterBranch: Bool
+    // Generation knobs — only used when generateAfterBranch == true.
+    public let systemPrompt: String?
+    public let temperature: Float
+    public let topP: Float
+    public let repeatPenalty: Float
+    public let maxOutputTokens: Int?
+    public let maxThinkingTokens: Int?
+
+    public init(
+        sourceSessionID: UUID,
+        branchMessageID: UUID,
+        newSessionID: UUID = UUID(),
+        newSessionTitle: String? = nil,
+        generateAfterBranch: Bool = false,
+        systemPrompt: String? = nil,
+        temperature: Float = 0.7,
+        topP: Float = 0.9,
+        repeatPenalty: Float = 1.1,
+        maxOutputTokens: Int? = 2048,
+        maxThinkingTokens: Int? = nil
+    ) {
+        self.sourceSessionID = sourceSessionID
+        self.branchMessageID = branchMessageID
+        self.newSessionID = newSessionID
+        self.newSessionTitle = newSessionTitle
+        self.generateAfterBranch = generateAfterBranch
+        self.systemPrompt = systemPrompt
+        self.temperature = temperature
+        self.topP = topP
+        self.repeatPenalty = repeatPenalty
+        self.maxOutputTokens = maxOutputTokens
+        self.maxThinkingTokens = maxThinkingTokens
+    }
+}
+
 // MARK: - Stream handle
 
 /// Identifier for an in-flight runtime stream.
@@ -454,6 +510,91 @@ public final class ConversationRuntime: Sendable {
         return handle
     }
 
+    /// Forks a conversation at a chosen message, creating a new session with
+    /// the messages up to and including the branch point copied in.
+    ///
+    /// Returns a ``ConversationStreamHandle`` when `generateAfterBranch` is
+    /// `true` and the last copied message is `.user`; returns `nil` otherwise.
+    /// Setup failures (branch point not found, persistence errors) throw
+    /// synchronously before any task is launched; generation failures after
+    /// the task is launched route to ``ConversationEvent/errorRaised(_:)``.
+    @discardableResult
+    public func branch(_ input: BranchInput) async throws -> ConversationStreamHandle? {
+        // Fetch source history synchronously so callers observe ordering:
+        // `.sessionBranched` fires before `branch` returns.
+        let sourceHistory: [ChatMessageRecord]
+        do {
+            sourceHistory = try await fetchMessages(sessionID: input.sourceSessionID)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+
+        // Find the branch point and slice history up to and including it.
+        guard let branchIndex = sourceHistory.firstIndex(where: { $0.id == input.branchMessageID }) else {
+            throw ConversationError.messageNotFound(input.branchMessageID)
+        }
+        let slice = Array(sourceHistory[...branchIndex])
+
+        // Derive the new session's title from the source session when the
+        // caller didn't supply one. A title-fetch failure must not abort the
+        // branch — the session insert below still runs with the fallback —
+        // but the failure is logged so it isn't silently lost.
+        let newSessionTitle: String
+        if let supplied = input.newSessionTitle {
+            newSessionTitle = supplied
+        } else if let sessionStore {
+            let sessions: [ChatSessionRecord]
+            do {
+                sessions = try await sessionStore.fetchSessions()
+            } catch {
+                Log.persistence.warning(
+                    "ConversationRuntime.branch: title lookup failed: \(error.localizedDescription); using fallback title"
+                )
+                sessions = []
+            }
+            newSessionTitle = sessions.first(where: { $0.id == input.sourceSessionID })?.title ?? "New Chat"
+        } else {
+            newSessionTitle = "New Chat"
+        }
+
+        let newSession = ChatSessionRecord(id: input.newSessionID, title: newSessionTitle)
+        if let sessionStore {
+            do {
+                try await insertSession(sessionStore: sessionStore, session: newSession)
+            } catch {
+                throw ConversationError.persistence(error)
+            }
+        }
+
+        // Copy messages into the new session with fresh IDs and updated sessionID.
+        for original in slice {
+            let copy = ChatMessageRecord(
+                role: original.role,
+                contentParts: original.contentParts,
+                timestamp: original.timestamp,
+                sessionID: input.newSessionID
+            )
+            do {
+                try await insertMessage(copy)
+            } catch {
+                throw ConversationError.persistence(error)
+            }
+        }
+
+        emit(.sessionBranched(newSessionID: input.newSessionID, copiedCount: slice.count))
+
+        // Optionally trigger generation on the new session.
+        guard input.generateAfterBranch, slice.last?.role == .user else {
+            return nil
+        }
+
+        let handle = ConversationStreamHandle()
+        Task.detached { [self] in
+            await runBranchGenerationTurn(input: input, branchedHistory: slice, handle: handle)
+        }
+        return handle
+    }
+
     // MARK: Send turn
 
     private func runSendTurn(
@@ -538,6 +679,37 @@ public final class ConversationRuntime: Sendable {
         // `prompt: nil` — same as regenerate; no new user-supplied text.
         await runGenerationTurn(
             sessionID: input.sessionID,
+            userPrompt: nil,
+            history: history,
+            systemPrompt: input.systemPrompt,
+            temperature: input.temperature,
+            topP: input.topP,
+            repeatPenalty: input.repeatPenalty,
+            maxOutputTokens: input.maxOutputTokens,
+            maxThinkingTokens: input.maxThinkingTokens,
+            handle: handle
+        )
+    }
+
+    // MARK: Branch generation turn
+
+    private func runBranchGenerationTurn(
+        input: BranchInput,
+        branchedHistory: [ChatMessageRecord],
+        handle: ConversationStreamHandle
+    ) async {
+        // Re-fetch from the new session so the history reflects the persisted
+        // copies with their new IDs and sessionID.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.newSessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+
+        await runGenerationTurn(
+            sessionID: input.newSessionID,
             userPrompt: nil,
             history: history,
             systemPrompt: input.systemPrompt,
@@ -810,6 +982,11 @@ public final class ConversationRuntime: Sendable {
     @MainActor
     private func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
         try await messageStore.fetchMessages(for: sessionID)
+    }
+
+    @MainActor
+    private func insertSession(sessionStore: any SessionStore, session: ChatSessionRecord) async throws {
+        try await sessionStore.insertSession(session)
     }
 
     @MainActor

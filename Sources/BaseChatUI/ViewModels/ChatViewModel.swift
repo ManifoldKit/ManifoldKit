@@ -495,6 +495,26 @@ public final class ChatViewModel {
         set { loadCoordinator.progressBridgeMinTransitionInterval = newValue }
     }
 
+    // MARK: - ConversationRuntime Adapter
+
+    /// Optional reference runtime. When non-nil, send/regenerate/edit/cancel
+    /// delegate to it and the event drain task maps ConversationEvent back to
+    /// @Observable state. When nil, the existing GenerationCoordinator path
+    /// runs unchanged.
+    ///
+    /// Internal (not private) so that extensions in sibling files within this
+    /// module can read it. The setter stays internal — external callers use
+    /// ``configure(conversationRuntime:)``.
+    var conversationRuntime: ConversationRuntime?
+
+    /// Drain task for the runtime event stream. Cancelled when the runtime
+    /// is replaced or the view model is torn down.
+    @ObservationIgnored
+    private var runtimeEventDrainTask: Task<Void, Never>?
+
+    /// Handle to the in-flight ConversationRuntime stream, used to cancel it.
+    var activeConversationStreamHandle: ConversationStreamHandle?
+
     // MARK: - Private State
 
     /// Token for the currently active generation request, if any.
@@ -731,6 +751,34 @@ public final class ChatViewModel {
     /// genuinely separate stores can pass a small composed adapter.
     public func configure(persistence: any SessionStore & MessageStore) {
         sessionController.configure(persistence: persistence)
+    }
+
+    /// Wires an optional ``ConversationRuntime`` as the send/regenerate/edit/cancel
+    /// delegate for this view model.
+    ///
+    /// When a runtime is configured, ``sendMessage()``, ``regenerateLastResponse()``,
+    /// ``editMessage(_:newContent:)``, and ``stopGeneration()`` route through it
+    /// instead of ``GenerationCoordinator``. A long-lived event-drain task maps
+    /// ``ConversationEvent`` values back to `@Observable` state on `@MainActor`.
+    ///
+    /// Calling this method a second time cancels the prior drain task and replaces
+    /// the runtime. Pass `nil` explicitly (via the private path) to revert to the
+    /// ``GenerationCoordinator`` path — the public API only supports setting a runtime,
+    /// not clearing one, to avoid accidental reversion after bootstrap.
+    public func configure(conversationRuntime runtime: ConversationRuntime) {
+        runtimeEventDrainTask?.cancel()
+        conversationRuntime = runtime
+        // `[weak self]` plus a per-iteration `guard let self` — hoisting the
+        // `guard` outside the `for-await` upgrades `self` to strong for the
+        // task's lifetime, which retains the view model until the runtime's
+        // continuation finishes (i.e. forever in normal use). Re-checking
+        // each iteration lets the view model deallocate between events.
+        runtimeEventDrainTask = Task { [weak self] in
+            for await event in runtime.events {
+                guard let self else { return }
+                await self.handle(runtimeEvent: event)
+            }
+        }
     }
 
     // MARK: - Structured Error Surfacing
