@@ -4,9 +4,11 @@ import BaseChatInference
 // MARK: - Send input
 //
 // PR-A ships the ``send`` sub-flow. Regenerate lands in PR-B; edit lands in
-// PR-C. Each sub-flow has its own input type and command method; all three
-// share the ``runGenerationTurn`` private helper for the generation inner
-// loop (context assembly → enqueue → drain → finalise).
+// PR-C; branch lands in PR-D. PR-E absorbs token batching, thinking-block
+// disclosure, loop detection, and tool dispatch into ``runGenerationTurn``.
+// Each sub-flow has its own input type and command method; all four share
+// the ``runGenerationTurn`` private helper for the generation inner loop
+// (context assembly → enqueue → drain → finalise).
 
 /// Input for ``ConversationRuntime/send(_:)``.
 ///
@@ -25,6 +27,11 @@ public struct SendInput: Sendable {
     public let repeatPenalty: Float
     public let maxOutputTokens: Int?
     public let maxThinkingTokens: Int?
+    public let streamingUpdateInterval: Duration
+    public let streamingBatchCharacterLimit: Int
+    public let thinkingStreamingUpdateInterval: Duration
+    public let thinkingStreamingBatchCharacterLimit: Int
+    public let loopDetectionEnabled: Bool
 
     public init(
         sessionID: UUID,
@@ -34,7 +41,12 @@ public struct SendInput: Sendable {
         topP: Float = 0.9,
         repeatPenalty: Float = 1.1,
         maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil
+        maxThinkingTokens: Int? = nil,
+        streamingUpdateInterval: Duration = .milliseconds(33),
+        streamingBatchCharacterLimit: Int = 128,
+        thinkingStreamingUpdateInterval: Duration = .milliseconds(33),
+        thinkingStreamingBatchCharacterLimit: Int = 128,
+        loopDetectionEnabled: Bool = true
     ) {
         self.sessionID = sessionID
         self.userText = userText
@@ -44,6 +56,11 @@ public struct SendInput: Sendable {
         self.repeatPenalty = repeatPenalty
         self.maxOutputTokens = maxOutputTokens
         self.maxThinkingTokens = maxThinkingTokens
+        self.streamingUpdateInterval = streamingUpdateInterval
+        self.streamingBatchCharacterLimit = streamingBatchCharacterLimit
+        self.thinkingStreamingUpdateInterval = thinkingStreamingUpdateInterval
+        self.thinkingStreamingBatchCharacterLimit = thinkingStreamingBatchCharacterLimit
+        self.loopDetectionEnabled = loopDetectionEnabled
     }
 }
 
@@ -62,6 +79,11 @@ public struct RegenerateInput: Sendable {
     public let repeatPenalty: Float
     public let maxOutputTokens: Int?
     public let maxThinkingTokens: Int?
+    public let streamingUpdateInterval: Duration
+    public let streamingBatchCharacterLimit: Int
+    public let thinkingStreamingUpdateInterval: Duration
+    public let thinkingStreamingBatchCharacterLimit: Int
+    public let loopDetectionEnabled: Bool
 
     public init(
         sessionID: UUID,
@@ -70,7 +92,12 @@ public struct RegenerateInput: Sendable {
         topP: Float = 0.9,
         repeatPenalty: Float = 1.1,
         maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil
+        maxThinkingTokens: Int? = nil,
+        streamingUpdateInterval: Duration = .milliseconds(33),
+        streamingBatchCharacterLimit: Int = 128,
+        thinkingStreamingUpdateInterval: Duration = .milliseconds(33),
+        thinkingStreamingBatchCharacterLimit: Int = 128,
+        loopDetectionEnabled: Bool = true
     ) {
         self.sessionID = sessionID
         self.systemPrompt = systemPrompt
@@ -79,6 +106,11 @@ public struct RegenerateInput: Sendable {
         self.repeatPenalty = repeatPenalty
         self.maxOutputTokens = maxOutputTokens
         self.maxThinkingTokens = maxThinkingTokens
+        self.streamingUpdateInterval = streamingUpdateInterval
+        self.streamingBatchCharacterLimit = streamingBatchCharacterLimit
+        self.thinkingStreamingUpdateInterval = thinkingStreamingUpdateInterval
+        self.thinkingStreamingBatchCharacterLimit = thinkingStreamingBatchCharacterLimit
+        self.loopDetectionEnabled = loopDetectionEnabled
     }
 }
 
@@ -101,6 +133,11 @@ public struct EditInput: Sendable {
     public let repeatPenalty: Float
     public let maxOutputTokens: Int?
     public let maxThinkingTokens: Int?
+    public let streamingUpdateInterval: Duration
+    public let streamingBatchCharacterLimit: Int
+    public let thinkingStreamingUpdateInterval: Duration
+    public let thinkingStreamingBatchCharacterLimit: Int
+    public let loopDetectionEnabled: Bool
 
     public init(
         sessionID: UUID,
@@ -111,7 +148,12 @@ public struct EditInput: Sendable {
         topP: Float = 0.9,
         repeatPenalty: Float = 1.1,
         maxOutputTokens: Int? = 2048,
-        maxThinkingTokens: Int? = nil
+        maxThinkingTokens: Int? = nil,
+        streamingUpdateInterval: Duration = .milliseconds(33),
+        streamingBatchCharacterLimit: Int = 128,
+        thinkingStreamingUpdateInterval: Duration = .milliseconds(33),
+        thinkingStreamingBatchCharacterLimit: Int = 128,
+        loopDetectionEnabled: Bool = true
     ) {
         self.sessionID = sessionID
         self.messageID = messageID
@@ -122,6 +164,11 @@ public struct EditInput: Sendable {
         self.repeatPenalty = repeatPenalty
         self.maxOutputTokens = maxOutputTokens
         self.maxThinkingTokens = maxThinkingTokens
+        self.streamingUpdateInterval = streamingUpdateInterval
+        self.streamingBatchCharacterLimit = streamingBatchCharacterLimit
+        self.thinkingStreamingUpdateInterval = thinkingStreamingUpdateInterval
+        self.thinkingStreamingBatchCharacterLimit = thinkingStreamingBatchCharacterLimit
+        self.loopDetectionEnabled = loopDetectionEnabled
     }
 }
 
@@ -263,16 +310,15 @@ actor InFlightStreamRegistry {
 /// (`ChatViewModel`-shaped consumers). The stream is unbounded — adapters
 /// must drain it on a long-lived task or the buffer grows.
 ///
-/// ## Scope (PR-C)
+/// ## Scope (PR-E)
 ///
 /// PR-A ships the scaffolding plus the ``send(_:)`` sub-flow. PR-B adds
 /// ``regenerate(_:)``. PR-C adds ``edit(_:)`` and extracts a shared
-/// ``runGenerationTurn`` helper that all three sub-flows delegate the
-/// generation inner loop to. Branch / other sub-flows ship in later PRs.
-/// None of these PRs absorb the streaming-token batcher, thinking-block
-/// disclosure, loop detection, or tool-dispatch loop from
-/// `GenerationCoordinator`; those stay on the `ChatViewModel` adapter for
-/// now and migrate into the runtime in follow-up PRs.
+/// ``runGenerationTurn`` helper. PR-D adds ``branch(_:)``. PR-E absorbs
+/// the streaming-token batcher, thinking-block disclosure, loop detection,
+/// and tool-dispatch loop from `GenerationCoordinator` into
+/// ``runGenerationTurn`` so all four sub-flows share the same rich
+/// streaming behaviour.
 public final class ConversationRuntime: Sendable {
 
     // MARK: Ports
@@ -625,6 +671,11 @@ public final class ConversationRuntime: Sendable {
             repeatPenalty: input.repeatPenalty,
             maxOutputTokens: input.maxOutputTokens,
             maxThinkingTokens: input.maxThinkingTokens,
+            streamingUpdateInterval: input.streamingUpdateInterval,
+            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: input.loopDetectionEnabled,
             handle: handle
         )
     }
@@ -655,6 +706,11 @@ public final class ConversationRuntime: Sendable {
             repeatPenalty: input.repeatPenalty,
             maxOutputTokens: input.maxOutputTokens,
             maxThinkingTokens: input.maxThinkingTokens,
+            streamingUpdateInterval: input.streamingUpdateInterval,
+            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: input.loopDetectionEnabled,
             handle: handle
         )
     }
@@ -687,6 +743,11 @@ public final class ConversationRuntime: Sendable {
             repeatPenalty: input.repeatPenalty,
             maxOutputTokens: input.maxOutputTokens,
             maxThinkingTokens: input.maxThinkingTokens,
+            streamingUpdateInterval: input.streamingUpdateInterval,
+            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: input.loopDetectionEnabled,
             handle: handle
         )
     }
@@ -708,6 +769,8 @@ public final class ConversationRuntime: Sendable {
             return
         }
 
+        // BranchInput does not carry streaming/loop knobs; use defaults
+        // matching GenerationCoordinator's current behaviour.
         await runGenerationTurn(
             sessionID: input.newSessionID,
             userPrompt: nil,
@@ -718,16 +781,21 @@ public final class ConversationRuntime: Sendable {
             repeatPenalty: input.repeatPenalty,
             maxOutputTokens: input.maxOutputTokens,
             maxThinkingTokens: input.maxThinkingTokens,
+            streamingUpdateInterval: .milliseconds(33),
+            streamingBatchCharacterLimit: 128,
+            thinkingStreamingUpdateInterval: .milliseconds(33),
+            thinkingStreamingBatchCharacterLimit: 128,
+            loopDetectionEnabled: true,
             handle: handle
         )
     }
 
     // MARK: Shared generation inner loop
     //
-    // All three turn methods (send, regenerate, edit) converge here after
-    // their respective setup steps. The caller is responsible for fetching
-    // a clean `history` slice; this method owns context assembly → enqueue
-    // → drain → finalise.
+    // All four turn methods (send, regenerate, edit, branch) converge here
+    // after their respective setup steps. The caller is responsible for
+    // fetching a clean `history` slice; this method owns context assembly →
+    // enqueue → drain → finalise.
 
     private func runGenerationTurn(
         sessionID: UUID,
@@ -739,6 +807,11 @@ public final class ConversationRuntime: Sendable {
         repeatPenalty: Float,
         maxOutputTokens: Int?,
         maxThinkingTokens: Int?,
+        streamingUpdateInterval: Duration,
+        streamingBatchCharacterLimit: Int,
+        thinkingStreamingUpdateInterval: Duration,
+        thinkingStreamingBatchCharacterLimit: Int,
+        loopDetectionEnabled: Bool,
         handle: ConversationStreamHandle
     ) async {
         let messageCount = history.count
@@ -815,34 +888,97 @@ public final class ConversationRuntime: Sendable {
 
         emit(.streamStarted(messageID: assistantID))
 
-        // Drain the stream. This loop deliberately does *not* re-implement
-        // GenerationCoordinator's batching, thinking-block disclosure, loop
-        // detection, or tool-dispatch behaviour — those migrate in follow-up
-        // PRs.
+        // Drain the stream, mirroring GenerationCoordinator's four features:
+        //   (a) token batcher — coalesce per-token events into UI-cadenced batches
+        //   (b) thinking-block disclosure — track/batch reasoning tokens and emit
+        //       thinkingStarted / thinkingUpdated / thinkingFinalized events
+        //   (c) tool dispatch — persist toolCall + toolResult content parts and
+        //       emit toolCallRequested / toolCallCompleted events
+        //   (d) loop detection — stop the stream when RepetitionDetector fires
         var accumulated = ""
         var emptyResponse = true
         var streamFailed: ConversationError?
 
+        var consumer = GenerationStreamConsumer(loopDetectionEnabled: loopDetectionEnabled)
+        var batcher = StreamingTokenBatcher(
+            interval: streamingUpdateInterval,
+            maxBufferedCharacters: streamingBatchCharacterLimit
+        )
+        var thinkingBatcher = StreamingTokenBatcher(
+            interval: thinkingStreamingUpdateInterval,
+            maxBufferedCharacters: thinkingStreamingBatchCharacterLimit
+        )
+        var thinkingAccumulator = ""
+        var thinkingDisplayed = ""
+        var pendingThinkingSignature: String?
+
         do {
-            for try await event in stream.events {
+            eventLoop: for try await event in stream.events {
                 let cancelled = await isCancelled(handle: handle)
                 if cancelled { break }
-                switch event {
-                case .token(let text):
-                    accumulated += text
-                    emptyResponse = false
-                    emit(.tokenEmitted(messageID: assistantID, delta: text))
 
-                case .thinkingToken, .thinkingComplete, .thinkingSignature,
-                        .toolCall, .toolCallStart, .toolCallArgumentsDelta,
-                        .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
-                        .toolLoopLimitReached, .usage, .prefillProgress,
-                        .kvCacheReuse, .diagnosticThrottle:
-                    // Out of scope. Tool-call routing through the runtime ships
-                    // in a follow-up; usage / prefill / diagnostic events are
-                    // observed by adapters that want them via direct
-                    // InferenceService observation today.
-                    continue
+                switch consumer.handle(event) {
+                case .appendText(let text):
+                    emptyResponse = false
+                    if let batch = batcher.append(text, now: ContinuousClock.now) {
+                        accumulated += batch
+                        emit(.tokenEmitted(messageID: assistantID, delta: batch))
+                        if consumer.shouldStopForLoop(content: accumulated) {
+                            await inferenceService.cancelAsync(token)
+                            emit(.loopDetected(messageID: assistantID))
+                            break eventLoop
+                        }
+                    }
+
+                case .appendThinkingText(let text):
+                    let isFirst = thinkingAccumulator.isEmpty
+                    thinkingAccumulator += text
+                    if isFirst {
+                        emit(.thinkingStarted(messageID: assistantID))
+                    }
+                    if let batch = thinkingBatcher.append(text, now: ContinuousClock.now) {
+                        thinkingDisplayed += batch
+                        emit(.thinkingUpdated(messageID: assistantID, partialText: thinkingDisplayed))
+                        if consumer.shouldStopForLoop(content: thinkingAccumulator) {
+                            await inferenceService.cancelAsync(token)
+                            emit(.loopDetected(messageID: assistantID))
+                            break eventLoop
+                        }
+                    }
+
+                case .recordThinkingSignature(let signature):
+                    pendingThinkingSignature = signature
+
+                case .finalizeThinking:
+                    if let batch = thinkingBatcher.flush(now: ContinuousClock.now) {
+                        thinkingDisplayed += batch
+                    }
+                    let block = thinkingAccumulator
+                    let signature = pendingThinkingSignature
+                    thinkingAccumulator = ""
+                    thinkingDisplayed = ""
+                    pendingThinkingSignature = nil
+                    guard !block.isEmpty else { break }
+                    emit(.thinkingFinalized(messageID: assistantID, text: block, signature: signature))
+
+                case .dispatchToolCall(let call):
+                    emit(.toolCallRequested(call))
+
+                case .appendToolResult(let result):
+                    emit(.toolCallCompleted(result.callId, result))
+
+                case .toolLoopLimitReached(let iterations):
+                    emit(.errorRaised(.inference(
+                        InferenceError.inferenceFailure("Tool-call loop stopped after \(iterations) iterations.")
+                    )))
+
+                case .recordUsage:
+                    // Usage events are advisory; adapters that need token counts
+                    // observe InferenceService.lastTokenUsage directly.
+                    break
+
+                case .ignore:
+                    break
                 }
             }
         } catch {
@@ -852,6 +988,23 @@ public final class ConversationRuntime: Sendable {
             } else {
                 streamFailed = .inference(error)
             }
+        }
+
+        // Flush remaining buffered tokens (normal end, error, or cancellation).
+        if let batch = batcher.flush(now: ContinuousClock.now) {
+            accumulated += batch
+            emit(.tokenEmitted(messageID: assistantID, delta: batch))
+        }
+
+        // Finalize an unclosed thinking block — the model may not emit a closing
+        // event if generation is cut short.
+        if !thinkingAccumulator.isEmpty {
+            _ = thinkingBatcher.flush(now: ContinuousClock.now)
+            let block = thinkingAccumulator
+            let signature = pendingThinkingSignature
+            thinkingAccumulator = ""
+            pendingThinkingSignature = nil
+            emit(.thinkingFinalized(messageID: assistantID, text: block, signature: signature))
         }
 
         // Finalise the assistant message. If the stream produced no visible

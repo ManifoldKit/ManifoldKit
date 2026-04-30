@@ -79,6 +79,26 @@ public enum ConversationEvent: Sendable {
     /// display.
     case tokenEmitted(messageID: ChatMessageRecord.ID, delta: String)
 
+    /// The model began emitting a thinking block. Fires when the first thinking
+    /// token arrives. Adapters use this to show a "Thinking…" indicator.
+    case thinkingStarted(messageID: ChatMessageRecord.ID)
+
+    /// A batch of thinking tokens was flushed. Same cadence as `.tokenEmitted`
+    /// (batcher-controlled). Adapters concatenate `partialText` for progressive
+    /// display. Does not carry the signature — that arrives with `.thinkingFinalized`.
+    case thinkingUpdated(messageID: ChatMessageRecord.ID, partialText: String)
+
+    /// The thinking block completed. `text` is the full thinking content;
+    /// `signature` is the server-verification value (non-nil for extended-thinking
+    /// backends) that must be round-tripped on the next request. Adapters persist
+    /// both and hide the thinking content behind a disclosure UI.
+    case thinkingFinalized(messageID: ChatMessageRecord.ID, text: String, signature: String?)
+
+    /// The repetition detector fired. The runtime has already called `cancelAsync`
+    /// on the in-flight token; adapters surface this as a user-visible warning
+    /// (distinct from `.errorRaised` — the model ran, it just looped).
+    case loopDetected(messageID: ChatMessageRecord.ID)
+
     /// The stream terminated. `reason` distinguishes normal completion,
     /// user-initiated cancel, empty output, and length-limited stop.
     case streamFinished(messageID: ChatMessageRecord.ID, reason: FinishReason)

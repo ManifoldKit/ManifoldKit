@@ -2,44 +2,8 @@ import Foundation
 import BaseChatCore
 import BaseChatInference
 
-// MARK: - StreamingTokenBatcher
-
-/// Buffers streamed tokens and emits coalesced batches to reduce high-frequency
-/// observable mutations that would otherwise trigger excessive SwiftUI re-renders.
-struct StreamingTokenBatcher {
-    private let interval: Duration
-    private let maxBufferedCharacters: Int
-    private var buffered = ""
-    private var lastFlush: ContinuousClock.Instant
-
-    init(
-        interval: Duration,
-        maxBufferedCharacters: Int,
-        now: ContinuousClock.Instant = ContinuousClock.now
-    ) {
-        self.interval = interval
-        self.maxBufferedCharacters = maxBufferedCharacters
-        self.lastFlush = now
-    }
-
-    mutating func append(_ token: String, now: ContinuousClock.Instant) -> String? {
-        buffered += token
-        guard shouldFlush(now: now) else { return nil }
-        return flush(now: now)
-    }
-
-    mutating func flush(now: ContinuousClock.Instant) -> String? {
-        guard !buffered.isEmpty else { return nil }
-        let batch = buffered
-        buffered = ""
-        lastFlush = now
-        return batch
-    }
-
-    private func shouldFlush(now: ContinuousClock.Instant) -> Bool {
-        buffered.count >= maxBufferedCharacters || now - lastFlush >= interval
-    }
-}
+// StreamingTokenBatcher was moved to BaseChatInference/Services/StreamingTokenBatcher.swift
+// so that ConversationRuntime (in BaseChatCore) can share the same type.
 
 // File-private top-level — nonisolated, initialized once, thread-safe.
 // Kept outside the @MainActor-isolated GenerationCoordinator so that

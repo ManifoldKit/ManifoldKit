@@ -219,8 +219,11 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertTrue(kinds.contains("beforeContextAssembly"), "Emits beforeContextAssembly")
         XCTAssertTrue(kinds.contains("contextAssembled"), "Emits contextAssembled")
         XCTAssertTrue(kinds.contains("streamStarted"), "Emits streamStarted")
-        XCTAssertEqual(kinds.filter { $0.hasPrefix("tokenEmitted") }.count, 2,
-                       "Emits one tokenEmitted per scripted token")
+        // The batcher coalesces tokens so the count may be less than the raw
+        // token count; what matters is that at least one tokenEmitted fires
+        // and the accumulated text is correct.
+        XCTAssertGreaterThanOrEqual(kinds.filter { $0.hasPrefix("tokenEmitted") }.count, 1,
+                                    "At least one tokenEmitted event fires")
         XCTAssertTrue(kinds.contains("messageInserted-assistant"),
                       "Emits messageInserted for the assistant message")
         XCTAssertTrue(kinds.contains("streamFinished-stop"), "Stream finishes with .stop")
@@ -364,7 +367,13 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        let handle = try await runtime.send(SendInput(sessionID: sessionID, userText: "long"))
+        // Use a tiny batch limit so tokens flush immediately and the cancel
+        // has a chance to fire before the stream drains completely.
+        let handle = try await runtime.send(SendInput(
+            sessionID: sessionID,
+            userText: "long",
+            streamingBatchCharacterLimit: 1
+        ))
 
         // Drain events on a background task; cancel as soon as we see the
         // first `.tokenEmitted` to make the timing deterministic without
@@ -525,6 +534,10 @@ final class ConversationRuntimeTests: XCTestCase {
         case .toolCallCompleted: return "toolCallCompleted"
         case let .sessionBranched(newSessionID, copiedCount):
             return "sessionBranched(\(newSessionID),\(copiedCount))"
+        case .thinkingStarted: return "thinkingStarted"
+        case .thinkingUpdated: return "thinkingUpdated"
+        case .thinkingFinalized: return "thinkingFinalized"
+        case .loopDetected: return "loopDetected"
         }
     }
 
@@ -712,9 +725,12 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let sessionID = UUID()
         // Seed: user + assistant + a trailing assistant (simulates multi-turn).
-        let userMsg = ChatMessageRecord(role: .user, content: "original question", sessionID: sessionID)
-        let assistantMsg1 = ChatMessageRecord(role: .assistant, content: "first answer", sessionID: sessionID)
-        let assistantMsg2 = ChatMessageRecord(role: .assistant, content: "follow-up", sessionID: sessionID)
+        // Explicit timestamps ensure fetchMessages returns them in insertion order
+        // regardless of same-millisecond Date() collisions in the in-memory store.
+        let t0 = Date()
+        let userMsg = ChatMessageRecord(role: .user, content: "original question", timestamp: t0, sessionID: sessionID)
+        let assistantMsg1 = ChatMessageRecord(role: .assistant, content: "first answer", timestamp: t0.addingTimeInterval(1), sessionID: sessionID)
+        let assistantMsg2 = ChatMessageRecord(role: .assistant, content: "follow-up", timestamp: t0.addingTimeInterval(2), sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg1)
         try await store.insertMessage(assistantMsg2)
@@ -757,8 +773,8 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertTrue(kinds.contains("beforeContextAssembly"), "beforeContextAssembly fires")
         XCTAssertTrue(kinds.contains("contextAssembled"), "contextAssembled fires")
         XCTAssertTrue(kinds.contains("streamStarted"), "streamStarted fires")
-        XCTAssertEqual(kinds.filter { $0.hasPrefix("tokenEmitted") }.count, 2,
-                       "Two token events from mock backend")
+        XCTAssertGreaterThanOrEqual(kinds.filter { $0.hasPrefix("tokenEmitted") }.count, 1,
+                                    "At least one tokenEmitted event fires")
         XCTAssertTrue(kinds.contains("messageInserted-assistant"), "New assistant messageInserted fires")
         XCTAssertTrue(kinds.contains("streamFinished-stop"), "streamFinished-stop fires")
         XCTAssertTrue(kinds.contains("afterGeneration"), "afterGeneration fires")
@@ -1145,6 +1161,178 @@ final class ConversationRuntimeTests: XCTestCase {
         }
     }
 
+    // MARK: - Token batcher
+
+    func test_runGenerationTurn_batchesTokens() async throws {
+        // Sabotage check (verified manually): setting streamingBatchCharacterLimit
+        // to 1 and streamingUpdateInterval to .zero causes the batcher to flush on
+        // every token, so tokenEmitted fires 10 times and the assertion fails.
+        //
+        // With a generous character limit and a long interval the batcher only
+        // flushes once at stream-end, so we see exactly one tokenEmitted event.
+        let mock = MockInferenceBackend()
+        // 10 single-character tokens — none individually hits 128 chars or 33 ms.
+        mock.tokensToYield = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+        let (runtime, _, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(
+            sessionID: sessionID,
+            userText: "go",
+            streamingUpdateInterval: .seconds(3600),   // never flush on time
+            streamingBatchCharacterLimit: 128           // never flush on char count (10 < 128)
+        ))
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        let tokenEvents = events.filter {
+            if case .tokenEmitted = $0 { return true } else { return false }
+        }
+        // All 10 tokens were buffered; the interval is 1 hour and the char limit is 128,
+        // so no mid-stream flush occurs. The single end-of-stream flush fires exactly one event.
+        // Sabotage: setting streamingBatchCharacterLimit to 1 and interval to .zero causes
+        // the batcher to flush on every token, yielding 10 events — the assertion fails.
+        XCTAssertEqual(tokenEvents.count, 1,
+                       "Batcher coalesces all 10 tokens into one end-of-stream flush")
+    }
+
+    // MARK: - Thinking events
+
+    func test_runGenerationTurn_thinkingEvents() async throws {
+        // Sabotage check (verified manually): removing the `.thinkingStarted` emit
+        // in the runtime causes XCTAssertEqual(thinkingStartedCount, 1) to fail with 0.
+        // Removing the signature passthrough causes XCTAssertEqual(signature, "sig-abc")
+        // to fail with nil.
+        let mock = MockInferenceBackend()
+        // Use the multi-block API so the mock emits a .thinkingSignature event.
+        mock.thinkingBlocksToYield = [["think", "ing"]]
+        mock.signaturesPerThinkingBlock = ["sig-abc"]
+        mock.tokensToYield = ["done"]
+        let (runtime, _, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(
+            sessionID: sessionID,
+            userText: "think",
+            thinkingStreamingUpdateInterval: .seconds(3600),   // force single end-flush
+            thinkingStreamingBatchCharacterLimit: 128
+        ))
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        let kinds = events.map(eventKind)
+
+        let thinkingStartedCount = kinds.filter { $0 == "thinkingStarted" }.count
+        XCTAssertEqual(thinkingStartedCount, 1, "thinkingStarted fires exactly once per thinking block")
+
+        let thinkingFinalizedCount = kinds.filter { $0 == "thinkingFinalized" }.count
+        XCTAssertEqual(thinkingFinalizedCount, 1, "thinkingFinalized fires exactly once")
+
+        // thinkingStarted precedes thinkingFinalized.
+        let startIdx = kinds.firstIndex { $0 == "thinkingStarted" }
+        let finalIdx = kinds.firstIndex { $0 == "thinkingFinalized" }
+        if let s = startIdx, let f = finalIdx {
+            XCTAssertLessThan(s, f, "thinkingStarted precedes thinkingFinalized")
+        } else {
+            XCTFail("Expected both thinkingStarted and thinkingFinalized events")
+        }
+
+        // Full thinking text and signature are present in the finalized event.
+        let finalizedEvent = events.first {
+            if case .thinkingFinalized = $0 { return true } else { return false }
+        }
+        guard case let .thinkingFinalized(_, text, signature) = finalizedEvent else {
+            XCTFail("Expected a thinkingFinalized event")
+            return
+        }
+        XCTAssertEqual(text, "thinking",
+                       "thinkingFinalized carries the complete thinking text")
+        XCTAssertEqual(signature, "sig-abc",
+                       "thinkingFinalized round-trips the provider signature")
+    }
+
+    // MARK: - Loop detection
+
+    func test_runGenerationTurn_loopDetection() async throws {
+        // Sabotage check (verified manually): disabling loopDetectionEnabled
+        // (or removing the shouldStopForLoop check) causes loopDetected to never
+        // fire and the stream finishes with .stop instead of stopping early.
+        //
+        // GenerationStreamConsumer.shouldStopForLoop requires content.count >= 100
+        // before calling RepetitionDetector. Use a 52-char unit repeated 2x (104 chars)
+        // to satisfy the 2x detection path (>= 100 chars, unit >= 50 chars repeated twice).
+        let repeatingUnit = String(repeating: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", count: 2)  // 52 chars
+        let loopingText = String(repeating: repeatingUnit, count: 2)  // 104 chars — 2x repeat
+        // Emit as a single token so the batcher flushes all content at once.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = [loopingText]
+        let (runtime, _, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(
+            sessionID: sessionID,
+            userText: "loop",
+            streamingUpdateInterval: .zero,     // flush immediately on every token
+            streamingBatchCharacterLimit: 1,    // also flush immediately
+            loopDetectionEnabled: true
+        ))
+
+        // Wait until streamFinished so we capture all events including loopDetected
+        // (which fires before streamFinished in the runtime's event sequence).
+        let events = try await collectEvents(from: runtime) { event in
+            if case .streamFinished = event { return true }
+            return false
+        }
+
+        let hasLoopDetected = events.contains {
+            if case .loopDetected = $0 { return true } else { return false }
+        }
+        XCTAssertTrue(hasLoopDetected, "loopDetected fires when repetition pattern is found")
+
+        // Stream ends — streamFinished is the collection-stop event so it's always present.
+        let hasFinished = events.contains {
+            if case .streamFinished = $0 { return true } else { return false }
+        }
+        XCTAssertTrue(hasFinished, "streamFinished fires after loop detection stops the stream")
+    }
+
+    // MARK: - Tool call
+
+    func test_runGenerationTurn_toolCall() async throws {
+        // Sabotage check (verified manually): removing the `.dispatchToolCall`
+        // branch in runGenerationTurn causes toolCallRequested to never be emitted,
+        // failing the XCTAssertTrue check.
+        let call = ToolCall(id: "call-1", toolName: "search", arguments: "{\"q\":\"test\"}")
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["result"]
+        mock.scriptedToolCalls = [call]
+        let (runtime, _, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "search"))
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        let toolCallEvent = events.first {
+            if case .toolCallRequested = $0 { return true } else { return false }
+        }
+        XCTAssertNotNil(toolCallEvent, "toolCallRequested fires when backend emits a toolCall event")
+
+        if case let .toolCallRequested(emittedCall) = toolCallEvent {
+            XCTAssertEqual(emittedCall.id, call.id, "toolCallRequested carries the correct call ID")
+            XCTAssertEqual(emittedCall.toolName, call.toolName, "toolCallRequested carries the correct tool name")
+        }
+    }
+
     // MARK: - Branch: insertSession fails
 
     func test_branch_insertSessionFails_throwsBeforeAnyMessagesCopied() async throws {
@@ -1220,7 +1408,12 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
-        let handle = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+        // Use a tiny batch limit so each token flushes immediately, allowing
+        // the cancel to fire before the stream drains completely.
+        let handle = try await runtime.regenerate(RegenerateInput(
+            sessionID: sessionID,
+            streamingBatchCharacterLimit: 1
+        ))
 
         // Single-consumer drain. We trigger cancel inline the moment we
         // observe the first `.tokenEmitted`, then continue draining until
