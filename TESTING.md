@@ -77,7 +77,7 @@ UI automation tests that launch the real Example app in a simulator and drive it
 | `BaseChatTestSupportTests` | Unit | Yes | None | XCTest |
 | `BaseChatE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
 | `BaseChatMLXIntegrationTests` | E2E | No | Apple Silicon + Metal + local MLX model | XCTest |
-| `BaseChatDemoUITests` | XCUITest | No | Simulator | XCTest (XCUIApplication) |
+| `BaseChatDemoUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
 
 ### Running tests
 

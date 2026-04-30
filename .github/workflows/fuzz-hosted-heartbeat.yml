@@ -1,0 +1,63 @@
+name: Fuzz hosted heartbeat (advisory)
+
+on:
+  schedule:
+    # Daily heartbeat on hosted runners; real Ollama tiers stay self-hosted/manual.
+    - cron: "35 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: advisory-fuzz-hosted-heartbeat
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+
+      - name: Run hosted fuzz heartbeat (mock + chaos)
+        run: |
+          swift run --disable-default-traits fuzz-chat \
+            --backend mock \
+            --iterations 80 \
+            --seed ${{ github.run_number }} \
+            --corpus-subset smoke \
+            --quiet
+          swift run --disable-default-traits fuzz-chat \
+            --backend chaos \
+            --iterations 80 \
+            --seed ${{ github.run_number }} \
+            --corpus-subset smoke \
+            --quiet
+
+      - name: Upload hosted heartbeat findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-hosted-heartbeat-findings-${{ github.run_id }}
+          path: tmp/fuzz/
+          if-no-files-found: ignore
+          retention-days: 7
