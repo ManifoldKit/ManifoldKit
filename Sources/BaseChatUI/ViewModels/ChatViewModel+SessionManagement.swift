@@ -49,6 +49,8 @@ extension ChatViewModel {
         }
 
         showUpgradeHint = false
+        inputText = ""
+        clearDraftAttachments()
         await loadMessages()
         updateContextEstimate()
         Log.ui.info("Switched to session: \(session.title, privacy: .private)")

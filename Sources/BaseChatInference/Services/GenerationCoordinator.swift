@@ -289,6 +289,11 @@ final class GenerationCoordinator {
         systemPrompt: String?,
         config: GenerationConfig
     ) throws -> GenerationStream {
+        if Self.containsImages(messages), !backend.capabilities.supportsVision {
+            throw InferenceError.inferenceFailure(
+                "Image attachments require a vision-capable backend. Load an MLX vision model before sending image parts."
+            )
+        }
         // Exact-count pre-flight: backends that conform to TokenCountingBackend
         // expose the real tokenizer. Use it to verify the assembled prompt fits
         // inside the context window before committing to the C-level decode.
@@ -358,6 +363,15 @@ final class GenerationCoordinator {
     /// Instance-level wrapper around the static flatten so call sites stay readable.
     private func flatten(_ messages: [StructuredMessage]) -> [(role: String, content: String)] {
         Self.flatten(messages)
+    }
+
+    private static func containsImages(_ messages: [StructuredMessage]) -> Bool {
+        messages.contains { message in
+            message.parts.contains { part in
+                if case .image = part { return true }
+                return false
+            }
+        }
     }
 
     /// Hands history to whichever receiver protocol the backend conforms to.

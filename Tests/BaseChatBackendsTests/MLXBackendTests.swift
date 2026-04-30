@@ -46,6 +46,10 @@ final class MLXBackendTests: XCTestCase {
         XCTAssertTrue(MLXBackend(enableKVCacheReuse: true).capabilities.supportsKVCachePersistence)
     }
 
+    func test_capabilities_supportsVision_falseBeforeLoad() {
+        XCTAssertFalse(MLXBackend().capabilities.supportsVision)
+    }
+
     // MARK: - Lifecycle (no hardware gate)
 
     func test_generate_beforeLoad_throws() {
@@ -117,6 +121,14 @@ final class MLXBackendTests: XCTestCase {
         XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
     }
 
+    func test_validateArchitecture_acceptsQwen25VL() throws {
+        let url = try writeTempConfig([
+            "model_type": "qwen2_5_vl",
+            "vision_config": ["hidden_size": 1]
+        ])
+        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
+    }
+
     func test_validateArchitecture_acceptsLlamaViaArchitectures() throws {
         // HF repos that omit `model_type` but ship `architectures: ["LlamaForCausalLM"]`
         // must still pass — snake_case prefix match keeps older snapshots working.
@@ -175,6 +187,14 @@ final class MLXBackendTests: XCTestCase {
         // makes this assertion fail (verified locally before commit).
         let url = try writeTempConfig([
             "text_config": ["enable_moe_block": true]
+        ])
+        XCTAssertTrue(MLXBackend.requiresVLMFactory(at: url))
+    }
+
+    func test_requiresVLMFactory_whenVisionConfigPresent_returnsTrue() throws {
+        let url = try writeTempConfig([
+            "model_type": "qwen2_5_vl",
+            "vision_config": ["hidden_size": 1]
         ])
         XCTAssertTrue(MLXBackend.requiresVLMFactory(at: url))
     }

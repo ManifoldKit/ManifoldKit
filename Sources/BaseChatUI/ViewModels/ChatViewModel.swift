@@ -148,6 +148,12 @@ public final class ChatViewModel {
     /// The user's current input text.
     public var inputText: String = ""
 
+    /// Rich parts staged in the compose bar but not yet sent.
+    ///
+    /// Today this is used for image attachments. The array stays typed as
+    /// ``MessagePart`` so future compose-bar parts can reuse the same draft path.
+    var draftAttachments: [MessagePart] = []
+
     /// Editable system prompt prepended to every generation.
     public var systemPrompt: String {
         get { sessionController.systemPrompt }
@@ -402,6 +408,14 @@ public final class ChatViewModel {
     /// Capabilities of the active backend, or `nil` if none loaded.
     public var backendCapabilities: BackendCapabilities? {
         inferenceService.capabilities
+    }
+
+    var hasDraftContent: Bool {
+        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draftAttachments.isEmpty
+    }
+
+    var supportsImageAttachments: Bool {
+        backendCapabilities?.supportsVision == true
     }
 
     public var activeBackendName: String? {

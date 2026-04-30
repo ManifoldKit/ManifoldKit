@@ -1,17 +1,21 @@
 import SwiftUI
 import BaseChatCore
+import BaseChatInference
+import UniformTypeIdentifiers
 
 /// The text input bar at the bottom of the chat view.
 ///
-/// Shows a multiline text field with send/stop buttons. On compact size class
-/// (iPhone), a row of quick-action pills appears above the input for common
-/// prompts like "Continue" and "Describe scene".
+/// Shows a multiline text field with send/stop buttons plus an image-attachment
+/// affordance when the active backend reports vision support. On compact size
+/// class (iPhone), a row of quick-action pills appears above the input for
+/// common prompts like "Continue" and "Describe scene".
 public struct ChatInputBar: View {
 
     @Environment(ChatViewModel.self) private var viewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @FocusState private var isInputFocused: Bool
+    @State private var isImageImporterPresented = false
 
     public init() {}
 
@@ -32,6 +36,10 @@ public struct ChatInputBar: View {
                 quickActionPills
             }
 
+            if !viewModel.draftAttachments.isEmpty {
+                draftAttachmentStrip
+            }
+
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(inputPlaceholder, text: $viewModel.inputText, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -45,6 +53,13 @@ public struct ChatInputBar: View {
                 actionButtons
             }
         }
+        .fileImporter(
+            isPresented: $isImageImporterPresented,
+            allowedContentTypes: [.image],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImageImport(result)
+        }
         .padding(.horizontal)
         .padding(.vertical, 10)
     }
@@ -54,6 +69,10 @@ public struct ChatInputBar: View {
     @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: 4) {
+            if viewModel.supportsImageAttachments {
+                attachImageButton
+            }
+
             if showRegenerateButton {
                 Button {
                     Task {
@@ -81,6 +100,20 @@ public struct ChatInputBar: View {
             onSend: sendMessage,
             onStop: { viewModel.stopGeneration() }
         )
+    }
+
+    private var attachImageButton: some View {
+        Button {
+            isImageImporterPresented = true
+        } label: {
+            Image(systemName: "paperclip.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canAttachImage)
+        .accessibilityLabel("Attach image")
+        .help("Attach image")
     }
 
     // MARK: - Quick Action Pills
@@ -126,7 +159,14 @@ public struct ChatInputBar: View {
         && viewModel.isModelLoaded
         && !viewModel.isGenerating
         && !viewModel.isLoading
-        && !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && viewModel.hasDraftContent
+    }
+
+    private var canAttachImage: Bool {
+        viewModel.activeSession != nil
+        && viewModel.isModelLoaded
+        && !viewModel.isGenerating
+        && !viewModel.isLoading
     }
 
     private var showRegenerateButton: Bool {
@@ -147,6 +187,93 @@ public struct ChatInputBar: View {
         Task {
             await viewModel.sendMessage()
         }
+    }
+
+    @ViewBuilder
+    private var draftAttachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(viewModel.draftAttachments.enumerated()), id: \.offset) { index, part in
+                    draftAttachmentPreview(for: part, at: index)
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func draftAttachmentPreview(for part: MessagePart, at index: Int) -> some View {
+        if case let .image(data, _) = part {
+            ZStack(alignment: .topTrailing) {
+                draftThumbnail(data: data)
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                Button {
+                    viewModel.removeDraftAttachment(id: index)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.white, .black.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 6, y: -6)
+                .accessibilityLabel("Remove attachment")
+            }
+            .padding(.trailing, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func draftThumbnail(data: Data) -> some View {
+        #if os(iOS)
+        if let uiImage = UIImage(data: data) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .scaledToFill()
+        }
+        #elseif os(macOS)
+        if let nsImage = NSImage(data: data) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .scaledToFill()
+        }
+        #endif
+    }
+
+    private func handleImageImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessed {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let data = try Data(contentsOf: url)
+                let mimeType = try resolvedImageMIMEType(for: url)
+                viewModel.stageDraftAttachment(.image(data: data, mimeType: mimeType))
+            } catch {
+                viewModel.surfaceError(error, kind: .configuration, context: "attaching image")
+            }
+
+        case .failure(let error):
+            viewModel.surfaceError(error, kind: .configuration, context: "attaching image")
+        }
+    }
+
+    private func resolvedImageMIMEType(for url: URL) throws -> String {
+        let values = try url.resourceValues(forKeys: [.contentTypeKey])
+        let contentType = values.contentType ?? UTType(filenameExtension: url.pathExtension)
+        guard let contentType,
+              contentType.conforms(to: .image),
+              let mimeType = contentType.preferredMIMEType else {
+            throw InferenceError.inferenceFailure("Unsupported image attachment type.")
+        }
+        return mimeType
     }
 }
 

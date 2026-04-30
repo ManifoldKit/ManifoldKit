@@ -26,6 +26,14 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                        "supportsThinking must default to false so cloud backends remain source-compatible")
     }
 
+    // MARK: - supportsVision defaults to false
+
+    func test_supportsVision_defaultsFalse() {
+        let caps = BackendCapabilities()
+        XCTAssertFalse(caps.supportsVision,
+                       "supportsVision must default to false so text-only backends never advertise image input accidentally")
+    }
+
     // MARK: - Codable forward-compat: old JSON missing new keys defaults both to false
 
     func test_codable_forwardCompat_missingNewKeys_defaultsToFalse() throws {
@@ -56,6 +64,8 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                        "supportsGrammarConstrainedSampling must default to false for old payloads")
         XCTAssertFalse(decoded.supportsThinking,
                        "supportsThinking must default to false for old payloads")
+        XCTAssertFalse(decoded.supportsVision,
+                       "supportsVision must default to false for old payloads")
     }
 
     // MARK: - Full round-trip with new flags set to true
@@ -64,7 +74,8 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         let caps = BackendCapabilities(
             supportsKVCachePersistence: true,
             supportsGrammarConstrainedSampling: true,
-            supportsThinking: true
+            supportsThinking: true,
+            supportsVision: true
         )
 
         let data = try JSONEncoder().encode(caps)
@@ -73,5 +84,6 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(decoded.supportsKVCachePersistence)
         XCTAssertTrue(decoded.supportsGrammarConstrainedSampling)
         XCTAssertTrue(decoded.supportsThinking)
+        XCTAssertTrue(decoded.supportsVision)
     }
 }

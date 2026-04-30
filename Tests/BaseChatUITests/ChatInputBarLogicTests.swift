@@ -43,7 +43,10 @@ final class ChatInputBarLogicTests: XCTestCase {
         && vm.isModelLoaded
         && !vm.isGenerating
         && !vm.isLoading
-        && !vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && (
+            !vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !vm.draftAttachments.isEmpty
+        )
     }
 
     func test_canSend_falseWhenNoActiveSession() async {
@@ -77,6 +80,13 @@ final class ChatInputBarLogicTests: XCTestCase {
         let (vm, _) = makeViewModelWithMock()
         vm.inputText = "Hello"
         XCTAssertTrue(canSend(vm), "canSend should be true when session exists, model loaded, and input non-empty")
+    }
+
+    func test_canSend_trueWhenAttachmentOnlyDraftPresent() {
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        let (vm, _) = makeViewModelWithMock(mock: mock)
+        vm.stageDraftAttachment(.image(data: Data([0x89, 0x50, 0x4E, 0x47]), mimeType: "image/png"))
+        XCTAssertTrue(canSend(vm), "canSend should allow attachment-only drafts on vision-capable backends")
     }
 
     func test_canSend_falseWhileLoading() {
@@ -205,6 +215,43 @@ final class ChatInputBarLogicTests: XCTestCase {
         await vm.sendMessage()
 
         XCTAssertEqual(vm.inputText, "", "Input text should be cleared after sending")
+    }
+
+    func test_sendMessage_attachmentOnlyPersistsImagePart() async {
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        mock.tokensToYield = ["Done"]
+        let (vm, backend) = makeViewModelWithMock(mock: mock)
+        let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        vm.stageDraftAttachment(image)
+
+        await vm.sendMessage()
+
+        XCTAssertTrue(vm.draftAttachments.isEmpty, "Draft attachments should be cleared after sending")
+        let userMessage = vm.messages.first(where: { $0.role == .user })
+        XCTAssertEqual(userMessage?.contentParts, [image])
+        XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, [image])
+    }
+
+    func test_sendMessage_textAndAttachmentPreservesPartOrder() async {
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        mock.tokensToYield = ["Done"]
+        let (vm, backend) = makeViewModelWithMock(mock: mock)
+        let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        vm.inputText = "Describe this image"
+        vm.stageDraftAttachment(image)
+
+        await vm.sendMessage()
+
+        let expectedParts: [MessagePart] = [.text("Describe this image"), image]
+        let userMessage = vm.messages.first(where: { $0.role == .user })
+        XCTAssertEqual(userMessage?.contentParts, expectedParts)
+        XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, expectedParts)
+    }
+
+    func test_supportsImageAttachments_reflectsBackendCapability() {
+        let mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        let (vm, _) = makeViewModelWithMock(mock: mock)
+        XCTAssertTrue(vm.supportsImageAttachments)
     }
 
     // MARK: - Edge cases

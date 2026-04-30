@@ -1,4 +1,5 @@
 #if MLX
+import CoreImage
 import Foundation
 import MLX
 import MLXLLM
@@ -66,7 +67,28 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Capabilities
 
-    public let capabilities: BackendCapabilities
+    public var capabilities: BackendCapabilities {
+        withStateLock {
+            BackendCapabilities(
+                supportedParameters: [.temperature, .topP, .repeatPenalty],
+                maxContextTokens: 8192,
+                requiresPromptTemplate: false,
+                supportsSystemPrompt: true,
+                supportsToolCalling: true,
+                supportsStructuredOutput: false,
+                supportsNativeJSONMode: false,
+                cancellationStyle: .cooperative,
+                supportsTokenCounting: true,
+                memoryStrategy: .resident,
+                maxOutputTokens: 4096,
+                supportsStreaming: true,
+                isRemote: false,
+                supportsKVCachePersistence: enableKVCacheReuse,
+                supportsThinking: true,
+                supportsVision: _supportsVision
+            )
+        }
+    }
 
     // MARK: - Private
 
@@ -84,6 +106,9 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// When non-nil this supersedes `_conversationHistory` for message building.
     /// Access only under `stateLock`.
     private var _toolAwareHistory: [ToolAwareHistoryEntry]?
+    /// Structured conversation history, including image parts for VLM turns.
+    /// Access only under `stateLock`.
+    private var _structuredHistory: [StructuredMessage]?
     /// Thinking-marker pair auto-detected from the loaded model's
     /// `tokenizer_config.json` chat template. `nil` when the model is not
     /// loaded, the chat template is missing, or no known marker pair was
@@ -106,6 +131,9 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Tracks whether a real MLX model load initialized the runtime in this process.
     /// Access only under `stateLock`.
     private var _hasInitializedRuntime = false
+    /// Whether the currently loaded MLX model accepts image inputs.
+    /// Access only under `stateLock`.
+    private var _supportsVision = false
 
     // MARK: - Load Progress
 
@@ -142,30 +170,14 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     ) {
         self.cachePolicy = cachePolicy
         self.enableKVCacheReuse = enableKVCacheReuse
-        self.capabilities = BackendCapabilities(
-            supportedParameters: [.temperature, .topP, .repeatPenalty],
-            maxContextTokens: 8192,
-            requiresPromptTemplate: false,
-            supportsSystemPrompt: true,
-            supportsToolCalling: true,
-            supportsStructuredOutput: false,
-            supportsNativeJSONMode: false,
-            cancellationStyle: .cooperative,
-            supportsTokenCounting: true,
-            memoryStrategy: .resident,
-            maxOutputTokens: 4096,
-            supportsStreaming: true,
-            isRemote: false,
-            supportsKVCachePersistence: enableKVCacheReuse,
-            supportsThinking: true
-        )
     }
 
     // MARK: - Architecture Allowlist
 
     /// Canonical `model_type` values that `mlx-swift-lm`'s `LLMTypeRegistry.shared`
-    /// can serve as chat/instruct LMs. Anything outside this set — CLIP, SigLIP,
-    /// Whisper, BERT embeddings, Qwen2-VL vision encoders, etc. — is refused at
+    /// can serve as chat/instruct LMs. Anything outside this set (or the
+    /// VLM-specific set below) — CLIP, SigLIP, Whisper, BERT embeddings, etc. —
+    /// is refused at
     /// load time via `InferenceError.unsupportedModelArchitecture`.
     ///
     /// Sourced from `LLMTypeRegistry.shared` in mlx-swift-lm
@@ -189,6 +201,23 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         "afmoe", "jamba_3b", "mistral3", "apertus",
     ]
 
+    static let supportedVLMArchitectures: Set<String> = [
+        "paligemma", "qwen2_vl", "qwen2_5_vl", "qwen3_vl",
+        "qwen3_5", "qwen3_5_moe", "idefics3", "gemma3", "gemma4",
+        "smolvlm", "fastvlm", "llava_qwen2", "pixtral", "mistral3",
+        "lfm2_vl", "lfm2-vl", "glm_ocr",
+    ]
+
+    private static let normalizedSupportedArchitectures: Set<String> =
+        Set((supportedLMArchitectures.union(supportedVLMArchitectures)).map(normalizeArchitectureKey))
+
+    private static func normalizeArchitectureKey(_ value: String) -> String {
+        value.lowercased().unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
+    }
+
     /// Reads `config.json` at `url` and throws
     /// `InferenceError.unsupportedModelArchitecture` if the declared `model_type`
     /// is not a chat/instruct LM. If `config.json` is missing or unreadable the
@@ -204,9 +233,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
 
         let modelType = (json["model_type"] as? String)?
-            .lowercased()
-            .trimmingCharacters(in: .whitespaces) ?? ""
-        if !modelType.isEmpty, supportedLMArchitectures.contains(modelType) {
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedModelType = normalizeArchitectureKey(modelType)
+        if !normalizedModelType.isEmpty,
+           normalizedSupportedArchitectures.contains(normalizedModelType) {
             return
         }
 
@@ -215,8 +245,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         // prefix matches the allowlist — this keeps older snapshots working.
         if let archs = json["architectures"] as? [String] {
             for arch in archs {
-                let normalized = arch.lowercased()
-                if Self.supportedLMArchitectures.contains(where: { normalized.hasPrefix($0) }) {
+                let normalized = normalizeArchitectureKey(arch)
+                if Self.normalizedSupportedArchitectures.contains(where: { normalized.hasPrefix($0) }) {
                     return
                 }
             }
@@ -228,16 +258,25 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Factory Routing
 
-    /// Returns `true` when the model at `url` declares an MoE config that
-    /// `LLMModelFactory.Gemma4Model` can't handle today. Currently triggers on
-    /// `text_config.enable_moe_block == true` (Gemma 4 26B). Extend here if/when
-    /// other VLM-only LM architectures appear.
+    /// Returns `true` when the model at `url` must load through the VLM factory.
+    ///
+    /// This covers both explicit multimodal models (`vision_config`) and the
+    /// Gemma 4 MoE path that only exists behind `VLMModelFactory` today.
     ///
     /// Falls back to `false` (LLM factory) when config.json is missing/unreadable —
     /// matches the same conservative default used by `validateArchitecture`. Dense
     /// Gemma 4 models intentionally stay on the LLM factory so we don't pay the
     /// memory cost of resident vision-tower weights.
     static func requiresVLMFactory(at url: URL) -> Bool {
+        do {
+            if try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision {
+                return true
+            }
+        } catch {
+            Log.inference.info(
+                "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); falling back to config.json routing (\(error.localizedDescription, privacy: .public))"
+            )
+        }
         let configURL = url.appendingPathComponent("config.json")
         guard let data = try? Data(contentsOf: configURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -263,6 +302,110 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     private static func isSupportedPromptCache(_ caches: [any KVCache]) -> Bool {
         !caches.isEmpty && caches.allSatisfy { $0 is KVCacheSimple }
+    }
+
+    private static func chatRole(for role: String) -> Chat.Message.Role {
+        switch role {
+        case "assistant": .assistant
+        case "system": .system
+        case "tool": .tool
+        default: .user
+        }
+    }
+
+    private static func userInputImage(from data: Data, mimeType: String) throws -> UserInput.Image {
+        guard let image = CIImage(data: data) else {
+            throw InferenceError.inferenceFailure(
+                "Unsupported image attachment format (\(mimeType))."
+            )
+        }
+        return .ciImage(image)
+    }
+
+    private static func imageInputs(from parts: [MessagePart]) throws -> [UserInput.Image] {
+        try parts.compactMap { part in
+            guard case let .image(data, mimeType) = part else { return nil }
+            return try userInputImage(from: data, mimeType: mimeType)
+        }
+    }
+
+    private static func plainChatMessages(
+        history: [StructuredMessage],
+        systemPrompt: String?
+    ) throws -> [Chat.Message]? {
+        let containsImages = history.contains { message in
+            message.parts.contains { part in
+                if case .image = part { return true }
+                return false
+            }
+        }
+        guard containsImages else { return nil }
+
+        var messages: [Chat.Message] = []
+        if let systemPrompt, !systemPrompt.isEmpty {
+            messages.append(.system(systemPrompt))
+        }
+        for message in history {
+            messages.append(
+                Chat.Message(
+                    role: chatRole(for: message.role),
+                    content: message.textContent,
+                    images: try imageInputs(from: message.parts)
+                )
+            )
+        }
+        return messages
+    }
+
+    private static func toolAwareChatMessages(
+        structuredHistory: [StructuredMessage],
+        toolAwareHistory: [ToolAwareHistoryEntry],
+        systemPrompt: String?,
+        dialect: MLXToolDialect
+    ) throws -> [Chat.Message]? {
+        guard structuredHistory.contains(where: { message in
+            message.parts.contains { part in
+                if case .image = part { return true }
+                return false
+            }
+        }) else {
+            return nil
+        }
+
+        var messages: [Chat.Message] = []
+        if let systemPrompt, !systemPrompt.isEmpty {
+            messages.append(.system(systemPrompt))
+        }
+
+        let structuredImageParts = try structuredHistory.map { try imageInputs(from: $0.parts) }
+        for (index, entry) in toolAwareHistory.enumerated() {
+            let encoded = encodeToolAwareEntryAsText(entry, dialect: dialect)
+            let role = encoded["role"] ?? entry.role
+            let content = encoded["content"] ?? entry.content
+            let images = index < structuredImageParts.count ? structuredImageParts[index] : []
+            messages.append(
+                Chat.Message(
+                    role: chatRole(for: role),
+                    content: content,
+                    images: images
+                )
+            )
+        }
+
+        if toolAwareHistory.count < structuredHistory.count {
+            for (offset, structuredMessage) in structuredHistory.dropFirst(toolAwareHistory.count).enumerated() {
+                let images = structuredImageParts[toolAwareHistory.count + offset]
+                messages.append(
+                    Chat.Message(
+                        role: chatRole(for: structuredMessage.role),
+                        content: structuredMessage.textContent,
+                        images: images
+                    )
+                )
+            }
+        }
+
+        return messages
     }
 
     /// Captures prompt-only KV state for the next turn.
@@ -449,6 +592,16 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         await progressHandler?(0.0)
 
         do {
+            let supportsVision: Bool
+            do {
+                supportsVision = try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision
+            } catch {
+                Log.inference.info(
+                    "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); continuing with conservative vision defaults (\(error.localizedDescription, privacy: .public))"
+                )
+                supportsVision = false
+            }
+            let routeThroughVLMFactory = Self.requiresVLMFactory(at: url)
             // Load from a local directory containing config.json + .safetensors.
             // We dispatch directly to either `LLMModelFactory.shared` or
             // `VLMModelFactory.shared` rather than calling the registry-iterating
@@ -458,14 +611,14 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             // would otherwise hand the 26B `gemma4` model to the dense
             // `Gemma4Text.swift` LLM path and fail with "Unhandled keys
             // [experts, router, …]". See issue #752. Dense Gemma 4 variants
-            // stay on the LLM factory — `requiresVLMFactory` only flags
-            // configs that explicitly declare `text_config.enable_moe_block`.
+            // stay on the LLM factory unless the model also declares
+            // `vision_config` or `text_config.enable_moe_block`.
             //
             // `#huggingFaceTokenizerLoader()` (from MLXHuggingFace) adapts
             // swift-transformers' `AutoTokenizer` to the `TokenizerLoader`
             // protocol both factories accept.
             let container: ModelContainer
-            if Self.requiresVLMFactory(at: url) {
+            if routeThroughVLMFactory {
                 Self.logger.info("MLX routing via VLMModelFactory (MoE / VLM-only architecture)")
                 container = try await VLMModelFactory.shared.loadContainer(
                     from: url,
@@ -479,11 +632,12 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             }
             let detectedDialect = MLXToolDialect.detect(at: url)
             let detectedThinkingMarkers = Self.detectThinkingMarkers(at: url)
-            let kvCacheReuseEligible = enableKVCacheReuse && !Self.requiresVLMFactory(at: url)
+            let kvCacheReuseEligible = enableKVCacheReuse && !routeThroughVLMFactory
             withStateLock {
                 _modelContainer = container
                 _dialect = detectedDialect
                 _autoDetectedThinkingMarkers = detectedThinkingMarkers
+                _supportsVision = supportsVision
                 invalidatePromptCacheLocked()
                 _kvCacheReuseEligible = kvCacheReuseEligible
                 _hasInitializedRuntime = true
@@ -567,8 +721,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         // Build messages in chat format, using full conversation history when available
         // so multi-turn exchanges retain context. Falls back to the bare prompt when
         // setConversationHistory has not been called (e.g. direct unit-test calls).
-        let (conversationHistory, toolAwareHistory, dialect, autoDetectedMarkers) = withStateLock {
-            (_conversationHistory, _toolAwareHistory, _dialect, _autoDetectedThinkingMarkers)
+        let (conversationHistory, toolAwareHistory, structuredHistory, dialect, autoDetectedMarkers) = withStateLock {
+            (_conversationHistory, _toolAwareHistory, _structuredHistory, _dialect, _autoDetectedThinkingMarkers)
         }
 
         // For Qwen 2.5: serialize tool definitions into a <tools>…</tools> block
@@ -603,10 +757,30 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             return base + toolBlock
         }()
 
-        // All messages are encoded as plain [String: String] dictionaries before the
-        // container applies the tokenizer's chat template. For Qwen 2.5 tool history,
-        // tool calls are text-encoded into content fields using the same
-        // <tool_call>…</tool_call> format the model emits.
+        let chatMessages: [Chat.Message]? =
+            if let structuredHistory, !structuredHistory.isEmpty {
+                if let toolAwareHistory, !toolAwareHistory.isEmpty {
+                    try Self.toolAwareChatMessages(
+                        structuredHistory: structuredHistory,
+                        toolAwareHistory: toolAwareHistory,
+                        systemPrompt: effectiveSystemPrompt,
+                        dialect: dialect
+                    )
+                } else {
+                    try Self.plainChatMessages(
+                        history: structuredHistory,
+                        systemPrompt: effectiveSystemPrompt
+                    )
+                }
+            } else {
+                nil
+            }
+
+        // All non-vision messages are encoded as plain [String: String]
+        // dictionaries before the container applies the tokenizer's chat
+        // template. For Qwen 2.5 tool history, tool calls are text-encoded into
+        // content fields using the same <tool_call>…</tool_call> format the
+        // model emits.
         let messages: [[String: String]] = {
             var msgs: [[String: String]] = []
             if let sp = effectiveSystemPrompt, !sp.isEmpty {
@@ -674,7 +848,12 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 var thinkingTokenCount = 0
                 var thinkingLimitReached = false
 
-                let preparedInput = try await modelContainer.prepare(messages: messages)
+                let preparedInput =
+                    if let chatMessages {
+                        try await modelContainer.prepare(chat: SendableChatMessages(chatMessages))
+                    } else {
+                        try await modelContainer.prepare(messages: messages)
+                    }
                 let cache = try await modelContainer.makeCache(parameters: generateConfig)
                 var generationInput = preparedInput
                 let promptTokenIds: [Int]? = if kvCacheReuseEligible {
@@ -865,10 +1044,16 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// without loading real model weights. Call this before `generate()`.
     ///
     /// Not part of the public API — visible to `BaseChatBackendsTests` via `@testable import`.
-    func _inject(_ container: any MLXModelContainerProtocol) {
+    func _inject(
+        _ container: any MLXModelContainerProtocol,
+        supportsVision: Bool = false,
+        dialect: MLXToolDialect = .unknown
+    ) {
         withStateLock {
             _modelContainer = container
             _isModelLoaded = true
+            _supportsVision = supportsVision
+            _dialect = dialect
             invalidatePromptCacheLocked()
             _kvCacheReuseEligible = enableKVCacheReuse
             _hasInitializedRuntime = false
@@ -914,8 +1099,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             _isGenerating = false
             _conversationHistory = []
             _toolAwareHistory = nil
+            _structuredHistory = nil
             _dialect = .unknown
             _autoDetectedThinkingMarkers = nil
+            _supportsVision = false
             invalidatePromptCacheLocked()
             _kvCacheReuseEligible = false
             _hasInitializedRuntime = false
@@ -946,8 +1133,17 @@ extension MLXBackend {
         withStateLock {
             _conversationHistory = []
             _toolAwareHistory = nil
+            _structuredHistory = nil
             invalidatePromptCacheLocked()
         }
+    }
+}
+
+// MARK: - StructuredHistoryReceiver
+
+extension MLXBackend: StructuredHistoryReceiver {
+    public func setStructuredHistory(_ messages: [StructuredMessage]) {
+        withStateLock { _structuredHistory = messages }
     }
 }
 

@@ -170,21 +170,42 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
         await vm.switchToSession(session)
         vm.inputText = "should be replaced"
 
-        let imageData = Data([0x89, 0x50, 0x4E, 0x47]) // PNG magic bytes
+        let imageData = ImageFixtures.oneByOnePNGData
         await vm.ingestPendingPayload(
             .image(imageData, mimeType: "image/png"),
             intent: .draft
         )
 
-        // Image payloads don't carry a text body — the draft is cleared
-        // since attachment-only drafts can't be sent through the
-        // current compose-bar contract. The host is expected to show
-        // the staged image preview in its own UI.
+        // Image payloads don't carry a text body, so the draft text is cleared
+        // while the image itself is staged in the compose bar.
         XCTAssertEqual(vm.inputText, "")
+        XCTAssertEqual(
+            vm.draftAttachments,
+            [.image(data: imageData, mimeType: "image/png")]
+        )
 
         // No new messages should have been persisted.
         let messages = fetchMessages(for: session.id)
         XCTAssertTrue(messages.isEmpty)
+    }
+
+    func test_imagePayload_appendToActive_keepsDraftTextAndAddsAttachment() async {
+        let session = ChatSessionRecord(title: "Existing")
+        try? await vm.persistence?.insertSession(session)
+        await vm.switchToSession(session)
+        vm.inputText = "Please inspect this"
+
+        let imageData = ImageFixtures.oneByOnePNGData
+        await vm.ingestPendingPayload(
+            .image(imageData, mimeType: "image/png"),
+            intent: .appendToActive
+        )
+
+        XCTAssertEqual(vm.inputText, "Please inspect this")
+        XCTAssertEqual(vm.draftAttachments, [.image(data: imageData, mimeType: "image/png")])
+
+        let messages = fetchMessages(for: session.id)
+        XCTAssertTrue(messages.isEmpty, "Appending an image payload should stay in draft state until the user sends")
     }
 
     // MARK: - file × .newSession

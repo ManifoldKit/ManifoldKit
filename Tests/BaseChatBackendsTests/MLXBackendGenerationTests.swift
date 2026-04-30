@@ -14,6 +14,11 @@ extension MockMLXModelContainer: MLXModelContainerProtocol {
         return MLXPreparedInput(promptTokenIds: promptTokenIds)
     }
 
+    public func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
+        let promptTokenIds = try await prepareForGeneration(chat: chat.value)
+        return MLXPreparedInput(promptTokenIds: promptTokenIds)
+    }
+
     public func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {
         MLXPromptCache(makeCacheForGeneration(parameters: parameters))
     }
@@ -109,6 +114,96 @@ final class MLXBackendGenerationTests: XCTestCase {
 
         // Sabotage check: setting maxOutputTokens = 100 yields all 10 tokens,
         // causing the count assertion to fail.
+    }
+
+    func test_generate_withVisionHistory_preparesStructuredChat() async throws {
+        let mock = MockMLXModelContainer()
+        mock.tokensToYield = ["seen"]
+
+        let backend = MLXBackend()
+        backend._inject(mock, supportsVision: true)
+        backend.setStructuredHistory([
+            StructuredMessage(role: "user", parts: [
+                .text("Describe this image."),
+                .image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png"),
+            ])
+        ])
+
+        let stream = try backend.generate(
+            prompt: "fallback",
+            systemPrompt: nil,
+            config: GenerationConfig()
+        )
+
+        let tokens = try await collectTokens(from: stream)
+
+        XCTAssertEqual(tokens, ["seen"])
+        XCTAssertEqual(mock.lastChatMessages?.count, 1)
+        XCTAssertEqual(mock.lastChatMessages?.first?.content, "Describe this image.")
+        XCTAssertEqual(mock.lastChatMessages?.first?.images.count, 1)
+        XCTAssertNil(mock.lastMessages, "Vision turns should go through UserInput(chat:) instead of text-only message dictionaries")
+    }
+
+    func test_generate_toolAwareVisionHistory_preservesOriginalImages() async throws {
+        let mock = MockMLXModelContainer()
+        mock.tokensToYield = ["ok"]
+
+        let backend = MLXBackend()
+        backend._inject(mock, supportsVision: true, dialect: .qwen25)
+        backend.setStructuredHistory([
+            StructuredMessage(role: "user", parts: [
+                .text("Please inspect this chart."),
+                .image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png"),
+            ])
+        ])
+        backend.setToolAwareHistory([
+            ToolAwareHistoryEntry(role: "user", content: "Please inspect this chart."),
+            ToolAwareHistoryEntry(
+                role: "assistant",
+                content: "",
+                toolCalls: [
+                    ToolCall(id: "call_1", toolName: "summarize_image", arguments: "{}")
+                ]
+            ),
+        ])
+
+        _ = try await collectTokens(from: try backend.generate(
+            prompt: "fallback",
+            systemPrompt: nil,
+            config: GenerationConfig()
+        ))
+
+        XCTAssertEqual(mock.lastChatMessages?.count, 2)
+        XCTAssertEqual(mock.lastChatMessages?.first?.images.count, 1)
+        XCTAssertTrue(
+            mock.lastChatMessages?[1].content.contains("<tool_call>") == true,
+            "Tool-aware vision turns must keep the serialized tool call content while preserving the earlier image"
+        )
+    }
+
+    func test_generate_withVisionHistory_andSystemPrompt_prependsSystemChatMessage() async throws {
+        let mock = MockMLXModelContainer()
+        mock.tokensToYield = ["seen"]
+
+        let backend = MLXBackend()
+        backend._inject(mock, supportsVision: true)
+        backend.setStructuredHistory([
+            StructuredMessage(role: "user", parts: [
+                .text("Describe this image."),
+                .image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png"),
+            ])
+        ])
+
+        _ = try await collectTokens(from: try backend.generate(
+            prompt: "fallback",
+            systemPrompt: "You are a precise image analyst.",
+            config: GenerationConfig()
+        ))
+
+        XCTAssertEqual(mock.lastChatMessages?.count, 2)
+        XCTAssertEqual(mock.lastChatMessages?.first?.content, "You are a precise image analyst.")
+        XCTAssertEqual(mock.lastChatMessages?.first?.images.count, 0)
+        XCTAssertEqual(mock.lastChatMessages?[1].images.count, 1)
     }
 
     func test_generate_reusesPromptCachePrefixOnMatchingTurn() async throws {

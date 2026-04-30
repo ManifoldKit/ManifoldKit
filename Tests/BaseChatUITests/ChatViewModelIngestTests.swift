@@ -27,7 +27,7 @@ final class ChatViewModelIngestTests: XCTestCase {
         container = try makeInMemoryContainer()
         context = container.mainContext
 
-        mock = MockInferenceBackend()
+        mock = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
         mock.isModelLoaded = true
         mock.tokensToYield = ["ack"]
 
@@ -83,7 +83,8 @@ final class ChatViewModelIngestTests: XCTestCase {
     }
 
     func test_ingest_attachmentsPreservedAsMessageParts() async {
-        let attachments: [MessagePart] = [.text("[extra note]")]
+        let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        let attachments: [MessagePart] = [image]
         let payload = InboundPayload(
             prompt: "here is the prompt",
             attachments: attachments,
@@ -95,11 +96,31 @@ final class ChatViewModelIngestTests: XCTestCase {
         let userMessage = vm.messages.first(where: { $0.role == .user })
         XCTAssertNotNil(userMessage, "Ingest should seed a user message")
         XCTAssertEqual(
-            userMessage?.contentParts.count,
-            2,
-            "User message should carry the prompt plus the attachment part"
+            userMessage?.contentParts,
+            [.text("here is the prompt"), image],
+            "User message should carry the prompt plus the image attachment"
         )
-        XCTAssertEqual(userMessage?.contentParts.last, .text("[extra note]"))
+        XCTAssertEqual(vm.draftAttachments, [], "Ingested attachments should be consumed by sendMessage()")
+        XCTAssertEqual(mock.lastReceivedStructuredHistory?.first?.parts, [.text("here is the prompt"), image])
+    }
+
+    func test_switchToSession_clearsDraftAttachments() async throws {
+        let first = ChatSessionRecord(title: "First")
+        let second = ChatSessionRecord(title: "Second")
+        try await vm.persistence?.insertSession(first)
+        try await vm.persistence?.insertSession(second)
+        await vm.switchToSession(first)
+
+        vm.inputText = "staged"
+        vm.draftAttachments = [
+            .image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        ]
+
+        await vm.switchToSession(second)
+
+        XCTAssertEqual(vm.activeSession?.id, second.id)
+        XCTAssertEqual(vm.inputText, "")
+        XCTAssertTrue(vm.draftAttachments.isEmpty, "Session switches must drop staged attachments from the prior session")
     }
 
     // MARK: - Concurrency
