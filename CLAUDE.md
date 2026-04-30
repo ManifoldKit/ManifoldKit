@@ -175,7 +175,7 @@ wait $ST_PID;     ST_RC=$?
 
 Per-shell `TMPDIR` keeps `scripts/test.sh`'s `test_output.txt` from clobbering. Wall-clock ≈ max(batch1, batch2) instead of sum.
 
-Within-batch parallelism (`--parallel`) is still blocked by the `UserDefaults.standard` race in `test_autoSelectFirstRunModel_*` and download-tests legacy-key reads — see issue #756 / the follow-up issue tracking the fix.
+Within-batch parallelism (`--parallel`) is still blocked by the `UserDefaults.standard` race in `test_autoSelectFirstRunModel_*` and download-tests legacy-key reads — tracked in issue #910.
 
 ### Spike gate (bounded changes only)
 
