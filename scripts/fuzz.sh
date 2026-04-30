@@ -12,6 +12,7 @@
 #   --backend mlx Skip the swift-run path entirely and run only the MLX XCTest
 #                 host (same env forwarding as --with-mlx). Replay/shrink remain
 #                 swift-run-only and are rejected for this path.
+#   --workers N   Forwarded to fuzz-chat for process-level parallel workers.
 
 set -euo pipefail
 
@@ -28,6 +29,7 @@ for arg in "$@"; do
             echo ""
             echo "Local flags:"
             echo "  --with-mlx   Also run the MLX XCTest fuzz suite via xcodebuild"
+            echo "  --workers N  Run N process-level fuzz-chat workers (SwiftPM path only)"
             echo "  -h, --help   Show this help and forward to fuzz-chat -h"
             echo ""
             echo "Forwarding to: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h"
@@ -40,6 +42,7 @@ for arg in "$@"; do
 done
 
 REQUESTED_BACKEND=""
+REQUESTED_WORKERS=1
 for ((i = 0; i < ${#FORWARDED_ARGS[@]}; i++)); do
     arg="${FORWARDED_ARGS[$i]}"
     case "$arg" in
@@ -50,11 +53,27 @@ for ((i = 0; i < ${#FORWARDED_ARGS[@]}; i++)); do
             fi
             ;;
         --backend=*) REQUESTED_BACKEND="${arg#*=}" ;;
+        --workers)
+            if (( i + 1 < ${#FORWARDED_ARGS[@]} )); then
+                REQUESTED_WORKERS="${FORWARDED_ARGS[$((i + 1))]}"
+                ((i++))
+            fi
+            ;;
+        --workers=*) REQUESTED_WORKERS="${arg#*=}" ;;
     esac
 done
 
+if ! [[ "$REQUESTED_WORKERS" =~ ^[0-9]+$ ]] || (( REQUESTED_WORKERS < 1 )); then
+    echo "scripts/fuzz.sh: --workers requires a positive integer" >&2
+    exit 2
+fi
+
 RUN_SWIFT=1
 if [[ "$REQUESTED_BACKEND" == "mlx" ]]; then
+    if (( REQUESTED_WORKERS > 1 )); then
+        echo "scripts/fuzz.sh: --workers > 1 is not supported with --backend mlx (xcodebuild-hosted path)." >&2
+        exit 2
+    fi
     RUN_SWIFT=0
     WITH_MLX=1
     for arg in "${FORWARDED_ARGS[@]}"; do
@@ -80,6 +99,11 @@ if [[ -d "$MODELS_DIR" ]]; then
     if find "$MODELS_DIR" -maxdepth 3 -type f -name "*.safetensors" -print -quit 2>/dev/null | grep -q .; then
         MLX_HIT="hit"
     fi
+fi
+
+if [[ $WITH_MLX -eq 1 && "$REQUESTED_BACKEND" != "mlx" && $REQUESTED_WORKERS -gt 1 ]]; then
+    echo "scripts/fuzz.sh: --workers > 1 cannot be combined with --with-mlx; run the SwiftPM and MLX campaigns separately." >&2
+    exit 2
 fi
 
 if curl -s -m 2 http://localhost:11434/api/tags >/dev/null 2>&1; then

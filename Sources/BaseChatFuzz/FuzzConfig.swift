@@ -33,6 +33,10 @@ public struct FuzzConfig: Sendable {
     /// `ToolCallValidityDetector` has invariants to check against. Pairs with the
     /// `--tools` CLI flag.
     public let tools: Bool
+    /// Number of process-level workers requested by the campaign front-end.
+    /// `FuzzRunner` itself remains single-worker; orchestration lives at the CLI
+    /// boundary so backend instances, RNG state, reporters, and sinks stay isolated.
+    public let workers: Int
 
     public init(
         backend: BackendChoice = .ollama,
@@ -46,7 +50,8 @@ public struct FuzzConfig: Sendable {
         quiet: Bool = false,
         sessionScripts: Bool = false,
         corpusSubset: Corpus.Subset = .full,
-        tools: Bool = false
+        tools: Bool = false,
+        workers: Int = 1
     ) {
         self.backend = backend
         self.minutes = minutes
@@ -60,5 +65,6 @@ public struct FuzzConfig: Sendable {
         self.sessionScripts = sessionScripts
         self.corpusSubset = corpusSubset
         self.tools = tools
+        self.workers = workers
     }
 }

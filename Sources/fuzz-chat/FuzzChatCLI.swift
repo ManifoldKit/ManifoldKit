@@ -30,6 +30,8 @@ struct FuzzChatCLI {
         var sessionScripts = false
         var corpusSubset: Corpus.Subset = .full
         var tools = false
+        var workers = 1
+        var outputDir = URL(fileURLWithPath: "tmp/fuzz", isDirectory: true)
 
         var i = argv.startIndex
         while i < argv.endIndex {
@@ -53,6 +55,14 @@ struct FuzzChatCLI {
                 i = argv.index(after: i)
                 guard i < argv.endIndex, let n = UInt64(argv[i]) else { fail("--seed requires a UInt64") }
                 seed = n
+            case "--workers":
+                i = argv.index(after: i)
+                guard i < argv.endIndex, let n = Int(argv[i]), n > 0 else { fail("--workers requires a positive integer") }
+                workers = n
+            case "--output-dir":
+                i = argv.index(after: i)
+                guard i < argv.endIndex else { fail("--output-dir requires a path") }
+                outputDir = URL(fileURLWithPath: argv[i], isDirectory: true)
             case "--model":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--model requires a value") }
@@ -104,7 +114,46 @@ struct FuzzChatCLI {
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh or xcodebuild.")
         }
 
-        let outputDir = URL(fileURLWithPath: "tmp/fuzz", isDirectory: true)
+        // Default termination if neither flag passed: 5 minutes.
+        if minutes == nil && iterations == nil && replayHash == nil && shrinkHash == nil { minutes = 5 }
+
+        if workers > 1 {
+            if replayHash != nil || shrinkHash != nil {
+                fail("--workers is only supported for fuzz campaigns, not --replay or --shrink")
+            }
+            do {
+                let slices = try ParallelFuzzWorkerPlanner.makePlan(
+                    backend: backend,
+                    requestedWorkers: workers,
+                    seed: seed,
+                    minutes: minutes,
+                    iterations: iterations
+                )
+                let status = runParallelCampaign(
+                    options: CampaignOptions(
+                        backend: backend,
+                        minutes: minutes,
+                        iterations: iterations,
+                        seed: seed,
+                        modelHint: modelHint,
+                        detectorFilter: detectorFilter,
+                        quiet: quiet,
+                        sessionScripts: sessionScripts,
+                        corpusSubset: corpusSubset,
+                        tools: tools,
+                        outputDir: outputDir
+                    ),
+                    slices: slices
+                )
+                exit(status)
+            } catch ParallelFuzzWorkerPlanError.backendWorkerLimit(let backend, let requested, let limit) {
+                fail("--workers \(requested) is not safe for backend \(backend.rawValue); maximum is \(limit)")
+            } catch ParallelFuzzWorkerPlanError.invalidWorkerCount(let count) {
+                fail("--workers requires a positive integer (got \(count))")
+            } catch {
+                fail("parallel worker planning failed: \(error)")
+            }
+        }
 
         let factory: any FuzzBackendFactory
         switch backend {
@@ -175,9 +224,6 @@ struct FuzzChatCLI {
             exit(exitCode)
         }
 
-        // Default termination if neither flag passed: 5 minutes.
-        if minutes == nil && iterations == nil { minutes = 5 }
-
         let config = FuzzConfig(
             backend: backend,
             minutes: minutes,
@@ -190,7 +236,8 @@ struct FuzzChatCLI {
             quiet: quiet,
             sessionScripts: sessionScripts,
             corpusSubset: corpusSubset,
-            tools: tools
+            tools: tools,
+            workers: workers
         )
 
         let reporter = TerminalReporter(quiet: quiet)
@@ -205,6 +252,133 @@ struct FuzzChatCLI {
         // is a no-op; LlamaFuzzFactory overrides this to await unloadAndWait(),
         // preventing the SIGABRT from ggml-metal resource-set teardown (#391).
         await factory.teardown()
+    }
+
+    struct CampaignOptions {
+        var backend: BackendChoice
+        var minutes: Int?
+        var iterations: Int?
+        var seed: UInt64
+        var modelHint: String?
+        var detectorFilter: Set<String>?
+        var quiet: Bool
+        var sessionScripts: Bool
+        var corpusSubset: Corpus.Subset
+        var tools: Bool
+        var outputDir: URL
+    }
+
+    struct WorkerProcess {
+        var process: Process
+        var logHandle: FileHandle
+        var outputDir: URL
+        var logURL: URL
+    }
+
+    static func runParallelCampaign(options: CampaignOptions, slices: [ParallelFuzzWorkerSlice]) -> Int32 {
+        let runId = UUID().uuidString
+        let workersRoot = options.outputDir
+            .appendingPathComponent("workers", isDirectory: true)
+            .appendingPathComponent(runId, isDirectory: true)
+        let executableURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+        let fm = FileManager.default
+
+        do {
+            try fm.createDirectory(at: workersRoot, withIntermediateDirectories: true)
+        } catch {
+            FileHandle.standardError.write(Data("fuzz-chat: failed to create worker directory: \(error)\n".utf8))
+            return 3
+        }
+
+        if !options.quiet {
+            print("Starting \(slices.count) fuzz workers; logs: \(workersRoot.path)")
+        }
+
+        var workers: [WorkerProcess] = []
+        for slice in slices {
+            let workerDir = workersRoot.appendingPathComponent("worker-\(slice.index)", isDirectory: true)
+            let workerOutputDir = workerDir.appendingPathComponent("fuzz", isDirectory: true)
+            let logURL = workerDir.appendingPathComponent("worker.log")
+            do {
+                try fm.createDirectory(at: workerOutputDir, withIntermediateDirectories: true)
+                fm.createFile(atPath: logURL.path, contents: nil)
+                let logHandle = try FileHandle(forWritingTo: logURL)
+
+                let process = Process()
+                process.executableURL = executableURL
+                process.arguments = workerArguments(options: options, slice: slice, outputDir: workerOutputDir)
+                process.standardOutput = logHandle
+                process.standardError = logHandle
+                try process.run()
+                workers.append(WorkerProcess(process: process, logHandle: logHandle, outputDir: workerOutputDir, logURL: logURL))
+            } catch {
+                FileHandle.standardError.write(Data("fuzz-chat: failed to start worker \(slice.index): \(error)\n".utf8))
+                for worker in workers {
+                    worker.process.terminate()
+                    worker.logHandle.closeFile()
+                }
+                return 3
+            }
+        }
+
+        var failedWorkers: [(Int32, URL)] = []
+        for worker in workers {
+            worker.process.waitUntilExit()
+            worker.logHandle.closeFile()
+            if worker.process.terminationStatus != 0 {
+                failedWorkers.append((worker.process.terminationStatus, worker.logURL))
+            }
+        }
+
+        do {
+            let mergeInputs = [options.outputDir] + workers.map(\.outputDir)
+            let report = try FindingsMerger.merge(workerOutputDirs: mergeInputs, into: options.outputDir)
+            if !options.quiet {
+                print("Merged \(report.totalRuns) total runs and \(report.uniqueFindings) unique findings into \(options.outputDir.path)")
+            }
+        } catch {
+            FileHandle.standardError.write(Data("fuzz-chat: failed to merge worker findings: \(error)\n".utf8))
+            return 3
+        }
+
+        if !failedWorkers.isEmpty {
+            for (status, logURL) in failedWorkers {
+                FileHandle.standardError.write(Data("fuzz-chat: worker exited \(status); see \(logURL.path)\n".utf8))
+            }
+            return 1
+        }
+        return 0
+    }
+
+    static func workerArguments(options: CampaignOptions, slice: ParallelFuzzWorkerSlice, outputDir: URL) -> [String] {
+        var args: [String] = [
+            "--backend", options.backend.rawValue,
+            "--seed", "\(slice.seed)",
+            "--output-dir", outputDir.path,
+            "--corpus-subset", options.corpusSubset.rawValue,
+        ]
+        if let iterations = slice.iterations {
+            args += ["--iterations", "\(iterations)"]
+        }
+        if let minutes = slice.minutes {
+            args += ["--minutes", "\(minutes)"]
+        }
+        if let modelHint = options.modelHint {
+            args += ["--model", modelHint]
+        }
+        if let detectorFilter = options.detectorFilter, !detectorFilter.isEmpty {
+            args += ["--detector", detectorFilter.sorted().joined(separator: ",")]
+        }
+        if options.quiet {
+            args.append("--quiet")
+        }
+        if options.sessionScripts {
+            args.append("--session-scripts")
+        }
+        if options.tools {
+            args.append("--tools")
+        }
+        return args
     }
 
     /// Drives the Replayer and maps its `Outcome` to an exit code + summary line.
@@ -346,6 +520,9 @@ struct FuzzChatCLI {
             "  --minutes N         time budget (default 5 if neither flag set)",
             "  --iterations N      iteration budget",
             "  --seed N            RNG seed (default random)",
+            "  --workers N         process-level workers for campaign mode (default 1).",
+            "                      Iterations are split; time budgets apply per worker.",
+            "  --output-dir PATH   findings directory (default tmp/fuzz)",
             "  --model <substr>    Ollama: pin to first installed model containing <substr>.",
             "                      Pass `all` (or omit) to rotate through every installed",
             "                      Ollama model, one per iteration. Llama: pin to the",

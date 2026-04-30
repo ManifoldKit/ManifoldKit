@@ -6,23 +6,8 @@ import BaseChatInference
 public actor FindingsSink {
 
     private let outputDir: URL
-    private var index: [String: IndexRow] = [:]
+    private var index: [String: FindingsIndexRow] = [:]
     private var totalRuns = 0
-
-    private struct IndexRow: Codable {
-        var finding: Finding
-        var modelId: String
-        var seed: UInt64
-        var lastSeen: String
-    }
-
-    /// On-disk envelope so `totalRuns` survives across `FindingsSink` instances.
-    /// The legacy bare-array format is still accepted and migrated lazily on
-    /// first write — `totalRuns` resumes from the row count in that case.
-    private struct IndexFile: Codable {
-        var totalRuns: Int
-        var rows: [IndexRow]
-    }
 
     public init(outputDir: URL) {
         self.outputDir = outputDir
@@ -36,24 +21,13 @@ public actor FindingsSink {
             Self.logError("Failed to create FindingsSink output directories at \(outputDir.path): \(error)")
         }
         // Load existing index synchronously; safe because nothing else holds this actor yet.
-        let indexURL = outputDir.appendingPathComponent("index.json")
-        if FileManager.default.fileExists(atPath: indexURL.path) {
-            let decoder = JSONDecoder()
-            do {
-                let data = try Data(contentsOf: indexURL)
-                do {
-                    let envelope = try decoder.decode(IndexFile.self, from: data)
-                    self.totalRuns = envelope.totalRuns
-                    self.index = Dictionary(uniqueKeysWithValues: envelope.rows.map { ($0.finding.hash, $0) })
-                } catch {
-                    // Legacy format: bare `[IndexRow]` array. Resume totalRuns from the row count.
-                    let rows = try decoder.decode([IndexRow].self, from: data)
-                    self.totalRuns = rows.count
-                    self.index = Dictionary(uniqueKeysWithValues: rows.map { ($0.finding.hash, $0) })
-                }
-            } catch {
-                Log.inference.warning("FindingsSink: failed to load existing index.json at \(indexURL.path, privacy: .public); starting fresh: \(String(describing: error), privacy: .public)")
-            }
+        do {
+            let loaded = try FindingsIndexCodec.load(from: outputDir)
+            self.totalRuns = loaded.totalRuns
+            self.index = Dictionary(uniqueKeysWithValues: loaded.rows.map { ($0.finding.hash, $0) })
+        } catch {
+            let indexURL = outputDir.appendingPathComponent("index.json")
+            Log.inference.warning("FindingsSink: failed to load existing index.json at \(indexURL.path, privacy: .public); starting fresh: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -101,35 +75,27 @@ public actor FindingsSink {
                 }
             }
 
-            let summary = "\(stored.severity.rawValue) | \(stored.detectorId)/\(stored.subCheck) | \(stored.modelId) | count=\(stored.count)\nTrigger: \(stored.trigger)\n"
-            do {
-                try summary.write(to: dir.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
-            } catch {
-                Self.logError("Failed to write summary.txt for finding \(finding.hash): \(error)")
-            }
-
-            let reproCmd = Self.reproCommand(seed: recordedSeed, modelId: record.model.id)
-            let replayCmd = Self.replayCommand(hash: finding.hash)
-            let reproScript = """
-            #!/bin/sh
-            # Preferred: bit-level replay against the recorded prompt/config.
-            \(replayCmd)
-            # Fallback: re-enter the campaign loop at the original seed/model.
-            # \(reproCmd)
-
-            """
-            do {
-                try reproScript.write(to: dir.appendingPathComponent("repro.sh"), atomically: true, encoding: .utf8)
-            } catch {
-                Self.logError("Failed to write repro.sh for finding \(finding.hash): \(error)")
-            }
-
-            index[finding.hash] = IndexRow(
+            let row = FindingsIndexRow(
                 finding: stored,
                 modelId: record.model.id,
                 seed: recordedSeed,
                 lastSeen: ISO8601DateFormatter().string(from: Date())
             )
+            do {
+                try FindingsArtifactRenderer.summary(for: row)
+                    .write(to: dir.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
+            } catch {
+                Self.logError("Failed to write summary.txt for finding \(finding.hash): \(error)")
+            }
+
+            do {
+                try FindingsArtifactRenderer.reproScript(hash: finding.hash, seed: recordedSeed, modelId: record.model.id)
+                    .write(to: dir.appendingPathComponent("repro.sh"), atomically: true, encoding: .utf8)
+            } catch {
+                Self.logError("Failed to write repro.sh for finding \(finding.hash): \(error)")
+            }
+
+            index[finding.hash] = row
         }
         writeIndex()
     }
@@ -139,52 +105,18 @@ public actor FindingsSink {
     }
 
     private func writeIndex() {
-        let rows = index.values.sorted { ($0.finding.severity, $0.finding.count) > ($1.finding.severity, $1.finding.count) }
-
-        let envelope = IndexFile(totalRuns: totalRuns, rows: Array(rows))
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let indexURL = outputDir.appendingPathComponent("index.json")
         do {
-            let data = try encoder.encode(envelope)
-            try data.write(to: indexURL)
+            try FindingsIndexCodec.write(
+                FindingsIndexFile(totalRuns: totalRuns, rows: Array(index.values)),
+                to: outputDir
+            )
         } catch {
-            Self.logError("Failed to write index.json at \(indexURL.path): \(error)")
+            Self.logError("Failed to write findings index at \(outputDir.path): \(error)")
         }
-
-        var md = "# Fuzz findings\n\n"
-        md += "_\(totalRuns) total runs, \(rows.count) unique findings._\n\n"
-        md += "| Severity | Detector / sub-check | Model | Hash | First seen | Count | Trigger | Replay |\n"
-        md += "|---|---|---|---|---|---|---|---|\n"
-        for row in rows {
-            let f = row.finding
-            let trigger = f.trigger.replacingOccurrences(of: "|", with: "\\|").prefix(80)
-            let replay = Self.replayCommand(hash: f.hash)
-            md += "| \(f.severity.rawValue) | \(f.detectorId) / \(f.subCheck) | \(row.modelId) | `\(f.hash)` | \(f.firstSeen) | \(f.count) | \(trigger) | `\(replay)` |\n"
-        }
-        let mdURL = outputDir.appendingPathComponent("INDEX.md")
-        do {
-            try md.write(to: mdURL, atomically: true, encoding: .utf8)
-        } catch {
-            Self.logError("Failed to write INDEX.md at \(mdURL.path): \(error)")
-        }
-    }
-
-    private static func reproCommand(seed: UInt64, modelId: String) -> String {
-        "swift run fuzz-chat --seed \(seed) --model \(modelId) --single"
-    }
-
-    private static func replayCommand(hash: String) -> String {
-        "swift run fuzz-chat --replay \(hash)"
     }
 
     private static func logError(_ message: String) {
         Log.inference.error("FindingsSink: \(message, privacy: .public)")
         FileHandle.standardError.write(Data("FindingsSink error: \(message)\n".utf8))
     }
-}
-
-private func > <A: Comparable, B: Comparable>(lhs: (A, B), rhs: (A, B)) -> Bool {
-    if lhs.0 != rhs.0 { return lhs.0 > rhs.0 }
-    return lhs.1 > rhs.1
 }
