@@ -31,7 +31,7 @@
 
 set -euo pipefail
 
-OUTPUT_FILE="${TMPDIR:-/tmp}/test_output.txt"
+OUTPUT_FILE="${BASECHAT_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Arguments ────────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ echo ""
 # swift PM writes build progress + error lines to stderr; test output to stdout.
 # We merge both so signal-crash lines (stderr) land alongside test lines (stdout).
 cd "$PACKAGE_DIR"
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 set +e
 swift test "${SWIFT_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
 SWIFT_EXIT=${PIPESTATUS[0]}
