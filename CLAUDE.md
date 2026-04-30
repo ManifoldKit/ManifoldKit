@@ -127,13 +127,80 @@ When Apple ships a new major OS each September, bump both minimums by one and re
 
 ## Pre-push checklist
 
-Before pushing any branch, run all CI-safe test suites locally and confirm zero failures:
+Before pushing any branch, run all CI-safe test suites locally and confirm zero failures. Use the **same two-invocation shape CI uses** (`.github/workflows/ci.yml`) — running each suite as a separate `swift test` call pays the build-graph + git-remote + test-bundle-link cost 9× instead of 2× and is ~4–5× slower for identical coverage.
 
 ```bash
-swift test --filter BaseChatCoreTests --disable-default-traits && swift test --filter BaseChatInferenceTests --disable-default-traits && swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits && swift test --filter BaseChatUITests --disable-default-traits && swift test --filter BaseChatUIModelManagementTests --disable-default-traits && swift test --filter BaseChatMCPTests --disable-default-traits && swift test --filter BaseChatBackendsTests --disable-default-traits && swift test --filter BaseChatTestSupportTests --disable-default-traits && swift test --filter BaseChatAppIntentsTests --disable-default-traits
+# 1. XCTest suites — single invocation, all filters at once
+scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests \
+  --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
+  --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
+  --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+  --disable-default-traits --skip-update
+
+# 2. Swift Testing — must run in a separate process (XCTest+Swift Testing
+#    in one process triggers a libmalloc SIGABRT — see #681)
+scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
+  --disable-default-traits --skip-update
 ```
 
+`--skip-update` skips the per-invocation git-remote contact for every dependency (Package.resolved already pins the graph). Drop it only if you've just edited Package.swift.
+
 Never push based on a subset passing. After rebasing, always re-run the full suite before pushing — conflicts can silently break tests that compiled fine before.
+
+### Strong-machine variant: run both invocations concurrently
+
+The two invocations are separate processes — the libmalloc SIGABRT only triggers when XCTest + Swift Testing share a single process (issue #681). On a multi-core machine you can pre-build once and run them in parallel:
+
+```bash
+swift build --build-tests --disable-default-traits
+
+(scripts/test.sh \
+   --filter BaseChatCoreTests --filter BaseChatUITests \
+   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
+   --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
+   --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+   --disable-default-traits --skip-update) &
+XCTEST_PID=$!
+
+(TMPDIR=/tmp/bck-st-$$ mkdir -p /tmp/bck-st-$$ && \
+ TMPDIR=/tmp/bck-st-$$ scripts/test.sh \
+   --filter BaseChatInferenceSwiftTestingTests \
+   --disable-default-traits --skip-update) &
+ST_PID=$!
+
+wait $XCTEST_PID; XCTEST_RC=$?
+wait $ST_PID;     ST_RC=$?
+[[ $XCTEST_RC -eq 0 && $ST_RC -eq 0 ]] || { echo "FAILED (XCTest=$XCTEST_RC, SwiftTesting=$ST_RC)"; exit 1; }
+```
+
+Per-shell `TMPDIR` keeps `scripts/test.sh`'s `test_output.txt` from clobbering. Wall-clock ≈ max(batch1, batch2) instead of sum.
+
+Within-batch parallelism (`--parallel`) is still blocked by the `UserDefaults.standard` race in `test_autoSelectFirstRunModel_*` and download-tests legacy-key reads — see issue #756 / the follow-up issue tracking the fix.
+
+### Spike gate (bounded changes only)
+
+For changes scoped to a single module or a CI-fix push where you've already validated the rest, you may run only the affected slice:
+
+```bash
+swift build --build-tests --disable-default-traits   # cheap compile gate
+scripts/test.sh --filter <OnlyAffectedSuite> --disable-default-traits --skip-update
+```
+
+This is a **spike gate**, not the pre-push gate. Use it only when:
+- The diff touches one module (e.g. only `BaseChatBackends`), AND
+- You've run the full suite once already on this branch and the change since then is bounded (e.g. fixing a CI failure, addressing a single review comment).
+
+The full two-invocation gate above is mandatory before the **final push** of a branch and after any rebase.
+
+### Trait-combo build sweep (only when needed)
+
+A full-traits build is needed only when a PR adds/modifies a switched enum in a trait-gated file (per past incidents where default-trait build missed CloudSaaS/Ollama-gated cases):
+
+```bash
+swift build --build-tests --traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace
+```
+
+Skip it for pure logic/test changes that don't touch enum surfaces.
 
 When changing behavior of any function or type, grep for ALL test references across the entire `Tests/` directory, not just the obvious test file. Behavior changes require updating every test that asserts on the old behavior:
 
