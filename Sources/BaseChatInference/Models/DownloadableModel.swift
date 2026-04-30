@@ -27,6 +27,11 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
     public let promptTemplate: PromptTemplate?
     /// One-line description for UI.
     public let description: String?
+    /// Companion multimodal projector filename, if this is a vision-capable model.
+    ///
+    /// When non-nil, the download UI should fetch this file from the same ``repoID``
+    /// alongside ``fileName``. Mirrors ``CuratedModel/mmprojFileName`` for curated entries.
+    public let mmprojFileName: String?
 
     /// Human-readable size (e.g., "4.1 GB").
     public var sizeFormatted: String {
@@ -63,6 +68,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.isCurated = true
         self.promptTemplate = curated.promptTemplate
         self.description = curated.description
+        self.mmprojFileName = curated.mmprojFileName
     }
 
     // MARK: - Memberwise
@@ -76,7 +82,8 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         downloads: Int? = nil,
         isCurated: Bool = false,
         promptTemplate: PromptTemplate? = nil,
-        description: String? = nil
+        description: String? = nil,
+        mmprojFileName: String? = nil
     ) {
         self.id = "\(repoID)/\(fileName)"
         self.repoID = repoID
@@ -88,6 +95,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.isCurated = isCurated
         self.promptTemplate = promptTemplate
         self.description = description
+        self.mmprojFileName = mmprojFileName
     }
 }
 
