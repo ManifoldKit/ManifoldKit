@@ -1,4 +1,5 @@
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 
 extension ChatViewModel {
     /// Preferred bootstrap path for apps that assemble shared services through

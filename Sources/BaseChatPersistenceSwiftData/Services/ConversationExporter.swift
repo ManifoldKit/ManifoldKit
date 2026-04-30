@@ -1,6 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 import BaseChatInference
+import BaseChatRuntime
 
 /// A reference to a file written to disk that is suitable for sharing via
 /// SwiftUI's `ShareLink`.

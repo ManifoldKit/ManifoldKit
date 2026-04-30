@@ -1,6 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 /// Tests for the data model and layout logic that drives MessageBubbleView.

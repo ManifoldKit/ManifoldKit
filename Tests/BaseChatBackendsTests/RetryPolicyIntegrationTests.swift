@@ -1,6 +1,7 @@
 #if CloudSaaS
 import XCTest
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends

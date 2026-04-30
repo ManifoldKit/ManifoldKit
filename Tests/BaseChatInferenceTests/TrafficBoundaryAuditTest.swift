@@ -136,7 +136,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "BaseChatTestSupport/MockHuggingFaceService.swift",
         // Validation reasons display canonical scheme/host examples in
         // user-facing error strings.
-        "BaseChatCore/Models/APIEndpointValidationReason.swift",
+        "BaseChatRuntime/Models/APIEndpointValidationReason.swift",
         // Provider enum exposes default base URLs as static data.
         "BaseChatInference/Models/APIProvider.swift",
     ]

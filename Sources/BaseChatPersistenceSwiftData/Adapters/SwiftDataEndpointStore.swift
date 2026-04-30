@@ -1,5 +1,6 @@
 import Foundation
 import BaseChatInference
+import BaseChatRuntime
 import SwiftData
 
 /// Default ``EndpointStore`` backed by SwiftData.

@@ -1,6 +1,7 @@
 import XCTest
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 @MainActor

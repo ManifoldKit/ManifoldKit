@@ -83,18 +83,18 @@ public struct SearchResults: Sendable {
 /// require — and removes the `nonisolated(unsafe) var _persistence` smell
 /// the Phase 0 spike (#878) flagged.
 ///
-/// Visibility is `internal` to `BaseChatUI`. Phase 1.2 may widen to
-/// `package`/`public` once the surface stabilises further.
-final class SessionListService: Sendable {
+/// Widened to `package` when moved to `BaseChatRuntime` so `BaseChatUI`
+/// (a sibling package target) can continue to use it without making it public.
+package final class SessionListService: Sendable {
 
     /// Default page size used when paginating the session list.
-    static let sessionsPageSize: Int = 50
+    package static let sessionsPageSize: Int = 50
 
     /// Default cap on message search results per query.
-    static let messageSearchLimit: Int = 100
+    package static let messageSearchLimit: Int = 100
 
     /// Upper bound on sessions resolved when surfacing message-search hits.
-    static let messageSearchSessionResolveCap: Int = 10_000
+    package static let messageSearchSessionResolveCap: Int = 10_000
 
     /// Async stream of state transitions. The adapter
     /// (`SessionManagerViewModel`) installs a synchronous sink via
@@ -113,7 +113,7 @@ final class SessionListService: Sendable {
     /// Phase 1.2 will move the runtime off `@MainActor`; at that point the
     /// adapter switches to consuming this stream from its drain `Task` (the
     /// sink path becomes a cross-actor hazard) without changing this surface.
-    let events: AsyncStream<SessionListEvent>
+    package let events: AsyncStream<SessionListEvent>
     private let continuation: AsyncStream<SessionListEvent>.Continuation
 
     // The service primarily orchestrates session-scope work (CRUD,
@@ -129,7 +129,7 @@ final class SessionListService: Sendable {
 
     private let sinkBox = EventSinkBox()
 
-    init(
+    package init(
         persistence: any SessionStore & MessageStore,
         diagnostics: DiagnosticsService? = nil
     ) {
@@ -147,7 +147,7 @@ final class SessionListService: Sendable {
     /// Installs a synchronous sink invoked on every emitted event before the
     /// event reaches ``events`` subscribers. The adapter uses this to mirror
     /// state without an extra actor hop. Pass `nil` to remove the sink.
-    func setEventSink(_ sink: (@Sendable (SessionListEvent) -> Void)?) {
+    package func setEventSink(_ sink: (@Sendable (SessionListEvent) -> Void)?) {
         sinkBox.set(sink)
     }
 
@@ -174,7 +174,7 @@ final class SessionListService: Sendable {
     /// drops in tandem.
     @MainActor
     @discardableResult
-    func createSession(title: String = "New Chat") async throws -> ChatSessionRecord {
+    package func createSession(title: String = "New Chat") async throws -> ChatSessionRecord {
         let record = ChatSessionRecord(title: title)
         try await persistence.insertSession(record)
         await emitFirstPage()
@@ -183,7 +183,7 @@ final class SessionListService: Sendable {
 
     /// Deletes a session and emits `.sessionDeleted` followed by `.sessionsLoaded`.
     @MainActor
-    func deleteSession(_ id: UUID) async throws {
+    package func deleteSession(_ id: UUID) async throws {
         try await persistence.deleteSession(id)
         emit(.sessionDeleted(id))
         await emitFirstPage()
@@ -191,7 +191,7 @@ final class SessionListService: Sendable {
 
     /// Renames a session and emits `.sessionRenamed` followed by `.sessionsLoaded`.
     @MainActor
-    func renameSession(_ session: ChatSessionRecord, title: String) async throws {
+    package func renameSession(_ session: ChatSessionRecord, title: String) async throws {
         var updated = session
         updated.title = title
         updated.updatedAt = Date()
@@ -204,7 +204,7 @@ final class SessionListService: Sendable {
 
     /// Loads page one and emits `.sessionsLoaded`.
     @MainActor
-    func loadInitialPage() async {
+    package func loadInitialPage() async {
         await emitFirstPage()
     }
 
@@ -212,7 +212,7 @@ final class SessionListService: Sendable {
     /// previous `fetchSessionsPage` helper for tests that want to assert on
     /// raw page contents without VM mutation.
     @MainActor
-    func fetchPage(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+    package func fetchPage(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
         try await persistence.fetchSessions(offset: offset, limit: limit)
     }
 
@@ -222,7 +222,7 @@ final class SessionListService: Sendable {
     /// where a transient page-load failure stopped further pagination), then
     /// emits `.persistenceFailure` for diagnostics consumers.
     @MainActor
-    func loadNextPage(offset: Int) async {
+    package func loadNextPage(offset: Int) async {
         do {
             let next = try await persistence.fetchSessions(offset: offset, limit: Self.sessionsPageSize)
             let hasMore = next.count == Self.sessionsPageSize
@@ -244,7 +244,7 @@ final class SessionListService: Sendable {
     /// The adapter passes its currently loaded `sessions` so the service does
     /// not need to re-fetch persistence for a client-side filter.
     @MainActor
-    func runTitleSearch(_ query: String, against sessions: [ChatSessionRecord]) {
+    package func runTitleSearch(_ query: String, against sessions: [ChatSessionRecord]) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             emit(.searchResultsChanged(.empty))
@@ -263,7 +263,7 @@ final class SessionListService: Sendable {
     /// Runs a message-scope search via persistence and emits
     /// `.searchResultsChanged`.
     @MainActor
-    func runMessageSearch(_ query: String) async {
+    package func runMessageSearch(_ query: String) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             emit(.searchResultsChanged(.empty))
@@ -302,7 +302,7 @@ final class SessionListService: Sendable {
 
     /// Clears search state and emits `.searchResultsChanged(.empty)`.
     @MainActor
-    func clearSearch() {
+    package func clearSearch() {
         emit(.searchResultsChanged(.empty))
     }
 
@@ -312,7 +312,7 @@ final class SessionListService: Sendable {
     /// inference request. Returns `nil` when the model produces an empty
     /// response. Throws the underlying inference error on failure.
     @MainActor
-    func generateTitle(
+    package func generateTitle(
         from firstMessage: String,
         using inferenceService: InferenceService
     ) async throws -> String? {
@@ -344,7 +344,7 @@ final class SessionListService: Sendable {
     /// sessions that are still named "New Chat". Inference and persistence
     /// failures are recorded on diagnostics in distinct categories.
     @MainActor
-    func autoRenameSession(
+    package func autoRenameSession(
         _ session: ChatSessionRecord,
         firstMessage: String,
         inferenceService: InferenceService
@@ -380,7 +380,7 @@ final class SessionListService: Sendable {
     /// 50-character word-boundary truncation. Fallback for callers without
     /// inference. No-op when the session is no longer named "New Chat".
     @MainActor
-    func autoGenerateTitle(for session: ChatSessionRecord, firstMessage: String) async {
+    package func autoGenerateTitle(for session: ChatSessionRecord, firstMessage: String) async {
         guard session.title == "New Chat" else { return }
         let maxLength = 50
         var title = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1,6 +1,6 @@
 import SwiftUI
 #if Ollama || CloudSaaS
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 #endif
 

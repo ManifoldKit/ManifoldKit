@@ -1,6 +1,7 @@
 @preconcurrency import XCTest
 @testable import BaseChatUI
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 
 @MainActor
 final class AssistantMarkdownRenderingTests: XCTestCase {

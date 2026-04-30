@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// A row displaying a summary of an ``APIEndpointRecord`` configuration.

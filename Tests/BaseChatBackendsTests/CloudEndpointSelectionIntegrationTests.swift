@@ -6,7 +6,8 @@ import SwiftData
 // is needed to exercise the endpoint selection → load → generate pipeline that
 // wires cloud backends through InferenceService.
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 import BaseChatTestSupport
 

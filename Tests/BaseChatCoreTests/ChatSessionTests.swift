@@ -1,5 +1,5 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 final class ChatSessionTests: XCTestCase {

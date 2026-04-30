@@ -1,6 +1,6 @@
 #if Ollama || CloudSaaS
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// Sheet for manually configuring a remote inference server connection.

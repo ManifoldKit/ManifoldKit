@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import BaseChatRuntime
 import BaseChatInference
 
 /// Preferred bootstrap surface for host apps that use BaseChatKit's shipped

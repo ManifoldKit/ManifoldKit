@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 
 // MARK: - ChatViewModel + Scene Phase
 

@@ -1,5 +1,5 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatRuntime
 import BaseChatInference
 
 final class ChatExportServiceTests: XCTestCase {

@@ -2,7 +2,8 @@
 @testable import BaseChatUI
 @testable import BaseChatUIModelManagement
 @testable import BaseChatInference
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatTestSupport
 
 @MainActor

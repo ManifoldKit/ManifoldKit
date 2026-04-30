@@ -1,4 +1,4 @@
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// Validates in-progress endpoint edits against BaseChatKit's canonical endpoint policy.

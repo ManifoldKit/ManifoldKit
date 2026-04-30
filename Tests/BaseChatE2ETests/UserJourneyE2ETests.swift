@@ -2,7 +2,8 @@ import Testing
 import Foundation
 import SwiftData
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatTestSupport
 

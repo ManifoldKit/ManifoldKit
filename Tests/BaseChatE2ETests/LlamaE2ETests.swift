@@ -1,6 +1,7 @@
 #if Llama
 import XCTest
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatTestSupport
 import BaseChatBackends

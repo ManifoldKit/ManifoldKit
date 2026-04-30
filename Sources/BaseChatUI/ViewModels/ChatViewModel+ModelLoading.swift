@@ -1,5 +1,6 @@
 import Foundation
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 // MARK: - ChatViewModel + Model Loading (facade)

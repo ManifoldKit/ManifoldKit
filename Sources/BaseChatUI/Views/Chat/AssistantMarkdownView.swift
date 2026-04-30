@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 struct AssistantMarkdownBlock: Identifiable, Equatable {
