@@ -79,7 +79,7 @@ public final class ModelManagementViewModel {
     public private(set) var benchmarkResults: [String: ModelBenchmarkResult] = [:]
 
     /// Storage-neutral cache for benchmark results. Set by host code at app
-    /// startup (typically `BaseChatRuntime.benchmarkCache`).
+    /// startup (typically `BaseChatBootstrap.benchmarkCache`).
     ///
     /// Assigning this property immediately loads any previously cached results
     /// so UI can show historical data without re-running benchmarks. Replaces

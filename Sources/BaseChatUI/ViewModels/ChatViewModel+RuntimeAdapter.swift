@@ -116,7 +116,7 @@ extension ChatViewModel {
 
         // MARK: Loop detection
 
-        case .loopDetected:
+        case .loopDetected(_):
             errorMessage = "Response stopped: repetitive content detected."
             transitionPhase(to: .idle)
 

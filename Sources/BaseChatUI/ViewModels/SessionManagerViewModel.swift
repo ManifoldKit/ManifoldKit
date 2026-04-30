@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import BaseChatRuntime
 import BaseChatInference
-import BaseChatRuntime
 
 /// Scope for ``SessionManagerViewModel`` search.
 public enum SessionSearchScope: String, CaseIterable, Hashable, Sendable {

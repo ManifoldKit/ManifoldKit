@@ -1,8 +1,6 @@
 @preconcurrency import XCTest
 import SwiftData
 @testable import BaseChatUI
-import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 @testable import BaseChatRuntime
 @testable import BaseChatPersistenceSwiftData
 @testable import BaseChatInference

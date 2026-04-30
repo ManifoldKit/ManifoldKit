@@ -6,7 +6,7 @@ import Foundation
 /// mutations that would otherwise trigger excessive UI re-renders.
 ///
 /// Moved from `BaseChatUI/GenerationCoordinator` to `BaseChatInference` so both
-/// `ConversationRuntime` (in `BaseChatCore`) and `GenerationCoordinator` (in
+/// `ConversationRuntime` (in `BaseChatRuntime`) and `GenerationCoordinator` (in
 /// `BaseChatUI`) can share the same implementation without a cross-module copy.
 public struct StreamingTokenBatcher: Sendable {
     private let interval: Duration

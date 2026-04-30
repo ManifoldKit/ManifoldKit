@@ -5,7 +5,7 @@ import BaseChatInference
 /// Picker and management UI for sampler presets within `GenerationSettingsView`.
 ///
 /// Reads and writes presets through a ``SamplerPresetStore`` injected via the
-/// SwiftUI environment (typically from `BaseChatRuntime.samplerPresetStore`).
+/// SwiftUI environment (typically from `BaseChatBootstrap.samplerPresetStore`).
 /// The view does not import SwiftData — the store is the only persistence
 /// surface visible to the UI.
 public struct SamplerPresetPickerView: View {

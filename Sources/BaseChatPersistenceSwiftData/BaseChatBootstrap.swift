@@ -1,15 +1,164 @@
 import Foundation
 import SwiftData
+import BaseChatRuntime
 import BaseChatInference
 
-/// One-time boot hooks that bridge SwiftData persistence and the framework's
-/// non-persistent services.
+/// Preferred bootstrap surface for host apps that use BaseChatKit's shipped
+/// SwiftData persistence.
 ///
-/// Call the entry points here once at app launch — they are idempotent at the
-/// boot-once granularity, but there is no caching; repeated calls do repeated
-/// work. Host apps that use ``SwiftDataPersistenceProvider`` get the default
-/// hooks wired automatically and should not call these directly.
-public enum BaseChatBootstrap {
+/// ``BaseChatBootstrap`` installs ``BaseChatConfiguration/shared`` first, then
+/// builds the shared inference, persistence, and diagnostics services in a
+/// fixed order so consumer apps do not have to manually coordinate those
+/// steps.
+///
+/// Apps that need a custom ``InferenceService`` configuration (for example a
+/// `ToolRegistry` or approval gate) can construct that service first and pass
+/// it in. The runtime will keep using the exact instance supplied.
+///
+/// ``BaseChatBootstrap`` is the SwiftData-backed bootstrap. Adopters using
+/// custom ``SessionStore`` / ``MessageStore`` impls should construct
+/// ``ChatViewModel`` / ``SessionManagerViewModel`` directly and call
+/// `configure(persistence:)` — runtime support for custom stores is tracked
+/// separately.
+///
+/// > Note: This type was named `BaseChatRuntime` prior to the phase-2 target
+/// > split. It was renamed to avoid shadowing the `BaseChatRuntime` *target*
+/// > (module) name in IDE jump-to-definition and DocC.
+///
+/// ### Splash-screen progress
+///
+/// Call ``build(configuration:inferenceService:diagnostics:makeModelContainer:)``
+/// instead of `init` when you want to drive a launch progress UI. That factory
+/// returns an `AsyncStream<RuntimeBootstrapMilestone>` you can iterate on the
+/// main actor while bootstrap runs concurrently in a sibling task:
+///
+/// ```swift
+/// let (milestones, runtimeTask) = BaseChatBootstrap.build(configuration: config)
+/// for await milestone in milestones {
+///     splashProgress = milestone.fractionComplete
+/// }
+/// runtime = try await runtimeTask.value
+/// ```
+@MainActor
+public final class BaseChatBootstrap {
+
+    public let inferenceService: InferenceService
+    public let diagnostics: DiagnosticsService
+    public let modelContainer: ModelContainer
+    public let persistence: SwiftDataPersistenceProvider
+    public let samplerPresetStore: SwiftDataSamplerPresetStore
+    public let benchmarkCache: SwiftDataBenchmarkCache
+    public let endpointStore: SwiftDataEndpointStore
+
+    public var modelContext: ModelContext { modelContainer.mainContext }
+
+    public init(
+        configuration: BaseChatConfiguration,
+        inferenceService: InferenceService? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+    ) throws {
+        // Capture the previous configuration before any mutation so a failure
+        // partway through bootstrap leaves `BaseChatConfiguration.shared`
+        // untouched from the caller's perspective.
+        let previousConfiguration = BaseChatConfiguration.shared
+
+        do {
+            BaseChatConfiguration.shared = configuration
+
+            let resolvedInferenceService = inferenceService ?? InferenceService()
+            self.inferenceService = resolvedInferenceService
+
+            let resolvedModelContainer = try makeModelContainer()
+            self.modelContainer = resolvedModelContainer
+
+            self.diagnostics = diagnostics
+            let mainContext = resolvedModelContainer.mainContext
+            self.persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+            self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+            self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+            self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+        } catch {
+            BaseChatConfiguration.shared = previousConfiguration
+            throw error
+        }
+    }
+
+    internal init(
+        inferenceService: InferenceService,
+        diagnostics: DiagnosticsService,
+        modelContainer: ModelContainer,
+        persistence: SwiftDataPersistenceProvider,
+        samplerPresetStore: SwiftDataSamplerPresetStore,
+        benchmarkCache: SwiftDataBenchmarkCache,
+        endpointStore: SwiftDataEndpointStore
+    ) {
+        self.inferenceService = inferenceService
+        self.diagnostics = diagnostics
+        self.modelContainer = modelContainer
+        self.persistence = persistence
+        self.samplerPresetStore = samplerPresetStore
+        self.benchmarkCache = benchmarkCache
+        self.endpointStore = endpointStore
+    }
+
+    public static func build(
+        configuration: BaseChatConfiguration,
+        inferenceService: InferenceService? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<BaseChatBootstrap, any Error>) {
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: RuntimeBootstrapMilestone.self,
+            bufferingPolicy: .unbounded
+        )
+
+        let task = Task { @MainActor [continuation] in
+            defer { continuation.finish() }
+
+            let previousConfiguration = BaseChatConfiguration.shared
+            do {
+                continuation.yield(.installingConfiguration)
+                BaseChatConfiguration.shared = configuration
+                await Task.yield()
+
+                continuation.yield(.resolvingInferenceService)
+                let resolvedService = inferenceService ?? InferenceService()
+                await Task.yield()
+
+                continuation.yield(.buildingModelContainer)
+                let container = try makeModelContainer()
+                await Task.yield()
+
+                continuation.yield(.wiringPersistence)
+                let mainContext = container.mainContext
+                let persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+                let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+                let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+                let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+                await Task.yield()
+
+                continuation.yield(.complete)
+
+                return BaseChatBootstrap(
+                    inferenceService: resolvedService,
+                    diagnostics: diagnostics,
+                    modelContainer: container,
+                    persistence: persistence,
+                    samplerPresetStore: samplerPresetStore,
+                    benchmarkCache: benchmarkCache,
+                    endpointStore: endpointStore
+                )
+            } catch {
+                BaseChatConfiguration.shared = previousConfiguration
+                throw error
+            }
+        }
+
+        return (stream, task)
+    }
+
+    // MARK: - Boot hooks
 
     /// Removes Keychain items whose owning ``BaseChatSchemaV3/APIEndpoint`` row
     /// no longer exists.
@@ -28,7 +177,6 @@ public enum BaseChatBootstrap {
     /// Fire-and-forget — call once per app boot. Returns the number of items
     /// that were actually reaped, for testing and diagnostics.
     @discardableResult
-    @MainActor
     public static func reapOrphanedKeychainItems(in modelContext: ModelContext) -> Int {
         guard BaseChatConfiguration.shared.keychainReaperEnabled else {
             return 0

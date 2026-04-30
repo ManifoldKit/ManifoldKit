@@ -13,7 +13,7 @@ import UIKit
 #endif
 
 /// Guards the runtime-bootstrap migration path documented in the README and
-/// the MinimalExample app: assemble a `BaseChatRuntime`, configure the chat
+/// the MinimalExample app: assemble a `BaseChatBootstrap`, configure the chat
 /// view models from it, mount `ChatView(apiConfiguration:)`, and verify that
 /// runtime-driven persistence is wired without view-lifecycle late-binding.
 final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
@@ -23,7 +23,7 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Runtime Bootstrap Guard",
                 bundleIdentifier: "com.basechatkit.runtime-bootstrap-guard"
@@ -36,7 +36,7 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         chatViewModel.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
 
-        // Real architectural invariant: BaseChatRuntime owns a single
+        // Real architectural invariant: BaseChatBootstrap owns a single
         // SessionStore + MessageStore adapter, and both view models must
         // latch onto that exact instance when configured from the same
         // runtime. A round-trip

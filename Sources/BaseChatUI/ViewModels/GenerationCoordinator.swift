@@ -3,7 +3,7 @@ import BaseChatRuntime
 import BaseChatInference
 
 // StreamingTokenBatcher was moved to BaseChatInference/Services/StreamingTokenBatcher.swift
-// so that ConversationRuntime (in BaseChatCore) can share the same type.
+// so that ConversationRuntime (in BaseChatRuntime) can share the same type.
 
 // File-private top-level — nonisolated, initialized once, thread-safe.
 // Kept outside the @MainActor-isolated GenerationCoordinator so that
