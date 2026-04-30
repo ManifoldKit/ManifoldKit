@@ -948,5 +948,69 @@ final class LlamaBackendTests: XCTestCase {
         XCTAssertEqual(backend.tokenCount(long), HeuristicTokenizer.tokenCount(long),
                        "long-string fallback must match shared heuristic")
     }
+
+    // MARK: - Multimodal Projector (supportsVision)
+
+    func test_capabilities_supportsVision_withoutMmproj_isFalse() {
+        let backend = LlamaBackend()
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "supportsVision must be false when no mmproj URL has been set")
+    }
+
+    func test_capabilities_supportsVision_afterSetMmprojURL_isTrue() {
+        let backend = LlamaBackend()
+        let fakeMMProj = URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf")
+        backend.setMmprojURL(fakeMMProj)
+        XCTAssertTrue(backend.capabilities.supportsVision,
+                      "supportsVision must be true once a mmproj URL is staged")
+    }
+
+    func test_capabilities_supportsVision_afterClearingMmprojURL_isFalse() {
+        let backend = LlamaBackend()
+        backend.setMmprojURL(URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf"))
+        backend.setMmprojURL(nil)
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "supportsVision must revert to false after setMmprojURL(nil)")
+    }
+
+    func test_capabilities_supportsVision_afterUnload_isFalse() {
+        let backend = LlamaBackend()
+        backend.setMmprojURL(URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf"))
+        backend.unloadModel()
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "unloadModel() must clear the mmproj URL so supportsVision returns false")
+    }
+
+    func test_generate_withImageParts_throwsInferenceFailure() {
+        let backend = LlamaBackend()
+        backend.setMmprojURL(URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf"))
+
+        let imageData = Data([0xFF, 0xD8, 0xFF]) // JPEG magic bytes
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", parts: [
+                .text("Describe this image:"),
+                .image(data: imageData, mimeType: "image/jpeg")
+            ])
+        ]
+        backend.setStructuredHistory(history)
+
+        // The image guard runs before the model-loaded guard so a caller hits
+        // the actionable xcframework-limitation message even when no model is
+        // loaded. Asserting on the message text proves we hit the image guard
+        // and not the generic "No model loaded" path.
+        XCTAssertThrowsError(
+            try backend.generate(prompt: "Describe this image:", systemPrompt: nil, config: GenerationConfig())
+        ) { error in
+            guard let inferenceError = error as? InferenceError,
+                  case let .inferenceFailure(message) = inferenceError else {
+                XCTFail("Expected InferenceError.inferenceFailure, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("multimodal image inference is not yet available"),
+                          "expected image-guard message, got: \(message)")
+            XCTAssertTrue(message.contains("clip.h"),
+                          "error message must reference the missing headers so a developer knows the fix")
+        }
+    }
 }
 #endif
