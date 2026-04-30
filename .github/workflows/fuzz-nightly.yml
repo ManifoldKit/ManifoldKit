@@ -14,6 +14,9 @@ name: Fuzz (nightly)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     runs-on: [self-hosted, macos, arm64]

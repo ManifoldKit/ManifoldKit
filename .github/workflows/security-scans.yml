@@ -8,6 +8,7 @@ on:
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
+      - ".github/workflows/security-scans.yml"
   push:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - "Tests/**"
       - "Package.swift"
       - "Package.resolved"
+      - ".github/workflows/security-scans.yml"
 
 concurrency:
   group: security-${{ github.event_name }}-${{ github.ref }}

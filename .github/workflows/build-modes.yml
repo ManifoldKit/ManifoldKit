@@ -61,6 +61,9 @@ concurrency:
   group: build-modes-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   macos-build-and-audit:
     name: ${{ matrix.mode }} (macOS build + audit)

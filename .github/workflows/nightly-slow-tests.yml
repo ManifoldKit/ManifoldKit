@@ -23,6 +23,9 @@ concurrency:
   group: nightly-slow-tests
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   slow:
     runs-on: macos-15
