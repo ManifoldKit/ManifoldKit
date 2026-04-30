@@ -245,19 +245,37 @@ public struct ChatInputBar: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
+            // Resolve the MIME type synchronously while the security-scoped
+            // resource is open — resourceValues is a fast metadata-only call.
+            // The actual file read is dispatched to a background task so it
+            // never blocks the main thread on large images.
             let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed {
-                    url.stopAccessingSecurityScopedResource()
-                }
+            let mimeType: String
+            do {
+                mimeType = try resolvedImageMIMEType(for: url)
+            } catch {
+                if accessed { url.stopAccessingSecurityScopedResource() }
+                viewModel.surfaceError(error, kind: .configuration, context: "attaching image")
+                return
             }
 
-            do {
-                let data = try Data(contentsOf: url)
-                let mimeType = try resolvedImageMIMEType(for: url)
-                viewModel.stageDraftAttachment(.image(data: data, mimeType: mimeType))
-            } catch {
-                viewModel.surfaceError(error, kind: .configuration, context: "attaching image")
+            // Capture everything needed by the background task; the
+            // security-scoped resource remains open until the task releases it.
+            let capturedURL = url
+            let capturedMIMEType = mimeType
+            let capturedAccessed = accessed
+            Task {
+                defer {
+                    if capturedAccessed { capturedURL.stopAccessingSecurityScopedResource() }
+                }
+                do {
+                    let data = try await Task.detached(priority: .userInitiated) {
+                        try Data(contentsOf: capturedURL)
+                    }.value
+                    viewModel.stageDraftAttachment(.image(data: data, mimeType: capturedMIMEType))
+                } catch {
+                    viewModel.surfaceError(error, kind: .configuration, context: "attaching image")
+                }
             }
 
         case .failure(let error):

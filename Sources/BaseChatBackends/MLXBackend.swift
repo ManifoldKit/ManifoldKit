@@ -268,15 +268,31 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Gemma 4 models intentionally stay on the LLM factory so we don't pay the
     /// memory cost of resident vision-tower weights.
     static func requiresVLMFactory(at url: URL) -> Bool {
-        do {
-            if try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision {
-                return true
+        requiresVLMFactory(at: url, precomputedCapabilities: nil)
+    }
+
+    /// Variant that accepts pre-computed capabilities to avoid re-reading
+    /// `config.json` when the caller already ran ``ModelCapabilityProbe``.
+    static func requiresVLMFactory(
+        at url: URL,
+        precomputedCapabilities capabilities: ModelCapabilities?
+    ) -> Bool {
+        // Fast path: vision was already detected by the caller's probe run.
+        if let capabilities {
+            if capabilities.supportsVision { return true }
+        } else {
+            do {
+                if try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision {
+                    return true
+                }
+            } catch {
+                Log.inference.info(
+                    "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); falling back to config.json routing (\(error.localizedDescription, privacy: .public))"
+                )
             }
-        } catch {
-            Log.inference.info(
-                "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); falling back to config.json routing (\(error.localizedDescription, privacy: .public))"
-            )
         }
+        // MoE fallback: Gemma 4 26B ships `text_config.enable_moe_block = true`
+        // and its MoE decoder only exists in the VLM factory today.
         let configURL = url.appendingPathComponent("config.json")
         guard let data = try? Data(contentsOf: configURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -592,16 +608,19 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         await progressHandler?(0.0)
 
         do {
-            let supportsVision: Bool
+            // Probe once; both the vision flag and the factory-routing decision
+            // consume the same result so config.json is read only once here.
+            let probedCapabilities: ModelCapabilities?
             do {
-                supportsVision = try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision
+                probedCapabilities = try ModelCapabilityProbe.probe(modelDirectory: url)
             } catch {
                 Log.inference.info(
                     "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); continuing with conservative vision defaults (\(error.localizedDescription, privacy: .public))"
                 )
-                supportsVision = false
+                probedCapabilities = nil
             }
-            let routeThroughVLMFactory = Self.requiresVLMFactory(at: url)
+            let supportsVision = probedCapabilities?.supportsVision ?? false
+            let routeThroughVLMFactory = Self.requiresVLMFactory(at: url, precomputedCapabilities: probedCapabilities)
             // Load from a local directory containing config.json + .safetensors.
             // We dispatch directly to either `LLMModelFactory.shared` or
             // `VLMModelFactory.shared` rather than calling the registry-iterating
