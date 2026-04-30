@@ -148,7 +148,7 @@ public enum KeychainService {
     /// allocate a transient Swift `String` internally.
     ///
     /// Returns `nil` if the account is not found in the Keychain.
-    static func retrieveSecure(account: String) -> SecureBytes? {
+    package static func retrieveSecure(account: String) -> SecureBytes? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,

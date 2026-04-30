@@ -288,22 +288,32 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// raw bytes directly into a ``SecureBytes`` buffer backed by `memset_s`
     /// zeroing on deallocation.
     ///
-    /// On the ephemeral path, the existing `SecureBytes` buffer held by
-    /// ``_ephemeralAPIKey`` is wrapped in a fresh `SecureBytes` value so the
-    /// caller's copy is independently lifetime-managed.
+    /// On the ephemeral path, the long-lived ``SecureBytes`` held by
+    /// ``_ephemeralAPIKey`` is buffer-copied into a fresh ``SecureBytes`` via
+    /// ``SecureBytes/init(copying:)`` — no transient Swift `String` is
+    /// materialized at any point, preserving the zeroing guarantee end-to-end.
     ///
     /// Returns `nil` when no key is configured.
     package func resolveAPIKeySecure() -> SecureBytes? {
-        let (account, ephemeralValue) = withStateLock {
-            (_keychainAccount, _ephemeralAPIKey?.stringValue)
+        enum Plan {
+            case keychain(String)
+            case clone(SecureBytes)
+            case none
         }
-        if let account {
-            return KeychainService.retrieveSecure(account: account)
+        // Snapshot the ephemeral SecureBytes reference (or keychain account)
+        // under the lock. We retain the SecureBytes by reference rather than
+        // reading its bytes here so the buffer copy happens outside the lock,
+        // and we don't hold the lock across Keychain I/O.
+        let plan: Plan = withStateLock {
+            if let account = _keychainAccount { return .keychain(account) }
+            if let source = _ephemeralAPIKey { return .clone(source) }
+            return .none
         }
-        guard let src = ephemeralValue else { return nil }
-        // Ephemeral path: wrap in a fresh SecureBytes so the caller's copy
-        // is independently zeroed when it falls out of scope.
-        return SecureBytes(src)
+        switch plan {
+        case .keychain(let account): return KeychainService.retrieveSecure(account: account)
+        case .clone(let source):     return SecureBytes(copying: source)
+        case .none:                  return nil
+        }
     }
 
     // MARK: - ConversationHistoryReceiver

@@ -40,7 +40,26 @@ package final class SecureBytes: @unchecked Sendable {
         }
     }
 
+    /// Initializes by copying another ``SecureBytes`` instance's buffer.
+    ///
+    /// Use this when you need an independently-zeroed copy of an existing
+    /// secret (e.g. a per-call clone from a long-lived ephemeral key) without
+    /// round-tripping through a plain Swift `String`. The source's lifetime is
+    /// unchanged; both buffers are zeroed independently on `deinit`.
+    package init?(copying other: SecureBytes) {
+        guard !other.buffer.isEmpty else { return nil }
+        buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: other.buffer.count)
+        _ = buffer.initialize(from: UnsafeBufferPointer(other.buffer))
+    }
+
     /// Returns the stored bytes decoded as a UTF-8 string.
+    ///
+    /// > Warning: The returned `String` is a fresh Swift heap allocation that
+    /// > is **not** covered by the `memset_s` guarantee. Call this only at the
+    /// > final boundary where a `String` is structurally required (e.g.
+    /// > `URLRequest.setValue(_:forHTTPHeaderField:)`) and let the value
+    /// > immediately fall out of scope. Avoid storing it in a property or
+    /// > capturing it in a long-lived closure.
     package var stringValue: String {
         String(decoding: buffer, as: UTF8.self)
     }

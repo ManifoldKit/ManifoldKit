@@ -74,19 +74,23 @@ public struct BaseChatConfiguration: Sendable {
     /// namespace independently and don't want their fixtures reaped.
     public var keychainReaperEnabled: Bool
 
-    /// Controls whether ``SecureEnclaveKeyManager`` is used for hardware-backed
-    /// key wrapping.
+    /// Opt-in flag for hardware-backed key wrapping via
+    /// ``SecureEnclaveKeyManager``.
     ///
-    /// When `true`, the framework will attempt to use the Secure Enclave (via
-    /// ``SecureEnclaveKeyManager``) for additional key-protection operations.
+    /// > Important: As of this release, no first-party BaseChatKit code path
+    /// > reads this flag — it is reserved for future framework wiring and for
+    /// > host apps that key their own SE-backed flows off a single setting.
+    /// > Apps that want SE-wrapped storage today should call
+    /// > ``SecureEnclaveKeyManager/shared`` directly and gate on this flag
+    /// > themselves.
+    ///
     /// The SE is only available on physical devices; on simulators and
     /// environments where the SE is unavailable,
     /// ``SecureEnclaveKeyManager/isAvailable`` returns `false` and operations
     /// gracefully throw ``SecureEnclaveError/notAvailable`` rather than
     /// crashing.
     ///
-    /// Defaults to `false` for conservative rollout. Enable in deployments that
-    /// require hardware-attested key binding.
+    /// Defaults to `false` for conservative rollout.
     public var useSecureEnclave: Bool
 
     /// Controls how ``PinnedSessionDelegate`` treats custom hosts that have no
