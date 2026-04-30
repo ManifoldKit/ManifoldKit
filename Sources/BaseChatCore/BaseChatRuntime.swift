@@ -20,9 +20,21 @@ import BaseChatInference
 /// `configure(persistence:)` — runtime support for custom stores is tracked
 /// separately.
 ///
-/// Adopters needing fine-grained progress signals during bootstrap (e.g. splash-screen UI,
-/// per-phase analytics) should construct the runtime on a background task and observe its
-/// returned properties; an `AsyncSequence` of bootstrap milestones is tracked in #872.
+///
+/// ### Splash-screen progress
+///
+/// Call ``build(configuration:inferenceService:diagnostics:makeModelContainer:)``
+/// instead of `init` when you want to drive a launch progress UI. That factory
+/// returns an `AsyncStream<RuntimeBootstrapMilestone>` you can iterate on the
+/// main actor while bootstrap runs concurrently in a sibling task:
+///
+/// ```swift
+/// let (milestones, runtimeTask) = BaseChatRuntime.build(configuration: config)
+/// for await milestone in milestones {
+///     splashProgress = milestone.fractionComplete
+/// }
+/// runtime = try await runtimeTask.value
+/// ```
 @MainActor
 public final class BaseChatRuntime {
 
@@ -66,5 +78,79 @@ public final class BaseChatRuntime {
             BaseChatConfiguration.shared = previousConfiguration
             throw error
         }
+    }
+
+    internal init(
+        inferenceService: InferenceService,
+        diagnostics: DiagnosticsService,
+        modelContainer: ModelContainer,
+        persistence: SwiftDataPersistenceProvider,
+        samplerPresetStore: SwiftDataSamplerPresetStore,
+        benchmarkCache: SwiftDataBenchmarkCache,
+        endpointStore: SwiftDataEndpointStore
+    ) {
+        self.inferenceService = inferenceService
+        self.diagnostics = diagnostics
+        self.modelContainer = modelContainer
+        self.persistence = persistence
+        self.samplerPresetStore = samplerPresetStore
+        self.benchmarkCache = benchmarkCache
+        self.endpointStore = endpointStore
+    }
+
+    public static func build(
+        configuration: BaseChatConfiguration,
+        inferenceService: InferenceService? = nil,
+        diagnostics: DiagnosticsService = DiagnosticsService(),
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<BaseChatRuntime, any Error>) {
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: RuntimeBootstrapMilestone.self,
+            bufferingPolicy: .unbounded
+        )
+
+        let task = Task { @MainActor [continuation] in
+            defer { continuation.finish() }
+
+            let previousConfiguration = BaseChatConfiguration.shared
+            do {
+                continuation.yield(.installingConfiguration)
+                BaseChatConfiguration.shared = configuration
+                await Task.yield()
+
+                continuation.yield(.resolvingInferenceService)
+                let resolvedService = inferenceService ?? InferenceService()
+                await Task.yield()
+
+                continuation.yield(.buildingModelContainer)
+                let container = try makeModelContainer()
+                await Task.yield()
+
+                continuation.yield(.wiringPersistence)
+                let mainContext = container.mainContext
+                let persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+                let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
+                let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
+                let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+                await Task.yield()
+
+                continuation.yield(.complete)
+
+                return BaseChatRuntime(
+                    inferenceService: resolvedService,
+                    diagnostics: diagnostics,
+                    modelContainer: container,
+                    persistence: persistence,
+                    samplerPresetStore: samplerPresetStore,
+                    benchmarkCache: benchmarkCache,
+                    endpointStore: endpointStore
+                )
+            } catch {
+                BaseChatConfiguration.shared = previousConfiguration
+                throw error
+            }
+        }
+
+        return (stream, task)
     }
 }
