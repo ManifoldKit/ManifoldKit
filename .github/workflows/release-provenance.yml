@@ -42,7 +42,12 @@ permissions:
 jobs:
   provenance:
     name: Generate SBOM + provenance attestations
-    runs-on: ubuntu-latest
+    # The package uses SwiftPM traits. Ubuntu Swift 6.1.3 can parse the package
+    # but does not accept trait flags on metadata-only `swift package` commands,
+    # which forces default traits and resolves an incompatible ML dependency
+    # graph. Releases are rare, so use the same macOS/Xcode family as CI for
+    # correctness over a small release-time cost increase.
+    runs-on: macos-15
     steps:
       - name: Checkout tagged commit
         uses: actions/checkout@v6
@@ -61,12 +66,13 @@ jobs:
             echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Swift
-        # Pinned to a tagged release (not @latest or @main) — supply-chain
-        # hygiene matters extra here since this workflow signs artifacts.
-        uses: SwiftyLab/setup-swift@v1.13.0
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
         with:
-          swift-version: "6.0"
+          xcode-version: "26.3"
+
+      - name: Verify Swift toolchain matches Package.swift tools-version
+        run: ./scripts/check-swift-toolchain.sh
 
       # Resolve dependencies so `swift package show-dependencies` has data.
       # Package.resolved is the canonical source of truth; we only run resolve
@@ -92,7 +98,8 @@ jobs:
           assert bom["bomFormat"] == "CycloneDX", "bomFormat mismatch"
           assert bom["specVersion"] == "1.5", "specVersion mismatch"
           assert len(bom["components"]) > 0, "no components"
-          print(f"SBOM ok: {len(bom[\"components\"])} components")
+          component_count = len(bom["components"])
+          print(f"SBOM ok: {component_count} components")
           '
 
       - name: Attest SBOM build provenance
