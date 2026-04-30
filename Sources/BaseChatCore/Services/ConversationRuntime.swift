@@ -535,14 +535,23 @@ public final class ConversationRuntime: Sendable {
         }
         let slice = Array(sourceHistory[...branchIndex])
 
-        // Create the new session. Derive title from the source session when
-        // the caller didn't supply one — best-effort via fetchSessions; no
-        // title is better than crashing if session store is absent.
+        // Derive the new session's title from the source session when the
+        // caller didn't supply one. A title-fetch failure must not abort the
+        // branch — the session insert below still runs with the fallback —
+        // but the failure is logged so it isn't silently lost.
         let newSessionTitle: String
         if let supplied = input.newSessionTitle {
             newSessionTitle = supplied
         } else if let sessionStore {
-            let sessions = (try? await sessionStore.fetchSessions()) ?? []
+            let sessions: [ChatSessionRecord]
+            do {
+                sessions = try await sessionStore.fetchSessions()
+            } catch {
+                Log.persistence.warning(
+                    "ConversationRuntime.branch: title lookup failed: \(error.localizedDescription); using fallback title"
+                )
+                sessions = []
+            }
             newSessionTitle = sessions.first(where: { $0.id == input.sourceSessionID })?.title ?? "New Chat"
         } else {
             newSessionTitle = "New Chat"
