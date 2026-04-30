@@ -84,6 +84,9 @@ public final class MockMLXModelContainer: @unchecked Sendable {
     /// Last messages passed to `prepare`.
     public private(set) var lastMessages: [[String: String]]?
 
+    /// Last structured chat messages passed to `prepare(chat:)`.
+    public private(set) var lastChatMessages: [Chat.Message]?
+
     /// Last `GenerateParameters` value passed to generation. Useful for asserting
     /// that `MLXBackend` forwards `temperature` / `topP` / `topK` / `minP` /
     /// `repetitionPenalty` from the caller's `GenerationConfig`.
@@ -104,12 +107,30 @@ public final class MockMLXModelContainer: @unchecked Sendable {
     ) async throws -> [Int] {
         prepareCallCount += 1
         lastMessages = messages
+        lastChatMessages = nil
 
         let promptTokens: [Int]
         if !preparedTokenBatches.isEmpty {
             promptTokens = preparedTokenBatches.removeFirst()
         } else {
             promptTokens = Array(1 ... max(messages.count, 1))
+        }
+        lastPreparedTokenIds = promptTokens
+        return promptTokens
+    }
+
+    public func prepareForGeneration(
+        chat: [Chat.Message]
+    ) async throws -> [Int] {
+        prepareCallCount += 1
+        lastChatMessages = chat
+        lastMessages = nil
+
+        let promptTokens: [Int]
+        if !preparedTokenBatches.isEmpty {
+            promptTokens = preparedTokenBatches.removeFirst()
+        } else {
+            promptTokens = Array(1 ... max(chat.count, 1))
         }
         lastPreparedTokenIds = promptTokens
         return promptTokens

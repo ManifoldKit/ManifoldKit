@@ -99,6 +99,13 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// `GenerationConfig.thinkingMarkers`, which is a per-request runtime hint.
     public let supportsThinking: Bool
 
+    /// If true, the backend can consume image parts in ``StructuredMessage`` history.
+    ///
+    /// UI surfaces use this to gate image-attachment affordances, and the
+    /// inference coordinator uses it to fail fast rather than silently dropping
+    /// image parts during flattening on text-only backends.
+    public let supportsVision: Bool
+
     /// True when the backend emits ``GenerationEvent/toolCallStart(callId:name:)``
     /// and ``GenerationEvent/toolCallArgumentsDelta(callId:textDelta:)`` before
     /// each ``GenerationEvent/toolCall(_:)``. Cloud streaming backends set
@@ -143,6 +150,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsKVCachePersistence: Bool = false,
         supportsGrammarConstrainedSampling: Bool = false,
         supportsThinking: Bool = false,
+        supportsVision: Bool = false,
         streamsToolCallArguments: Bool = false,
         supportsParallelToolCalls: Bool = false
     ) {
@@ -162,6 +170,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.supportsKVCachePersistence = supportsKVCachePersistence
         self.supportsGrammarConstrainedSampling = supportsGrammarConstrainedSampling
         self.supportsThinking = supportsThinking
+        self.supportsVision = supportsVision
         self.streamsToolCallArguments = streamsToolCallArguments
         self.supportsParallelToolCalls = supportsParallelToolCalls
     }
@@ -183,6 +192,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case supportsKVCachePersistence
         case supportsGrammarConstrainedSampling
         case supportsThinking
+        case supportsVision
         case streamsToolCallArguments
         case supportsParallelToolCalls
     }
@@ -205,6 +215,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsKVCachePersistence = (try c.decodeIfPresent(Bool.self, forKey: .supportsKVCachePersistence)) ?? false
         supportsGrammarConstrainedSampling = (try c.decodeIfPresent(Bool.self, forKey: .supportsGrammarConstrainedSampling)) ?? false
         supportsThinking = (try c.decodeIfPresent(Bool.self, forKey: .supportsThinking)) ?? false
+        supportsVision = (try c.decodeIfPresent(Bool.self, forKey: .supportsVision)) ?? false
         streamsToolCallArguments = (try c.decodeIfPresent(Bool.self, forKey: .streamsToolCallArguments)) ?? false
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
     }
@@ -227,6 +238,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(supportsKVCachePersistence, forKey: .supportsKVCachePersistence)
         try c.encode(supportsGrammarConstrainedSampling, forKey: .supportsGrammarConstrainedSampling)
         try c.encode(supportsThinking, forKey: .supportsThinking)
+        try c.encode(supportsVision, forKey: .supportsVision)
         try c.encode(streamsToolCallArguments, forKey: .streamsToolCallArguments)
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
     }

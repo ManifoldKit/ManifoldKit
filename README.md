@@ -23,6 +23,7 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 ## Features
 
 - **Multiple inference backends** — GGUF (llama.cpp), MLX (Apple Silicon), Apple Foundation Models, OpenAI, Claude, Ollama, LM Studio, and custom OpenAI-compatible APIs
+- **Vision-aware attachments** — `ChatInputBar` surfaces image attachments only when the active backend reports vision support; text-only backends fail fast on image parts instead of silently dropping them
 - **Complete SwiftUI interface** — Chat view, session management, model browser, generation settings, export
 - **HuggingFace integration** — Search, browse, and download models directly from the Hub (default-on trait)
 - **Background downloads** — iOS background transfer support with progress tracking and GGUF/MLX validation

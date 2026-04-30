@@ -75,6 +75,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         var supportsKVCachePersistence = first.supportsKVCachePersistence
         var supportsGrammarConstrainedSampling = first.supportsGrammarConstrainedSampling
         var supportsThinking = first.supportsThinking
+        var supportsVision = first.supportsVision
         var streamsToolCallArguments = first.streamsToolCallArguments
         var supportsParallelToolCalls = first.supportsParallelToolCalls
 
@@ -104,6 +105,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
             supportsKVCachePersistence = supportsKVCachePersistence || c.supportsKVCachePersistence
             supportsGrammarConstrainedSampling = supportsGrammarConstrainedSampling || c.supportsGrammarConstrainedSampling
             supportsThinking = supportsThinking || c.supportsThinking
+            supportsVision = supportsVision || c.supportsVision
             streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
             supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
         }
@@ -124,6 +126,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
             supportsKVCachePersistence: supportsKVCachePersistence,
             supportsGrammarConstrainedSampling: supportsGrammarConstrainedSampling,
             supportsThinking: supportsThinking,
+            supportsVision: supportsVision,
             streamsToolCallArguments: streamsToolCallArguments,
             supportsParallelToolCalls: supportsParallelToolCalls
         )

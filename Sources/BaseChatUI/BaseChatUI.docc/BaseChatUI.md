@@ -6,6 +6,8 @@ SwiftUI views and view models for building on-device and cloud-connected chat in
 
 BaseChatUI provides the view layer for BaseChatKit. It depends only on ``BaseChatCore`` — it has no knowledge of specific inference backends. Drop ``ChatView`` into your app and supply a ``ChatViewModel`` to get a fully-featured chat interface: streaming generation, model selection, and session management.
 
+`ChatInputBar` automatically exposes image attachments only when the active backend's ``BackendCapabilities/supportsVision`` flag is `true`. If a host routes image-bearing history to a text-only backend anyway, `GenerationCoordinator` fails fast rather than silently flattening the images away.
+
 ### Minimum wiring
 
 ```swift

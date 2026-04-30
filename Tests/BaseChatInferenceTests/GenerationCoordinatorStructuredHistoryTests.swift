@@ -124,4 +124,40 @@ final class GenerationCoordinatorStructuredHistoryTests: XCTestCase {
         XCTAssertEqual(observed[1].parts.first?.thinkingSignature, "sig_q",
             "Signatures must round-trip through the queue → tool-dispatch loop → backend without loss")
     }
+
+    func test_generate_imageHistory_withVisionCapability_preservesStructuredImageParts() async throws {
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
+        provider = FakeGenerationContextProvider(backend: backend)
+        coordinator.provider = provider
+
+        let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", parts: [
+                .text("describe"),
+                image,
+            ])
+        ]
+
+        let stream = try coordinator.generate(structuredMessages: history)
+        for try await _ in stream.events {}
+
+        XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, [.text("describe"), image])
+        XCTAssertEqual(backend.lastReceivedHistory?.first?.content, "describe")
+    }
+
+    func test_generate_imageHistory_withoutVisionCapability_throws() {
+        let history: [StructuredMessage] = [
+            StructuredMessage(role: "user", parts: [
+                .text("describe"),
+                .image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png"),
+            ])
+        ]
+
+        XCTAssertThrowsError(try coordinator.generate(structuredMessages: history)) { error in
+            guard case InferenceError.inferenceFailure(let message) = error else {
+                return XCTFail("Expected image capability failure, got \(error)")
+            }
+            XCTAssertTrue(message.contains("vision-capable backend"))
+        }
+    }
 }

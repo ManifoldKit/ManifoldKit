@@ -6,10 +6,11 @@ import BaseChatInference
 
 extension ChatViewModel {
 
-    /// Sends the current input as a user message and generates an assistant response.
+    /// Sends the current text and any staged attachments as a user message and generates an assistant response.
     public func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let attachments = draftAttachments
+        guard !text.isEmpty || !attachments.isEmpty else { return }
 
         guard let activeSessionID else {
             errorMessage = "No active session. Create or select a session first."
@@ -23,10 +24,12 @@ extension ChatViewModel {
 
         errorMessage = nil
         inputText = ""
+        draftAttachments = []
         Log.ui.debug("User sent message")
 
         // Create and persist the user message.
-        let userMessage = ChatMessageRecord(role: .user, content: text, sessionID: activeSessionID)
+        let userParts = text.isEmpty ? attachments : [.text(text)] + attachments
+        let userMessage = ChatMessageRecord(role: .user, contentParts: userParts, sessionID: activeSessionID)
         messages.append(userMessage)
         do {
             try await saveMessage(userMessage)
@@ -46,7 +49,7 @@ extension ChatViewModel {
         }
 
         // Trigger auto-title on the first user message in this session.
-        if let session = activeSession, messages.filter({ $0.role == .user }).count == 1 {
+        if let session = activeSession, !text.isEmpty, messages.filter({ $0.role == .user }).count == 1 {
             await onFirstMessage?(session, text)
         }
 
@@ -96,7 +99,13 @@ extension ChatViewModel {
 
         // Update the edited message.
         let originalMessage = messages[index]
-        messages[index].content = newContent
+        let preservedNonTextParts = originalMessage.contentParts.filter { part in
+            if case .text = part { return false }
+            return true
+        }
+        messages[index].contentParts = newContent.isEmpty
+            ? preservedNonTextParts
+            : [.text(newContent)] + preservedNonTextParts
         do {
             try await updateMessage(messages[index])
         } catch {
@@ -244,5 +253,18 @@ extension ChatViewModel {
     /// Returns whether the given message is currently pinned.
     public func isMessagePinned(id messageID: UUID) -> Bool {
         pinnedMessageIDs.contains(messageID)
+    }
+
+    func stageDraftAttachment(_ part: MessagePart) {
+        draftAttachments.append(part)
+    }
+
+    func removeDraftAttachment(id index: Int) {
+        guard draftAttachments.indices.contains(index) else { return }
+        draftAttachments.remove(at: index)
+    }
+
+    func clearDraftAttachments() {
+        draftAttachments.removeAll()
     }
 }

@@ -229,6 +229,7 @@ extension ChatViewModel {
         // bails out — but we keep the draft populated so the user can
         // pick a model and resend without retyping.
         inputText = body
+        draftAttachments = attachments
 
         guard isModelLoaded else {
             Log.ui.info(
@@ -238,43 +239,28 @@ extension ChatViewModel {
         }
 
         await sendMessage()
-
-        if !attachments.isEmpty,
-           let userMessage = messages.last(where: { $0.role == .user }) {
-            var updated = userMessage
-            updated.contentParts.append(contentsOf: attachments)
-            do {
-                try await updateMessage(updated)
-                if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
-                    messages[index] = updated
-                }
-            } catch {
-                Log.persistence.warning(
-                    "ingestPendingPayload failed to persist attachments: \(error.localizedDescription)"
-                )
-            }
-        }
     }
 
     @MainActor
     private func ingestByAppendingToDraft(_ payload: PendingPayload) {
-        let (body, _) = payload.intoMessageBody()
-        guard !body.isEmpty else { return }
+        let (body, attachments) = payload.intoMessageBody()
 
         if inputText.isEmpty {
             inputText = body
-        } else {
+        } else if !body.isEmpty {
             // Single newline between the existing draft and the appended
             // payload keeps multi-paragraph drafts readable without
             // collapsing the user's prior whitespace.
             inputText = inputText + "\n" + body
         }
+        draftAttachments.append(contentsOf: attachments)
     }
 
     @MainActor
     private func ingestAsDraft(_ payload: PendingPayload) {
-        let (body, _) = payload.intoMessageBody()
+        let (body, attachments) = payload.intoMessageBody()
         inputText = body
+        draftAttachments = attachments
     }
 
     @MainActor

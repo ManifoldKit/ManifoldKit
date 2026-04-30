@@ -46,6 +46,14 @@ struct MLXPromptCache: @unchecked Sendable {
     }
 }
 
+struct SendableChatMessages: @unchecked Sendable {
+    let value: [Chat.Message]
+
+    init(_ value: [Chat.Message]) {
+        self.value = value
+    }
+}
+
 /// Abstraction over `ModelContainer` so `MLXBackend` can be tested without real hardware.
 ///
 /// `LMInput` and `[KVCache]` are wrapped so `MLXBackend` can own prompt preparation,
@@ -53,6 +61,7 @@ struct MLXPromptCache: @unchecked Sendable {
 /// `ModelContainer` conformance keeps the underlying MLX types off the public API.
 protocol MLXModelContainerProtocol: Sendable {
     func prepare(messages: [[String: String]]) async throws -> MLXPreparedInput
+    func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput
     func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache
     func generate(
         input: MLXPreparedInput,
@@ -65,6 +74,13 @@ extension ModelContainer: MLXModelContainerProtocol {
     func prepare(messages: [[String: String]]) async throws -> MLXPreparedInput {
         let input = try await prepare(input: .init(messages: messages))
         return MLXPreparedInput(input)
+    }
+
+    func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
+        try await perform(nonSendable: chat.value) { context, chat in
+            let input = try await context.processor.prepare(input: .init(chat: chat))
+            return MLXPreparedInput(input)
+        }
     }
 
     func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {

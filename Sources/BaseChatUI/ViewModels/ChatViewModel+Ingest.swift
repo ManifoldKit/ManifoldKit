@@ -54,31 +54,11 @@ extension ChatViewModel {
         }
         await switchToSession(session)
 
-        // Seed the prompt and run it through the same path as the compose
-        // bar so loading checks, auto-title, and token accounting all stay
-        // consistent. Attachments ride along as `.text` neighbors — once
-        // richer parts (images, files) land via Share Extension support,
-        // the first user message already supports the shape.
+        // Seed the prompt and any attachments through the same draft path as
+        // the compose bar so loading checks, auto-title, and token accounting
+        // all stay consistent.
         inputText = payload.prompt
+        draftAttachments = payload.attachments
         await sendMessage()
-
-        // Attachments land as an update to the user message so any extra
-        // parts survive alongside the prompt without re-routing through
-        // `sendMessage()`, which only accepts a text body today.
-        if !payload.attachments.isEmpty,
-           let userMessage = messages.last(where: { $0.role == .user }) {
-            var updated = userMessage
-            updated.contentParts.append(contentsOf: payload.attachments)
-            do {
-                try await updateMessage(updated)
-                if let index = messages.firstIndex(where: { $0.id == userMessage.id }) {
-                    messages[index] = updated
-                }
-            } catch {
-                Log.persistence.warning(
-                    "ChatViewModel.ingest failed to persist attachments: \(error.localizedDescription)"
-                )
-            }
-        }
     }
 }
