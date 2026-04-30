@@ -1196,8 +1196,22 @@ final class ConversationRuntimeTests: XCTestCase {
         // stream drains fully, store.messages[assistant].content == "one two"
         // (both tokens), and `sawCancelled` remains false — both XCTAssert
         // calls would fail.
+        //
+        // Determinism: ConversationRuntime.events is a single-consumer
+        // unbounded stream. The previous shape used two separate iterators
+        // (one to trigger cancel, one to wait for streamFinished) and let
+        // the mock fire all tokens into the unbounded buffer before cancel
+        // had a chance to land — which sometimes produced
+        // `.streamFinished(.stop)` instead of `.streamFinished(.cancelled)`.
+        // We now drive the mock's token emission via a `TokenEmissionGate`
+        // and drain `runtime.events` from a single task. Token 1 is released
+        // first; token 2 is released only after we observe `.tokenEmitted`
+        // and issue cancel — by which point the runtime's drain loop sees
+        // `cancelled = true` on its next iteration and breaks.
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["one", " two"]
+        let gate = TokenEmissionGate()
+        mock.tokenEmissionGate = gate
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
@@ -1208,37 +1222,50 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let handle = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
 
-        // Cancel after the first token.
-        let cancelTask = Task { @MainActor [runtime] in
+        // Single-consumer drain. We trigger cancel inline the moment we
+        // observe the first `.tokenEmitted`, then continue draining until
+        // the terminal `.streamFinished` arrives.
+        var sawCancelled = false
+        let drain = Task { @MainActor [runtime] in
+            var cancelled = false
             for await event in runtime.events {
-                if case .tokenEmitted = event {
-                    await runtime.cancel(handle)
+                switch event {
+                case .tokenEmitted:
+                    if !cancelled {
+                        cancelled = true
+                        await runtime.cancel(handle)
+                        // Release the gate so the mock's emission task can
+                        // observe its own `Task.isCancelled` (or yield the
+                        // remaining tokens, which the runtime drops because
+                        // it has already broken out of its drain loop).
+                        await gate.release()
+                    }
+                case .streamFinished(_, let reason):
+                    if reason == .cancelled { sawCancelled = true }
+                    return
+                default:
                     break
                 }
             }
         }
-        await cancelTask.value
 
-        // Wait for the terminal event.
-        var sawCancelled = false
-        let waitTask = Task { @MainActor [runtime] in
-            for await event in runtime.events {
-                if case .streamFinished(_, .cancelled) = event {
-                    sawCancelled = true
-                    return
-                }
-                if case .streamFinished = event { return }
-            }
-        }
+        // Release token 1 to start the stream flowing.
+        await gate.advance()
+
+        // Bound the wait so a regression cannot hang CI for the full XCTest
+        // default timeout. 5 s is generous; happy-path is sub-50ms.
         _ = try? await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { await waitTask.value }
+            group.addTask { await drain.value }
             group.addTask {
                 try await Task.sleep(for: .seconds(5))
-                waitTask.cancel()
+                drain.cancel()
             }
             try await group.next()
             group.cancelAll()
         }
+        // Always release pending waiters so the mock's emission task does
+        // not strand if the test bailed out via the timeout branch.
+        await gate.release()
 
         XCTAssertTrue(sawCancelled, "Cancel propagates to .streamFinished(reason: .cancelled)")
         // User message present; old assistant gone; partial assistant may exist.

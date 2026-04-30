@@ -110,6 +110,23 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     private var activeContinuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
     private let continuationLock = NSLock()
 
+    /// Optional per-token emission gate. When non-nil, the mock awaits
+    /// ``TokenEmissionGate/waitForAdvance()`` BEFORE yielding each visible
+    /// token in `tokens`. The test drives token emission deterministically
+    /// by calling ``TokenEmissionGate/advance()`` once per token it wants
+    /// to release. This eliminates the race in cancel-mid-stream tests
+    /// where the unbounded AsyncStream buffer can otherwise contain the
+    /// terminal `streamFinished(.stop)` event before the test's cancel
+    /// call has propagated.
+    public var tokenEmissionGate: TokenEmissionGate?
+
+    /// Optional per-tool-delta emission gate. Same shape as
+    /// ``tokenEmissionGate``: when non-nil, the mock awaits
+    /// ``TokenEmissionGate/waitForAdvance()`` BEFORE yielding each entry
+    /// of ``scriptedToolCallDeltasPerTurn``. Used by cancel-between-deltas
+    /// contract tests.
+    public var toolDeltaEmissionGate: TokenEmissionGate?
+
     public init(capabilities: BackendCapabilities = BackendCapabilities(
         supportedParameters: [.temperature, .topP, .repeatPenalty],
         maxContextTokens: 4096,
@@ -221,12 +238,20 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                 }
                 for token in tokens {
                     if Task.isCancelled { break }
+                    if let gate = self.tokenEmissionGate {
+                        await gate.waitForAdvance()
+                        if Task.isCancelled { break }
+                    }
                     continuation.yield(.token(token))
                 }
                 if !Task.isCancelled {
                     if !deltaSequence.isEmpty {
                         for entry in deltaSequence {
                             if Task.isCancelled { break }
+                            if let gate = self.toolDeltaEmissionGate {
+                                await gate.waitForAdvance()
+                                if Task.isCancelled { break }
+                            }
                             switch entry {
                             case .start(let callId, let name):
                                 continuation.yield(.toolCallStart(callId: callId, name: name))
@@ -293,5 +318,57 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
 
     public func setStructuredHistory(_ messages: [StructuredMessage]) {
         lastReceivedStructuredHistory = messages
+    }
+}
+
+/// Test-only gate that pauses ``MockInferenceBackend`` token emission until
+/// the test explicitly releases the next token.
+///
+/// Used to deflake cancel-mid-stream tests where the unbounded AsyncStream
+/// buffer used by `MockInferenceBackend` would otherwise contain the
+/// terminal `streamFinished(.stop)` event before the test's cancel call
+/// can propagate. By gating token emission, the test can:
+///
+/// 1. Release token 1.
+/// 2. Wait until it observes the corresponding `tokenEmitted` from
+///    `runtime.events`.
+/// 3. Issue cancel — guaranteed to land BEFORE token 2 enters the buffer.
+/// 4. (Optionally release further tokens, which the mock's
+///    `Task.isCancelled` check then drops.)
+public actor TokenEmissionGate {
+    private var pendingPermits: Int = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    public init() {}
+
+    /// Suspends the caller until ``advance()`` issues a permit.
+    public func waitForAdvance() async {
+        if pendingPermits > 0 {
+            pendingPermits -= 1
+            return
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            waiters.append(cont)
+        }
+    }
+
+    /// Issues one permit. If a waiter is already suspended, resumes it;
+    /// otherwise the permit is buffered for the next ``waitForAdvance()``.
+    public func advance() {
+        if !waiters.isEmpty {
+            let cont = waiters.removeFirst()
+            cont.resume()
+        } else {
+            pendingPermits += 1
+        }
+    }
+
+    /// Resumes every pending waiter. Useful in test teardown to ensure
+    /// the mock's emission task can finish even when the test no longer
+    /// cares about additional tokens.
+    public func release() {
+        let pending = waiters
+        waiters.removeAll()
+        for cont in pending { cont.resume() }
     }
 }

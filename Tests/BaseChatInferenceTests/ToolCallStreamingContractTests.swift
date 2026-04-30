@@ -350,8 +350,12 @@ final class ToolCallStreamingContractTests: XCTestCase {
         backend.isModelLoaded = true
 
         // Script the backend to emit a start, two deltas, and then the
-        // authoritative call. The collector task cancels the stream before
-        // reaching the .call event.
+        // authoritative call. The mock pauses on `toolDeltaEmissionGate`
+        // before each entry, which lets us cancel BEFORE `.call` is
+        // yielded into the buffer. Without the gate, the mock would fire
+        // all four entries synchronously into the unbounded AsyncStream
+        // continuation; the collector's break-on-first-delta would race
+        // the buffered `.call` into the residual drain.
         let call = ToolCall(id: "c5", toolName: "partial", arguments: #"{"k":"v"}"#)
         backend.scriptedToolCallDeltasPerTurn = [[
             .start(callId: "c5", name: "partial"),
@@ -360,6 +364,8 @@ final class ToolCallStreamingContractTests: XCTestCase {
             .call(call),
         ]]
         backend.tokensToYield = []
+        let gate = TokenEmissionGate()
+        backend.toolDeltaEmissionGate = gate
 
         let provider = FakeGenerationContextProvider(backend: backend)
         let coordinator = GenerationCoordinator()
@@ -370,18 +376,18 @@ final class ToolCallStreamingContractTests: XCTestCase {
             maxOutputTokens: 32
         )
 
-        var collectedEvents: [GenerationEvent] = []
-
-        // Cancel the stream the moment we observe the first delta (i.e. after
-        // start but before .call). Collect in a separate task so we can act
-        // mid-stream without blocking.
+        // Collect events from a single consumer. Release one delta-gate
+        // permit at a time:
+        //   - Permit 1 → `.start` flows through.
+        //   - Permit 2 → first `.delta` flows; collector breaks here.
+        // After cancel, we release the gate so the mock's emission task
+        // can wake from its wait, observe `Task.isCancelled` (set by
+        // `stopGeneration()`), and exit without yielding `.call`.
         let collector = Task<[GenerationEvent], Never> {
             var events: [GenerationEvent] = []
             do {
                 for try await event in stream.events {
                     events.append(event)
-                    // Stop after we've seen the first delta — we're now past the
-                    // start and before the authoritative call.
                     if case .toolCallArgumentsDelta = event { break }
                 }
             } catch {
@@ -390,24 +396,20 @@ final class ToolCallStreamingContractTests: XCTestCase {
             return events
         }
 
-        // Wait for the collector to consume the first delta, then cancel.
-        collectedEvents = await collector.value
+        // Drive the script forward: `.start` then first `.delta`. Any
+        // further entries stay behind the gate until we explicitly
+        // advance again or release.
+        await gate.advance() // .start
+        await gate.advance() // first .delta — collector will break
 
-        // Use `stopGenerationAndWait()` instead of `stopGeneration()` so the
-        // dispatch task fully unwinds (defer block finishes the continuation)
-        // before we read residual events. Without this await there is a race
-        // under parallel test load: the dispatch loop can yield `.call` after
-        // the consumer broke out of its for-await but before `Task.isCancelled`
-        // is observed inside the loop. We're testing the contract that *no
-        // `.toolCall` reaches the consumer* once the consumer-visible stream
-        // has been cancelled — awaiting the task makes that ordering
-        // deterministic regardless of test parallelism.
-        await coordinator.stopGenerationAndWait()
+        let collectedEvents = await collector.value
+        coordinator.stopGeneration()
+        // Wake the mock so it observes cancellation and exits. Anything
+        // it yields after `stopGeneration()` is dropped because
+        // `stopGeneration()` finished the continuation.
+        await gate.release()
 
         // Gather any remaining events that leaked through after cancellation.
-        // After `stopGenerationAndWait()` the continuation has already been
-        // finished, so this either returns immediately with an empty array or
-        // throws CancellationError (caught below).
         let residual = Task<[GenerationEvent], Never> {
             var events: [GenerationEvent] = []
             do {
