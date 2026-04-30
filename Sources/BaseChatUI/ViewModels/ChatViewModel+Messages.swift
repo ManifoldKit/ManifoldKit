@@ -222,14 +222,13 @@ extension ChatViewModel {
     /// inconsistency in a future refactor.
     public func stopGeneration() {
         // Runtime path — cancel the in-flight ConversationRuntime stream.
+        // The runtime emits `.streamFinished(reason: .cancelled)` which drives
+        // `transitionPhase(.idle)` through the drain task — no extra phase
+        // transition needed here.
         if let runtime = conversationRuntime, let handle = activeConversationStreamHandle {
             activeConversationStreamHandle = nil
-            Task { [weak self] in
+            Task {
                 await runtime.cancel(handle)
-                // The runtime emits .streamFinished(reason: .cancelled) which
-                // drives transitionPhase(.idle) via handle(runtimeEvent:).
-                // No additional phase transition needed here.
-                _ = self  // suppress capture warning
             }
             Log.ui.debug("Generation stopped by user (runtime path)")
             return

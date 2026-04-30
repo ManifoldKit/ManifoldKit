@@ -754,9 +754,14 @@ public final class ChatViewModel {
     public func configure(conversationRuntime runtime: ConversationRuntime) {
         runtimeEventDrainTask?.cancel()
         conversationRuntime = runtime
+        // `[weak self]` plus a per-iteration `guard let self` — hoisting the
+        // `guard` outside the `for-await` upgrades `self` to strong for the
+        // task's lifetime, which retains the view model until the runtime's
+        // continuation finishes (i.e. forever in normal use). Re-checking
+        // each iteration lets the view model deallocate between events.
         runtimeEventDrainTask = Task { [weak self] in
-            guard let self else { return }
             for await event in runtime.events {
+                guard let self else { return }
                 await self.handle(runtimeEvent: event)
             }
         }
