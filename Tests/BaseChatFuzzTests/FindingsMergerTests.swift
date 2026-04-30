@@ -96,6 +96,25 @@ final class FindingsMergerTests: XCTestCase {
 
         XCTAssertEqual(report.totalRuns, 0)
         XCTAssertEqual(report.uniqueFindings, 0)
+        XCTAssertEqual(report.skippedInputs, 0)
+    }
+
+    func test_merge_corruptWorkerIndexIsSkipped() throws {
+        let broken = tempDir.appendingPathComponent("broken", isDirectory: true)
+        try FileManager.default.createDirectory(at: broken, withIntermediateDirectories: true)
+        let corruptIndex = broken.appendingPathComponent("index.json")
+        try Data("{".utf8).write(to: corruptIndex, options: .atomic)
+        let healthy = try writeWorker(name: "healthy", totalRuns: 2, rows: [makeRow(finding: makeFinding(trigger: "ok"), seed: 1)])
+        let output = tempDir.appendingPathComponent("merged", isDirectory: true)
+
+        let report = try FindingsMerger.merge(workerOutputDirs: [broken, healthy], into: output)
+        let merged = try FindingsIndexCodec.load(from: output)
+
+        XCTAssertEqual(report.totalRuns, 2)
+        XCTAssertEqual(report.uniqueFindings, 1)
+        XCTAssertEqual(report.skippedInputs, 1)
+        XCTAssertEqual(merged.totalRuns, 2)
+        XCTAssertEqual(merged.rows.count, 1)
     }
 
     private func makeFinding(

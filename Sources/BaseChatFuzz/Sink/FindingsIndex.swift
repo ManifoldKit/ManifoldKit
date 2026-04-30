@@ -54,9 +54,9 @@ public enum FindingsIndexCodec {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(envelope)
-        try data.write(to: outputDir.appendingPathComponent("index.json"))
+        try data.write(to: outputDir.appendingPathComponent("index.json"), options: .atomic)
 
-        let markdown = FindingsArtifactRenderer.markdown(totalRuns: index.totalRuns, rows: rows)
+        let markdown = FindingsArtifactRenderer.markdown(totalRuns: index.totalRuns, rows: rows, outputDir: outputDir)
         try markdown.write(to: outputDir.appendingPathComponent("INDEX.md"), atomically: true, encoding: .utf8)
     }
 
@@ -73,21 +73,21 @@ public enum FindingsIndexCodec {
 public enum FindingsArtifactRenderer {
     public static func summary(for row: FindingsIndexRow) -> String {
         let finding = row.finding
-        return "\(finding.severity.rawValue) | \(finding.detectorId)/\(finding.subCheck) | \(finding.modelId) | count=\(finding.count)\nTrigger: \(finding.trigger)\n"
+        return "\(finding.severity.rawValue) | \(finding.detectorId)/\(finding.subCheck) | \(row.modelId) | count=\(finding.count)\nTrigger: \(finding.trigger)\n"
     }
 
-    public static func reproScript(hash: String, seed: UInt64, modelId: String) -> String {
+    public static func reproScript(hash: String, seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
         """
         #!/bin/sh
         # Preferred: bit-level replay against the recorded prompt/config.
-        \(replayCommand(hash: hash))
+        \(replayCommand(hash: hash, outputDir: outputDir))
         # Fallback: re-enter the campaign loop at the original seed/model.
-        # \(reproCommand(seed: seed, modelId: modelId))
+        # \(reproCommand(seed: seed, modelId: modelId, outputDir: outputDir))
 
         """
     }
 
-    public static func markdown(totalRuns: Int, rows: [FindingsIndexRow]) -> String {
+    public static func markdown(totalRuns: Int, rows: [FindingsIndexRow], outputDir: URL? = nil) -> String {
         var md = "# Fuzz findings\n\n"
         md += "_\(totalRuns) total runs, \(rows.count) unique findings._\n\n"
         md += "| Severity | Detector / sub-check | Model | Hash | First seen | Count | Trigger | Replay |\n"
@@ -95,16 +95,28 @@ public enum FindingsArtifactRenderer {
         for row in rows {
             let finding = row.finding
             let trigger = finding.trigger.replacingOccurrences(of: "|", with: "\\|").prefix(80)
-            md += "| \(finding.severity.rawValue) | \(finding.detectorId) / \(finding.subCheck) | \(row.modelId) | `\(finding.hash)` | \(finding.firstSeen) | \(finding.count) | \(trigger) | `\(replayCommand(hash: finding.hash))` |\n"
+            md += "| \(finding.severity.rawValue) | \(finding.detectorId) / \(finding.subCheck) | \(row.modelId) | `\(finding.hash)` | \(finding.firstSeen) | \(finding.count) | \(trigger) | `\(replayCommand(hash: finding.hash, outputDir: outputDir))` |\n"
         }
         return md
     }
 
-    public static func reproCommand(seed: UInt64, modelId: String) -> String {
-        "swift run fuzz-chat --seed \(seed) --model \(modelId) --single"
+    public static func reproCommand(seed: UInt64, modelId: String, outputDir: URL? = nil) -> String {
+        var command = "swift run fuzz-chat --seed \(seed) --model \(modelId) --single"
+        if let outputDir {
+            command += " --output-dir \(shellEscaped(outputDir.path))"
+        }
+        return command
     }
 
-    public static func replayCommand(hash: String) -> String {
-        "swift run fuzz-chat --replay \(hash)"
+    public static func replayCommand(hash: String, outputDir: URL? = nil) -> String {
+        var command = "swift run fuzz-chat --replay \(hash)"
+        if let outputDir {
+            command += " --output-dir \(shellEscaped(outputDir.path))"
+        }
+        return command
+    }
+
+    private static func shellEscaped(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
     }
 }

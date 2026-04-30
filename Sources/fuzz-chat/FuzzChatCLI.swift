@@ -334,7 +334,11 @@ struct FuzzChatCLI {
             let mergeInputs = [options.outputDir] + workers.map(\.outputDir)
             let report = try FindingsMerger.merge(workerOutputDirs: mergeInputs, into: options.outputDir)
             if !options.quiet {
-                print("Merged \(report.totalRuns) total runs and \(report.uniqueFindings) unique findings into \(options.outputDir.path)")
+                var message = "Merged \(report.totalRuns) total runs and \(report.uniqueFindings) unique findings into \(options.outputDir.path)"
+                if report.skippedInputs > 0 {
+                    message += " (\(report.skippedInputs) input(s) skipped due to unreadable index.json)"
+                }
+                print(message)
             }
         } catch {
             FileHandle.standardError.write(Data("fuzz-chat: failed to merge worker findings: \(error)\n".utf8))

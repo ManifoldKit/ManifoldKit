@@ -4,6 +4,7 @@ public struct FindingsMergeReport: Sendable, Equatable {
     public var totalRuns: Int
     public var uniqueFindings: Int
     public var mergedInputs: Int
+    public var skippedInputs: Int
 }
 
 public enum FindingsMerger {
@@ -12,9 +13,16 @@ public enum FindingsMerger {
         var mergedByHash: [String: FindingsIndexRow] = [:]
         var canonicalSourceByHash: [String: URL] = [:]
         var mergedInputs = 0
+        var skippedInputs = 0
 
         for workerOutputDir in workerOutputDirs {
-            let index = try FindingsIndexCodec.load(from: workerOutputDir)
+            let index: FindingsIndexFile
+            do {
+                index = try FindingsIndexCodec.load(from: workerOutputDir)
+            } catch {
+                skippedInputs += 1
+                continue
+            }
             guard index.totalRuns > 0 || !index.rows.isEmpty else { continue }
             mergedInputs += 1
             totalRuns += index.totalRuns
@@ -64,12 +72,22 @@ public enum FindingsMerger {
 
             try FindingsArtifactRenderer.summary(for: row)
                 .write(to: destinationDir.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
-            try FindingsArtifactRenderer.reproScript(hash: finding.hash, seed: row.seed, modelId: row.modelId)
+            try FindingsArtifactRenderer.reproScript(
+                hash: finding.hash,
+                seed: row.seed,
+                modelId: row.modelId,
+                outputDir: outputDir
+            )
                 .write(to: destinationDir.appendingPathComponent("repro.sh"), atomically: true, encoding: .utf8)
         }
 
         try FindingsIndexCodec.write(FindingsIndexFile(totalRuns: totalRuns, rows: rows), to: outputDir)
-        return FindingsMergeReport(totalRuns: totalRuns, uniqueFindings: rows.count, mergedInputs: mergedInputs)
+        return FindingsMergeReport(
+            totalRuns: totalRuns,
+            uniqueFindings: rows.count,
+            mergedInputs: mergedInputs,
+            skippedInputs: skippedInputs
+        )
     }
 
     private static func copyFirstSeenRecord(from sourceDir: URL, to destinationDir: URL) throws {

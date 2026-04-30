@@ -89,7 +89,12 @@ public actor FindingsSink {
             }
 
             do {
-                try FindingsArtifactRenderer.reproScript(hash: finding.hash, seed: recordedSeed, modelId: record.model.id)
+                try FindingsArtifactRenderer.reproScript(
+                    hash: finding.hash,
+                    seed: recordedSeed,
+                    modelId: record.model.id,
+                    outputDir: outputDir
+                )
                     .write(to: dir.appendingPathComponent("repro.sh"), atomically: true, encoding: .utf8)
             } catch {
                 Self.logError("Failed to write repro.sh for finding \(finding.hash): \(error)")
