@@ -1,5 +1,6 @@
 @preconcurrency import XCTest
 @testable import BaseChatUI
+import BaseChatInference
 
 final class StreamingTokenBatcherTests: XCTestCase {
 

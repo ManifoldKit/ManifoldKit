@@ -75,6 +75,51 @@ extension ChatViewModel {
             }
             transitionPhase(to: .idle)
 
+        // MARK: Thinking-block disclosure
+
+        case .thinkingStarted(let messageID):
+            // Insert a `.thinking("")` placeholder so the UI can show a
+            // "Thinking…" label during the reasoning phase. Mark this
+            // message ID as actively streaming thinking content so views
+            // can switch between the live-preview affordance and the
+            // finalized disclosure group.
+            messageIDsWithStreamingThinking.insert(messageID)
+            mutateMessage(id: messageID) { msg in
+                let insertAt = msg.contentParts.firstIndex(where: { $0.textContent != nil }) ?? msg.contentParts.endIndex
+                msg.contentParts.insert(.thinking(""), at: insertAt)
+            }
+
+        case .thinkingUpdated(let messageID, let partialText):
+            // Write `partialText` into the last in-flight `.thinking` part
+            // for live preview. Mirrors GenerationCoordinator.writeThinkingPartialText.
+            mutateMessage(id: messageID) { msg in
+                guard let idx = msg.contentParts.lastIndex(where: { $0.thinkingContent != nil }) else {
+                    return
+                }
+                let signature = msg.contentParts[idx].thinkingSignature
+                msg.contentParts[idx] = .thinking(partialText, signature: signature)
+            }
+
+        case .thinkingFinalized(let messageID, let text, let signature):
+            // Convert the placeholder to the final text + signature, then
+            // clear the streaming indicator so the disclosure UI appears.
+            messageIDsWithStreamingThinking.remove(messageID)
+            mutateMessage(id: messageID) { msg in
+                if let idx = msg.contentParts.lastIndex(where: { $0.thinkingContent != nil }),
+                   msg.contentParts[idx].thinkingSignature == nil {
+                    msg.contentParts[idx] = .thinking(text, signature: signature)
+                } else {
+                    let insertAt = msg.contentParts.firstIndex(where: { $0.textContent != nil }) ?? msg.contentParts.endIndex
+                    msg.contentParts.insert(.thinking(text, signature: signature), at: insertAt)
+                }
+            }
+
+        // MARK: Loop detection
+
+        case .loopDetected:
+            errorMessage = "Response stopped: repetitive content detected."
+            transitionPhase(to: .idle)
+
         // MARK: Observational / future cases
 
         case .beforeContextAssembly, .contextAssembled, .afterGeneration,
