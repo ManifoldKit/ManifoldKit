@@ -81,8 +81,15 @@ final class ConversationRuntimeTests: XCTestCase {
     final class RuntimeSessionStore: SessionStore {
         private(set) var sessions: [UUID: ChatSessionRecord] = [:]
         private(set) var updateCount: Int = 0
+        /// When set, the next `insertSession` call throws this error instead
+        /// of performing the insert. Cleared after the throw.
+        var insertError: (any Error)?
 
         func insertSession(_ session: ChatSessionRecord) async throws {
+            if let error = insertError {
+                insertError = nil
+                throw error
+            }
             sessions[session.id] = session
         }
 
@@ -516,6 +523,8 @@ final class ConversationRuntimeTests: XCTestCase {
         case .toolCallRequested: return "toolCallRequested"
         case .toolCallApproved: return "toolCallApproved"
         case .toolCallCompleted: return "toolCallCompleted"
+        case let .sessionBranched(newSessionID, copiedCount):
+            return "sessionBranched(\(newSessionID),\(copiedCount))"
         }
     }
 
@@ -778,8 +787,9 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
 
         let sessionID = UUID()
-        let userMsg = ChatMessageRecord(role: .user, content: "question", sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "original answer", sessionID: sessionID)
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let userMsg = ChatMessageRecord(role: .user, content: "question", timestamp: base, sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "original answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -943,6 +953,240 @@ final class ConversationRuntimeTests: XCTestCase {
             if case .messageRemoved = event { return true } else { return false }
         }.count
         XCTAssertEqual(removedCount, 0, "No .messageRemoved events when first delete fails")
+    }
+
+    // MARK: - Branch: happy path (no generation)
+
+    func test_branch_copiesMessagesAndEmitsEvent() async throws {
+        // Sabotage check (verified manually): removing the `emit(.sessionBranched(...))`
+        // call causes the `sessionBranched` assertion to fail. Changing the slice
+        // to exclude the branch point message causes `copiedCount` to be 1
+        // instead of 2, failing the count assertions.
+        let (runtime, store, _, sessions) = makeRuntime(sessionStore: RuntimeSessionStore())
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        // Seed: user + assistant + user (branch at assistant, index 1).
+        // Explicit timestamps ensure stable sort ordering in the in-memory store.
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessageRecord(role: .user, content: "question", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessageRecord(role: .assistant, content: "answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessageRecord(role: .user, content: "follow-up", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+        try await store.insertMessage(msg2)
+
+        // Insert the source session so touchSession / title lookup works.
+        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source Chat")
+        try await sessions!.insertSession(sourceSession)
+
+        let input = BranchInput(
+            sourceSessionID: sessionID,
+            branchMessageID: msg1.id,   // branch at the assistant (index 1, inclusive)
+            newSessionID: newSessionID,
+            generateAfterBranch: false
+        )
+        let handle = try await runtime.branch(input)
+
+        XCTAssertNil(handle, "branch returns nil when generateAfterBranch is false")
+
+        // Collect any synchronously-queued events.
+        let eventTask = Task { @MainActor [runtime] in
+            var seen: [ConversationEvent] = []
+            for await event in runtime.events { seen.append(event) }
+            return seen
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        eventTask.cancel()
+        let seenEvents = await eventTask.value
+
+        // .sessionBranched fires with the correct newSessionID and copiedCount == 2.
+        let branchedEvent = seenEvents.first {
+            if case let .sessionBranched(sid, count) = $0 {
+                return sid == newSessionID && count == 2
+            }
+            return false
+        }
+        XCTAssertNotNil(branchedEvent, "sessionBranched(newSessionID:, copiedCount: 2) fires")
+
+        // New session has exactly 2 messages (msg0 + msg1 copies).
+        let newMessages = try await store.fetchMessages(for: newSessionID)
+        XCTAssertEqual(newMessages.count, 2, "New session has 2 copied messages")
+        XCTAssertEqual(newMessages[0].role, .user)
+        XCTAssertEqual(newMessages[0].content, "question")
+        XCTAssertEqual(newMessages[1].role, .assistant)
+        XCTAssertEqual(newMessages[1].content, "answer")
+        // Copies have fresh IDs.
+        XCTAssertNotEqual(newMessages[0].id, msg0.id, "Copied message has a fresh ID")
+        XCTAssertNotEqual(newMessages[1].id, msg1.id, "Copied message has a fresh ID")
+
+        // Source session is untouched.
+        let sourceMessages = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(sourceMessages.count, 3, "Source session unchanged")
+    }
+
+    // MARK: - Branch: generation triggered when last copied message is user
+
+    func test_branch_triggersGenerationWhenLastCopiedMessageIsUser() async throws {
+        // Sabotage check (verified manually): changing `slice.last?.role == .user`
+        // to always return false causes the handle to be nil, failing XCTAssertNotNil.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["Branch", " response"]
+        let sessionStore = RuntimeSessionStore()
+        let (runtime, store, _, _) = makeRuntime(mock: mock, sessionStore: sessionStore)
+
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        // Seed: user + assistant + user (branch at last user — index 2).
+        // Explicit timestamps ensure stable sort ordering in the in-memory store.
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessageRecord(role: .user, content: "first", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessageRecord(role: .assistant, content: "reply", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessageRecord(role: .user, content: "second", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+        try await store.insertMessage(msg2)
+        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source")
+        try await sessionStore.insertSession(sourceSession)
+
+        let input = BranchInput(
+            sourceSessionID: sessionID,
+            branchMessageID: msg2.id,   // branch at the last user message
+            newSessionID: newSessionID,
+            generateAfterBranch: true
+        )
+        let handle = try await runtime.branch(input)
+
+        XCTAssertNotNil(handle, "branch returns a handle when generation is triggered")
+
+        // Wait for generation to complete on the new session.
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        // Generation events fired against the newSessionID.
+        let streamStarted = events.first { event in
+            if case .streamStarted = event { return true } else { return false }
+        }
+        XCTAssertNotNil(streamStarted, "streamStarted fires during branch generation")
+
+        // New session now has 3 + 1 messages: 3 copied + 1 new assistant.
+        let newMessages = try await store.fetchMessages(for: newSessionID)
+        XCTAssertEqual(newMessages.count, 4, "New session has 3 copied + 1 generated assistant message")
+        XCTAssertEqual(newMessages.last?.role, .assistant)
+        XCTAssertEqual(newMessages.last?.content, "Branch response")
+    }
+
+    // MARK: - Branch: no generation when last copied message is assistant
+
+    func test_branch_noGenerationWhenLastCopiedMessageIsAssistant() async throws {
+        // Sabotage check (verified manually): removing the `slice.last?.role == .user`
+        // guard causes generation to trigger even on an assistant-terminated branch,
+        // returning a non-nil handle and failing XCTAssertNil.
+        let (runtime, store, _, sessions) = makeRuntime(sessionStore: RuntimeSessionStore())
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessageRecord(role: .user, content: "q", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessageRecord(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source")
+        try await sessions!.insertSession(sourceSession)
+
+        let input = BranchInput(
+            sourceSessionID: sessionID,
+            branchMessageID: msg1.id,   // last copied is assistant
+            newSessionID: newSessionID,
+            generateAfterBranch: true   // requested, but should be suppressed
+        )
+        let handle = try await runtime.branch(input)
+
+        XCTAssertNil(handle, "nil handle when last copied message is assistant, even with generateAfterBranch: true")
+
+        // New session has 2 copied messages; no generated assistant.
+        let newMessages = try await store.fetchMessages(for: newSessionID)
+        XCTAssertEqual(newMessages.count, 2, "Only copied messages present; no generated assistant")
+    }
+
+    // MARK: - Branch: message not found
+
+    func test_branch_messageNotFound_throws() async throws {
+        // Sabotage check (verified manually): removing the guard that throws
+        // `.messageNotFound` causes the method to branch at a non-existent
+        // point without throwing, failing the XCTFail check.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        let msg0 = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        try await store.insertMessage(msg0)
+
+        let bogusID = UUID()
+        let input = BranchInput(
+            sourceSessionID: sessionID,
+            branchMessageID: bogusID,
+            newSessionID: UUID()
+        )
+
+        do {
+            _ = try await runtime.branch(input)
+            XCTFail("Expected ConversationError.messageNotFound to be thrown")
+        } catch let error as ConversationError {
+            if case .messageNotFound(let id) = error {
+                XCTAssertEqual(id, bogusID, "messageNotFound carries the bogus message ID")
+            } else {
+                XCTFail("Expected .messageNotFound, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    // MARK: - Branch: insertSession fails
+
+    func test_branch_insertSessionFails_throwsBeforeAnyMessagesCopied() async throws {
+        // Sabotage check (verified manually): removing the re-throw on insertSession
+        // failure causes the method to continue copying messages, so newMessages
+        // would have content and the store.messages.count would increase.
+        let sessionStore = RuntimeSessionStore()
+        let (runtime, store, _, _) = makeRuntime(sessionStore: sessionStore)
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessageRecord(role: .user, content: "q", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessageRecord(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+
+        // Poison: insertSession throws.
+        sessionStore.insertError = ChatPersistenceError.providerNotConfigured
+
+        do {
+            _ = try await runtime.branch(BranchInput(
+                sourceSessionID: sessionID,
+                branchMessageID: msg0.id,
+                newSessionID: newSessionID
+            ))
+            XCTFail("Expected ConversationError.persistence to be thrown")
+        } catch let error as ConversationError {
+            if case .persistence = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .persistence, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // No messages were copied into the new session.
+        let newMessages = try await store.fetchMessages(for: newSessionID)
+        XCTAssertEqual(newMessages.count, 0, "No messages copied when insertSession fails")
+        // Source unchanged.
+        XCTAssertEqual(store.messages.count, 2, "Source session messages unchanged")
     }
 
     // MARK: - Regenerate: cancel mid-stream

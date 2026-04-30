@@ -63,6 +63,12 @@ public enum ConversationEvent: Sendable {
     /// message in their view-state array.
     case messageUpdated(ChatMessageRecord)
 
+    /// A new session was created by branching from an existing conversation.
+    /// Fires synchronously (before `branch` returns) after the copied messages
+    /// are persisted. `copiedCount` is the number of messages inserted into
+    /// the new session.
+    case sessionBranched(newSessionID: UUID, copiedCount: Int)
+
     /// The runtime queued a generation request and the underlying stream
     /// started. Carries the assistant message ID the stream will write
     /// into so adapters can pair token deltas with the right message slot.
