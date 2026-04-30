@@ -3,9 +3,10 @@ import BaseChatInference
 
 // MARK: - Send input
 //
-// PR-A only ships the ``send`` sub-flow. Regenerate / edit / branch land in
-// PR-B / PR-C respectively (separate inputs and command methods, same event
-// surface).
+// PR-A ships the ``send`` sub-flow. Regenerate lands in PR-B; edit lands in
+// PR-C. Each sub-flow has its own input type and command method; all three
+// share the ``runGenerationTurn`` private helper for the generation inner
+// loop (context assembly → enqueue → drain → finalise).
 
 /// Input for ``ConversationRuntime/send(_:)``.
 ///
@@ -72,6 +73,49 @@ public struct RegenerateInput: Sendable {
         maxThinkingTokens: Int? = nil
     ) {
         self.sessionID = sessionID
+        self.systemPrompt = systemPrompt
+        self.temperature = temperature
+        self.topP = topP
+        self.repeatPenalty = repeatPenalty
+        self.maxOutputTokens = maxOutputTokens
+        self.maxThinkingTokens = maxThinkingTokens
+    }
+}
+
+// MARK: - Edit input
+
+/// Input for ``ConversationRuntime/edit(_:)``.
+///
+/// Identifies the message to edit by ID, carries the replacement content,
+/// and includes the same generation knobs as ``SendInput`` and
+/// ``RegenerateInput`` for the subsequent generation turn (if any).
+public struct EditInput: Sendable {
+    public let sessionID: UUID
+    /// The ID of the message whose content will be replaced.
+    public let messageID: UUID
+    /// The replacement content for the edited message.
+    public let newContent: String
+    public let systemPrompt: String?
+    public let temperature: Float
+    public let topP: Float
+    public let repeatPenalty: Float
+    public let maxOutputTokens: Int?
+    public let maxThinkingTokens: Int?
+
+    public init(
+        sessionID: UUID,
+        messageID: UUID,
+        newContent: String,
+        systemPrompt: String? = nil,
+        temperature: Float = 0.7,
+        topP: Float = 0.9,
+        repeatPenalty: Float = 1.1,
+        maxOutputTokens: Int? = 2048,
+        maxThinkingTokens: Int? = nil
+    ) {
+        self.sessionID = sessionID
+        self.messageID = messageID
+        self.newContent = newContent
         self.systemPrompt = systemPrompt
         self.temperature = temperature
         self.topP = topP
@@ -163,15 +207,16 @@ actor InFlightStreamRegistry {
 /// (`ChatViewModel`-shaped consumers). The stream is unbounded — adapters
 /// must drain it on a long-lived task or the buffer grows.
 ///
-/// ## Scope (PR-A)
+/// ## Scope (PR-C)
 ///
-/// PR-A ships the scaffolding plus the ``send(_:)`` sub-flow. Regenerate /
-/// edit / branch are not implemented yet — they ship in PR-B / PR-C with
-/// matching `ConversationEvent` coverage. PR-A also does not yet absorb
-/// the streaming-token batcher, thinking-block disclosure, loop detection,
-/// or tool-dispatch loop from `GenerationCoordinator`; those stay on the
-/// `ChatViewModel` adapter for now and migrate into the runtime in
-/// follow-up PRs.
+/// PR-A ships the scaffolding plus the ``send(_:)`` sub-flow. PR-B adds
+/// ``regenerate(_:)``. PR-C adds ``edit(_:)`` and extracts a shared
+/// ``runGenerationTurn`` helper that all three sub-flows delegate the
+/// generation inner loop to. Branch / other sub-flows ship in later PRs.
+/// None of these PRs absorb the streaming-token batcher, thinking-block
+/// disclosure, loop detection, or tool-dispatch loop from
+/// `GenerationCoordinator`; those stay on the `ChatViewModel` adapter for
+/// now and migrate into the runtime in follow-up PRs.
 public final class ConversationRuntime: Sendable {
 
     // MARK: Ports
@@ -344,6 +389,71 @@ public final class ConversationRuntime: Sendable {
         return handle
     }
 
+    /// Edits a message's content, deletes all messages after it, then
+    /// regenerates if the edited message was a user message.
+    ///
+    /// Returns a ``ConversationStreamHandle`` if generation was triggered
+    /// (edited message was `.user`); returns `nil` if the edited message was
+    /// `.assistant` and no generation is needed. The call is `async throws`
+    /// for synchronous setup failures (message not found, persistence errors
+    /// before the detached task fires); once the task is running, failures
+    /// route to ``ConversationEvent/errorRaised(_:)``.
+    ///
+    /// Cancellation: pass the returned handle to ``cancel(_:)``.
+    @discardableResult
+    public func edit(_ input: EditInput) async throws -> ConversationStreamHandle? {
+        // Fetch history synchronously so we can locate the target message and
+        // delete trailing messages before returning. Callers observe ordering:
+        // `.messageUpdated` and `.messageRemoved` events fire before `edit`
+        // returns so adapters can update their view-state before the stream
+        // starts.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+
+        guard let index = history.firstIndex(where: { $0.id == input.messageID }) else {
+            throw ConversationError.messageNotFound(input.messageID)
+        }
+
+        // Update the edited message's content in the store.
+        var updatedMessage = history[index]
+        updatedMessage.content = input.newContent
+        do {
+            try await updateMessage(updatedMessage)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+        emit(.messageUpdated(updatedMessage))
+
+        // Delete all messages after the edited one. On first failure stop
+        // deleting and throw — callers reload from the store on failure; the
+        // partial deletion is acknowledged, matching ChatViewModel's behaviour.
+        let trailing = Array(history[(index + 1)...])
+        for msg in trailing {
+            do {
+                try await deleteMessage(msg.id)
+            } catch {
+                throw ConversationError.persistence(error)
+            }
+            emit(.messageRemoved(messageID: msg.id))
+        }
+
+        // If the edited message was from the user, regenerate.
+        guard updatedMessage.role == .user else {
+            // Assistant edit: no generation needed.
+            return nil
+        }
+
+        let handle = ConversationStreamHandle()
+        Task.detached { [self] in
+            await runEditGenerationTurn(input: input, handle: handle)
+        }
+        return handle
+    }
+
     // MARK: Send turn
 
     private func runSendTurn(
@@ -363,19 +473,115 @@ public final class ConversationRuntime: Sendable {
             emit(.errorRaised(.persistence(error)))
             return
         }
+
+        await runGenerationTurn(
+            sessionID: input.sessionID,
+            userPrompt: input.userText,
+            history: history,
+            systemPrompt: input.systemPrompt,
+            temperature: input.temperature,
+            topP: input.topP,
+            repeatPenalty: input.repeatPenalty,
+            maxOutputTokens: input.maxOutputTokens,
+            maxThinkingTokens: input.maxThinkingTokens,
+            handle: handle
+        )
+    }
+
+    // MARK: Regenerate turn
+
+    private func runRegenerateTurn(
+        input: RegenerateInput,
+        handle: ConversationStreamHandle
+    ) async {
+        // Fetch history after deletion — the removed assistant message is
+        // gone, so context assembly starts from the last user turn.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+
+        await runGenerationTurn(
+            sessionID: input.sessionID,
+            userPrompt: nil,
+            history: history,
+            systemPrompt: input.systemPrompt,
+            temperature: input.temperature,
+            topP: input.topP,
+            repeatPenalty: input.repeatPenalty,
+            maxOutputTokens: input.maxOutputTokens,
+            maxThinkingTokens: input.maxThinkingTokens,
+            handle: handle
+        )
+    }
+
+    // MARK: Edit generation turn
+
+    private func runEditGenerationTurn(
+        input: EditInput,
+        handle: ConversationStreamHandle
+    ) async {
+        // Fetch history fresh after the synchronous edit + deletion — the
+        // updated message and removed trailing messages are already
+        // committed to the store before the detached task runs.
+        let history: [ChatMessageRecord]
+        do {
+            history = try await fetchMessages(sessionID: input.sessionID)
+        } catch {
+            emit(.errorRaised(.persistence(error)))
+            return
+        }
+
+        // `prompt: nil` — same as regenerate; no new user-supplied text.
+        await runGenerationTurn(
+            sessionID: input.sessionID,
+            userPrompt: nil,
+            history: history,
+            systemPrompt: input.systemPrompt,
+            temperature: input.temperature,
+            topP: input.topP,
+            repeatPenalty: input.repeatPenalty,
+            maxOutputTokens: input.maxOutputTokens,
+            maxThinkingTokens: input.maxThinkingTokens,
+            handle: handle
+        )
+    }
+
+    // MARK: Shared generation inner loop
+    //
+    // All three turn methods (send, regenerate, edit) converge here after
+    // their respective setup steps. The caller is responsible for fetching
+    // a clean `history` slice; this method owns context assembly → enqueue
+    // → drain → finalise.
+
+    private func runGenerationTurn(
+        sessionID: UUID,
+        userPrompt: String?,
+        history: [ChatMessageRecord],
+        systemPrompt: String?,
+        temperature: Float,
+        topP: Float,
+        repeatPenalty: Float,
+        maxOutputTokens: Int?,
+        maxThinkingTokens: Int?,
+        handle: ConversationStreamHandle
+    ) async {
         let messageCount = history.count
 
-        // 2. Context assembly hook. Always emit `.beforeContextAssembly` and
-        //    `.contextAssembled` so adapters that pin against these events
-        //    see them on every turn — even when no providers are registered
-        //    (slots = []). Stable event ordering matters more than skipping
-        //    a no-op emission.
+        // Context assembly hook. Always emit `.beforeContextAssembly` and
+        // `.contextAssembled` so adapters that pin against these events
+        // see them on every turn — even when no providers are registered
+        // (slots = []). Stable event ordering matters more than skipping
+        // a no-op emission.
         let request = PromptContextRequest(
-            sessionID: input.sessionID,
+            sessionID: sessionID,
             messageCount: messageCount,
-            userInput: input.userText
+            userInput: userPrompt
         )
-        emit(.beforeContextAssembly(prompt: input.userText, request: request))
+        emit(.beforeContextAssembly(prompt: userPrompt, request: request))
 
         let slots: [PromptSlot]
         if let pipeline {
@@ -390,42 +596,34 @@ public final class ConversationRuntime: Sendable {
         }
         emit(.contextAssembled(slots: slots))
 
-        // 3. Build the assistant message slot up front so token deltas can
-        //    reference its id from the first emitted token.
+        // Build the assistant message slot up front so token deltas can
+        // reference its id from the first emitted token.
         var assistantMessage = ChatMessageRecord(
             role: .assistant,
             content: "",
-            sessionID: input.sessionID
+            sessionID: sessionID
         )
         let assistantID = assistantMessage.id
 
-        // 4. Compose system prompt + slots. Slot text is appended after the
-        //    caller-supplied base prompt (separated by a blank line).
-        //    Position-aware splicing is a follow-up — PR-A keeps this
-        //    minimal and lets callers that need richer routing run their
-        //    own assembler outside the runtime.
-        let composedSystemPrompt = composeSystemPrompt(input.systemPrompt, slots: slots)
+        let composedSystemPrompt = composeSystemPrompt(systemPrompt, slots: slots)
 
-        // 5. Translate history to structured form for `enqueueAsync`.
         let structuredHistory: [StructuredMessage] = history.map { record in
             StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
         }
 
-        // 6. Enqueue. Use the nonisolated wrapper so we don't have to be
-        //    on @MainActor here.
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
             (token, stream) = try await inferenceService.enqueueAsync(
                 structuredMessages: structuredHistory,
                 systemPrompt: composedSystemPrompt,
-                temperature: input.temperature,
-                topP: input.topP,
-                repeatPenalty: input.repeatPenalty,
-                maxOutputTokens: input.maxOutputTokens,
-                maxThinkingTokens: input.maxThinkingTokens,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
                 priority: .userInitiated,
-                sessionID: input.sessionID
+                sessionID: sessionID
             )
         } catch {
             emit(.errorRaised(.inference(error)))
@@ -435,22 +633,20 @@ public final class ConversationRuntime: Sendable {
         await registry.register(handle: handle, token: token)
 
         // If cancel(_:) raced ahead of register — i.e., the caller cancelled
-        // between send returning and this point — the markCancelled call
-        // returned nil (nothing to cancel at that time). Issue cancelAsync
-        // now so backend work doesn't continue running while the runtime
-        // has stopped consuming the stream.
+        // between the command returning and this point — the markCancelled
+        // call returned nil (nothing to cancel at that time). Issue
+        // cancelAsync now so backend work doesn't continue running while
+        // the runtime has stopped consuming the stream.
         if await registry.isCancelled(handle) {
             await inferenceService.cancelAsync(token)
         }
 
         emit(.streamStarted(messageID: assistantID))
 
-        // 7. Drain the stream. This loop deliberately does *not* re-implement
-        //    GenerationCoordinator's batching, thinking-block disclosure,
-        //    loop detection, or tool-dispatch behaviour. PR-A handles the
-        //    happy path (visible tokens) and treats other event types as
-        //    pass-throughs onto the assistant message's content parts.
-        //    Subsequent PRs migrate the richer behaviours into the runtime.
+        // Drain the stream. This loop deliberately does *not* re-implement
+        // GenerationCoordinator's batching, thinking-block disclosure, loop
+        // detection, or tool-dispatch behaviour — those migrate in follow-up
+        // PRs.
         var accumulated = ""
         var emptyResponse = true
         var streamFailed: ConversationError?
@@ -470,10 +666,10 @@ public final class ConversationRuntime: Sendable {
                         .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
                         .toolLoopLimitReached, .usage, .prefillProgress,
                         .kvCacheReuse, .diagnosticThrottle:
-                    // Out of scope for PR-A. Tool-call routing through the
-                    // runtime ships in a follow-up; usage / prefill /
-                    // diagnostic events are observed by adapters that want
-                    // them via direct InferenceService observation today.
+                    // Out of scope. Tool-call routing through the runtime ships
+                    // in a follow-up; usage / prefill / diagnostic events are
+                    // observed by adapters that want them via direct
+                    // InferenceService observation today.
                     continue
                 }
             }
@@ -486,15 +682,15 @@ public final class ConversationRuntime: Sendable {
             }
         }
 
-        // 8. Finalise the assistant message. If the stream produced no
-        //    visible content and was not cancelled, drop it — matches the
-        //    `ChatViewModel`/`GenerationCoordinator` rule that keeps the
-        //    transcript clean of empty turns.
+        // Finalise the assistant message. If the stream produced no visible
+        // content and was not cancelled, drop it — matches the
+        // `ChatViewModel`/`GenerationCoordinator` rule that keeps the
+        // transcript clean of empty turns.
         //
-        //    Unregister before emitting terminal events so that any
-        //    cancel(_:) called after this point is a documented no-op
-        //    rather than a late-cancel that could still mark the handle
-        //    cancelled and confuse observers.
+        // Unregister before emitting terminal events so that any cancel(_:)
+        // called after this point is a documented no-op rather than a
+        // late-cancel that could still mark the handle cancelled and confuse
+        // observers.
         let cancelled = await isCancelled(handle: handle)
         await registry.unregister(handle: handle)
 
@@ -568,194 +764,10 @@ public final class ConversationRuntime: Sendable {
         emit(.streamFinished(messageID: assistantID, reason: reason))
         emit(.afterGeneration(messageID: assistantID, finalText: accumulated))
 
-        // Touch session timestamp again so the sidebar reflects the
-        // assistant turn's recency (parity with ChatViewModel's behaviour).
+        // Touch session timestamp so the sidebar reflects the assistant
+        // turn's recency (parity with ChatViewModel's behaviour).
         if let sessionStore {
-            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
-        }
-
-    }
-
-    // MARK: Regenerate turn
-
-    private func runRegenerateTurn(
-        input: RegenerateInput,
-        handle: ConversationStreamHandle
-    ) async {
-        // 1. Fetch history after deletion — the removed assistant message is
-        //    gone, so context assembly starts from the last user turn.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.sessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-        let messageCount = history.count
-
-        // 2. Context assembly hook. `prompt: nil` because regenerate has no
-        //    user-supplied text — the event's label is already `String?`.
-        let request = PromptContextRequest(
-            sessionID: input.sessionID,
-            messageCount: messageCount,
-            userInput: nil
-        )
-        emit(.beforeContextAssembly(prompt: nil, request: request))
-
-        let slots: [PromptSlot]
-        if let pipeline {
-            do {
-                slots = try await pipeline.assemble(messageCount: messageCount)
-            } catch {
-                emit(.errorRaised(.contextAssembly(error)))
-                return
-            }
-        } else {
-            slots = []
-        }
-        emit(.contextAssembled(slots: slots))
-
-        // 3. Build the fresh assistant message slot.
-        var assistantMessage = ChatMessageRecord(
-            role: .assistant,
-            content: "",
-            sessionID: input.sessionID
-        )
-        let assistantID = assistantMessage.id
-
-        // 4. Compose system prompt + slots.
-        let composedSystemPrompt = composeSystemPrompt(input.systemPrompt, slots: slots)
-
-        // 5. Translate history to structured form.
-        let structuredHistory: [StructuredMessage] = history.map { record in
-            StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
-        }
-
-        // 6. Enqueue.
-        let token: InferenceService.GenerationRequestToken
-        let stream: GenerationStream
-        do {
-            (token, stream) = try await inferenceService.enqueueAsync(
-                structuredMessages: structuredHistory,
-                systemPrompt: composedSystemPrompt,
-                temperature: input.temperature,
-                topP: input.topP,
-                repeatPenalty: input.repeatPenalty,
-                maxOutputTokens: input.maxOutputTokens,
-                maxThinkingTokens: input.maxThinkingTokens,
-                priority: .userInitiated,
-                sessionID: input.sessionID
-            )
-        } catch {
-            emit(.errorRaised(.inference(error)))
-            return
-        }
-
-        await registry.register(handle: handle, token: token)
-
-        if await registry.isCancelled(handle) {
-            await inferenceService.cancelAsync(token)
-        }
-
-        emit(.streamStarted(messageID: assistantID))
-
-        // 7. Drain the stream — same logic as runSendTurn.
-        var accumulated = ""
-        var emptyResponse = true
-        var streamFailed: ConversationError?
-
-        do {
-            for try await event in stream.events {
-                let cancelled = await isCancelled(handle: handle)
-                if cancelled { break }
-                switch event {
-                case .token(let text):
-                    accumulated += text
-                    emptyResponse = false
-                    emit(.tokenEmitted(messageID: assistantID, delta: text))
-
-                case .thinkingToken, .thinkingComplete, .thinkingSignature,
-                        .toolCall, .toolCallStart, .toolCallArgumentsDelta,
-                        .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
-                        .toolLoopLimitReached, .usage, .prefillProgress,
-                        .kvCacheReuse, .diagnosticThrottle:
-                    continue
-                }
-            }
-        } catch {
-            let cancelled = await isCancelled(handle: handle)
-            if cancelled {
-                streamFailed = .cancelled
-            } else {
-                streamFailed = .inference(error)
-            }
-        }
-
-        // 8. Finalise — same rules as runSendTurn.
-        let cancelled = await isCancelled(handle: handle)
-        await registry.unregister(handle: handle)
-
-        let reason: FinishReason
-        if cancelled {
-            reason = .cancelled
-        } else if let streamFailed {
-            assistantMessage.content = accumulated
-            if !accumulated.isEmpty {
-                do {
-                    try await insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
-                } catch {
-                    emit(.errorRaised(.persistence(error)))
-                    emit(.errorRaised(streamFailed))
-                    emit(.streamFinished(messageID: assistantID, reason: .stop))
-                    return
-                }
-            }
-            emit(.errorRaised(streamFailed))
-            emit(.streamFinished(messageID: assistantID, reason: .stop))
-            return
-        } else if emptyResponse {
-            reason = .empty
-        } else {
-            reason = .stop
-        }
-
-        if cancelled {
-            if !accumulated.isEmpty {
-                assistantMessage.content = accumulated
-                do {
-                    try await insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
-                } catch {
-                    emit(.errorRaised(.persistence(error)))
-                }
-            }
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            return
-        }
-
-        if reason == .empty {
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            emit(.afterGeneration(messageID: assistantID, finalText: ""))
-            return
-        }
-
-        // Happy path: persist the fresh assistant message.
-        assistantMessage.content = accumulated
-        do {
-            try await insertMessage(assistantMessage)
-            emit(.messageInserted(assistantMessage))
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            emit(.streamFinished(messageID: assistantID, reason: reason))
-            return
-        }
-
-        emit(.streamFinished(messageID: assistantID, reason: reason))
-        emit(.afterGeneration(messageID: assistantID, finalText: accumulated))
-
-        if let sessionStore {
-            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
+            await touchSession(sessionStore: sessionStore, sessionID: sessionID)
         }
     }
 
@@ -783,6 +795,11 @@ public final class ConversationRuntime: Sendable {
     @MainActor
     private func insertMessage(_ message: ChatMessageRecord) async throws {
         try await messageStore.insertMessage(message)
+    }
+
+    @MainActor
+    private func updateMessage(_ message: ChatMessageRecord) async throws {
+        try await messageStore.updateMessage(message)
     }
 
     @MainActor

@@ -24,6 +24,10 @@ final class ConversationRuntimeTests: XCTestCase {
         /// of performing the delete. Cleared after the throw so subsequent
         /// deletes succeed normally.
         var deleteError: (any Error)?
+        /// When set, the next `updateMessage` call throws this error instead
+        /// of performing the update. Cleared after the throw so subsequent
+        /// updates succeed normally.
+        var updateError: (any Error)?
 
         func insertMessage(_ message: ChatMessageRecord) async throws {
             messages[message.id] = message
@@ -33,6 +37,10 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         func updateMessage(_ message: ChatMessageRecord) async throws {
+            if let error = updateError {
+                updateError = nil
+                throw error
+            }
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -489,6 +497,8 @@ final class ConversationRuntimeTests: XCTestCase {
             return "messageInserted-\(record.role.rawValue)"
         case let .messageRemoved(messageID):
             return "messageRemoved(\(messageID))"
+        case let .messageUpdated(record):
+            return "messageUpdated-\(record.role.rawValue)"
         case .streamStarted: return "streamStarted"
         case let .tokenEmitted(_, delta): return "tokenEmitted(\(delta))"
         case let .streamFinished(_, reason):
@@ -678,6 +688,261 @@ final class ConversationRuntimeTests: XCTestCase {
         )
         // Store is untouched — both messages still present.
         XCTAssertEqual(store.messages.count, 2, "Store unchanged on delete failure")
+    }
+
+    // MARK: - Edit: happy path (user message)
+
+    func test_edit_userMessage_happyPath_updatesAndRegenerates() async throws {
+        // Sabotage check (verified manually): removing the `emit(.messageUpdated(...))`
+        // call causes the `messageUpdated-user` assertion to fail. Removing the
+        // trailing-deletion loop causes `messageRemoved` count to be 0 and
+        // store.messages.count to be 3 instead of 2.
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["Edited", " response"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        // Seed: user + assistant + a trailing assistant (simulates multi-turn).
+        let userMsg = ChatMessageRecord(role: .user, content: "original question", sessionID: sessionID)
+        let assistantMsg1 = ChatMessageRecord(role: .assistant, content: "first answer", sessionID: sessionID)
+        let assistantMsg2 = ChatMessageRecord(role: .assistant, content: "follow-up", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg1)
+        try await store.insertMessage(assistantMsg2)
+
+        let input = EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited question")
+        let handle = try await runtime.edit(input)
+
+        XCTAssertNotNil(handle, "edit of a user message returns a stream handle")
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        // Store: user message (updated) + new assistant. The two trailing messages
+        // (assistantMsg1 + assistantMsg2) were deleted.
+        XCTAssertEqual(store.messages.count, 2, "Trailing messages deleted; new assistant inserted")
+        guard let updatedUser = store.messages[userMsg.id] else {
+            XCTFail("User message missing from store")
+            return
+        }
+        XCTAssertEqual(updatedUser.content, "edited question", "User message content updated in store")
+
+        let assistants = store.messages.values.filter { $0.role == .assistant }
+        XCTAssertEqual(assistants.count, 1, "Exactly one assistant message after edit")
+        XCTAssertEqual(assistants.first?.content, "Edited response", "New assistant content from stream")
+
+        // Event ordering checks.
+        let kinds = events.map(eventKind)
+
+        // messageUpdated fires first.
+        XCTAssertEqual(kinds.first, "messageUpdated-user",
+                       "First event is messageUpdated for the edited user message")
+
+        // Two messageRemoved events (one per trailing assistant message).
+        let removedCount = kinds.filter { $0.hasPrefix("messageRemoved") }.count
+        XCTAssertEqual(removedCount, 2, "Two trailing messages removed")
+
+        // Generation events present.
+        XCTAssertTrue(kinds.contains("beforeContextAssembly"), "beforeContextAssembly fires")
+        XCTAssertTrue(kinds.contains("contextAssembled"), "contextAssembled fires")
+        XCTAssertTrue(kinds.contains("streamStarted"), "streamStarted fires")
+        XCTAssertEqual(kinds.filter { $0.hasPrefix("tokenEmitted") }.count, 2,
+                       "Two token events from mock backend")
+        XCTAssertTrue(kinds.contains("messageInserted-assistant"), "New assistant messageInserted fires")
+        XCTAssertTrue(kinds.contains("streamFinished-stop"), "streamFinished-stop fires")
+        XCTAssertTrue(kinds.contains("afterGeneration"), "afterGeneration fires")
+
+        // messageUpdated precedes streamStarted.
+        let updatedIndex = kinds.firstIndex { $0.hasPrefix("messageUpdated") }
+        let startedIndex = kinds.firstIndex { $0 == "streamStarted" }
+        if let u = updatedIndex, let s = startedIndex {
+            XCTAssertLessThan(u, s, "messageUpdated precedes streamStarted")
+        } else {
+            XCTFail("Expected both messageUpdated and streamStarted events")
+        }
+
+        // beforeContextAssembly fires with nil prompt (no new user text in edit).
+        XCTAssertTrue(events.contains(where: {
+            if case .beforeContextAssembly(let prompt, _) = $0 { return prompt == nil } else { return false }
+        }), "beforeContextAssembly fires with nil prompt for edit")
+    }
+
+    // MARK: - Edit: assistant message (no generation)
+
+    func test_edit_assistantMessage_updatesAndReturnsNilHandle() async throws {
+        // Sabotage check (verified manually): changing the `guard updatedMessage.role == .user`
+        // condition to always trigger generation causes the method to return a non-nil
+        // handle, failing the XCTAssertNil assertion.
+        let (runtime, store, _, _) = makeRuntime()
+
+        let sessionID = UUID()
+        let userMsg = ChatMessageRecord(role: .user, content: "question", sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "original answer", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg)
+
+        let input = EditInput(sessionID: sessionID, messageID: assistantMsg.id, newContent: "corrected answer")
+        let handle = try await runtime.edit(input)
+
+        XCTAssertNil(handle, "Editing an assistant message returns nil handle (no generation)")
+
+        // Collect any events that fired synchronously — should have messageUpdated, no generation events.
+        let eventTask = Task { @MainActor [runtime] in
+            var seen: [ConversationEvent] = []
+            for await event in runtime.events {
+                seen.append(event)
+            }
+            return seen
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        eventTask.cancel()
+
+        // Store: user + updated assistant. No deletions (nothing trails the assistant).
+        XCTAssertEqual(store.messages.count, 2, "Both messages still in store")
+        guard let updatedAssistant = store.messages[assistantMsg.id] else {
+            XCTFail("Assistant message missing from store")
+            return
+        }
+        XCTAssertEqual(updatedAssistant.content, "corrected answer", "Assistant content updated in store")
+    }
+
+    // MARK: - Edit: message not found
+
+    func test_edit_messageNotFound_throws() async throws {
+        // Sabotage check (verified manually): removing the guard that throws
+        // `.messageNotFound` causes the method to not throw, failing the
+        // XCTAssertThrowsError check and the store-count assertion.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        let userMsg = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+
+        let bogusID = UUID()
+        let input = EditInput(sessionID: sessionID, messageID: bogusID, newContent: "replacement")
+
+        do {
+            _ = try await runtime.edit(input)
+            XCTFail("Expected ConversationError.messageNotFound to be thrown")
+        } catch let error as ConversationError {
+            if case .messageNotFound(let id) = error {
+                XCTAssertEqual(id, bogusID, "messageNotFound carries the bogus message ID")
+            } else {
+                XCTFail("Expected .messageNotFound, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // Store unchanged — only the original user message.
+        XCTAssertEqual(store.messages.count, 1, "Store unchanged when message not found")
+    }
+
+    // MARK: - Edit: update failure
+
+    func test_edit_updateFails_throwsBeforeAnyDeletionOrGeneration() async throws {
+        // Sabotage check (verified manually): removing the persistence re-throw on
+        // updateMessage failure causes the method to proceed to deletion, and
+        // store.messages.count drops from 2 to 1 — the trailing-message deletion
+        // count assertion would fail.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessageRecord(role: .assistant, content: "a", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(assistantMsg)
+
+        // Poison the update so it throws.
+        store.updateError = ChatPersistenceError.messageNotFound(userMsg.id)
+
+        do {
+            _ = try await runtime.edit(EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited"))
+            XCTFail("Expected ConversationError.persistence to be thrown")
+        } catch let error as ConversationError {
+            if case .persistence = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .persistence, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // Store untouched — both messages still present.
+        XCTAssertEqual(store.messages.count, 2, "Store unchanged when update fails")
+    }
+
+    // MARK: - Edit: delete failure on first trailing message
+
+    func test_edit_firstDeleteFails_throwsBeforeAnyTrailingDeletion() async throws {
+        // Sabotage check (verified manually): removing the re-throw on deleteMessage
+        // failure causes the method to continue deleting and return a handle, failing
+        // the XCTAssertThrowsError check.
+        //
+        // RuntimeMessageStore.deleteError fires on the next call then self-clears.
+        // Setting it here means the first delete call (for trailing1) throws immediately,
+        // so zero trailing messages are removed. The update commits before the delete
+        // loop runs, so .messageUpdated is emitted and the store reflects the new
+        // content even though the throw follows.
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
+        let trailing1 = ChatMessageRecord(role: .assistant, content: "t1", sessionID: sessionID)
+        let trailing2 = ChatMessageRecord(role: .assistant, content: "t2", sessionID: sessionID)
+        try await store.insertMessage(userMsg)
+        try await store.insertMessage(trailing1)
+        try await store.insertMessage(trailing2)
+
+        // Collect events so we can verify .messageUpdated fired before the
+        // delete failure and that no .messageRemoved events were emitted.
+        var collectedEvents: [ConversationEvent] = []
+        let eventCollector = Task { @MainActor [runtime] in
+            for await event in runtime.events {
+                collectedEvents.append(event)
+            }
+        }
+
+        // Poison: first delete call throws, leaving both trailing messages in place.
+        store.deleteError = ChatPersistenceError.messageNotFound(trailing1.id)
+
+        do {
+            _ = try await runtime.edit(EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited"))
+            XCTFail("Expected ConversationError.persistence to be thrown")
+        } catch let error as ConversationError {
+            if case .persistence = error {
+                // Expected.
+            } else {
+                XCTFail("Expected .persistence, got \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        // Let any queued events drain.
+        try await Task.sleep(for: .milliseconds(50))
+        eventCollector.cancel()
+
+        // The update committed before the delete attempt: store has user (with new
+        // content) + both trailing messages (neither was deleted).
+        XCTAssertEqual(store.messages.count, 3,
+                       "Both trailing messages still in store when first delete fails")
+        XCTAssertEqual(store.messages[userMsg.id]?.content, "edited",
+                       "User message content was updated before the delete failure")
+
+        // .messageUpdated fired — the update completed before the delete loop ran.
+        XCTAssertTrue(collectedEvents.contains(where: {
+            if case .messageUpdated(let record) = $0 { return record.id == userMsg.id } else { return false }
+        }), ".messageUpdated fired for the edited message before the delete failure")
+
+        // No .messageRemoved events — the first delete threw before anything was removed.
+        let removedCount = collectedEvents.filter { event in
+            if case .messageRemoved = event { return true } else { return false }
+        }.count
+        XCTAssertEqual(removedCount, 0, "No .messageRemoved events when first delete fails")
     }
 
     // MARK: - Regenerate: cancel mid-stream
