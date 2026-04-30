@@ -20,6 +20,10 @@ import BaseChatInference
 // surface so adapters can bind to them today; the runtime emits them in
 // later PRs as the corresponding behaviour migrates from
 // ``GenerationCoordinator`` and ``ChatViewModel``.
+//
+// Phase 1.2.5 PR-B adds `.messageRemoved` (the 13th case) and emits it
+// from the regenerate sub-flow when the runtime deletes the last assistant
+// message before replacing it.
 
 /// Events emitted by ``ConversationRuntime``.
 ///
@@ -42,6 +46,12 @@ public enum ConversationEvent: Sendable {
     /// both the user message the runtime persists at the start of a turn
     /// and the assistant message the runtime persists at the end.
     case messageInserted(ChatMessageRecord)
+
+    /// A previously persisted message was removed from the conversation.
+    /// Fires when the runtime deletes a message on behalf of a sub-flow
+    /// (e.g. regenerate deletes the last assistant message before replacing
+    /// it). Adapters remove the matching message from their view-state array.
+    case messageRemoved(messageID: ChatMessageRecord.ID)
 
     /// The runtime queued a generation request and the underlying stream
     /// started. Carries the assistant message ID the stream will write
