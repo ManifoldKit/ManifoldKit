@@ -31,7 +31,7 @@
 
 set -euo pipefail
 
-OUTPUT_FILE="${TMPDIR:-/tmp}/test_output.txt"
+OUTPUT_FILE="${BASECHAT_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Arguments ────────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ echo ""
 # swift PM writes build progress + error lines to stderr; test output to stdout.
 # We merge both so signal-crash lines (stderr) land alongside test lines (stdout).
 cd "$PACKAGE_DIR"
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 set +e
 swift test "${SWIFT_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
 SWIFT_EXIT=${PIPESTATUS[0]}
@@ -101,9 +102,9 @@ fi
 # Lines: "✔ Test foo() passed after N seconds."
 #        "✘ Test foo() failed after N seconds."
 #        "↩ Test foo() skipped after N seconds."
-st_passed=$(grep -c "^✔ Test .* passed after " "$OUTPUT_FILE" || true)
-st_failed=$(grep -c "^✘ Test .* failed after " "$OUTPUT_FILE" || true)
-st_skipped=$(grep -c "^↩ Test .* skipped after " "$OUTPUT_FILE" || true)
+st_passed=$(awk '/^✔ Test .* passed after / && $0 !~ /^✔ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
+st_failed=$(awk '/^✘ Test .* failed after / && $0 !~ /^✘ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
+st_skipped=$(awk '/^↩ Test .* skipped after / && $0 !~ /^↩ Test run / { count++ } END { print count + 0 }' "$OUTPUT_FILE")
 
 # Swift Testing suites: "◇ Suite "Name" started." vs "✔ Suite "Name" passed after N seconds."
 st_suites_started=$(grep '^◇ Suite "' "$OUTPUT_FILE" \

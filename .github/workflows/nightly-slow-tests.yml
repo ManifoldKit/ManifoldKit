@@ -4,7 +4,6 @@ name: Nightly slow tests
 #  - LargeSessionListPerformanceTests — XCTMeasure perf baselines (~65s)
 #  - IntegratedStreamingPerformanceTests — full pipeline TTFT/cadence/E2E baselines (~20s)
 #  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s)
-#  - IntegratedStreamingPerformanceTests — full pipeline streaming baselines (#243)
 # These are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
 # unconditionally (CI is also unset locally).
@@ -55,32 +54,41 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Test — LargeSessionListPerformanceTests
-        run: scripts/test.sh --filter "BaseChatUITests.LargeSessionListPerformanceTests" --disable-default-traits --skip-update
+        id: test-large-session-list
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-large-session-list.log
+        run: scripts/test.sh --filter "BaseChatUITests.LargeSessionListPerformanceTests" --disable-default-traits --skip-update --min-passed 1
 
       - name: Test — IntegratedStreamingPerformanceTests
-        run: scripts/test.sh --filter "BaseChatUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update
+        id: test-integrated-streaming
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-integrated-streaming.log
+        run: scripts/test.sh --filter "BaseChatUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update --min-passed 1
 
       - name: Test — TrafficBoundaryAuditTest
-        run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update
-
-      - name: Test — IntegratedStreamingPerformanceTests
-        # The test target lands in a follow-up PR (#243). Gate on its file
-        # existing so the nightly job doesn't fail with "no tests matched
-        # filter" between this workflow shipping and #243 merging.
-        if: ${{ hashFiles('**/IntegratedStreamingPerformanceTests*.swift') != '' }}
-        run: scripts/test.sh --filter "BaseChatUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update
+        id: test-traffic-boundary-audit
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
+        run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
 
       - name: Stage test diagnostics
-        # Mirrors ci.yml: scripts/test.sh writes captured stdout/stderr to
-        # $TMPDIR/test_output.txt, but $TMPDIR on macOS runners is a per-process
-        # /var/folders path that actions/upload-artifact cannot reliably address.
-        # Copy into the workspace so the upload step can find it.
+        # Mirrors ci.yml: each step writes to a unique workspace log path so
+        # diagnostics from earlier failures are preserved.
         if: failure()
+        env:
+          LARGE_SESSION_LIST_FAILED: ${{ steps.test-large-session-list.outcome == 'failure' }}
+          INTEGRATED_STREAMING_FAILED: ${{ steps.test-integrated-streaming.outcome == 'failure' }}
+          TRAFFIC_BOUNDARY_AUDIT_FAILED: ${{ steps.test-traffic-boundary-audit.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
-          if [ -n "${TMPDIR:-}" ] && [ -f "${TMPDIR}/test_output.txt" ]; then
-            cp "${TMPDIR}/test_output.txt" test-diagnostics/test_output.txt
-          fi
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=slow"
+            echo "large-session-list-failed=${LARGE_SESSION_LIST_FAILED}"
+            echo "integrated-streaming-failed=${INTEGRATED_STREAMING_FAILED}"
+            echo "traffic-boundary-audit-failed=${TRAFFIC_BOUNDARY_AUDIT_FAILED}"
+          } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
         if: failure()

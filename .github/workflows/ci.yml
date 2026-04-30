@@ -74,7 +74,6 @@ jobs:
             .build/repositories
           key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-fuzz-spm-${{ hashFiles('Package.resolved') }}
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
@@ -193,7 +192,10 @@ jobs:
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
       - name: Test — XCTest suites (Core + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
+        id: test-xctest-suites
         timeout-minutes: 12
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
         run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
@@ -204,30 +206,43 @@ jobs:
       # `if: always()` mirrors the Swift Testing step below so a failing batch
       # above still surfaces inference failures in the same run.
       - name: Test — Inference (XCTest, parallel)
+        id: test-inference-xctest
         if: always()
         timeout-minutes: 12
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-xctest.log
         run: scripts/test.sh --filter BaseChatInferenceTests --disable-default-traits --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
       # two re-push cycles to triage. The job still fails because step 1 failed.
       - name: Test — Inference (Swift Testing, isolated process)
+        id: test-inference-swift-testing
         if: always()
         timeout-minutes: 12
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
         run: scripts/test.sh --filter BaseChatInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       - name: Stage test diagnostics
-        # scripts/test.sh writes full captured output to $TMPDIR/test_output.txt
-        # but $TMPDIR on macOS runners is a per-process /var/folders path that
-        # actions/upload-artifact cannot reliably address. Copy into the
-        # workspace so the upload step below can find it. Each test step
-        # overwrites this file, so on failure it holds the failing step's log.
+        # Each test step writes to a unique workspace log path via
+        # BASECHAT_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
+        # overwrite a previous failing step's diagnostics.
         if: failure()
+        env:
+          XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
+          INFERENCE_XCTEST_FAILED: ${{ steps.test-inference-xctest.outcome == 'failure' }}
+          INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
-          if [ -n "${TMPDIR:-}" ] && [ -f "${TMPDIR}/test_output.txt" ]; then
-            cp "${TMPDIR}/test_output.txt" test-diagnostics/test_output.txt
-          fi
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=test"
+            echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
+            echo "inference-xctest-failed=${INFERENCE_XCTEST_FAILED}"
+            echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"
+          } > test-diagnostics/failed-steps.txt
           # Best-effort: copy any xcresult bundles a future xcodebuild step
           # might have produced under DerivedData.
           find "${HOME}/Library/Developer/Xcode/DerivedData" -type d -name "*.xcresult" -maxdepth 6 2>/dev/null \
