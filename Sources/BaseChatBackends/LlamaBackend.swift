@@ -285,6 +285,28 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             throw InferenceError.alreadyGenerating
         }
 
+        // Detect image parts in the current structured history.
+        // When an mmproj companion is staged, `supportsVision` is `true` so the
+        // coordinator routes image-bearing turns here. Actual multimodal decoding
+        // requires CLIP / mtmd C APIs not present in the bundled xcframework
+        // (mattt/llama.swift 2.8772.0, llama.cpp build b8772). Throw a clear,
+        // actionable error until a future xcframework upgrade adds those headers.
+        let history = withStateLock { _structuredHistory }
+        let hasImageParts = history.contains { msg in
+            msg.parts.contains {
+                if case .image = $0 { return true }
+                return false
+            }
+        }
+        if hasImageParts {
+            throw InferenceError.inferenceFailure(
+                "LlamaBackend: multimodal image inference is not yet available. "
+                + "The vendored llama.cpp xcframework (build b8772) does not include "
+                + "clip.h / mtmd.h. Upgrade the LlamaSwift dependency to a build that "
+                + "exposes those headers to enable image token embedding."
+            )
+        }
+
         // Tokenize up front (pure vocab lookup — doesn't touch context KV
         // state) so we can preflight prompt + output against the context
         // window before flipping `isGenerating`. If we failed this check
@@ -470,6 +492,27 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // positional state is gone before the next turn decodes from position 0.
         if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
             llama_memory_clear(mem, false)
+        }
+    }
+
+    /// Zeros the KV tensor data in the active llama.cpp context.
+    ///
+    /// Unlike ``resetConversation()``, which passes `false` to
+    /// `llama_memory_clear` (metadata-only clear), this passes `true` to
+    /// write zeros into the underlying key and value matrices. This closes the
+    /// window during which prior-session KV tensors remain in process memory.
+    ///
+    /// The KV state cache pointer is also nil-ed so the next
+    /// ``generate(_:config:)`` call starts with a fresh context.
+    public func secureWipe() {
+        let capturedContext = withStateLock { () -> OpaquePointer? in
+            sessionKVState = nil
+            return context
+        }
+        if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
+            // true = zero the actual KV tensor data (key + value matrices),
+            // not just the positional/sequence metadata.
+            llama_memory_clear(mem, true)
         }
     }
 
