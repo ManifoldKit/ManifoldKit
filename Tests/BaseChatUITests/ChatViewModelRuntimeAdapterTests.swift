@@ -214,6 +214,49 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         XCTAssertLessThanOrEqual(vm.messages.count, 2, "Should have at most user + partial assistant")
     }
 
+    // MARK: - Test: configure(conversationRuntime:) does not leak the view model
+    //
+    // Regression test for the retain cycle that existed when `[weak self]` plus
+    // an outside-the-loop `guard let self else { return }` upgraded `self` to a
+    // strong capture for the lifetime of the drain task. Re-checking `self` per
+    // iteration keeps `self` weak across the suspended `for-await`, so the VM
+    // can deallocate when nothing else holds it.
+    //
+    // Sabotage check (verified manually): hoisting `guard let self` outside the
+    // `for-await` loop in configure(conversationRuntime:) makes `weakVM` survive
+    // past `harnesses.removeAll()` and the assertion fails.
+
+    func test_configureConversationRuntime_doesNotRetainViewModel() async throws {
+        let mock = MockInferenceBackend()
+        mock.isModelLoaded = true
+
+        weak var weakVM: ChatViewModel?
+        do {
+            let vm = try makeVM(mock: mock)
+            let runtime = makeRuntime(mock: mock)
+            vm.configure(conversationRuntime: runtime)
+            weakVM = vm
+            XCTAssertNotNil(weakVM, "VM is alive while strongly held by harness")
+
+            // Let the drain task actually start running and suspend on the
+            // `for await` — only then does the closure's captured-`self`
+            // lifetime extend across the suspension point. Without this
+            // wait, the task may not have started, so the test wouldn't
+            // catch the cycle either way.
+            try await Task.sleep(for: .milliseconds(30))
+        }
+
+        // Drop the harness; nothing else should retain the VM externally.
+        for h in harnesses { h.cleanup() }
+        harnesses.removeAll()
+
+        // Yield several times and sleep so any deferred ARC release settles.
+        for _ in 0..<5 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertNil(weakVM, "VM must be deallocated once external strong refs drop — drain task must not retain self across the for-await suspension")
+    }
+
     // MARK: - Test 3: sendMessage without runtime uses GenerationCoordinator (existing path)
 
     func test_sendMessage_withoutRuntime_usesExistingPath() async throws {
