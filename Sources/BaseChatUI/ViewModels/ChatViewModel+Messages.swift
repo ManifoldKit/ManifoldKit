@@ -25,6 +25,30 @@ extension ChatViewModel {
         inputText = ""
         Log.ui.debug("User sent message")
 
+        // Runtime path — delegate to ConversationRuntime when configured.
+        if let runtime = conversationRuntime {
+            let input = SendInput(
+                sessionID: activeSessionID,
+                userText: text,
+                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens
+            )
+            do {
+                let handle = try await runtime.send(input)
+                activeConversationStreamHandle = handle
+            } catch {
+                Log.persistence.error("ConversationRuntime.send failed: \(error)")
+                surfaceError(error, kind: .persistence)
+            }
+            return
+        }
+
+        // GenerationCoordinator path (existing).
+
         // Create and persist the user message.
         let userMessage = ChatMessageRecord(role: .user, content: text, sessionID: activeSessionID)
         messages.append(userMessage)
@@ -64,6 +88,29 @@ extension ChatViewModel {
 
         guard let activeSessionID else { return }
 
+        // Runtime path — delegate to ConversationRuntime when configured.
+        if let runtime = conversationRuntime {
+            let input = RegenerateInput(
+                sessionID: activeSessionID,
+                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens
+            )
+            do {
+                let handle = try await runtime.regenerate(input)
+                activeConversationStreamHandle = handle
+            } catch {
+                Log.ui.error("ConversationRuntime.regenerate failed: \(error)")
+                surfaceError(error, kind: .generation)
+            }
+            return
+        }
+
+        // GenerationCoordinator path (existing).
+
         // Find and remove the last assistant message.
         guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else {
             return
@@ -89,10 +136,38 @@ extension ChatViewModel {
 
     /// Edits a message and regenerates everything after it.
     public func editMessage(_ messageID: UUID, newContent: String) async {
-        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        guard messages.firstIndex(where: { $0.id == messageID }) != nil else { return }
         guard !isGenerating else { return }
 
         guard let activeSessionID else { return }
+
+        // Runtime path — delegate to ConversationRuntime when configured.
+        if let runtime = conversationRuntime {
+            let input = EditInput(
+                sessionID: activeSessionID,
+                messageID: messageID,
+                newContent: newContent,
+                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens
+            )
+            // Invalidate the token cache for the edited message — content changed.
+            tokenCountCache.removeValue(forKey: messageID)
+            do {
+                let handle = try await runtime.edit(input)
+                activeConversationStreamHandle = handle
+            } catch {
+                Log.ui.error("ConversationRuntime.edit failed: \(error)")
+                surfaceError(error, kind: .generation)
+            }
+            return
+        }
+
+        // GenerationCoordinator path (existing).
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
 
         // Update the edited message.
         let originalMessage = messages[index]
@@ -146,6 +221,21 @@ extension ChatViewModel {
     /// changing observable semantics. Keep sync; do not "fix" the
     /// inconsistency in a future refactor.
     public func stopGeneration() {
+        // Runtime path — cancel the in-flight ConversationRuntime stream.
+        if let runtime = conversationRuntime, let handle = activeConversationStreamHandle {
+            activeConversationStreamHandle = nil
+            Task { [weak self] in
+                await runtime.cancel(handle)
+                // The runtime emits .streamFinished(reason: .cancelled) which
+                // drives transitionPhase(.idle) via handle(runtimeEvent:).
+                // No additional phase transition needed here.
+                _ = self  // suppress capture warning
+            }
+            Log.ui.debug("Generation stopped by user (runtime path)")
+            return
+        }
+
+        // GenerationCoordinator path (existing).
         generationTask?.cancel()
         generationTask = nil
         activeGenerationToken = nil
