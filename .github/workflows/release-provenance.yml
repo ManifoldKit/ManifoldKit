@@ -75,12 +75,12 @@ jobs:
       # Package.resolved is the canonical source of truth; we only run resolve
       # to populate .build for the dependency tree dump.
       - name: Resolve packages
-        run: swift package resolve --disable-default-traits
+        run: swift package resolve
 
       - name: Snapshot dependency tree
         run: |
           mkdir -p artifacts
-          swift package show-dependencies --disable-default-traits --format json \
+          swift package show-dependencies --format json \
             > artifacts/dependency-tree.json
           # Sanity: tree must be non-trivial (we have direct deps).
           test "$(wc -c < artifacts/dependency-tree.json)" -gt 100

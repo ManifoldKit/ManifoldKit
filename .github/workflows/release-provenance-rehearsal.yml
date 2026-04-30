@@ -31,12 +31,12 @@ jobs:
         run: ./scripts/check-swift-toolchain.sh
 
       - name: Resolve packages
-        run: swift package resolve --disable-default-traits
+        run: swift package resolve
 
       - name: Snapshot dependency tree
         run: |
           mkdir -p artifacts
-          swift package show-dependencies --disable-default-traits --format json \
+          swift package show-dependencies --format json \
             > artifacts/dependency-tree.json
           python3 -c '
           import json
