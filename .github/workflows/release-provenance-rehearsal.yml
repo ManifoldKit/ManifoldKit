@@ -1,0 +1,67 @@
+name: Release Provenance Rehearsal (read-only)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-provenance.yml"
+      - ".github/workflows/release-provenance-rehearsal.yml"
+      - "scripts/generate-sbom.sh"
+      - "scripts/check-swift-toolchain.sh"
+      - "Package.swift"
+      - "Package.resolved"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearsal:
+    name: Rehearse release dependency + SBOM generation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR commit
+        uses: actions/checkout@v6
+
+      - name: Set up Swift
+        uses: SwiftyLab/setup-swift@v1.13.0
+        with:
+          swift-version: "6.1"
+
+      - name: Verify Swift toolchain matches Package.swift tools-version
+        run: ./scripts/check-swift-toolchain.sh
+
+      - name: Resolve packages
+        run: swift package --disable-default-traits resolve
+
+      - name: Snapshot dependency tree
+        run: |
+          mkdir -p artifacts
+          swift package --disable-default-traits show-dependencies --format json \
+            > artifacts/dependency-tree.json
+          python3 -c '
+          import json
+          tree = json.load(open("artifacts/dependency-tree.json"))
+          assert isinstance(tree, dict), "dependency tree is not an object"
+          assert "name" in tree, "dependency tree missing root name"
+          print("Dependency tree json shape OK")
+          '
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          ./scripts/generate-sbom.sh --output artifacts/sbom.cdx.json
+          python3 -c '
+          import json
+          bom = json.load(open("artifacts/sbom.cdx.json"))
+          assert bom["bomFormat"] == "CycloneDX", "bomFormat mismatch"
+          assert bom["specVersion"] == "1.5", "specVersion mismatch"
+          assert isinstance(bom["components"], list), "components not a list"
+          assert len(bom["components"]) > 0, "no components"
+          print(f"SBOM ok: {len(bom[\"components\"])} components")
+          '
+
+      - name: Persist rehearsal artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-provenance-rehearsal-${{ github.sha }}
+          path: artifacts/
+          retention-days: 14
