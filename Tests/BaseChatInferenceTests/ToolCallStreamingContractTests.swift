@@ -390,11 +390,24 @@ final class ToolCallStreamingContractTests: XCTestCase {
             return events
         }
 
-        // Wait briefly to let the stream yield its first delta, then cancel.
+        // Wait for the collector to consume the first delta, then cancel.
         collectedEvents = await collector.value
-        coordinator.stopGeneration()
+
+        // Use `stopGenerationAndWait()` instead of `stopGeneration()` so the
+        // dispatch task fully unwinds (defer block finishes the continuation)
+        // before we read residual events. Without this await there is a race
+        // under parallel test load: the dispatch loop can yield `.call` after
+        // the consumer broke out of its for-await but before `Task.isCancelled`
+        // is observed inside the loop. We're testing the contract that *no
+        // `.toolCall` reaches the consumer* once the consumer-visible stream
+        // has been cancelled — awaiting the task makes that ordering
+        // deterministic regardless of test parallelism.
+        await coordinator.stopGenerationAndWait()
 
         // Gather any remaining events that leaked through after cancellation.
+        // After `stopGenerationAndWait()` the continuation has already been
+        // finished, so this either returns immediately with an empty array or
+        // throws CancellationError (caught below).
         let residual = Task<[GenerationEvent], Never> {
             var events: [GenerationEvent] = []
             do {
