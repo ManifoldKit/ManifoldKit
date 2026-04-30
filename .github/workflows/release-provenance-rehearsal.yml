@@ -58,7 +58,8 @@ jobs:
           assert bom["specVersion"] == "1.5", "specVersion mismatch"
           assert isinstance(bom["components"], list), "components not a list"
           assert len(bom["components"]) > 0, "no components"
-          print(f"SBOM ok: {len(bom[\"components\"])} components")
+          component_count = len(bom["components"])
+          print(f"SBOM ok: {component_count} components")
           '
 
       - name: Persist rehearsal artifacts

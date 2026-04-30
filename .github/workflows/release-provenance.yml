@@ -98,7 +98,8 @@ jobs:
           assert bom["bomFormat"] == "CycloneDX", "bomFormat mismatch"
           assert bom["specVersion"] == "1.5", "specVersion mismatch"
           assert len(bom["components"]) > 0, "no components"
-          print(f"SBOM ok: {len(bom[\"components\"])} components")
+          component_count = len(bom["components"])
+          print(f"SBOM ok: {component_count} components")
           '
 
       - name: Attest SBOM build provenance
