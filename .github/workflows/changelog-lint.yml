@@ -3,10 +3,6 @@ name: Changelog Lint
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "CHANGELOG.md"
-      - ".release-please-manifest.json"
-      - "version.txt"
 
 concurrency:
   group: changelog-lint-${{ github.ref }}
@@ -14,13 +10,18 @@ concurrency:
 
 jobs:
   changelog-lint:
-    # Only run on Release Please PRs
-    if: startsWith(github.head_ref, 'release-please--branches--')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Skip validation for non-Release-Please PRs
+        if: ${{ !startsWith(github.head_ref, 'release-please--branches--') }}
+        run: |
+          echo "Non-Release-Please PR; changelog rewrite validation is not required."
+          echo "Passing changelog-lint to provide the required check context."
+
       - name: Check changelog entries are prose-style
+        if: ${{ startsWith(github.head_ref, 'release-please--branches--') }}
         run: |
           set -euo pipefail
 
