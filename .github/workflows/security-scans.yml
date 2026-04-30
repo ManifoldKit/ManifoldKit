@@ -71,7 +71,10 @@ jobs:
       - name: Scan changed commits for leaked secrets
         uses: trufflesecurity/trufflehog@v3.95.2
         with:
-          # Pin the scanner image tag so the composite action doesn't pull latest.
-          version: v3.95.2
+          # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
+          # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit
+          # `version:` input is intentionally omitted — the action's default tag
+          # resolves to a published image. Action SHA pin above keeps the
+          # composite definition itself fixed for supply-chain safety.
           # Keep signal high by failing only on verifiable active secrets.
           extra_args: --results=verified

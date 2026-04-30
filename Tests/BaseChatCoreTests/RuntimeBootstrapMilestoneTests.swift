@@ -1,6 +1,7 @@
 import XCTest
 import SwiftData
-@testable import BaseChatCore
+@testable import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 @MainActor
@@ -9,7 +10,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let (progress, task) = BaseChatRuntime.build(
+        let (progress, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Milestone Order",
                 bundleIdentifier: "com.basechatkit.milestone-tests.order.\(UUID().uuidString)"
@@ -30,7 +31,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let (progress, task) = BaseChatRuntime.build(
+        let (progress, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Complete Is Last",
                 bundleIdentifier: "com.basechatkit.milestone-tests.last.\(UUID().uuidString)"
@@ -51,7 +52,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let (progress, task) = BaseChatRuntime.build(
+        let (progress, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Failure Stream",
                 bundleIdentifier: "com.basechatkit.milestone-tests.failure.\(UUID().uuidString)"
@@ -78,7 +79,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let (_, task) = BaseChatRuntime.build(
+        let (_, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Rollback",
                 bundleIdentifier: "com.basechatkit.milestone-tests.rollback.\(UUID().uuidString)"
@@ -98,7 +99,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let injectedService = InferenceService()
         let prebuiltContainer = try ModelContainerFactory.makeInMemoryContainer()
 
-        let (progress, task) = BaseChatRuntime.build(
+        let (progress, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Wiring Identity",
                 bundleIdentifier: "com.basechatkit.milestone-tests.wiring.\(UUID().uuidString)"
@@ -133,7 +134,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let (progress, task) = BaseChatRuntime.build(
+        let (progress, task) = BaseChatBootstrap.build(
             configuration: BaseChatConfiguration(
                 appName: "Build Persistence",
                 bundleIdentifier: "com.basechatkit.milestone-tests.persistence.\(UUID().uuidString)"

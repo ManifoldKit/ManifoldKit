@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 
 /// Injection point for the ``EndpointStore`` consumed by
 /// ``APIConfigurationView``, ``APIEndpointEditorView``, and

@@ -206,9 +206,11 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        if let secureKey = resolveAPIKeySecure(), !secureKey.stringValue.isEmpty {
+        if let secureKey = resolveAPIKeySecure() {
             let keyString = secureKey.stringValue
-            request.setValue("Bearer \(keyString)", forHTTPHeaderField: "Authorization")
+            if !keyString.isEmpty {
+                request.setValue("Bearer \(keyString)", forHTTPHeaderField: "Authorization")
+            }
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

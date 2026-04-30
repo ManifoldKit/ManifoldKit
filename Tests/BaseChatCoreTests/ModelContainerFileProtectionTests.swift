@@ -1,6 +1,6 @@
 import XCTest
 import SwiftData
-@testable import BaseChatCore
+@testable import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Tests covering the Data Protection attribute applied to the SwiftData

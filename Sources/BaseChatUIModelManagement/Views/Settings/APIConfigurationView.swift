@@ -1,6 +1,6 @@
 import SwiftUI
 #if Ollama || CloudSaaS
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 #endif
 
@@ -11,7 +11,7 @@ import BaseChatInference
 /// presents `APIEndpointEditorView`.
 ///
 /// Endpoint reads and writes go through the ``EndpointStore`` injected via
-/// the SwiftUI environment (typically `BaseChatRuntime.endpointStore`); the
+/// the SwiftUI environment (typically `BaseChatBootstrap.endpointStore`); the
 /// view itself does not import SwiftData.
 ///
 /// The type itself is **always public** — even when neither `Ollama` nor

@@ -1,5 +1,6 @@
 import XCTest
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatTestSupport
 
 /// Thread-safe value collector for `@Sendable` progress handler closures.

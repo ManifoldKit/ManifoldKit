@@ -3,7 +3,8 @@ import SwiftUI
 import SwiftData
 @testable import BaseChatUI
 @testable import BaseChatUIModelManagement
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 /// Verifies that user-facing controls in SessionListView, ChatExportSheet,

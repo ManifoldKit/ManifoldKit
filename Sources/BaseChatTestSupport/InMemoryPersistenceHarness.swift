@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Builds a fresh in-memory SwiftData stack wrapped in the production

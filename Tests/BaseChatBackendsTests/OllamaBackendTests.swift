@@ -3,7 +3,8 @@ import Testing
 import XCTest
 import Foundation
 @testable import BaseChatBackends
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 import BaseChatTestSupport
 

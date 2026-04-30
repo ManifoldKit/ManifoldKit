@@ -1,5 +1,5 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatRuntime
 import BaseChatTestSupport
 
 /// Covers both the scheduler protocol contract via ``MockBackgroundTaskScheduler``

@@ -1,7 +1,8 @@
 import Foundation
 import SwiftData
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 @MainActor
@@ -10,7 +11,7 @@ final class ConsumerRuntimeHarness {
         case userDefaultsSuiteAllocationFailed(String)
     }
 
-    let runtime: BaseChatRuntime
+    let runtime: BaseChatBootstrap
     let chatViewModel: ChatViewModel
     let sessionManager: SessionManagerViewModel
     let userDefaults: UserDefaults
@@ -60,7 +61,7 @@ final class ConsumerRuntimeHarness {
         )
 
         do {
-            let runtime = try BaseChatRuntime(
+            let runtime = try BaseChatBootstrap(
                 configuration: configuration,
                 inferenceService: inferenceService,
                 makeModelContainer: makeModelContainer
@@ -87,7 +88,7 @@ final class ConsumerRuntimeHarness {
             self.sessionManager = sessionManager
         } catch {
             // Bootstrap failed after we mutated process-wide state — the
-            // BaseChatRuntime initializer rolls BaseChatConfiguration.shared
+            // BaseChatBootstrap initializer rolls BaseChatConfiguration.shared
             // back itself, but we still own the UserDefaults suite + temp
             // directory we allocated above.
             BaseChatConfiguration.shared = originalConfiguration

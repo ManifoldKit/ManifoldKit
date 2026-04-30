@@ -1,7 +1,8 @@
 import Foundation
 import os
 import SwiftData
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Creates an in-memory `ModelContainer` suitable for unit and integration tests.

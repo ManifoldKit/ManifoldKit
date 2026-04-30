@@ -1,5 +1,5 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatRuntime
 @testable import BaseChatInference
 
 /// Phase 1.2 sub-step 2 — coverage for the passive-merge use case.

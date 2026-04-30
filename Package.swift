@@ -12,7 +12,8 @@ let package = Package(
     products: [
         .library(name: "BaseChatInference", targets: ["BaseChatInference"]),
         .library(name: "BaseChatMCP", targets: ["BaseChatMCP"]),
-        .library(name: "BaseChatCore", targets: ["BaseChatCore"]),
+        .library(name: "BaseChatRuntime", targets: ["BaseChatRuntime"]),
+        .library(name: "BaseChatPersistenceSwiftData", targets: ["BaseChatPersistenceSwiftData"]),
         .library(name: "BaseChatBackends", targets: ["BaseChatBackends"]),
         .library(name: "BaseChatUI", targets: ["BaseChatUI"]),
         .library(name: "BaseChatUIModelManagement", targets: ["BaseChatUIModelManagement"]),
@@ -109,12 +110,25 @@ let package = Package(
                 .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
             ]
         ),
-        // Core: SwiftData persistence (schema, @Model types, container, provider)
-        // plus chat export. Re-exports BaseChatInference for source compatibility.
+        // Runtime: ports (EndpointStore, SamplerPresetStore, BenchmarkCache),
+        // use cases (PromptContextPipeline, ChatExportService, SessionListService),
+        // and session-list orchestration. No SwiftData, no SwiftUI, no Observation.
         .target(
-            name: "BaseChatCore",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatCore"
+            name: "BaseChatRuntime",
+            dependencies: [
+                .target(name: "BaseChatInference"),
+            ],
+            path: "Sources/BaseChatRuntime"
+        ),
+        // PersistenceSwiftData: SwiftData schema (@Model types), container factory,
+        // SwiftData adapter implementations, and the full-stack bootstrap class.
+        .target(
+            name: "BaseChatPersistenceSwiftData",
+            dependencies: [
+                .target(name: "BaseChatRuntime"),
+                .target(name: "BaseChatInference"),
+            ],
+            path: "Sources/BaseChatPersistenceSwiftData"
         ),
         // Backends: MLX, llama.cpp, Foundation, cloud
         .target(
@@ -144,10 +158,12 @@ let package = Package(
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
-        // UI: SwiftUI views and view models — needs both inference and persistence
+        // UI: SwiftUI views and view models — needs inference, runtime, and persistence.
+        // TODO: decouple APIEndpoint (@Model) out of BaseChatUI into BaseChatRuntime
+        // so the CI lint rule (BaseChatUI must not import BaseChatPersistenceSwiftData) can be enforced.
         .target(
             name: "BaseChatUI",
-            dependencies: ["BaseChatCore", "BaseChatInference"],
+            dependencies: ["BaseChatRuntime", "BaseChatPersistenceSwiftData", "BaseChatInference"],
             path: "Sources/BaseChatUI",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
@@ -166,7 +182,7 @@ let package = Package(
             name: "BaseChatUIModelManagement",
             dependencies: [
                 "BaseChatUI",
-                "BaseChatCore",
+                "BaseChatRuntime",
                 "BaseChatInference",
                 .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
@@ -212,7 +228,8 @@ let package = Package(
         .target(
             name: "BaseChatTestSupport",
             dependencies: [
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
             ],
@@ -228,7 +245,12 @@ let package = Package(
         ),
         .testTarget(
             name: "BaseChatCoreTests",
-            dependencies: ["BaseChatCore", "BaseChatInference", "BaseChatTestSupport"]
+            dependencies: [
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+            ]
         ),
         // Tests for the shared test-helper module itself (e.g. `withTimeout`).
         // Kept as a dedicated target so hang-sabotage helpers don't accrete
@@ -276,7 +298,8 @@ let package = Package(
             dependencies: [
                 "BaseChatBackends",
                 "BaseChatUI",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
@@ -293,7 +316,8 @@ let package = Package(
             name: "BaseChatUITests",
             dependencies: [
                 "BaseChatUI",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .product(name: "ViewInspector", package: "ViewInspector"),
@@ -314,7 +338,8 @@ let package = Package(
             dependencies: [
                 "BaseChatUIModelManagement",
                 "BaseChatUI",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
             ],
@@ -352,7 +377,8 @@ let package = Package(
             dependencies: [
                 "BaseChatBackends",
                 "BaseChatUI",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 "BaseChatTools",
@@ -371,7 +397,8 @@ let package = Package(
             dependencies: [
                 "BaseChatUI",
                 "BaseChatUIModelManagement",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
@@ -515,7 +542,8 @@ let package = Package(
             name: "BaseChatMLXIntegrationTests",
             dependencies: [
                 "BaseChatBackends",
-                "BaseChatCore",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
             ],

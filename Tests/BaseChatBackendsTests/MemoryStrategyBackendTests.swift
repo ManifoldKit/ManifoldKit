@@ -1,6 +1,7 @@
 import XCTest
 @testable import BaseChatBackends
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 
 final class MemoryStrategyBackendTests: XCTestCase {
 

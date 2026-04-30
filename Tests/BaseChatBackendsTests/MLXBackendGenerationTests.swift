@@ -1,7 +1,8 @@
 #if MLX
 import XCTest
 import MLXLMCommon
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends

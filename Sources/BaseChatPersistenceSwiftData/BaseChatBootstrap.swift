@@ -1,11 +1,12 @@
 import Foundation
 import SwiftData
+import BaseChatRuntime
 import BaseChatInference
 
 /// Preferred bootstrap surface for host apps that use BaseChatKit's shipped
 /// SwiftData persistence.
 ///
-/// ``BaseChatRuntime`` installs ``BaseChatConfiguration/shared`` first, then
+/// ``BaseChatBootstrap`` installs ``BaseChatConfiguration/shared`` first, then
 /// builds the shared inference, persistence, and diagnostics services in a
 /// fixed order so consumer apps do not have to manually coordinate those
 /// steps.
@@ -14,12 +15,15 @@ import BaseChatInference
 /// `ToolRegistry` or approval gate) can construct that service first and pass
 /// it in. The runtime will keep using the exact instance supplied.
 ///
-/// ``BaseChatRuntime`` is the SwiftData-backed bootstrap. Adopters using
+/// ``BaseChatBootstrap`` is the SwiftData-backed bootstrap. Adopters using
 /// custom ``SessionStore`` / ``MessageStore`` impls should construct
 /// ``ChatViewModel`` / ``SessionManagerViewModel`` directly and call
 /// `configure(persistence:)` — runtime support for custom stores is tracked
 /// separately.
 ///
+/// > Note: This type was named `BaseChatRuntime` prior to the phase-2 target
+/// > split. It was renamed to avoid shadowing the `BaseChatRuntime` *target*
+/// > (module) name in IDE jump-to-definition and DocC.
 ///
 /// ### Splash-screen progress
 ///
@@ -29,14 +33,14 @@ import BaseChatInference
 /// main actor while bootstrap runs concurrently in a sibling task:
 ///
 /// ```swift
-/// let (milestones, runtimeTask) = BaseChatRuntime.build(configuration: config)
+/// let (milestones, runtimeTask) = BaseChatBootstrap.build(configuration: config)
 /// for await milestone in milestones {
 ///     splashProgress = milestone.fractionComplete
 /// }
 /// runtime = try await runtimeTask.value
 /// ```
 @MainActor
-public final class BaseChatRuntime {
+public final class BaseChatBootstrap {
 
     public let inferenceService: InferenceService
     public let diagnostics: DiagnosticsService
@@ -103,7 +107,7 @@ public final class BaseChatRuntime {
         inferenceService: InferenceService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
-    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<BaseChatRuntime, any Error>) {
+    ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<BaseChatBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
             of: RuntimeBootstrapMilestone.self,
             bufferingPolicy: .unbounded
@@ -136,7 +140,7 @@ public final class BaseChatRuntime {
 
                 continuation.yield(.complete)
 
-                return BaseChatRuntime(
+                return BaseChatBootstrap(
                     inferenceService: resolvedService,
                     diagnostics: diagnostics,
                     modelContainer: container,
@@ -152,5 +156,42 @@ public final class BaseChatRuntime {
         }
 
         return (stream, task)
+    }
+
+    // MARK: - Boot hooks
+
+    /// Removes Keychain items whose owning ``BaseChatSchemaV3/APIEndpoint`` row
+    /// no longer exists.
+    ///
+    /// Orphans accumulate when an endpoint row is deleted while the matching
+    /// Keychain delete silently fails, or when rows are wiped directly through
+    /// SwiftData without routing through the UI. The reaper compares every
+    /// account in the framework's Keychain namespace against the current set of
+    /// endpoint IDs and deletes anything that no longer has an owner.
+    ///
+    /// The sweep is a no-op when
+    /// ``BaseChatInference/BaseChatConfiguration/keychainReaperEnabled`` is
+    /// `false`. Errors (including Keychain access denial in sandboxed contexts)
+    /// are logged and swallowed so a boot hook can never crash the app.
+    ///
+    /// Fire-and-forget — call once per app boot. Returns the number of items
+    /// that were actually reaped, for testing and diagnostics.
+    @discardableResult
+    public static func reapOrphanedKeychainItems(in modelContext: ModelContext) -> Int {
+        guard BaseChatConfiguration.shared.keychainReaperEnabled else {
+            return 0
+        }
+
+        let validAccounts: Set<String>
+        do {
+            let descriptor = FetchDescriptor<BaseChatSchemaV3.APIEndpoint>()
+            let endpoints = try modelContext.fetch(descriptor)
+            validAccounts = Set(endpoints.map(\.keychainAccount))
+        } catch {
+            Log.security.warning("BaseChatBootstrap.reapOrphanedKeychainItems: failed to fetch APIEndpoint rows — skipping reap: \(error.localizedDescription)")
+            return 0
+        }
+
+        return KeychainService.sweep(validAccounts: validAccounts)
     }
 }

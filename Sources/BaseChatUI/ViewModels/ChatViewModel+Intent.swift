@@ -1,5 +1,5 @@
 import Foundation
-import BaseChatCore
+import BaseChatRuntime
 
 // MARK: - ChatViewModel + App Intents
 

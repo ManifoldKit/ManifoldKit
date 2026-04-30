@@ -2,7 +2,8 @@ import XCTest
 import SwiftUI
 @testable import BaseChatUI
 @testable import BaseChatUIModelManagement
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 /// Verifies that all user-facing controls in ModelManagementSheet and

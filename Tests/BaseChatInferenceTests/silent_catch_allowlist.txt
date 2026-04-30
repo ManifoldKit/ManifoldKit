@@ -70,14 +70,14 @@ BaseChatInference/Services/ModelStorageService.swift:guard let contents = try? f
 BaseChatInference/Services/ModelStorageService.swift:guard let nestedContents = try? fileManager.contentsOfDirectory(
 
 # ---------------------------------------------------------------------------
-# BaseChatCore
+# BaseChatPersistenceSwiftData
 # ---------------------------------------------------------------------------
 
 # File-protection hardening: enumerating the store directory to locate
 # SQLite WAL sidecars is best-effort. If the directory read fails
 # (permissions race, parent unmounted), we skip sidecar protection and
 # the main store is still protected — the error is not actionable.
-BaseChatCore/ModelContainerFactory.swift:guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else {
+BaseChatPersistenceSwiftData/ModelContainerFactory.swift:guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else {
 
 # ---------------------------------------------------------------------------
 # BaseChatBackends

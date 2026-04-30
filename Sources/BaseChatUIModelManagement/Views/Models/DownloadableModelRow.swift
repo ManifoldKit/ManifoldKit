@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// A row displaying a downloadable model with compatibility badge and download controls.

@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// A single row in the session list showing the chat title and relative timestamp.

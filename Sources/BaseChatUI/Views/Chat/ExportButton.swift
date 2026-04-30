@@ -1,5 +1,6 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Drop-in toolbar button that exports the active chat session via a

@@ -1,7 +1,8 @@
 @preconcurrency import XCTest
 @testable import BaseChatUI
 @testable import BaseChatInference
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatTestSupport
 
 /// Integration test for issue #629: a session whose persisted transcript

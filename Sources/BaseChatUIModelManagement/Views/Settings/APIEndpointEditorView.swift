@@ -1,6 +1,6 @@
 #if Ollama || CloudSaaS
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// Editor for creating or editing an ``APIEndpointRecord``.

@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 
 /// Shows context window usage as a compact gauge in the chat toolbar.
 ///

@@ -1,6 +1,7 @@
 import XCTest
 @testable import BaseChatUI
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 @MainActor
@@ -17,7 +18,7 @@ final class RuntimeConfigurationTests: XCTestCase {
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Runtime UI Tests",
                 bundleIdentifier: "com.basechatkit.runtime-ui-tests"
@@ -68,7 +69,7 @@ final class RuntimeConfigurationTests: XCTestCase {
         }
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Bootstrap Tests",
                 bundleIdentifier: "com.basechatkit.runtime-ui-tests.bootstrap"

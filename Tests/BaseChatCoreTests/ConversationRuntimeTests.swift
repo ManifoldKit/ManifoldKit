@@ -1,6 +1,6 @@
 @preconcurrency import XCTest
 import Foundation
-@testable import BaseChatCore
+@testable import BaseChatRuntime
 @testable import BaseChatInference
 import BaseChatTestSupport
 

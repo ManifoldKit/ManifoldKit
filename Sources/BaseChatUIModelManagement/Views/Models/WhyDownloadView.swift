@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 
 /// Collapsible explainer that helps users understand why they might want
 /// to download a model instead of using the built-in Foundation model.

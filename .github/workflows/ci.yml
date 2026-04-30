@@ -118,6 +118,53 @@ jobs:
           fi
           echo "BaseChatUI -> BaseChatUIModelManagement edge is clean."
 
+      - name: Lint — BaseChatRuntime must not import SwiftData or SwiftUI
+        # BaseChatRuntime is a pure inference-orchestration module: no persistence
+        # framework, no UI framework, no Observation. This keeps it usable from
+        # any context that doesn't need a full app stack.
+        run: |
+          set -euo pipefail
+          if grep -rn --include='*.swift' 'import SwiftData\|import SwiftUI\|import Observation' Sources/BaseChatRuntime/; then
+            echo "::error::BaseChatRuntime must not import SwiftData, SwiftUI, or Observation."
+            exit 1
+          fi
+          echo "BaseChatRuntime framework-isolation posture OK."
+
+      - name: Lint — BaseChatRuntime must not use URLSession or Keychain
+        # BaseChatRuntime must not perform networking or access the system keychain
+        # directly — those concerns belong in BaseChatInference or BaseChatBackends.
+        run: |
+          set -euo pipefail
+          if grep -rn --include='*.swift' 'URLSession\|SecItemCopyMatching\|kSecClass' Sources/BaseChatRuntime/; then
+            echo "::error::BaseChatRuntime must not use URLSession or Keychain."
+            exit 1
+          fi
+          echo "BaseChatRuntime networking/keychain posture OK."
+
+      - name: Lint — BaseChatUI must not import BaseChatPersistenceSwiftData
+        # BaseChatUI must not reach the SwiftData adapter layer directly.
+        # All persistence access goes through the port protocols in BaseChatRuntime.
+        #
+        # Known exceptions (tracked for cleanup):
+        #   - RuntimeConfiguration.swift: bootstrap wiring that references BaseChatBootstrap
+        #     (which owns ModelContainer — can't be in BaseChatRuntime).
+        #   - ChatViewModel*.swift + ModelLoadCoordinator.swift: use APIEndpoint which is
+        #     currently a typealias for BaseChatSchemaV3.APIEndpoint (@Model). These files
+        #     must be updated to use APIEndpointRecord instead — tracked as Phase 2 follow-up.
+        run: |
+          set -euo pipefail
+          # `+` and `.` are escaped because grep -vE treats them as regex
+          # metacharacters; without escaping, `ChatViewModel+ModelLoading.swift`
+          # parses as `ChatViewModel` + one-or-more `l` + `ModelLoading.swift`,
+          # which never matches the literal filename containing a `+`.
+          KNOWN_EXCEPTIONS='RuntimeConfiguration\.swift|ChatViewModel\.swift|ChatViewModel\+ModelLoading\.swift|ChatViewModel\+SessionManagement\.swift|ModelLoadCoordinator\.swift|ExportButton\.swift'
+          if grep -rn --include='*.swift' 'import BaseChatPersistenceSwiftData' Sources/BaseChatUI/ \
+             | grep -vE "$KNOWN_EXCEPTIONS"; then
+            echo "::error::BaseChatUI must not import BaseChatPersistenceSwiftData directly."
+            exit 1
+          fi
+          echo "BaseChatUI -> BaseChatPersistenceSwiftData edge is clean (known exceptions excluded)."
+
       - name: Lint — Macro plugin builds inside the SwiftPM sandbox
         # SwiftPM compiles macro plugins (`BaseChatMacrosPlugin`) inside a
         # sandbox-exec jail by default on macOS. The jail blocks network

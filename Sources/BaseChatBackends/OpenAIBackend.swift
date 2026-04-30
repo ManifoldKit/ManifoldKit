@@ -187,9 +187,11 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             request.setValue("true", forHTTPHeaderField: "X-BaseChat-Prefill-Progress")
         }
 
-        if let secureKey = resolveAPIKeySecure(), !secureKey.stringValue.isEmpty {
+        if let secureKey = resolveAPIKeySecure() {
             let keyString = secureKey.stringValue
-            request.setValue("Bearer \(keyString)", forHTTPHeaderField: "Authorization")
+            if !keyString.isEmpty {
+                request.setValue("Bearer \(keyString)", forHTTPHeaderField: "Authorization")
+            }
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

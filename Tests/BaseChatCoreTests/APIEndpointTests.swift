@@ -1,5 +1,6 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Tests for APIProvider enum and APIEndpoint model.

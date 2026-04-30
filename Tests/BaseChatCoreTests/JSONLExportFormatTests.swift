@@ -1,5 +1,6 @@
 import XCTest
-@testable import BaseChatCore
+@testable import BaseChatPersistenceSwiftData
+@testable import BaseChatRuntime
 import BaseChatInference
 
 /// Unit tests for ``JSONLExportFormat``.

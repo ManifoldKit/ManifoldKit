@@ -1,7 +1,8 @@
 #if CloudSaaS
 import XCTest
 @testable import BaseChatBackends
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 // MARK: - Byte Sequence Helper

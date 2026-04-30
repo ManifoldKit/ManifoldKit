@@ -1,6 +1,7 @@
 import Testing
 import Foundation
-@testable import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 /// E2E tests for context overflow behaviour.

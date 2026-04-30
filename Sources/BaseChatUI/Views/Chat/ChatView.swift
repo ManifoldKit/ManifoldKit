@@ -1,5 +1,5 @@
 import SwiftUI
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 /// The main chat view, displayed in the detail area of the app's navigation structure.

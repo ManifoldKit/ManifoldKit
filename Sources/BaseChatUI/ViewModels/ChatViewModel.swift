@@ -1,6 +1,7 @@
 import Foundation
 import Observation
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Central view model for the chat interface.

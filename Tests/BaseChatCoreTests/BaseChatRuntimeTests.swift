@@ -1,6 +1,6 @@
 import XCTest
 import SwiftData
-@testable import BaseChatCore
+@testable import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 
 @MainActor
@@ -13,7 +13,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         let bundleIdentifier = "com.basechatkit.runtime-tests.\(UUID().uuidString)"
         var bundleIdentifierSeenDuringContainerBuild: String?
 
-        _ = try BaseChatRuntime(
+        _ = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Runtime Tests",
                 bundleIdentifier: bundleIdentifier
@@ -32,7 +32,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
         let service = InferenceService()
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Injected Service",
                 bundleIdentifier: "com.basechatkit.runtime-tests.injected"
@@ -56,7 +56,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         XCTAssertNotEqual(distinctConfiguration.bundleIdentifier, originalConfiguration.bundleIdentifier)
 
         XCTAssertThrowsError(
-            try BaseChatRuntime(
+            try BaseChatBootstrap(
                 configuration: distinctConfiguration,
                 makeModelContainer: { throw URLError(.cannotOpenFile) }
             )
@@ -76,7 +76,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         // the *same* ModelContainer instance the closure produced, and a
         // SwiftDataPersistenceProvider whose modelContext is anchored to
         // that container's mainContext. Sabotage the assignment of any of
-        // these properties in `BaseChatRuntime.init` and one of the
+        // these properties in `BaseChatBootstrap.init` and one of the
         // assertions below will fail.
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
@@ -85,7 +85,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         let resolvedContainer = try ModelContainerFactory.makeInMemoryContainer()
         var capturedContainerDuringClosure: ModelContainer?
 
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Wiring Identity",
                 bundleIdentifier: "com.basechatkit.runtime-tests.wiring.\(UUID().uuidString)"
@@ -120,7 +120,7 @@ final class BaseChatRuntimeTests: XCTestCase {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }
 
-        let runtime = try BaseChatRuntime(
+        let runtime = try BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Persistence Round Trip",
                 bundleIdentifier: "com.basechatkit.runtime-tests.persistence"

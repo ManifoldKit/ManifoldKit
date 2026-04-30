@@ -2,7 +2,8 @@
 @testable import BaseChatUI
 @testable import BaseChatUIModelManagement
 @testable import BaseChatInference
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 
 /// Tests for device-compatibility-based group sorting (issue #307) and
 /// recommended-variant selection (issue #308).

@@ -1,5 +1,5 @@
 import Foundation
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 
 // MARK: - ChatViewModel + Persistence

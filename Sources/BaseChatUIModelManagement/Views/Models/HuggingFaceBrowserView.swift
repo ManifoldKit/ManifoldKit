@@ -1,6 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import BaseChatCore
+import BaseChatRuntime
 import BaseChatInference
 import BaseChatUI
 
