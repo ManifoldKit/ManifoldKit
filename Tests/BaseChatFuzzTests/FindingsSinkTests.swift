@@ -75,6 +75,7 @@ final class FindingsSinkTests: XCTestCase {
             executableLines.contains(where: { $0.contains("--replay \(finding.hash)") }),
             "--replay is the preferred repro recipe (#490); seed/model variant lives as a commented fallback"
         )
+        XCTAssertTrue(repro.contains("--output-dir '\(tempDir.path)'"))
         // The commented fallback still references the original seed/model pair so the
         // developer can bypass replay if a rev bump invalidates the record.
         XCTAssertTrue(repro.contains("--seed 0"))
@@ -123,6 +124,7 @@ final class FindingsSinkTests: XCTestCase {
         let md = try String(contentsOf: indexURL, encoding: .utf8)
         XCTAssertTrue(md.contains("`\(finding.hash)`"))
         XCTAssertTrue(md.contains("swift run fuzz-chat --replay \(finding.hash)"))
+        XCTAssertTrue(md.contains("--output-dir '\(tempDir.path)'"))
         XCTAssertTrue(md.contains("1 total runs"))
 
         await sink.recordRun(makeRecord(modelId: "indexed-model"), findings: [finding])

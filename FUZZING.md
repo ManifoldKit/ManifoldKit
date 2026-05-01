@@ -11,6 +11,7 @@ On its first real-model smoke run against `qwen3.5:4b` via Ollama, the harness l
 - [Quickstart](#quickstart)
 - [Backends](#backends)
 - [Rotation](#rotation)
+- [Process-level parallel workers](#process-level-parallel-workers)
 - [Anatomy of a Finding](#anatomy-of-a-finding)
 - [Day-One Detectors](#day-one-detectors)
 - [Reproducing a Finding](#reproducing-a-finding)
@@ -38,6 +39,7 @@ Direct invocation works too — the wrapper just adds the preflight and the MLX 
 swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --minutes 5
 swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --iterations 200 --backend ollama --quiet
 swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --single --seed 42 --model qwen3.5
+swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --backend mock --iterations 200 --workers 4 --corpus-subset smoke --quiet
 ```
 
 Common flags:
@@ -49,6 +51,8 @@ Common flags:
 | `--iterations N` | Iteration cap; runs until either budget is hit. |
 | `--single` | One iteration then exit — useful with `--seed`. |
 | `--seed N` | Deterministic prompt/sampler selection for repro. |
+| `--workers N` | Process-level campaign workers. Iteration budgets are split deterministically; time budgets apply per worker. Defaults to `1`. |
+| `--output-dir PATH` | Findings directory. Defaults to `tmp/fuzz`; parallel workers write isolated subdirectories and merge back here. |
 | `--model <substr>` | Ollama: pin to the first installed model containing `<substr>`; pass `all` (or omit) to rotate through every installed Ollama model. Llama: pin to the first GGUF whose filename contains `<substr>`. `scripts/fuzz.sh --with-mlx` maps the same flag to `MLX_TEST_MODEL` for the xcodebuild-hosted MLX path. |
 | `--detector <ids>` | Comma-separated detector IDs to enable. |
 | `--quiet` | Suppress the per-iteration log line. |
@@ -107,6 +111,37 @@ swift run fuzz-chat --model qwen3.5 --iterations 6
 # Verify rotation hit every model evenly
 cat tmp/fuzz/index.json | jq '.[].model_id' | sort | uniq -c
 ```
+
+---
+
+## Process-level parallel workers
+
+`--workers N` runs multiple isolated `fuzz-chat` child processes, then merges their findings into the parent output directory. This is intentionally process-level rather than an in-process `TaskGroup`: each worker owns its backend instance, RNG state, reporter, and `FindingsSink`, avoiding cross-worker interference and backend-specific global state.
+
+```bash
+swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat \
+  --backend mock \
+  --iterations 200 \
+  --workers 4 \
+  --corpus-subset smoke \
+  --quiet
+```
+
+Worker safety is backend-specific:
+
+| Backend | Worker limit | Reason |
+|---------|--------------|--------|
+| `mock`, `chaos`, `ollama` | 4 | Safe to isolate per child process. |
+| `llama` | 1 | llama.cpp initialization is process-global. |
+| `foundation` | 1 | Apple Intelligence availability/resource transitions should stay single-worker until calibrated. |
+| `mlx` | 1 | MLX runs through the xcodebuild-hosted path, not `swift run fuzz-chat`. |
+| `all` | 1 | `--backend all` is not wired yet. |
+
+Iteration budgets are partitioned deterministically across workers: `--iterations 10 --workers 3` becomes `[4, 3, 3]`, with the remainder assigned to the lowest worker index. Time budgets are not divided; `--minutes 5 --workers 4` runs four five-minute workers so elapsed wall time remains close to five minutes while total backend coverage increases.
+
+Each worker derives a stable seed from the parent seed and worker index, then writes to an isolated directory under `tmp/fuzz/workers/<run-id>/worker-N/fuzz/`. After all workers exit, the parent merges worker `index.json` files, sums `totalRuns`, deduplicates findings by hash, preserves the first-seen `record.json`, and regenerates the root `tmp/fuzz/index.json` plus `tmp/fuzz/INDEX.md`. If any worker exits non-zero, merge still runs so partial findings are retained, and the parent exits non-zero.
+
+`--workers` is campaign-only. It is rejected with `--replay`, `--shrink`, `--backend mlx`, and `scripts/fuzz.sh --with-mlx`; run those paths separately.
 
 ---
 

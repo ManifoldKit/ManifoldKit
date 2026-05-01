@@ -69,7 +69,7 @@ jobs:
           fetch-depth: 0
 
       - name: Scan changed commits for leaked secrets
-        uses: trufflesecurity/trufflehog@v3.95.2
+        uses: trufflesecurity/trufflehog@v3.94.3
         with:
           # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
           # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit

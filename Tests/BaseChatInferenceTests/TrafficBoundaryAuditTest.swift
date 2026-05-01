@@ -121,6 +121,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // MCP module transport/auth networking surfaces.
         "BaseChatMCP/InternalMCPTransport.swift",
         "BaseChatMCP/MCPOAuth.swift",
+        // MCP module's internal URLSession factory — vends a shared
+        // session for MCP HTTP/SSE transports; guarded by networkDisabled
+        // flag so tests can disable network I/O at test time.
+        "BaseChatMCP/MCPURLSessionFactory.swift",
     ]
 
     /// Files where hostname literals (e.g. `https://api.anthropic.com`) are
@@ -152,6 +156,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // MCP stdio transport intentionally launches local server binaries
         // to support offline and local-tooling integrations.
         "BaseChatMCP/InternalMCPTransport.swift",
+        // fuzz-chat CLI: parallel worker mode launches isolated child
+        // fuzz-chat processes with deterministic seed sharding; parent
+        // waits for each worker and merges findings into the root index.
+        "fuzz-chat/FuzzChatCLI.swift",
     ]
 
     /// `Package.swift` lines where a normally-banned token (Rule 5) is
