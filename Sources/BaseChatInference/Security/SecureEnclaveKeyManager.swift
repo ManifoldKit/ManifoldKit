@@ -4,7 +4,7 @@ import Security
 // MARK: - SecureEnclaveError
 
 /// Errors thrown by ``SecureEnclaveKeyManager``.
-public enum SecureEnclaveError: Error, LocalizedError {
+public enum SecureEnclaveError: Error, Equatable, Sendable, LocalizedError {
     /// The Secure Enclave is not available on this device or environment
     /// (e.g. iOS Simulator, Intel Mac without T2 chip).
     case notAvailable

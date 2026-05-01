@@ -10,7 +10,7 @@ import Security
 /// human-readable string suitable for presenting in a settings banner. Apps
 /// that need to branch on the raw `OSStatus` (e.g. to distinguish "device
 /// locked" from "entitlement missing") can read ``osStatus``.
-public enum KeychainError: Error, Equatable, LocalizedError {
+public enum KeychainError: Error, Equatable, Sendable, LocalizedError {
     /// `SecItemAdd` / `SecItemUpdate` returned a non-success `OSStatus`.
     case storeFailed(OSStatus)
     /// `SecItemDelete` returned a non-success `OSStatus` (other than `errSecItemNotFound`,

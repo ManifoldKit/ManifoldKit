@@ -92,7 +92,7 @@ public struct SSEStreamLimits: Sendable, Equatable {
 /// These surface through the existing `AsyncThrowingStream` failure channel
 /// exactly like any other parsing error, so backend retry/error UI continues
 /// to work unchanged.
-public enum SSEStreamError: Error, Equatable {
+public enum SSEStreamError: Error, Equatable, Sendable {
     /// A single event exceeded ``SSEStreamLimits/maxEventBytes``. The
     /// associated value is the observed size in bytes.
     case eventTooLarge(Int)
