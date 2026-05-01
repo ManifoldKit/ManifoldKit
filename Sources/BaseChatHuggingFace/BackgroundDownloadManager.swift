@@ -86,11 +86,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         let modelID: String
         let relativePath: String?
         let expectedBytes: Int64
+        let expectedChecksum: ModelFileChecksum?
     }
 
     private struct SnapshotFileMetadata: Codable, Sendable {
         let relativePath: String
         let sizeBytes: UInt64
+        let expectedChecksum: ModelFileChecksum?
     }
 
     private struct SnapshotProgress: Sendable {
@@ -260,7 +262,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     /// - Throws: `HuggingFaceError.insufficientDiskSpace` if there isn't enough room.
     @MainActor @discardableResult
     public func startDownload(_ model: DownloadableModel, downloadURL: URL) async throws -> DownloadState {
-        try await startDownload(model, plan: .singleFile(url: downloadURL))
+        try await startDownload(model, plan: .singleFile(url: downloadURL, expectedChecksum: nil))
     }
 
     /// Starts a background download using a resolved download plan.
@@ -277,9 +279,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         activeDownloads[model.id] = state
 
         switch plan {
-        case .singleFile(let url):
+        case .singleFile(let url, let expectedChecksum):
             Log.download.info("Starting single-file download for \(model.displayName) from \(url)")
-            try startSingleFileDownload(model: model, url: url)
+            try startSingleFileDownload(model: model, url: url, expectedChecksum: expectedChecksum)
         case .snapshot(let files):
             Log.download.info("Starting snapshot download for \(model.displayName) with \(files.count) files")
             try startSnapshotDownload(model: model, files: files)
@@ -357,7 +359,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             let context = TaskContext(
                 modelID: model.id,
                 relativePath: nil,
-                expectedBytes: Int64(sizeBytes)
+                expectedBytes: Int64(sizeBytes),
+                expectedChecksum: nil
             )
             task.taskDescription = encodeTaskDescription(context)
             taskContexts[task.taskIdentifier] = context
@@ -389,7 +392,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             return
         }
         do {
-            try startSingleFileDownload(model: model, url: url)
+            try startSingleFileDownload(model: model, url: url, expectedChecksum: nil)
         } catch {
             Log.download.error("Failed to start fresh retry download for \(model.id): \(error.localizedDescription)")
             activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
@@ -514,19 +517,32 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     ///   - fileURL: The temporary file location from URLSession.
     ///   - modelType: The expected model type.
     /// - Throws: `HuggingFaceError.invalidDownloadedFile` if validation fails.
-    public func validateDownloadedFile(at fileURL: URL, modelType: ModelType) throws {
-        try DownloadFileValidator().validate(at: fileURL, modelType: modelType)
+    public func validateDownloadedFile(
+        at fileURL: URL,
+        modelType: ModelType,
+        expectedChecksum: ModelFileChecksum? = nil
+    ) throws {
+        try DownloadFileValidator().validate(
+            at: fileURL,
+            modelType: modelType,
+            expectedChecksum: expectedChecksum
+        )
     }
 
     // MARK: - Download Coordination
 
     @MainActor
-    private func startSingleFileDownload(model: DownloadableModel, url: URL) throws {
+    private func startSingleFileDownload(
+        model: DownloadableModel,
+        url: URL,
+        expectedChecksum: ModelFileChecksum?
+    ) throws {
         let task = backgroundSession.downloadTask(with: url)
         let context = TaskContext(
             modelID: model.id,
             relativePath: nil,
-            expectedBytes: Int64(model.sizeBytes)
+            expectedBytes: Int64(model.sizeBytes),
+            expectedChecksum: expectedChecksum
         )
         task.taskDescription = encodeTaskDescription(context)
         taskContexts[task.taskIdentifier] = context
@@ -541,7 +557,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         files: [ModelDownloadFile],
         stagingDirectory: URL
     ) {
-        let metadataFiles = files.map { SnapshotFileMetadata(relativePath: $0.relativePath, sizeBytes: $0.sizeBytes) }
+        let metadataFiles = files.map {
+            SnapshotFileMetadata(
+                relativePath: $0.relativePath,
+                sizeBytes: $0.sizeBytes,
+                expectedChecksum: $0.expectedChecksum
+            )
+        }
         snapshotDownloads[model.id] = SnapshotDownloadContext(
             stagingDirectory: stagingDirectory,
             files: Dictionary(uniqueKeysWithValues: metadataFiles.map { ($0.relativePath, $0) }),
@@ -570,7 +592,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             let taskContext = TaskContext(
                 modelID: model.id,
                 relativePath: file.relativePath,
-                expectedBytes: Int64(file.sizeBytes)
+                expectedBytes: Int64(file.sizeBytes),
+                expectedChecksum: file.expectedChecksum
             )
             task.taskDescription = encodeTaskDescription(taskContext)
             taskContexts[task.taskIdentifier] = taskContext
@@ -582,7 +605,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Persist before resuming so reconnect metadata is always in place.
         try savePendingDownload(
             model: model,
-            snapshotFiles: files.map { SnapshotFileMetadata(relativePath: $0.relativePath, sizeBytes: $0.sizeBytes) },
+            snapshotFiles: files.map {
+                SnapshotFileMetadata(
+                    relativePath: $0.relativePath,
+                    sizeBytes: $0.sizeBytes,
+                    expectedChecksum: $0.expectedChecksum
+                )
+            },
             stagingDirectoryName: stagingDirectory.lastPathComponent
         )
         for (task, _) in tasks {
@@ -632,7 +661,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             }
         }
         // Legacy plain model-ID format (pre-JSON task descriptions).
-        return TaskContext(modelID: taskDescription, relativePath: nil, expectedBytes: 0)
+        return TaskContext(modelID: taskDescription, relativePath: nil, expectedBytes: 0, expectedChecksum: nil)
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
@@ -717,6 +746,10 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             try FileManager.default.removeItem(at: resolvedDestination)
         }
         try FileManager.default.moveItem(at: tempURL, to: resolvedDestination)
+        try DownloadFileValidator().validateChecksum(
+            at: resolvedDestination,
+            expectedChecksum: snapshot.files[relativePath]?.expectedChecksum
+        )
 
         let fileSize = (try FileManager.default.attributesOfItem(atPath: resolvedDestination.path)[.size] as? NSNumber)?.int64Value ?? snapshot.progressByFile[relativePath]?.expectedBytes ?? 0
         snapshot.completedFiles.insert(relativePath)

@@ -186,14 +186,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     ///
     /// **Cap: 6 entries.**
     private static let privacyAPIAllowlist: Set<String> = [
-        // Justification: user-initiated copy of an assistant message to the
-        // clipboard. A regulated build should pair this with `localOnly = true`
-        // to keep content off Universal Clipboard / iCloud sync; tracked
-        // for follow-up alongside the THREAT_MODEL.md non-mitigations list.
-        "BaseChatUI/Views/Chat/AssistantMarkdownView.swift:UIPasteboard.general.string = text",
-        // Justification: same as above — copy-text affordance on the message
-        // action menu. Same follow-up applies.
-        "BaseChatUI/Views/Chat/MessageActionMenu.swift:UIPasteboard.general.string = text",
+        // Justification: user-initiated copy action in chat/code affordances.
+        // iOS uses local-only pasteboard entries with expiration; macOS lacks
+        // equivalent AppKit controls and remains best-effort global pasteboard.
+        "BaseChatUI/Internal/ClipboardWriter.swift:UIPasteboard.general.setItems([[UTType.plainText.identifier: text]], options: pasteboardOptions())",
     ]
 
     // MARK: - Test entry points

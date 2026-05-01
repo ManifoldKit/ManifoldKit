@@ -1,5 +1,6 @@
 #if HuggingFace
 import BaseChatInference
+import CryptoKit
 import Foundation
 import os
 
@@ -18,8 +19,9 @@ struct DownloadFileValidator {
     /// - Parameters:
     ///   - fileURL: The file or directory to validate.
     ///   - modelType: The expected model type.
+    ///   - expectedChecksum: Expected digest to enforce when available.
     /// - Throws: `HuggingFaceError.invalidDownloadedFile` if validation fails.
-    func validate(at fileURL: URL, modelType: ModelType) throws {
+    func validate(at fileURL: URL, modelType: ModelType, expectedChecksum: ModelFileChecksum? = nil) throws {
         switch modelType {
         case .gguf:
             try validateGGUFFile(at: fileURL)
@@ -28,6 +30,7 @@ struct DownloadFileValidator {
         case .foundation:
             throw HuggingFaceError.invalidDownloadedFile(reason: "Foundation models cannot be downloaded")
         }
+        try validateChecksum(at: fileURL, expectedChecksum: expectedChecksum)
     }
 
     // MARK: - GGUF
@@ -96,6 +99,46 @@ struct DownloadFileValidator {
         guard hasSafetensors else {
             throw HuggingFaceError.invalidDownloadedFile(reason: "MLX model directory contains no .safetensors files")
         }
+    }
+
+    // MARK: - Checksum
+
+    func validateChecksum(at fileURL: URL, expectedChecksum: ModelFileChecksum?) throws {
+        guard let expectedChecksum else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Downloaded file for checksum validation does not exist")
+        }
+
+        switch expectedChecksum.algorithm {
+        case .sha256:
+            let expected = expectedChecksum.hexDigest.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard expected.count == 64,
+                  expected.allSatisfy({ $0.isHexDigit }) else {
+                throw HuggingFaceError.invalidDownloadedFile(reason: "Expected SHA-256 checksum is malformed")
+            }
+
+            let actual = try sha256HexDigest(of: fileURL)
+            guard actual == expected else {
+                throw HuggingFaceError.invalidDownloadedFile(
+                    reason: "Checksum mismatch for \(fileURL.lastPathComponent): expected SHA-256 \(expected), got \(actual)"
+                )
+            }
+        }
+    }
+
+    private func sha256HexDigest(of fileURL: URL) throws -> String {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Cannot open downloaded file for checksum validation")
+        }
+        defer { handle.closeFile() }
+
+        var hasher = SHA256()
+        while true {
+            let chunk = try handle.read(upToCount: 65_536) ?? Data()
+            if chunk.isEmpty { break }
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
 #endif

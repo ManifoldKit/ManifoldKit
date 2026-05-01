@@ -1,5 +1,119 @@
 # Changelog
 
+## [0.14.3](https://github.com/roryford/BaseChatKit/compare/v0.14.2...v0.14.3) (2026-05-01)
+
+### Highlights
+
+#### Security defaults tighten around tools, OAuth, and downloads
+
+AppIntent-backed tools now require approval by default, MCP OAuth tokens persist through the configured Keychain instead of an in-memory fallback, and model download plans can carry SHA-256 expectations that are enforced when present. These changes keep the default path safer without removing explicit opt-outs for read-only AppIntents, ephemeral token stores, or model metadata that does not yet provide checksums.
+
+```swift
+let tool = AppIntentToolExecutor(MyIntent.self)
+let readOnlyTool = AppIntentToolExecutor(MyReadOnlyIntent.self, approvalPolicy: .readOnlyAutoApprove)
+let tokenStore = MCPOAuthTokenStore.keychain()
+let plan = ModelDownloadPlan.singleFile(
+    url: modelURL,
+    expectedChecksum: .init(algorithm: .sha256, hexDigest: expectedSHA256)
+)
+```
+
+Checksum verification is skipped when no expected digest is provided, so existing model catalogs continue to download while metadata plumbing rolls forward. See [#921], [#924], [#926].
+
+#### MCP and clipboard traffic stay inside reviewed boundaries
+
+MCP streamable HTTP and OAuth requests now route through a shared session boundary, revalidate request-time and redirect destinations against the SSRF policy, and fail closed when the runtime network kill-switch is active. Chat copy actions use a single clipboard helper; on iOS it writes local-only, expiring pasteboard items so copied model output is less likely to sync across devices.
+
+```swift
+MCPTransportConfiguration(
+    endpoint: serverURL,
+    headers: [:],
+    authorization: authorization,
+    session: myPinnedSession
+)
+```
+
+Explicit session injection remains available for hosts that need their own pinned or audited transport stack. See [#922], [#923], [#925].
+
+### Features
+
+- **downloads:** add `ModelFileChecksum` metadata and enforce SHA-256 validation when a model download plan provides an expected digest ([#924])
+
+### Fixes
+
+- **appintents:** require approval for `AppIntentToolExecutor` calls by default, with `.readOnlyAutoApprove` as an explicit opt-out for read-only intents ([#921])
+- **clipboard:** route chat/code copy actions through `ClipboardWriter`; iOS copies are local-only and expire, while macOS keeps the existing `NSPasteboard` behavior ([#922])
+- **mcp:** route default MCP HTTP/OAuth networking through `MCPURLSessionFactory` so the network-disabled boundary returns `MCPError.networkUnavailable` instead of using `URLSession.shared` directly ([#923])
+- **mcp:** revalidate transport and OAuth request destinations, including redirects, before dispatching network calls ([#925])
+- **mcp:** back `MCPOAuthTokenStore.keychain` with persistent Keychain storage and surface Keychain failures through the token store API ([#926])
+
+[#921]: https://github.com/roryford/BaseChatKit/issues/921
+[#922]: https://github.com/roryford/BaseChatKit/issues/922
+[#923]: https://github.com/roryford/BaseChatKit/issues/923
+[#924]: https://github.com/roryford/BaseChatKit/issues/924
+[#925]: https://github.com/roryford/BaseChatKit/issues/925
+[#926]: https://github.com/roryford/BaseChatKit/issues/926
+
+## [0.14.2](https://github.com/roryford/BaseChatKit/compare/v0.14.1...v0.14.2) (2026-04-30)
+
+### Highlights
+
+#### Vision attachments land on the MLX path; mmproj scaffolding ready on llama.cpp
+
+Image inputs now flow through the MLX chat path end-to-end: `ChatInputBar` adds an attachment picker, image I/O is moved off the main thread via `Task.detached(.userInitiated)`, and `MLXBackend.loadModel` deduplicates `ModelCapabilityProbe` so `config.json` is read once instead of three times per load. On the llama.cpp side, this release wires `MultimodalProjectorConfigurable`, `ModelInfo.mmprojURL` (auto-detected from `mmproj*.gguf` siblings), and `CuratedModel.mmprojFileName` straight through to `LlamaBackend` — `LlamaBackend.capabilities.supportsVision` is now driven by mmproj presence. Image inference itself still throws a clear `inferenceFailure` until the vendored `mattt/llama.swift` xcframework exposes `clip.h` / `mtmd.h`; this PR is the scaffolding that makes that future xcframework bump a one-line change.
+
+```swift
+// MLX vision attachment, picked up automatically when the model supports it
+let parts: [MessagePart] = [
+    .image(data: pngData, mimeType: "image/png"),
+    .text("What's in this image?"),
+]
+try await chatViewModel.sendMessage(parts: parts)
+
+// llama.cpp mmproj — auto-detected when the projector lives next to the GGUF
+let info = ModelInfo(ggufURL: gemmaURL)
+// info.mmprojURL → file:///…/mmproj-Gemma-4-2B.gguf
+// backend.capabilities.supportsVision == true
+```
+
+See [#906], [#904] (commit [c4cb638]).
+
+#### Phase 5 security hardening — `SecureBytes`, KV-cache wipe, Secure Enclave
+
+API keys no longer round-trip through the Swift `String` heap on their way from the Keychain to an HTTP header. `SecureBytes` moves into `BaseChatInference/Security/` (raised to `package` visibility) so `KeychainService.retrieveSecure(account:)` can copy raw bytes directly into the zeroing buffer; the `String` is materialized only at the single `setValue(_:forHTTPHeaderField:)` call and dropped immediately. KV-cache residue is the second pass: `InferenceBackend.secureWipe()` (default no-op) is now called from `ChatViewModel.clearChat()` and `switchToSession()`. `LlamaBackend` zeros the KV tensor data via `llama_memory_clear(mem, true)`; `MLXBackend` evicts pooled Metal buffers via `Memory.clearCache()`. The third lever is `SecureEnclaveKeyManager`: an SE-resident P-256 keypair with ECIES wrap/unwrap, gracefully degrading to `.notAvailable` in Simulator and unsigned `swift test` runner environments.
+
+```swift
+// SecureBytes — no String allocation between Keychain and header
+guard let key = keychain.retrieveSecure(account: "openai") else { return }
+defer { key.zero() }
+request.setValue("Bearer \(key.stringValue)", forHTTPHeaderField: "Authorization")
+
+// secureWipe is now wired into chat lifecycle transitions
+chatViewModel.clearChat()        // resetConversation() + secureWipe()
+chatViewModel.switchToSession(s) // resetConversation() + secureWipe()
+```
+
+`SecureEnclaveKeyManager.isAvailable` returns `false` in Simulator and maps `errSecMissingEntitlement` (-34018) to `.notAvailable`, so unsigned test runners do not fail the security suite.
+
+See [#907] (closes #730, #714 Phase 5).
+
+### Features
+
+- **runtime:** new non-blocking `BaseChatRuntime.build(...)` factory plus a `RuntimeBootstrapMilestone` event stream so app shells can surface bootstrap progress without blocking. The existing `BaseChatRuntime` initializer is preserved for backward compatibility ([#909])
+- **llama:** `MultimodalProjectorConfigurable` opt-in protocol + `LlamaBackend` conformance; `ModelInfo.mmprojURL` auto-detection; `CuratedModel.mmprojFileName` / `DownloadableModel.mmprojFileName` for download UIs ([#906])
+- **mlx:** image attachments wired through `ChatInputBar` and the MLX chat flow; image I/O moved off the main thread; `requiresVLMFactory(at:precomputedCapabilities:)` overload removes a redundant `config.json` read on every model load ([c4cb638])
+
+### Fixes
+
+- **openai:** `jsonMode` is now treated as a runtime-only per-request hint — removed from `GenerationConfig`'s `CodingKeys`, encoder, and decoder (legacy payloads with stale `"jsonMode": true` decode to `false`); for Ollama's OpenAI-compatible adapter, `OpenAIBackend` now also sets the legacy top-level `"format": "json"` alongside `response_format` so both providers see the request the way they expect ([#900])
+
+[#900]: https://github.com/roryford/BaseChatKit/issues/900
+[#904]: https://github.com/roryford/BaseChatKit/issues/904
+[#906]: https://github.com/roryford/BaseChatKit/issues/906
+[#907]: https://github.com/roryford/BaseChatKit/issues/907
+[#909]: https://github.com/roryford/BaseChatKit/issues/909
+[c4cb638]: https://github.com/roryford/BaseChatKit/commit/c4cb638f71af151e86248578536bc78f4660b96a
+
 ## [0.14.1](https://github.com/roryford/BaseChatKit/compare/v0.14.0...v0.14.1) (2026-04-29)
 
 ### Highlights
