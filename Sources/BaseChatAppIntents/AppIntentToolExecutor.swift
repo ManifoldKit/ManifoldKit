@@ -53,7 +53,29 @@ import AppIntents
 @available(iOS 26, macOS 26, *)
 public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor {
 
+    /// Approval policy for AppIntent-backed tools.
+    ///
+    /// Use ``requiresUserApproval`` for side-effecting intents (the default),
+    /// and ``readOnlyAutoApprove`` only for deliberately read-only intents.
+    public enum ApprovalPolicy: Sendable {
+        /// Require an explicit ``ToolApprovalGate`` decision per call.
+        case requiresUserApproval
+
+        /// Skip approval prompts for read-only intents that are safe to run.
+        case readOnlyAutoApprove
+
+        var requiresApproval: Bool {
+            switch self {
+            case .requiresUserApproval:
+                true
+            case .readOnlyAutoApprove:
+                false
+            }
+        }
+    }
+
     public let definition: ToolDefinition
+    public let requiresApproval: Bool
 
     /// Creates an executor that exposes `intentType` as a model-callable tool.
     ///
@@ -62,12 +84,22 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
     ///   - description: Optional human-readable description shown to the
     ///     model. Defaults to the intent's ``AppIntent/title`` (resolved via
     ///     `String(localized:)`).
-    public init(_ intentType: Intent.Type, description: String? = nil) {
+    ///   - approvalPolicy: Approval behavior for this tool. Defaults to
+    ///     ``ApprovalPolicy/requiresUserApproval`` because AppIntents often
+    ///     trigger external side effects. Opt into
+    ///     ``ApprovalPolicy/readOnlyAutoApprove`` only for deliberately
+    ///     read-only intents.
+    public init(
+        _ intentType: Intent.Type,
+        description: String? = nil,
+        approvalPolicy: ApprovalPolicy = .requiresUserApproval
+    ) {
         let toolName = Self.canonicalName(for: intentType)
         let toolDescription = description ?? Self.defaultDescription(for: intentType)
         let parameters = JSONSchemaBuilder.schema(for: Intent.self) {
             Intent()
         }
+        self.requiresApproval = approvalPolicy.requiresApproval
         self.definition = ToolDefinition(
             name: toolName,
             description: toolDescription,
