@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.14.3](https://github.com/roryford/BaseChatKit/compare/v0.14.2...v0.14.3) (2026-05-01)
+
+### Highlights
+
+#### Security defaults tighten around tools, OAuth, and downloads
+
+AppIntent-backed tools now require approval by default, MCP OAuth tokens persist through the configured Keychain instead of an in-memory fallback, and model download plans can carry SHA-256 expectations that are enforced when present. These changes keep the default path safer without removing explicit opt-outs for read-only AppIntents, ephemeral token stores, or model metadata that does not yet provide checksums.
+
+```swift
+let tool = AppIntentToolExecutor(MyIntent.self)
+let readOnlyTool = AppIntentToolExecutor(MyReadOnlyIntent.self, approvalPolicy: .readOnlyAutoApprove)
+let tokenStore = MCPOAuthTokenStore.keychain()
+let plan = ModelDownloadPlan.singleFile(
+    url: modelURL,
+    expectedChecksum: .init(algorithm: .sha256, hexDigest: expectedSHA256)
+)
+```
+
+Checksum verification is skipped when no expected digest is provided, so existing model catalogs continue to download while metadata plumbing rolls forward. See [#921], [#924], [#926].
+
+#### MCP and clipboard traffic stay inside reviewed boundaries
+
+MCP streamable HTTP and OAuth requests now route through a shared session boundary, revalidate request-time and redirect destinations against the SSRF policy, and fail closed when the runtime network kill-switch is active. Chat copy actions use a single clipboard helper; on iOS it writes local-only, expiring pasteboard items so copied model output is less likely to sync across devices.
+
+```swift
+MCPTransportConfiguration(
+    endpoint: serverURL,
+    headers: [:],
+    authorization: authorization,
+    session: myPinnedSession
+)
+```
+
+Explicit session injection remains available for hosts that need their own pinned or audited transport stack. See [#922], [#923], [#925].
+
+### Features
+
+- **downloads:** add `ModelFileChecksum` metadata and enforce SHA-256 validation when a model download plan provides an expected digest ([#924])
+
+### Fixes
+
+- **appintents:** require approval for `AppIntentToolExecutor` calls by default, with `.readOnlyAutoApprove` as an explicit opt-out for read-only intents ([#921])
+- **clipboard:** route chat/code copy actions through `ClipboardWriter`; iOS copies are local-only and expire, while macOS keeps the existing `NSPasteboard` behavior ([#922])
+- **mcp:** route default MCP HTTP/OAuth networking through `MCPURLSessionFactory` so the network-disabled boundary returns `MCPError.networkUnavailable` instead of using `URLSession.shared` directly ([#923])
+- **mcp:** revalidate transport and OAuth request destinations, including redirects, before dispatching network calls ([#925])
+- **mcp:** back `MCPOAuthTokenStore.keychain` with persistent Keychain storage and surface Keychain failures through the token store API ([#926])
+
+[#921]: https://github.com/roryford/BaseChatKit/issues/921
+[#922]: https://github.com/roryford/BaseChatKit/issues/922
+[#923]: https://github.com/roryford/BaseChatKit/issues/923
+[#924]: https://github.com/roryford/BaseChatKit/issues/924
+[#925]: https://github.com/roryford/BaseChatKit/issues/925
+[#926]: https://github.com/roryford/BaseChatKit/issues/926
+
 ## [0.14.2](https://github.com/roryford/BaseChatKit/compare/v0.14.1...v0.14.2) (2026-04-30)
 
 ### Highlights
