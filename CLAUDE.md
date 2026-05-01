@@ -68,6 +68,14 @@ swift test --filter OllamaE2ETests --disable-default-traits --traits Ollama
 # writing tests that depend on real inference — keeps them out of --disable-default-traits CI runs.
 scripts/fuzz.sh                    # 5-minute Ollama run (default)
 scripts/fuzz.sh --with-llama --minutes 2  # Llama GGUF run
+
+# Isolated Llama tests — runs each Llama-touching XCTestCase subclass in its
+# own xctest process so llama.cpp / GGML / Metal global state cannot leak
+# across classes. Use this when the in-process run accumulates state on a
+# memory-pressured host. Wall-clock cost ~1-2 min (build is reused).
+RUN_LLAMA_TESTS=1 BASECHAT_DISCOVER_LOCAL_MODELS=1 \
+  LLAMA_TEST_MODEL=$HOME/Documents/Models/<model>.gguf \
+  scripts/test-llama-isolated.sh
 ```
 
 When writing hardware-gated tests, add `XCTSkipIf` guards at the top of the test rather than assuming the environment.
