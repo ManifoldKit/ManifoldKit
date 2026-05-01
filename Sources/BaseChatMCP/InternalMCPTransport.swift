@@ -16,7 +16,7 @@ internal struct MCPTransportConfiguration: Sendable {
     let authorization: any MCPAuthorization
     let sseLimits: SSEStreamLimits
     let maxMessageBytes: Int
-    let session: URLSession
+    private let sessionProvider: @Sendable () throws -> URLSession
 
     init(
         endpoint: URL,
@@ -24,14 +24,33 @@ internal struct MCPTransportConfiguration: Sendable {
         authorization: any MCPAuthorization,
         sseLimits: SSEStreamLimits,
         maxMessageBytes: Int,
-        session: URLSession = .shared
+        session: URLSession
     ) {
         self.endpoint = endpoint
         self.headers = headers
         self.authorization = authorization
         self.sseLimits = sseLimits
         self.maxMessageBytes = maxMessageBytes
-        self.session = session
+        self.sessionProvider = { session }
+    }
+
+    init(
+        endpoint: URL,
+        headers: [String: String],
+        authorization: any MCPAuthorization,
+        sseLimits: SSEStreamLimits,
+        maxMessageBytes: Int
+    ) {
+        self.endpoint = endpoint
+        self.headers = headers
+        self.authorization = authorization
+        self.sseLimits = sseLimits
+        self.maxMessageBytes = maxMessageBytes
+        self.sessionProvider = MCPURLSessionFactory.throwingShared
+    }
+
+    func session() throws -> URLSession {
+        try sessionProvider()
     }
 }
 
@@ -69,7 +88,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
-        let (bytes, response) = try await configuration.session.bytes(for: request)
+        let (bytes, response) = try await configuration.session().bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
         }
@@ -134,7 +153,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await configuration.session.data(for: request)
+        let (data, response) = try await configuration.session().data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
         }
