@@ -893,6 +893,12 @@
 		F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ..;
+			traits = (
+				MLX,
+				Llama,
+				HuggingFace,
+				MCPBuiltinCatalog,
+			);
 		};
 /* End XCLocalSwiftPackageReference section */
 
