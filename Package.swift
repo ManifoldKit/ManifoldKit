@@ -252,6 +252,30 @@ let package = Package(
                 "BaseChatTestSupport",
             ]
         ),
+        // BaseChatRuntime-only tests: protocol contracts, value types, and
+        // services that don't import SwiftData. Tests that exercise both
+        // BaseChatRuntime and BaseChatPersistenceSwiftData (e.g. the
+        // adapter-against-port integrations) stay in BaseChatCoreTests.
+        .testTarget(
+            name: "BaseChatRuntimeTests",
+            dependencies: [
+                "BaseChatRuntime",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+            ]
+        ),
+        // BaseChatPersistenceSwiftData-only tests: SwiftData @Model schema,
+        // ModelContainerFactory, BaseChatBootstrap, and the SwiftData adapter
+        // implementations of the runtime ports.
+        .testTarget(
+            name: "BaseChatPersistenceSwiftDataTests",
+            dependencies: [
+                "BaseChatPersistenceSwiftData",
+                "BaseChatRuntime",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+            ]
+        ),
         // Tests for the shared test-helper module itself (e.g. `withTimeout`).
         // Kept as a dedicated target so hang-sabotage helpers don't accrete
         // inside product-suite test targets and so they can be exercised

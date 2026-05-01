@@ -4,7 +4,7 @@ import SwiftData
 @testable import BaseChatInference
 
 @MainActor
-final class BaseChatRuntimeTests: XCTestCase {
+final class BaseChatBootstrapTests: XCTestCase {
 
     func test_init_installsConfigurationBeforeBuildingModelContainer() throws {
         let originalConfiguration = BaseChatConfiguration.shared
