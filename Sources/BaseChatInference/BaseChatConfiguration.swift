@@ -272,7 +272,7 @@ extension BaseChatConfiguration {
     /// (`api.openai.com`, `api.anthropic.com`) — those always fail-closed
     /// when their pin sets are absent or empty. Localhost addresses
     /// (`localhost`, `127.0.0.1`, `::1`) always bypass pinning entirely.
-    public enum CustomHostTrustPolicy: Sendable {
+    public enum CustomHostTrustPolicy: Sendable, Equatable {
 
         /// Unknown custom hosts fall back to the OS platform trust evaluation
         /// when no pins are configured for them.

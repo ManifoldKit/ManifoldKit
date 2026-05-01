@@ -5,7 +5,7 @@ import Foundation
 /// Mirrors the IP-classification subset of ``APIEndpointValidationReason`` so that the
 /// identical policy can be enforced from both `BaseChatCore` (URL validation) and
 /// `BaseChatBackends` (DNS-resolved address checks) without duplicating the rules.
-public enum BlockedAddressCategory: Sendable, CustomStringConvertible {
+package enum BlockedAddressCategory: Sendable, CustomStringConvertible {
     /// RFC1918 private IPv4 range (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
     case privateHost
     /// Link-local range (IPv4 `169.254.0.0/16` or IPv6 `fe80::/10`).
@@ -21,7 +21,7 @@ public enum BlockedAddressCategory: Sendable, CustomStringConvertible {
     /// `224.0.0.0/4`, `240.0.0.0/4`), or the IPv6 loopback address `::1`.
     case multicastReserved
 
-    public var description: String {
+    package var description: String {
         switch self {
         case .privateHost:       return "RFC1918 private address"
         case .linkLocalHost:     return "link-local address"
@@ -41,7 +41,7 @@ public enum BlockedAddressCategory: Sendable, CustomStringConvertible {
 /// Only IP literals are inspected. **DNS names are never resolved here.** Callers that
 /// need to guard against DNS rebinding must resolve the hostname first (e.g. via
 /// `getaddrinfo`) and then pass each resolved address to ``classifyIPLiteral(_:)``.
-public enum PrivateIPClassifier {
+package enum PrivateIPClassifier {
 
     // MARK: - Localhost
 
@@ -50,7 +50,7 @@ public enum PrivateIPClassifier {
     /// Only the three literals `localhost`, `127.0.0.1`, and `::1` match —
     /// broader `127.x.x.x` and IPv4-mapped IPv6 loopback are intentionally
     /// excluded to prevent bypass via alternate encodings.
-    public static func isLocalhostURL(_ url: URL) -> Bool {
+    package static func isLocalhostURL(_ url: URL) -> Bool {
         guard let host = url.host()?.lowercased() else { return false }
         return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
@@ -69,7 +69,7 @@ public enum PrivateIPClassifier {
     /// > *before* calling this method so explicitly configured loopback servers remain
     /// > accessible. For DNS-resolved addresses, loopback returned by a remote domain
     /// > is always a rebinding attack and should be blocked unconditionally.
-    public static func classifyIPLiteral(_ rawAddress: String) -> BlockedAddressCategory? {
+    package static func classifyIPLiteral(_ rawAddress: String) -> BlockedAddressCategory? {
         // Strip trailing dot — FQDN form (e.g. `192.168.1.1.`) resolves identically
         // to the dotless form and would bypass classification without this.
         let address = rawAddress.hasSuffix(".") ? String(rawAddress.dropLast()) : rawAddress
@@ -89,7 +89,7 @@ public enum PrivateIPClassifier {
     ///
     /// Returns `nil` for non-literal inputs (DNS names, IPv6, shorthand forms like
     /// `127.1` that some resolvers accept but modern URL parsers reject).
-    public static func parseIPv4Literal(_ host: String) -> [UInt8]? {
+    static func parseIPv4Literal(_ host: String) -> [UInt8]? {
         let parts = host.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 4 else { return nil }
         var octets: [UInt8] = []
@@ -106,7 +106,7 @@ public enum PrivateIPClassifier {
 
     /// Classifies an IPv4 address (as four octets) into a blocked range, or returns
     /// `nil` if the address is in a routable public range.
-    public static func classifyIPv4(_ octets: [UInt8]) -> BlockedAddressCategory? {
+    static func classifyIPv4(_ octets: [UInt8]) -> BlockedAddressCategory? {
         let a = octets[0]
         let b = octets[1]
 
@@ -131,7 +131,7 @@ public enum PrivateIPClassifier {
     ///
     /// Supports `::` zero-run compression and embedded IPv4 suffixes
     /// (e.g. `::ffff:127.0.0.1`). Zone identifiers (`fe80::1%en0`) are stripped.
-    public static func parseIPv6Literal(_ host: String) -> [UInt16]? {
+    static func parseIPv6Literal(_ host: String) -> [UInt16]? {
         let bare = host.split(separator: "%", maxSplits: 1).first.map(String.init) ?? host
         guard bare.contains(":") else { return nil }
 
@@ -173,7 +173,7 @@ public enum PrivateIPClassifier {
 
     /// Classifies an IPv6 address (as eight 16-bit words) into a blocked range, or
     /// returns `nil` if the address is in a routable public range.
-    public static func classifyIPv6(_ words: [UInt16]) -> BlockedAddressCategory? {
+    static func classifyIPv6(_ words: [UInt16]) -> BlockedAddressCategory? {
         guard words.count == 8 else { return nil }
 
         // ::1 — IPv6 loopback. Analogous to 127.0.0.0/8.
