@@ -491,7 +491,7 @@ let package = Package(
                 "BaseChatInference",
             ],
             path: "Sources/BaseChatTools",
-            exclude: ["Scenarios/built-in/README.md", "README.md"],
+            exclude: ["README.md"],
             resources: [
                 .copy("Scenarios/built-in"),
             ]

@@ -173,9 +173,10 @@ public enum HardwareRequirements {
 
     /// Scans common model directories for a loadable local MLX model directory.
     ///
-    /// Searches:
-    /// 1. `~/Documents/Models/` (default `ModelStorageService` location)
-    /// 2. App container `Documents/Models/` directories
+    /// To avoid unbounded walks through user model folders during routine test
+    /// runs, common-directory discovery is opt-in. Set `MLX_TEST_MODEL` or pass
+    /// `nameContains` to select a specific fixture, or set
+    /// `BASECHAT_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
     /// When `MLX_TEST_MODEL` is set, the first directory whose path contains that
     /// value wins. Otherwise falls back to `nameContains`, then to the first
@@ -184,7 +185,20 @@ public enum HardwareRequirements {
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
-        findMLXModelDirectory(
+        if let override = directFilesystemModelOverride(
+            environment["MLX_TEST_MODEL"],
+            isValid: { isValidMLXDirectory($0, fileManager: .default) }
+        ) {
+            return override
+        }
+        guard shouldDiscoverLocalModels(
+            environment: environment,
+            selectorKey: "MLX_TEST_MODEL",
+            nameContains: substring
+        ) else {
+            return nil
+        }
+        return findMLXModelDirectory(
             in: modelSearchDirectories(fileManager: .default),
             nameContains: substring,
             environment: environment,
@@ -247,9 +261,10 @@ public enum HardwareRequirements {
 
     /// Scans common model directories for a loadable `.gguf` file.
     ///
-    /// Searches the same `Documents/Models/` locations as `findMLXModelDirectory`,
-    /// including one nested directory level for manually grouped files such as
-    /// `~/Documents/Models/qwen/model.gguf`.
+    /// To avoid unbounded walks through user model folders during routine test
+    /// runs, common-directory discovery is opt-in. Set `LLAMA_TEST_MODEL` or pass
+    /// `nameContains` to select a specific fixture, or set
+    /// `BASECHAT_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
     /// When `LLAMA_TEST_MODEL` is set, the first GGUF whose path contains that
     /// value wins. Otherwise falls back to `nameContains`, then to the first
@@ -258,7 +273,20 @@ public enum HardwareRequirements {
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
-        findGGUFModel(
+        if let override = directFilesystemModelOverride(
+            environment["LLAMA_TEST_MODEL"],
+            isValid: { isValidGGUFModel($0) }
+        ) {
+            return override
+        }
+        guard shouldDiscoverLocalModels(
+            environment: environment,
+            selectorKey: "LLAMA_TEST_MODEL",
+            nameContains: substring
+        ) else {
+            return nil
+        }
+        return findGGUFModel(
             in: modelSearchDirectories(fileManager: .default),
             nameContains: substring,
             environment: environment,
@@ -410,6 +438,27 @@ public enum HardwareRequirements {
         guard !selector.isEmpty else { return nil }
         guard selector.lowercased() != "all" else { return nil }
         return selector
+    }
+
+    private static func shouldDiscoverLocalModels(
+        environment: [String: String],
+        selectorKey: String,
+        nameContains substring: String?
+    ) -> Bool {
+        if normalizedModelSelector(environment[selectorKey]) != nil { return true }
+        if normalizedModelSelector(substring) != nil { return true }
+        return environment["BASECHAT_DISCOVER_LOCAL_MODELS"] == "1"
+    }
+
+    private static func directFilesystemModelOverride(
+        _ selector: String?,
+        isValid: (URL) -> Bool
+    ) -> URL? {
+        guard let selector = normalizedModelSelector(selector) else { return nil }
+        let expanded = (selector as NSString).expandingTildeInPath
+        let url = URL(fileURLWithPath: expanded)
+        guard url.isFileURL, expanded.contains("/") else { return nil }
+        return isValid(url) ? url : nil
     }
 
     private static func appendGGUFModel(

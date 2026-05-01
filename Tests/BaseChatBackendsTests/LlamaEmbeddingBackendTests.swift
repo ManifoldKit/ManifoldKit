@@ -8,7 +8,8 @@ import BaseChatTestSupport
 ///
 /// Resolution order (first hit wins):
 ///   1. `BCK_EMBEDDING_MODEL_PATH` env var — explicit override for live-fire runs
-///   2. `~/Documents/Models/*.gguf` containing "embed"/"embedding"/"bge"/"minilm"/"nomic"/"jina"
+///   2. `~/Documents/Models/*.gguf` containing "embed"/"embedding"/"bge"/"minilm"/"nomic"/"jina",
+///      only when `BASECHAT_DISCOVER_LOCAL_MODELS=1` opts into local discovery
 ///
 /// Returns `nil` when nothing is found, in which case the calling test should
 /// `XCTSkipUnless` the URL — embedding tests cannot synthesize a valid GGUF on
@@ -23,6 +24,9 @@ enum EmbeddingTestModelLocator {
             if FileManager.default.fileExists(atPath: url.path) {
                 return url
             }
+        }
+        guard env["BASECHAT_DISCOVER_LOCAL_MODELS"] == "1" else {
+            return nil
         }
 
         let fm = FileManager.default

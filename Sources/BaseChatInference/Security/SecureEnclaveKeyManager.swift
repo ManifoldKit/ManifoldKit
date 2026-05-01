@@ -199,10 +199,9 @@ public final class SecureEnclaveKeyManager: @unchecked Sendable {
         if findStatus == errSecSuccess, let existing = keyRef {
             return existing as! SecKey // swiftlint:disable:this force_cast
         }
-        // errSecMissingEntitlement (-34018) means the process is not entitled to
-        // access the Keychain (e.g. unsigned swift test runner).  Treat as
-        // unavailable so callers degrade gracefully rather than crashing.
-        if findStatus == -34018 { throw SecureEnclaveError.notAvailable }
+        if Self.isUnavailableKeychainStatus(findStatus) {
+            throw SecureEnclaveError.notAvailable
+        }
 
         // Generate a new SE-resident P-256 private key.
         var accessError: Unmanaged<CFError>?
@@ -231,11 +230,8 @@ public final class SecureEnclaveKeyManager: @unchecked Sendable {
         var keyGenError: Unmanaged<CFError>?
         guard let privateKey = SecKeyCreateRandomKey(keyAttributes as CFDictionary, &keyGenError) else {
             let cfErr = keyGenError?.takeRetainedValue()
-            // errSecMissingEntitlement (-34018): process is not entitled to add keys
-            // to the Keychain (e.g. unsigned swift test runner or macOS App Sandbox
-            // without the necessary keychain-access-group entitlement). Treat as
-            // unavailable so callers degrade gracefully.
-            if let code = cfErr.map({ CFErrorGetCode($0) }), code == -34018 {
+            if let code = cfErr.map({ OSStatus(CFErrorGetCode($0)) }),
+               Self.isUnavailableKeychainStatus(code) {
                 throw SecureEnclaveError.notAvailable
             }
             let msg = cfErr.map { ($0 as Error).localizedDescription }
@@ -252,7 +248,9 @@ public final class SecureEnclaveKeyManager: @unchecked Sendable {
             kSecValueRef as String: privateKey,
         ]
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        if addStatus == -34018 { throw SecureEnclaveError.notAvailable }
+        if Self.isUnavailableKeychainStatus(addStatus) {
+            throw SecureEnclaveError.notAvailable
+        }
         // errSecDuplicateItem is fine — another thread beat us; load the
         // key that's already there.
         if addStatus == errSecDuplicateItem {
@@ -264,5 +262,9 @@ public final class SecureEnclaveKeyManager: @unchecked Sendable {
         }
 
         return privateKey
+    }
+
+    private static func isUnavailableKeychainStatus(_ status: OSStatus) -> Bool {
+        status == errSecMissingEntitlement || status == errSecInteractionNotAllowed
     }
 }

@@ -185,12 +185,9 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
 
         var seenHashes: [String] = []
         for certificate in certChain {
-            guard let publicKey = SecCertificateCopyKey(certificate),
-                  let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as Data? else {
+            guard let base64Hash = Self.spkiHashBase64(for: certificate) else {
                 continue
             }
-            let hash = sha256(data: publicKeyData)
-            let base64Hash = hash.base64EncodedString()
             seenHashes.append(base64Hash)
 
             if expectedPins.contains(base64Hash) {
@@ -205,7 +202,117 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
 
     // MARK: - Helpers
 
-    private func sha256(data: Data) -> Data {
+    static func spkiHashBase64(for certificate: SecCertificate) -> String? {
+        guard let publicKey = SecCertificateCopyKey(certificate),
+              let rawKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as Data?,
+              let attributes = SecKeyCopyAttributes(publicKey) as? [CFString: Any],
+              let keyType = attributes[kSecAttrKeyType] as? String,
+              let keySize = attributes[kSecAttrKeySizeInBits] as? Int,
+              let spki = spkiDER(rawPublicKey: rawKeyData, keyType: keyType, keySizeInBits: keySize) else {
+            return nil
+        }
+        return sha256(data: spki).base64EncodedString()
+    }
+
+    static func spkiDER(rawPublicKey: Data, keyType: String, keySizeInBits: Int) -> Data? {
+        let algorithmIdentifier: Data
+        if keyType == (kSecAttrKeyTypeRSA as String) {
+            algorithmIdentifier = derSequence(
+                concat(derObjectIdentifier([1, 2, 840, 113549, 1, 1, 1]), derNull())
+            )
+        } else if keyType == (kSecAttrKeyTypeECSECPrimeRandom as String) {
+            guard let curveOID = ecCurveOID(keySizeInBits: keySizeInBits) else {
+                return nil
+            }
+            algorithmIdentifier = derSequence(
+                concat(derObjectIdentifier([1, 2, 840, 10045, 2, 1]), curveOID)
+            )
+        } else {
+            return nil
+        }
+
+        return derSequence(concat(algorithmIdentifier, derBitString(rawPublicKey)))
+    }
+
+    private static func ecCurveOID(keySizeInBits: Int) -> Data? {
+        switch keySizeInBits {
+        case 256:
+            return derObjectIdentifier([1, 2, 840, 10045, 3, 1, 7])
+        case 384:
+            return derObjectIdentifier([1, 3, 132, 0, 34])
+        case 521:
+            return derObjectIdentifier([1, 3, 132, 0, 35])
+        default:
+            return nil
+        }
+    }
+
+    private static func derSequence(_ content: Data) -> Data {
+        derTLV(tag: 0x30, content: content)
+    }
+
+    private static func derBitString(_ content: Data) -> Data {
+        derTLV(tag: 0x03, content: concat(Data([0x00]), content))
+    }
+
+    private static func derNull() -> Data {
+        Data([0x05, 0x00])
+    }
+
+    private static func derObjectIdentifier(_ components: [UInt64]) -> Data {
+        precondition(components.count >= 2, "OID requires at least two components")
+        precondition(components[0] <= 2, "OID first component must be 0, 1, or 2")
+        precondition(components[1] <= 39 || components[0] == 2, "OID second component out of range")
+
+        var body = Data([UInt8(components[0] * 40 + components[1])])
+        for component in components.dropFirst(2) {
+            body.append(contentsOf: derBase128(component))
+        }
+        return derTLV(tag: 0x06, content: body)
+    }
+
+    private static func derBase128(_ value: UInt64) -> [UInt8] {
+        var remaining = value
+        var bytes = [UInt8(remaining & 0x7F)]
+        remaining >>= 7
+        while remaining > 0 {
+            bytes.append(UInt8(remaining & 0x7F) | 0x80)
+            remaining >>= 7
+        }
+        return Array(bytes.reversed())
+    }
+
+    private static func derTLV(tag: UInt8, content: Data) -> Data {
+        var data = Data([tag])
+        data.append(derLength(content.count))
+        data.append(content)
+        return data
+    }
+
+    private static func derLength(_ length: Int) -> Data {
+        precondition(length >= 0, "DER length cannot be negative")
+        if length < 0x80 {
+            return Data([UInt8(length)])
+        }
+
+        var value = length
+        var bytes: [UInt8] = []
+        while value > 0 {
+            bytes.append(UInt8(value & 0xFF))
+            value >>= 8
+        }
+        return Data([0x80 | UInt8(bytes.count)] + Array(bytes.reversed()))
+    }
+
+    private static func concat(_ parts: Data...) -> Data {
+        var data = Data()
+        for part in parts {
+            data.append(part)
+        }
+        return data
+    }
+
+    private static func sha256(data: Data) -> Data {
         var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
         data.withUnsafeBytes { buffer in
             _ = CC_SHA256(buffer.baseAddress, CC_LONG(data.count), &hash)

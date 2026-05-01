@@ -95,13 +95,13 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                        "LlamaBackend runs on-device — isRemote must be false")
     }
 
-    func test_llamaBackend_doesNotSupportToolCalling() throws {
+    func test_llamaBackend_supportsToolCalling() throws {
         try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
                           "LlamaBackend requires Metal (unavailable in simulator)")
         try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
                           "LlamaBackend requires Apple Silicon")
-        XCTAssertFalse(LlamaBackend().capabilities.supportsToolCalling,
-                       "LlamaBackend does not support tool calling natively")
+        XCTAssertTrue(LlamaBackend().capabilities.supportsToolCalling,
+                      "LlamaBackend advertises tool calling for Gemma 4 and parser-backed local tool-call formats")
     }
 
     func test_llamaBackend_doesNotSupportNativeJSONMode() throws {
