@@ -6,6 +6,7 @@ import BaseChatTestSupport
 final class MCPStreamableHTTPTransportTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.reset()
+        MCPSSRFPolicy._resolverForTesting = nil
         MCPURLSessionFactory.networkDisabled = false
         super.tearDown()
     }
@@ -134,6 +135,33 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
         await transport.close()
     }
 
+    func test_sendBlocksDNSRebindingDestinationBeforeRequest() async {
+        let endpoint = URL(string: "https://example.com/mcp")!
+        MCPSSRFPolicy._resolverForTesting = { host in
+            host == "example.com" ? ["10.0.0.7"] : ["93.184.216.34"]
+        }
+
+        let transport = MCPStreamableHTTPTransport(configuration: .init(
+            endpoint: endpoint,
+            headers: [:],
+            authorization: MCPNoAuthorization(),
+            sseLimits: .default,
+            maxMessageBytes: 2048,
+            session: makeSession()
+        ))
+
+        await XCTAssertThrowsErrorAsync(
+            try await transport.send(Data("{\"jsonrpc\":\"2.0\",\"method\":\"ping\"}".utf8))
+        ) { error in
+            guard case .ssrfBlocked(let blockedURL) = error as? MCPError else {
+                XCTFail("Expected ssrfBlocked, got \(error)")
+                return
+            }
+            XCTAssertEqual(blockedURL.host, "example.com")
+        }
+        XCTAssertTrue(MockURLProtocol.capturedRequests.isEmpty)
+    }
+
     func test_startFailsWhenDefaultSessionBoundaryHasNetworkDisabled() async {
         MCPURLSessionFactory.networkDisabled = true
 
@@ -182,6 +210,20 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         return URLSession(configuration: configuration)
+    }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    _ handler: (Error) -> Void,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected error", file: file, line: line)
+    } catch {
+        handler(error)
     }
 }
 

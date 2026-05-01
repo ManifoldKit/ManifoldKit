@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Security
 import CryptoKit
@@ -239,7 +240,17 @@ struct PKCEVerifier {
 
 /// Limits redirect chains to at most one hop to prevent SSRF-via-redirect attacks.
 final class MCPRedirectCapDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let maxRedirects: Int?
+    private let validator: @Sendable (URL) throws -> Void
     private var redirectCount = 0
+
+    init(
+        maxRedirects: Int? = 1,
+        validator: @escaping @Sendable (URL) throws -> Void = { _ in }
+    ) {
+        self.maxRedirects = maxRedirects
+        self.validator = validator
+    }
 
     func urlSession(
         _ session: URLSession,
@@ -249,8 +260,19 @@ final class MCPRedirectCapDelegate: NSObject, URLSessionTaskDelegate, @unchecked
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
         redirectCount += 1
-        // Allow the first redirect; refuse subsequent ones.
-        completionHandler(redirectCount <= 1 ? request : nil)
+        if let nextURL = request.url {
+            do {
+                try validator(nextURL)
+            } catch {
+                completionHandler(nil)
+                return
+            }
+        }
+        if let maxRedirects {
+            completionHandler(redirectCount <= maxRedirects ? request : nil)
+        } else {
+            completionHandler(request)
+        }
     }
 }
 
@@ -310,7 +332,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
     }
 
     public func authorizationHeader(for requestURL: URL) async throws -> String? {
-        try MCPSSRFPolicy.validateOAuthURL(requestURL, label: "oauth request")
+        try await MCPSSRFPolicy.validateOAuthRequestURL(requestURL, label: "oauth request")
         guard Self.isSameOrigin(lhs: requestURL, rhs: resourceURL) else {
             return nil
         }
@@ -324,7 +346,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
     public func handleUnauthorized(statusCode: Int, body: Data) async throws -> AuthRetryDecision {
         _ = body
-        try MCPSSRFPolicy.validateOAuthURL(resourceURL, label: "resource")
+        try await MCPSSRFPolicy.validateOAuthRequestURL(resourceURL, label: "resource")
         guard statusCode == 401 || statusCode == 403 else {
             return .fail(.authorizationFailed("unexpected status \(statusCode)"))
         }
@@ -361,11 +383,18 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
               let managementToken = registrationManagementToken else { return }
         // RFC 7592 — best-effort DELETE; never throws.
         do {
+            try await MCPSSRFPolicy.validateOAuthRequestURL(managementURI, label: "registration management")
             var request = URLRequest(url: managementURI)
             request.httpMethod = "DELETE"
             request.setValue("Bearer \(managementToken)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
-            _ = try await sessionProvider().data(for: request)
+            _ = try await sessionProvider().data(
+                for: request,
+                delegate: MCPRedirectCapDelegate(
+                    maxRedirects: nil,
+                    validator: MCPSSRFPolicy.validateOAuthRedirectURL
+                )
+            )
             Log.inference.info("MCPOAuthAuthorization: dynamic client deregistered for \(self.serverID)")
         } catch {
             Log.inference.warning("MCPOAuthAuthorization: client deregistration request failed (best-effort): \(error.localizedDescription)")
@@ -501,7 +530,14 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         } else {
             let resourceMetadataURL = Self.resourceMetadataURL(for: resourceURL)
             try enforceHTTPS(resourceMetadataURL, label: "resource metadata")
-            let (data, response) = try await sessionProvider().data(for: URLRequest(url: resourceMetadataURL))
+            try await MCPSSRFPolicy.validateOAuthRequestURL(resourceMetadataURL, label: "resource metadata")
+            let (data, response) = try await sessionProvider().data(
+                for: URLRequest(url: resourceMetadataURL),
+                delegate: MCPRedirectCapDelegate(
+                    maxRedirects: nil,
+                    validator: MCPSSRFPolicy.validateOAuthRedirectURL
+                )
+            )
             try requireSuccess(response: response, body: data, operation: "resource metadata discovery")
             let resourceMetadata = try decoder.decode(OAuthProtectedResourceMetadata.self, from: data)
             guard let candidateIssuers = resourceMetadata.authorizationServers, candidateIssuers.isEmpty == false else {
@@ -530,10 +566,11 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
         let metadataURL = Self.authorizationMetadataURL(for: issuer)
         try enforceHTTPS(metadataURL, label: "authorization metadata")
+        try await MCPSSRFPolicy.validateOAuthRequestURL(metadataURL, label: "authorization metadata")
         // Redirect cap: metadata fetches must not follow more than one redirect.
         let (metadataData, metadataResponse) = try await sessionProvider().data(
             for: URLRequest(url: metadataURL),
-            delegate: MCPRedirectCapDelegate()
+            delegate: MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
         )
         try requireSuccess(response: metadataResponse, body: metadataData, operation: "authorization metadata discovery")
         let metadata = try decoder.decode(OAuthAuthorizationServerMetadata.self, from: metadataData)
@@ -600,6 +637,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         metadata: OAuthAuthorizationServerMetadata
     ) async throws -> MCPOAuthTokens {
         try enforceHTTPS(metadata.tokenEndpoint, label: "token endpoint")
+        try await MCPSSRFPolicy.validateOAuthRequestURL(metadata.tokenEndpoint, label: "token endpoint")
         var request = URLRequest(url: metadata.tokenEndpoint)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -607,7 +645,10 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         request.httpBody = Self.formURLEncoded(parameters).data(using: .utf8)
 
         // Redirect cap: token exchanges must not follow more than one redirect.
-        let (data, response) = try await sessionProvider().data(for: request, delegate: MCPRedirectCapDelegate())
+        let (data, response) = try await sessionProvider().data(
+            for: request,
+            delegate: MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
+        )
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response during token exchange")
         }
@@ -760,6 +801,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
         do {
             try enforceHTTPS(registrationEndpoint, label: "registration endpoint")
+            try await MCPSSRFPolicy.validateOAuthRequestURL(registrationEndpoint, label: "registration endpoint")
             var request = URLRequest(url: registrationEndpoint)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -780,7 +822,13 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
             request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-            let (data, response) = try await sessionProvider().data(for: request)
+            let (data, response) = try await sessionProvider().data(
+                for: request,
+                delegate: MCPRedirectCapDelegate(
+                    maxRedirects: nil,
+                    validator: MCPSSRFPolicy.validateOAuthRedirectURL
+                )
+            )
             try requireSuccess(response: response, body: data, operation: "dynamic client registration")
             let parsed = try JSONDecoder().decode(OAuthDynamicClientRegistrationResponse.self, from: data)
             guard parsed.clientID.isEmpty == false else {
@@ -1023,6 +1071,8 @@ private func constantTimeEqual(_ a: String, _ b: String) -> Bool {
 // MARK: - MCPSSRFPolicy
 
 internal enum MCPSSRFPolicy {
+    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String])? = nil
+
     static func validateTransportURL(_ url: URL) throws {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
             throw MCPError.transportFailure("MCP transport endpoint must use http(s)")
@@ -1041,6 +1091,26 @@ internal enum MCPSSRFPolicy {
             throw MCPError.authorizationFailed("Expected HTTPS \(label) URL")
         }
         try validateHostNotBlocked(url, wrap: { _ in .authorizationFailed("Expected host in \(label) URL") })
+    }
+
+    static func validateTransportRequestURL(_ url: URL) async throws {
+        try validateTransportURL(url)
+        try await validateResolvedHostNotBlocked(url)
+    }
+
+    static func validateOAuthRequestURL(_ url: URL, label: String) async throws {
+        try validateOAuthURL(url, label: label)
+        try await validateResolvedHostNotBlocked(url)
+    }
+
+    static func validateTransportRedirectURL(_ url: URL) throws {
+        try validateTransportURL(url)
+        try validateResolvedHostNotBlockedSynchronously(url)
+    }
+
+    static func validateOAuthRedirectURL(_ url: URL) throws {
+        try validateOAuthURL(url, label: "oauth redirect")
+        try validateResolvedHostNotBlockedSynchronously(url)
     }
 
     private static func validateHostNotBlocked(
@@ -1062,6 +1132,82 @@ internal enum MCPSSRFPolicy {
                 throw MCPError.ssrfBlocked(url)
             }
         }
+    }
+
+    private static func validateResolvedHostNotBlocked(_ url: URL) async throws {
+        guard PrivateIPClassifier.isLocalhostURL(url) == false else { return }
+        guard let host = normalizedHost(from: url) else {
+            throw MCPError.ssrfBlocked(url)
+        }
+        if PrivateIPClassifier.classifyIPLiteral(host) != nil {
+            throw MCPError.ssrfBlocked(url)
+        }
+        let addresses = await resolveHostname(host)
+        for address in addresses where PrivateIPClassifier.classifyIPLiteral(address) != nil {
+            throw MCPError.ssrfBlocked(url)
+        }
+    }
+
+    private static func validateResolvedHostNotBlockedSynchronously(_ url: URL) throws {
+        guard PrivateIPClassifier.isLocalhostURL(url) == false else { return }
+        guard let host = normalizedHost(from: url) else {
+            throw MCPError.ssrfBlocked(url)
+        }
+        if PrivateIPClassifier.classifyIPLiteral(host) != nil {
+            throw MCPError.ssrfBlocked(url)
+        }
+        let addresses = resolveHostnameSynchronously(host)
+        for address in addresses where PrivateIPClassifier.classifyIPLiteral(address) != nil {
+            throw MCPError.ssrfBlocked(url)
+        }
+    }
+
+    private static func normalizedHost(from url: URL) -> String? {
+        guard let host = url.host?.lowercased(), host.isEmpty == false else { return nil }
+        return host.hasSuffix(".") ? String(host.dropLast()) : host
+    }
+
+    private static func resolveHostname(_ hostname: String) async -> [String] {
+        if let override = _resolverForTesting {
+            return await override(hostname)
+        }
+        return await Task.detached(priority: .utility) {
+            resolveHostnameSynchronously(hostname)
+        }.value
+    }
+
+    private static func resolveHostnameSynchronously(_ hostname: String) -> [String] {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        hints.ai_flags = AI_ADDRCONFIG
+
+        var result: UnsafeMutablePointer<addrinfo>?
+        defer { freeaddrinfo(result) }
+
+        guard getaddrinfo(hostname, nil, &hints, &result) == 0, result != nil else {
+            return []
+        }
+
+        var addresses: [String] = []
+        var current = result
+        while let info = current {
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(
+                info.pointee.ai_addr,
+                info.pointee.ai_addrlen,
+                &host,
+                socklen_t(NI_MAXHOST),
+                nil,
+                0,
+                NI_NUMERICHOST
+            ) == 0 {
+                let nullIndex = host.firstIndex(of: 0) ?? host.endIndex
+                addresses.append(String(decoding: host[..<nullIndex].map { UInt8(bitPattern: $0) }, as: UTF8.self))
+            }
+            current = info.pointee.ai_next
+        }
+        return addresses
     }
 }
 
