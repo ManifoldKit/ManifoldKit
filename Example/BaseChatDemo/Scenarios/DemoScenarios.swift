@@ -88,6 +88,25 @@ enum DemoScenarios {
         configure: nil
     )
 
+    static let mcpEcho = DemoScenario(
+        id: "mcp-echo",
+        // Calls a tool whose definition was discovered from a real MCP
+        // server (the official `@modelcontextprotocol/server-everything`),
+        // not from a hardcoded `ScriptedBackend` tool. Open Connected
+        // Services > "Demo Echo (local, via npx)" and tap Connect first;
+        // the registry binds `everything__echo` and the scenario routes
+        // through it. macOS-only because the underlying stdio transport
+        // is gated to macOS.
+        title: "Echo via an MCP server",
+        blurb: "Connect 'Demo Echo' in Connected Services first (macOS, requires npx). Then this scenario routes a tool call through the live MCP server.",
+        systemImage: "antenna.radiowaves.left.and.right",
+        prompt: "Use the everything echo tool to repeat back the message 'Hello from BaseChatKit'.",
+        expectedTools: ["everything__echo"],
+        autoSend: true,
+        accessibilityID: "demo-card-mcp-echo",
+        configure: nil
+    )
+
     /// Order matches card display order on the empty state.
     static let all: [DemoScenario] = [
         tipCalc,
@@ -96,7 +115,8 @@ enum DemoScenarios {
         journalWrite,
         invalidArgsRecover,
         rateLimitedRetry,
-        mcpToolFailure
+        mcpToolFailure,
+        mcpEcho
     ]
 
     static func scenario(id: String) -> DemoScenario? {

@@ -95,6 +95,23 @@ extension DemoScenarios {
                 ])
             ]
 
+        case mcpEcho.id:
+            // Targets the namespaced name produced by `MCPToolSource` when the
+            // descriptor's `toolNamespace` is "everything" — the live tool
+            // surfaced by `@modelcontextprotocol/server-everything` after the
+            // user taps Connect. Under `--uitesting`, ScriptedBackend dispatches
+            // the same name; if the user hasn't connected, the registry
+            // returns `.notFound` and the model would normally apologise — but
+            // the scripted second turn goes straight to a confirmation summary
+            // so the demo recording stays predictable for XCUITests.
+            return [
+                .toolCall(name: "everything__echo", arguments: #"{"message":"Hello from BaseChatKit"}"#),
+                .tokens([
+                    "The ", "MCP ", "echo ", "server ", "replied: ",
+                    "'Hello ", "from ", "BaseChatKit'."
+                ])
+            ]
+
         default:
             return fallbackTurns
         }

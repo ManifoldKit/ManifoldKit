@@ -36,17 +36,61 @@ final class DemoMCPCoordinator {
         self.client = MCPClient()
         self.isFoundationModelsActive = isFoundationModelsActive
 
-        #if MCPBuiltinCatalog
-        self.catalog = MCPCatalog.all
-        self.catalogHelpText = "No built-in entries available."
-        #else
-        self.catalog = []
-        self.catalogHelpText = "Enable the MCPBuiltinCatalog trait or provide custom server descriptors."
+        // Catalog composition rationale (PR #921 / `feat/demo-mcp-server`):
+        // - The MCPBuiltinCatalog trait is enabled in the demo's pbxproj so
+        //   `MCPCatalog.all` (Notion / Linear / GitHub) is non-empty out of
+        //   the box. These OAuth-gated entries are useful for users who have
+        //   accounts with those providers, but they aren't a no-config happy
+        //   path for someone just kicking the tyres.
+        // - To give every macOS user a working tap-to-connect server with
+        //   zero credentials, we prepend a stdio descriptor that launches
+        //   `@modelcontextprotocol/server-everything` via `npx`. The server
+        //   is the official MCP reference implementation and exposes an
+        //   `echo` tool the `mcp-echo` demo scenario calls. The descriptor
+        //   is gated to macOS because `MCPClient.makeTransport` rejects
+        //   stdio on every other platform.
+        var assembled: [MCPServerDescriptor] = []
+        #if os(macOS) && !targetEnvironment(macCatalyst)
+        assembled.append(Self.demoEchoDescriptor)
         #endif
+        #if MCPBuiltinCatalog
+        assembled.append(contentsOf: MCPCatalog.all)
+        #endif
+        self.catalog = assembled
+
+        if assembled.isEmpty {
+            self.catalogHelpText = "No services configured. Enable the MCPBuiltinCatalog trait or run on macOS to see the demo Echo server."
+        } else {
+            self.catalogHelpText = "Tap Connect on a service to start its session."
+        }
 
         for descriptor in catalog {
             snapshotsByID[descriptor.id] = .init()
         }
+    }
+
+    /// Stable UUID for the demo Echo descriptor — kept stable so the
+    /// scenario runner and the connect button refer to the same server
+    /// across launches, and so XCUITests can target it deterministically.
+    private static let demoEchoServerID = UUID(uuidString: "8E3F1F1B-0E69-4D8B-9D4D-7E2D2F2A8F11")!
+
+    /// macOS-only stdio descriptor for the official MCP "everything" server.
+    /// Pulled via `npx -y @modelcontextprotocol/server-everything`, which
+    /// requires Node.js on PATH but no credentials. Exposes an `echo` tool
+    /// the `mcp-echo` demo scenario invokes end-to-end through the MCP
+    /// tool bridge.
+    private static var demoEchoDescriptor: MCPServerDescriptor {
+        MCPServerDescriptor(
+            id: demoEchoServerID,
+            displayName: "Demo Echo (local, via npx)",
+            transport: .stdio(.npx(package: "@modelcontextprotocol/server-everything")),
+            authorization: .none,
+            toolNamespace: "everything",
+            resourceURL: nil,
+            dataDisclosure: "Launches the official MCP reference server locally over stdio. Requires Node.js (npx) on PATH. No credentials are sent off-device; tool arguments stay local to the spawned process.",
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall
+        )
     }
 
     func startListenersIfNeeded() {
