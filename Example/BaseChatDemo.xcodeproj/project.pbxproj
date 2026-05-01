@@ -14,7 +14,7 @@
 		BF0005000000000000000000 /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = F30003000000000000000000 /* BaseChatBackends */; };
 		BF0006000000000000000000 /* BaseChatTools in Frameworks */ = {isa = PBXBuildFile; productRef = F30004000000000000000000 /* BaseChatTools */; };
 		BF0020000000000000000000 /* BaseChatMCP in Frameworks */ = {isa = PBXBuildFile; productRef = F30005000000000000000000 /* BaseChatMCP */; };
-		BF0021000000000000000000 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = F30006000000000000000000 /* BaseChatUIModelManagement */; };
+		BF0021100000000000000000 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = F30006000000000000000000 /* BaseChatUIModelManagement */; };
 		BF0007000000000000000000 /* DemoTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10004000000000000000000 /* DemoTools.swift */; };
 		BF0008000000000000000000 /* ChatEmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10005000000000000000000 /* ChatEmptyStateView.swift */; };
 		BF0009000000000000000000 /* ToolApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10006000000000000000000 /* ToolApprovalSheet.swift */; };
@@ -48,7 +48,7 @@
 		BF0027000000000000000000 /* AppIntentToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10023000000000000000000 /* AppIntentToolsView.swift */; };
 		BF0029000000000000000000 /* DemoNowTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10024000000000000000000 /* DemoNowTool.swift */; };
 		BF0028000000000000000000 /* BaseChatAppIntents in Frameworks */ = {isa = PBXBuildFile; productRef = F30008000000000000000000 /* BaseChatAppIntents */; };
-		BF0029000000000000000000 /* BaseChatVoice in Frameworks */ = {isa = PBXBuildFile; productRef = F30009000000000000000000 /* BaseChatVoice */; };
+		BF0029100000000000000000 /* BaseChatVoice in Frameworks */ = {isa = PBXBuildFile; productRef = F30009000000000000000000 /* BaseChatVoice */; };
 		BF0030000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
 		BF0031000000000000000000 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10031000000000000000000 /* ShareViewController.swift */; };
 		BF0032000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
@@ -137,12 +137,12 @@
 			files = (
 				BF0003000000000000000000 /* BaseChatPersistenceSwiftData in Frameworks */,
 				BF0004000000000000000000 /* BaseChatUI in Frameworks */,
-				BF0021000000000000000000 /* BaseChatUIModelManagement in Frameworks */,
+				BF0021100000000000000000 /* BaseChatUIModelManagement in Frameworks */,
 				BF0005000000000000000000 /* BaseChatBackends in Frameworks */,
 				BF0006000000000000000000 /* BaseChatTools in Frameworks */,
 				BF0020000000000000000000 /* BaseChatMCP in Frameworks */,
 				BF0028000000000000000000 /* BaseChatAppIntents in Frameworks */,
-				BF0029000000000000000000 /* BaseChatVoice in Frameworks */,
+				BF0029100000000000000000 /* BaseChatVoice in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
