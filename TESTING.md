@@ -73,6 +73,7 @@ UI automation tests that launch the real Example app in a simulator and drive it
 | `BaseChatUITests` | Integration | Yes | None | XCTest |
 | `BaseChatMCPTests` | Unit, Integration | Yes | None | XCTest |
 | `BaseChatMCPE2ETests` | E2E (subprocess smoke) | No (requires `RUN_MCP_E2E=1` and `npx`) | npx + network | XCTest |
+| `BaseChatServerTests` | Unit, Integration | Yes | None | XCTest |
 | `BaseChatBackendsTests` | Unit, E2E | Partial | MLX/Llama need Apple Silicon | Mixed |
 | `BaseChatTestSupportTests` | Unit | Yes | None | XCTest |
 | `BaseChatE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
@@ -88,6 +89,7 @@ swift test --filter BaseChatInferenceTests --disable-default-traits
 swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits
 swift test --filter BaseChatUITests --disable-default-traits
 swift test --filter BaseChatMCPTests --disable-default-traits
+swift test --filter BaseChatServerTests --disable-default-traits
 swift test --filter BaseChatBackendsTests --disable-default-traits   # cloud/SSE tests only
 swift test --filter BaseChatTestSupportTests --disable-default-traits
 

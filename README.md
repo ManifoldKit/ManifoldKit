@@ -78,6 +78,7 @@ BaseChatUI  ──────>  BaseChatPersistenceSwiftData  ─────�
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 - **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
+- **BaseChatServer** — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`.
 
 ## Quick Start
 
@@ -195,7 +196,22 @@ swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
 ```
 
-### 2.2 Optional voice
+### 2.2 BaseChatServer
+
+`BaseChatServer` runs an OpenAI-compatible local HTTP surface backed by BaseChatKit inference. Build it without default traits for the CI-safe/core server surface:
+
+```bash
+swift build --product BaseChatServer --disable-default-traits --traits Ollama
+swift run --disable-default-traits --traits Ollama BaseChatServer -- \
+  --backend ollama --model llama3.2 --host 127.0.0.1 --port 8080 \
+  --api-key local-dev --cors-origin http://localhost:3000 --metrics
+```
+
+Point OpenAI-compatible clients at `http://127.0.0.1:8080/v1` and send `Authorization: Bearer local-dev`. The server exposes `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`, streaming SSE when `stream: true`, and `GET /metrics` when `--metrics` is enabled. CORS is disabled by default; use `--cors-origin <origin>` for a single trusted browser origin or `--unsafe-cors` only for local development.
+
+Backend availability follows SwiftPM traits: MLX requires `--traits MLX` plus `--model-path` or `--model`, llama.cpp requires `--traits Llama` plus a GGUF `--model-path`, Ollama requires `--traits Ollama`, and Apple Foundation Models require macOS/iOS 26 at runtime. Cloud SaaS loading is intentionally not implemented in the v1 server.
+
+### 2.3 Optional voice
 
 `BaseChatVoice` is an opt-in module for speech input/output. It plugs into
 `ChatView` through the `composerAccessory:` seam, so `BaseChatUI` stays free of

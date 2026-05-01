@@ -25,6 +25,8 @@ let package = Package(
         .library(name: "BaseChatTools", targets: ["BaseChatTools"]),
         .executable(name: "bck-tools", targets: ["bck-tools"]),
         .library(name: "BaseChatAppIntents", targets: ["BaseChatAppIntents"]),
+        .library(name: "BaseChatServerCore", targets: ["BaseChatServerCore"]),
+        .executable(name: "BaseChatServer", targets: ["BaseChatServer"]),
     ],
     traits: [
         .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
@@ -68,6 +70,8 @@ let package = Package(
         // ABI-compatible macro APIs for Swift 5.10 / 6.0 and builds fine on
         // Swift 6.1+. Do not bump beyond what the installed toolchain supports.
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"601.0.0"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
         // Macro compiler plugin: implements @ToolSchema. Runs at build time in
@@ -394,6 +398,57 @@ let package = Package(
             path: "Tests/BaseChatAnyLanguageModelBridgeTests",
             swiftSettings: [
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
+            ]
+        ),
+        .target(
+            name: "BaseChatServerCore",
+            dependencies: [
+                "BaseChatInference",
+                .product(name: "Hummingbird", package: "hummingbird"),
+            ],
+            path: "Sources/BaseChatServerCore"
+        ),
+        .target(
+            name: "BaseChatServerBackends",
+            dependencies: [
+                "BaseChatServerCore",
+                "BaseChatInference",
+                "BaseChatBackends",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/BaseChatServerBackends",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("Llama", .when(traits: ["Llama"])),
+                .define("Ollama", .when(traits: ["Ollama"])),
+                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .executableTarget(
+            name: "BaseChatServer",
+            dependencies: [
+                "BaseChatServerCore",
+                "BaseChatServerBackends",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/BaseChatServer",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("Llama", .when(traits: ["Llama"])),
+                .define("Ollama", .when(traits: ["Ollama"])),
+                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+        .testTarget(
+            name: "BaseChatServerTests",
+            dependencies: [
+                "BaseChatServerCore",
+                "BaseChatServerBackends",
+                "BaseChatInference",
+                "BaseChatTestSupport",
+                .product(name: "HummingbirdTesting", package: "hummingbird"),
             ]
         ),
         .testTarget(
