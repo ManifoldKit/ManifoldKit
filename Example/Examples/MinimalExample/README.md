@@ -2,7 +2,7 @@
 
 The simplest possible BaseChatKit app. Demonstrates the bare minimum setup:
 
-- Create a `BaseChatRuntime` at startup
+- Create a `BaseChatBootstrap` at startup
 - Register backends with `DefaultBackends.register(with:)`
 - Configure a `ChatViewModel` and `SessionManagerViewModel` from the runtime
 - Present `ChatView` with environment wiring

@@ -1,6 +1,6 @@
 import SwiftUI
 import SwiftData
-import BaseChatCore
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
@@ -17,7 +17,7 @@ struct BaseChatDemoApp: App {
     @State private var chatViewModel: ChatViewModel
     @State private var modelManagementViewModel: ModelManagementViewModel
     @State private var sessionManager = SessionManagerViewModel()
-    @State private var runtime: BaseChatRuntime?
+    @State private var runtime: BaseChatBootstrap?
     private let inferenceService: InferenceService
     private let toolRegistry: ToolRegistry
     private let sandboxRoot: URL
@@ -352,7 +352,7 @@ struct BaseChatDemoApp: App {
 
     @MainActor
     private func installRuntime(using container: ModelContainer) {
-        let runtime = try! BaseChatRuntime(
+        let runtime = try! BaseChatBootstrap(
             configuration: runtimeConfiguration,
             inferenceService: inferenceService,
             makeModelContainer: { container }

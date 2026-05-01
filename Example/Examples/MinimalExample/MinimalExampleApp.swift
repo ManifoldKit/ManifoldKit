@@ -1,6 +1,6 @@
 import SwiftUI
 import SwiftData
-import BaseChatCore
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement
@@ -11,11 +11,11 @@ import BaseChatHuggingFace
 
 /// The simplest possible BaseChatKit app with runtime-first bootstrap.
 ///
-/// This assembles a ``BaseChatRuntime``, registers the built-in backends,
+/// This assembles a ``BaseChatBootstrap``, registers the built-in backends,
 /// and presents the standard chat + model-management surfaces.
 @main
 struct MinimalExampleApp: App {
-    private let runtime: BaseChatRuntime
+    private let runtime: BaseChatBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
@@ -27,7 +27,7 @@ struct MinimalExampleApp: App {
         // detached `.task` (see BaseChatDemoApp): SwiftData container setup
         // (schema compilation + SQLite open) can stall the first frame for
         // several seconds when done on the main thread.
-        let runtime = try! BaseChatRuntime(
+        let runtime = try! BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "Minimal Chat",
                 bundleIdentifier: "com.basechatkit.minimal-example"

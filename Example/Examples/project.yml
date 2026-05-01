@@ -19,7 +19,7 @@ targets:
       - MinimalExample
     dependencies:
       - package: BaseChatKit
-        product: BaseChatCore
+        product: BaseChatPersistenceSwiftData
       - package: BaseChatKit
         product: BaseChatUI
       - package: BaseChatKit

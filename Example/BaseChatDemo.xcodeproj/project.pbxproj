@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		BF0001000000000000000000 /* BaseChatDemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10001000000000000000000 /* BaseChatDemoApp.swift */; };
 		BF0002000000000000000000 /* DemoContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10002000000000000000000 /* DemoContentView.swift */; };
-		BF0003000000000000000000 /* BaseChatCore in Frameworks */ = {isa = PBXBuildFile; productRef = F30001000000000000000000 /* BaseChatCore */; };
+		BF0003000000000000000000 /* BaseChatPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = F30001000000000000000000 /* BaseChatPersistenceSwiftData */; };
 		BF0004000000000000000000 /* BaseChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = F30002000000000000000000 /* BaseChatUI */; };
 		BF0005000000000000000000 /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = F30003000000000000000000 /* BaseChatBackends */; };
 		BF0006000000000000000000 /* BaseChatTools in Frameworks */ = {isa = PBXBuildFile; productRef = F30004000000000000000000 /* BaseChatTools */; };
@@ -135,7 +135,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BF0003000000000000000000 /* BaseChatCore in Frameworks */,
+				BF0003000000000000000000 /* BaseChatPersistenceSwiftData in Frameworks */,
 				BF0004000000000000000000 /* BaseChatUI in Frameworks */,
 				BF0021000000000000000000 /* BaseChatUIModelManagement in Frameworks */,
 				BF0005000000000000000000 /* BaseChatBackends in Frameworks */,
@@ -312,7 +312,7 @@
 			);
 			name = BaseChatDemo;
 			packageProductDependencies = (
-				F30001000000000000000000 /* BaseChatCore */,
+				F30001000000000000000000 /* BaseChatPersistenceSwiftData */,
 				F30002000000000000000000 /* BaseChatUI */,
 				F30006000000000000000000 /* BaseChatUIModelManagement */,
 				F30003000000000000000000 /* BaseChatBackends */,
@@ -897,10 +897,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F30001000000000000000000 /* BaseChatCore */ = {
+		F30001000000000000000000 /* BaseChatPersistenceSwiftData */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F20001000000000000000000 /* XCLocalSwiftPackageReference ".." */;
-			productName = BaseChatCore;
+			productName = BaseChatPersistenceSwiftData;
 		};
 		F30002000000000000000000 /* BaseChatUI */ = {
 			isa = XCSwiftPackageProductDependency;
