@@ -6,6 +6,7 @@ import BaseChatTestSupport
 final class MCPHardeningTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.reset()
+        MCPSSRFPolicy._resolverForTesting = nil
         super.tearDown()
     }
 
@@ -106,6 +107,41 @@ final class MCPHardeningTests: XCTestCase {
                 return
             }
             XCTAssertEqual(blockedURL.absoluteString, "https://169.254.169.254/token")
+        }
+    }
+
+    func test_ssrf_requestTimeValidation_blocksTransportDNSRebinding() async {
+        MCPSSRFPolicy._resolverForTesting = { host in
+            host == "example.com" ? ["169.254.169.254"] : ["93.184.216.34"]
+        }
+
+        await XCTAssertThrowsErrorAsync(
+            try await MCPSSRFPolicy.validateTransportRequestURL(URL(string: "https://example.com/mcp")!)
+        ) { error in
+            guard case .ssrfBlocked(let blockedURL) = error as? MCPError else {
+                XCTFail("Expected ssrfBlocked, got \(error)")
+                return
+            }
+            XCTAssertEqual(blockedURL.host, "example.com")
+        }
+    }
+
+    func test_ssrf_requestTimeValidation_blocksOAuthDNSRebinding() async {
+        MCPSSRFPolicy._resolverForTesting = { host in
+            host == "token.example.com" ? ["10.0.0.4"] : ["93.184.216.34"]
+        }
+
+        await XCTAssertThrowsErrorAsync(
+            try await MCPSSRFPolicy.validateOAuthRequestURL(
+                URL(string: "https://token.example.com/token")!,
+                label: "token endpoint"
+            )
+        ) { error in
+            guard case .ssrfBlocked(let blockedURL) = error as? MCPError else {
+                XCTFail("Expected ssrfBlocked, got \(error)")
+                return
+            }
+            XCTAssertEqual(blockedURL.host, "token.example.com")
         }
     }
 
@@ -317,6 +353,61 @@ final class MCPHardeningTests: XCTestCase {
         XCTAssertNotNil(firstResult, "First redirect should be followed")
         // Second redirect is refused — completionHandler called with nil.
         XCTAssertNil(secondResult, "Second redirect must be refused")
+    }
+
+    func test_ssrf_redirect_validation_blocksTransportDestination() {
+        let delegate = MCPRedirectCapDelegate(
+            maxRedirects: nil,
+            validator: MCPSSRFPolicy.validateTransportRedirectURL
+        )
+        let session = URLSession.shared
+        let fakeHTTPResponse = HTTPURLResponse(
+            url: URL(string: "https://api.example.com/mcp")!,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": "https://192.168.1.20/mcp"]
+        )!
+        let blockedRequest = URLRequest(url: URL(string: "https://192.168.1.20/mcp")!)
+        var result: URLRequest?
+
+        let exp = expectation(description: "redirect validation callback")
+        delegate.urlSession(
+            session,
+            task: session.dataTask(with: URLRequest(url: URL(string: "https://api.example.com/mcp")!)),
+            willPerformHTTPRedirection: fakeHTTPResponse,
+            newRequest: blockedRequest
+        ) { request in
+            result = request
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNil(result, "Redirect to private-resolving host must be blocked")
+    }
+
+    func test_ssrf_redirect_validation_blocksOAuthDestination() {
+        let delegate = MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
+        let session = URLSession.shared
+        let fakeHTTPResponse = HTTPURLResponse(
+            url: URL(string: "https://auth.example.com/token")!,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": "https://[fd00::1]/token"]
+        )!
+        let blockedRequest = URLRequest(url: URL(string: "https://[fd00::1]/token")!)
+        var result: URLRequest?
+
+        let exp = expectation(description: "oauth redirect validation callback")
+        delegate.urlSession(
+            session,
+            task: session.dataTask(with: URLRequest(url: URL(string: "https://auth.example.com/token")!)),
+            willPerformHTTPRedirection: fakeHTTPResponse,
+            newRequest: blockedRequest
+        ) { request in
+            result = request
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNil(result, "OAuth redirect to private-resolving host must be blocked")
     }
 
     func test_networkAndLifecycleObserversPlumbIntoConnectionState() async {

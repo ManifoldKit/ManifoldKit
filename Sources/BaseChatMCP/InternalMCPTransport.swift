@@ -57,6 +57,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
     }
 
     private func startWithRetry(allowRetry: Bool) async throws {
+        try await MCPSSRFPolicy.validateTransportRequestURL(configuration.endpoint)
         var request = URLRequest(url: configuration.endpoint)
         request.httpMethod = "GET"
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -69,7 +70,13 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
-        let (bytes, response) = try await configuration.session.bytes(for: request)
+        let (bytes, response) = try await configuration.session.bytes(
+            for: request,
+            delegate: MCPRedirectCapDelegate(
+                maxRedirects: nil,
+                validator: MCPSSRFPolicy.validateTransportRedirectURL
+            )
+        )
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
         }
@@ -121,6 +128,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         if payload.count > configuration.maxMessageBytes {
             throw MCPError.oversizeMessage(payload.count)
         }
+        try await MCPSSRFPolicy.validateTransportRequestURL(configuration.endpoint)
 
         var request = URLRequest(url: configuration.endpoint)
         request.httpMethod = "POST"
@@ -134,7 +142,13 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await configuration.session.data(for: request)
+        let (data, response) = try await configuration.session.data(
+            for: request,
+            delegate: MCPRedirectCapDelegate(
+                maxRedirects: nil,
+                validator: MCPSSRFPolicy.validateTransportRedirectURL
+            )
+        )
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
         }
