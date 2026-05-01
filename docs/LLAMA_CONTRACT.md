@@ -53,7 +53,7 @@ changes before merging.
 | Failure modes | None. |
 
 **Fields set by `LlamaBackend`:**
-- `n_gpu_layers = 0` in simulator (Metal unreliable); `99` otherwise (offload all layers).
+- `n_gpu_layers = 0` in simulator (Metal unreliable); `99` otherwise (offload all layers). On non-simulator hosts, setting `LLAMA_FORCE_CPU_ONLY=1` in the process environment forces `n_gpu_layers = 0` for memory-constrained loads of very large MoE models that cannot fit their Metal partial-weight buffers — the default `99` is ~8× faster on a 4B GGUF (measured 2.28 s vs 0.28 s on `test_countTokens_…` against Qwen3-4B-Q4_K_M, M5/24 GB).
 - `progress_callback` / `progress_callback_user_data`: set when a load-progress handler is installed. The callback fires on the loader thread; `LlamaBackend` bridges to async Swift via an unstructured `Task`. The `Unmanaged` retain on `ProgressCallbackContext` is released in a `defer` block after `llama_model_load_from_file` returns, so the C callback cannot fire after that point.
 
 ### `llama_model_load_from_file`
