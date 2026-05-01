@@ -102,12 +102,19 @@ final class LlamaModelLoader: @unchecked Sendable {
         #if targetEnvironment(simulator)
         modelParams.n_gpu_layers = 0   // Metal not reliable in simulator
         #else
-        // TEMP for 26B MoE on a 24 GB Mac running other heavy processes: pure
-        // CPU (mmap-paged). The Metal command-buffer cannot allocate ~10 GB of
-        // partial weights when system headroom is < ~6 GB. CPU-only proves the
-        // model decodes; we'll bump back toward 99 once memory pressure eases
-        // and the load-time hw.memsize policy lands.
-        modelParams.n_gpu_layers = 0
+        // Default: offload all layers to Metal. CPU-only is ~8× slower for
+        // even a 4B model (measured 2.28 s vs 0.28 s on `test_countTokens_…`
+        // against Qwen3-4B-Q4_K_M on M5/24 GB).
+        //
+        // Escape hatch for memory-constrained loads of very large MoE models:
+        // when the Metal command-buffer cannot allocate enough partial
+        // weights, set `LLAMA_FORCE_CPU_ONLY=1` to force CPU (mmap-paged)
+        // execution. Documented in `docs/LLAMA_CONTRACT.md`.
+        if ProcessInfo.processInfo.environment["LLAMA_FORCE_CPU_ONLY"] == "1" {
+            modelParams.n_gpu_layers = 0
+        } else {
+            modelParams.n_gpu_layers = 99  // Offload all layers to Metal
+        }
         #endif
 
         // Wire up the progress callback when a handler is installed.
