@@ -43,6 +43,18 @@ inferenceService.toolRegistry = registry
 The model now sees `ask_base_chat_demo_intent` in its tool list and can
 invoke it whenever the conversation calls for it.
 
+`AppIntentToolExecutor` requires per-call approval by default. For explicitly
+read-only intents, opt out deliberately:
+
+```swift
+registry.register(
+    AppIntentToolExecutor(
+        AskBaseChatDemoIntent.self,
+        approvalPolicy: .readOnlyAutoApprove
+    )
+)
+```
+
 ## Decodable boilerplate
 
 AppIntents do not synthesise `Decodable` automatically because the

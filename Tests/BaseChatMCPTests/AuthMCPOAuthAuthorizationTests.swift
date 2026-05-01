@@ -6,6 +6,8 @@ import BaseChatTestSupport
 final class AuthMCPOAuthAuthorizationTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.reset()
+        MCPSSRFPolicy._resolverForTesting = nil
+        MCPURLSessionFactory.networkDisabled = false
         super.tearDown()
     }
 
@@ -106,6 +108,181 @@ final class AuthMCPOAuthAuthorizationTests: XCTestCase {
         let body = requestBodyString(tokenRequests[0])
         XCTAssertTrue(body.contains("grant_type=refresh_token"))
         XCTAssertTrue(body.contains("refresh_token=refresh-123"))
+    }
+
+    func test_handleUnauthorizedRejectsTokenEndpointDNSRebinding() async throws {
+        let serverID = UUID()
+        let resourceURL = URL(string: "https://resource.example.com/mcp")!
+        let issuer = URL(string: "https://auth.example.com")!
+        let metadataURL = URL(string: "https://auth.example.com/.well-known/oauth-authorization-server")!
+        let tokenEndpoint = URL(string: "https://token.example.com/token")!
+
+        MCPSSRFPolicy._resolverForTesting = { host in
+            host == "token.example.com" ? ["169.254.169.254"] : ["93.184.216.34"]
+        }
+
+        MockURLProtocol.stub(url: metadataURL, response: .immediate(data: Data(
+            """
+            {
+              "issuer": "https://auth.example.com",
+              "authorization_endpoint": "https://auth.example.com/authorize",
+              "token_endpoint": "https://token.example.com/token"
+            }
+            """.utf8
+        ), statusCode: 200, headers: ["Content-Type": "application/json"]))
+        MockURLProtocol.stub(url: tokenEndpoint, response: .immediate(data: Data(
+            """
+            {
+              "access_token": "unexpected-token",
+              "expires_in": 3600,
+              "scope": "tools:read",
+              "token_type": "Bearer"
+            }
+            """.utf8
+        ), statusCode: 200, headers: ["Content-Type": "application/json"]))
+
+        let tokenStore = MCPOAuthTokenStore.inMemory()
+        try await tokenStore.write(
+            MCPOAuthTokens(
+                accessToken: "expired",
+                refreshToken: "refresh-123",
+                expiresAt: Date().addingTimeInterval(-60),
+                scopes: ["tools:read"],
+                issuer: issuer
+            ),
+            serverID
+        )
+
+        let authorization = MCPOAuthAuthorization(
+            descriptor: makeDescriptor(issuer: issuer),
+            serverID: serverID,
+            resourceURL: resourceURL,
+            redirectListener: RedirectListenerMock { _ in
+                XCTFail("Redirect listener should not be used when token endpoint is blocked")
+                return URL(string: "basechat://oauth/callback?code=unused&state=unused")!
+            },
+            tokenStore: tokenStore,
+            session: makeSession()
+        )
+
+        let decision = try await authorization.handleUnauthorized(statusCode: 401, body: Data())
+        switch decision {
+        case .retry:
+            XCTFail("Expected SSRF failure")
+        case .fail(let error):
+            guard case .ssrfBlocked(let blockedURL) = error else {
+                XCTFail("Expected ssrfBlocked, got \(error)")
+                return
+            }
+            XCTAssertEqual(blockedURL.absoluteString, "https://token.example.com/token")
+        }
+
+        XCTAssertNil(
+            MockURLProtocol.capturedRequests.first(where: { $0.url == tokenEndpoint }),
+            "Token request must be blocked before network dispatch"
+        )
+    }
+
+    func test_authorizationHeaderFailsWhenDefaultSessionBoundaryHasNetworkDisabled() async {
+        MCPURLSessionFactory.networkDisabled = true
+
+        let serverID = UUID()
+        let resourceURL = URL(string: "https://resource.example.com/mcp")!
+        let issuer = URL(string: "https://auth.example.com")!
+        let descriptor = makeDescriptor(issuer: issuer)
+        let tokenStore = MCPOAuthTokenStore.inMemory()
+        do {
+            try await tokenStore.write(
+                MCPOAuthTokens(
+                    accessToken: "expired",
+                    refreshToken: "refresh-123",
+                    expiresAt: Date().addingTimeInterval(-60),
+                    scopes: ["tools:read"],
+                    issuer: issuer
+                ),
+                serverID
+            )
+        } catch {
+            XCTFail("Unexpected token write failure: \(error)")
+            return
+        }
+
+        let authorization = MCPOAuthAuthorization(
+            descriptor: descriptor,
+            serverID: serverID,
+            resourceURL: resourceURL,
+            redirectListener: RedirectListenerMock { _ in
+                XCTFail("Redirect listener should not be used when network is disabled")
+                return URL(string: "basechat://oauth/callback?code=unused&state=unused")!
+            },
+            tokenStore: tokenStore
+        )
+
+        do {
+            _ = try await authorization.authorizationHeader(for: resourceURL)
+            XCTFail("Expected networkUnavailable")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .networkUnavailable)
+        } catch {
+            XCTFail("Expected MCPError.networkUnavailable, got \(error)")
+        }
+    }
+
+    func test_authorizationHeaderRefreshesWithInjectedSessionEvenWhenDefaultBoundaryDisabled() async throws {
+        MCPURLSessionFactory.networkDisabled = true
+
+        let serverID = UUID()
+        let resourceURL = URL(string: "https://resource.example.com/mcp")!
+        let issuer = URL(string: "https://auth.example.com")!
+        let metadataURL = URL(string: "https://auth.example.com/.well-known/oauth-authorization-server")!
+        let tokenEndpoint = URL(string: "https://auth.example.com/token")!
+        MockURLProtocol.stub(url: metadataURL, response: .immediate(data: Data(
+            """
+            {
+              "issuer": "https://auth.example.com",
+              "authorization_endpoint": "https://auth.example.com/authorize",
+              "token_endpoint": "https://auth.example.com/token"
+            }
+            """.utf8
+        ), statusCode: 200, headers: ["Content-Type": "application/json"]))
+        MockURLProtocol.stub(url: tokenEndpoint, response: .immediate(data: Data(
+            """
+            {
+              "access_token": "refreshed-token",
+              "expires_in": 3600,
+              "scope": "tools:read",
+              "token_type": "Bearer"
+            }
+            """.utf8
+        ), statusCode: 200, headers: ["Content-Type": "application/json"]))
+
+        let descriptor = makeDescriptor(issuer: issuer)
+        let tokenStore = MCPOAuthTokenStore.inMemory()
+        try await tokenStore.write(
+            MCPOAuthTokens(
+                accessToken: "expired",
+                refreshToken: "refresh-123",
+                expiresAt: Date().addingTimeInterval(-60),
+                scopes: ["tools:read"],
+                issuer: issuer
+            ),
+            serverID
+        )
+
+        let authorization = MCPOAuthAuthorization(
+            descriptor: descriptor,
+            serverID: serverID,
+            resourceURL: resourceURL,
+            redirectListener: RedirectListenerMock { _ in
+                XCTFail("Redirect listener should not be used for refresh")
+                return URL(string: "basechat://oauth/callback?code=unused&state=unused")!
+            },
+            tokenStore: tokenStore,
+            session: makeSession()
+        )
+
+        let header = try await authorization.authorizationHeader(for: resourceURL)
+        XCTAssertEqual(header, "Bearer refreshed-token")
     }
 
     func test_refreshTokenRotationPersistsReplacementRefreshToken() async throws {

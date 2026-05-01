@@ -86,6 +86,41 @@ final class DownloadManagerTests: XCTestCase {
 
     // MARK: - GGUF Validation
 
+    func test_validateChecksum_expectedDigestMatches_passes() throws {
+        let fileURL = tempDirectory.appendingPathComponent("checksum-pass.bin")
+        try Data("hello".utf8).write(to: fileURL)
+
+        let expected = ModelFileChecksum(
+            algorithm: .sha256,
+            hexDigest: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        )
+        XCTAssertNoThrow(try DownloadFileValidator().validateChecksum(at: fileURL, expectedChecksum: expected))
+    }
+
+    func test_validateChecksum_expectedDigestMismatch_throws() throws {
+        let fileURL = tempDirectory.appendingPathComponent("checksum-fail.bin")
+        try Data("hello".utf8).write(to: fileURL)
+
+        let expected = ModelFileChecksum(
+            algorithm: .sha256,
+            hexDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+        XCTAssertThrowsError(
+            try DownloadFileValidator().validateChecksum(at: fileURL, expectedChecksum: expected)
+        ) { error in
+            guard case HuggingFaceError.invalidDownloadedFile(let reason) = error else {
+                return XCTFail("Expected invalidDownloadedFile for checksum mismatch, got: \(error)")
+            }
+            XCTAssertTrue(reason.contains("Checksum mismatch"), "Expected mismatch error, got: \(reason)")
+        }
+    }
+
+    func test_validateChecksum_missingExpectedDigest_skipsVerification() throws {
+        let fileURL = tempDirectory.appendingPathComponent("checksum-optional.bin")
+        try Data("tiny".utf8).write(to: fileURL)
+        XCTAssertNoThrow(try DownloadFileValidator().validateChecksum(at: fileURL, expectedChecksum: nil))
+    }
+
     func test_validateGGUFFile_validMagic() throws {
         // Create a temp file with valid GGUF magic bytes and realistic size (>1MB).
         let fileURL = tempDirectory.appendingPathComponent("valid.gguf")

@@ -63,7 +63,7 @@ public struct MessageActionMenuModifier: ViewModifier {
 
     private var copyButton: some View {
         Button {
-            copyToClipboard(message.content)
+            ClipboardWriter.copy(message.content)
         } label: {
             Label("Copy", systemImage: "doc.on.doc")
         }
@@ -118,17 +118,6 @@ public struct MessageActionMenuModifier: ViewModifier {
                 }
         }
         .presentationDetents([.medium, .large])
-    }
-
-    // MARK: - Clipboard
-
-    private func copyToClipboard(_ text: String) {
-        #if os(iOS)
-        UIPasteboard.general.string = text
-        #elseif os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
     }
 }
 
