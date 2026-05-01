@@ -88,7 +88,11 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                         tempURL: tempURL
                     )
                 } else {
-                    try self.validateDownloadedFile(at: tempURL, modelType: model.modelType)
+                    try self.validateDownloadedFile(
+                        at: tempURL,
+                        modelType: model.modelType,
+                        expectedChecksum: context.expectedChecksum
+                    )
                     let destination = self.storageService.modelsDirectory.appendingPathComponent(model.fileName)
                     let resolvedDestination = destination.standardized
                     let resolvedModels = self.storageService.modelsDirectory.standardized
