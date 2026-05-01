@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.14.4](https://github.com/roryford/BaseChatKit/compare/v0.14.3...v0.14.4) (2026-05-01)
+
+### Highlights
+
+#### Llama backend offloads to Metal by default
+
+A hardcoded `n_gpu_layers = 0` in `LlamaModelLoader` was paying a ~8x perf cost on every GGUF load in the name of an OOM scenario that no longer reproduces on current macOS. The default flips back to full Metal offload (`n_gpu_layers = 99`); an `LLAMA_FORCE_CPU_ONLY=1` env var keeps the CPU-only path one flag away for hosts that genuinely need it. A 4B chat model now loads in ~0.28 s instead of ~2.28 s, and a 26B MoE GGUF that originally motivated the workaround loads cleanly with ~520 MiB on the GPU.
+
+```swift
+// Default: all layers on Metal
+let backend = LlamaBackend()
+try await backend.loadModel(from: gguf, plan: .standard)
+
+// Opt back into CPU-only on a constrained host:
+//   LLAMA_FORCE_CPU_ONLY=1 ./MyApp
+```
+
+The simulator branch is unchanged — Metal stays disabled there because it isn't reliable. See [#938].
+
+#### Example demo ships a working MCP integration
+
+The demo's Connected Services sheet used to land on "No services configured" because the `MCPBuiltinCatalog` trait was off. With it enabled on the Example app, the catalog now lists Notion / Linear / GitHub plus, on macOS, a credential-free "Demo Echo (local, via npx)" entry that needs only Node on PATH. A new `mcp-echo` scenario card invokes `everything__echo` against the live MCP server, demonstrating tool calling end-to-end through MCP rather than only through the scripted backend.
+
+```swift
+// Lives in the Example target, not Sources/BaseChatMCP/
+let descriptor = MCPServerDescriptor(
+    id: "demo-echo",
+    transport: .stdio(.npx(package: "@modelcontextprotocol/server-everything"))
+)
+```
+
+`Sources/BaseChatMCP/` is unchanged. The descriptor and the new scenario both live in the Example target so the framework's public surface doesn't grow. See [#934].
+
+### Features
+
+- **fuzz:** parallel fuzz workers with deterministic seed sharding and findings-merge across isolated worker processes ([#920])
+- **demo:** ship working MCP server and tool-calling-via-MCP scenario ([#934])
+
+### Fixes
+
+- **llama:** env-gate the `n_gpu_layers=0` TEMP — Metal offload is now the default, with `LLAMA_FORCE_CPU_ONLY=1` as the opt-out ([#938])
+- guard `BaseChatVoice` in the iOS Simulator so the demo launches cleanly, and refresh CLAUDE.md / README to reflect the `BaseChatRuntime` + `BaseChatPersistenceSwiftData` split ([#931])
+- opt in local model discovery for hardware / capability checks, and standardize pin hashing between the secure-enclave key manager and the pinned-session delegate ([#929])
+
 ## [0.14.3](https://github.com/roryford/BaseChatKit/compare/v0.14.2...v0.14.3) (2026-05-01)
 
 ### Highlights
