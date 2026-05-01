@@ -52,28 +52,29 @@ BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for 
 
 ## Architecture
 
-BaseChatKit is split into five primary targets plus optional bridge modules:
+BaseChatKit is split into six primary targets plus optional bridge modules:
 
 ```
-BaseChatUI  ──────────>  BaseChatCore  ──────────>  BaseChatInference
-(Views, ViewModels)      (SwiftData schema,         (Protocols, Models,
-                          @Model types,              Services, Inference
-                          persistence, export)       orchestration)
-                                                             ↑
-                         BaseChatMCP ────────────────────────┤
-                         (MCP descriptors, client,           │
-                          tool bridge)                       │
-                                                             │
-                          BaseChatBackends ──────────────────┘
-                          (MLX, llama.cpp,
-                           Foundation, Cloud)
+BaseChatUI  ──────>  BaseChatPersistenceSwiftData  ──────>  BaseChatRuntime  ──────>  BaseChatInference
+(Views,              (SwiftData schema, @Model            (Ports, use cases,         (Protocols, Models,
+ ViewModels)          types, container, adapters,          session-list               Services, Inference
+                      BaseChatBootstrap)                   orchestration)             orchestration)
+                                                                                              ↑
+                                              BaseChatMCP ─────────────────────────────────────┤
+                                              (MCP descriptors, client,                        │
+                                               tool bridge)                                    │
+                                                                                               │
+                                              BaseChatBackends ────────────────────────────────┘
+                                              (MLX, llama.cpp,
+                                               Foundation, Cloud)
 ```
 
 - **BaseChatInference** — Inference orchestration. Protocols, models, and services for model loading, generation, context windows, prompt assembly, compression, tokenizers, and capability detection. No SwiftData. No ML dependencies. This is the integration point for custom backends and the minimum target for apps that bring their own persistence and UI.
 - **BaseChatMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`.
-- **BaseChatCore** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, `ChatPersistenceProvider`, and chat export. Depends on `BaseChatInference` but does not re-export it.
-- **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatCore`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
-- **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatCore` (for persistence) and `BaseChatInference` (for inference orchestration).
+- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), and session-list orchestration. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
+- **BaseChatPersistenceSwiftData** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, adapter implementations of the runtime ports, and the full-stack `BaseChatBootstrap` entry point.
+- **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatRuntime` or `BaseChatPersistenceSwiftData`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
+- **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatRuntime`, `BaseChatPersistenceSwiftData`, and `BaseChatInference`.
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 - **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
@@ -90,7 +91,8 @@ Add the targets you need:
 
 ```swift
 .target(name: "MyApp", dependencies: [
-    .product(name: "BaseChatCore", package: "BaseChatKit"),
+    .product(name: "BaseChatRuntime", package: "BaseChatKit"),
+    .product(name: "BaseChatPersistenceSwiftData", package: "BaseChatKit"),
     .product(name: "BaseChatBackends", package: "BaseChatKit"),
     .product(name: "BaseChatUI", package: "BaseChatKit"),
 ])

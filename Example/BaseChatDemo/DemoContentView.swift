@@ -20,9 +20,14 @@ struct DemoContentView: View {
     @State private var isModelManagementPresented = false
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
+    // BaseChatVoice's AppleSpeechTranscriber drives AVAudioEngine, which raises
+    // on iOS Simulator launch (no audio input device). Mount the controller
+    // and the composer accessory only on real hardware.
+    #if !targetEnvironment(simulator)
     @State private var voiceController = VoiceConversationController(
         wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat", "base chat"])
     )
+    #endif
 
     /// Tool registry shared with the app's inference service. Held here so the
     /// demo scenario runner can install scenario-specific variant executors.
@@ -58,7 +63,11 @@ struct DemoContentView: View {
                 showModelManagement: $isModelManagementPresented,
                 emptyState: { ChatEmptyStateView(runScenario: runScenario) },
                 composerAccessory: {
+                    #if !targetEnvironment(simulator)
                     VoiceComposerAccessory(controller: voiceController)
+                    #else
+                    EmptyView()
+                    #endif
                 },
                 apiConfiguration: { APIConfigurationView() }
             )
