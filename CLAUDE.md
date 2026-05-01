@@ -20,6 +20,8 @@
 ```bash
 # Runs in CI — no hardware required (disable default MLX trait to skip heavy deps)
 swift test --filter BaseChatCoreTests --disable-default-traits
+swift test --filter BaseChatRuntimeTests --disable-default-traits
+swift test --filter BaseChatPersistenceSwiftDataTests --disable-default-traits
 swift test --filter BaseChatInferenceTests --disable-default-traits
 swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits
 swift test --filter BaseChatUITests --disable-default-traits
@@ -131,7 +133,8 @@ Before pushing any branch, run all CI-safe test suites locally and confirm zero 
 
 ```bash
 # 1. XCTest suites — single invocation, all filters at once
-scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests \
+scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
+  --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
   --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
   --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
@@ -155,7 +158,8 @@ The two invocations are separate processes — the libmalloc SIGABRT only trigge
 swift build --build-tests --disable-default-traits
 
 (scripts/test.sh \
-   --filter BaseChatCoreTests --filter BaseChatUITests \
+   --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
+   --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
    --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
    --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
    --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
@@ -296,7 +300,7 @@ All changes go through PRs — direct pushes to `main` are blocked for everyone.
 4. Report the PR URL — the maintainer reviews and merges manually
 5. Do NOT pass `--auto` or `--merge` — merges require human approval
 
-CI must pass (`BaseChatCoreTests` + `BaseChatInferenceTests` + `BaseChatInferenceSwiftTestingTests` + `BaseChatUITests` + `BaseChatUIModelManagementTests` + `BaseChatMCPTests` + `BaseChatBackendsTests` + `BaseChatTestSupportTests` + `BaseChatAppIntentsTests`) before merge is allowed.
+CI must pass (`BaseChatCoreTests` + `BaseChatRuntimeTests` + `BaseChatPersistenceSwiftDataTests` + `BaseChatInferenceTests` + `BaseChatInferenceSwiftTestingTests` + `BaseChatUITests` + `BaseChatUIModelManagementTests` + `BaseChatMCPTests` + `BaseChatBackendsTests` + `BaseChatTestSupportTests` + `BaseChatAppIntentsTests`) before merge is allowed.
 
 `BaseChatBackendsTests` runs in CI without hardware traits — only cloud backend and SSE tests execute; MLX and Llama tests are excluded by `#if MLX`/`#if Llama` conditional compilation. Run with `--traits MLX,Llama` locally on Apple Silicon before merging backend changes. `BaseChatE2ETests` requires physical hardware and does not run in CI.
 

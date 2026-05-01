@@ -205,7 +205,8 @@ jobs:
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
-      # - Runs BaseChatCoreTests + BaseChatInferenceTests + BaseChatInferenceSwiftTestingTests
+      # - Runs BaseChatCoreTests + BaseChatRuntimeTests + BaseChatPersistenceSwiftDataTests
+      #   + BaseChatInferenceTests + BaseChatInferenceSwiftTestingTests
       #   + BaseChatMCPTests + BaseChatUITests + BaseChatBackendsTests + BaseChatTestSupportTests.
       # - BaseChatInferenceTests contains XCTest suites only; Swift Testing suites live in
       #   BaseChatInferenceSwiftTestingTests to prevent a libmalloc SIGABRT from mixed harnesses.
@@ -225,7 +226,7 @@ jobs:
       # The XCTest batch below compiles the test bundle on first invocation,
       # so a separate `swift build --build-tests` step would be duplicate work.
 
-      # Keep the mixed Core/UI/etc. XCTest batch serial. swift test --parallel
+      # Keep the mixed Core/Runtime/PersistenceSwiftData/UI/etc. XCTest batch serial. swift test --parallel
       # launches each XCTest worker in a separate process, but
       # UserDefaults.standard is keyed by bundle ID and persists to the same
       # on-disk plist across processes — so suites that still touch it can race
@@ -238,12 +239,12 @@ jobs:
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
-      - name: Test — XCTest suites (Core + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
         id: test-xctest-suites
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
+        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
       # with per-instance suite names, and HuggingFaceServiceTests scopes
