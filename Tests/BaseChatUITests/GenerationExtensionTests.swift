@@ -118,103 +118,97 @@ final class GenerationExtensionTests: XCTestCase {
     // MARK: - 2. Upgrade Hint Logic
 
     func test_upgradeHint_triggersWhenAllConditionsMet() async {
-        // Save and restore the shared configuration to avoid leaking between tests.
-        let originalConfig = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfig }
+        var config = BaseChatConfiguration.shared
+        config.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(config) {
+            let mock = MockInferenceBackend()
+            mock.tokensToYield = ["Hello"]
+            // Backend name must be "Apple" to trigger the hint.
+            let vm = await makeVM(backend: mock, name: "Apple")
 
-        BaseChatConfiguration.shared.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+            var hintCallbackCalled = false
+            vm.onUpgradeHintTriggered = { hintCallbackCalled = true }
 
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = ["Hello"]
-        // Backend name must be "Apple" to trigger the hint.
-        let vm = await makeVM(backend: mock, name: "Apple")
+            vm.inputText = "Hi"
+            await vm.sendMessage()
 
-        var hintCallbackCalled = false
-        vm.onUpgradeHintTriggered = { hintCallbackCalled = true }
-
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-
-        XCTAssertTrue(vm.showUpgradeHint, "showUpgradeHint should be true after first assistant response with Apple backend")
-        XCTAssertTrue(hintCallbackCalled, "onUpgradeHintTriggered callback should fire")
+            XCTAssertTrue(vm.showUpgradeHint, "showUpgradeHint should be true after first assistant response with Apple backend")
+            XCTAssertTrue(hintCallbackCalled, "onUpgradeHintTriggered callback should fire")
+        }
     }
 
     func test_upgradeHint_doesNotTriggerWhenFeatureFlagDisabled() async {
-        let originalConfig = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfig }
+        var config = BaseChatConfiguration.shared
+        config.features = BaseChatConfiguration.Features(showUpgradeHint: false)
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(config) {
+            let mock = MockInferenceBackend()
+            mock.tokensToYield = ["Hello"]
+            let vm = await makeVM(backend: mock, name: "Apple")
 
-        BaseChatConfiguration.shared.features = BaseChatConfiguration.Features(showUpgradeHint: false)
+            vm.inputText = "Hi"
+            await vm.sendMessage()
 
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = ["Hello"]
-        let vm = await makeVM(backend: mock, name: "Apple")
-
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-
-        XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false when feature flag is disabled")
+            XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false when feature flag is disabled")
+        }
     }
 
     func test_upgradeHint_doesNotTriggerForNonAppleBackend() async {
-        let originalConfig = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfig }
+        var config = BaseChatConfiguration.shared
+        config.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(config) {
+            let mock = MockInferenceBackend()
+            mock.tokensToYield = ["Hello"]
+            let vm = await makeVM(backend: mock, name: "MLX")
 
-        BaseChatConfiguration.shared.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+            vm.inputText = "Hi"
+            await vm.sendMessage()
 
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = ["Hello"]
-        let vm = await makeVM(backend: mock, name: "MLX")
-
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-
-        XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false for non-Apple backends")
+            XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false for non-Apple backends")
+        }
     }
 
     func test_upgradeHint_doesNotTriggerOnSecondAssistantResponse() async {
-        let originalConfig = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfig }
+        var config = BaseChatConfiguration.shared
+        config.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(config) {
+            let mock = MockInferenceBackend()
+            mock.tokensToYield = ["First"]
+            let vm = await makeVM(backend: mock, name: "Apple")
 
-        BaseChatConfiguration.shared.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+            // First message triggers the hint.
+            vm.inputText = "Hi"
+            await vm.sendMessage()
+            XCTAssertTrue(vm.showUpgradeHint)
 
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = ["First"]
-        let vm = await makeVM(backend: mock, name: "Apple")
+            // Reset the hint flag to simulate checking second-time behavior.
+            // The code checks `!showUpgradeHint`, so once set it won't trigger again.
+            // Send a second message: hint should already be true, callback should not re-fire.
+            var secondCallback = false
+            vm.onUpgradeHintTriggered = { secondCallback = true }
 
-        // First message triggers the hint.
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-        XCTAssertTrue(vm.showUpgradeHint)
+            mock.tokensToYield = ["Second"]
+            vm.inputText = "Another"
+            await vm.sendMessage()
 
-        // Reset the hint flag to simulate checking second-time behavior.
-        // The code checks `!showUpgradeHint`, so once set it won't trigger again.
-        // Send a second message: hint should already be true, callback should not re-fire.
-        var secondCallback = false
-        vm.onUpgradeHintTriggered = { secondCallback = true }
-
-        mock.tokensToYield = ["Second"]
-        vm.inputText = "Another"
-        await vm.sendMessage()
-
-        // showUpgradeHint is still true (never reset), and the second send should NOT
-        // re-trigger because the guard `!showUpgradeHint` prevents it.
-        XCTAssertFalse(secondCallback, "onUpgradeHintTriggered should not fire again once hint is already shown")
+            // showUpgradeHint is still true (never reset), and the second send should NOT
+            // re-trigger because the guard `!showUpgradeHint` prevents it.
+            XCTAssertFalse(secondCallback, "onUpgradeHintTriggered should not fire again once hint is already shown")
+        }
     }
 
     func test_upgradeHint_doesNotTriggerWhenResponseEmpty() async {
-        let originalConfig = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfig }
+        var config = BaseChatConfiguration.shared
+        config.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(config) {
+            let mock = MockInferenceBackend()
+            mock.tokensToYield = []  // Empty response
+            let vm = await makeVM(backend: mock, name: "Apple")
 
-        BaseChatConfiguration.shared.features = BaseChatConfiguration.Features(showUpgradeHint: true)
+            vm.inputText = "Hi"
+            await vm.sendMessage()
 
-        let mock = MockInferenceBackend()
-        mock.tokensToYield = []  // Empty response
-        let vm = await makeVM(backend: mock, name: "Apple")
-
-        vm.inputText = "Hi"
-        await vm.sendMessage()
-
-        XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false when response is empty")
+            XCTAssertFalse(vm.showUpgradeHint, "showUpgradeHint should remain false when response is empty")
+        }
     }
 
     // MARK: - 3. Context Trimming During Generation

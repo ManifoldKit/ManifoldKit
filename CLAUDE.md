@@ -135,7 +135,7 @@ scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests \
   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
   --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
   --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
-  --disable-default-traits --skip-update
+  --disable-default-traits --skip-update --parallel
 
 # 2. Swift Testing — must run in a separate process (XCTest+Swift Testing
 #    in one process triggers a libmalloc SIGABRT — see #681)
@@ -159,7 +159,7 @@ swift build --build-tests --disable-default-traits
    --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
    --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
    --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
-   --disable-default-traits --skip-update) &
+   --disable-default-traits --skip-update --parallel) &
 XCTEST_PID=$!
 
 (TMPDIR=/tmp/bck-st-$$ mkdir -p /tmp/bck-st-$$ && \
@@ -175,7 +175,7 @@ wait $ST_PID;     ST_RC=$?
 
 Per-shell `TMPDIR` keeps `scripts/test.sh`'s `test_output.txt` from clobbering. Wall-clock ≈ max(batch1, batch2) instead of sum.
 
-Within-batch parallelism (`--parallel`) is still blocked by the `UserDefaults.standard` race in `test_autoSelectFirstRunModel_*` and download-tests legacy-key reads — tracked in issue #910.
+Within-batch parallelism (`--parallel`) is enabled on the main XCTest batch (fixed in #910). Two blockers were resolved: (1) `UserDefaults.standard` races — tests inject per-instance UUID suites; (2) `BaseChatConfiguration.shared` mutation races — tests that mutate the global acquire `BaseChatConfigurationTestMonitor.shared` before the mutation and release after restoring. `ChatViewModel.firstRunKey` is captured at init time so it stays stable even if another parallel test mutates `BaseChatConfiguration.shared.bundleIdentifier`.
 
 ### Spike gate (bounded changes only)
 

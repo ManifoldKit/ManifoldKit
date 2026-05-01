@@ -3,6 +3,7 @@ import XCTest
 import CommonCrypto
 import BaseChatInference
 @testable import BaseChatBackends
+import BaseChatTestSupport
 
 final class PinnedSessionDelegateTests: XCTestCase {
 
@@ -72,111 +73,108 @@ final class PinnedSessionDelegateTests: XCTestCase {
     // MARK: - Custom Host Trust Policy
 
     func test_customHost_noPins_platformDefault_returnsDefaultHandling() async {
-        let savedPins = PinnedSessionDelegate.pinnedHosts
-        let savedConfig = BaseChatConfiguration.shared
-        PinnedSessionDelegate.pinnedHosts = [:]
-        BaseChatConfiguration.shared = BaseChatConfiguration(customHostTrustPolicy: .platformDefault)
-        defer {
-            PinnedSessionDelegate.pinnedHosts = savedPins
-            BaseChatConfiguration.shared = savedConfig
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(
+            BaseChatConfiguration(customHostTrustPolicy: .platformDefault)
+        ) {
+            let savedPins = PinnedSessionDelegate.pinnedHosts
+            PinnedSessionDelegate.pinnedHosts = [:]
+            defer { PinnedSessionDelegate.pinnedHosts = savedPins }
+
+            let delegate = PinnedSessionDelegate()
+            let challenge = makeChallenge(host: "custom.mycompany.com")
+
+            let expectation = XCTestExpectation(description: "completion called")
+            var receivedDisposition: URLSession.AuthChallengeDisposition?
+
+            delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
+                receivedDisposition = disposition
+                expectation.fulfill()
+            }
+
+            await fulfillment(of: [expectation], timeout: 2.0)
+            XCTAssertEqual(receivedDisposition, .performDefaultHandling,
+                           "platformDefault policy: custom host with no pins should fall back to OS trust")
         }
-
-        let delegate = PinnedSessionDelegate()
-        let challenge = makeChallenge(host: "custom.mycompany.com")
-
-        let expectation = XCTestExpectation(description: "completion called")
-        var receivedDisposition: URLSession.AuthChallengeDisposition?
-
-        delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
-            receivedDisposition = disposition
-            expectation.fulfill()
-        }
-
-        await fulfillment(of: [expectation], timeout: 2.0)
-        XCTAssertEqual(receivedDisposition, .performDefaultHandling,
-                       "platformDefault policy: custom host with no pins should fall back to OS trust")
     }
 
     func test_customHost_noPins_requireExplicitPins_cancelsChallenge() async {
-        let savedPins = PinnedSessionDelegate.pinnedHosts
-        let savedConfig = BaseChatConfiguration.shared
-        PinnedSessionDelegate.pinnedHosts = [:]
-        BaseChatConfiguration.shared = BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
-        defer {
-            PinnedSessionDelegate.pinnedHosts = savedPins
-            BaseChatConfiguration.shared = savedConfig
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(
+            BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
+        ) {
+            let savedPins = PinnedSessionDelegate.pinnedHosts
+            PinnedSessionDelegate.pinnedHosts = [:]
+            defer { PinnedSessionDelegate.pinnedHosts = savedPins }
+
+            let delegate = PinnedSessionDelegate()
+            let challenge = makeChallenge(host: "custom.mycompany.com")
+
+            let expectation = XCTestExpectation(description: "completion called")
+            var receivedDisposition: URLSession.AuthChallengeDisposition?
+
+            delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
+                receivedDisposition = disposition
+                expectation.fulfill()
+            }
+
+            await fulfillment(of: [expectation], timeout: 2.0)
+            XCTAssertEqual(receivedDisposition, .cancelAuthenticationChallenge,
+                           "requireExplicitPins policy: custom host with no pins should fail-closed")
         }
-
-        let delegate = PinnedSessionDelegate()
-        let challenge = makeChallenge(host: "custom.mycompany.com")
-
-        let expectation = XCTestExpectation(description: "completion called")
-        var receivedDisposition: URLSession.AuthChallengeDisposition?
-
-        delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
-            receivedDisposition = disposition
-            expectation.fulfill()
-        }
-
-        await fulfillment(of: [expectation], timeout: 2.0)
-        XCTAssertEqual(receivedDisposition, .cancelAuthenticationChallenge,
-                       "requireExplicitPins policy: custom host with no pins should fail-closed")
     }
 
     func test_customHost_withPins_requireExplicitPins_doesNotCancelBeforeTrustEval() async {
         // When pins ARE configured for a custom host, the requireExplicitPins guard
         // is satisfied and we proceed to trust evaluation (not an early cancel).
-        let savedPins = PinnedSessionDelegate.pinnedHosts
-        let savedConfig = BaseChatConfiguration.shared
-        PinnedSessionDelegate.pinnedHosts = ["custom.mycompany.com": Set(["somePinHash="])]
-        BaseChatConfiguration.shared = BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
-        defer {
-            PinnedSessionDelegate.pinnedHosts = savedPins
-            BaseChatConfiguration.shared = savedConfig
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(
+            BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
+        ) {
+            let savedPins = PinnedSessionDelegate.pinnedHosts
+            PinnedSessionDelegate.pinnedHosts = ["custom.mycompany.com": Set(["somePinHash="])]
+            defer { PinnedSessionDelegate.pinnedHosts = savedPins }
+
+            let delegate = PinnedSessionDelegate()
+            // Challenge with no server trust object — this triggers the missing-serverTrust cancel,
+            // which proves we passed the no-pins guard and reached trust evaluation.
+            let challenge = makeChallenge(host: "custom.mycompany.com")
+
+            let expectation = XCTestExpectation(description: "completion called")
+            var receivedDisposition: URLSession.AuthChallengeDisposition?
+
+            delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
+                receivedDisposition = disposition
+                expectation.fulfill()
+            }
+
+            await fulfillment(of: [expectation], timeout: 2.0)
+            // Disposition is .cancelAuthenticationChallenge because SecTrust is nil in the
+            // test challenge, NOT because of the no-pins guard. This confirms the policy
+            // does not short-circuit when pins are correctly configured.
+            XCTAssertEqual(receivedDisposition, .cancelAuthenticationChallenge,
+                           "With pins configured the no-pins guard is bypassed; challenge fails later at trust eval (nil SecTrust in test)")
         }
-
-        let delegate = PinnedSessionDelegate()
-        // Challenge with no server trust object — this triggers the missing-serverTrust cancel,
-        // which proves we passed the no-pins guard and reached trust evaluation.
-        let challenge = makeChallenge(host: "custom.mycompany.com")
-
-        let expectation = XCTestExpectation(description: "completion called")
-        var receivedDisposition: URLSession.AuthChallengeDisposition?
-
-        delegate.urlSession(URLSession.shared, didReceive: challenge) { disposition, _ in
-            receivedDisposition = disposition
-            expectation.fulfill()
-        }
-
-        await fulfillment(of: [expectation], timeout: 2.0)
-        // Disposition is .cancelAuthenticationChallenge because SecTrust is nil in the
-        // test challenge, NOT because of the no-pins guard. This confirms the policy
-        // does not short-circuit when pins are correctly configured.
-        XCTAssertEqual(receivedDisposition, .cancelAuthenticationChallenge,
-                       "With pins configured the no-pins guard is bypassed; challenge fails later at trust eval (nil SecTrust in test)")
     }
 
     func test_bypassHosts_ignoreTrustPolicy_requireExplicitPins() async {
         // Localhost addresses must bypass pinning regardless of trust policy.
-        let savedConfig = BaseChatConfiguration.shared
-        BaseChatConfiguration.shared = BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
-        defer { BaseChatConfiguration.shared = savedConfig }
+        await BaseChatConfigurationTestMonitor.shared.withConfiguration(
+            BaseChatConfiguration(customHostTrustPolicy: .requireExplicitPins)
+        ) {
+            for host in ["localhost", "127.0.0.1", "::1"] {
+                let delegate = PinnedSessionDelegate()
+                let challenge = makeChallenge(host: host)
 
-        for host in ["localhost", "127.0.0.1", "::1"] {
-            let delegate = PinnedSessionDelegate()
-            let challenge = makeChallenge(host: host)
+                let exp = XCTestExpectation(description: "completion for \(host)")
+                var disposition: URLSession.AuthChallengeDisposition?
 
-            let exp = XCTestExpectation(description: "completion for \(host)")
-            var disposition: URLSession.AuthChallengeDisposition?
+                delegate.urlSession(URLSession.shared, didReceive: challenge) { d, _ in
+                    disposition = d
+                    exp.fulfill()
+                }
 
-            delegate.urlSession(URLSession.shared, didReceive: challenge) { d, _ in
-                disposition = d
-                exp.fulfill()
+                await fulfillment(of: [exp], timeout: 2.0)
+                XCTAssertEqual(disposition, .performDefaultHandling,
+                               "Bypass host \(host) must bypass pinning even under requireExplicitPins policy")
             }
-
-            await fulfillment(of: [exp], timeout: 2.0)
-            XCTAssertEqual(disposition, .performDefaultHandling,
-                           "Bypass host \(host) must bypass pinning even under requireExplicitPins policy")
         }
     }
     

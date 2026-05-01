@@ -3,116 +3,114 @@ import SwiftData
 @testable import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
+import BaseChatTestSupport
 
 @MainActor
 final class RuntimeBootstrapMilestoneTests: XCTestCase {
     func test_build_emitsMilestonesInDeclarationOrder() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let (progress, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Milestone Order",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.order.\(UUID().uuidString)"
+                ),
+                makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            )
 
-        let (progress, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Milestone Order",
-                bundleIdentifier: "com.basechatkit.milestone-tests.order.\(UUID().uuidString)"
-            ),
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
-        )
+            var collected: [RuntimeBootstrapMilestone] = []
+            for await milestone in progress {
+                collected.append(milestone)
+            }
+            _ = try await task.value
 
-        var collected: [RuntimeBootstrapMilestone] = []
-        for await milestone in progress {
-            collected.append(milestone)
+            XCTAssertEqual(collected, RuntimeBootstrapMilestone.allCases)
         }
-        _ = try await task.value
-
-        XCTAssertEqual(collected, RuntimeBootstrapMilestone.allCases)
     }
 
     func test_build_completeMilestoneIsLast() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let (progress, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Complete Is Last",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.last.\(UUID().uuidString)"
+                ),
+                makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            )
 
-        let (progress, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Complete Is Last",
-                bundleIdentifier: "com.basechatkit.milestone-tests.last.\(UUID().uuidString)"
-            ),
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
-        )
+            var last: RuntimeBootstrapMilestone?
+            for await milestone in progress {
+                last = milestone
+            }
+            _ = try await task.value
 
-        var last: RuntimeBootstrapMilestone?
-        for await milestone in progress {
-            last = milestone
+            XCTAssertEqual(last, .complete)
         }
-        _ = try await task.value
-
-        XCTAssertEqual(last, .complete)
     }
 
     func test_build_streamFinishesWhenMakeModelContainerThrows() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let (progress, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Failure Stream",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.failure.\(UUID().uuidString)"
+                ),
+                makeModelContainer: { throw URLError(.cannotOpenFile) }
+            )
 
-        let (progress, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Failure Stream",
-                bundleIdentifier: "com.basechatkit.milestone-tests.failure.\(UUID().uuidString)"
-            ),
-            makeModelContainer: { throw URLError(.cannotOpenFile) }
-        )
+            var collected: [RuntimeBootstrapMilestone] = []
+            for await milestone in progress {
+                collected.append(milestone)
+            }
 
-        var collected: [RuntimeBootstrapMilestone] = []
-        for await milestone in progress {
-            collected.append(milestone)
-        }
+            XCTAssertFalse(collected.contains(.complete))
 
-        XCTAssertFalse(collected.contains(.complete))
-
-        do {
-            _ = try await task.value
-            XCTFail("task.value should have thrown")
-        } catch {
-            XCTAssertTrue(error is URLError)
+            do {
+                _ = try await task.value
+                XCTFail("task.value should have thrown")
+            } catch {
+                XCTAssertTrue(error is URLError)
+            }
         }
     }
 
     func test_build_throwingMakeModelContainer_restoresConfiguration() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let originalBundleIdentifier = BaseChatConfiguration.shared.bundleIdentifier
 
-        let (_, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Rollback",
-                bundleIdentifier: "com.basechatkit.milestone-tests.rollback.\(UUID().uuidString)"
-            ),
-            makeModelContainer: { throw URLError(.cannotOpenFile) }
-        )
+            let (_, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Rollback",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.rollback.\(UUID().uuidString)"
+                ),
+                makeModelContainer: { throw URLError(.cannotOpenFile) }
+            )
 
-        do { _ = try await task.value } catch {}
+            do { _ = try await task.value } catch {}
 
-        XCTAssertEqual(BaseChatConfiguration.shared.bundleIdentifier, originalConfiguration.bundleIdentifier)
+            XCTAssertEqual(BaseChatConfiguration.shared.bundleIdentifier, originalBundleIdentifier)
+        }
     }
 
     func test_build_runtimeExposesInjectedInferenceServiceAndContainer() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let injectedService = InferenceService()
+            let prebuiltContainer = try ModelContainerFactory.makeInMemoryContainer()
 
-        let injectedService = InferenceService()
-        let prebuiltContainer = try ModelContainerFactory.makeInMemoryContainer()
+            let (progress, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Wiring Identity",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.wiring.\(UUID().uuidString)"
+                ),
+                inferenceService: injectedService,
+                makeModelContainer: { prebuiltContainer }
+            )
 
-        let (progress, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Wiring Identity",
-                bundleIdentifier: "com.basechatkit.milestone-tests.wiring.\(UUID().uuidString)"
-            ),
-            inferenceService: injectedService,
-            makeModelContainer: { prebuiltContainer }
-        )
+            for await _ in progress {}
+            let runtime = try await task.value
 
-        for await _ in progress {}
-        let runtime = try await task.value
-
-        XCTAssertTrue(runtime.inferenceService === injectedService)
-        XCTAssertTrue(runtime.modelContainer === prebuiltContainer)
+            XCTAssertTrue(runtime.inferenceService === injectedService)
+            XCTAssertTrue(runtime.modelContainer === prebuiltContainer)
+        }
     }
 
     func test_fractionComplete_isStrictlyIncreasing() {
@@ -131,24 +129,23 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
     }
 
     func test_build_persistenceRoundTrip() async throws {
-        let originalConfiguration = BaseChatConfiguration.shared
-        defer { BaseChatConfiguration.shared = originalConfiguration }
+        try await BaseChatConfigurationTestMonitor.shared.withCurrentConfiguration {
+            let (progress, task) = BaseChatBootstrap.build(
+                configuration: BaseChatConfiguration(
+                    appName: "Build Persistence",
+                    bundleIdentifier: "com.basechatkit.milestone-tests.persistence.\(UUID().uuidString)"
+                ),
+                makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+            )
 
-        let (progress, task) = BaseChatBootstrap.build(
-            configuration: BaseChatConfiguration(
-                appName: "Build Persistence",
-                bundleIdentifier: "com.basechatkit.milestone-tests.persistence.\(UUID().uuidString)"
-            ),
-            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
-        )
+            for await _ in progress {}
+            let runtime = try await task.value
 
-        for await _ in progress {}
-        let runtime = try await task.value
+            let session = ChatSessionRecord(title: "Milestone Build Session")
+            try await runtime.persistence.insertSession(session)
 
-        let session = ChatSessionRecord(title: "Milestone Build Session")
-        try await runtime.persistence.insertSession(session)
-
-        let fetched = try await runtime.persistence.fetchSessions()
-        XCTAssertTrue(fetched.contains(where: { $0.id == session.id }))
+            let fetched = try await runtime.persistence.fetchSessions()
+            XCTAssertTrue(fetched.contains(where: { $0.id == session.id }))
+        }
     }
 }

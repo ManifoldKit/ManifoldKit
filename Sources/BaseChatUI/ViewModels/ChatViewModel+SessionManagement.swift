@@ -111,9 +111,8 @@ extension ChatViewModel {
     /// Apps can customise first-run behaviour by setting `onFirstLaunch` before
     /// calling this method.
     public func autoSelectFirstRunModel() {
-        let key = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
-        guard !userDefaults.bool(forKey: key) else { return }
-        userDefaults.set(true, forKey: key)
+        guard !userDefaults.bool(forKey: firstRunKey) else { return }
+        userDefaults.set(true, forKey: firstRunKey)
         isFirstRun = false
 
         if let customHandler = onFirstLaunch {

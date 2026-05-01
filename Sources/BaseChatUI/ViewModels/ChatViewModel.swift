@@ -46,6 +46,12 @@ public final class ChatViewModel {
     /// runs cannot race on the shared `hasCompletedFirstLaunch` key.
     let userDefaults: UserDefaults
 
+    /// UserDefaults key for the first-run flag, captured once at init from
+    /// `BaseChatConfiguration.shared.bundleIdentifier`. Storing it here means
+    /// the key is stable for the lifetime of this instance even if another
+    /// parallel test mutates `BaseChatConfiguration.shared`.
+    let firstRunKey: String
+
     /// The UI-layer ``ToolApprovalGate`` that drives the per-call approval
     /// sheet. When `nil`, the underlying ``InferenceService`` uses its
     /// default ``AutoApproveGate`` — every tool call dispatches silently.
@@ -637,8 +643,8 @@ public final class ChatViewModel {
         self.userDefaults = userDefaults
         self.sessionController = SessionController(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
 
-        let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
-        self.isFirstRun = !userDefaults.bool(forKey: firstRunKey)
+        self.firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
+        self.isFirstRun = !userDefaults.bool(forKey: self.firstRunKey)
 
         let coordinator = ModelLoadCoordinator(inferenceService: inferenceService)
         self.loadCoordinator = coordinator

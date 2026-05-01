@@ -225,15 +225,16 @@ jobs:
       # The XCTest batch below compiles the test bundle on first invocation,
       # so a separate `swift build --build-tests` step would be duplicate work.
 
-      # Keep the mixed Core/UI/etc. XCTest batch serial. swift test --parallel
-      # launches each XCTest worker in a separate process, but
-      # UserDefaults.standard is keyed by bundle ID and persists to the same
-      # on-disk plist across processes — so suites that still touch it can race
-      # across workers (see #756, the
-      # ChatViewModelTests.test_autoSelectFirstRunModel_* pair).
-      #
-      # BaseChatInferenceTests is split into its own step below so it can opt
-      # into --parallel without reintroducing the UserDefaults flake.
+      # Run the mixed Core/UI/etc. XCTest batch with --parallel. Each XCTestCase
+      # subclass runs in its own thread; multiple classes execute concurrently.
+      # Two former blockers are now resolved:
+      #   - UserDefaults.standard races: all tests use per-instance UUID suites
+      #     and production code accepts injected UserDefaults (no .standard writes).
+      #   - BaseChatConfiguration.shared mutation races: tests that mutate the global
+      #     singleton acquire BaseChatConfigurationTestMonitor.shared before the
+      #     mutation and release after restoring the original value (see #910).
+      # Within-class parallelism is still off by default (XCTestCase runs methods
+      # serially per class).
       #
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
@@ -243,7 +244,7 @@ jobs:
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
+        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update --parallel
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
       # with per-instance suite names, and HuggingFaceServiceTests scopes

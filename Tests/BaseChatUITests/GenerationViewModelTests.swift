@@ -272,19 +272,11 @@ final class ChatViewModelTests: XCTestCase {
     // MARK: - test_autoSelectFirstRunModel_selectsFoundation
 
     func test_autoSelectFirstRunModel_selectsFoundation() async {
-        let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         // Per-instance suite starts empty — no need to clear; the flag is unset by construction.
-
         let vm = await makeViewModel()
 
-        // Manually add a foundation model to available models
-        // (refreshModels would check actual availability which may not be present in tests).
-        // Instead, we test the logic path: if foundation is in availableModels, it gets selected.
-
-        // First, refresh to populate (may or may not include Foundation depending on OS).
         vm.refreshModels()
 
-        // If Foundation is available in the list, autoSelect should pick it.
         let hasFoundation = vm.availableModels.contains(where: { $0.modelType == .foundation })
 
         vm.autoSelectFirstRunModel()
@@ -294,9 +286,10 @@ final class ChatViewModelTests: XCTestCase {
             XCTAssertEqual(vm.selectedModel?.modelType, .foundation,
                           "Should have auto-selected the foundation model")
         } else {
-            // Foundation not available on this OS -- autoSelect won't find it.
-            // Verify it didn't crash and the flag was set.
-            XCTAssertTrue(testDefaults.bool(forKey: firstRunKey),
+            // Foundation not available on this OS — autoSelect won't find a model but must
+            // still set the flag. Assert via vm.firstRunKey so the check is parallel-safe
+            // even if another test mutates BaseChatConfiguration.shared.bundleIdentifier.
+            XCTAssertTrue(testDefaults.bool(forKey: vm.firstRunKey),
                          "Flag should be set even if no foundation model available")
         }
     }
@@ -304,11 +297,12 @@ final class ChatViewModelTests: XCTestCase {
     // MARK: - test_autoSelectFirstRunModel_doesNotRepeat
 
     func test_autoSelectFirstRunModel_doesNotRepeat() async {
-        let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
-        // Set the flag as if first launch already happened.
-        testDefaults.set(true, forKey: firstRunKey)
-
+        // Create the VM first so we can seed the flag using the VM's captured key.
+        // Seeding via vm.firstRunKey guarantees the right key is used even if another
+        // parallel test mutates BaseChatConfiguration.shared.bundleIdentifier.
         let vm = await makeViewModel()
+        testDefaults.set(true, forKey: vm.firstRunKey)
+
         vm.refreshModels()
         vm.autoSelectFirstRunModel()
 

@@ -75,6 +75,22 @@ xctest_passed=$(grep -c "^Test Case '.*' passed" "$OUTPUT_FILE" || true)
 xctest_failed=$(grep -c "^Test Case '.*' failed" "$OUTPUT_FILE" || true)
 xctest_skipped=$(grep -c "^Test Case '.*' skipped" "$OUTPUT_FILE" || true)
 
+# When --parallel is active, XCTest uses "[N/M] Testing Module.Suite/testName"
+# progress lines instead of individual "passed"/"failed" result lines. Detect
+# this and fall back to counting progress lines + exit-code for pass/fail.
+if [[ $xctest_passed -eq 0 && $xctest_failed -eq 0 && $xctest_skipped -eq 0 ]]; then
+    xctest_parallel_total=$(grep -cE "^\[[0-9]+/[0-9]+\] Testing " "$OUTPUT_FILE" || true)
+    if [[ $xctest_parallel_total -gt 0 ]]; then
+        if [[ $SWIFT_EXIT -eq 0 ]]; then
+            xctest_passed=$xctest_parallel_total
+        else
+            # Can't distinguish passed/failed individually in parallel output;
+            # mark all as failed so the summary isn't misleadingly green.
+            xctest_failed=$xctest_parallel_total
+        fi
+    fi
+fi
+
 # Suites that started but never emitted a 'passed' or 'failed' line are crash victims.
 # Exclude the two top-level container lines ("All tests" and the .xctest bundle).
 xctest_suites_started=$(grep "^Test Suite '" "$OUTPUT_FILE" \
