@@ -1,6 +1,6 @@
 import SwiftUI
 import SwiftData
-import BaseChatCore
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatUI
 import BaseChatUIModelManagement

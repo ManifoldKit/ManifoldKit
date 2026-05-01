@@ -1,5 +1,4 @@
 import Foundation
-import BaseChatCore
 import BaseChatInference
 import BaseChatTools
 
@@ -142,9 +141,10 @@ enum DemoToolRoot {
         ("docs/architecture.md", """
         # Architecture Overview
 
-        BaseChatKit has five public targets:
+        BaseChatKit exposes these core products:
         - BaseChatInference — protocols and orchestration.
-        - BaseChatCore — SwiftData persistence.
+        - BaseChatRuntime — persistence-free runtime services and ports.
+        - BaseChatPersistenceSwiftData — SwiftData persistence and bootstrap.
         - BaseChatBackends — MLX, llama.cpp, Foundation, and cloud backends.
         - BaseChatUI — SwiftUI views and view models.
         - BaseChatTools — reference tools and the fuzzing harness.

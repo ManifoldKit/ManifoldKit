@@ -57,6 +57,12 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, alpha.standardizedFileURL.path)
     }
 
+    func test_publicFindGGUFModel_withoutOptInDoesNotScanDefaultDirectories() {
+        let result = HardwareRequirements.findGGUFModel(environment: [:])
+
+        XCTAssertNil(result)
+    }
+
     func test_isValidGGUFModel_rejectsDirectoriesAndTinyFiles() {
         let directory = tempDirectory.appendingPathComponent("fake.gguf", isDirectory: true)
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)

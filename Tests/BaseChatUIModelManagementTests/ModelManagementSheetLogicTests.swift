@@ -207,7 +207,11 @@ final class ModelManagementSheetLogicTests: XCTestCase {
     }
 
     func test_managementViewModel_storageInfo() {
-        let vm = ModelManagementViewModel()
+        let vm = ModelManagementViewModel(
+            modelStorage: ModelStorageService(
+                baseDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            )
+        )
         // totalStorageUsed should return a formatted string even if no models exist.
         XCTAssertFalse(vm.totalStorageUsed.isEmpty, "Storage display should never be empty")
         XCTAssertFalse(vm.modelsDirectoryPath.isEmpty, "Models directory path should never be empty")
@@ -396,10 +400,15 @@ final class ModelManagementSheetLogicTests: XCTestCase {
     #if canImport(AppKit)
     private func hostedSheetFittingSize(for tab: ModelManagementSheet.Tab) -> CGSize {
         let (vm, _) = makeViewModelWithMock()
+        let modelManagement = ModelManagementViewModel(
+            modelStorage: ModelStorageService(
+                baseDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            )
+        )
         let controller = NSHostingController(
             rootView: ModelManagementSheet(initialTab: tab)
                 .environment(vm)
-                .environment(ModelManagementViewModel())
+                .environment(modelManagement)
         )
 
         _ = controller.view

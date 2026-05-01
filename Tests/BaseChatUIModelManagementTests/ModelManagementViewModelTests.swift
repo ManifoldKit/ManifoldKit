@@ -237,9 +237,9 @@ final class ModelManagementViewModelTests: XCTestCase {
     }
 
     func test_isModelDownloaded_checksStorage() {
-        // With default ModelStorageService and a model that doesn't exist on disk,
-        // isModelDownloaded should return false.
-        let vm = ModelManagementViewModel()
+        let isolated = makeIsolatedModelStorage()
+        defer { try? FileManager.default.removeItem(at: isolated.directory) }
+        let vm = ModelManagementViewModel(modelStorage: isolated.service)
 
         let model = DownloadableModel(
             repoID: "test/nonexistent",

@@ -48,13 +48,16 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     /// failures without also lying about what storage actually does.
     private func makeViewModelWithPersistence(
         mock: MockInferenceBackend = MockInferenceBackend()
-    ) throws -> (ChatViewModel, MockInferenceBackend, ErrorInjectingPersistenceProvider) {
+        ) throws -> (ChatViewModel, MockInferenceBackend, ErrorInjectingPersistenceProvider) {
         mock.isModelLoaded = true
         let service = InferenceService(backend: mock, name: "Mock")
+        let modelsDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ViewModelEdgeCaseTests-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: modelsDirectory) }
         let vm = ChatViewModel(
             inferenceService: service,
             deviceCapability: DeviceCapabilityService(physicalMemory: 16 * oneGB),
-            modelStorage: ModelStorageService(),
+            modelStorage: ModelStorageService(baseDirectory: modelsDirectory),
             memoryPressure: MemoryPressureHandler()
         )
         let stack = try InMemoryPersistenceHarness.make()

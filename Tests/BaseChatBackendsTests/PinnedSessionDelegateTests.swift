@@ -1,6 +1,7 @@
 #if CloudSaaS
 import XCTest
 import CommonCrypto
+import Security
 import BaseChatInference
 @testable import BaseChatBackends
 
@@ -27,6 +28,28 @@ final class PinnedSessionDelegateTests: XCTestCase {
         XCTAssertEqual(base64, "LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=",
                         "SHA-256 of 'hello' should match known base64 hash. "
                         + "Note: this validates the same algorithm the delegate uses.")
+    }
+
+    func test_spkiDER_wrapsP256KeyToStandardSPKIHash() {
+        let rawWE1Key = Data(base64Encoded: "BG/NOv5nV0dMIQOFQMJHXbtYRw9AwVwXhcYZN+fVfO2GS5uB2dcaE6UKA/iYxMbonv8QWY8sJpj15iYluw8C+lY=")!
+        let spki = PinnedSessionDelegate.spkiDER(
+            rawPublicKey: rawWE1Key,
+            keyType: kSecAttrKeyTypeECSECPrimeRandom as String,
+            keySizeInBits: 256
+        )
+
+        XCTAssertEqual(spki.map(Self.sha256Base64), "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
+    }
+
+    func test_spkiDER_wrapsP384KeyToStandardSPKIHash() {
+        let rawGTSRootR4Key = Data(base64Encoded: "BPN0c6doi2CuQ7g1xYEwe0tJnfvBYc7m3ka9a9VhGDWuQN1z94mRMFrrPO6FfKJAdjupxrhH2CrnkpFqc+mxcjmfKZ+imNNfXliGZQ+hhGUG0dyLycdzyIxqL+XEq9Edig==")!
+        let spki = PinnedSessionDelegate.spkiDER(
+            rawPublicKey: rawGTSRootR4Key,
+            keyType: kSecAttrKeyTypeECSECPrimeRandom as String,
+            keySizeInBits: 384
+        )
+
+        XCTAssertEqual(spki.map(Self.sha256Base64), "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c=")
     }
 
     // MARK: - Bypass Hosts
@@ -427,6 +450,14 @@ final class PinnedSessionDelegateTests: XCTestCase {
             error: nil,
             sender: StubChallengeSender()
         )
+    }
+
+    private static func sha256Base64(_ data: Data) -> String {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { buffer in
+            _ = CC_SHA256(buffer.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return Data(hash).base64EncodedString()
     }
 }
 

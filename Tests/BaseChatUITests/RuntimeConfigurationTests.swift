@@ -26,8 +26,13 @@ final class RuntimeConfigurationTests: XCTestCase {
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
 
+        let modelsDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeConfigurationTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: modelsDirectory) }
+
         let chatViewModel = ChatViewModel(
             inferenceService: runtime.inferenceService,
+            modelStorage: ModelStorageService(baseDirectory: modelsDirectory),
             userDefaults: defaults
         )
         let sessionManager = SessionManagerViewModel()
@@ -77,8 +82,13 @@ final class RuntimeConfigurationTests: XCTestCase {
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
 
+        let modelsDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeBootstrapTests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: modelsDirectory) }
+
         let chatViewModel = ChatViewModel(
             inferenceService: runtime.inferenceService,
+            modelStorage: ModelStorageService(baseDirectory: modelsDirectory),
             userDefaults: defaults
         )
         let sessionManager = SessionManagerViewModel()

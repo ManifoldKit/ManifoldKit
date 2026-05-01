@@ -109,6 +109,22 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, alpha.standardizedFileURL.path)
     }
 
+    func test_publicFindMLXModelDirectory_acceptsDirectPathOverride() {
+        createValidMLXDirectory(at: tempDirectory)
+
+        let result = HardwareRequirements.findMLXModelDirectory(
+            environment: ["MLX_TEST_MODEL": tempDirectory.path]
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, tempDirectory.standardizedFileURL.path)
+    }
+
+    func test_publicFindMLXModelDirectory_withoutOptInDoesNotScanDefaultDirectories() {
+        let result = HardwareRequirements.findMLXModelDirectory(environment: [:])
+
+        XCTAssertNil(result)
+    }
+
     private func createValidMLXDirectory(at directory: URL) {
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         createFile("config.json", in: directory, contents: #"{"model_type":"llama"}"#)
