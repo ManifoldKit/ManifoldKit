@@ -7,6 +7,7 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.reset()
         MCPSSRFPolicy._resolverForTesting = nil
+        MCPURLSessionFactory.networkDisabled = false
         super.tearDown()
     }
 
@@ -159,6 +160,50 @@ final class MCPStreamableHTTPTransportTests: XCTestCase {
             XCTAssertEqual(blockedURL.host, "example.com")
         }
         XCTAssertTrue(MockURLProtocol.capturedRequests.isEmpty)
+    }
+
+    func test_startFailsWhenDefaultSessionBoundaryHasNetworkDisabled() async {
+        MCPURLSessionFactory.networkDisabled = true
+
+        let transport = MCPStreamableHTTPTransport(configuration: .init(
+            endpoint: URL(string: "https://example.com/mcp")!,
+            headers: [:],
+            authorization: MCPNoAuthorization(),
+            sseLimits: .default,
+            maxMessageBytes: 2048
+        ))
+
+        do {
+            try await transport.start()
+            XCTFail("Expected networkUnavailable")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .networkUnavailable)
+        } catch {
+            XCTFail("Expected MCPError.networkUnavailable, got \(error)")
+        }
+    }
+
+    func test_injectedSessionBypassesDefaultSessionBoundary() async throws {
+        MCPURLSessionFactory.networkDisabled = true
+        let endpoint = URL(string: "https://example.com/mcp")!
+        let response = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}".utf8)
+        MockURLProtocol.stub(url: endpoint, response: .immediate(data: response, statusCode: 200, headers: ["Content-Type": "application/json"]))
+
+        let transport = MCPStreamableHTTPTransport(configuration: .init(
+            endpoint: endpoint,
+            headers: [:],
+            authorization: MCPNoAuthorization(),
+            sseLimits: .default,
+            maxMessageBytes: 2048,
+            session: makeSession()
+        ))
+
+        try await transport.send(Data("{\"jsonrpc\":\"2.0\",\"method\":\"ping\"}".utf8))
+
+        var iterator = transport.incomingMessages.makeAsyncIterator()
+        let first = try await iterator.next()
+        XCTAssertEqual(first, response)
+        await transport.close()
     }
 
     private func makeSession() -> URLSession {

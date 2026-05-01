@@ -132,7 +132,7 @@ private struct AssistantCodeBlockView: View {
                 }
                 Spacer()
                 Button {
-                    copyToClipboard(code)
+                    ClipboardWriter.copy(code)
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                         .font(.caption)
@@ -153,14 +153,6 @@ private struct AssistantCodeBlockView: View {
         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private func copyToClipboard(_ text: String) {
-        #if os(iOS)
-        UIPasteboard.general.string = text
-        #elseif os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
-    }
 }
 
 #Preview("Plain Text") {

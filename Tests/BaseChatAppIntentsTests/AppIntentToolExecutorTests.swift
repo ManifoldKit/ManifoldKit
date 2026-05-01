@@ -384,8 +384,16 @@ final class AppIntentToolExecutorTests: XCTestCase {
         // executor in production.
         let executor: any ToolExecutor = AppIntentToolExecutor(GreetingIntent.self)
         XCTAssertEqual(executor.definition.name, "greeting_intent")
-        XCTAssertFalse(executor.requiresApproval, "default `requiresApproval` is false")
+        XCTAssertTrue(executor.requiresApproval, "AppIntent executors require approval by default")
         XCTAssertFalse(executor.supportsConcurrentDispatch, "default sequential dispatch")
+    }
+
+    func testReadOnlyApprovalPolicyCanOptOutOfPrompt() {
+        let executor: any ToolExecutor = AppIntentToolExecutor(
+            GreetingIntent.self,
+            approvalPolicy: .readOnlyAutoApprove
+        )
+        XCTAssertFalse(executor.requiresApproval, "read-only AppIntent tools can be deliberately auto-approved")
     }
 }
 

@@ -285,7 +285,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
     private let redirectListener: any MCPOAuthRedirectListener
     private let tokenStore: MCPOAuthTokenStore
     private let random: @Sendable () -> Data
-    private let session: URLSession
+    private let sessionProvider: @Sendable () throws -> URLSession
     private let currentDate: @Sendable () -> Date
 
     // Optional event stream for surfacing scope downgrades and TOFU discovery events
@@ -311,7 +311,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         tokenStore: MCPOAuthTokenStore = .keychain,
         clock: any Clock<Duration> = ContinuousClock(),
         random: @escaping @Sendable () -> Data = { Data() },
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         currentDate: @escaping @Sendable () -> Date = Date.init,
         eventContinuation: AsyncStream<MCPConnectionEvent>.Continuation? = nil
     ) {
@@ -321,7 +321,11 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         self.redirectListener = redirectListener
         self.tokenStore = tokenStore
         self.random = random
-        self.session = session
+        if let session {
+            self.sessionProvider = { session }
+        } else {
+            self.sessionProvider = MCPURLSessionFactory.throwingShared
+        }
         self.currentDate = currentDate
         self.eventContinuation = eventContinuation
         _ = clock
@@ -384,7 +388,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
             request.httpMethod = "DELETE"
             request.setValue("Bearer \(managementToken)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
-            _ = try await session.data(
+            _ = try await sessionProvider().data(
                 for: request,
                 delegate: MCPRedirectCapDelegate(
                     maxRedirects: nil,
@@ -527,7 +531,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
             let resourceMetadataURL = Self.resourceMetadataURL(for: resourceURL)
             try enforceHTTPS(resourceMetadataURL, label: "resource metadata")
             try await MCPSSRFPolicy.validateOAuthRequestURL(resourceMetadataURL, label: "resource metadata")
-            let (data, response) = try await session.data(
+            let (data, response) = try await sessionProvider().data(
                 for: URLRequest(url: resourceMetadataURL),
                 delegate: MCPRedirectCapDelegate(
                     maxRedirects: nil,
@@ -564,7 +568,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         try enforceHTTPS(metadataURL, label: "authorization metadata")
         try await MCPSSRFPolicy.validateOAuthRequestURL(metadataURL, label: "authorization metadata")
         // Redirect cap: metadata fetches must not follow more than one redirect.
-        let (metadataData, metadataResponse) = try await session.data(
+        let (metadataData, metadataResponse) = try await sessionProvider().data(
             for: URLRequest(url: metadataURL),
             delegate: MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
         )
@@ -641,7 +645,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         request.httpBody = Self.formURLEncoded(parameters).data(using: .utf8)
 
         // Redirect cap: token exchanges must not follow more than one redirect.
-        let (data, response) = try await session.data(
+        let (data, response) = try await sessionProvider().data(
             for: request,
             delegate: MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
         )
@@ -818,7 +822,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
             request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-            let (data, response) = try await session.data(
+            let (data, response) = try await sessionProvider().data(
                 for: request,
                 delegate: MCPRedirectCapDelegate(
                     maxRedirects: nil,
