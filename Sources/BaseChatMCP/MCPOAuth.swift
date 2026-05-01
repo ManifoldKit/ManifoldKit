@@ -263,7 +263,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
     private let redirectListener: any MCPOAuthRedirectListener
     private let tokenStore: MCPOAuthTokenStore
     private let random: @Sendable () -> Data
-    private let session: URLSession
+    private let sessionProvider: @Sendable () throws -> URLSession
     private let currentDate: @Sendable () -> Date
 
     // Optional event stream for surfacing scope downgrades and TOFU discovery events
@@ -289,7 +289,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         tokenStore: MCPOAuthTokenStore = .keychain,
         clock: any Clock<Duration> = ContinuousClock(),
         random: @escaping @Sendable () -> Data = { Data() },
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         currentDate: @escaping @Sendable () -> Date = Date.init,
         eventContinuation: AsyncStream<MCPConnectionEvent>.Continuation? = nil
     ) {
@@ -299,7 +299,11 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         self.redirectListener = redirectListener
         self.tokenStore = tokenStore
         self.random = random
-        self.session = session
+        if let session {
+            self.sessionProvider = { session }
+        } else {
+            self.sessionProvider = MCPURLSessionFactory.throwingShared
+        }
         self.currentDate = currentDate
         self.eventContinuation = eventContinuation
         _ = clock
@@ -361,7 +365,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
             request.httpMethod = "DELETE"
             request.setValue("Bearer \(managementToken)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
-            _ = try await session.data(for: request)
+            _ = try await sessionProvider().data(for: request)
             Log.inference.info("MCPOAuthAuthorization: dynamic client deregistered for \(self.serverID)")
         } catch {
             Log.inference.warning("MCPOAuthAuthorization: client deregistration request failed (best-effort): \(error.localizedDescription)")
@@ -497,7 +501,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         } else {
             let resourceMetadataURL = Self.resourceMetadataURL(for: resourceURL)
             try enforceHTTPS(resourceMetadataURL, label: "resource metadata")
-            let (data, response) = try await session.data(for: URLRequest(url: resourceMetadataURL))
+            let (data, response) = try await sessionProvider().data(for: URLRequest(url: resourceMetadataURL))
             try requireSuccess(response: response, body: data, operation: "resource metadata discovery")
             let resourceMetadata = try decoder.decode(OAuthProtectedResourceMetadata.self, from: data)
             guard let candidateIssuers = resourceMetadata.authorizationServers, candidateIssuers.isEmpty == false else {
@@ -527,7 +531,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         let metadataURL = Self.authorizationMetadataURL(for: issuer)
         try enforceHTTPS(metadataURL, label: "authorization metadata")
         // Redirect cap: metadata fetches must not follow more than one redirect.
-        let (metadataData, metadataResponse) = try await session.data(
+        let (metadataData, metadataResponse) = try await sessionProvider().data(
             for: URLRequest(url: metadataURL),
             delegate: MCPRedirectCapDelegate()
         )
@@ -603,7 +607,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         request.httpBody = Self.formURLEncoded(parameters).data(using: .utf8)
 
         // Redirect cap: token exchanges must not follow more than one redirect.
-        let (data, response) = try await session.data(for: request, delegate: MCPRedirectCapDelegate())
+        let (data, response) = try await sessionProvider().data(for: request, delegate: MCPRedirectCapDelegate())
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response during token exchange")
         }
@@ -776,7 +780,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
 
             request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
 
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await sessionProvider().data(for: request)
             try requireSuccess(response: response, body: data, operation: "dynamic client registration")
             let parsed = try JSONDecoder().decode(OAuthDynamicClientRegistrationResponse.self, from: data)
             guard parsed.clientID.isEmpty == false else {
