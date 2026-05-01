@@ -237,7 +237,7 @@ public enum KeychainService {
     /// the sweep — a single bad row should not prevent the rest from being
     /// reclaimed. Intended to be driven once at boot from ``BaseChatBootstrap``.
     @discardableResult
-    public static func sweep(validAccounts: Set<String>) -> Int {
+    package static func sweep(validAccounts: Set<String>) -> Int {
         let stored = allAccounts()
         guard !stored.isEmpty else {
             Log.security.info("KeychainService.sweep: namespace empty, nothing to reap")
