@@ -95,7 +95,13 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
     public func downloadPlan(for model: DownloadableModel) async throws -> ModelDownloadPlan {
         switch model.modelType {
         case .gguf:
-            return .singleFile(url: downloadURL(for: model))
+            // Forward `expectedSHA256` (when set) so the validator can enforce
+            // the digest after download. For MLX snapshots, per-file checksums
+            // are out of scope for Phase 1 — those entries stay unverified.
+            let checksum = model.expectedSHA256.map {
+                ModelFileChecksum(algorithm: .sha256, hexDigest: $0)
+            }
+            return .singleFile(url: downloadURL(for: model), expectedChecksum: checksum)
         case .mlx:
             guard let repoIdentifier = Repo.ID(rawValue: model.repoID) else {
                 throw HuggingFaceError.invalidRepoID(model.repoID)

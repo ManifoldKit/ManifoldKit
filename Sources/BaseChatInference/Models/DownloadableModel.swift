@@ -33,6 +33,20 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
     /// alongside ``fileName``. Mirrors ``CuratedModel/mmprojFileName`` for curated entries.
     public let mmprojFileName: String?
 
+    /// Expected SHA-256 digest (lowercase hex, 64 chars) for the downloaded file.
+    ///
+    /// When set, ``DownloadFileValidator`` computes the SHA-256 of the
+    /// downloaded artifact and rejects the download if the digest does not
+    /// match — the partial file is deleted and the download is marked failed.
+    /// When `nil`, the SHA check is skipped; the validator's other checks
+    /// (GGUF magic bytes, minimum file size, MLX directory layout) still run.
+    ///
+    /// Curated catalogue entries should populate this from the
+    /// HuggingFace LFS pointer's `oid sha256:<hex>` value. User-supplied URLs
+    /// (e.g. paste-a-URL flows) typically pass `nil` and are surfaced in the
+    /// UI as unverified.
+    public let expectedSHA256: String?
+
     /// Human-readable size (e.g., "4.1 GB").
     public var sizeFormatted: String {
         ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file)
@@ -69,6 +83,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.promptTemplate = curated.promptTemplate
         self.description = curated.description
         self.mmprojFileName = curated.mmprojFileName
+        self.expectedSHA256 = curated.expectedSHA256
     }
 
     // MARK: - Memberwise
@@ -83,7 +98,8 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         isCurated: Bool = false,
         promptTemplate: PromptTemplate? = nil,
         description: String? = nil,
-        mmprojFileName: String? = nil
+        mmprojFileName: String? = nil,
+        expectedSHA256: String? = nil
     ) {
         self.id = "\(repoID)/\(fileName)"
         self.repoID = repoID
@@ -96,6 +112,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.promptTemplate = promptTemplate
         self.description = description
         self.mmprojFileName = mmprojFileName
+        self.expectedSHA256 = expectedSHA256
     }
 }
 
