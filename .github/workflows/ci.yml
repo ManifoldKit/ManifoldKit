@@ -213,6 +213,8 @@ jobs:
       # - --disable-default-traits skips MLX (default-enabled) to avoid metallib
       #   crashes in CI — Metal shaders are only compiled by Xcode.
       # - BaseChatBackendsTests without traits runs only CI-safe cloud/SSE tests.
+      # - Server tests run in the sibling `server-tests` job behind a paths
+      #   filter so Hummingbird only compiles when server code changes.
       # Local-only coverage:
       # - Run `swift test --filter BaseChatBackendsTests --traits MLX,Llama` on
       #   Apple Silicon for MLX/llama.cpp paths.
@@ -242,12 +244,12 @@ jobs:
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Server)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
         id: test-xctest-suites
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --filter BaseChatServerTests --disable-default-traits --skip-update
+        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
       # with per-instance suite names, and HuggingFaceServiceTests scopes
@@ -310,3 +312,142 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # Server tests are split out of the per-PR mega-batch because the
+  # Hummingbird transitive graph (~18 extra pins, swift-nio + NIOSSL +
+  # BoringSSL + AsyncHTTPClient + ContainersPreview + Configuration) added
+  # ~250s to the build step when it shipped unconditionally. The Server trait
+  # peels Hummingbird out of the default-trait build so only this job pays
+  # the compile cost — and only when server code or the dep graph changes.
+  server-tests:
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # paths-filter needs the parent commit to diff against on `push` events;
+          # `pull_request` works with the default shallow clone.
+          fetch-depth: 2
+
+      - name: Detect server-relevant changes
+        id: server-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            server:
+              - 'Sources/BaseChatServer*/**'
+              - 'Tests/BaseChatServerTests/**'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test.sh'
+
+      - name: Select Xcode
+        if: steps.server-changed.outputs.server == 'true'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        if: steps.server-changed.outputs.server == 'true'
+        uses: actions/cache@v5
+        with:
+          # Same path/key shape as the `test` job — both jobs share the same
+          # SwiftPM dep tarball cache so we don't re-download the graph twice
+          # per workflow run.
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Verify Swift toolchain matches Package.swift tools-version
+        if: steps.server-changed.outputs.server == 'true'
+        run: |
+          set -euo pipefail
+          tools_line=$(head -n 1 Package.swift)
+          tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
+          if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
+            exit 1
+          fi
+          swift_version_full=$(xcrun swift -version | head -n 1)
+          swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
+          if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not parse Swift major.minor from: $swift_version_full"
+            exit 1
+          fi
+          tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
+          swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
+          if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
+            echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
+            exit 1
+          fi
+          echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
+
+      - name: Test — Server suite (Server trait)
+        id: test-server
+        if: steps.server-changed.outputs.server == 'true'
+        timeout-minutes: 12
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
+        run: scripts/test.sh --filter BaseChatServerTests --disable-default-traits --traits Server --skip-update
+
+      - name: Stage test diagnostics
+        if: failure() && steps.server-changed.outputs.server == 'true'
+        run: |
+          mkdir -p test-diagnostics
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=server-tests"
+            echo "test-server-failed=${{ steps.test-server.outcome == 'failure' }}"
+          } > test-diagnostics/failed-steps.txt
+
+      - name: Upload test diagnostics on failure
+        if: failure() && steps.server-changed.outputs.server == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcresult-server-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: test-diagnostics/
+
+  # Guards against silent dependency-graph explosions like the one that
+  # prompted the BaseChatServer trait-gating work (Package.resolved went
+  # 20 → 38 pins in a single PR). Adds friction proportional to dep weight:
+  # 1–2 pins is fine, anything more requires the `deps-ok` label as a
+  # deliberate sign-off captured in the PR's history.
+  dep-budget:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        # fetch-depth: 0 is required because `git diff base...HEAD` walks
+        # back to the merge base, which can be arbitrarily deep on a
+        # long-lived branch. The paths-filter style fetch-depth: 2 is only
+        # enough for the parent commit on push events.
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check Package.resolved pin delta
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
+          echo "PR adds $new new package pin(s)."
+          if [ "$new" -gt 2 ]; then
+            if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q 'deps-ok'; then
+              echo "::notice::PR adds $new new pins; 'deps-ok' label present, allowing."
+              exit 0
+            fi
+            echo "::error::PR adds $new new package pins (limit: 2). Either reduce the dep additions or add the 'deps-ok' label to the PR with a justification in the description."
+            exit 1
+          fi
