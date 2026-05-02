@@ -8,7 +8,7 @@ import BaseChatUI
 struct HuggingFaceBrowserView: View {
 
     @Environment(ModelManagementViewModel.self) private var viewModel
-    @Environment(ChatViewModel.self) private var chatViewModel
+    @Bindable private var modelRegistry: ModelRegistry
 
     let recommendedModelIDs: Set<String>?
     let recommendationTitle: String?
@@ -23,9 +23,30 @@ struct HuggingFaceBrowserView: View {
     /// when a subsequent download finishes and increments `completedDownloadCount`.
     @State private var promptedModelIDs: Set<String> = []
 
+    init(
+        modelRegistry: ModelRegistry,
+        recommendedModelIDs: Set<String>?,
+        recommendationTitle: String?,
+        recommendationMessage: String?
+    ) {
+        self._modelRegistry = Bindable(modelRegistry)
+        self.recommendedModelIDs = recommendedModelIDs
+        self.recommendationTitle = recommendationTitle
+        self.recommendationMessage = recommendationMessage
+    }
+
     private static var importContentTypes: [UTType] {
         let gguf = UTType(filenameExtension: "gguf") ?? .data
         return [gguf, .folder]
+    }
+
+    /// Refreshes the registry; mirrors the legacy `ChatViewModel.refreshModels()`
+    /// best-effort semantics — directory-creation errors are swallowed here
+    /// (the legacy path surfaces them via `errorMessage`, but this view is
+    /// invoked only after the directory is already populated, so the error
+    /// path is unreachable in practice).
+    private func refreshModels() {
+        try? modelRegistry.refresh()
     }
 
     var body: some View {
@@ -193,7 +214,7 @@ struct HuggingFaceBrowserView: View {
         }
         .onChange(of: viewModel.completedDownloadCount) {
             viewModel.invalidateModelCache()
-            chatViewModel.refreshModels()
+            refreshModels()
 
             // After refreshing, offer to switch to the newly completed model if it
             // isn't already the active selection and no prompt is already pending.
@@ -208,7 +229,7 @@ struct HuggingFaceBrowserView: View {
                 }
                 .map(\.model)
                 .first {
-                    $0.fileName != chatViewModel.selectedModel?.fileName
+                    $0.fileName != modelRegistry.selectedModel?.fileName
                         && !promptedModelIDs.contains($0.id)
                 }
             if let model = justCompleted {
@@ -225,8 +246,8 @@ struct HuggingFaceBrowserView: View {
             presenting: pendingUseNowModel
         ) { model in
             Button("Use Now") {
-                if let match = chatViewModel.availableModels.first(where: { $0.fileName == model.fileName }) {
-                    chatViewModel.selectedModel = match
+                if let match = modelRegistry.availableModels.first(where: { $0.fileName == model.fileName }) {
+                    modelRegistry.selectedModel = match
                 } else {
                     // refreshModels() runs synchronously in onChange, so this branch is
                     // only reachable if the file was deleted between download completion
@@ -241,7 +262,7 @@ struct HuggingFaceBrowserView: View {
         } message: { _ in
             Text("The download is complete. Switch to this model?")
         }
-        .onChange(of: chatViewModel.selectedModel) { _, newModel in
+        .onChange(of: modelRegistry.selectedModel) { _, newModel in
             viewModel.activeModelFileName = newModel?.fileName
         }
         .fileImporter(
@@ -252,7 +273,7 @@ struct HuggingFaceBrowserView: View {
             handleImport(result)
         }
         .onAppear {
-            viewModel.activeModelFileName = chatViewModel.selectedModel?.fileName
+            viewModel.activeModelFileName = modelRegistry.selectedModel?.fileName
             viewModel.loadRecommendations(preferredModelIDs: recommendedModelIDs)
         }
     }
@@ -271,7 +292,7 @@ struct HuggingFaceBrowserView: View {
 
             do {
                 let imported = try viewModel.importModel(from: url)
-                chatViewModel.refreshModels()
+                refreshModels()
                 importErrorMessage = nil
                 importSuccessMessage = "Imported \(imported.name). Open Select to use it."
             } catch {

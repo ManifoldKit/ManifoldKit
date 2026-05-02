@@ -361,6 +361,21 @@ BaseChatVoice/Services/VoiceAudioSessionCoordinator.swift:try? AVAudioSession.sh
 BaseChatUIModelManagement/Views/Settings/APIEndpointEditorView.swift:try? KeychainService.delete(account: newRecord.keychainAccount)
 BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? KeychainService.delete(account: record.keychainAccount)
 
+# Model-management views call `ModelRegistry.refresh()` after delete / import /
+# download events. The legacy code path was `ChatViewModel.refreshModels()`,
+# which surfaced directory-creation errors via `errorMessage` — but those
+# only happen on a brand-new install before `ModelManagementSheet` is
+# presented (the sheet itself runs `refresh()` on appear). At post-delete /
+# post-download time the directory already exists and the call is purely a
+# rescan; a transient failure is non-actionable from these views (the user
+# is mid-flow on a sheet and surfacing the error here would cancel the
+# enclosing alert flow). The user-visible error path remains
+# `ChatViewModel.refreshModels()` from the host app's onAppear handler.
+BaseChatUIModelManagement/Views/Models/StorageManagementView.swift:try? modelRegistry.refresh()
+BaseChatUIModelManagement/Views/Models/LocalModelStorageView.swift:try? modelRegistry.refresh()
+BaseChatUIModelManagement/Views/Models/HuggingFaceBrowserView.swift:try? modelRegistry.refresh()
+BaseChatUIModelManagement/Views/Models/ModelManagementSheet.swift:try? modelRegistry.refresh()
+
 
 # ---------------------------------------------------------------------------
 # BaseChatInference — ModelInfo mmproj companion detection

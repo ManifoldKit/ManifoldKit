@@ -91,8 +91,7 @@ struct DemoContentView: View {
                 }
         }
         .sheet(isPresented: $isModelManagementPresented) {
-            ModelManagementSheet()
-                .environment(viewModel)
+            ModelManagementSheet(modelRegistry: viewModel.modelRegistry)
                 .environment(managementViewModel)
         }
         .sheet(isPresented: $isToolPolicyPresented) {

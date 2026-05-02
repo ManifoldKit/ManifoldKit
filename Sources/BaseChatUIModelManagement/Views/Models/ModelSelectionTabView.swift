@@ -15,18 +15,27 @@ enum ModelSelectionSortOrder: String, CaseIterable, Identifiable {
 /// Inline model selection content used by `ModelManagementSheet`.
 struct ModelSelectionTabView: View {
 
-    @Environment(ChatViewModel.self) private var chatViewModel
+    /// Two-way binding into the registry: the picker reads
+    /// ``ModelRegistry/selectedModel`` and writes the user's tap back.
+    @Bindable private var modelRegistry: ModelRegistry
     @State private var sortOrder: ModelSelectionSortOrder = .alphabetical
 
     let onSelect: () -> Void
 
-    var sortedModels: [ModelInfo] {
-        Self.sortModels(chatViewModel.availableModels, by: sortOrder)
+    /// Canonical init — pass the registry the host already constructed
+    /// (typically `chatViewModel.modelRegistry`).
+    init(modelRegistry: ModelRegistry, onSelect: @escaping () -> Void) {
+        self._modelRegistry = Bindable(modelRegistry)
+        self.onSelect = onSelect
     }
 
-    var body: some View {
+    var sortedModels: [ModelInfo] {
+        Self.sortModels(modelRegistry.availableModels, by: sortOrder)
+    }
+
+    public var body: some View {
         List {
-            if chatViewModel.availableModels.isEmpty {
+            if modelRegistry.availableModels.isEmpty {
                 #if os(macOS)
                 HStack {
                     Spacer()
@@ -66,9 +75,10 @@ struct ModelSelectionTabView: View {
                     ForEach(sortedModels) { model in
                         ModelSelectionRow(
                             model: model,
-                            isSelected: chatViewModel.selectedModel?.id == model.id
+                            isSelected: modelRegistry.selectedModel?.id == model.id,
+                            compatibilityResult: modelRegistry.compatibility(for: model.modelType)
                         ) {
-                            chatViewModel.selectedModel = model
+                            modelRegistry.selectedModel = model
                             onSelect()
                         }
                     }
@@ -135,15 +145,10 @@ struct ModelSelectionTabView: View {
 
 private struct ModelSelectionRow: View {
 
-    @Environment(ChatViewModel.self) private var chatViewModel
-
     let model: ModelInfo
     let isSelected: Bool
+    let compatibilityResult: ModelCompatibilityResult
     let onTap: () -> Void
-
-    private var compatibilityResult: ModelCompatibilityResult {
-        chatViewModel.inferenceService.compatibility(for: model.modelType)
-    }
 
     private var isCompatible: Bool { compatibilityResult.isSupported }
 

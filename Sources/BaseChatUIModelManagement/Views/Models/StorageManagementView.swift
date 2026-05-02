@@ -9,20 +9,52 @@ import BaseChatUI
 /// downloaded models with their sizes and delete buttons.
 public struct StorageManagementView: View {
 
-    @Environment(ChatViewModel.self) private var chatViewModel
+    /// Resolved registry. The canonical init takes one explicitly; the
+    /// deprecated init reads it from `ChatViewModel` via the environment.
+    private let registrySource: RegistrySource
+
     @Environment(ModelManagementViewModel.self) private var managementViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var modelToDelete: ModelInfo?
     @State private var showDeleteConfirmation = false
 
-    public init() {}
+    /// Canonical init — pass the registry the host already constructed
+    /// (typically `chatViewModel.modelRegistry`).
+    public init(modelRegistry: ModelRegistry) {
+        self.registrySource = .explicit(modelRegistry)
+    }
+
+    /// Deprecated environment-based init. Reads ``ChatViewModel`` from the
+    /// SwiftUI environment and forwards to the registry-driven path.
+    /// Will be removed in a future minor — pass `modelRegistry` explicitly.
+    @available(*, deprecated, message: "Pass modelRegistry explicitly. The Environment-based init reads from ChatViewModel and will be removed in a future minor.")
+    public init() {
+        self.registrySource = .environment
+    }
+
+    private enum RegistrySource {
+        case explicit(ModelRegistry)
+        case environment
+    }
 
     public var body: some View {
+        switch registrySource {
+        case .explicit(let registry):
+            content(modelRegistry: registry)
+        case .environment:
+            EnvironmentBridge { registry in
+                content(modelRegistry: registry)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(modelRegistry: ModelRegistry) -> some View {
         NavigationStack {
             List {
                 storageOverviewSection
-                downloadedModelsSection
+                downloadedModelsSection(modelRegistry: modelRegistry)
             }
             .navigationTitle("Storage")
             .toolbar {
@@ -36,7 +68,7 @@ public struct StorageManagementView: View {
                 presenting: modelToDelete
             ) { model in
                 Button("Delete", role: .destructive) {
-                    deleteModel(model)
+                    deleteModel(model, modelRegistry: modelRegistry)
                 }
                 Button("Cancel", role: .cancel) {
                     modelToDelete = nil
@@ -44,6 +76,18 @@ public struct StorageManagementView: View {
             } message: { model in
                 Text("Are you sure you want to delete \"\(model.name)\"? This will free \(model.fileSizeFormatted) of storage. This action cannot be undone.")
             }
+        }
+    }
+
+    /// Internal helper that pulls ``ChatViewModel`` from the environment so
+    /// the deprecated `init()` overload can keep working without violating
+    /// `@Environment` lookup rules (which require a `View` body site).
+    private struct EnvironmentBridge<Content: View>: View {
+        @Environment(ChatViewModel.self) private var chatViewModel
+        let content: (ModelRegistry) -> Content
+
+        var body: some View {
+            content(chatViewModel.modelRegistry)
         }
     }
 
@@ -86,9 +130,10 @@ public struct StorageManagementView: View {
 
     // MARK: - Downloaded Models List
 
-    private var downloadedModelsSection: some View {
+    @ViewBuilder
+    private func downloadedModelsSection(modelRegistry: ModelRegistry) -> some View {
         Section("Downloaded Models") {
-            let models = chatViewModel.availableModels.filter { $0.modelType != .foundation }
+            let models = modelRegistry.availableModels.filter { $0.modelType != .foundation }
 
             if models.isEmpty {
                 Text("No downloaded models.")
@@ -133,10 +178,10 @@ public struct StorageManagementView: View {
 
     // MARK: - Actions
 
-    private func deleteModel(_ model: ModelInfo) {
+    private func deleteModel(_ model: ModelInfo, modelRegistry: ModelRegistry) {
         do {
             try managementViewModel.deleteModel(model)
-            chatViewModel.refreshModels()
+            try? modelRegistry.refresh()
         } catch {
             Log.download.error("Failed to delete model: \(error)")
         }
@@ -154,7 +199,7 @@ public struct StorageManagementView: View {
 // MARK: - Preview
 
 #Preview {
-    StorageManagementView()
-        .environment(ChatViewModel())
+    let chatVM = ChatViewModel()
+    StorageManagementView(modelRegistry: chatVM.modelRegistry)
         .environment(ModelManagementViewModel())
 }

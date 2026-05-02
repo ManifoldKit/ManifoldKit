@@ -6,12 +6,16 @@ import BaseChatUI
 /// Inline local model storage content used by `ModelManagementSheet`.
 struct LocalModelStorageView: View {
 
-    @Environment(ChatViewModel.self) private var chatViewModel
+    private let modelRegistry: ModelRegistry
     @Environment(ModelManagementViewModel.self) private var managementViewModel
 
     @State private var modelToDelete: ModelInfo?
     @State private var showDeleteConfirmation = false
     @State private var deleteErrorMessage: String?
+
+    init(modelRegistry: ModelRegistry) {
+        self.modelRegistry = modelRegistry
+    }
 
     var body: some View {
         List {
@@ -87,7 +91,7 @@ struct LocalModelStorageView: View {
 
     private var downloadedModelsSection: some View {
         Section("Downloaded Models") {
-            let models = chatViewModel.availableModels.filter { $0.modelType != .foundation }
+            let models = modelRegistry.availableModels.filter { $0.modelType != .foundation }
 
             if models.isEmpty {
                 Text("No downloaded models.")
@@ -133,7 +137,7 @@ struct LocalModelStorageView: View {
     private func deleteModel(_ model: ModelInfo) {
         do {
             try managementViewModel.deleteModel(model)
-            chatViewModel.refreshModels()
+            try? modelRegistry.refresh()
         } catch {
             Log.download.error("Failed to delete model: \(error)")
             deleteErrorMessage = error.localizedDescription

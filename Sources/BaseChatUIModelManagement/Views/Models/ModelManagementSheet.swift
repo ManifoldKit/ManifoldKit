@@ -6,7 +6,6 @@ import BaseChatUI
 /// Unified model management sheet combining model selection, download, and storage.
 public struct ModelManagementSheet: View {
 
-    @Environment(ChatViewModel.self) private var chatViewModel
     @Environment(ModelManagementViewModel.self) private var managementViewModel
     @Environment(\.dismiss) private var dismiss
     #if os(iOS)
@@ -19,6 +18,7 @@ public struct ModelManagementSheet: View {
     private let recommendedModelIDs: Set<String>?
     private let recommendationTitle: String?
     private let recommendationMessage: String?
+    private let registrySource: RegistrySource
 
     public enum Tab: String, CaseIterable {
         case select = "Select"
@@ -43,12 +43,17 @@ public struct ModelManagementSheet: View {
 
     @State private var selectedTab: Tab
 
+    /// Canonical init — pass the registry the host already constructed
+    /// (typically `chatViewModel.modelRegistry`). The sheet works without
+    /// reading `ChatViewModel` from the environment.
     public init(
+        modelRegistry: ModelRegistry,
         initialTab: Tab = .select,
         recommendedModelIDs: Set<String>? = nil,
         recommendationTitle: String? = nil,
         recommendationMessage: String? = nil
     ) {
+        self.registrySource = .explicit(modelRegistry)
         self.initialTab = initialTab
         self.recommendedModelIDs = recommendedModelIDs
         self.recommendationTitle = recommendationTitle
@@ -56,12 +61,47 @@ public struct ModelManagementSheet: View {
         _selectedTab = State(initialValue: initialTab)
     }
 
+    /// Deprecated environment-based init. Reads ``ChatViewModel`` from the
+    /// SwiftUI environment and forwards to the registry-driven path.
+    /// Will be removed in a future minor — pass `modelRegistry` explicitly.
+    @available(*, deprecated, message: "Pass modelRegistry explicitly. The Environment-based init reads from ChatViewModel and will be removed in a future minor.")
+    public init(
+        initialTab: Tab = .select,
+        recommendedModelIDs: Set<String>? = nil,
+        recommendationTitle: String? = nil,
+        recommendationMessage: String? = nil
+    ) {
+        self.registrySource = .environment
+        self.initialTab = initialTab
+        self.recommendedModelIDs = recommendedModelIDs
+        self.recommendationTitle = recommendationTitle
+        self.recommendationMessage = recommendationMessage
+        _selectedTab = State(initialValue: initialTab)
+    }
+
+    private enum RegistrySource {
+        case explicit(ModelRegistry)
+        case environment
+    }
+
     public var body: some View {
+        switch registrySource {
+        case .explicit(let registry):
+            content(modelRegistry: registry)
+        case .environment:
+            EnvironmentBridge { registry in
+                content(modelRegistry: registry)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(modelRegistry: ModelRegistry) -> some View {
         NavigationStack {
             #if os(macOS)
             VStack(spacing: 0) {
                 tabPickerBar
-                tabContent
+                tabContent(modelRegistry: modelRegistry)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -70,7 +110,7 @@ public struct ModelManagementSheet: View {
                 doneToolbarItem
             }
             #else
-            tabContent
+            tabContent(modelRegistry: modelRegistry)
                 .safeAreaInset(edge: .top, spacing: 0) { tabPickerBar }
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationTitle(selectedTab.rawValue)
@@ -97,8 +137,20 @@ public struct ModelManagementSheet: View {
             } else if selectedTab != initialTab {
                 selectedTab = initialTab
             }
-            chatViewModel.refreshModels()
+            try? modelRegistry.refresh()
             managementViewModel.invalidateModelCache()
+        }
+    }
+
+    /// Internal helper that pulls ``ChatViewModel`` from the environment so
+    /// the deprecated `init()` overload can keep working without violating
+    /// `@Environment` lookup rules (which require a `View` body site).
+    private struct EnvironmentBridge<Content: View>: View {
+        @Environment(ChatViewModel.self) private var chatViewModel
+        let content: (ModelRegistry) -> Content
+
+        var body: some View {
+            content(chatViewModel.modelRegistry)
         }
     }
 
@@ -139,25 +191,26 @@ public struct ModelManagementSheet: View {
     }
 
     @ViewBuilder
-    private var tabContent: some View {
+    private func tabContent(modelRegistry: ModelRegistry) -> some View {
         switch selectedTab {
         case .select:
-            ModelSelectionTabView(onSelect: { dismiss() })
+            ModelSelectionTabView(modelRegistry: modelRegistry, onSelect: { dismiss() })
         case .download:
             HuggingFaceBrowserView(
+                modelRegistry: modelRegistry,
                 recommendedModelIDs: recommendedModelIDs,
                 recommendationTitle: recommendationTitle,
                 recommendationMessage: recommendationMessage
             )
         case .storage:
-            LocalModelStorageView()
+            LocalModelStorageView(modelRegistry: modelRegistry)
         }
     }
 }
 
 
 #Preview {
-    ModelManagementSheet()
-        .environment(ChatViewModel())
+    let chatVM = ChatViewModel()
+    ModelManagementSheet(modelRegistry: chatVM.modelRegistry)
         .environment(ModelManagementViewModel())
 }
