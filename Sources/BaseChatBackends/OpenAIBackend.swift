@@ -20,7 +20,7 @@ import BaseChatInference
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Init
 
@@ -78,9 +78,90 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             maxOutputTokens: 16_384,
             supportsStreaming: true,
             isRemote: true,
+            // Vision support is gated on the configured model name. OpenAI's
+            // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
+            // accept `image_url` content parts; older completions-only models
+            // do not. ``GenerationCoordinator``'s pre-flight reads this flag
+            // and rejects image attachments before we ever build a request,
+            // so a non-vision model surfaces a clear local error rather than
+            // a 400 from upstream.
+            supportsVision: Self.isVisionCapableModel(modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )
+    }
+
+    /// Returns `true` when `modelName` belongs to an OpenAI family that
+    /// accepts `image_url` content parts on the Chat Completions API.
+    ///
+    /// Two matcher styles are used together:
+    ///
+    /// - **Substring tokens** (`gpt-4o`, `gpt-4-turbo`, `gpt-4.1`) — long
+    ///   enough to be unambiguous on their own, so a `contains` check
+    ///   picks up dated-suffix variants (`gpt-4o-2024-08-06`) and vendor
+    ///   aliases (`openai/gpt-4o`) automatically.
+    /// - **Anchored prefixes** (`o1`, `o3`) — too short to be safe as a
+    ///   substring (a name like `gpt-foo1bar` would accidentally match),
+    ///   so we require the token at the start of the name or
+    ///   immediately after a `/` or `:` separator (vendor namespaces like
+    ///   `openai/o1-mini`), and the token must either end the string or
+    ///   be followed by a `-`.
+    ///
+    /// Allowlist source: OpenAI's "Models with vision" docs as of 2026.
+    /// Update ``OpenAIVisionModels`` when OpenAI ships a new family.
+    static func isVisionCapableModel(_ modelName: String) -> Bool {
+        let lowered = modelName.lowercased()
+        if OpenAIVisionModels.substringTokens.contains(where: lowered.contains) {
+            return true
+        }
+        for prefix in OpenAIVisionModels.anchoredPrefixes {
+            if matchesAnchoredPrefix(lowered, prefix: prefix) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Returns `true` when `prefix` appears at the start of `name` or
+    /// immediately after a `/` or `:` separator, and is followed either by
+    /// the end of the string or by a `-`. Used by ``isVisionCapableModel``
+    /// for short tokens (`o1`, `o3`) where a bare substring match would
+    /// produce false positives.
+    static func matchesAnchoredPrefix(_ name: String, prefix: String) -> Bool {
+        let chars = Array(name)
+        let prefixChars = Array(prefix)
+        guard prefixChars.count <= chars.count else { return false }
+        // Walk every plausible start position: index 0 or right after a `/`/`:`.
+        var startIndices: [Int] = [0]
+        for (i, c) in chars.enumerated() where c == "/" || c == ":" {
+            startIndices.append(i + 1)
+        }
+        for start in startIndices {
+            guard start + prefixChars.count <= chars.count else { continue }
+            if Array(chars[start..<start + prefixChars.count]) == prefixChars {
+                let after = start + prefixChars.count
+                if after == chars.count || chars[after] == "-" {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    // MARK: - Structured History
+
+    /// Structured replay history. Set by ``GenerationCoordinator`` when the
+    /// caller uses ``InferenceService/enqueue(structuredMessages:...)``;
+    /// carries ``MessagePart/image(data:mimeType:)`` parts so vision turns
+    /// can be serialised as `image_url` content parts on the request body.
+    ///
+    /// Also consumed by text-only multi-turn replay: when no image parts are
+    /// present the encoder still uses the structured history so a user that
+    /// later attaches an image gets the structured array shape consistently.
+    private var _structuredHistory: [StructuredMessage]?
+
+    public func setStructuredHistory(_ messages: [StructuredMessage]) {
+        withStateLock { self._structuredHistory = messages }
     }
 
     // MARK: - Tool-Aware Conversation History
@@ -131,12 +212,41 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             return snapshot
         }
 
+        let structuredSnapshot: [StructuredMessage]? = withStateLock { self._structuredHistory }
+
         var messages: [[String: Any]] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             messages.append(["role": "system", "content": systemPrompt])
         }
+
+        // Precedence:
+        //   1. tool-aware history — only set during a tool-call loop, must
+        //      win over the structured/plain replay so the model sees the
+        //      `tool_calls` ↔ `tool` pairing it requires.
+        //   2. structured history (only when it carries images) — emits
+        //      `image_url` content parts for vision turns, and collapses
+        //      text-only turns to plain string content for the common case.
+        //   3. plain (role, content) history — legacy fallback. Keeps the
+        //      common text-only wire shape minimal and matches every
+        //      pre-vision OpenAIBackend test that asserts on it.
+        //   4. prompt-only single user turn.
         if let toolHistory = snapshotToolHistory {
             messages.append(contentsOf: toolHistory.map(OpenAIToolEncoding.encodeChatCompletionsEntry))
+        } else if let structured = structuredSnapshot,
+                  !structured.isEmpty,
+                  CloudImageEncoding.imageCount(in: structured) > 0 {
+            // Vision pre-flight: refuse to forward images to a model that
+            // doesn't advertise vision support. ``GenerationCoordinator``
+            // already gates this path on `capabilities.supportsVision`, but
+            // the backend may be driven directly (e.g. the OpenAI-compat
+            // server, or callers wiring their own pipeline), so keep the
+            // belt-and-suspenders check here.
+            if !Self.isVisionCapableModel(modelName) {
+                throw InferenceError.inferenceFailure(
+                    "Model \"\(modelName)\" does not support image input. Switch to a vision-capable OpenAI model (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4.1, o1, o3) and retry."
+                )
+            }
+            messages.append(contentsOf: structured.map(Self.encodeChatCompletionsContent(for:)))
         } else if let history = conversationHistory {
             // Reasoning-model asymmetry: OpenAI-compatible providers (DeepSeek,
             // o-series, hosted Qwen reasoning) deliver chain-of-thought via
@@ -376,6 +486,52 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         }
     }
 
+    // MARK: - Structured Content Encoding
+
+    /// Encodes one ``StructuredMessage`` as a Chat Completions
+    /// `messages[]` entry.
+    ///
+    /// - Text-only turns collapse to a plain string `content` to keep the
+    ///   wire shape minimal — every existing OpenAI-compatible compat
+    ///   server (Ollama, LM Studio, etc.) accepts both shapes and the
+    ///   string form is the lower-friction default.
+    /// - Image-bearing turns emit a structured `content[]` array with one
+    ///   `text` part (when present) followed by `image_url` parts for each
+    ///   image. The text-first ordering matches OpenAI's vision examples in
+    ///   the docs and keeps the prompt visible at the top of the array.
+    /// - Non-`user` roles (assistant, system, tool) collapse to plain
+    ///   string content. The model never emits `image_url` parts on
+    ///   assistant turns, and the persisted-row case where an assistant row
+    ///   somehow carries an image is rare enough that dropping the image
+    ///   silently — rather than emitting an `image_url` part the API will
+    ///   reject — is the safer choice.
+    static func encodeChatCompletionsContent(for message: StructuredMessage) -> [String: Any] {
+        let hasImage = message.parts.contains { part in
+            if case .image = part { return true }
+            return false
+        }
+        guard message.role == "user", hasImage else {
+            return ["role": message.role, "content": message.textContent]
+        }
+
+        var contentParts: [[String: Any]] = []
+        let text = message.textContent
+        if !text.isEmpty {
+            contentParts.append(["type": "text", "text": text])
+        }
+        for part in message.parts {
+            if case .image(let data, let mimeType) = part {
+                contentParts.append([
+                    "type": "image_url",
+                    "image_url": [
+                        "url": CloudImageEncoding.dataURI(data: data, mimeType: mimeType),
+                    ] as [String: Any],
+                ])
+            }
+        }
+        return ["role": "user", "content": contentParts]
+    }
+
     // MARK: - SSE Payload Handler
 
     /// OpenAI-specific SSE payload interpreter for use with `SSEStreamParser.streamTokens`.
@@ -587,5 +743,40 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         )
     }
 
+}
+
+/// Allowlist of OpenAI model-name family tokens that accept `image_url`
+/// content parts on the Chat Completions API.
+///
+/// Lives next to ``OpenAIBackend`` so the matcher stays a one-line
+/// substring check. Adding a new token here is the single edit required
+/// when OpenAI ships a new vision-capable family — the dated-suffix
+/// variants (e.g. `gpt-4o-2024-08-06`) and vendor aliases (e.g.
+/// `openai/gpt-4o`) match automatically because the classifier uses
+/// substring containment.
+///
+/// Kept here (rather than as a public type) because it is an
+/// implementation detail of one backend's capability gating; promoting it
+/// would invite host apps to take a dependency on a list that needs to
+/// move whenever OpenAI updates their model lineup.
+enum OpenAIVisionModels {
+    /// Tokens long enough to be safe as substring matches. A name like
+    /// `gpt-4o-2024-08-06` or `openai/gpt-4o-mini` lights these up.
+    /// Tokens are lowercase; the classifier lowercases its input first.
+    static let substringTokens: [String] = [
+        "gpt-4o",       // gpt-4o, gpt-4o-mini, gpt-4o-2024-* — full vision family
+        "gpt-4-turbo",  // gpt-4-turbo, gpt-4-turbo-2024-* — original vision turbo
+        "gpt-4.1",      // gpt-4.1 family — vision-capable per the 2025 refresh
+    ]
+
+    /// Tokens that are too short for a bare `contains` check (a name like
+    /// `gpt-foo1bar` would otherwise accidentally match `o1`). Matched via
+    /// ``OpenAIBackend/matchesAnchoredPrefix(_:prefix:)`` which requires
+    /// the token at a name boundary (start or after `/` / `:`) and either
+    /// ending the string or followed by a `-`.
+    static let anchoredPrefixes: [String] = [
+        "o1",           // o1, o1-preview, o1-mini-* — reasoning family with vision
+        "o3",           // o3, o3-mini-* — newer reasoning family with vision
+    ]
 }
 #endif
