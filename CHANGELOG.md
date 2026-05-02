@@ -23,7 +23,7 @@ or run the `BaseChatServer` executable must now pass `--traits Server` (or list
 the trait, the targets still build but the executable prints a no-op message
 and exits cleanly — no Hummingbird symbols are linked.
 
-See [#TBD].
+See [#946].
 
 ### Features
 

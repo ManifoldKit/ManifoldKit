@@ -291,7 +291,7 @@ All four resolved.
 ## Post-merge update (2026-05-02)
 
 `BaseChatServer` was put behind a new `Server` SwiftPM trait (off by default)
-in PR #TBD after the initial release inadvertently doubled per-PR CI wall
+in PR #946 after the initial release inadvertently doubled per-PR CI wall
 time. The architectural pattern is unchanged; only the build-graph membership
 was scoped down. See `Package.swift` `traits:` block and `#if Server` guards
 in `Sources/BaseChatServer*/`.
