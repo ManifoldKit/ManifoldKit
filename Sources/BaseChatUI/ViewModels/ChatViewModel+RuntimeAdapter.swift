@@ -23,14 +23,32 @@ extension ChatViewModel {
         // MARK: Message lifecycle
 
         case .messageInserted(let record):
-            // Guard against duplicates — the runtime may insert the user
-            // message before `sendMessage` appends it locally, or vice versa.
-            if !messages.contains(where: { $0.id == record.id }) {
-                messages.append(record)
+            // The runtime persists user and assistant messages and re-emits
+            // them via `.messageInserted`. Two cases:
+            //
+            //  - User message: the adapter has not pre-inserted anything, so
+            //    append unconditionally.
+            //
+            //  - Assistant message: the adapter pre-inserted a placeholder on
+            //    `.streamStarted` and grew it via `.tokenEmitted`/`.thinking*`
+            //    events. The runtime's persisted record carries only the
+            //    visible text (it sets `assistantMessage.content = accumulated`
+            //    before insert), which would clobber any thinking parts in the
+            //    in-memory placeholder. Keep our richer in-memory parts but
+            //    refresh the timestamps and token counts the runtime captured.
+            //
+            // Drop events whose `sessionID` does not match the active session.
+            // After a `switchToSession` mid-generation the prior turn may
+            // still emit late `messageInserted` events that, without this
+            // gate, would leak the cancelled session's content into the
+            // newly-active transcript.
+            guard record.sessionID == activeSessionID else { break }
+            if let idx = messages.firstIndex(where: { $0.id == record.id }) {
+                messages[idx].timestamp = record.timestamp
+                messages[idx].promptTokens = record.promptTokens
+                messages[idx].completionTokens = record.completionTokens
             } else {
-                // Update in place in case the runtime persisted a richer version
-                // (e.g. timestamped) of a message we pre-inserted as a placeholder.
-                mutateMessage(id: record.id) { $0 = record }
+                messages.append(record)
             }
 
         case .messageRemoved(let id):
@@ -43,19 +61,82 @@ extension ChatViewModel {
 
         // MARK: Stream lifecycle
 
-        case .streamStarted:
-            // The runtime pre-inserts the assistant record; here we just
-            // transition phase. The actual message slot arrives via
-            // .messageInserted when the runtime finalises the assistant record.
+        case .streamStarted(let messageID):
+            // Pre-insert a placeholder assistant slot so subsequent
+            // `tokenEmitted` events have a message to mutate. The runtime
+            // only persists (and re-emits via `.messageInserted`) the
+            // assistant record after the stream ends, so without this the
+            // first tokens would be dropped on the floor.
             transitionPhase(to: .waitingForFirstToken)
+            activeConversationMessageID = messageID
+            if let activeSessionID, !messages.contains(where: { $0.id == messageID }) {
+                let placeholder = ChatMessageRecord(
+                    id: messageID,
+                    role: .assistant,
+                    content: "",
+                    sessionID: activeSessionID
+                )
+                messages.append(placeholder)
+            }
 
         case .tokenEmitted(let messageID, let delta):
             transitionPhase(to: .streaming)
-            mutateMessage(id: messageID) { $0.content += delta }
+            // `ChatMessageRecord.content`'s setter replaces the entire
+            // `contentParts` array with a single `.text` part. That clobbers
+            // any sibling `.thinking` / `.toolCall` / `.toolResult` parts, so
+            // mutate the trailing `.text` part in place (or append a new one
+            // when none exists).
+            mutateMessage(id: messageID) { Self.appendVisibleText(delta, into: &$0) }
 
-        case .streamFinished:
+        case .streamFinished(let messageID, let reason):
+            // Drop terminal events that belong to a previous turn —
+            // `switchToSession` cancels the current turn but a NEW turn may
+            // have started by the time the old turn's `streamFinished`
+            // drains. Match against the most-recent `streamStarted`
+            // messageID so cancelled-then-replaced turns don't zap the new
+            // handle. `clearChat` also cancels the current turn but does
+            // not start a new one, so the IDs match and we proceed.
+            guard messageID == activeConversationMessageID else { break }
+            activeConversationMessageID = nil
+
+            activeConversationStreamHandle = nil
             transitionPhase(to: .idle)
             updateContextEstimate()
+
+            // Drop the empty assistant placeholder if the model produced no
+            // visible content. The runtime returns `.empty` for this case
+            // and never persists the assistant record itself; mirror that on
+            // the in-memory transcript.
+            if reason == .empty {
+                messages.removeAll(where: { $0.id == messageID })
+            }
+
+            // Fire post-generation tasks for successful turns. Cancelled and
+            // empty turns are skipped — the legacy `GenerationCoordinator`
+            // gated on `hasVisibleContent`, so partial-cancel persistence
+            // does not retroactively run summarisation hooks.
+            if reason == .stop,
+               let completed = messages.first(where: { $0.id == messageID }),
+               completed.hasVisibleContent,
+               let session = activeSession {
+                runPostGenerationTasks(message: completed, session: session)
+            }
+
+            // After the first assistant response on Foundation, nudge the
+            // user to consider downloading a local model for longer
+            // context. Mirrors the legacy `GenerationCoordinator` rule:
+            // gated on the feature flag, only on the Apple backend, only
+            // once per session.
+            if reason == .stop,
+               BaseChatConfiguration.shared.features.showUpgradeHint,
+               !showUpgradeHint,
+               let completed = messages.first(where: { $0.id == messageID }),
+               completed.hasVisibleContent,
+               activeBackendName == "Apple",
+               messages.filter({ $0.role == .assistant }).count == 1 {
+                showUpgradeHint = true
+                onUpgradeHintTriggered?()
+            }
 
         // MARK: Errors
 
@@ -73,6 +154,8 @@ extension ChatViewModel {
             case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured:
                 errorMessage = error.localizedDescription
             }
+            activeConversationStreamHandle = nil
+            activeConversationMessageID = nil
             transitionPhase(to: .idle)
 
         // MARK: Thinking-block disclosure
@@ -117,7 +200,11 @@ extension ChatViewModel {
         // MARK: Loop detection
 
         case .loopDetected(_):
-            errorMessage = "Response stopped: repetitive content detected."
+            // Wording mirrors the legacy `GenerationCoordinator` ("appears
+            // to be repeating itself") so existing UI tests that probe for
+            // the substring "repeating" continue to pin the user-visible
+            // message.
+            errorMessage = "Generation stopped: the model appears to be repeating itself."
             transitionPhase(to: .idle)
 
         // MARK: Observational / future cases
@@ -129,5 +216,65 @@ extension ChatViewModel {
             // No ChatViewModel state mutation is needed here yet.
             break
         }
+    }
+
+    // MARK: - Content-part-preserving mutation helpers
+    //
+    // `ChatMessageRecord.content`'s setter replaces the entire `contentParts`
+    // array with a single `.text` part — convenient for the legacy text-only
+    // path, fatal for messages that hold a `.thinking` part placed ahead of
+    // the text. These helpers preserve sibling parts by mutating only the
+    // trailing `.text` (or appending one when none exists).
+
+    /// Appends streamed visible-token text to a message without clobbering
+    /// any existing non-text parts (thinking, tool calls, tool results).
+    static func appendVisibleText(_ batch: String, into msg: inout ChatMessageRecord) {
+        if let lastIdx = msg.contentParts.indices.reversed().first(where: {
+            if case .text = msg.contentParts[$0] { return true } else { return false }
+        }), case .text(let existing) = msg.contentParts[lastIdx] {
+            msg.contentParts[lastIdx] = .text(existing + batch)
+        } else {
+            msg.contentParts.append(.text(batch))
+        }
+    }
+
+    /// Launches `postGenerationTasks` sequentially in a `Task` that inherits
+    /// `@MainActor` isolation. A throwing task records its error via
+    /// ``backgroundTaskError`` and execution continues with the next task.
+    /// Cancellation via ``backgroundTask`` exits the loop.
+    func runPostGenerationTasks(message: ChatMessageRecord, session: ChatSessionRecord) {
+        let tasks = postGenerationTasks
+        guard !tasks.isEmpty else { return }
+        backgroundTaskError = nil
+        let bgTask = Task { [weak self, tasks, message, session] in
+            for task in tasks {
+                guard !Task.isCancelled else { break }
+                do {
+                    try await task.run(message: message, session: session)
+                } catch is CancellationError {
+                    break
+                } catch {
+                    self?.backgroundTaskError = error
+                }
+            }
+        }
+        backgroundTask = bgTask
+    }
+
+    /// Writes `partial` into the message's last `.thinking` part for live preview.
+    ///
+    /// Mirrors the legacy `GenerationCoordinator.writeThinkingPartialText` —
+    /// retained because tests assert the preserve-placeholder behaviour
+    /// directly.
+    static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessageRecord) {
+        guard let idx = msg.contentParts.lastIndex(where: { $0.thinkingContent != nil }) else {
+            let insertAt = msg.contentParts.firstIndex(where: { $0.textContent != nil }) ?? 0
+            msg.contentParts.insert(.thinking(partial), at: insertAt)
+            return
+        }
+        // Preserve any signature already attached — partial flushes only
+        // update the text. Signatures arrive separately.
+        let signature = msg.contentParts[idx].thinkingSignature
+        msg.contentParts[idx] = .thinking(partial, signature: signature)
     }
 }

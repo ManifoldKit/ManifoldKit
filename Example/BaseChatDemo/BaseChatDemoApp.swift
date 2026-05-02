@@ -14,11 +14,12 @@ import BaseChatHuggingFace
 struct BaseChatDemoApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var chatViewModel: ChatViewModel
+    @State private var chatViewModel: ChatViewModel?
     @State private var modelManagementViewModel: ModelManagementViewModel
     @State private var sessionManager = SessionManagerViewModel()
     @State private var runtime: BaseChatBootstrap?
     private let inferenceService: InferenceService
+    private let toolApprovalGate: UIToolApprovalGate
     private let toolRegistry: ToolRegistry
     private let sandboxRoot: URL
     private let pendingDemoScenarioID: String?
@@ -88,6 +89,7 @@ struct BaseChatDemoApp: App {
         self.toolRegistry = registry
 
         let approvalGate = UIToolApprovalGate(policy: .askOncePerSession)
+        self.toolApprovalGate = approvalGate
 
         let configuredService: InferenceService
         #if DEBUG
@@ -121,17 +123,11 @@ struct BaseChatDemoApp: App {
         #endif
         self.inferenceService = configuredService
 
-        let vm = ChatViewModel(
-            inferenceService: configuredService,
-            toolApprovalGate: approvalGate
-        )
-        vm.foundationModelProvider = {
-            if #available(iOS 26, macOS 26, *) {
-                return FoundationBackend.isAvailable
-            }
-            return false
-        }
-        _chatViewModel = State(initialValue: vm)
+        // ChatViewModel is constructed lazily in `installRuntime(using:)` once
+        // the SwiftData container resolves — `conversationRuntime` is
+        // constructor-injected and non-optional, so we cannot safely build a
+        // view model before the runtime exists.
+        _chatViewModel = State(initialValue: nil)
 
         #if canImport(BaseChatHuggingFace)
         let downloadManager = BackgroundDownloadManager()
@@ -216,7 +212,7 @@ struct BaseChatDemoApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let runtime {
+                if let runtime, let chatViewModel {
                     DemoContentView(
                         toolRegistry: toolRegistry,
                         sandboxRoot: sandboxRoot,
@@ -266,7 +262,7 @@ struct BaseChatDemoApp: App {
             // modifier lives on the inner View (not on `WindowGroup`, which
             // is a `Scene`).
             .task(id: runtime != nil ? 1 : 0) {
-                guard runtime != nil, let staged = stagedSharePayload else { return }
+                guard runtime != nil, let chatViewModel, let staged = stagedSharePayload else { return }
                 stagedSharePayload = nil
                 guard let pendingPayload = pendingPayload(from: staged) else { return }
                 await chatViewModel.ingestPendingPayload(pendingPayload, intent: .newSession(preset: nil))
@@ -309,7 +305,7 @@ struct BaseChatDemoApp: App {
         // If persistence is wired, ingest directly — otherwise hand off
         // to the buffer and let `DemoContentView` pick it up once mount
         // completes.
-        if runtime != nil {
+        if runtime != nil, let chatViewModel {
             Task { @MainActor in
                 await chatViewModel.ingest(payload)
             }
@@ -339,7 +335,7 @@ struct BaseChatDemoApp: App {
         // Remove before ingesting so a crash during ingest doesn't replay.
         defaults.removeObject(forKey: DemoAppGroup.pendingShareKey)
 
-        if runtime != nil {
+        if runtime != nil, let chatViewModel {
             guard let payload = pendingPayload(from: sharePayload) else { return }
             Task { @MainActor in
                 await chatViewModel.ingestPendingPayload(payload, intent: .newSession(preset: nil))
@@ -358,12 +354,24 @@ struct BaseChatDemoApp: App {
             makeModelContainer: { container }
         )
 
-        chatViewModel.configure(runtime: runtime)
+        let vm = ChatViewModel(
+            inferenceService: inferenceService,
+            toolApprovalGate: toolApprovalGate,
+            conversationRuntime: runtime.conversationRuntime
+        )
+        vm.foundationModelProvider = {
+            if #available(iOS 26, macOS 26, *) {
+                return FoundationBackend.isAvailable
+            }
+            return false
+        }
+        vm.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
         modelManagementViewModel.benchmarkCache = runtime.benchmarkCache
-        chatViewModel.onFirstMessage = { [inferenceService] session, text in
+        vm.onFirstMessage = { [inferenceService, weak vm] session, text in
+            guard let vm else { return }
             Task { @MainActor in
-                while chatViewModel.isGenerating {
+                while vm.isGenerating {
                     try? await Task.sleep(nanoseconds: 100_000_000)
                 }
                 await sessionManager.autoRenameSession(
@@ -375,18 +383,19 @@ struct BaseChatDemoApp: App {
         }
 
         if !isUITesting {
-            chatViewModel.refreshModels()
-            chatViewModel.autoSelectFirstRunModel()
+            vm.refreshModels()
+            vm.autoSelectFirstRunModel()
 
-            if chatViewModel.selectedModel == nil,
-               let foundation = chatViewModel.availableModels.first(where: { $0.modelType == .foundation }) {
-                chatViewModel.selectedModel = foundation
+            if vm.selectedModel == nil,
+               let foundation = vm.availableModels.first(where: { $0.modelType == .foundation }) {
+                vm.selectedModel = foundation
             }
 
-            chatViewModel.dispatchSelectedLoad()
-            chatViewModel.startMemoryMonitoring()
+            vm.dispatchSelectedLoad()
+            vm.startMemoryMonitoring()
         }
 
+        self.chatViewModel = vm
         self.runtime = runtime
     }
 

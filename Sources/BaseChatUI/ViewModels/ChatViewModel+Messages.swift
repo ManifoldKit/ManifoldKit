@@ -27,62 +27,39 @@ extension ChatViewModel {
         draftAttachments = []
         Log.ui.debug("User sent message")
 
-        // Runtime path — delegate to ConversationRuntime when configured.
-        if let runtime = conversationRuntime {
-            let input = SendInput(
-                sessionID: activeSessionID,
-                userText: text,
-                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens
-            )
-            do {
-                let handle = try await runtime.send(input)
-                activeConversationStreamHandle = handle
-            } catch {
-                Log.persistence.error("ConversationRuntime.send failed: \(error)")
-                surfaceError(error, kind: .persistence)
-            }
-            return
-        }
-
-        // GenerationCoordinator path (existing).
-
-        // Create and persist the user message.
-        let userParts = text.isEmpty ? attachments : [.text(text)] + attachments
-        let userMessage = ChatMessageRecord(role: .user, contentParts: userParts, sessionID: activeSessionID)
-        messages.append(userMessage)
-        do {
-            try await saveMessage(userMessage)
-        } catch {
-            Log.persistence.error("Failed to save user message: \(error)")
-            surfaceError(error, kind: .persistence)
-            messages.removeAll(where: { $0.id == userMessage.id })
-            return
-        }
-
-        // Update session timestamp.
-        do {
-            try await sessionController.touchActiveSessionUpdatedAt()
-        } catch {
-            Log.persistence.error("Failed to persist session timestamp: \(error)")
-            surfaceError(error, kind: .persistence)
-        }
-
         // Trigger auto-title on the first user message in this session.
-        if let session = activeSession, !text.isEmpty, messages.filter({ $0.role == .user }).count == 1 {
+        // Done before runtime.send() so the host can rename in parallel with
+        // the streaming response — the runtime owns persistence of the user
+        // message and the assistant reply.
+        let willBeFirstUserMessage = messages.filter { $0.role == .user }.isEmpty
+        if let session = activeSession, !text.isEmpty, willBeFirstUserMessage {
             await onFirstMessage?(session, text)
         }
 
-        // Create an empty assistant message that will be streamed into.
-        let assistantMessage = ChatMessageRecord(role: .assistant, content: "", sessionID: activeSessionID)
-        messages.append(assistantMessage)
-
-        await generateIntoMessage(assistantMessage)
-        updateContextEstimate()
+        let resolvedSystemPrompt = effectiveSystemPrompt()
+        let input = SendInput(
+            sessionID: activeSessionID,
+            userText: text,
+            systemPrompt: resolvedSystemPrompt,
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            maxOutputTokens: maxOutputTokens,
+            maxThinkingTokens: maxThinkingTokens,
+            streamingUpdateInterval: streamingUpdateInterval,
+            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: loopDetectionEnabled
+        )
+        do {
+            let handle = try await conversationRuntime.send(input)
+            activeConversationStreamHandle = handle
+            await awaitStreamCompletion()
+        } catch {
+            Log.persistence.error("ConversationRuntime.send failed: \(error)")
+            surfaceError(error, kind: .persistence)
+        }
     }
 
     /// Regenerates the last assistant response.
@@ -91,50 +68,28 @@ extension ChatViewModel {
 
         guard let activeSessionID else { return }
 
-        // Runtime path — delegate to ConversationRuntime when configured.
-        if let runtime = conversationRuntime {
-            let input = RegenerateInput(
-                sessionID: activeSessionID,
-                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens
-            )
-            do {
-                let handle = try await runtime.regenerate(input)
-                activeConversationStreamHandle = handle
-            } catch {
-                Log.ui.error("ConversationRuntime.regenerate failed: \(error)")
-                surfaceError(error, kind: .generation)
-            }
-            return
-        }
-
-        // GenerationCoordinator path (existing).
-
-        // Find and remove the last assistant message.
-        guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else {
-            return
-        }
-
-        let removed = messages.remove(at: lastAssistantIndex)
+        let input = RegenerateInput(
+            sessionID: activeSessionID,
+            systemPrompt: effectiveSystemPrompt(),
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            maxOutputTokens: maxOutputTokens,
+            maxThinkingTokens: maxThinkingTokens,
+            streamingUpdateInterval: streamingUpdateInterval,
+            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: loopDetectionEnabled
+        )
         do {
-            try await deleteMessage(removed)
+            let handle = try await conversationRuntime.regenerate(input)
+            activeConversationStreamHandle = handle
+            await awaitStreamCompletion()
         } catch {
-            Log.persistence.error("Failed to delete prior assistant message: \(error)")
-            surfaceError(error, kind: .persistence)
-            messages.insert(removed, at: lastAssistantIndex)
-            return
+            Log.ui.error("ConversationRuntime.regenerate failed: \(error)")
+            surfaceError(error, kind: .generation)
         }
-
-        // Create a fresh assistant message.
-        let assistantMessage = ChatMessageRecord(role: .assistant, content: "", sessionID: activeSessionID)
-        messages.append(assistantMessage)
-
-        Log.ui.debug("Regenerating last response")
-        await generateIntoMessage(assistantMessage)
     }
 
     /// Edits a message and regenerates everything after it.
@@ -144,76 +99,31 @@ extension ChatViewModel {
 
         guard let activeSessionID else { return }
 
-        // Runtime path — delegate to ConversationRuntime when configured.
-        if let runtime = conversationRuntime {
-            let input = EditInput(
-                sessionID: activeSessionID,
-                messageID: messageID,
-                newContent: newContent,
-                systemPrompt: systemPrompt.isEmpty ? nil : systemPrompt,
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens
-            )
-            // Invalidate the token cache for the edited message — content changed.
-            tokenCountCache.removeValue(forKey: messageID)
-            do {
-                let handle = try await runtime.edit(input)
-                activeConversationStreamHandle = handle
-            } catch {
-                Log.ui.error("ConversationRuntime.edit failed: \(error)")
-                surfaceError(error, kind: .generation)
-            }
-            return
-        }
-
-        // GenerationCoordinator path (existing).
-        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
-
-        // Update the edited message.
-        let originalMessage = messages[index]
-        let preservedNonTextParts = originalMessage.contentParts.filter { part in
-            if case .text = part { return false }
-            return true
-        }
-        messages[index].contentParts = newContent.isEmpty
-            ? preservedNonTextParts
-            : [.text(newContent)] + preservedNonTextParts
-        do {
-            try await updateMessage(messages[index])
-        } catch {
-            messages[index] = originalMessage
-            Log.persistence.error("Failed to update edited message: \(error)")
-            surfaceError(error, kind: .persistence)
-            return
-        }
-
-        // The edited message keeps the same UUID but now has different content,
-        // so its stale cache entry would be returned by updateContextEstimate().
+        let input = EditInput(
+            sessionID: activeSessionID,
+            messageID: messageID,
+            newContent: newContent,
+            systemPrompt: effectiveSystemPrompt(),
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            maxOutputTokens: maxOutputTokens,
+            maxThinkingTokens: maxThinkingTokens,
+            streamingUpdateInterval: streamingUpdateInterval,
+            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: loopDetectionEnabled
+        )
+        // Invalidate the token cache for the edited message — content changed.
         tokenCountCache.removeValue(forKey: messageID)
-
-        // Remove all messages after the edited one.
-        let toRemove = Array(messages[(index + 1)...])
-        messages.removeSubrange((index + 1)...)
-        for msg in toRemove {
-            do {
-                try await deleteMessage(msg)
-            } catch {
-                Log.persistence.error("Failed to delete message during edit regeneration: \(error)")
-                surfaceError(error, kind: .persistence)
-                messages = Array(messages.prefix(index + 1)) + toRemove
-                return
-            }
-        }
-
-        // If the edited message was from the user, regenerate the assistant response.
-        if messages[index].role == .user {
-            let assistantMessage = ChatMessageRecord(role: .assistant, content: "", sessionID: activeSessionID)
-            messages.append(assistantMessage)
-            Log.ui.debug("Edited user message, regenerating")
-            await generateIntoMessage(assistantMessage)
+        do {
+            let handle = try await conversationRuntime.edit(input)
+            activeConversationStreamHandle = handle
+            await awaitStreamCompletion()
+        } catch {
+            Log.ui.error("ConversationRuntime.edit failed: \(error)")
+            surfaceError(error, kind: .generation)
         }
     }
 
@@ -230,38 +140,28 @@ extension ChatViewModel {
     /// changing observable semantics. Keep sync; do not "fix" the
     /// inconsistency in a future refactor.
     public func stopGeneration() {
-        // Runtime path — cancel the in-flight ConversationRuntime stream.
-        // The runtime emits `.streamFinished(reason: .cancelled)` which drives
-        // `transitionPhase(.idle)` through the drain task — no extra phase
-        // transition needed here.
-        if let runtime = conversationRuntime, let handle = activeConversationStreamHandle {
-            activeConversationStreamHandle = nil
-            Task {
-                await runtime.cancel(handle)
-            }
-            Log.ui.debug("Generation stopped by user (runtime path)")
+        // Drive UI back to idle synchronously so call sites like the toolbar
+        // stop-button get immediate feedback. The runtime's subsequent
+        // `.streamFinished(reason: .cancelled)` event is a no-op for phase
+        // (the state machine treats `idle → idle` as `.unchanged`) but it's
+        // still load-bearing — it's how `awaitStreamCompletion()` resumes
+        // (clearing `activeConversationStreamHandle`) and how persistence of
+        // the partial reply happens. Do NOT clear the handle here; let the
+        // drain task clear it when the cancellation has fully propagated.
+        transitionPhase(to: .idle)
+        // Always forward to the backend — call sites like memory-pressure
+        // handlers and scenePhase teardown invoke this defensively even
+        // when no generation is active. A no-op stop on an idle backend is
+        // safe; conversely, dropping the call risks orphaning a
+        // mid-flight inference if the runtime's handle bookkeeping raced.
+        inferenceService.stopGeneration()
+        guard let handle = activeConversationStreamHandle else {
+            Log.ui.debug("stopGeneration called with no active runtime stream — backend stopped anyway")
             return
         }
-
-        // GenerationCoordinator path (existing).
-        generationTask?.cancel()
-        generationTask = nil
-        activeGenerationToken = nil
-        inferenceService.stopGeneration()
-        transitionPhase(to: .idle)
-
-        // Persist whatever has been generated so far.
-        if let lastAssistant = messages.last(where: { $0.role == .assistant }),
-           !lastAssistant.content.isEmpty {
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await self.saveMessage(lastAssistant)
-                } catch {
-                    Log.persistence.error("Failed to persist partial assistant message: \(error)")
-                    self.surfaceError(error, kind: .persistence)
-                }
-            }
+        let runtime = conversationRuntime
+        Task {
+            await runtime.cancel(handle)
         }
         Log.ui.debug("Generation stopped by user")
     }
