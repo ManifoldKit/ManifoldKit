@@ -416,38 +416,3 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
-
-  # Guards against silent dependency-graph explosions like the one that
-  # prompted the BaseChatServer trait-gating work (Package.resolved went
-  # 20 → 38 pins in a single PR). Adds friction proportional to dep weight:
-  # 1–2 pins is fine, anything more requires the `deps-ok` label as a
-  # deliberate sign-off captured in the PR's history.
-  dep-budget:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        # fetch-depth: 0 is required because `git diff base...HEAD` walks
-        # back to the merge base, which can be arbitrarily deep on a
-        # long-lived branch. The paths-filter style fetch-depth: 2 is only
-        # enough for the parent commit on push events.
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Check Package.resolved pin delta
-        run: |
-          set -euo pipefail
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
-          echo "PR adds $new new package pin(s)."
-          if [ "$new" -gt 2 ]; then
-            if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q 'deps-ok'; then
-              echo "::notice::PR adds $new new pins; 'deps-ok' label present, allowing."
-              exit 0
-            fi
-            echo "::error::PR adds $new new package pins (limit: 2). Either reduce the dep additions or add the 'deps-ok' label to the PR with a justification in the description."
-            exit 1
-          fi

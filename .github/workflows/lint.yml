@@ -1,0 +1,271 @@
+name: Lint
+
+# Consolidates seven previously-separate ubuntu-latest lint jobs into one
+# sequenced runner. Each former job is now a step inside this workflow:
+#
+#   - actionlint                    (was actionlint.yml)
+#   - changelog-lint                (was changelog-lint.yml)
+#   - commitlint                    (was commitlint.yml — Lint PR Title)
+#   - known-issue-lint              (was known-issue-lint.yml)
+#   - secret-scan                   (was security-scans.yml: secret-scan)
+#   - dependency-review             (was security-scans.yml: dependency-review)
+#   - dep-budget                    (was ci.yml: dep-budget)
+#
+# Why one job: each separate ubuntu-latest job paid ~10s of runner cold-start
+# overhead — ~50–70s aggregate per PR. Hoisting into a single runner removes
+# that overhead. The trade-off is that we lose per-job badge color in the PR
+# checks UI, but per-step status remains visible (each step has a name and an
+# explicit pass/fail outcome). `if: always()` on every step after the first
+# guarantees a failure in step N does not skip steps N+1..end.
+#
+# Issue #953 — Lever D.
+
+on:
+  pull_request:
+    # Covers the union of triggers from the seven original workflows.
+    # `edited` + `reopened` matter for commitlint (PR title revalidation);
+    # `opened` + `synchronize` are the GitHub default for pull_request.
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  # Mirror the per-event/per-ref pattern the originals used so a force-push
+  # cancels in-flight runs of the same PR / branch.
+  group: lint-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to read-only. Steps that need more elevate via `permissions:` blocks
+# at workflow scope below — kept tight to the minimum each tool requires.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # Single checkout shared by every step. fetch-depth: 0 is required by:
+      #   - trufflehog (diffs git history for secret leakage)
+      #   - dep-budget (`git diff base...HEAD -- Package.resolved`)
+      # The cost is small on Ubuntu so we pay it unconditionally rather than
+      # checking out twice.
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # ── actionlint ────────────────────────────────────────────────────────
+      - name: Install actionlint
+        id: install_actionlint
+        # Pin the bootstrap script to the same release tag as the binary so a
+        # compromised `main` on rhysd/actionlint cannot swap the download URL.
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+
+      - name: actionlint — lint GitHub Actions workflows
+        if: always()
+        run: ${{ steps.install_actionlint.outputs.executable }} -color
+
+      # ── changelog-lint ────────────────────────────────────────────────────
+      - name: changelog-lint — skip for non-Release-Please PRs
+        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-please--branches--')
+        run: |
+          echo "Non-Release-Please PR; changelog rewrite validation is not required."
+          echo "Passing changelog-lint to provide the required check context."
+
+      - name: changelog-lint — verify prose-style entries
+        if: always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--branches--')
+        run: |
+          set -euo pipefail
+
+          # Extract the newest version section from CHANGELOG.md
+          # (everything between the first ## [x.y.z] and the second ## [x.y.z])
+          newest_section=$(awk '/^## \[/{n++} n==1' CHANGELOG.md)
+
+          if [ -z "$newest_section" ]; then
+            echo "::error::Could not find a version section in CHANGELOG.md"
+            exit 1
+          fi
+
+          echo "=== Newest changelog section ==="
+          echo "$newest_section"
+          echo "================================"
+
+          # Check for auto-generated bullet entries (Release Please format):
+          # Lines starting with "* " followed by lowercase text
+          # These indicate the entry hasn't been rewritten in prose style
+          if echo "$newest_section" | grep -qE '^\* [a-z]'; then
+            echo ""
+            echo "::error::CHANGELOG.md contains auto-generated bullet entries."
+            echo "::error::Release notes must be rewritten in prose style before merging."
+            echo "::error::"
+            echo "::error::Expected format:  **Bold title** — Description of the change..."
+            echo "::error::Found format:     * auto-generated commit message"
+            echo ""
+            echo "Auto-generated entries found:"
+            echo "$newest_section" | grep -E '^\* [a-z]'
+            exit 1
+          fi
+
+          # Verify the section shows evidence of a human rewrite — either
+          #   (a) a prose bullet with a bold title and em-dash, or
+          #   (b) an H3 subheading (Prisma-style Highlights section).
+          # Check #1 above already rejects raw auto-generated `* lowercase`
+          # bullets, so either prose shape is sufficient proof the author
+          # reworked the auto-generated output.
+          if ! echo "$newest_section" | grep -qE '^(\*\*[^*]+\*\* —|### )'; then
+            # Find the first candidate prose line so the author can see exactly
+            # what tripped the regex. Common em-dash-format mistakes: period
+            # inside the bold (**Title.** prose), colon after the bold
+            # (**Title**: prose), or a hyphen/en-dash instead of "—".
+            offending_line=$(echo "$newest_section" | grep -m1 -E '^\*\*' || true)
+
+            echo ""
+            echo "::error::No prose-style entries found in the newest changelog section."
+            echo "::error::Accepted formats:"
+            echo "::error::  (a) **Bold title** — Description…  (em-dash required, not period/colon/hyphen)"
+            echo "::error::  (b) ### Subheading                  (Prisma-style Highlights)"
+            if [ -n "$offending_line" ]; then
+              echo "::error::Found:  $offending_line"
+            else
+              echo "::error::Found:  (no line starting with ** or ### in the newest section)"
+            fi
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ Changelog entries are in prose style"
+
+      # ── commitlint (PR title) ─────────────────────────────────────────────
+      - name: commitlint — validate PR title
+        if: always() && github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            test
+            refactor
+            perf
+            ci
+            build
+            revert
+          requireScope: false
+
+      # ── known-issue-lint ──────────────────────────────────────────────────
+      - name: known-issue-lint — verify withKnownIssue has FIXME link
+        if: always()
+        run: |
+          set -euo pipefail
+
+          # Search Swift sources for `withKnownIssue(` and capture file:line
+          # for each occurrence. `-n` keeps line numbers; `-H` keeps filenames
+          # even when only one file matches; `--include` keeps the search
+          # tight on Swift sources only.
+          mapfile -t hits < <(grep -RHn --include='*.swift' \
+            -E '\bwithKnownIssue\(' Tests Sources 2>/dev/null || true)
+
+          if [ ${#hits[@]} -eq 0 ]; then
+            echo "✓ No withKnownIssue usages found."
+            exit 0
+          fi
+
+          echo "Found ${#hits[@]} withKnownIssue usage(s); verifying each has a // FIXME link above…"
+          echo ""
+
+          violations=0
+          for hit in "${hits[@]}"; do
+            file="${hit%%:*}"
+            rest="${hit#*:}"
+            line_no="${rest%%:*}"
+
+            # Walk upward past blank/whitespace-only lines and find the first
+            # non-blank line. That line must be a `// FIXME:` comment.
+            prev=$((line_no - 1))
+            while [ "$prev" -gt 0 ]; do
+              prev_content=$(sed -n "${prev}p" "$file")
+              if [[ -n "$(echo "$prev_content" | tr -d '[:space:]')" ]]; then
+                break
+              fi
+              prev=$((prev - 1))
+            done
+
+            if [ "$prev" -le 0 ]; then
+              prev_content=""
+            fi
+
+            if echo "$prev_content" | grep -qE '^\s*//\s*FIXME:.*(https?://|#[0-9]+)'; then
+              # Compliant: FIXME comment with either a URL or a #NNN issue ref.
+              continue
+            fi
+
+            violations=$((violations + 1))
+            echo "::error file=$file,line=$line_no::withKnownIssue at $file:$line_no lacks a '// FIXME: <issue URL or #N>' comment on the line above."
+            echo "  Found above: ${prev_content:-<top of file>}"
+            echo ""
+          done
+
+          if [ "$violations" -gt 0 ]; then
+            echo ""
+            echo "::error::$violations withKnownIssue usage(s) violate the policy in CLAUDE.md."
+            echo "::error::Add a '// FIXME: <issue URL>' comment on the line directly above each usage,"
+            echo "::error::or remove the withKnownIssue wrapper if the underlying bug is fixed."
+            exit 1
+          fi
+
+          echo "✓ All ${#hits[@]} withKnownIssue usage(s) have a tracking // FIXME link."
+
+      # ── secret-scan (trufflehog) ──────────────────────────────────────────
+      - name: secret-scan — scan changed commits for leaked secrets
+        if: always()
+        uses: trufflesecurity/trufflehog@v3.94.3
+        with:
+          # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
+          # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit
+          # `version:` input is intentionally omitted — the action's default tag
+          # resolves to a published image. Action SHA pin above keeps the
+          # composite definition itself fixed for supply-chain safety.
+          # Keep signal high by failing only on verifiable active secrets.
+          extra_args: --results=verified
+
+      # ── dependency-review ─────────────────────────────────────────────────
+      - name: dependency-review — fail on newly introduced vulnerable deps
+        # Dependency Review compares base/head and is most useful on PRs.
+        if: always() && github.event_name == 'pull_request'
+        # continue-on-error: the action exits non-zero when the repo's dependency
+        # graph isn't enabled yet (requires one-time opt-in in repo Settings >
+        # Advanced Security > Dependency graph). Once enabled this should be
+        # switched to fail-closed by removing continue-on-error.
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          vulnerability-check: true
+          license-check: false
+
+      # ── dep-budget ────────────────────────────────────────────────────────
+      # Guards against silent dependency-graph explosions like the one that
+      # prompted the BaseChatServer trait-gating work (Package.resolved went
+      # 20 → 38 pins in a single PR). Adds friction proportional to dep weight:
+      # 1–2 pins is fine, anything more requires the `deps-ok` label as a
+      # deliberate sign-off captured in the PR's history.
+      - name: dep-budget — check Package.resolved pin delta
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          new=$(git diff "origin/${{ github.base_ref }}...HEAD" -- Package.resolved | grep -c '^+.*"identity"' || true)
+          echo "PR adds $new new package pin(s)."
+          if [ "$new" -gt 2 ]; then
+            if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q 'deps-ok'; then
+              echo "::notice::PR adds $new new pins; 'deps-ok' label present, allowing."
+              exit 0
+            fi
+            echo "::error::PR adds $new new package pins (limit: 2). Either reduce the dep additions or add the 'deps-ok' label to the PR with a justification in the description."
+            exit 1
+          fi
