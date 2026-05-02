@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.14.5](https://github.com/roryford/BaseChatKit/compare/v0.14.4...v0.14.5) (2026-05-02)
+
+### Highlights
+
+#### BaseChatServer — OpenAI-compatible local HTTP API
+
+Embedding BCK inference in a separate process (a Python script, VS Code extension, shell tool) previously required manual HTTP wiring or a custom adapter per backend. `BaseChatServer` is a new executable target that wraps any registered inference backend — Ollama, Llama, MLX, Foundation, or cloud SaaS — behind an OpenAI-compatible HTTP surface: `/v1/chat/completions` (streaming and non-streaming), `/v1/models`, `/health`, and `/metrics`. Bearer auth, CORS, and a concurrency gate (`AsyncSemaphore`) are included out of the box.
+
+```swift
+// Launch from the command line:
+// BaseChatServer --backend ollama --port 8080
+// BaseChatServer --backend llama --model-path /path/to/model.gguf --api-key secret
+
+// Or embed in an app target:
+let config = ServerConfiguration(port: 8080, parallelGenerations: 2)
+let server = ServerApp(configuration: config, backendProvider: provider)
+try await server.run()
+```
+
+Three targets ship: `BaseChatServerCore` (protocols, adapters, HTTP plumbing), `BaseChatServerBackends` (trait-aware backend selection actor), and a thin `BaseChatServer` executable. The server stays out of `BaseChatUI` and `BaseChatRuntime`; opt in by adding the new targets to your app explicitly. Closes [#744].
+
+#### MCP v1.1 polish — Foundation Models compatibility and tool error UX
+
+Foundation Models enforces a stricter JSON Schema subset and caps registered tool count, causing silent filtering or registration failures for apps using BCK's built-in MCP integration. Tool call errors also surfaced as raw JSON in the chat UI. `MCPToolSource` now filters MCP tool schemas to the Foundation Models subset before registration and caps advertised tools at 16, while preserving dispatch for any tool beyond that cap. `ToolResult` gains structured error presentation strings and permission-denied re-auth CTA metadata, rendered by a new `ToolErrorView` in `BaseChatUI`.
+
+```swift
+// No API change needed — filtering happens inside MCPToolSource automatically.
+let source = MCPToolSource(client: client)
+// Tools beyond index 15 are hidden from Foundation's advertised list
+// but remain fully dispatchable when called by name.
+```
+
+See [#792], [#940].
+
+### Features
+
+- **server:** add OpenAI-compatible BaseChatServer ([#939])
+- **mcp:** Foundation Models schema filtering, 16-tool cap, and ToolResult error UX ([#940])
+
 ## [0.14.4](https://github.com/roryford/BaseChatKit/compare/v0.14.3...v0.14.4) (2026-05-01)
 
 ### Highlights
