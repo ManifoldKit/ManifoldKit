@@ -1,3 +1,4 @@
+#if Server
 import ArgumentParser
 import BaseChatBackends
 import BaseChatInference
@@ -184,3 +185,5 @@ package actor TraitAwareServerBackendProvider: ServerBackendProvider {
         #endif
     }
 }
+
+#endif

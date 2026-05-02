@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import XCTest
 
@@ -173,3 +174,5 @@ final class OpenAIJSONGoldenTests: XCTestCase {
         XCTAssertEqual(chunk.usage?.totalTokens, 12)
     }
 }
+
+#endif

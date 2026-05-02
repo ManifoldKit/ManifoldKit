@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import XCTest
 
@@ -75,3 +76,5 @@ final class ServerMetricsAndErrorTests: XCTestCase {
         XCTAssertEqual(app.metrics.snapshot(), ServerMetricsSnapshot())
     }
 }
+
+#endif

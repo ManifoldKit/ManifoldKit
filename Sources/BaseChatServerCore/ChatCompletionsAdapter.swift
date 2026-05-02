@@ -1,3 +1,4 @@
+#if Server
 import BaseChatInference
 import Foundation
 
@@ -745,3 +746,5 @@ package struct ChatCompletionEventMapper: Sendable {
         }
     }
 }
+
+#endif

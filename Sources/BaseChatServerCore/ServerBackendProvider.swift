@@ -1,3 +1,4 @@
+#if Server
 import BaseChatInference
 import Foundation
 
@@ -23,3 +24,5 @@ package struct UnavailableServerBackendProvider: ServerBackendProvider {
         throw ServerError.backendUnavailable("No server backend has been configured yet.")
     }
 }
+
+#endif

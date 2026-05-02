@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 
 package enum ServerError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -14,3 +15,5 @@ package enum ServerError: Error, Equatable, Sendable, CustomStringConvertible {
         }
     }
 }
+
+#endif

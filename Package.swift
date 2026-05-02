@@ -39,6 +39,7 @@ let package = Package(
         .trait(name: "MCP", description: "Enable the BaseChatMCP module and MCP client surface."),
         .trait(name: "MCPBuiltinCatalog", description: "Enable BaseChatMCP's built-in catalog descriptors."),
         .trait(name: "Voice", description: "Enable the BaseChatVoice speech I/O spike and voice composer UI."),
+        .trait(name: "Server", description: "Enable BaseChatServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds BaseChatBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
@@ -404,9 +405,12 @@ let package = Package(
             name: "BaseChatServerCore",
             dependencies: [
                 "BaseChatInference",
-                .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
             ],
-            path: "Sources/BaseChatServerCore"
+            path: "Sources/BaseChatServerCore",
+            swiftSettings: [
+                .define("Server", .when(traits: ["Server"])),
+            ]
         ),
         .target(
             name: "BaseChatServerBackends",
@@ -423,6 +427,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Server", .when(traits: ["Server"])),
             ]
         ),
         .executableTarget(
@@ -439,6 +444,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Server", .when(traits: ["Server"])),
             ]
         ),
         .testTarget(
@@ -448,7 +454,10 @@ let package = Package(
                 "BaseChatServerBackends",
                 "BaseChatInference",
                 "BaseChatTestSupport",
-                .product(name: "HummingbirdTesting", package: "hummingbird"),
+                .product(name: "HummingbirdTesting", package: "hummingbird", condition: .when(traits: ["Server"])),
+            ],
+            swiftSettings: [
+                .define("Server", .when(traits: ["Server"])),
             ]
         ),
         .testTarget(

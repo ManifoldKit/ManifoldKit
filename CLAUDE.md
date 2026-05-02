@@ -32,7 +32,7 @@ swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatBackendsTests --disable-default-traits
 swift test --filter BaseChatTestSupportTests --disable-default-traits
 swift test --filter BaseChatAppIntentsTests --disable-default-traits
-swift test --filter BaseChatServerTests --disable-default-traits
+swift test --filter BaseChatServerTests --disable-default-traits --traits Server
 
 # Apple Silicon only — MLX mock tests + llama.cpp
 swift test --filter BaseChatBackendsTests --traits MLX,Llama

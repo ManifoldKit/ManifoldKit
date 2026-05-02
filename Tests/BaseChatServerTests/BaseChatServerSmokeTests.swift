@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import BaseChatInference
 import BaseChatTestSupport
@@ -490,3 +491,5 @@ private struct FailingChatAdapter: ChatCompletionsAdapter {
         }
     }
 }
+
+#endif

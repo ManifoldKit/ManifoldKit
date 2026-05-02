@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import BaseChatTestSupport
 import XCTest
@@ -38,3 +39,5 @@ final class ServerBackendProviderTests: XCTestCase {
         XCTAssertEqual(provider.backendRequests, [ServerBackendRequest(model: "beta")])
     }
 }
+
+#endif

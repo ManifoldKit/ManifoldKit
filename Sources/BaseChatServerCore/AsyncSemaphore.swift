@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 
 package actor AsyncSemaphore {
@@ -39,3 +40,5 @@ package actor AsyncSemaphore {
         waiters.removeFirst().resume(throwing: CancellationError())
     }
 }
+
+#endif
