@@ -90,9 +90,46 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             maxOutputTokens: 8192,
             supportsStreaming: true,
             isRemote: true,
+            // Vision is gated on the configured model name — Claude 3, 3.5,
+            // 3.7, and 4 families all accept images as content blocks; the
+            // Claude 2 family and `claude-instant-*` do not. The
+            // GenerationCoordinator's pre-flight reads this flag and rejects
+            // image attachments before we ever build a request body, so an
+            // outdated model name surfaces a clear "not vision-capable"
+            // error rather than a 400 from Anthropic.
+            supportsVision: Self.isVisionCapableModel(modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )
+    }
+
+    /// Anthropic's per-turn cap on inline base64 images. The Messages API
+    /// rejects more than this with HTTP 400. Surface a clear local error
+    /// instead so callers can prompt the user to drop attachments without
+    /// burning a round-trip.
+    static let maxImagesPerTurn: Int = 5
+
+    /// Returns `true` when `modelName` belongs to a Claude family that
+    /// accepts image content blocks. The matcher is intentionally
+    /// permissive — any name containing a vision-capable family token
+    /// counts, so dated-suffix variants (`claude-3-5-sonnet-20241022`) and
+    /// vendor aliases (`anthropic.claude-sonnet-4`) both light up.
+    static func isVisionCapableModel(_ modelName: String) -> Bool {
+        let lowered = modelName.lowercased()
+        // Explicit denylist: every Claude name that pre-dates vision support.
+        // These have to be rejected even when the broader `claude-*` match
+        // below would otherwise pass.
+        if lowered.contains("claude-2") || lowered.contains("claude-instant") {
+            return false
+        }
+        // Allowlist of vision-capable family tokens. Update when Anthropic
+        // ships a new family; the deny rules above fence off the legacy
+        // text-only models so a wildcard `claude-` match would be unsafe.
+        let visionFamilies = [
+            "claude-3", "claude-sonnet-4", "claude-opus-4", "claude-haiku-4",
+            "claude-4", "claude-sonnet-3", "claude-opus-3", "claude-haiku-3",
+        ]
+        return visionFamilies.contains(where: lowered.contains)
     }
 
     // MARK: - Tool-Aware Conversation History
@@ -156,13 +193,38 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         //      win over the structured/plain replay so the model sees the
         //      `tool_use` ↔ `tool_result` pairing it requires.
         //   2. structured history — carries thinking blocks with signatures
-        //      for multi-turn extended-thinking replay (#604).
+        //      for multi-turn extended-thinking replay (#604) and image
+        //      content blocks for vision turns.
         //   3. plain (role, content) history — legacy fallback.
         //   4. prompt-only single user turn.
         let chatMessages: [[String: Any]]
         if let toolHistory = snapshotToolHistory, !toolHistory.isEmpty {
             chatMessages = toolHistory.map(Self.encodeToolAwareEntry)
         } else if let structured = structuredHistory, !structured.isEmpty {
+            // Per-turn image cap: Anthropic rejects more than 5 inline
+            // base64 images on a single turn. Validate before serialising
+            // so the failure message names the offending turn rather than
+            // surfacing as an opaque HTTP 400 from Anthropic.
+            for message in structured {
+                let count = CloudImageEncoding.imageCount(in: message.parts)
+                if count > Self.maxImagesPerTurn {
+                    throw InferenceError.inferenceFailure(
+                        "Claude accepts at most \(Self.maxImagesPerTurn) images per message; this \(message.role) turn has \(count). Drop attachments and retry."
+                    )
+                }
+            }
+            // Vision pre-flight: if the configured model isn't vision-capable
+            // and the structured history carries any image, fail with a
+            // clear local error. (GenerationCoordinator already gates this
+            // path on `capabilities.supportsVision`, but the backend may be
+            // driven directly — e.g. the OpenAI-compat server — so keep the
+            // belt-and-suspenders check here.)
+            let totalImages = CloudImageEncoding.imageCount(in: structured)
+            if totalImages > 0, !Self.isVisionCapableModel(modelName) {
+                throw InferenceError.inferenceFailure(
+                    "Model \"\(modelName)\" does not support image input. Switch to a Claude 3, 3.5, 3.7, or 4 family model and retry."
+                )
+            }
             chatMessages = structured.map(Self.encodeMessageContent(for:))
         } else if let history = conversationHistory {
             chatMessages = history.map { ["role": $0.role, "content": $0.content] }
@@ -239,16 +301,22 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// Encodes one ``StructuredMessage`` as an Anthropic Messages API
     /// `messages[]` entry.
     ///
-    /// - User turns collapse to a plain string `content` for simplicity —
-    ///   Anthropic accepts either a string or a structured array on user
-    ///   role.
+    /// - User turns collapse to a plain string `content` when they only
+    ///   carry text. When the turn carries one or more
+    ///   ``MessagePart/image(data:mimeType:)`` parts, the encoder emits a
+    ///   structured `content[]` with `image` blocks before any `text` block
+    ///   — the ordering Anthropic recommends so the model attends to the
+    ///   visual context first.
     /// - Assistant turns serialize to a structured `content` array. Thinking
     ///   blocks are emitted **before** any text block, with their
     ///   ``MessagePart/thinkingSignature`` carried verbatim. Anthropic's
     ///   multi-turn extended-thinking contract requires the signature to
     ///   match what the model emitted on the previous turn, so any
     ///   thinking block missing a signature is dropped rather than sent
-    ///   with a blank one (which would 400).
+    ///   with a blank one (which would 400). Image parts on an assistant
+    ///   turn are unusual but supported — the model never emits them, but
+    ///   round-tripping a persisted assistant row with an image attached
+    ///   should not crash the encoder.
     /// - System / tool turns fall back to plain string content.
     static func encodeMessageContent(for message: StructuredMessage) -> [String: Any] {
         if message.role == "assistant" {
@@ -272,6 +340,14 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                 }
             }
 
+            // Image blocks (rare on assistant turns; supported for
+            // round-trip parity with persisted rows).
+            for part in message.parts {
+                if case .image(let data, let mimeType) = part {
+                    blocks.append(encodeImageBlock(data: data, mimeType: mimeType))
+                }
+            }
+
             // Then text. Concatenated into a single block to match how the
             // model originally emitted its visible content.
             let visible = message.textContent
@@ -292,8 +368,52 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             return ["role": "assistant", "content": blocks]
         }
 
-        // User and other roles: collapse to plain text.
+        // User and other roles. If any image parts are present, emit a
+        // structured content array with image blocks before the text block.
+        // Anthropic's vision examples lead with `image` then `text`; the
+        // model attends to images first when they precede the prompt.
+        let hasImage = message.parts.contains { part in
+            if case .image = part { return true }
+            return false
+        }
+        if message.role == "user", hasImage {
+            var blocks: [[String: Any]] = []
+            for part in message.parts {
+                if case .image(let data, let mimeType) = part {
+                    blocks.append(encodeImageBlock(data: data, mimeType: mimeType))
+                }
+            }
+            let text = message.textContent
+            if !text.isEmpty {
+                blocks.append(["type": "text", "text": text])
+            }
+            return ["role": "user", "content": blocks]
+        }
+
+        // System / tool / image-less user turns: collapse to plain text.
         return ["role": message.role, "content": message.textContent]
+    }
+
+    /// Encodes a single image part as an Anthropic content block:
+    /// `{type:"image", source:{type:"base64", media_type:..., data:...}}`.
+    ///
+    /// Falls back to `image/png` for unrecognised MIME types — Anthropic
+    /// rejects exotic media types with a 400, but in practice every
+    /// persisted image is one of the four supported formats. The lenient
+    /// fallback keeps a corrupt mime field from blocking the entire turn.
+    static func encodeImageBlock(data: Data, mimeType: String) -> [String: Any] {
+        let normalised = mimeType.lowercased()
+        let mediaType = CloudImageEncoding.anthropicSupportedMimeTypes.contains(normalised)
+            ? normalised
+            : "image/png"
+        return [
+            "type": "image",
+            "source": [
+                "type": "base64",
+                "media_type": mediaType,
+                "data": CloudImageEncoding.base64String(from: data),
+            ] as [String: Any],
+        ]
     }
 
     // MARK: - Tool Encoding
