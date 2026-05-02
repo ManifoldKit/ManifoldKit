@@ -83,24 +83,21 @@ UI automation tests that launch the real Example app in a simulator and drive it
 ### Running tests
 
 ```bash
-# CI-safe local gate (no hardware required). Keep BaseChatMCPTests in this
-# batch; its network-facing coverage uses MockURLProtocol and does not opt in
-# to BaseChatMCPE2ETests.
+# CI-safe local gate (no hardware required). Two-invocation shape mirrors CI —
+# see CLAUDE.md Pre-push checklist for the rationale.
 scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
   --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
-  --filter BaseChatBackendsTests --filter BaseChatTestSupportTests \
-  --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
+  --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
+  --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+  --filter BaseChatServerTests --disable-default-traits --skip-update
 
-scripts/test.sh --filter BaseChatInferenceTests \
-  --disable-default-traits --skip-update --parallel
-
-# Swift Testing runs in a separate process to avoid mixed-runner crashes.
+# Swift Testing runs in a separate process to avoid mixed-runner crashes (#681).
+# Do NOT add --parallel to BaseChatInferenceTests — the UserDefaults.standard
+# race in test_autoSelectFirstRunModel_* and download-tests legacy-key reads
+# causes non-deterministic failures (issue #910).
 scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
   --disable-default-traits --skip-update
-
-# Targeted MCP CI-safe slice.
-scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --skip-update
 
 # Apple Silicon only
 swift test --filter BaseChatBackendsTests --traits MLX,Llama
