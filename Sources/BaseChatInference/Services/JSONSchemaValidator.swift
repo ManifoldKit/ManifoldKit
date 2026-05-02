@@ -112,61 +112,56 @@ public struct JSONSchemaValidator: Sendable {
             return failure
         }
 
-        // `enum` is evaluated first — it short-circuits on both primitives and
-        // composite values and produces the clearest model-facing message.
-        if let enumValues = schemaObject["enum"], case let .array(allowed) = enumValues {
-            if !allowed.contains(value) {
-                return ValidationFailure(
-                    modelReadableMessage: "argument \(Self.describePath(path)) must be one of: "
-                        + Self.describeEnum(allowed)
-                        + ". Got: " + Self.describeValue(value) + ".",
-                    path: path
-                )
-            }
+        // `enum` short-circuits on both primitives and composite values and
+        // produces the clearest model-facing message, so it runs first.
+        if let failure = checkEnum(value: value, schemaObject: schemaObject, path: path) {
+            return failure
         }
 
         // `type` — may be a single string or an array of strings (union).
-        if let typeValue = schemaObject["type"] {
-            if let failure = checkType(value: value, typeValue: typeValue, path: path) {
-                return failure
-            }
+        if let typeValue = schemaObject["type"],
+           let failure = checkType(value: value, typeValue: typeValue, path: path) {
+            return failure
         }
 
-        // Per-kind keywords.
+        return validatePerKindKeywords(value: value, schemaObject: schemaObject, path: path)
+    }
+
+    private func checkEnum(
+        value: JSONSchemaValue,
+        schemaObject: [String: JSONSchemaValue],
+        path: [String]
+    ) -> ValidationFailure? {
+        guard let enumValues = schemaObject["enum"],
+              case let .array(allowed) = enumValues else {
+            return nil
+        }
+        if allowed.contains(value) { return nil }
+        return ValidationFailure(
+            modelReadableMessage: "argument \(Self.describePath(path)) must be one of: "
+                + Self.describeEnum(allowed)
+                + ". Got: " + Self.describeValue(value) + ".",
+            path: path
+        )
+    }
+
+    private func validatePerKindKeywords(
+        value: JSONSchemaValue,
+        schemaObject: [String: JSONSchemaValue],
+        path: [String]
+    ) -> ValidationFailure? {
         switch value {
         case .object(let properties):
-            if let failure = validateObject(
-                properties: properties,
-                schemaObject: schemaObject,
-                path: path
-            ) {
-                return failure
-            }
-
+            return validateObject(properties: properties, schemaObject: schemaObject, path: path)
         case .array(let items):
-            if let failure = validateArray(
-                items: items,
-                schemaObject: schemaObject,
-                path: path
-            ) {
-                return failure
-            }
-
+            return validateArray(items: items, schemaObject: schemaObject, path: path)
         case .string(let s):
-            if let failure = validateString(value: s, schemaObject: schemaObject, path: path) {
-                return failure
-            }
-
+            return validateString(value: s, schemaObject: schemaObject, path: path)
         case .number(let n):
-            if let failure = validateNumber(value: n, schemaObject: schemaObject, path: path) {
-                return failure
-            }
-
+            return validateNumber(value: n, schemaObject: schemaObject, path: path)
         case .bool, .null:
-            break
+            return nil
         }
-
-        return nil
     }
 
     // MARK: - Keyword handlers
@@ -218,18 +213,50 @@ public struct JSONSchemaValidator: Sendable {
 
     private func valueMatchesType(_ value: JSONSchemaValue, typeName: String) -> Bool {
         switch typeName {
-        case "object":  if case .object = value { return true }
-        case "array":   if case .array = value { return true }
-        case "string":  if case .string = value { return true }
-        case "boolean": if case .bool = value { return true }
-        case "null":    if case .null = value { return true }
-        case "number":  if case .number = value { return true }
-        case "integer":
-            if case let .number(n) = value, n.rounded() == n, n.isFinite { return true }
-        default:
-            return false
+        case "object":  return isObject(value)
+        case "array":   return isArray(value)
+        case "string":  return isString(value)
+        case "boolean": return isBoolean(value)
+        case "null":    return isNull(value)
+        case "number":  return isNumber(value)
+        case "integer": return isInteger(value)
+        default:        return false
         }
+    }
+
+    private func isObject(_ value: JSONSchemaValue) -> Bool {
+        if case .object = value { return true }
         return false
+    }
+
+    private func isArray(_ value: JSONSchemaValue) -> Bool {
+        if case .array = value { return true }
+        return false
+    }
+
+    private func isString(_ value: JSONSchemaValue) -> Bool {
+        if case .string = value { return true }
+        return false
+    }
+
+    private func isBoolean(_ value: JSONSchemaValue) -> Bool {
+        if case .bool = value { return true }
+        return false
+    }
+
+    private func isNull(_ value: JSONSchemaValue) -> Bool {
+        if case .null = value { return true }
+        return false
+    }
+
+    private func isNumber(_ value: JSONSchemaValue) -> Bool {
+        if case .number = value { return true }
+        return false
+    }
+
+    private func isInteger(_ value: JSONSchemaValue) -> Bool {
+        guard case let .number(n) = value else { return false }
+        return n.isFinite && n.rounded() == n
     }
 
     private func validateObject(
@@ -237,77 +264,126 @@ public struct JSONSchemaValidator: Sendable {
         schemaObject: [String: JSONSchemaValue],
         path: [String]
     ) -> ValidationFailure? {
-
         // `required` — validated first so the model sees missing-field errors
         // before any type-mismatch errors on the fields that *are* present.
-        if let requiredValue = schemaObject["required"] {
-            guard case let .array(requiredArray) = requiredValue else {
-                return ValidationFailure(
-                    modelReadableMessage: "schema 'required' must be an array of strings.",
-                    path: path
-                )
-            }
-            // Deterministic scan: take fields in the order the schema lists them so
-            // tests can assert which missing field is reported first.
-            for entry in requiredArray {
-                guard case let .string(field) = entry else {
-                    return ValidationFailure(
-                        modelReadableMessage: "schema 'required' entries must be strings.",
-                        path: path
-                    )
-                }
-                if properties[field] == nil {
-                    return ValidationFailure(
-                        modelReadableMessage: "argument '\(field)' is required but was missing.",
-                        path: path + [field]
-                    )
-                }
-            }
+        if let failure = validateRequired(properties: properties, schemaObject: schemaObject, path: path) {
+            return failure
         }
 
         let propertySchemas: [String: JSONSchemaValue]
-        if let propsValue = schemaObject["properties"] {
-            guard case let .object(dict) = propsValue else {
+        switch resolvePropertySchemas(schemaObject: schemaObject, path: path) {
+        case .failure(let failure):
+            return failure
+        case .success(let dict):
+            propertySchemas = dict
+        }
+
+        if let failure = validateAdditionalProperties(
+            properties: properties,
+            propertySchemas: propertySchemas,
+            schemaObject: schemaObject,
+            path: path
+        ) {
+            return failure
+        }
+
+        return validateProperties(
+            properties: properties,
+            propertySchemas: propertySchemas,
+            path: path
+        )
+    }
+
+    private func validateRequired(
+        properties: [String: JSONSchemaValue],
+        schemaObject: [String: JSONSchemaValue],
+        path: [String]
+    ) -> ValidationFailure? {
+        guard let requiredValue = schemaObject["required"] else { return nil }
+        guard case let .array(requiredArray) = requiredValue else {
+            return ValidationFailure(
+                modelReadableMessage: "schema 'required' must be an array of strings.",
+                path: path
+            )
+        }
+        // Deterministic scan: take fields in the order the schema lists them so
+        // tests can assert which missing field is reported first.
+        for entry in requiredArray {
+            guard case let .string(field) = entry else {
                 return ValidationFailure(
-                    modelReadableMessage: "schema 'properties' must be an object.",
+                    modelReadableMessage: "schema 'required' entries must be strings.",
                     path: path
                 )
             }
-            propertySchemas = dict
-        } else {
-            propertySchemas = [:]
-        }
-
-        // `additionalProperties: false` — reject unknown keys.
-        if let ap = schemaObject["additionalProperties"], case let .bool(allowed) = ap, allowed == false {
-            // Iterate in sorted order so the reported "extra" key is deterministic.
-            for key in properties.keys.sorted() where propertySchemas[key] == nil {
+            if properties[field] == nil {
                 return ValidationFailure(
-                    modelReadableMessage: "argument '\(key)' is not a recognised field. Allowed fields: "
-                        + (propertySchemas.keys.sorted().joined(separator: ", ").isEmpty
-                            ? "(none)"
-                            : propertySchemas.keys.sorted().joined(separator: ", "))
-                        + ".",
-                    path: path + [key]
+                    modelReadableMessage: "argument '\(field)' is required but was missing.",
+                    path: path + [field]
                 )
             }
         }
+        return nil
+    }
 
-        // Validate each declared property's schema against the value present.
+    private enum PropertySchemaResolution {
+        case success([String: JSONSchemaValue])
+        case failure(ValidationFailure)
+    }
+
+    private func resolvePropertySchemas(
+        schemaObject: [String: JSONSchemaValue],
+        path: [String]
+    ) -> PropertySchemaResolution {
+        guard let propsValue = schemaObject["properties"] else {
+            return .success([:])
+        }
+        guard case let .object(dict) = propsValue else {
+            return .failure(ValidationFailure(
+                modelReadableMessage: "schema 'properties' must be an object.",
+                path: path
+            ))
+        }
+        return .success(dict)
+    }
+
+    private func validateAdditionalProperties(
+        properties: [String: JSONSchemaValue],
+        propertySchemas: [String: JSONSchemaValue],
+        schemaObject: [String: JSONSchemaValue],
+        path: [String]
+    ) -> ValidationFailure? {
+        guard let ap = schemaObject["additionalProperties"],
+              case let .bool(allowed) = ap,
+              allowed == false else {
+            return nil
+        }
+        // Iterate in sorted order so the reported "extra" key is deterministic.
+        for key in properties.keys.sorted() where propertySchemas[key] == nil {
+            let allowedNames = propertySchemas.keys.sorted().joined(separator: ", ")
+            let allowedDescription = allowedNames.isEmpty ? "(none)" : allowedNames
+            return ValidationFailure(
+                modelReadableMessage: "argument '\(key)' is not a recognised field. Allowed fields: "
+                    + allowedDescription
+                    + ".",
+                path: path + [key]
+            )
+        }
+        return nil
+    }
+
+    private func validateProperties(
+        properties: [String: JSONSchemaValue],
+        propertySchemas: [String: JSONSchemaValue],
+        path: [String]
+    ) -> ValidationFailure? {
         // Iterate schema keys in sorted order for deterministic test output.
         for field in propertySchemas.keys.sorted() {
             guard let subSchema = propertySchemas[field] else { continue }
-            if let childValue = properties[field] {
-                if let failure = validate(
-                    value: childValue,
-                    schema: subSchema,
-                    path: path + [field]
-                ) {
-                    return failure
-                }
+            guard let childValue = properties[field] else { continue }
+            if let failure = validate(value: childValue, schema: subSchema, path: path + [field]) {
+                return failure
             }
         }
-
         return nil
     }
 
