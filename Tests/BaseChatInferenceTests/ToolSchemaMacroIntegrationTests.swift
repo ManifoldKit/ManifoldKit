@@ -1,3 +1,4 @@
+#if Macros
 import XCTest
 import Foundation
 @testable import BaseChatInference
@@ -131,3 +132,4 @@ final class ToolSchemaMacroIntegrationTests: XCTestCase {
         XCTAssertFalse(result.isError)
     }
 }
+#endif

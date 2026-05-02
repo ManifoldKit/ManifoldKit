@@ -1,3 +1,4 @@
+#if Macros
 import XCTest
 import SwiftSyntax
 import SwiftSyntaxMacros
@@ -417,3 +418,4 @@ final class ToolSchemaMacroTests: XCTestCase {
         )
     }
 }
+#endif

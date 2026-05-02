@@ -40,6 +40,7 @@ let package = Package(
         .trait(name: "MCPBuiltinCatalog", description: "Enable BaseChatMCP's built-in catalog descriptors."),
         .trait(name: "Voice", description: "Enable the BaseChatVoice speech I/O spike and voice composer UI."),
         .trait(name: "Server", description: "Enable BaseChatServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
+        .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds BaseChatBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
@@ -77,25 +78,34 @@ let package = Package(
     targets: [
         // Macro compiler plugin: implements @ToolSchema. Runs at build time in
         // the compiler's plugin host, not in app binaries. Only target that
-        // pulls swift-syntax into the graph.
+        // pulls swift-syntax into the graph — gated behind the `Macros` trait
+        // (off by default) so the ~647-file swift-syntax tree stays out of
+        // default builds. Consumers using `@ToolSchema` must add `--traits Macros`.
         .macro(
             name: "BaseChatMacrosPlugin",
             dependencies: [
-                .product(name: "SwiftSyntax", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
-                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+                .product(name: "SwiftSyntax", package: "swift-syntax", condition: .when(traits: ["Macros"])),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax", condition: .when(traits: ["Macros"])),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax", condition: .when(traits: ["Macros"])),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax", condition: .when(traits: ["Macros"])),
+                .product(name: "SwiftDiagnostics", package: "swift-syntax", condition: .when(traits: ["Macros"])),
             ],
-            path: "Sources/BaseChatMacrosPlugin"
+            path: "Sources/BaseChatMacrosPlugin",
+            swiftSettings: [
+                .define("Macros", .when(traits: ["Macros"])),
+            ]
         ),
         // Inference: models, protocols, services — no SwiftData, no heavy ML deps.
         // Hosts the @ToolSchema attribute declaration so callers get the macro
-        // for free wherever JSONSchemaValue is in scope.
+        // for free wherever JSONSchemaValue is in scope. The macro plugin and
+        // its swift-syntax dependency are trait-gated (`Macros`, off by
+        // default); the `Sources/BaseChatInference/Macros/ToolSchema.swift`
+        // declaration is wrapped in `#if Macros` so the public API is only
+        // visible when the trait is enabled.
         .target(
             name: "BaseChatInference",
             dependencies: [
-                "BaseChatMacrosPlugin",
+                .target(name: "BaseChatMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/BaseChatInference",
             swiftSettings: [
@@ -104,6 +114,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Macros", .when(traits: ["Macros"])),
             ]
         ),
         // MCP: Model Context Protocol client surface and tool bridge.
@@ -294,8 +305,8 @@ let package = Package(
             dependencies: [
                 "BaseChatInference",
                 "BaseChatTestSupport",
-                "BaseChatMacrosPlugin",
-                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+                .target(name: "BaseChatMacrosPlugin", condition: .when(traits: ["Macros"])),
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax", condition: .when(traits: ["Macros"])),
             ],
             // SilentCatchAuditTest reads `silent_catch_allowlist.txt` directly
             // from its on-disk source location via `#filePath`, so we don't
@@ -304,6 +315,7 @@ let package = Package(
             exclude: ["silent_catch_allowlist.txt"],
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Macros", .when(traits: ["Macros"])),
             ]
         ),
         // Swift Testing suites split from BaseChatInferenceTests to prevent a

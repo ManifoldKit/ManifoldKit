@@ -34,6 +34,12 @@ swift test --filter BaseChatTestSupportTests --disable-default-traits
 swift test --filter BaseChatAppIntentsTests --disable-default-traits
 swift test --filter BaseChatServerTests --disable-default-traits --traits Server
 
+# @ToolSchema macro (trait-gated; off by default — keeps swift-syntax out
+# of default builds, ~647 source files saved). The macro plugin and the
+# `@ToolSchema` declaration in BaseChatInference are wrapped in `#if Macros`,
+# so the bare invocation runs zero macro tests.
+swift test --filter ToolSchemaMacro --disable-default-traits --traits Macros
+
 # Apple Silicon only — MLX mock tests + llama.cpp
 swift test --filter BaseChatBackendsTests --traits MLX,Llama
 
