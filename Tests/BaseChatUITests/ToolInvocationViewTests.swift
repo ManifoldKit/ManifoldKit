@@ -92,6 +92,47 @@ final class ToolInvocationViewTests: XCTestCase {
         _ = try view.inspect().find(viewWithAccessibilityIdentifier: "tool-invocation-failed-tool")
     }
 
+    func test_errorPresentation_exposesLocalizedSummariesForEveryKind() {
+        for kind in ToolResult.ErrorKind.allCases {
+            let presentation = ToolErrorPresentation(errorKind: kind, toolName: "docs__search")
+            XCTAssertEqual(presentation.summary, kind.localizedDescription)
+        }
+    }
+
+    func test_permissionDeniedPresentation_exposesReauthenticationCTA() throws {
+        let presentation = ToolErrorPresentation(errorKind: .permissionDenied, toolName: "notion__search")
+
+        let cta = try XCTUnwrap(presentation.reauthenticationCTA)
+        XCTAssertEqual(cta.serviceName, "Notion")
+        XCTAssertEqual(cta.label, "Tap to sign in")
+        XCTAssertEqual(cta.message, "Notion isn't connected. Tap to sign in.")
+        XCTAssertEqual(cta.actionID, "mcp.reauthenticate.notion")
+    }
+
+    func test_nonPermissionDeniedPresentation_hasNoReauthenticationCTA() {
+        let presentation = ToolErrorPresentation(errorKind: .timeout, toolName: "notion__search")
+
+        XCTAssertNil(presentation.reauthenticationCTA)
+    }
+
+    func test_failedPermissionDenied_withPairedCall_rendersReauthenticationCTA() throws {
+        let call = ToolCall(id: "c1", toolName: "notion__search", arguments: "{}")
+        let result = ToolResult(callId: "c1", content: "authorization required", errorKind: .permissionDenied)
+        var tappedCTA: ToolErrorPresentation.ReauthenticationCTA?
+        let view = ToolInvocationView(
+            part: .toolCall(call),
+            state: .failed,
+            pairedResult: result,
+            onReauthenticate: { tappedCTA = $0 }
+        )
+
+        _ = try view.inspect().find(viewWithAccessibilityIdentifier: "tool-error-reauth-button")
+        let button = try view.inspect().find(button: "Notion isn't connected. Tap to sign in.")
+        try button.tap()
+
+        XCTAssertEqual(tappedCTA?.actionID, "mcp.reauthenticate.notion")
+    }
+
     func test_approveButton_invokesOnApproveClosure() throws {
         var approved = false
         let view = ToolInvocationView(

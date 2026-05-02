@@ -217,6 +217,9 @@ jobs:
       # - Run `swift test --filter BaseChatBackendsTests --traits MLX,Llama` on
       #   Apple Silicon for MLX/llama.cpp paths.
       # - Run `swift test --filter BaseChatE2ETests` on physical hardware.
+      # - MCP E2E stays out of per-PR CI; nightly-slow-tests runs the
+      #   RUN_MCP_E2E-gated streamable-HTTP smoke with a narrow filter so
+      #   npx/network-backed subprocess tests remain local-only.
 
       # --skip-update: Package.resolved pins every dependency, so the graph is
       # already up to date (the Verify step re-confirms this when deps changed).

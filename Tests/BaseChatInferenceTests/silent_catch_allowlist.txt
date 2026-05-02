@@ -220,7 +220,7 @@ BaseChatUI/Views/Chat/ExportButton.swift:try? FileManager.default.removeItem(at:
 # False positive: `toolRegistry?` optional chain contains the substring
 # `try?` inside `Regis-try?`. No `try?` call site is present on this
 # line; the audit's substring scan is not AST-aware.
-BaseChatUI/ViewModels/GenerationCoordinator.swift:let registeredTools = inferenceService.toolRegistry?.definitions ?? []
+BaseChatUI/ViewModels/GenerationCoordinator.swift:let registeredTools = inferenceService.toolRegistry?.advertisedDefinitions ?? []
 
 # ---------------------------------------------------------------------------
 # BaseChatTestSupport — test-only helpers, not production paths.

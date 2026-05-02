@@ -147,6 +147,7 @@ final class DemoMCPCoordinator {
                         snapshot.authorizationRequest = nil
                     }
                 }
+                await self.refreshAdvertisedToolNames(foundationActive: foundationActive)
             } catch let mcpError as MCPError {
                 await MainActor.run {
                     self.updateSnapshot(descriptor.id) { snapshot in
@@ -191,6 +192,7 @@ final class DemoMCPCoordinator {
                     snapshot.authorizationRequest = nil
                 }
             }
+            await self.refreshAdvertisedToolNames(foundationActive: self.isFoundationModelsActive())
         }
     }
 
@@ -274,6 +276,7 @@ final class DemoMCPCoordinator {
                 snapshot.isConnected = true
             }
         }
+        await refreshAdvertisedToolNames(foundationActive: foundationActive)
     }
 
     private func enabledCount(
@@ -283,6 +286,33 @@ final class DemoMCPCoordinator {
     ) async -> Int {
         guard foundationActive else { return totalCount }
         return await source.foundationModelsEnabledNames().count
+    }
+
+    private func refreshAdvertisedToolNames(foundationActive: Bool) async {
+        guard foundationActive else {
+            toolRegistry.advertisedToolNames = nil
+            return
+        }
+
+        var allMCPToolNames: Set<String> = []
+        var enabledMCPToolNames: Set<String> = []
+        for source in sourcesByID.values {
+            let currentNames = await source.currentToolNames()
+            allMCPToolNames.formUnion(currentNames.map { $0.lowercased() })
+            let enabledNames = await source.foundationModelsEnabledNames()
+            enabledMCPToolNames.formUnion(enabledNames.map { $0.lowercased() })
+        }
+
+        guard allMCPToolNames.isEmpty == false else {
+            toolRegistry.advertisedToolNames = nil
+            return
+        }
+
+        let nonMCPToolNames = toolRegistry.definitions
+            .map(\.name)
+            .filter { allMCPToolNames.contains($0.lowercased()) == false }
+            .map { $0.lowercased() }
+        toolRegistry.advertisedToolNames = Set(nonMCPToolNames).union(enabledMCPToolNames)
     }
 
     /// Re-runs the per-server enabled-count projection using the current

@@ -192,8 +192,8 @@ If you already depend on `BaseChatBackends`, the same data is also available via
 Quick checks:
 
 ```bash
-swift test --filter BaseChatMCPTests --disable-default-traits
-swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
+scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --skip-update
+scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
 ```
 
 ### 2.2 BaseChatServer

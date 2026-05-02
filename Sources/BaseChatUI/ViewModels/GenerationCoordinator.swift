@@ -226,7 +226,7 @@ final class GenerationCoordinator {
             // them. Without this, tools registered on `InferenceService.toolRegistry`
             // are never advertised to the backend and the model — correctly —
             // refuses to call something it doesn't know about.
-            let registeredTools = inferenceService.toolRegistry?.definitions ?? []
+            let registeredTools = inferenceService.toolRegistry?.advertisedDefinitions ?? []
 
             let (token, stream) = try inferenceService.enqueue(
                 structuredMessages: history,

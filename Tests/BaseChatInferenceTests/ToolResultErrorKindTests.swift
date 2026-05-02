@@ -25,6 +25,26 @@ final class ToolResultErrorKindTests: XCTestCase {
         }
     }
 
+    func test_allErrorKinds_haveLocalizedUserFacingDescriptions() {
+        let expected: [ToolResult.ErrorKind: String] = [
+            .invalidArguments: "The tool couldn't understand those details.",
+            .permissionDenied: "Permission is required to use this tool.",
+            .notFound: "The requested item couldn't be found.",
+            .timeout: "The tool took too long to respond.",
+            .rateLimited: "The tool is temporarily rate limited.",
+            .cancelled: "The tool call was cancelled.",
+            .transient: "The tool hit a temporary problem.",
+            .permanent: "The tool couldn't complete this request.",
+            .unknownTool: "This tool isn't available.",
+        ]
+
+        XCTAssertEqual(ToolResult.ErrorKind.allCases.count, 9)
+        for kind in ToolResult.ErrorKind.allCases {
+            XCTAssertEqual(kind.localizedDescription, expected[kind], "missing localized description for \(kind.rawValue)")
+            XCTAssertNotEqual(kind.localizedDescription, kind.rawValue)
+        }
+    }
+
     func test_successResult_encodesWithoutErrorKind() throws {
         let result = ToolResult(callId: "c", content: "ok")
         let encoded = try JSONEncoder().encode(result)

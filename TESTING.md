@@ -72,7 +72,7 @@ UI automation tests that launch the real Example app in a simulator and drive it
 | `BaseChatInferenceSwiftTestingTests` | Unit | Yes | None | Swift Testing |
 | `BaseChatUITests` | Integration | Yes | None | XCTest |
 | `BaseChatMCPTests` | Unit, Integration | Yes | None | XCTest |
-| `BaseChatMCPE2ETests` | E2E (subprocess smoke) | No (requires `RUN_MCP_E2E=1` and `npx`) | npx + network | XCTest |
+| `BaseChatMCPE2ETests` | E2E (explicit opt-in smoke) | Nightly smoke only (requires `RUN_MCP_E2E=1`) | `EverythingServerSmokeTests` also needs npx + network | XCTest |
 | `BaseChatServerTests` | Unit, Integration | Yes | None | XCTest |
 | `BaseChatBackendsTests` | Unit, E2E | Partial | MLX/Llama need Apple Silicon | Mixed |
 | `BaseChatTestSupportTests` | Unit | Yes | None | XCTest |
@@ -83,15 +83,21 @@ UI automation tests that launch the real Example app in a simulator and drive it
 ### Running tests
 
 ```bash
-# CI-safe (no hardware required)
-swift test --filter BaseChatCoreTests --disable-default-traits
-swift test --filter BaseChatInferenceTests --disable-default-traits
-swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits
-swift test --filter BaseChatUITests --disable-default-traits
-swift test --filter BaseChatMCPTests --disable-default-traits
-swift test --filter BaseChatServerTests --disable-default-traits
-swift test --filter BaseChatBackendsTests --disable-default-traits   # cloud/SSE tests only
-swift test --filter BaseChatTestSupportTests --disable-default-traits
+# CI-safe local gate (no hardware required). Two-invocation shape mirrors CI —
+# see CLAUDE.md Pre-push checklist for the rationale.
+scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
+  --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
+  --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
+  --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
+  --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+  --filter BaseChatServerTests --disable-default-traits --skip-update
+
+# Swift Testing runs in a separate process to avoid mixed-runner crashes (#681).
+# Do NOT add --parallel to BaseChatInferenceTests — the UserDefaults.standard
+# race in test_autoSelectFirstRunModel_* and download-tests legacy-key reads
+# causes non-deterministic failures (issue #910).
+scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
+  --disable-default-traits --skip-update
 
 # Apple Silicon only
 swift test --filter BaseChatBackendsTests --traits MLX,Llama
@@ -100,12 +106,17 @@ swift test --filter BaseChatBackendsTests --traits MLX,Llama
 swift test --filter BaseChatE2ETests --disable-default-traits
 
 # MCP built-in catalog descriptors (trait-gated metadata tests)
-swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
+scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
 
-# MCP end-to-end smoke tests against a real subprocess server (explicit opt-in only).
-# Requires npx on PATH and network access to download @modelcontextprotocol/server-everything.
-# The EverythingServerSmokeTests class skips automatically unless RUN_MCP_E2E=1.
-RUN_MCP_E2E=1 swift test --filter BaseChatMCPE2ETests --disable-default-traits
+# MCP end-to-end smoke tests are explicit opt-in only.
+# Nightly runs the streamable-HTTP smoke; keep the filter narrow so the
+# npx/network-backed EverythingServerSmokeTests suite does not run by default.
+RUN_MCP_E2E=1 scripts/test.sh --filter BaseChatMCPE2ESmokeTests \
+  --disable-default-traits --skip-update --min-passed 1
+
+# Full subprocess E2E, local only: requires npx on PATH and network access to
+# download @modelcontextprotocol/server-everything.
+RUN_MCP_E2E=1 swift test --filter EverythingServerSmokeTests --disable-default-traits
 
 # Xcode-only — real MLX model inference (requires local MLX fixture; see below)
 # Cannot run via swift test; MLX Metal shaders are only compiled by Xcode.

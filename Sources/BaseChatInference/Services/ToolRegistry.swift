@@ -141,6 +141,16 @@ public protocol JSONSchemaValidating: Sendable {
     /// matching the reentrancy contract on the registry itself.
     public var outputPolicy: ToolOutputPolicy = ToolOutputPolicy()
 
+    /// Optional allow-list for tools that should be advertised to the active
+    /// backend. Dispatch remains available for every registered tool; this
+    /// only narrows the definitions passed in `GenerationConfig.tools`.
+    public var advertisedToolNames: Set<String>? {
+        get { advertisedToolNameKeys }
+        set { advertisedToolNameKeys = newValue.map { Set($0.map { $0.lowercased() }) } }
+    }
+
+    private var advertisedToolNameKeys: Set<String>?
+
     // MARK: - Init
 
     /// Creates a registry pre-populated with the supplied tools.
@@ -211,15 +221,37 @@ public protocol JSONSchemaValidating: Sendable {
     /// For local backends (3B–8B instruct models), keep this list at or below
     /// 5 entries — see README "Tool Calling" section.
     public var definitions: [ToolDefinition] {
-        let result = tools.values
-            .map(\.definition)
-            .sorted { $0.name < $1.name }
+        let result = sortedDefinitions()
         #if DEBUG
         if result.count > 5 {
             print("[BaseChatKit] ⚠️ \(result.count) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section.")
         }
         #endif
         return result
+    }
+
+    /// Registered tool definitions after applying ``advertisedToolNames``.
+    ///
+    /// Use this for model-facing `GenerationConfig.tools` when a host needs to
+    /// hide a subset for a backend-specific policy while keeping dispatch
+    /// available for in-flight or previously-advertised calls.
+    public var advertisedDefinitions: [ToolDefinition] {
+        let allDefinitions = sortedDefinitions()
+        let result = advertisedToolNameKeys.map { keys in
+            allDefinitions.filter { keys.contains($0.name.lowercased()) }
+        } ?? allDefinitions
+        #if DEBUG
+        if result.count > 5 {
+            print("[BaseChatKit] ⚠️ \(result.count) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section.")
+        }
+        #endif
+        return result
+    }
+
+    private func sortedDefinitions() -> [ToolDefinition] {
+        tools.values
+            .map(\.definition)
+            .sorted { $0.name < $1.name }
     }
 
     /// Returns the registered executor for `toolName` (case-insensitive),

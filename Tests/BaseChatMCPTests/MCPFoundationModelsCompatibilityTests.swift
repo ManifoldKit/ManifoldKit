@@ -44,11 +44,34 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
         XCTAssertFalse(isFoundationModelsCompatible(schema, maxDepth: 4))
     }
 
+    func test_allOfSchemaIsRejected() {
+        let schema = JSONSchemaValue.object([
+            "allOf": .array([
+                .object(["type": .string("object")]),
+            ]),
+        ])
+        XCTAssertFalse(isFoundationModelsCompatible(schema, maxDepth: 4))
+    }
+
     func test_refSchemaIsRejected() {
         let schema = JSONSchemaValue.object([
             "type": .string("object"),
             "properties": .object([
                 "user": .object(["$ref": .string("#/definitions/User")]),
+            ]),
+        ])
+        XCTAssertFalse(isFoundationModelsCompatible(schema, maxDepth: 4))
+    }
+
+    func test_nullableTypeUnionIsRejected() {
+        // JSON Schema represents nullable fields as a type union. Foundation
+        // Models accepts a single concrete type, so keep MCP schemas conservative.
+        let schema = JSONSchemaValue.object([
+            "type": .string("object"),
+            "properties": .object([
+                "nickname": .object([
+                    "type": .array([.string("string"), .string("null")]),
+                ]),
             ]),
         ])
         XCTAssertFalse(isFoundationModelsCompatible(schema, maxDepth: 4))
@@ -97,8 +120,9 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
             ]),
         ])
         XCTAssertFalse(isFoundationModelsCompatible(schema, maxDepth: 4))
-        // Sabotage check: removing the `allOf` traversal in the walker would
-        // let this slip through.
+        // Sabotage check: allowing `allOf` traversal instead of rejecting the
+        // keyword outright would let this shape depend on a composition feature
+        // Foundation Models cannot decode.
     }
 
     func test_refHiddenInsideAdditionalPropertiesIsRejected() {
@@ -197,6 +221,17 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
             ("ref_tool", .object([
                 "$ref": .string("#/defs/Foo"),
             ])),
+            ("allof_tool", .object([
+                "allOf": .array([.object(["type": .string("object")])]),
+            ])),
+            ("nullable_tool", .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "value": .object([
+                        "type": .array([.string("string"), .string("null")]),
+                    ]),
+                ]),
+            ])),
             ("flat_array", .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -209,7 +244,7 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
         ])
         try await source.refreshTools()
 
-        let compatible = await source.foundationModelsCompatibleNames(maxDepth: 4)
+        let compatible = await source.foundationModelsCompatibleNames(under: 4)
         XCTAssertEqual(compatible, ["flat_array", "simple"])
     }
 
