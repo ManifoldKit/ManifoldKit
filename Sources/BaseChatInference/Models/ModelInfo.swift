@@ -11,6 +11,12 @@ public enum ModelType: Hashable, Sendable {
 }
 
 /// Represents a model available on disk (either a GGUF file or an MLX model directory).
+///
+/// Construct via one of the factory initializers:
+/// - ``init(ggufURL:)`` for local `.gguf` files (reads size from disk).
+/// - ``init(mlxDirectory:namespace:)`` for MLX model directories.
+/// - ``init(huggingFaceRepoID:fileName:sizeBytes:localURL:modelType:)`` for completed
+///   HuggingFace downloads (trusts caller-supplied size, skips disk attribute lookup).
 public struct ModelInfo: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let name: String
@@ -51,6 +57,15 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
 
     /// The most recent benchmark result for this model, if one has been run.
     public var benchmarkResult: ModelBenchmarkResult?
+
+    // MARK: - Provenance
+
+    /// The HuggingFace repository this model was downloaded from, when known
+    /// (e.g. `"bartowski/Llama-3.2-3B-Instruct-GGUF"`).
+    ///
+    /// Populated by ``init(huggingFaceRepoID:fileName:sizeBytes:localURL:modelType:)``.
+    /// `nil` for locally-discovered files and built-in models.
+    public var huggingFaceRepoID: String?
 
     /// Returns the benchmark-confirmed tier when one is available, otherwise falls back
     /// to the stored ``capabilityTier``, and finally to a static file-size estimate.
@@ -221,7 +236,8 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         chatTemplateRaw: String? = nil,
         estimatedKVBytesPerToken: UInt64? = nil,
         capabilityTier: ModelCapabilityTier? = nil,
-        benchmarkResult: ModelBenchmarkResult? = nil
+        benchmarkResult: ModelBenchmarkResult? = nil,
+        huggingFaceRepoID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -237,6 +253,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.estimatedKVBytesPerToken = estimatedKVBytesPerToken
         self.capabilityTier = capabilityTier
         self.benchmarkResult = benchmarkResult
+        self.huggingFaceRepoID = huggingFaceRepoID
     }
 
     // MARK: - Private
@@ -265,5 +282,60 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         name = name.replacingOccurrences(of: "-", with: " ")
         name = name.replacingOccurrences(of: "_", with: " ")
         return name
+    }
+}
+
+// MARK: - HuggingFace Factory
+
+extension ModelInfo {
+    /// Creates a ModelInfo from a completed HuggingFace download.
+    ///
+    /// Unlike ``init(ggufURL:)``, this factory trusts caller-supplied size metadata
+    /// (typically derived from the HuggingFace manifest) and skips the on-disk
+    /// `attributesOfItem` lookup. The GGUF header is still read for prompt-template
+    /// detection, context length, and KV-cache estimation.
+    ///
+    /// Returns `nil` if `localURL` does not have a `.gguf` extension or fails the
+    /// GGUF magic-byte check.
+    ///
+    /// - Parameters:
+    ///   - huggingFaceRepoID: The source repo (e.g. `"bartowski/Llama-3.2-3B-Instruct-GGUF"`).
+    ///   - fileName: The file name as known to the download flow. Used directly,
+    ///     not derived from `localURL`, because HuggingFace flows pre-compute it.
+    ///   - sizeBytes: Trusted size from the HuggingFace manifest.
+    ///   - localURL: On-disk location of the downloaded `.gguf` file.
+    ///   - modelType: Defaults to `.gguf` — currently the only supported HuggingFace
+    ///     download path through this factory.
+    public init?(
+        huggingFaceRepoID: String,
+        fileName: String,
+        sizeBytes: UInt64,
+        localURL: URL,
+        modelType: ModelType = .gguf
+    ) {
+        guard localURL.pathExtension.lowercased() == "gguf" else { return nil }
+        guard GGUFMetadataReader.isValidGGUF(at: localURL) else { return nil }
+
+        self.id = Self.stableID(for: localURL)
+        self.fileName = fileName
+        self.name = Self.displayName(from: fileName, strippingExtension: ".gguf")
+        self.url = localURL
+        self.fileSize = sizeBytes
+        self.modelType = modelType
+        self.huggingFaceRepoID = huggingFaceRepoID
+        self.benchmarkResult = nil
+
+        // Read GGUF header metadata for template detection. mmproj companion scan
+        // is skipped — HuggingFace downloads flow file-by-file, not directory-wide.
+        if let metadata = try? GGUFMetadataReader.readMetadata(from: localURL) {
+            self.detectedPromptTemplate = PromptTemplateDetector.detect(from: metadata)
+            self.detectedContextLength = metadata.contextLength
+            self.modelArchitecture = metadata.generalArchitecture
+            self.chatTemplateRaw = metadata.chatTemplate
+            self.estimatedKVBytesPerToken = GGUFKVCacheEstimator.estimateBytesPerToken(from: metadata)
+        }
+
+        // Static tier estimate; may be upgraded by a benchmark result later.
+        self.capabilityTier = ModelCapabilityTier.estimate(from: self)
     }
 }
