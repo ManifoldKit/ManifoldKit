@@ -309,6 +309,37 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
     }
 
+    /// Returns the Qwen 2.5 `<tools>…</tools>` block to append to the system
+    /// prompt, or `nil` when the dialect doesn't use this mechanism or the
+    /// caller supplied no tools.
+    static func buildQwenToolBlock(
+        config: GenerationConfig,
+        dialect: MLXToolDialect
+    ) -> String? {
+        guard !config.tools.isEmpty, dialect == .qwen25 else { return nil }
+        let toolObjects: [[String: Any]] = config.tools.map { tool -> [String: Any] in
+            var function_: [String: Any] = [
+                "name": tool.name,
+                "description": tool.description,
+            ]
+            if let paramsData = try? JSONEncoder().encode(tool.parameters),
+               let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
+                function_["parameters"] = paramsObj
+            } else {
+                function_["parameters"] = ["type": "object", "properties": [String: Any]()]
+            }
+            return ["type": "function", "function": function_]
+        }
+        let toolsJSON: String
+        if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
+           let str = String(data: data, encoding: .utf8) {
+            toolsJSON = str
+        } else {
+            toolsJSON = "[]"
+        }
+        return "\n\n# Tools\n\nYou may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:\n\n<tools>\n\(toolsJSON)\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>"
+    }
+
     private func invalidatePromptCacheLocked() {
         _pendingPromptCacheSnapshotTask?.cancel()
         _pendingPromptCacheSnapshotTask = nil
@@ -744,36 +775,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             (_conversationHistory, _toolAwareHistory, _structuredHistory, _dialect, _autoDetectedThinkingMarkers)
         }
 
-        // For Qwen 2.5: serialize tool definitions into a <tools>…</tools> block
-        // appended to the system message content. This is the standard Qwen chat
-        // template mechanism for exposing tools to the model.
         let effectiveSystemPrompt: String? = {
-            guard !config.tools.isEmpty, dialect == .qwen25 else {
-                return systemPrompt
+            if let toolBlock = Self.buildQwenToolBlock(config: config, dialect: dialect) {
+                return (systemPrompt ?? "") + toolBlock
             }
-            let toolObjects: [[String: Any]] = config.tools.map { tool -> [String: Any] in
-                var function_: [String: Any] = [
-                    "name": tool.name,
-                    "description": tool.description,
-                ]
-                if let paramsData = try? JSONEncoder().encode(tool.parameters),
-                   let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
-                    function_["parameters"] = paramsObj
-                } else {
-                    function_["parameters"] = ["type": "object", "properties": [String: Any]()]
-                }
-                return ["type": "function", "function": function_]
-            }
-            let toolsJSON: String
-            if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                toolsJSON = str
-            } else {
-                toolsJSON = "[]"
-            }
-            let toolBlock = "\n\n# Tools\n\nYou may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:\n\n<tools>\n\(toolsJSON)\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>"
-            let base = systemPrompt ?? ""
-            return base + toolBlock
+            return systemPrompt
         }()
 
         let chatMessages: [Chat.Message]? =
