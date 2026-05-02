@@ -59,23 +59,59 @@ jobs:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        id: cache-spm
         uses: actions/cache@v5
         with:
-          # .build/debug is intentionally excluded: SwiftPM module fingerprints
-          # embed absolute paths + compiler timestamps, so restored object files
-          # are invalidated on every fresh ephemeral runner. Caching .build/debug
-          # produced 0 incremental-build savings in practice and wasted the 10 GB
-          # per-repo cache quota. .build/artifacts holds the prebuilt llama.cpp
-          # xcframework (~100 MB, the real win); .build/checkouts + repositories
-          # save the per-dep clone phase.
+          # TODO(#953 Lever C): spike — re-including .build/debug to measure
+          # incremental-build savings. The previous "0 savings" comment was
+          # written before the dep-set shrunk from 38 → 21 pins (#946) and
+          # before the InferenceService decomp (#306) + runtime-ports refactor
+          # reshaped the build graph. The runner path is stable
+          # (/Users/runner/work/BaseChatKit/BaseChatKit) and Xcode is pinned to
+          # 26.3, so the SwiftPM module fingerprint inputs are now stable
+          # enough that incremental compilation should land. The likely prior
+          # failure mode — mtime invalidation after tarball restore — is
+          # addressed by the post-restore touch step below.
+          #
+          # Measurement plan: merge this, observe ci.test wall time vs. the
+          # ~253s baseline from PR #946 across 3-5 PRs. Ship if wins ≥20%;
+          # revert and update this comment with the new evidence if not.
+          #
+          # The key includes a hash of Sources/**/*.swift so any source change
+          # invalidates the .build/debug snapshot cleanly. Package.resolved is
+          # still the primary key (dependency graph dominates), with sources
+          # appended so we never restore a stale debug build over fresh code.
           path: |
             .build/artifacts
             .build/checkouts
             .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+            .build/debug
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-debug-${{ hashFiles('Package.resolved') }}-${{ hashFiles('Sources/**/*.swift') }}
           restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-debug-${{ hashFiles('Package.resolved') }}-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-debug-
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
             ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Refresh mtimes on cached build artifacts
+        # actions/cache restores files with their tarball-extraction mtime,
+        # which is uniformly "now". SwiftPM's incremental driver compares
+        # source mtime to .swiftmodule/.o mtime to decide whether to rebuild —
+        # and on a cold runner the source files (just checked out) have a
+        # newer mtime than the just-restored cache. Touching every cached
+        # build product after restore makes them appear newer than the
+        # sources, so the driver trusts them as up-to-date. This is the
+        # standard mtime-fix incantation for SwiftPM CI caches.
+        if: steps.cache-spm.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          if [[ -d .build/debug ]]; then
+            find .build/debug \( -name '*.swiftmodule' -o -name '*.swiftdoc' -o -name '*.swiftsourceinfo' -o -name '*.o' -o -name '*.d' \) -print0 \
+              | xargs -0 -r touch
+            echo "Refreshed mtimes on cached .build/debug artifacts."
+          else
+            echo ".build/debug not present after cache restore (partial hit); skipping mtime refresh."
+          fi
 
       - name: Verify Swift toolchain matches Package.swift tools-version
         # The runner's Xcode (pinned above) ships a specific Swift version. If
