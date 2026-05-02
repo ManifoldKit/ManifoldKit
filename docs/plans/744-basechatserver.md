@@ -285,3 +285,13 @@ All four resolved.
 2. ~~`BaseChatServerCore` public vs `package`~~ → **`package`**. Premature `public` is a one-way door; promote when the menubar embedding ask (#807) materializes.
 3. ~~`--parallel` flag in v1~~ → **dropped**. Cargo-cult surface; reintroduce with cloud/Ollama pass-through in v2.
 4. ~~`/v1/models` shape~~ → **loaded model only**. Disk-scanning pulls in filesystem flake; route handlers wired against `InferenceService` (not a captured backend reference) keep v2 multi-model migration clean.
+
+---
+
+## Post-merge update (2026-05-02)
+
+`BaseChatServer` was put behind a new `Server` SwiftPM trait (off by default)
+in PR #TBD after the initial release inadvertently doubled per-PR CI wall
+time. The architectural pattern is unchanged; only the build-graph membership
+was scoped down. See `Package.swift` `traits:` block and `#if Server` guards
+in `Sources/BaseChatServer*/`.

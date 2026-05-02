@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Highlights
+
+#### Trait-gate BaseChatServer to recover default-build wall-time
+
+The `BaseChatServer` (OpenAI-compatible HTTP) target and its `Hummingbird`
+transitive dependency graph (swift-nio + NIOSSL + BoringSSL + AsyncHTTPClient)
+are now gated behind a new `Server` SwiftPM trait, off by default. The previous
+release inadvertently doubled per-PR CI wall time by adding ~18 transitive
+package pins to the default build graph; this restores the prior baseline.
+
+```bash
+swift test --filter BaseChatServerTests --disable-default-traits --traits Server
+swift run --traits Server BaseChatServer
+```
+
+**BREAKING CHANGE:** consumers that depend on `BaseChatServerCore` as a library
+or run the `BaseChatServer` executable must now pass `--traits Server` (or list
+`Server` in their consumer manifest's `.package(... traits: [...])`). Without
+the trait, the targets still build but the executable prints a no-op message
+and exits cleanly — no Hummingbird symbols are linked.
+
+See [#TBD].
+
+### Features
+
+- **ci:** add `Package.resolved` budget check that fails PRs adding >2 new pins unless labeled `deps-ok` (prevents future silent dep-graph regressions)
+
 ## [0.14.5](https://github.com/roryford/BaseChatKit/compare/v0.14.4...v0.14.5) (2026-05-02)
 
 ### Highlights
