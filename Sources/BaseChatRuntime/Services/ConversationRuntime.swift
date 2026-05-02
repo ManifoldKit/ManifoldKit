@@ -1015,7 +1015,13 @@ public final class ConversationRuntime: Sendable {
                 }
             }
         } catch {
-            let cancelled = await isCancelled(handle: handle)
+            // Map CancellationError to `.cancelled` even when the registry has
+            // not yet observed `markCancelled` for this handle. `stopGeneration`
+            // schedules `runtime.cancel(_:)` on a separate Task, which can race
+            // the backend's CancellationError back here ahead of the registry
+            // flip; without this guard the adapter surfaces an error UI for a
+            // user-initiated cancel.
+            let cancelled = await isCancelled(handle: handle) || error is CancellationError
             if cancelled {
                 streamFailed = .cancelled
             } else {
@@ -1189,7 +1195,8 @@ public final class ConversationRuntime: Sendable {
     /// here keeps the call site clean of explicit `MainActor.run` blocks.
     @MainActor
     private func readAdvertisedToolDefinitions() async -> [ToolDefinition] {
-        inferenceService.toolRegistry?.advertisedDefinitions ?? []
+        guard let registry = inferenceService.toolRegistry else { return [] }
+        return registry.advertisedDefinitions
     }
 
     /// Reads ``InferenceService/lastTokenUsage`` off the main actor. Backends

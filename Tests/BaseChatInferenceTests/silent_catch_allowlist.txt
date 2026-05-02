@@ -210,6 +210,9 @@ BaseChatFuzz/Scenarios/ScenarioTestBackend.swift:try? await Task.sleep(for: paus
 BaseChatUIModelManagement/ViewModels/ModelManagementViewModel.swift:try? await Task.sleep(for: .milliseconds(500))
 BaseChatUI/Views/Chat/AssistantMarkdownView.swift:if let parsed = try? AttributedString(
 BaseChatUI/Views/Chat/TypingIndicatorView.swift:try? await Task.sleep(for: .milliseconds(400))
+# `awaitStreamCompletion` polling backoff: cancellation here just exits
+# the polling loop; the turn's own cancel runs through the runtime stream.
+BaseChatUI/ViewModels/ChatViewModel+Generation.swift:try? await Task.sleep(for: .milliseconds(1))
 
 # Best-effort cleanup of the temp directory holding a just-shared export
 # file. The share sheet has dismissed; if the file is gone (user moved it,

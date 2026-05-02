@@ -70,6 +70,9 @@ extension ChatViewModel {
             // the first 8 yields is small enough to round-trip mock tokens
             // and large enough to keep CPU off the floor on long runs.
             if ticks > 8 {
+                // Cancellation here just exits the polling loop; the turn's own
+                // cancel runs through the runtime stream. Allowlist:
+                // ChatViewModel+Generation.swift:try? await Task.sleep(...)
                 try? await Task.sleep(for: .milliseconds(1))
             }
         }
