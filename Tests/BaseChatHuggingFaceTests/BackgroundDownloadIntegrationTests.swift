@@ -547,6 +547,11 @@ final class BackgroundDownloadIntegrationTests: XCTestCase {
     // MARK: - No UserDefaults contamination
 
     /// startDownload must not write anything to UserDefaults under the pending downloads key.
+    ///
+    /// Asserts against the per-suite `testDefaults` (the instance injected into the SUT)
+    /// rather than `UserDefaults.standard` — bare `.standard` reads race across parallel
+    /// XCTest worker processes (issue #910). The SUT writes through the injected defaults,
+    /// so this is the honest contract surface for the assertion.
     func test_startDownload_doesNotWriteToUserDefaults() async throws {
         let model = makeModel(
             repoID: "test/no-defaults",
@@ -554,11 +559,11 @@ final class BackgroundDownloadIntegrationTests: XCTestCase {
             displayName: "No Defaults Test"
         )
         let legacyKey = BaseChatConfiguration.shared.pendingDownloadsKey
-        let beforeValue = UserDefaults.standard.dictionary(forKey: legacyKey)
+        let beforeValue = testDefaults.dictionary(forKey: legacyKey)
 
         _ = try await manager.startDownload(model, downloadURL: URL(string: "http://localhost/x.gguf")!)
 
-        let afterValue = UserDefaults.standard.dictionary(forKey: legacyKey)
+        let afterValue = testDefaults.dictionary(forKey: legacyKey)
         XCTAssertEqual(
             NSDictionary(dictionary: beforeValue ?? [:]),
             NSDictionary(dictionary: afterValue ?? [:]),
