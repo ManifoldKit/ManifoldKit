@@ -18,7 +18,7 @@ import BaseChatTestSupport
 ///    trip, with a message that names the offending count.
 /// 4. Reject image attachments when the configured model isn't vision-capable.
 /// 5. Advertise `supportsVision` based on the configured model name so
-///    GenerationCoordinator's pre-flight matches the wire-level behaviour.
+///    GenerationQueue's pre-flight matches the wire-level behaviour.
 final class ClaudeImageInputTests: XCTestCase {
 
     // MARK: - Helpers

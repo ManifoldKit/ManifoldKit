@@ -2,7 +2,7 @@ import XCTest
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-/// Unit tests for the tool-dispatch loop inside `GenerationCoordinator`.
+/// Unit tests for the tool-dispatch loop inside `GenerationQueue`.
 ///
 /// Coverage:
 /// - end-to-end dispatch: model emits a tool call, registry dispatches,
@@ -15,7 +15,7 @@ import BaseChatTestSupport
 /// - byte-budget guard: a tool that returns huge content terminates the loop
 ///   with a synthesised `.permanent` result
 @MainActor
-final class GenerationCoordinatorToolLoopTests: XCTestCase {
+final class GenerationQueueToolLoopTests: XCTestCase {
 
     // MARK: - Fixtures
 
@@ -65,8 +65,8 @@ final class GenerationCoordinatorToolLoopTests: XCTestCase {
     // MARK: - Helpers
 
     /// Build a coordinator with the supplied registry already wired.
-    private func makeCoordinator(registry: ToolRegistry) -> GenerationCoordinator {
-        let coordinator = GenerationCoordinator(toolRegistry: registry)
+    private func makeCoordinator(registry: ToolRegistry) -> GenerationQueue {
+        let coordinator = GenerationQueue(toolRegistry: registry)
         coordinator.provider = provider
         return coordinator
     }
@@ -211,7 +211,7 @@ final class GenerationCoordinatorToolLoopTests: XCTestCase {
         let registry = ToolRegistry()
         registry.register(executor)
 
-        let coordinator = GenerationCoordinator(toolRegistry: registry)
+        let coordinator = GenerationQueue(toolRegistry: registry)
         coordinator.provider = toolAwareProvider
 
         let (_, stream) = try coordinator.enqueue(
@@ -355,7 +355,7 @@ final class GenerationCoordinatorToolLoopTests: XCTestCase {
 /// Extension that exposes a raw-config enqueue path for tests that need to
 /// set every field on `GenerationConfig` (notably `maxToolIterations`).
 @MainActor
-extension GenerationCoordinator {
+extension GenerationQueue {
     func enqueueCustomConfig(
         messages: [(role: String, content: String)],
         config: GenerationConfig,

@@ -2,20 +2,20 @@ import XCTest
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-/// Tests for #482: ``GenerationCoordinator`` must thread
+/// Tests for #482: ``GenerationQueue`` must thread
 /// ``StructuredMessage`` (carrying ``MessagePart`` content including
 /// thinking signatures) through to the backend boundary instead of
 /// flattening to `(role, content)` strings.
 @MainActor
-final class GenerationCoordinatorStructuredHistoryTests: XCTestCase {
+final class GenerationQueueStructuredHistoryTests: XCTestCase {
 
     private var provider: FakeGenerationContextProvider!
-    private var coordinator: GenerationCoordinator!
+    private var coordinator: GenerationQueue!
 
     override func setUp() async throws {
         try await super.setUp()
         provider = FakeGenerationContextProvider()
-        coordinator = GenerationCoordinator()
+        coordinator = GenerationQueue()
         coordinator.provider = provider
     }
 

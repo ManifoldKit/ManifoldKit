@@ -4,7 +4,7 @@ import BaseChatTestSupport
 
 /// Canary: pins the exact signatures of ``InferenceService/enqueue`` and
 /// ``InferenceService/stopGeneration(sessionID:)`` so that a refactor of
-/// ``GenerationCoordinator`` cannot silently break the multi-turn fuzzer.
+/// ``GenerationQueue`` cannot silently break the multi-turn fuzzer.
 ///
 /// The fuzzer's ``SessionScriptRunner`` drives through the real
 /// ``InferenceService``; a drift in these signatures would compile cleanly

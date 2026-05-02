@@ -2,7 +2,7 @@ import XCTest
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-/// Tests that `GenerationCoordinator.enqueue()` enforces capability flags.
+/// Tests that `GenerationQueue.enqueue()` enforces capability flags.
 ///
 /// Coverage:
 /// - tools rejected (throw + warning) when backend reports `supportsToolCalling == false`
@@ -44,15 +44,15 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
 
     override func tearDown() async throws {
         // Always clear the warning hook to avoid cross-test leakage.
-        GenerationCoordinator.toolsUnsupportedWarningHook = nil
+        GenerationQueue.toolsUnsupportedWarningHook = nil
         provider = nil
         try await super.tearDown()
     }
 
     // MARK: - Helpers
 
-    private func makeCoordinator() -> GenerationCoordinator {
-        let coordinator = GenerationCoordinator()
+    private func makeCoordinator() -> GenerationQueue {
+        let coordinator = GenerationQueue()
         coordinator.provider = provider
         return coordinator
     }
@@ -83,7 +83,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
     ///    stream is returned — tools must never silently no-op.
     ///
     /// Sabotage: if you comment out the `throw` at the end of the capability
-    /// guard in `GenerationCoordinator.enqueue(structuredMessages:...)`, this
+    /// guard in `GenerationQueue.enqueue(structuredMessages:...)`, this
     /// test fails because `enqueue` returns a stream instead of throwing.
     func test_tools_rejectedOnNonToolCallingBackend() throws {
         let backend = makeNonToolCapableBackend()
@@ -91,7 +91,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
         let coordinator = makeCoordinator()
 
         let collector = WarningCollector()
-        GenerationCoordinator.toolsUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.toolsUnsupportedWarningHook = { backendType, message in
             collector.record(backendType: backendType, message: message)
         }
 

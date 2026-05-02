@@ -73,7 +73,7 @@ public enum FinishReason: Sendable, Hashable {
 ///
 /// Carried by ``ConversationEvent/compressionTriggered(removed:reason:)``.
 /// PR-A does not emit this case from its send flow — context-window
-/// management remains in `ChatViewModel`'s `GenerationCoordinator` for the
+/// management remains in `ChatViewModel`'s `GenerationQueue` for the
 /// pre-PR-A surface. The case is wired into the event enum for future sub-
 /// flows (PR-B/PR-C) and Phase 1.2.5 follow-ups so adopters can subscribe
 /// today and receive events when later PRs route compression through the

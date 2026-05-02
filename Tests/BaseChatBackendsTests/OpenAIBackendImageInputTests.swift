@@ -18,7 +18,7 @@ import BaseChatTestSupport
 /// 3. Reject image attachments when the configured model isn't
 ///    vision-capable, with a clear local error.
 /// 4. Advertise `supportsVision` based on the configured model name so
-///    ``GenerationCoordinator``'s pre-flight matches the wire-level
+///    ``GenerationQueue``'s pre-flight matches the wire-level
 ///    behaviour.
 /// 5. Conform to ``StructuredHistoryReceiver`` so the coordinator routes
 ///    `MessagePart.image` parts to it.
@@ -373,7 +373,7 @@ final class OpenAIBackendImageInputTests: XCTestCase {
         // failing the build if the conformance regresses.
         let backend: Any = OpenAIBackend()
         XCTAssertNotNil(backend as? StructuredHistoryReceiver,
-            "OpenAIBackend must conform to StructuredHistoryReceiver so GenerationCoordinator routes MessagePart.image parts to it")
+            "OpenAIBackend must conform to StructuredHistoryReceiver so GenerationQueue routes MessagePart.image parts to it")
     }
 
     // MARK: - 10. Data URI shape — exact MIME + base64 round-trip

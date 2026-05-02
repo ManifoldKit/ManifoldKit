@@ -30,7 +30,7 @@ public protocol ConversationHistoryReceiver: AnyObject {
 ///
 /// Text-only backends collapse a ``StructuredMessage`` back to
 /// `(role, content)` at their boundary — see
-/// ``GenerationCoordinator`` for the flattening rule (text parts joined,
+/// ``GenerationQueue`` for the flattening rule (text parts joined,
 /// thinking parts dropped from the prompt).
 public struct StructuredMessage: Sendable, Hashable {
 
@@ -69,7 +69,7 @@ public struct StructuredMessage: Sendable, Hashable {
 /// history — including thinking blocks with their provider signatures and
 /// tool call / result parts.
 ///
-/// ``GenerationCoordinator`` calls this in addition to (not instead of)
+/// ``GenerationQueue`` calls this in addition to (not instead of)
 /// ``ConversationHistoryReceiver`` so backends can pick whichever shape
 /// matches their wire format. The Anthropic backend reads the structured
 /// form so it can serialize prior `thinking` content blocks with their
@@ -170,7 +170,7 @@ public protocol LoadProgressReporting: AnyObject {
 /// Adopted by local backends that can count tokens exactly using their loaded vocabulary.
 ///
 /// Non-local backends (cloud, Ollama) should not conform — they have no
-/// local tokenizer. `GenerationCoordinator` gates the exact pre-flight
+/// local tokenizer. `GenerationQueue` gates the exact pre-flight
 /// check on this protocol so the trim-and-retry path only activates for
 /// backends where KV cache overflow is a real concern.
 ///

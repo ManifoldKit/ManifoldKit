@@ -25,8 +25,8 @@
 # False positive: `ToolRegistry?` as an optional type annotation contains
 # the substring `try?` inside `Regis-try?`. No `try?` call site is present
 # on either line; the audit's substring scan is not AST-aware.
-BaseChatInference/Services/GenerationCoordinator.swift:let toolRegistry: ToolRegistry?
-BaseChatInference/Services/GenerationCoordinator.swift:toolRegistry: ToolRegistry? = nil,
+BaseChatInference/Services/GenerationQueue.swift:let toolRegistry: ToolRegistry?
+BaseChatInference/Services/GenerationQueue.swift:toolRegistry: ToolRegistry? = nil,
 BaseChatInference/Services/InferenceService.swift:public var toolRegistry: ToolRegistry? {
 BaseChatInference/Services/InferenceService.swift:toolRegistry: ToolRegistry? = nil,
 

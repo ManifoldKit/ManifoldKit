@@ -6,7 +6,7 @@ import BaseChatInference
 /// that UI surfaces can observe and resolve.
 ///
 /// The gate cooperates with ``ChatViewModel`` and the backing
-/// ``GenerationCoordinator``: when the model emits a ``ToolCall``, the
+/// ``GenerationQueue``: when the model emits a ``ToolCall``, the
 /// coordinator awaits ``approve(_:)``. Depending on ``policy`` this either:
 /// - returns immediately (``Policy/autoApprove`` or the cached "already
 ///   approved once" flag for ``Policy/askOncePerSession``), or

@@ -81,7 +81,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // Vision support is gated on the configured model name. OpenAI's
             // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
             // accept `image_url` content parts; older completions-only models
-            // do not. ``GenerationCoordinator``'s pre-flight reads this flag
+            // do not. ``GenerationQueue``'s pre-flight reads this flag
             // and rejects image attachments before we ever build a request,
             // so a non-vision model surfaces a clear local error rather than
             // a 400 from upstream.
@@ -150,7 +150,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
     // MARK: - Structured History
 
-    /// Structured replay history. Set by ``GenerationCoordinator`` when the
+    /// Structured replay history. Set by ``GenerationQueue`` when the
     /// caller uses ``InferenceService/enqueue(structuredMessages:...)``;
     /// carries ``MessagePart/image(data:mimeType:)`` parts so vision turns
     /// can be serialised as `image_url` content parts on the request body.
@@ -236,7 +236,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                   !structured.isEmpty,
                   CloudImageEncoding.imageCount(in: structured) > 0 {
             // Vision pre-flight: refuse to forward images to a model that
-            // doesn't advertise vision support. ``GenerationCoordinator``
+            // doesn't advertise vision support. ``GenerationQueue``
             // already gates this path on `capabilities.supportsVision`, but
             // the backend may be driven directly (e.g. the OpenAI-compat
             // server, or callers wiring their own pipeline), so keep the
@@ -252,7 +252,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // o-series, hosted Qwen reasoning) deliver chain-of-thought via
             // `reasoning_content` / `reasoning` deltas but **don't** require
             // it on multi-turn replay — and most providers reject blocks they
-            // didn't emit. ``GenerationCoordinator`` already collapsed
+            // didn't emit. ``GenerationQueue`` already collapsed
             // structured history to `(role, content)` text via
             // ``StructuredMessage/textContent``, which drops `.thinking`
             // parts. So thinking is informational only on this backend's

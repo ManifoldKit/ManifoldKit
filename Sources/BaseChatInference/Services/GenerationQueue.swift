@@ -1,19 +1,21 @@
 import Foundation
 import Observation
 
-/// Owns the generation queue, in-flight request tracking, prompt formatting,
-/// and generation lifecycle management.
+/// FIFO + priority queue and tool-dispatch transport for generation requests.
 ///
-/// This is an internal implementation detail of `BaseChatInference`.
-/// `InferenceService` delegates all generation operations to this coordinator
-/// and preserves the unchanged public API.
+/// `GenerationQueue` owns the generation queue, in-flight request tracking,
+/// prompt formatting, the per-token thermal-pause loop, and the tool-call
+/// dispatch transport that ``ConversationRuntime`` runs on top of. It is an
+/// internal implementation detail of `BaseChatInference`; `InferenceService`
+/// delegates all generation operations here and preserves the unchanged
+/// public API.
 @Observable
 @MainActor
-final class GenerationCoordinator {
+final class GenerationQueue {
 
     // MARK: - Published State
 
-    /// Whether the coordinator has an active generation in progress.
+    /// Whether the queue has an active generation in progress.
     ///
     /// `internal` storage, exposed as `public` via `InferenceService.isGenerating`.
     private(set) var isGenerating = false
@@ -46,7 +48,7 @@ final class GenerationCoordinator {
 
     /// Optional registry used to dispatch model-emitted ``ToolCall`` events.
     ///
-    /// Stored here in wave 1 so the coordinator's init surface is stable for
+    /// Stored here in wave 1 so the queue's init surface is stable for
     /// downstream wiring; the actual dispatch site lands in wave 2 Agent D.
     let toolRegistry: ToolRegistry?
 
@@ -55,9 +57,9 @@ final class GenerationCoordinator {
     /// not opted into per-call approval see unchanged behaviour.
     ///
     /// The gate is invoked on the *finalized* ``ToolCall`` — streaming
-    /// argument deltas are merged by the backend before the coordinator
+    /// argument deltas are merged by the backend before the queue
     /// observes the call event. On ``ToolApprovalDecision/denied(reason:)``
-    /// the coordinator synthesises a ``ToolResult`` with
+    /// the queue synthesises a ``ToolResult`` with
     /// ``ToolResult/ErrorKind/permissionDenied`` and continues the stream
     /// rather than cancelling generation.
     let toolApprovalGate: any ToolApprovalGate
@@ -205,7 +207,7 @@ final class GenerationCoordinator {
         // suppress the warning by not setting the flag in the first place.
         if jsonMode && !backend.capabilities.supportsNativeJSONMode {
             let backendType = String(describing: type(of: backend))
-            let message = "GenerationCoordinator: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
+            let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
             Log.inference.warning("\(message, privacy: .public)")
             Self.jsonModeUnsupportedWarningHook?(backendType, message)
         }
@@ -261,7 +263,7 @@ final class GenerationCoordinator {
 
         if config.jsonMode && !backend.capabilities.supportsNativeJSONMode {
             let backendType = String(describing: type(of: backend))
-            let message = "GenerationCoordinator: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
+            let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
             Log.inference.warning("\(message, privacy: .public)")
             Self.jsonModeUnsupportedWarningHook?(backendType, message)
         }
@@ -476,7 +478,7 @@ final class GenerationCoordinator {
             }
 
             Log.inference.warning(
-                "GenerationCoordinator: prompt over budget — trimming oldest non-system message (attempt \(attempt + 1)/\(maxTrimAttempts))"
+                "GenerationQueue: prompt over budget — trimming oldest non-system message (attempt \(attempt + 1)/\(maxTrimAttempts))"
             )
             workingMessages.remove(at: dropIndex)
             attempt += 1
@@ -557,7 +559,7 @@ final class GenerationCoordinator {
         if !tools.isEmpty && !backend.capabilities.supportsToolCalling {
             let backendType = String(describing: type(of: backend))
             let toolWord = tools.count == 1 ? "tool" : "tools"
-            let message = "GenerationCoordinator: \(tools.count) \(toolWord) passed to enqueue() but \(backendType) reports capabilities.supportsToolCalling == false; tools will be ignored on the wire and tool calls will never be dispatched. Check `backend.capabilities.supportsToolCalling` before passing tools, or load a tool-capable backend."
+            let message = "GenerationQueue: \(tools.count) \(toolWord) passed to enqueue() but \(backendType) reports capabilities.supportsToolCalling == false; tools will be ignored on the wire and tool calls will never be dispatched. Check `backend.capabilities.supportsToolCalling` before passing tools, or load a tool-capable backend."
             Log.inference.warning("\(message, privacy: .public)")
             Self.toolsUnsupportedWarningHook?(backendType, message)
             throw InferenceError.inferenceFailure("Tools passed to a backend that does not support tool calling (\(backendType)); set capabilities.supportsToolCalling = true or remove tools from the request.")
@@ -703,7 +705,7 @@ final class GenerationCoordinator {
             .diagnosticThrottle(reason: "thermalState=.critical")
         )
         Log.inference.warning(
-            "GenerationCoordinator: pausing generation — ProcessInfo.thermalState == .critical"
+            "GenerationQueue: pausing generation — ProcessInfo.thermalState == .critical"
         )
 
         while !Task.isCancelled {
@@ -717,7 +719,7 @@ final class GenerationCoordinator {
             }
             if thermalStateProvider() != .critical {
                 Log.inference.info(
-                    "GenerationCoordinator: thermal state dropped below .critical — resuming generation"
+                    "GenerationQueue: thermal state dropped below .critical — resuming generation"
                 )
                 return
             }
@@ -797,7 +799,7 @@ final class GenerationCoordinator {
                 // Cap reached — loop terminated before invoking the backend
                 // with the next turn's request.
                 Log.inference.warning(
-                    "GenerationCoordinator: tool-dispatch loop hit maxToolIterations=\(limit, privacy: .public); terminating."
+                    "GenerationQueue: tool-dispatch loop hit maxToolIterations=\(limit, privacy: .public); terminating."
                 )
                 self.continuations[request.token]?.yield(
                     .toolLoopLimitReached(iterations: limit)
@@ -872,7 +874,7 @@ final class GenerationCoordinator {
                        prev.arguments == call.arguments {
                         // Identical repeat — don't re-invoke the executor.
                         Log.inference.warning(
-                            "GenerationCoordinator: tool '\(call.toolName, privacy: .public)' called twice in a row with identical arguments; short-circuiting to previous result."
+                            "GenerationQueue: tool '\(call.toolName, privacy: .public)' called twice in a row with identical arguments; short-circuiting to previous result."
                         )
                         let prevContent = dispatchedInThisTurn.last?.1.content ?? ""
                         result = ToolResult(
@@ -882,7 +884,7 @@ final class GenerationCoordinator {
                         )
                     } else if toolResultByteTotal >= Self.toolResultByteBudget {
                         Log.inference.warning(
-                            "GenerationCoordinator: tool-result byte budget (\(Self.toolResultByteBudget, privacy: .public)) exhausted before dispatching '\(call.toolName, privacy: .public)'; terminating loop."
+                            "GenerationQueue: tool-result byte budget (\(Self.toolResultByteBudget, privacy: .public)) exhausted before dispatching '\(call.toolName, privacy: .public)'; terminating loop."
                         )
                         result = ToolResult(
                             callId: call.id,
@@ -919,7 +921,7 @@ final class GenerationCoordinator {
                             result = await toolRegistry!.dispatch(call)
                         case .denied(let reason):
                             Log.inference.info(
-                                "GenerationCoordinator: tool '\(call.toolName, privacy: .public)' denied by ToolApprovalGate"
+                                "GenerationQueue: tool '\(call.toolName, privacy: .public)' denied by ToolApprovalGate"
                             )
                             result = ToolResult(
                                 callId: call.id,

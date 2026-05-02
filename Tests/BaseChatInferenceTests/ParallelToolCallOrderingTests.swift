@@ -14,7 +14,7 @@ import BaseChatTestSupport
 /// directly (`MockInferenceBackend.generate(...)`) so any future
 /// reordering or buffering introduced *inside the backend* is caught
 /// without coordinator-side noise. Test 4 routes through
-/// `GenerationCoordinator` to lock in the higher-level callId↔result
+/// `GenerationQueue` to lock in the higher-level callId↔result
 /// association contract. The two layers exercise different invariants
 /// and intentionally use different harnesses.
 ///
@@ -185,10 +185,10 @@ final class ParallelToolCallOrderingTests: XCTestCase {
         registry.register(weatherExecutor)
         registry.register(timeExecutor)
 
-        // FakeGenerationContextProvider (defined in GenerationCoordinatorTests.swift)
+        // FakeGenerationContextProvider (defined in GenerationQueueTests.swift)
         // is package-internal — wire the coordinator directly instead.
         let provider = DirectProvider(backend: backend)
-        let coordinator = GenerationCoordinator(toolRegistry: registry)
+        let coordinator = GenerationQueue(toolRegistry: registry)
         coordinator.provider = provider
 
         let (_, stream) = try coordinator.enqueue(
@@ -235,7 +235,7 @@ private struct SimpleExecutor: ToolExecutor {
 
 /// Minimal `GenerationContextProvider` that wraps an already-loaded
 /// `MockInferenceBackend`. Avoids the package-internal
-/// `FakeGenerationContextProvider` defined in `GenerationCoordinatorTests`.
+/// `FakeGenerationContextProvider` defined in `GenerationQueueTests`.
 @MainActor
 private final class DirectProvider: GenerationContextProvider {
     private let _backend: MockInferenceBackend

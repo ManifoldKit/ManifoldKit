@@ -4,12 +4,12 @@ import os
 import BaseChatTestSupport
 
 /// Unit tests for ``ToolApprovalGate`` and its interaction with
-/// ``GenerationCoordinator`` at the single-call level.
+/// ``GenerationQueue`` at the single-call level.
 ///
 /// These tests exercise just the gate-to-dispatch chokepoint: one tool call
 /// per test, so approve/deny paths can be isolated from the broader
 /// tool-dispatch loop assertions (iteration caps, repeat short-circuit,
-/// byte budgets) covered in ``GenerationCoordinatorToolLoopTests``.
+/// byte budgets) covered in ``GenerationQueueToolLoopTests``.
 @MainActor
 final class ToolApprovalGateTests: XCTestCase {
 
@@ -90,7 +90,7 @@ final class ToolApprovalGateTests: XCTestCase {
     /// The executor emits `c-1` on turn 1, nothing on turn 2 (loop exits).
     private func makeSingleCallSetup(
         gate: any ToolApprovalGate
-    ) -> (coordinator: GenerationCoordinator, executor: CountingExecutor) {
+    ) -> (coordinator: GenerationQueue, executor: CountingExecutor) {
         let executor = CountingExecutor(name: "get_weather")
         let registry = ToolRegistry()
         registry.register(executor)
@@ -101,7 +101,7 @@ final class ToolApprovalGateTests: XCTestCase {
         ]
         provider.backend.tokensToYieldPerTurn = [[], ["ok"]]
 
-        let coordinator = GenerationCoordinator(
+        let coordinator = GenerationQueue(
             toolRegistry: registry,
             toolApprovalGate: gate
         )
@@ -138,7 +138,7 @@ final class ToolApprovalGateTests: XCTestCase {
         _ = try await collectEvents(stream)
 
         // Sabotage-verify: flipping the `.denied` branch in
-        // GenerationCoordinator to fall through to
+        // GenerationQueue to fall through to
         // `result = await toolRegistry!.dispatch(call)` makes callCount == 1
         // and this assertion fails. Verified locally, reverted before commit.
         XCTAssertEqual(executor.callCount, 0, "denied path must NOT reach the registry")
@@ -219,7 +219,7 @@ final class ToolApprovalGateTests: XCTestCase {
         ]
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
-        let coordinator = GenerationCoordinator(toolRegistry: registry)
+        let coordinator = GenerationQueue(toolRegistry: registry)
         coordinator.provider = provider
 
         let (_, stream) = try coordinator.enqueue(

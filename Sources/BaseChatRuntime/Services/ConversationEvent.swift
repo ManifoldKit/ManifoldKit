@@ -19,7 +19,7 @@ import BaseChatInference
 // `.toolCallCompleted`) and `.compressionTriggered` are present on the
 // surface so adapters can bind to them today; the runtime emits them in
 // later PRs as the corresponding behaviour migrates from
-// ``GenerationCoordinator`` and ``ChatViewModel``.
+// ``GenerationQueue`` and ``ChatViewModel``.
 //
 // Phase 1.2.5 PR-B adds `.messageRemoved` (the 13th case) and emits it
 // from the regenerate sub-flow when the runtime deletes the last assistant
@@ -137,7 +137,7 @@ public enum ConversationEvent: Sendable {
     /// History was compressed (older messages dropped to fit the context
     /// window, or via a host-driven compression command). Load-bearing,
     /// although PR-A does not emit it from the send sub-flow — context
-    /// management still lives in `GenerationCoordinator` for the pre-PR-A
+    /// management still lives in `GenerationQueue` for the pre-PR-A
     /// surface. Reserved for later sub-flows that route compression
     /// through the runtime.
     case compressionTriggered(removed: [ChatMessageRecord.ID], reason: CompressionReason)
@@ -147,7 +147,7 @@ public enum ConversationEvent: Sendable {
     /// The model requested a tool invocation. Adapters that gate tools
     /// behind user approval pause for explicit `.toolCallApproved` before
     /// dispatching. PR-A does not emit this — the existing tool-loop
-    /// orchestration stays in `ChatViewModel`/`GenerationCoordinator`
+    /// orchestration stays in `ChatViewModel`/`GenerationQueue`
     /// until a follow-up PR routes it through the runtime.
     case toolCallRequested(ToolCall)
 

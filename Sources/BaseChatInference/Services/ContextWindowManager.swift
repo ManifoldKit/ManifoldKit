@@ -15,14 +15,14 @@ import Foundation
 ///
 /// ### Per-caller reservation (post issue #587)
 ///
-/// - `BaseChatUI.GenerationCoordinator` derives `responseBuffer` from
+/// - `BaseChatUI.GenerationQueue` derives `responseBuffer` from
 ///   `maxOutputTokens() ?? 2048` + `maxThinkingTokens() ?? 0`, wired up from
 ///   `ChatViewModel.maxOutputTokens` / `maxThinkingTokens` host-facing settings.
 /// - `BaseChatInference.PromptAssembler` still uses a hardcoded default of `512`
 ///   when no `responseBuffer` is supplied — that default only governs callers
 ///   that don't pass their own value (tests, diagnostic tooling). Production
 ///   callers all supply an explicit buffer.
-/// - `BaseChatInference.GenerationCoordinator.exactPreflightAndTrim` reserves
+/// - `BaseChatInference.GenerationQueue.exactPreflightAndTrim` reserves
 ///   `(config.maxOutputTokens ?? 2048) + (config.maxThinkingTokens ?? 0)`.
 ///   `nil` on `maxThinkingTokens` reserves **zero** rather than a default slice
 ///   — see "Default policy" below.

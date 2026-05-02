@@ -57,7 +57,7 @@ public final class InferenceService {
     // MARK: - Internal Coordinators
 
     private let lifecycle: ModelLifecycleCoordinator
-    private let generation: GenerationCoordinator
+    private let generation: GenerationQueue
 
     // MARK: - Public Type Aliases (preserve InferenceService.GenerationRequestToken syntax)
 
@@ -383,7 +383,7 @@ public final class InferenceService {
 
     public nonisolated init() {
         self.lifecycle = ModelLifecycleCoordinator()
-        self.generation = GenerationCoordinator()
+        self.generation = GenerationQueue()
         // Provider wiring happens lazily via ensureProviderWired() on first use,
         // since `self` is not available inside a nonisolated init.
         Self.scheduleToolSpillReap()
@@ -404,7 +404,7 @@ public final class InferenceService {
     /// (e.g. a UI-driven approval sheet).
     public nonisolated init(toolRegistry: ToolRegistry) {
         self.lifecycle = ModelLifecycleCoordinator()
-        self.generation = GenerationCoordinator(toolRegistry: toolRegistry)
+        self.generation = GenerationQueue(toolRegistry: toolRegistry)
         Self.scheduleToolSpillReap()
     }
 
@@ -418,7 +418,7 @@ public final class InferenceService {
     /// — generation is not cancelled.
     public nonisolated init(toolRegistry: ToolRegistry, toolApprovalGate: any ToolApprovalGate) {
         self.lifecycle = ModelLifecycleCoordinator()
-        self.generation = GenerationCoordinator(
+        self.generation = GenerationQueue(
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate
         )
@@ -453,7 +453,7 @@ public final class InferenceService {
         toolApprovalGate: any ToolApprovalGate = AutoApproveGate()
     ) {
         self.lifecycle = ModelLifecycleCoordinator(backend: backend, name: name, modelName: modelName)
-        self.generation = GenerationCoordinator(
+        self.generation = GenerationQueue(
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate
         )
