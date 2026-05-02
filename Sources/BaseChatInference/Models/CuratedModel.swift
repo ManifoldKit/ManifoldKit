@@ -29,6 +29,14 @@ public struct CuratedModel: Identifiable, Sendable {
     /// via ``MultimodalProjectorConfigurable``.
     public let mmprojFileName: String?
 
+    /// Expected SHA-256 digest (lowercase hex, 64 chars) for ``fileName``.
+    ///
+    /// Forwarded to ``DownloadableModel/expectedSHA256`` when the curated entry
+    /// is materialised for the download UI. Populate from the file's HuggingFace
+    /// LFS pointer (`oid sha256:<hex>`); leave `nil` to mark the entry as
+    /// unverified.
+    public let expectedSHA256: String?
+
     public init(
         id: String,
         displayName: String,
@@ -40,7 +48,8 @@ public struct CuratedModel: Identifiable, Sendable {
         contextSize: Int32,
         promptTemplate: PromptTemplate,
         description: String,
-        mmprojFileName: String? = nil
+        mmprojFileName: String? = nil,
+        expectedSHA256: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -53,6 +62,7 @@ public struct CuratedModel: Identifiable, Sendable {
         self.promptTemplate = promptTemplate
         self.description = description
         self.mmprojFileName = mmprojFileName
+        self.expectedSHA256 = expectedSHA256
     }
 
     /// The curated model list to display in model discovery UI.

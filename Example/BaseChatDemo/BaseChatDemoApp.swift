@@ -155,7 +155,11 @@ struct BaseChatDemoApp: App {
             recommendedFor: [.small, .medium, .large, .xlarge],
             contextSize: 2048,
             promptTemplate: .chatML,
-            description: "Tiny but capable chat model, great for testing"
+            description: "Tiny but capable chat model, great for testing",
+            // SHA-256 from HuggingFace LFS pointer (x-linked-etag) on 2026-05-02.
+            // If the upstream file is republished, this hash will need to be
+            // refreshed (the download will fail-closed against the old digest).
+            expectedSHA256: "48ab3034d0dd401fbc721eb1df3217902fee7dab9078992d66431f09b7750201"
         ),
         CuratedModel(
             id: "phi-4-mini-mlx",
@@ -180,7 +184,9 @@ struct BaseChatDemoApp: App {
             recommendedFor: [.medium, .large, .xlarge],
             contextSize: 4096,
             promptTemplate: .mistral,
-            description: "Excellent general-purpose chat model"
+            description: "Excellent general-purpose chat model",
+            // SHA-256 from HuggingFace LFS pointer (x-linked-etag) on 2026-05-02.
+            expectedSHA256: "1270d22c0fbb3d092fb725d4d96c457b7b687a5f5a715abe1e818da303e562b6"
         ),
         CuratedModel(
             id: "llama-3.2-3b-mlx",

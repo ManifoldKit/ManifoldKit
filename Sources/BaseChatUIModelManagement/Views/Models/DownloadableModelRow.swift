@@ -86,6 +86,18 @@ public struct DownloadableModelRow: View {
                         .padding(.top, 1)
                         .accessibilityLabel("Backend unavailable: \(reason)")
                 }
+
+                // Phase 1 of #367: surface verified vs. unverified downloads.
+                // When the curated entry ships an `expectedSHA256`, the validator
+                // enforces it after download; when it is `nil` (search results,
+                // user-pasted URLs, MLX snapshots without per-file digests), the
+                // download proceeds without integrity verification.
+                if model.expectedSHA256 == nil {
+                    Text("Unverified source")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Unverified source — no SHA-256 hash available")
+                }
             }
 
             Spacer()

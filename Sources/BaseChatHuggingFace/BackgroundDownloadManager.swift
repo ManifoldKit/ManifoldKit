@@ -262,7 +262,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     /// - Throws: `HuggingFaceError.insufficientDiskSpace` if there isn't enough room.
     @MainActor @discardableResult
     public func startDownload(_ model: DownloadableModel, downloadURL: URL) async throws -> DownloadState {
-        try await startDownload(model, plan: .singleFile(url: downloadURL, expectedChecksum: nil))
+        // Promote `DownloadableModel.expectedSHA256` into the plan so the
+        // post-download validator can enforce the digest. Callers that have
+        // already resolved a richer `ModelDownloadPlan` (e.g. snapshot files
+        // with per-file checksums) should use the plan-based overload instead.
+        let checksum = model.expectedSHA256.map {
+            ModelFileChecksum(algorithm: .sha256, hexDigest: $0)
+        }
+        return try await startDownload(model, plan: .singleFile(url: downloadURL, expectedChecksum: checksum))
     }
 
     /// Starts a background download using a resolved download plan.
