@@ -496,159 +496,175 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             }
         }
 
-        func handleLine(_ line: String) throws {
-            guard let parsed = Self.parseLine(line) else { return }
-
-            // Tool calls first: Ollama can emit multiple tool_calls in a
-            // single assistant message. Dispatch them in emission order so
-            // the coordinator's serial dispatch loop sees them in the same
-            // order the model produced them.
-            //
-            // Event-shape contract (PR #783): every tool call surfaces as a
-            // uniform start + single arguments-delta + toolCall triple, even
-            // for whole-call backends like Ollama. That keeps consumers
-            // (orchestrator, UI) on a single code path regardless of whether
-            // the underlying transport streams arguments incrementally.
-            //
-            // TODO(#753): Some Ollama configs (notably `qwen2.5:7b` against
-            // newer servers) reportedly emit incremental tool_call deltas
-            // across multiple NDJSON lines. v1 treats Ollama as whole-call
-            // only; if we observe incremental deltas in the wild, lift
-            // `StreamingToolCallAccumulator` from `OpenAIToolEncoding.swift`
-            // and key by tool-call index here. `streamsToolCallArguments`
-            // would flip to `true` at the same time.
-            if let toolCalls = parsed.toolCalls, !toolCalls.isEmpty {
-                for call in toolCalls {
-                    // Cancellation contract: a consumer that drops the
-                    // stream mid-flight must NOT observe `.toolCall` events
-                    // for entries the orchestrator never agreed to dispatch.
-                    // Honour `Task.isCancelled` at the emit boundary so a
-                    // single-line tool_calls payload arriving alongside the
-                    // cancel doesn't fire a phantom dispatch.
-                    if Task.isCancelled { return }
+        // Tool calls first: Ollama can emit multiple tool_calls in a single
+        // assistant message. Dispatch them in emission order so the
+        // coordinator's serial dispatch loop sees them in the same order
+        // the model produced them.
+        //
+        // Event-shape contract (PR #783): every tool call surfaces as a
+        // uniform start + single arguments-delta + toolCall triple, even
+        // for whole-call backends like Ollama. That keeps consumers
+        // (orchestrator, UI) on a single code path regardless of whether
+        // the underlying transport streams arguments incrementally.
+        //
+        // TODO(#753): Some Ollama configs (notably `qwen2.5:7b` against
+        // newer servers) reportedly emit incremental tool_call deltas
+        // across multiple NDJSON lines. v1 treats Ollama as whole-call
+        // only; if we observe incremental deltas in the wild, lift
+        // `StreamingToolCallAccumulator` from `OpenAIToolEncoding.swift`
+        // and key by tool-call index here. `streamsToolCallArguments`
+        // would flip to `true` at the same time.
+        func processToolCalls(_ parsed: ParsedLine) throws {
+            guard let toolCalls = parsed.toolCalls, !toolCalls.isEmpty else { return }
+            for call in toolCalls {
+                // Cancellation contract: a consumer that drops the stream
+                // mid-flight must NOT observe `.toolCall` events for
+                // entries the orchestrator never agreed to dispatch. Honour
+                // `Task.isCancelled` at the emit boundary so a single-line
+                // tool_calls payload arriving alongside the cancel doesn't
+                // fire a phantom dispatch.
+                if Task.isCancelled { return }
+                try noteEventYielded()
+                continuation.yield(.toolCallStart(callId: call.id, name: call.toolName))
+                if !call.arguments.isEmpty {
                     try noteEventYielded()
-                    continuation.yield(.toolCallStart(callId: call.id, name: call.toolName))
-                    if !call.arguments.isEmpty {
-                        try noteEventYielded()
-                        continuation.yield(.toolCallArgumentsDelta(
-                            callId: call.id,
-                            textDelta: call.arguments
-                        ))
-                    }
-                    try noteEventYielded()
-                    continuation.yield(.toolCall(call))
+                    continuation.yield(.toolCallArgumentsDelta(
+                        callId: call.id,
+                        textDelta: call.arguments
+                    ))
                 }
+                try noteEventYielded()
+                continuation.yield(.toolCall(call))
             }
+        }
 
-            // Route thinking field (if any) first so downstream consumers see
-            // reasoning before visible content for a given NDJSON record.
+        // Route thinking field (if any) first so downstream consumers see
+        // reasoning before visible content for a given NDJSON record.
+        func processThinking(_ parsed: ParsedLine) throws {
             if let thinking = parsed.thinking, !thinking.isEmpty {
                 sawThinkingField = true
                 if let limit = thinkingLimit, thinkingTokenCount >= limit {
-                    // Cap reached — drop this thinking chunk silently.
-                } else {
-                    try noteEventYielded()
-                    continuation.yield(.thinkingToken(thinking))
-                    thinkingOpen = true
-                    // Count each thinking-bearing NDJSON line as one "token"
-                    // for cap purposes. Ollama ships whole-blob thinking per
-                    // line rather than per-token, so this matches the
-                    // coarser grain of the wire format.
-                    thinkingTokenCount += 1
+                    return // Cap reached — drop this thinking chunk silently.
                 }
-            } else if thinkingOpen && contentParser == nil {
-                // Transition from thinking → content. Fire .thinkingComplete
-                // exactly once on the first empty-thinking line we see after
-                // any non-empty thinking was emitted. Skipped when the
-                // fallback parser is driving state — the parser closes its
-                // own thinking block via its own `.thinkingComplete`.
+                try noteEventYielded()
+                continuation.yield(.thinkingToken(thinking))
+                thinkingOpen = true
+                // Count each thinking-bearing NDJSON line as one "token"
+                // for cap purposes. Ollama ships whole-blob thinking per
+                // line rather than per-token, so this matches the coarser
+                // grain of the wire format.
+                thinkingTokenCount += 1
+                return
+            }
+            // Transition from thinking → content. Fire .thinkingComplete
+            // exactly once on the first empty-thinking line we see after
+            // any non-empty thinking was emitted. Skipped when the fallback
+            // parser is driving state — the parser closes its own thinking
+            // block via its own `.thinkingComplete`.
+            if thinkingOpen && contentParser == nil {
                 try noteEventYielded()
                 continuation.yield(.thinkingComplete)
                 thinkingOpen = false
             }
+        }
 
-            if let content = parsed.content, !content.isEmpty {
-                // Prefer the server's running `eval_count` when present for an
-                // exact token-count cap; otherwise fall back to the NDJSON line
-                // counter which is an upper bound but may overshoot by one line.
-                if let limit = visibleLimit {
-                    let observed = parsed.evalCount ?? visibleLineCount
-                    if observed >= limit {
-                        // Client-side cap reached; stop the stream cleanly.
-                        continuation.finish()
-                        return
-                    }
-                }
-
-                // Engage the fallback `<think>`-in-content parser when the
-                // server has never populated a dedicated thinking field on
-                // this stream and the incoming content carries the opening
-                // tag. Once engaged, every subsequent content chunk flows
-                // through the parser so a tag split across two NDJSON lines
-                // is held in the parser's own buffer.
-                if contentParser == nil,
-                   !sawThinkingField,
-                   content.contains(fallbackMarkers.open) {
-                    contentParser = ThinkingParser(markers: fallbackMarkers)
-                }
-
-                if var parser = contentParser {
-                    for event in parser.process(content) {
-                        if try !emit(event) {
-                            contentParser = parser
-                            return
-                        }
-                    }
-                    contentParser = parser
-                } else {
-                    try noteEventYielded()
-                    continuation.yield(.token(content))
-                    visibleLineCount += 1
+        // Returns `false` when the stream should stop (visible-token cap hit
+        // or the fallback parser surfaced a stop signal); `true` to keep
+        // processing further fields on the same line.
+        func processContent(_ parsed: ParsedLine) throws -> Bool {
+            guard let content = parsed.content, !content.isEmpty else { return true }
+            // Prefer the server's running `eval_count` when present for an
+            // exact token-count cap; otherwise fall back to the NDJSON line
+            // counter which is an upper bound but may overshoot by one line.
+            if let limit = visibleLimit {
+                let observed = parsed.evalCount ?? visibleLineCount
+                if observed >= limit {
+                    continuation.finish()
+                    return false
                 }
             }
+            // Engage the fallback `<think>`-in-content parser when the
+            // server has never populated a dedicated thinking field on this
+            // stream and the incoming content carries the opening tag. Once
+            // engaged, every subsequent content chunk flows through the
+            // parser so a tag split across two NDJSON lines is held in the
+            // parser's own buffer.
+            if contentParser == nil,
+               !sawThinkingField,
+               content.contains(fallbackMarkers.open) {
+                contentParser = ThinkingParser(markers: fallbackMarkers)
+            }
+            if var parser = contentParser {
+                for event in parser.process(content) {
+                    if try !emit(event) {
+                        contentParser = parser
+                        return false
+                    }
+                }
+                contentParser = parser
+            } else {
+                try noteEventYielded()
+                continuation.yield(.token(content))
+                visibleLineCount += 1
+            }
+            return true
+        }
 
+        // Returns `false` when the fallback parser surfaced a stop signal
+        // mid-flush (visible-token cap hit while draining held-back bytes).
+        func processDoneFlush() throws -> Bool {
+            // Flush any remaining buffered content from the fallback parser
+            // first — held-back bytes (e.g. an unmatched prefix of `<`)
+            // must be emitted before we decide whether thinking is still
+            // open.
+            if var parser = contentParser {
+                for event in parser.finalize() {
+                    if try !emit(event) {
+                        contentParser = parser
+                        return false
+                    }
+                }
+                contentParser = parser
+            }
+            // Ollama can terminate with `"done":true` while thinking is
+            // still the only content emitted (e.g. reasoning model hits
+            // num_predict mid-think). Flush .thinkingComplete so downstream
+            // consumers don't leave the thinking block open.
+            if thinkingOpen {
+                try noteEventYielded()
+                continuation.yield(.thinkingComplete)
+                thinkingOpen = false
+            }
+            return true
+        }
+
+        // Surface usage from the done-line (`eval_count`,
+        // `prompt_eval_count`). Wires into `handleUsage` (populating
+        // `lastUsage` for `TokenUsageProvider` consumers) and emits a
+        // `.usage` event on the stream, mirroring the SSE path in
+        // `SSECloudBackend.parseResponseStream`.
+        func processUsage(_ parsed: ParsedLine) throws {
+            guard parsed.evalCount != nil || parsed.promptEvalCount != nil else { return }
+            let usage: (promptTokens: Int?, completionTokens: Int?) = (
+                promptTokens: parsed.promptEvalCount,
+                completionTokens: parsed.evalCount
+            )
+            handleUsage(usage)
+            if let prompt = usage.promptTokens,
+               let completion = usage.completionTokens {
+                try noteEventYielded()
+                continuation.yield(.usage(prompt: prompt, completion: completion))
+            }
+        }
+
+        func handleLine(_ line: String) throws {
+            guard let parsed = Self.parseLine(line) else { return }
+            try processToolCalls(parsed)
+            try processThinking(parsed)
+            guard try processContent(parsed) else { return }
             if parsed.done {
-                // Flush any remaining buffered content from the fallback
-                // parser first — held-back bytes (e.g. an unmatched prefix
-                // of `<`) must be emitted before we decide whether thinking
-                // is still open.
-                if var parser = contentParser {
-                    for event in parser.finalize() {
-                        if try !emit(event) {
-                            contentParser = parser
-                            return
-                        }
-                    }
-                    contentParser = parser
-                }
-
-                // Ollama can terminate with `"done":true` while thinking is
-                // still the only content emitted (e.g. reasoning model hits
-                // num_predict mid-think). Flush .thinkingComplete so
-                // downstream consumers don't leave the thinking block open.
-                if thinkingOpen {
-                    try noteEventYielded()
-                    continuation.yield(.thinkingComplete)
-                    thinkingOpen = false
-                }
-
-                // Surface usage from the done-line (`eval_count`,
-                // `prompt_eval_count`). This wires into `handleUsage` (which
-                // populates `lastUsage` for `TokenUsageProvider` consumers) and
-                // emits a `.usage` event on the stream, mirroring the SSE path
-                // in `SSECloudBackend.parseResponseStream`.
-                if parsed.evalCount != nil || parsed.promptEvalCount != nil {
-                    let usage: (promptTokens: Int?, completionTokens: Int?) = (
-                        promptTokens: parsed.promptEvalCount,
-                        completionTokens: parsed.evalCount
-                    )
-                    handleUsage(usage)
-                    if let prompt = usage.promptTokens,
-                       let completion = usage.completionTokens {
-                        try noteEventYielded()
-                        continuation.yield(.usage(prompt: prompt, completion: completion))
-                    }
-                }
+                guard try processDoneFlush() else { return }
+                try processUsage(parsed)
             }
         }
 

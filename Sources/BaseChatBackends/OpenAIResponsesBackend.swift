@@ -279,115 +279,120 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
 
         // Returns `true` if the caller should break out of the byte loop
         // (terminal event observed).
+        //
+        // The named-event SSE stream from OpenAI's Responses API has a
+        // discrete vocabulary; this routes each event name to a focused
+        // handler so the dispatcher itself stays under the per-method CC
+        // ceiling.
         func handleEvent(name: String, data: String) throws -> Bool {
-            // Match either `reasoning_summary_text` or `reasoning_summary`
-            // — providers vary on the exact suffix.
-            let isReasoningDelta = name == "response.reasoning_summary_text.delta"
-                || name == "response.reasoning_summary.delta"
-            let isReasoningDone = name == "response.reasoning_summary_text.done"
-                || name == "response.reasoning_summary.done"
-
-            if isReasoningDelta {
-                if let delta = Self.parseDelta(from: data), !delta.isEmpty {
-                    continuation.yield(.thinkingToken(delta))
-                    thinking.open()
-                }
+            switch ResponsesEventKind(name: name) {
+            case .reasoningDelta:
+                handleReasoningDelta(data: data, thinking: &thinking)
                 return false
-            }
-
-            if isReasoningDone {
+            case .reasoningDone:
                 thinking.flushIfOpen(into: continuation)
                 return false
-            }
-
-            if name == "response.output_text.delta" {
-                if let delta = Self.parseDelta(from: data), !delta.isEmpty {
-                    thinking.flushIfOpen(into: continuation)
-                    continuation.yield(.token(delta))
-                }
+            case .outputTextDelta:
+                handleOutputTextDelta(data: data, thinking: &thinking)
                 return false
-            }
-
-            // Function-call lifecycle:
-            //   response.output_item.added (item.type == "function_call")
-            //     → carries item.id, item.call_id, item.name; emit .toolCallStart
-            //   response.function_call_arguments.delta
-            //     → carries item_id + delta; emit .toolCallArgumentsDelta
-            //   response.function_call_arguments.done
-            //     → terminal for one call; we wait for response.completed to
-            //       fire all .toolCall events together so they emit in
-            //       insertion order.
-            //   response.output_item.done (item.type == "function_call")
-            //     → not currently parsed — `response.completed` is the
-            //       authoritative finaliser. If a server stops emitting
-            //       `response.completed`, the stream-end fallback in the
-            //       outer loop still flushes accumulated tool calls.
-            if name == "response.output_item.added" {
-                if let info = Self.parseFunctionCallItem(from: data) {
-                    thinking.flushIfOpen(into: continuation)
-                    toolAccumulator.upsert(
-                        key: info.itemId,
-                        id: info.callId,
-                        name: info.name,
-                        argumentsDelta: nil
-                    )
-                    if !info.name.isEmpty {
-                        continuation.yield(.toolCallStart(callId: info.callId, name: info.name))
-                        toolAccumulator.markStarted(key: info.itemId)
-                    }
-                }
+            case .outputItemAdded:
+                handleFunctionCallItemAdded(data: data, thinking: &thinking, accumulator: toolAccumulator)
                 return false
-            }
-
-            if name == "response.function_call_arguments.delta" {
-                if let info = Self.parseFunctionCallArgumentsDelta(from: data) {
-                    toolAccumulator.upsert(
-                        key: info.itemId,
-                        id: nil,
-                        name: nil,
-                        argumentsDelta: info.delta
-                    )
-                    let resolvedId = toolAccumulator.resolvedId(forKey: info.itemId)
-                    if !info.delta.isEmpty {
-                        continuation.yield(.toolCallArgumentsDelta(
-                            callId: resolvedId,
-                            textDelta: info.delta
-                        ))
-                    }
-                }
+            case .functionCallArgumentsDelta:
+                handleFunctionCallArgumentsDelta(data: data, accumulator: toolAccumulator)
                 return false
-            }
-
-            if name == "response.function_call_arguments.done" {
+            case .functionCallArgumentsDone:
                 // No-op here — we batch-emit `.toolCall` from
                 // `response.completed` so multiple parallel calls emit in
                 // insertion order. If `response.completed` never arrives the
                 // outer loop's stream-end fallback finalises calls.
                 return false
-            }
-
-            if name == "response.completed" {
-                thinking.flushIfOpen(into: continuation)
+            case .completed:
+                handleCompleted(data: data, thinking: &thinking)
                 finaliseToolCalls()
-                if let usage = Self.parseUsage(from: data) {
-                    handleUsage(usage)
-                    if let prompt = usage.promptTokens,
-                       let completion = usage.completionTokens {
-                        continuation.yield(.usage(prompt: prompt, completion: completion))
-                    }
-                }
                 return true
-            }
-
-            if name == "response.error" {
+            case .error:
                 let message = Self.parseErrorMessage(from: data) ?? "unknown error"
                 throw CloudBackendError.serverError(statusCode: 500, message: message)
+            case .unknown:
+                // Unknown event names (e.g. `response.content_part.added`)
+                // are accepted silently — they carry structural metadata we
+                // don't need today.
+                return false
             }
+        }
 
-            // Unknown event names (e.g. `response.output_item.added`,
-            // `response.content_part.added`) are accepted silently — they
-            // carry structural metadata we don't need today.
-            return false
+        func handleReasoningDelta(data: String, thinking: inout ThinkingBlockManager) {
+            guard let delta = Self.parseDelta(from: data), !delta.isEmpty else { return }
+            continuation.yield(.thinkingToken(delta))
+            thinking.open()
+        }
+
+        func handleOutputTextDelta(data: String, thinking: inout ThinkingBlockManager) {
+            guard let delta = Self.parseDelta(from: data), !delta.isEmpty else { return }
+            thinking.flushIfOpen(into: continuation)
+            continuation.yield(.token(delta))
+        }
+
+        // Function-call lifecycle:
+        //   response.output_item.added (item.type == "function_call")
+        //     → carries item.id, item.call_id, item.name; emit .toolCallStart
+        //   response.function_call_arguments.delta
+        //     → carries item_id + delta; emit .toolCallArgumentsDelta
+        //   response.function_call_arguments.done
+        //     → terminal for one call; we wait for response.completed to
+        //       fire all .toolCall events together so they emit in
+        //       insertion order.
+        //   response.output_item.done (item.type == "function_call")
+        //     → not currently parsed — `response.completed` is the
+        //       authoritative finaliser. If a server stops emitting
+        //       `response.completed`, the stream-end fallback in the
+        //       outer loop still flushes accumulated tool calls.
+        func handleFunctionCallItemAdded(
+            data: String,
+            thinking: inout ThinkingBlockManager,
+            accumulator: StreamingToolCallAccumulator
+        ) {
+            guard let info = Self.parseFunctionCallItem(from: data) else { return }
+            thinking.flushIfOpen(into: continuation)
+            accumulator.upsert(
+                key: info.itemId,
+                id: info.callId,
+                name: info.name,
+                argumentsDelta: nil
+            )
+            guard !info.name.isEmpty else { return }
+            continuation.yield(.toolCallStart(callId: info.callId, name: info.name))
+            accumulator.markStarted(key: info.itemId)
+        }
+
+        func handleFunctionCallArgumentsDelta(
+            data: String,
+            accumulator: StreamingToolCallAccumulator
+        ) {
+            guard let info = Self.parseFunctionCallArgumentsDelta(from: data) else { return }
+            accumulator.upsert(
+                key: info.itemId,
+                id: nil,
+                name: nil,
+                argumentsDelta: info.delta
+            )
+            guard !info.delta.isEmpty else { return }
+            let resolvedId = accumulator.resolvedId(forKey: info.itemId)
+            continuation.yield(.toolCallArgumentsDelta(
+                callId: resolvedId,
+                textDelta: info.delta
+            ))
+        }
+
+        func handleCompleted(data: String, thinking: inout ThinkingBlockManager) {
+            thinking.flushIfOpen(into: continuation)
+            guard let usage = Self.parseUsage(from: data) else { return }
+            handleUsage(usage)
+            if let prompt = usage.promptTokens,
+               let completion = usage.completionTokens {
+                continuation.yield(.usage(prompt: prompt, completion: completion))
+            }
         }
 
         do {
@@ -418,6 +423,52 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         // mid-stream must not produce phantom `.toolCall` events.
         if !Task.isCancelled {
             finaliseToolCalls()
+        }
+    }
+
+    // MARK: - Event Vocabulary
+
+    /// Discrete vocabulary of named events the OpenAI Responses API emits
+    /// over SSE. Centralising the name → kind mapping keeps the dispatcher
+    /// in ``parseResponseStream(bytes:config:continuation:)`` a flat switch
+    /// instead of a chain of `if name == ...` branches.
+    enum ResponsesEventKind {
+        case reasoningDelta
+        case reasoningDone
+        case outputTextDelta
+        case outputItemAdded
+        case functionCallArgumentsDelta
+        case functionCallArgumentsDone
+        case completed
+        case error
+        case unknown
+
+        init(name: String) {
+            // Providers vary on the suffix for reasoning events: some emit
+            // `response.reasoning_summary_text.delta`, others use the shorter
+            // `response.reasoning_summary.delta`. Accept both.
+            switch name {
+            case "response.reasoning_summary_text.delta",
+                 "response.reasoning_summary.delta":
+                self = .reasoningDelta
+            case "response.reasoning_summary_text.done",
+                 "response.reasoning_summary.done":
+                self = .reasoningDone
+            case "response.output_text.delta":
+                self = .outputTextDelta
+            case "response.output_item.added":
+                self = .outputItemAdded
+            case "response.function_call_arguments.delta":
+                self = .functionCallArgumentsDelta
+            case "response.function_call_arguments.done":
+                self = .functionCallArgumentsDone
+            case "response.completed":
+                self = .completed
+            case "response.error":
+                self = .error
+            default:
+                self = .unknown
+            }
         }
     }
 
