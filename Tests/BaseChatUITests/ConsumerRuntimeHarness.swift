@@ -71,7 +71,8 @@ final class ConsumerRuntimeHarness {
                 inferenceService: runtime.inferenceService,
                 modelStorage: ModelStorageService(baseDirectory: directory),
                 toolApprovalGate: toolApprovalGate,
-                userDefaults: defaults
+                userDefaults: defaults,
+                conversationRuntime: runtime.conversationRuntime
             )
             chatViewModel.foundationModelProvider = foundationModelProvider
             chatViewModel.configure(runtime: runtime)

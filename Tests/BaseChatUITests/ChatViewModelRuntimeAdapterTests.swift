@@ -6,20 +6,19 @@ import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-// MARK: - Phase 1.2.5 PR-D: ChatViewModel ↔ ConversationRuntime adapter tests
+// MARK: - ChatViewModel ↔ ConversationRuntime adapter tests
 //
-// These tests verify the three new behaviours introduced by the adapter layer:
+// Post-cutover (#947) `ConversationRuntime` is the single turn loop. These
+// tests verify the @Observable state mapping that ChatViewModel performs on
+// top of the runtime's event stream:
 //
-//  1. `test_sendMessage_withRuntime_delegatesToRuntime` — when a runtime is
-//     configured, `sendMessage()` routes through it and the event drain maps
-//     ConversationEvent back to `messages`.
+//  1. `test_sendMessage_delegatesToRuntime` — `sendMessage()` routes through
+//     the constructor-injected runtime and the event drain maps
+//     ConversationEvent values back to `messages`.
 //
-//  2. `test_stopGeneration_withRuntime_cancelsHandle` — `stopGeneration()` on
-//     the runtime path calls `runtime.cancel(handle)` which drives the stream
-//     to a `cancelled` finish reason via the drain task.
-//
-//  3. `test_sendMessage_withoutRuntime_usesExistingPath` — no runtime
-//     configured; the existing GenerationCoordinator path runs unchanged.
+//  2. `test_stopGeneration_cancelsHandle` — `stopGeneration()` calls
+//     `runtime.cancel(handle)` which drives the stream to a `cancelled`
+//     finish reason via the drain task.
 
 @MainActor
 final class ChatViewModelRuntimeAdapterTests: XCTestCase {
@@ -70,42 +69,53 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         try await super.tearDown()
     }
 
-    /// Builds a `ChatViewModel` backed by a `MockInferenceBackend` (model pre-loaded).
-    private func makeVM(mock: MockInferenceBackend) throws -> ChatViewModel {
-        let h = try makeTestChatViewModel(
-            mock: mock,
-            activateSession: true
-        )
-        harnesses.append(h)
-        return h.vm
-    }
-
-    /// Builds a `ConversationRuntime` wired to `mock` and a fresh in-memory store.
-    private func makeRuntime(
-        mock: MockInferenceBackend,
-        store: RuntimeMessageStore = RuntimeMessageStore()
-    ) -> ConversationRuntime {
-        let inference = InferenceService(backend: mock, name: "Mock")
+    /// Builds a `ChatViewModel` backed by a `MockInferenceBackend` (model pre-loaded)
+    /// and a `ConversationRuntime` wired to the same backend + a fresh in-memory store.
+    /// Returns the view model along with the store so tests can assert persisted state.
+    private func makeVMWithRuntime(
+        mock: MockInferenceBackend
+    ) throws -> (vm: ChatViewModel, store: RuntimeMessageStore) {
         mock.isModelLoaded = true
-        return ConversationRuntime(
+        let inference = InferenceService(backend: mock, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: inference
         )
+        let modelsDir = makeIsolatedModelsDirectory()
+        let suiteName = "BaseChatKitTests-RuntimeAdapter-\(UUID().uuidString)"
+        guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+            throw TestFactoryError.userDefaultsSuiteAllocationFailed(suiteName)
+        }
+        let vm = ChatViewModel(
+            inferenceService: inference,
+            modelStorage: ModelStorageService(baseDirectory: modelsDir),
+            memoryPressure: MemoryPressureHandler(),
+            userDefaults: testDefaults,
+            conversationRuntime: runtime
+        )
+        vm.activeSession = ChatSessionRecord(title: "Adapter Test")
+        // Track teardown via a lightweight harness wrapper.
+        harnesses.append(TestChatViewModelHarness(
+            vm: vm,
+            mock: mock,
+            container: nil,
+            userDefaults: testDefaults,
+            userDefaultsSuiteName: suiteName,
+            ownsUserDefaults: true,
+            modelsDirectory: modelsDir,
+            ownsModelsDirectory: true
+        ))
+        return (vm, store)
     }
 
-    // MARK: - Test 1: sendMessage with runtime delegates and drains events to messages
+    // MARK: - Test 1: sendMessage delegates to runtime and drains events to messages
 
-    func test_sendMessage_withRuntime_delegatesToRuntime() async throws {
+    func test_sendMessage_delegatesToRuntime() async throws {
         let mock = MockInferenceBackend()
-        mock.isModelLoaded = true
         mock.tokensToYield = ["Hello", " from", " runtime"]
 
-        let vm = try makeVM(mock: mock)
-        let store = RuntimeMessageStore()
-        let runtime = makeRuntime(mock: mock, store: store)
-
-        // Wire the runtime to the view model.
-        vm.configure(conversationRuntime: runtime)
+        let (vm, store) = try makeVMWithRuntime(mock: mock)
 
         guard let sessionID = vm.activeSessionID else {
             XCTFail("activeSession must be set")
@@ -149,12 +159,9 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
                       "Persisted assistant message should contain streamed tokens")
     }
 
-    // Sabotage check: if configure(conversationRuntime:) were never called, the runtime
-    // path would not run. This is validated by test 3 below.
+    // MARK: - Test 2: stopGeneration cancels the in-flight handle
 
-    // MARK: - Test 2: stopGeneration with runtime cancels the in-flight handle
-
-    func test_stopGeneration_withRuntime_cancelsHandle() async throws {
+    func test_stopGeneration_cancelsHandle() async throws {
         let slowBackend = SlowMockBackend()
         slowBackend.tokensToYield = (0..<20).map { "tok\($0) " }
         slowBackend.delayPerToken = .milliseconds(30)
@@ -170,21 +177,19 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: modelsDir) }
 
         let inference = InferenceService(backend: slowBackend, name: "SlowMock")
-        let vm = ChatViewModel(
-            inferenceService: inference,
-            modelStorage: ModelStorageService(baseDirectory: modelsDir),
-            memoryPressure: MemoryPressureHandler(),
-            userDefaults: testDefaults
-        )
-        vm.activeSession = ChatSessionRecord(title: "Cancel Test")
-
         let store = RuntimeMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: inference
         )
-
-        vm.configure(conversationRuntime: runtime)
+        let vm = ChatViewModel(
+            inferenceService: inference,
+            modelStorage: ModelStorageService(baseDirectory: modelsDir),
+            memoryPressure: MemoryPressureHandler(),
+            userDefaults: testDefaults,
+            conversationRuntime: runtime
+        )
+        vm.activeSession = ChatSessionRecord(title: "Cancel Test")
 
         vm.inputText = "Tell me something slow"
         let sendTask = Task { @MainActor in
@@ -215,7 +220,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         XCTAssertLessThanOrEqual(vm.messages.count, 2, "Should have at most user + partial assistant")
     }
 
-    // MARK: - Test: configure(conversationRuntime:) does not leak the view model
+    // MARK: - Test: the runtime drain task does not leak the view model
     //
     // Regression test for the retain cycle that existed when `[weak self]` plus
     // an outside-the-loop `guard let self else { return }` upgraded `self` to a
@@ -224,18 +229,15 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
     // can deallocate when nothing else holds it.
     //
     // Sabotage check (verified manually): hoisting `guard let self` outside the
-    // `for-await` loop in configure(conversationRuntime:) makes `weakVM` survive
-    // past `harnesses.removeAll()` and the assertion fails.
+    // `for-await` loop in the drain task makes `weakVM` survive past
+    // `harnesses.removeAll()` and the assertion fails.
 
-    func test_configureConversationRuntime_doesNotRetainViewModel() async throws {
+    func test_runtimeDrainTask_doesNotRetainViewModel() async throws {
         let mock = MockInferenceBackend()
-        mock.isModelLoaded = true
 
         weak var weakVM: ChatViewModel?
         do {
-            let vm = try makeVM(mock: mock)
-            let runtime = makeRuntime(mock: mock)
-            vm.configure(conversationRuntime: runtime)
+            let (vm, _) = try makeVMWithRuntime(mock: mock)
             weakVM = vm
             XCTAssertNotNil(weakVM, "VM is alive while strongly held by harness")
 
@@ -256,35 +258,6 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(30))
 
         XCTAssertNil(weakVM, "VM must be deallocated once external strong refs drop — drain task must not retain self across the for-await suspension")
-    }
-
-    // MARK: - Test 3: sendMessage without runtime uses GenerationCoordinator (existing path)
-
-    func test_sendMessage_withoutRuntime_usesExistingPath() async throws {
-        let mock = MockInferenceBackend()
-        mock.isModelLoaded = true
-        mock.tokensToYield = ["GenerationCoordinator", " path"]
-
-        let vm = try makeVM(mock: mock)
-
-        // No configure(conversationRuntime:) call — runtime stays nil.
-        XCTAssertNil(vm.conversationRuntime, "Precondition: no runtime configured")
-
-        vm.inputText = "Hello from coordinator path"
-        await vm.sendMessage()
-
-        // GenerationCoordinator path: messages are built locally and streamed in.
-        let userMessages = vm.messages.filter { $0.role == .user }
-        let assistantMessages = vm.messages.filter { $0.role == .assistant }
-
-        XCTAssertEqual(userMessages.count, 1, "Should have one user message")
-        XCTAssertEqual(userMessages.first?.content, "Hello from coordinator path")
-        XCTAssertEqual(assistantMessages.count, 1, "Should have one assistant message")
-        XCTAssertEqual(
-            assistantMessages.first?.content, "GenerationCoordinator path",
-            "Assistant content should match mock tokens (coordinator path)"
-        )
-        XCTAssertFalse(vm.isGenerating, "isGenerating should be false after completion")
     }
 }
 

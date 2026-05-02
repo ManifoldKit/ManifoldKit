@@ -210,17 +210,15 @@ BaseChatFuzz/Scenarios/ScenarioTestBackend.swift:try? await Task.sleep(for: paus
 BaseChatUIModelManagement/ViewModels/ModelManagementViewModel.swift:try? await Task.sleep(for: .milliseconds(500))
 BaseChatUI/Views/Chat/AssistantMarkdownView.swift:if let parsed = try? AttributedString(
 BaseChatUI/Views/Chat/TypingIndicatorView.swift:try? await Task.sleep(for: .milliseconds(400))
+# `awaitStreamCompletion` polling backoff: cancellation here just exits
+# the polling loop; the turn's own cancel runs through the runtime stream.
+BaseChatUI/ViewModels/ChatViewModel+Generation.swift:try? await Task.sleep(for: .milliseconds(1))
 
 # Best-effort cleanup of the temp directory holding a just-shared export
 # file. The share sheet has dismissed; if the file is gone (user moved it,
 # AirDrop snapshotted it, race with reaper), the unlink is a no-op and
 # nothing actionable would come of surfacing the error.
 BaseChatUI/Views/Chat/ExportButton.swift:try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-
-# False positive: `toolRegistry?` optional chain contains the substring
-# `try?` inside `Regis-try?`. No `try?` call site is present on this
-# line; the audit's substring scan is not AST-aware.
-BaseChatUI/ViewModels/GenerationCoordinator.swift:let registeredTools = inferenceService.toolRegistry?.advertisedDefinitions ?? []
 
 # ---------------------------------------------------------------------------
 # BaseChatTestSupport — test-only helpers, not production paths.

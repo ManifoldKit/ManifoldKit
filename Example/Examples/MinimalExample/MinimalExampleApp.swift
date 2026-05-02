@@ -37,7 +37,10 @@ struct MinimalExampleApp: App {
 
         DefaultBackends.register(with: runtime.inferenceService)
 
-        let vm = ChatViewModel(inferenceService: runtime.inferenceService)
+        let vm = ChatViewModel(
+            inferenceService: runtime.inferenceService,
+            conversationRuntime: runtime.conversationRuntime
+        )
         vm.foundationModelProvider = {
             if #available(iOS 26, macOS 26, *) {
                 return FoundationBackend.isAvailable

@@ -26,7 +26,7 @@ public enum CompactionTrigger: Sendable {
 
 /// One round of an agent loop captured for potential compression.
 ///
-/// ``ToolCallLoopOrchestrator`` builds one of these per generate → tool-call →
+/// An agent-loop driver builds one of these per generate → tool-call →
 /// result round and hands the running list to a ``TurnHistoryCompressor``
 /// before each new generate round.
 ///
@@ -96,7 +96,7 @@ public struct TurnHistoryRecord: Sendable, Equatable {
 /// The output of a ``TurnHistoryCompressor`` — a (possibly empty) summary
 /// string for older rounds plus the records that should be kept verbatim.
 ///
-/// ``ToolCallLoopOrchestrator`` rebuilds the next-turn prompt as
+/// Agent-loop drivers rebuild the next-turn prompt as
 /// `initialPrompt + summary + verbatim record appendix`, so an empty summary
 /// with all records preserved is a no-op.
 public struct CompressedTranscript: Sendable, Equatable {
@@ -140,9 +140,9 @@ public struct CompressedTranscript: Sendable, Equatable {
 /// scratch — tool calls and tool results — that need to remain structurally
 /// referenceable but do not need verbatim preservation.
 ///
-/// Implementations are ``Sendable`` so the orchestrator can hold one across
-/// async boundaries. The default in-tree implementation is
-/// ``BudgetTurnHistoryCompressor``; ``ToolCallLoopOrchestrator`` defaults to
+/// Implementations are ``Sendable`` so an agent-loop driver can hold one
+/// across async boundaries. The default in-tree implementation is
+/// ``BudgetTurnHistoryCompressor``; drivers default to
 /// ``NoOpTurnHistoryCompressor()`` for no compression so existing callers
 /// see no behaviour change.
 public protocol TurnHistoryCompressor: Sendable {
@@ -363,8 +363,8 @@ public struct BudgetTurnHistoryCompressor: TurnHistoryCompressor {
 // MARK: - NoOpTurnHistoryCompressor
 
 /// A compressor that never folds anything. Useful as a sentinel and as the
-/// implicit default when ``ToolCallLoopOrchestrator`` is constructed without
-/// a `compressor` argument — existing callers see no behaviour change.
+/// implicit default when an agent-loop driver is constructed without a
+/// `compressor` argument — existing callers see no behaviour change.
 public struct NoOpTurnHistoryCompressor: TurnHistoryCompressor {
     public init() {}
     public func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {

@@ -49,6 +49,13 @@ public final class BaseChatBootstrap {
     public let samplerPresetStore: SwiftDataSamplerPresetStore
     public let benchmarkCache: SwiftDataBenchmarkCache
     public let endpointStore: SwiftDataEndpointStore
+    /// The shared turn-loop runtime, pre-wired against ``persistence`` and
+    /// ``inferenceService``. Apps that bootstrap through this type should pass
+    /// this instance to ``ChatViewModel/configure(conversationRuntime:)`` (or
+    /// rely on ``ChatViewModel/configure(runtime:)``, which does so by
+    /// default) to opt into the runtime-driven send/regenerate/edit/cancel
+    /// path.
+    public let conversationRuntime: ConversationRuntime
 
     public var modelContext: ModelContext { modelContainer.mainContext }
 
@@ -74,10 +81,16 @@ public final class BaseChatBootstrap {
 
             self.diagnostics = diagnostics
             let mainContext = resolvedModelContainer.mainContext
-            self.persistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+            let resolvedPersistence = SwiftDataPersistenceProvider(modelContext: mainContext)
+            self.persistence = resolvedPersistence
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+            self.conversationRuntime = ConversationRuntime(
+                messageStore: resolvedPersistence,
+                sessionStore: resolvedPersistence,
+                inferenceService: resolvedInferenceService
+            )
         } catch {
             BaseChatConfiguration.shared = previousConfiguration
             throw error
@@ -100,6 +113,11 @@ public final class BaseChatBootstrap {
         self.samplerPresetStore = samplerPresetStore
         self.benchmarkCache = benchmarkCache
         self.endpointStore = endpointStore
+        self.conversationRuntime = ConversationRuntime(
+            messageStore: persistence,
+            sessionStore: persistence,
+            inferenceService: inferenceService
+        )
     }
 
     public static func build(

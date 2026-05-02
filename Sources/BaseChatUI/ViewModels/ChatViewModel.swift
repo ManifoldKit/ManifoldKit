@@ -477,12 +477,6 @@ public final class ChatViewModel {
     /// Extracted from `ChatViewModel` in phase 3 of #329.
     var loadCoordinator: ModelLoadCoordinator!
 
-    // MARK: - Generation Coordinator
-
-    /// Owns the token-streaming loop.
-    /// Extracted from `ChatViewModel` in phase 4 of #329.
-    var generationCoordinator: GenerationCoordinator!
-
     /// Forwarding accessor so tests that mutate `vm.progressBridgePollInterval`
     /// continue to work without changes.
     var progressBridgePollInterval: Duration {
@@ -496,25 +490,48 @@ public final class ChatViewModel {
         set { loadCoordinator.progressBridgeMinTransitionInterval = newValue }
     }
 
-    // MARK: - ConversationRuntime Adapter
+    // MARK: - ConversationRuntime
 
-    /// Optional reference runtime. When non-nil, send/regenerate/edit/cancel
-    /// delegate to it and the event drain task maps ConversationEvent back to
-    /// @Observable state. When nil, the existing GenerationCoordinator path
-    /// runs unchanged.
+    /// The single turn-loop owner. ``sendMessage()``, ``regenerateLastResponse()``,
+    /// ``editMessage(_:newContent:)``, and ``stopGeneration()`` all delegate to
+    /// it; a long-lived event-drain task maps ``ConversationEvent`` values back
+    /// to `@Observable` state on `@MainActor`.
     ///
-    /// Internal (not private) so that extensions in sibling files within this
-    /// module can read it. The setter stays internal — external callers use
-    /// ``configure(conversationRuntime:)``.
-    var conversationRuntime: ConversationRuntime?
+    /// Constructor-injected and non-optional from the public API surface. Apps
+    /// assembling shared services through ``BaseChatBootstrap`` get the
+    /// bootstrap's runtime; tests and the convenience initializer get an
+    /// in-memory runtime that's still functional for unit-test flows.
+    ///
+    /// `private(set)` (not `let`) because ``configure(persistence:)`` rebuilds
+    /// the runtime against the newly-installed message store so tests and
+    /// late-binding hosts that wire persistence after construction get a
+    /// runtime backed by the configured storage. Hosts using
+    /// ``BaseChatBootstrap`` should pass the bootstrap's runtime at
+    /// construction and not rely on this rebuild path.
+    private(set) var conversationRuntime: ConversationRuntime
 
     /// Drain task for the runtime event stream. Cancelled when the runtime
     /// is replaced or the view model is torn down.
     @ObservationIgnored
     private var runtimeEventDrainTask: Task<Void, Never>?
 
+    /// `true` while the runtime is the default in-memory one created by the
+    /// initializer (i.e. the host did not pass `conversationRuntime:` at
+    /// construction). ``configure(persistence:)`` uses this flag to decide
+    /// whether to rebuild the runtime against the newly-installed store —
+    /// runtimes the host built explicitly are never replaced.
+    @ObservationIgnored
+    private var ownsDefaultRuntime: Bool = false
+
     /// Handle to the in-flight ConversationRuntime stream, used to cancel it.
     var activeConversationStreamHandle: ConversationStreamHandle?
+
+    /// The assistant `messageID` carried by the most-recent `streamStarted`
+    /// event. Used by ``ChatViewModel/handle(runtimeEvent:)`` to gate
+    /// terminal events against the active turn — late events from a
+    /// previously-cancelled turn (after `switchToSession`) carry a
+    /// different messageID and must not clobber the new turn's handle.
+    var activeConversationMessageID: UUID?
 
     // MARK: - Private State
 
@@ -609,7 +626,8 @@ public final class ChatViewModel {
         deviceCapability: DeviceCapabilityService = DeviceCapabilityService(),
         modelStorage: ModelStorageService = ModelStorageService(),
         toolApprovalGate: UIToolApprovalGate? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        conversationRuntime: ConversationRuntime? = nil
     ) {
         self.init(
             inferenceService: inferenceService,
@@ -617,7 +635,8 @@ public final class ChatViewModel {
             modelStorage: modelStorage,
             memoryPressure: MemoryPressureHandler(),
             toolApprovalGate: toolApprovalGate,
-            userDefaults: userDefaults
+            userDefaults: userDefaults,
+            conversationRuntime: conversationRuntime
         )
     }
 
@@ -627,7 +646,8 @@ public final class ChatViewModel {
         modelStorage: ModelStorageService = ModelStorageService(),
         memoryPressure: MemoryPressureHandler,
         toolApprovalGate: UIToolApprovalGate? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        conversationRuntime: ConversationRuntime? = nil
     ) {
         self.inferenceService = inferenceService
         self.deviceCapability = deviceCapability
@@ -636,6 +656,21 @@ public final class ChatViewModel {
         self.toolApprovalGate = toolApprovalGate
         self.userDefaults = userDefaults
         self.sessionController = SessionController(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
+        // Non-optional runtime: callers assembling through `BaseChatBootstrap`
+        // pass the shared instance; tests and ad-hoc construction get a
+        // standalone runtime backed by an in-memory message store. Either way,
+        // send/regenerate/edit/stop have a real turn loop to drive.
+        let resolvedRuntime: ConversationRuntime
+        if let conversationRuntime {
+            resolvedRuntime = conversationRuntime
+        } else {
+            resolvedRuntime = ConversationRuntime(
+                messageStore: InMemoryMessageStore(),
+                inferenceService: inferenceService
+            )
+        }
+        self.conversationRuntime = resolvedRuntime
+        self.ownsDefaultRuntime = (conversationRuntime == nil)
 
         let firstRunKey = "\(BaseChatConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         self.isFirstRun = !userDefaults.bool(forKey: firstRunKey)
@@ -667,108 +702,15 @@ public final class ChatViewModel {
             self?.loadPlanEnvironment ?? .current
         }
 
-        let genCoordinator = GenerationCoordinator(
-            inferenceService: inferenceService,
-            reusableCachingTokenizer: { [weak self] in
-                // Fallback to a fresh CachingTokenizer when self is gone (never in practice).
-                self?.reusableCachingTokenizer ?? CachingTokenizer(wrapping: HeuristicTokenizer())
-            }
-        )
-        self.generationCoordinator = genCoordinator
-        genCoordinator.messages = { [weak self] in self?.messages ?? [] }
-        genCoordinator.systemPrompt = { [weak self] in self?.systemPrompt ?? "" }
-        genCoordinator.systemPromptContext = { [weak self] in self?.systemPromptContext ?? [:] }
-        genCoordinator.contextMaxTokens = { [weak self] in self?.contextMaxTokens ?? 2048 }
-        genCoordinator.maxOutputTokens = { [weak self] in self?.maxOutputTokens ?? 2048 }
-        genCoordinator.maxThinkingTokens = { [weak self] in self?.maxThinkingTokens }
-        genCoordinator.temperature = { [weak self] in self?.temperature ?? 0.7 }
-        genCoordinator.topP = { [weak self] in self?.topP ?? 0.9 }
-        genCoordinator.repeatPenalty = { [weak self] in self?.repeatPenalty ?? 1.0 }
-        genCoordinator.activeSessionID = { [weak self] in self?.activeSessionID }
-        genCoordinator.loopDetectionEnabled = { [weak self] in self?.loopDetectionEnabled ?? true }
-        genCoordinator.streamingUpdateInterval = { [weak self] in self?.streamingUpdateInterval ?? .milliseconds(33) }
-        genCoordinator.streamingBatchCharacterLimit = { [weak self] in self?.streamingBatchCharacterLimit ?? 128 }
-        genCoordinator.thinkingStreamingUpdateInterval = { [weak self] in self?.thinkingStreamingUpdateInterval ?? .milliseconds(33) }
-        genCoordinator.thinkingStreamingBatchCharacterLimit = { [weak self] in self?.thinkingStreamingBatchCharacterLimit ?? 128 }
-        genCoordinator.onMarkThinkingStreaming = { [weak self] id, isStreaming in
-            guard let self else { return }
-            if isStreaming {
-                self.messageIDsWithStreamingThinking.insert(id)
-            } else {
-                self.messageIDsWithStreamingThinking.remove(id)
-            }
-        }
-        genCoordinator.activeBackendName = { [weak self] in self?.activeBackendName }
-        genCoordinator.activeSession = { [weak self] in self?.activeSession }
-        genCoordinator.postGenerationTasks = { [weak self] in self?.postGenerationTasks ?? [] }
-        genCoordinator.showUpgradeHint = { [weak self] in self?.showUpgradeHint ?? false }
-        genCoordinator.onTransitionPhase = { [weak self] phase in
-            self?.transitionPhase(to: phase) ?? false
-        }
-        genCoordinator.onSurfaceError = { [weak self] error, kind, context in
-            self?.surfaceError(error, kind: kind, context: context)
-        }
-        genCoordinator.onSetErrorMessage = { [weak self] message in
-            self?.errorMessage = message
-        }
-        genCoordinator.onMutateMessage = { [weak self] id, body in
-            self?.mutateMessage(id: id, body)
-        }
-        genCoordinator.onSetActiveGenerationToken = { [weak self] token in
-            self?.activeGenerationToken = token
-        }
-        genCoordinator.onSetGenerationTask = { [weak self] task in
-            self?.generationTask = task
-        }
-        genCoordinator.onSetBackgroundTask = { [weak self] task in
-            self?.backgroundTask = task
-        }
-        genCoordinator.onSetBackgroundTaskError = { [weak self] error in
-            self?.backgroundTaskError = error
-        }
-        genCoordinator.onSetShowUpgradeHint = { [weak self] value in
-            self?.showUpgradeHint = value
-        }
-        genCoordinator.onUpgradeHintTriggered = { [weak self] in
-            self?.onUpgradeHintTriggered?()
-        }
-        genCoordinator.onUpdateContextEstimate = { [weak self] in
-            self?.updateContextEstimate()
-        }
-        genCoordinator.onSaveMessage = { [weak self] message in
-            try await self?.saveMessage(message)
-        }
-        genCoordinator.onRemoveMessage = { [weak self] id in
-            self?.messages.removeAll(where: { $0.id == id })
-        }
+        startRuntimeEventDrain()
     }
 
-    /// Injects the persistence stores. Call once after the storage backend is
-    /// available, or prefer ``configure(runtime:)`` when bootstrapping through
-    /// ``BaseChatRuntime``.
-    ///
-    /// Accepts a combined ``SessionStore`` + ``MessageStore`` existential —
-    /// the SwiftData adapter conforms to both, and hosts that want to wire
-    /// genuinely separate stores can pass a small composed adapter.
-    public func configure(persistence: any SessionStore & MessageStore) {
-        sessionController.configure(persistence: persistence)
-    }
-
-    /// Wires an optional ``ConversationRuntime`` as the send/regenerate/edit/cancel
-    /// delegate for this view model.
-    ///
-    /// When a runtime is configured, ``sendMessage()``, ``regenerateLastResponse()``,
-    /// ``editMessage(_:newContent:)``, and ``stopGeneration()`` route through it
-    /// instead of ``GenerationCoordinator``. A long-lived event-drain task maps
-    /// ``ConversationEvent`` values back to `@Observable` state on `@MainActor`.
-    ///
-    /// Calling this method a second time cancels the prior drain task and replaces
-    /// the runtime. Pass `nil` explicitly (via the private path) to revert to the
-    /// ``GenerationCoordinator`` path — the public API only supports setting a runtime,
-    /// not clearing one, to avoid accidental reversion after bootstrap.
-    public func configure(conversationRuntime runtime: ConversationRuntime) {
+    /// Cancels the existing event drain (if any) and starts a fresh one for
+    /// ``conversationRuntime``. Called from the initializer and from
+    /// ``configure(persistence:)`` when the runtime is rebuilt.
+    private func startRuntimeEventDrain() {
         runtimeEventDrainTask?.cancel()
-        conversationRuntime = runtime
+        let runtime = conversationRuntime
         // `[weak self]` plus a per-iteration `guard let self` — hoisting the
         // `guard` outside the `for-await` upgrades `self` to strong for the
         // task's lifetime, which retains the view model until the runtime's
@@ -779,6 +721,34 @@ public final class ChatViewModel {
                 guard let self else { return }
                 await self.handle(runtimeEvent: event)
             }
+        }
+    }
+
+    /// Injects the persistence stores. Call once after the storage backend is
+    /// available, or prefer ``configure(runtime:)`` when bootstrapping through
+    /// ``BaseChatRuntime``.
+    ///
+    /// Accepts a combined ``SessionStore`` + ``MessageStore`` existential —
+    /// the SwiftData adapter conforms to both, and hosts that want to wire
+    /// genuinely separate stores can pass a small composed adapter.
+    ///
+    /// When the view model still owns the default in-memory runtime created
+    /// at construction (i.e. the host did not pass `conversationRuntime:`),
+    /// this call rebuilds the runtime against the newly-installed message
+    /// store so subsequent send/regenerate/edit calls persist through the
+    /// configured storage. Hosts that constructed their own
+    /// ``ConversationRuntime`` keep it — the runtime is the source of truth
+    /// for message persistence and replacing it would silently shadow the
+    /// host's setup.
+    public func configure(persistence: any SessionStore & MessageStore) {
+        sessionController.configure(persistence: persistence)
+        if ownsDefaultRuntime {
+            conversationRuntime = ConversationRuntime(
+                messageStore: persistence,
+                sessionStore: persistence,
+                inferenceService: inferenceService
+            )
+            startRuntimeEventDrain()
         }
     }
 

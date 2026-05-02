@@ -13,14 +13,6 @@ final class CompactionTriggerTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private actor Counter {
-        private var value = 0
-        func next() -> Int {
-            defer { value += 1 }
-            return value
-        }
-    }
-
     private func record(
         step: Int,
         toolName: String = "t",
@@ -128,104 +120,5 @@ final class CompactionTriggerTests: XCTestCase {
         let out = c.compress(records: records, trigger: .toolLoop)
         XCTAssertTrue(out.summary.isEmpty)
         XCTAssertFalse(out.summary.contains(BudgetTurnHistoryCompressor.toolLoopContinuationText))
-    }
-
-    // MARK: - Orchestrator passes .toolLoop
-
-    /// Records every `(records, trigger)` pair the orchestrator hands to it.
-    /// We capture the trigger argument so we can assert the orchestrator is
-    /// passing `.toolLoop` rather than relying on the default.
-    private final class RecordingCompressor: TurnHistoryCompressor, @unchecked Sendable {
-        // @unchecked: writes are funnelled through a serial DispatchQueue so
-        // concurrent compress() invocations from inside the orchestrator's
-        // async loop cannot race.
-        private let queue = DispatchQueue(label: "RecordingCompressor")
-        private var _triggers: [CompactionTrigger] = []
-
-        var observedTriggers: [CompactionTrigger] {
-            queue.sync { _triggers }
-        }
-
-        func compress(records: [TurnHistoryRecord]) -> CompressedTranscript {
-            // Should not be reached when compress(records:trigger:) is
-            // overridden, but provide the legacy implementation for safety.
-            .unchanged(records)
-        }
-
-        func compress(
-            records: [TurnHistoryRecord],
-            trigger: CompactionTrigger
-        ) -> CompressedTranscript {
-            queue.sync { _triggers.append(trigger) }
-            return .unchanged(records)
-        }
-    }
-
-    private struct ScriptedExecutor: ToolExecutor {
-        let definition: ToolDefinition
-        let handler: @Sendable (JSONSchemaValue) async throws -> ToolResult
-
-        init(
-            name: String,
-            handler: @escaping @Sendable (JSONSchemaValue) async throws -> ToolResult
-        ) {
-            self.definition = ToolDefinition(name: name, description: "scripted", parameters: .object([:]))
-            self.handler = handler
-        }
-
-        func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
-            try await handler(arguments)
-        }
-    }
-
-    private func collect(
-        _ stream: AsyncThrowingStream<ToolLoopEvent, Error>
-    ) async throws -> [ToolLoopEvent] {
-        var events: [ToolLoopEvent] = []
-        for try await event in stream {
-            events.append(event)
-        }
-        return events
-    }
-
-    func test_orchestrator_passesToolLoopTrigger() async throws {
-        let backend = MockInferenceBackend()
-        backend.isModelLoaded = true
-        backend.scriptedToolCallsPerTurn = [
-            [ToolCall(id: "c-1", toolName: "any_tool", arguments: #"{"x":1}"#)],
-            [ToolCall(id: "c-2", toolName: "any_tool", arguments: #"{"x":2}"#)],
-            [],
-        ]
-        backend.tokensToYieldPerTurn = [[], [], ["done"]]
-
-        let counter = Counter()
-        let executor = ScriptedExecutor(name: "any_tool") { _ in
-            _ = await counter.next()
-            return ToolResult(callId: "", content: "ok", errorKind: nil)
-        }
-
-        let recording = RecordingCompressor()
-        let orchestrator = ToolCallLoopOrchestrator(
-            backend: backend,
-            executor: executor,
-            policy: ToolCallLoopPolicy(maxSteps: 4, loopDetectionWindow: 99),
-            compressor: recording
-        )
-
-        _ = try await collect(orchestrator.run(
-            initialPrompt: "go",
-            systemPrompt: nil,
-            config: GenerationConfig()
-        ))
-
-        let observed = recording.observedTriggers
-        XCTAssertFalse(observed.isEmpty, "orchestrator must invoke compress at least once per round")
-        for trigger in observed {
-            switch trigger {
-            case .toolLoop: continue
-            case .automatic, .manual:
-                XCTFail("orchestrator must pass .toolLoop; got \(trigger)")
-            }
-        }
     }
 }

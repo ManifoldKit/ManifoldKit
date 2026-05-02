@@ -116,10 +116,10 @@ public protocol ToolExecutor: Sendable {
     /// Default `false` (sequential dispatch). Override `true` for stateless
     /// executors — HTTP fetches, pure computations, read-only filesystem.
     ///
-    /// ``ToolCallLoopOrchestrator`` consults this flag when a generation
-    /// round produces more than one ``ToolCall``: parallel dispatch via
+    /// The agent-loop driver consults this flag when a generation round
+    /// produces more than one ``ToolCall``: parallel dispatch via
     /// `withTaskGroup` is used only when *every* executor in the batch opts
-    /// in. If any returns `false`, the orchestrator falls back to sequential
+    /// in. If any returns `false`, the driver falls back to sequential
     /// dispatch — preserving the registry's reentrancy contract for tools
     /// with shared state.
     var supportsConcurrentDispatch: Bool { get }
