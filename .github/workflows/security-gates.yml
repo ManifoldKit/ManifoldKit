@@ -59,16 +59,17 @@ jobs:
           git diff --exit-code Package.resolved || \
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
 
-      - name: Test — TrafficBoundaryAuditTest
+      # Two default-trait audits batched into one swift-test invocation so the
+      # SwiftPM build graph + test-bundle link is paid once instead of twice.
+      # Mirrors the mega-batch shape from ci.yml's `Test — XCTest suites` step.
+      # The CloudSaaS pinned-session audit below stays separate — its trait
+      # change forces a fresh resolve and can't share a build with these.
+      # Saves ~150s on every PR (Lever B of #953).
+      - name: Test — Traffic boundary + MCP hardening audits (batched)
         env:
           RUN_SLOW_TESTS: "1"
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
-        run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
-
-      - name: Test — MCPHardeningTests
-        env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-hardening.log
-        run: scripts/test.sh --filter "BaseChatMCPTests.MCPHardeningTests" --disable-default-traits --skip-update --min-passed 1
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-and-mcp-hardening.log
+        run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --filter "BaseChatMCPTests.MCPHardeningTests" --disable-default-traits --skip-update --min-passed 2
 
       - name: Test — PinnedSessionDelegateTests (CloudSaaS)
         env:
