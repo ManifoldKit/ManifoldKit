@@ -239,12 +239,12 @@ jobs:
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Server)
         id: test-xctest-suites
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --disable-default-traits --skip-update
+        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --filter BaseChatServerTests --disable-default-traits --skip-update
 
       # BaseChatInferenceTests isolates its UserDefaults-backed migration tests
       # with per-instance suite names, and HuggingFaceServiceTests scopes
