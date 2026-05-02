@@ -20,7 +20,7 @@ import BaseChatInference
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, ToolCallingHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Init
 
@@ -78,6 +78,14 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             maxOutputTokens: 16_384,
             supportsStreaming: true,
             isRemote: true,
+            // Vision is gated per-model: gpt-4o family, gpt-4-turbo,
+            // gpt-4.1 and the o1/o3 reasoning families accept `image_url`
+            // content parts. The classifier matches the configured model
+            // name against a small allowlist of public family prefixes so
+            // callers configured against a non-vision model see a clean
+            // ``GenerationCoordinator`` error instead of a 400 from the
+            // upstream API.
+            supportsVision: OpenAIVisionModels.isVisionCapable(modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )
@@ -93,6 +101,21 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
     public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
         withStateLock { self.toolAwareHistory = messages }
+    }
+
+    // MARK: - Structured History (multimodal)
+
+    /// Cached structured history from the most recent
+    /// ``setStructuredHistory(_:)`` call. Carries
+    /// ``MessagePart/image(data:mimeType:)`` parts so vision-capable models
+    /// (gpt-4o, gpt-4o-mini, etc.) receive images via OpenAI's `image_url`
+    /// content-part wire format. Plain-text turns can still flow through
+    /// the legacy ``conversationHistory`` path; the structured form simply
+    /// wins when both are set so multimodal turns aren't silently dropped.
+    private var _structuredHistory: [StructuredMessage]?
+
+    public func setStructuredHistory(_ messages: [StructuredMessage]) {
+        withStateLock { self._structuredHistory = messages }
     }
 
     // MARK: - Model Lifecycle
@@ -131,12 +154,32 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             return snapshot
         }
 
+        // Snapshot the structured history (containing image parts for
+        // multimodal turns). We only consume it when it actually carries
+        // images; for text-only turns we keep the existing flattened-string
+        // path so the wire shape doesn't change underfoot for non-vision
+        // requests.
+        let snapshotStructuredHistory: [StructuredMessage]? = withStateLock { self._structuredHistory }
+        let structuredHasImages = snapshotStructuredHistory?.contains(where: { msg in
+            msg.parts.contains { part in
+                if case .image = part { return true }
+                return false
+            }
+        }) ?? false
+
         var messages: [[String: Any]] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             messages.append(["role": "system", "content": systemPrompt])
         }
         if let toolHistory = snapshotToolHistory {
             messages.append(contentsOf: toolHistory.map(OpenAIToolEncoding.encodeChatCompletionsEntry))
+        } else if structuredHasImages, let structured = snapshotStructuredHistory {
+            // Multimodal path: encode each turn as a content-array so image
+            // parts ride alongside text. `GenerationCoordinator` has already
+            // rejected this combination if `capabilities.supportsVision`
+            // were false (see ``OpenAIVisionModels``), so the model name
+            // here is known to accept `image_url`.
+            messages.append(contentsOf: structured.map(Self.encodeStructuredMessage))
         } else if let history = conversationHistory {
             // Reasoning-model asymmetry: OpenAI-compatible providers (DeepSeek,
             // o-series, hosted Qwen reasoning) deliver chain-of-thought via
@@ -547,6 +590,73 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             return nil
         }
         return (prompt, completion)
+    }
+
+    // MARK: - Structured Content Encoding (multimodal)
+
+    /// Encodes a ``StructuredMessage`` into the OpenAI Chat Completions
+    /// `messages[]` content shape, expanding image parts into `image_url`
+    /// content blocks.
+    ///
+    /// OpenAI accepts either a plain `content: "..."` string or a
+    /// `content: [{type:"text", ...}, {type:"image_url", ...}]` array. We
+    /// emit the array form whenever the turn contains at least one image
+    /// (so the model actually receives it) and collapse to a plain string
+    /// otherwise — this keeps the request bytes small for the common
+    /// text-only sub-turns inside a multimodal conversation and matches the
+    /// shape OpenAI's docs use in their text-only examples.
+    ///
+    /// Each ``MessagePart/image(data:mimeType:)`` is encoded as a
+    /// `data:` URI via ``ImageEncoding/dataURI(data:mimeType:)``. Remote
+    /// URL inputs aren't modelled in BCK today; if/when they are, this
+    /// helper grows a second branch.
+    ///
+    /// Thinking, tool-call, and tool-result parts are dropped from this
+    /// path: tool turns flow through the dedicated ``ToolCallingHistoryReceiver``
+    /// snapshot above, and reasoning replay is informational on OpenAI per
+    /// the buildRequest comment.
+    static func encodeStructuredMessage(_ message: StructuredMessage) -> [String: Any] {
+        var blocks: [[String: Any]] = []
+        for part in message.parts {
+            switch part {
+            case .text(let text):
+                guard !text.isEmpty else { continue }
+                blocks.append([
+                    "type": "text",
+                    "text": text
+                ])
+            case .image(let data, let mimeType):
+                blocks.append([
+                    "type": "image_url",
+                    "image_url": [
+                        "url": ImageEncoding.dataURI(data: data, mimeType: mimeType)
+                    ] as [String: Any]
+                ])
+            case .thinking, .toolCall, .toolResult:
+                continue
+            }
+        }
+
+        // Collapse the single-text-part case to the plain-string content
+        // shape. This keeps wire output stable for any structured turn that
+        // happens to be text-only (e.g. system prompts, prior assistant
+        // replies in a multimodal conversation).
+        if blocks.count == 1,
+           let only = blocks.first,
+           (only["type"] as? String) == "text",
+           let text = only["text"] as? String {
+            return ["role": message.role, "content": text]
+        }
+
+        // An empty content array would 400 on most servers; emit a single
+        // empty text block so the wire shape is always valid. The model
+        // returns its own error for the offending turn rather than the
+        // request failing at the transport layer.
+        if blocks.isEmpty {
+            return ["role": message.role, "content": ""]
+        }
+
+        return ["role": message.role, "content": blocks]
     }
 
     struct PrefillProgress {
