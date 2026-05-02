@@ -40,6 +40,7 @@ extension ChatViewModel {
         let input = SendInput(
             sessionID: activeSessionID,
             userText: text,
+            attachments: attachments,
             systemPrompt: resolvedSystemPrompt,
             temperature: temperature,
             topP: topP,

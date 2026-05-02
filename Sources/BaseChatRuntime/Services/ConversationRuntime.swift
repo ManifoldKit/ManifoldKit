@@ -21,6 +21,13 @@ import BaseChatInference
 public struct SendInput: Sendable {
     public let sessionID: UUID
     public let userText: String
+    /// Optional non-text attachments (typically `MessagePart.image` cases) to
+    /// include alongside `userText` on the user `ChatMessageRecord`. When
+    /// non-empty the runtime builds the user record's `contentParts` as
+    /// `[.text(userText), <attachments>...]` so vision-capable backends see
+    /// the images and the persisted record preserves them. The runtime does
+    /// not transform the attachments — backends own the on-wire shape.
+    public let attachments: [MessagePart]
     public let systemPrompt: String?
     public let temperature: Float
     public let topP: Float
@@ -36,6 +43,7 @@ public struct SendInput: Sendable {
     public init(
         sessionID: UUID,
         userText: String,
+        attachments: [MessagePart] = [],
         systemPrompt: String? = nil,
         temperature: Float = 0.7,
         topP: Float = 0.9,
@@ -50,6 +58,7 @@ public struct SendInput: Sendable {
     ) {
         self.sessionID = sessionID
         self.userText = userText
+        self.attachments = attachments
         self.systemPrompt = systemPrompt
         self.temperature = temperature
         self.topP = topP
@@ -403,9 +412,23 @@ public final class ConversationRuntime: Sendable {
         // throw out so the caller can surface them; matching ChatViewModel's
         // current shape where a user-message persistence failure aborts the
         // turn before any assistant work runs.
+        // Build user contentParts: when attachments are present, splice the
+        // text part (if any) before the attachments so the persisted record
+        // and the structured-history snapshot the runtime hands the backend
+        // both carry `[.text, <attachments>...]`. Empty text + attachments
+        // yields an attachment-only record (e.g. a "describe this image"
+        // turn with no caption).
+        let userContentParts: [MessagePart]
+        if input.attachments.isEmpty {
+            userContentParts = [.text(input.userText)]
+        } else if input.userText.isEmpty {
+            userContentParts = input.attachments
+        } else {
+            userContentParts = [.text(input.userText)] + input.attachments
+        }
         let userMessage = ChatMessageRecord(
             role: .user,
-            content: input.userText,
+            contentParts: userContentParts,
             sessionID: input.sessionID
         )
         do {
@@ -856,6 +879,15 @@ public final class ConversationRuntime: Sendable {
             StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
         }
 
+        // Forward the registered tool surface so the backend's GenerationConfig
+        // gets `tools = registry.advertisedDefinitions` (legacy parity with
+        // GenerationCoordinator.enqueueGeneration). `advertisedDefinitions`
+        // already honours `advertisedToolNames` filtering — registering a
+        // tool but limiting which names go on the wire works without
+        // unregistering the executor. Fetched on the main actor because the
+        // registry and InferenceService accessors are both MainActor-isolated.
+        let advertisedTools: [ToolDefinition] = await readAdvertisedToolDefinitions()
+
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
@@ -867,6 +899,7 @@ public final class ConversationRuntime: Sendable {
                 repeatPenalty: repeatPenalty,
                 maxOutputTokens: maxOutputTokens,
                 maxThinkingTokens: maxThinkingTokens,
+                tools: advertisedTools,
                 priority: .userInitiated,
                 sessionID: sessionID
             )
@@ -1019,6 +1052,19 @@ public final class ConversationRuntime: Sendable {
         let cancelled = await isCancelled(handle: handle)
         await registry.unregister(handle: handle)
 
+        // Capture token usage off the active backend before any subsequent
+        // turn can overwrite it. The legacy `GenerationCoordinator` set this
+        // on the assistant `ChatMessage` immediately after the stream ended;
+        // the runtime path needs the same per-turn pinning so back-to-back
+        // sends do not cross-contaminate prompt/completion counts. Read on
+        // the main actor — `InferenceService.lastTokenUsage` is MainActor-
+        // isolated.
+        let usage = await readLastTokenUsage()
+        if let usage {
+            assistantMessage.promptTokens = usage.promptTokens
+            assistantMessage.completionTokens = usage.completionTokens
+        }
+
         let reason: FinishReason
         if cancelled {
             reason = .cancelled
@@ -1135,6 +1181,23 @@ public final class ConversationRuntime: Sendable {
     @MainActor
     private func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
         try await messageStore.fetchMessages(for: sessionID)
+    }
+
+    /// Reads ``ToolRegistry/advertisedDefinitions`` off the main actor. The
+    /// registry and the `InferenceService.toolRegistry` accessor are both
+    /// `@MainActor`-isolated; the runtime's generation loop is not. Hopping
+    /// here keeps the call site clean of explicit `MainActor.run` blocks.
+    @MainActor
+    private func readAdvertisedToolDefinitions() async -> [ToolDefinition] {
+        inferenceService.toolRegistry?.advertisedDefinitions ?? []
+    }
+
+    /// Reads ``InferenceService/lastTokenUsage`` off the main actor. Backends
+    /// overwrite this state per-turn, so the runtime captures it once at
+    /// turn-end before persistence — matching the legacy coordinator's pin.
+    @MainActor
+    private func readLastTokenUsage() async -> (promptTokens: Int, completionTokens: Int)? {
+        inferenceService.lastTokenUsage
     }
 
     @MainActor
