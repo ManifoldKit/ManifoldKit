@@ -309,6 +309,55 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
     }
 
+    /// Assembles the prepared chat-message inputs for the MLX container's two
+    /// `prepare(...)` overloads. Returns both shapes because the caller picks
+    /// `prepare(chat:)` for vision history (non-nil first element) and
+    /// `prepare(messages:)` otherwise.
+    static func buildChatMessages(
+        prompt: String,
+        effectiveSystemPrompt: String?,
+        conversationHistory: [(role: String, content: String)],
+        toolAwareHistory: [ToolAwareHistoryEntry]?,
+        structuredHistory: [StructuredMessage]?,
+        dialect: MLXToolDialect
+    ) throws -> (chatMessages: [Chat.Message]?, messages: [[String: String]]) {
+        let chatMessages: [Chat.Message]? =
+            if let structuredHistory, !structuredHistory.isEmpty {
+                if let toolAwareHistory, !toolAwareHistory.isEmpty {
+                    try toolAwareChatMessages(
+                        structuredHistory: structuredHistory,
+                        toolAwareHistory: toolAwareHistory,
+                        systemPrompt: effectiveSystemPrompt,
+                        dialect: dialect
+                    )
+                } else {
+                    try plainChatMessages(
+                        history: structuredHistory,
+                        systemPrompt: effectiveSystemPrompt
+                    )
+                }
+            } else {
+                nil
+            }
+
+        var msgs: [[String: String]] = []
+        if let sp = effectiveSystemPrompt, !sp.isEmpty {
+            msgs.append(["role": "system", "content": sp])
+        }
+        if let toolHistory = toolAwareHistory, !toolHistory.isEmpty {
+            for entry in toolHistory {
+                msgs.append(encodeToolAwareEntryAsText(entry, dialect: dialect))
+            }
+        } else if !conversationHistory.isEmpty {
+            for msg in conversationHistory {
+                msgs.append(["role": msg.role, "content": msg.content])
+            }
+        } else {
+            msgs.append(["role": "user", "content": prompt])
+        }
+        return (chatMessages, msgs)
+    }
+
     /// Returns the Qwen 2.5 `<tools>…</tools>` block to append to the system
     /// prompt, or `nil` when the dialect doesn't use this mechanism or the
     /// caller supplied no tools.
@@ -782,49 +831,14 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             return systemPrompt
         }()
 
-        let chatMessages: [Chat.Message]? =
-            if let structuredHistory, !structuredHistory.isEmpty {
-                if let toolAwareHistory, !toolAwareHistory.isEmpty {
-                    try Self.toolAwareChatMessages(
-                        structuredHistory: structuredHistory,
-                        toolAwareHistory: toolAwareHistory,
-                        systemPrompt: effectiveSystemPrompt,
-                        dialect: dialect
-                    )
-                } else {
-                    try Self.plainChatMessages(
-                        history: structuredHistory,
-                        systemPrompt: effectiveSystemPrompt
-                    )
-                }
-            } else {
-                nil
-            }
-
-        // All non-vision messages are encoded as plain [String: String]
-        // dictionaries before the container applies the tokenizer's chat
-        // template. For Qwen 2.5 tool history, tool calls are text-encoded into
-        // content fields using the same <tool_call>…</tool_call> format the
-        // model emits.
-        let messages: [[String: String]] = {
-            var msgs: [[String: String]] = []
-            if let sp = effectiveSystemPrompt, !sp.isEmpty {
-                msgs.append(["role": "system", "content": sp])
-            }
-            if let toolHistory = toolAwareHistory, !toolHistory.isEmpty {
-                // Encode tool-aware history entries into the Qwen text format.
-                for entry in toolHistory {
-                    msgs.append(Self.encodeToolAwareEntryAsText(entry, dialect: dialect))
-                }
-            } else if !conversationHistory.isEmpty {
-                for msg in conversationHistory {
-                    msgs.append(["role": msg.role, "content": msg.content])
-                }
-            } else {
-                msgs.append(["role": "user", "content": prompt])
-            }
-            return msgs
-        }()
+        let (chatMessages, messages) = try Self.buildChatMessages(
+            prompt: prompt,
+            effectiveSystemPrompt: effectiveSystemPrompt,
+            conversationHistory: conversationHistory,
+            toolAwareHistory: toolAwareHistory,
+            structuredHistory: structuredHistory,
+            dialect: dialect
+        )
 
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: GenerationEvent.self)
         let generationStream = GenerationStream(stream)
