@@ -99,7 +99,7 @@ When writing hardware-gated tests, add `XCTSkipIf` guards at the top of the test
 
 ## Service sharing
 
-`ChatViewModel.inferenceService` is `package`-visible by design — it was widened from `internal` to `package` during the v2.0 `BaseChatUIModelManagement` peel so views in that module (the peeled model-management surface) can read static capability queries off the service. Apps that need the same `InferenceService` instance in multiple components (e.g., a story engine, character creator) should still create it at the app level and inject it via the constructor:
+`ChatViewModel.inferenceService` is `internal` — sibling modules (`BaseChatUIModelManagement`) read what they need from `ChatViewModel.modelRegistry` (a `@MainActor @Observable ModelRegistry` exposed publicly), not from the inference service itself. Apps that need the same `InferenceService` instance in multiple components (e.g., a story engine, character creator) create it at the app level and inject it via the constructor:
 
 ```swift
 let inference = InferenceService()
@@ -107,7 +107,7 @@ let chatVM = ChatViewModel(inferenceService: inference)
 let storyStore = StoryStore(inferenceService: inference)
 ```
 
-Do **not** widen `inferenceService` to `public`. Exposing the full `InferenceService` API on `ChatViewModel`'s public contract would lock in load-coordination internals that the framework needs the freedom to refactor. `package` lets the sibling `BaseChatUIModelManagement` module see what it needs without leaking the surface to host apps.
+This keeps `ChatViewModel`'s load coordination and state machine consistent. Do not widen `inferenceService` past `internal`. Model-management views accept a `ModelRegistry` directly (`ModelManagementSheet(modelRegistry:)`); the legacy environment-based init is `@available(*, deprecated)` and forwards to the same registry path.
 
 ## Turn-loop orchestration
 

@@ -14,8 +14,7 @@ struct MinimalContentView: View {
                 apiConfiguration: { APIConfigurationView() }
             )
                 .sheet(isPresented: $isModelManagementPresented) {
-                    ModelManagementSheet()
-                        .environment(viewModel)
+                    ModelManagementSheet(modelRegistry: viewModel.modelRegistry)
                         .environment(managementViewModel)
                 }
         }

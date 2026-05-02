@@ -38,9 +38,9 @@ final class ModelAndSettingsControlTests: XCTestCase {
     // MARK: - ModelManagementSheet — Tab Structure
 
     private func modelManagementDump(tab: ModelManagementSheet.Tab = .select) -> String {
-        ViewHierarchyDumper.dump(
-            ModelManagementSheet(initialTab: tab)
-                .environment(makeChatViewModel())
+        let chatVM = makeChatViewModel()
+        return ViewHierarchyDumper.dump(
+            ModelManagementSheet(modelRegistry: chatVM.modelRegistry, initialTab: tab)
                 .environment(ModelManagementViewModel())
         )
     }
@@ -97,7 +97,7 @@ final class ModelAndSettingsControlTests: XCTestCase {
         ]
 
         let dump = ViewHierarchyDumper.dump(
-            ModelSelectionTabView(onSelect: {})
+            ModelSelectionTabView(modelRegistry: chatVM.modelRegistry, onSelect: {})
                 .environment(chatVM)
         )
 

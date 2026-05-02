@@ -30,13 +30,12 @@ public final class ChatViewModel {
 
     // MARK: - Services
 
-    /// `package`-visible so views in `BaseChatUIModelManagement` (the peeled
-    /// model-management surface) can read static capability queries off the
-    /// service. Intentionally not `public` per CLAUDE.md — exposing the full
-    /// `InferenceService` API on `ChatViewModel`'s public contract would lock
-    /// in load-coordination internals. Hosts that need a shared service
-    /// instance keep using the constructor-injection pattern documented there.
-    package let inferenceService: InferenceService
+    /// Internal-only handle to the inference service. View code in sibling
+    /// modules (`BaseChatUIModelManagement`) used to widen this to `package`
+    /// for static capability queries; that hatch was closed once
+    /// ``ModelRegistry`` absorbed the `compatibility(for:)` query — see #948
+    /// and #950.
+    let inferenceService: InferenceService
     let deviceCapability: DeviceCapabilityService
     let modelStorage: ModelStorageService
     let memoryPressure: MemoryPressureHandler
@@ -107,24 +106,49 @@ public final class ChatViewModel {
     /// Returns `true` if the Foundation model backend is available on this device.
     /// Apps should set this to enable Foundation model auto-discovery.
     /// Example: `chatViewModel.foundationModelProvider = { FoundationBackend.isAvailable }`
-    public var foundationModelProvider: (@MainActor () -> Bool)?
+    ///
+    /// Forwarded to ``modelRegistry`` so both the registry-driven refresh
+    /// path and the legacy ``refreshModels()`` see the same provider.
+    public var foundationModelProvider: (@MainActor () -> Bool)? {
+        get { modelRegistry.foundationModelProvider }
+        set { modelRegistry.foundationModelProvider = newValue }
+    }
 
     // MARK: - Published State
 
+    /// Live in-memory registry of discoverable local models. Owned by the view
+    /// model and constructed in ``init`` from the supplied inference / storage
+    /// services.
+    ///
+    /// Hosts pass this to model-management views via the new explicit-init
+    /// path (`ModelManagementSheet(modelRegistry:)`); the deprecated
+    /// environment-based init reads it through `ChatViewModel`.
+    public let modelRegistry: ModelRegistry
+
     /// All models discovered on disk plus the built-in Foundation model.
-    public internal(set) var availableModels: [ModelInfo] = []
+    ///
+    /// Forwarded onto ``modelRegistry/availableModels`` so legacy callers
+    /// (`chatViewModel.availableModels`) keep working unchanged while new
+    /// view-side code reads the registry directly.
+    public var availableModels: [ModelInfo] {
+        get { modelRegistry.availableModels }
+        set { modelRegistry.availableModels = newValue }
+    }
 
     /// Enabled cloud endpoints available for selection.
     public internal(set) var availableEndpoints: [APIEndpoint] = []
 
     /// The model the user has selected in the sidebar.
+    ///
+    /// Forwarded onto ``modelRegistry/selectedModel``. Writes here run the
+    /// existing endpoint-clear synchronisation; writes that go directly to
+    /// the registry (from the new model-management explicit-init path) are
+    /// observed by ``installRegistryObservation()`` and run the same sync.
     public var selectedModel: ModelInfo? {
-        didSet {
-            guard !isSynchronizingSelection else { return }
-            guard selectedModel != nil, selectedEndpoint != nil else { return }
-            isSynchronizingSelection = true
-            selectedEndpoint = nil
-            isSynchronizingSelection = false
+        get { modelRegistry.selectedModel }
+        set {
+            modelRegistry.selectedModel = newValue
+            syncEndpointForSelectedModel()
         }
     }
 
@@ -135,9 +159,21 @@ public final class ChatViewModel {
             guard !isSynchronizingSelection else { return }
             guard selectedEndpoint != nil, selectedModel != nil else { return }
             isSynchronizingSelection = true
-            selectedModel = nil
+            modelRegistry.selectedModel = nil
             isSynchronizingSelection = false
         }
+    }
+
+    /// Clears ``selectedEndpoint`` when ``selectedModel`` becomes non-nil so
+    /// the two selections never co-exist. Idempotent — guarded by
+    /// ``isSynchronizingSelection`` to break the mutual recursion between
+    /// the two setters.
+    private func syncEndpointForSelectedModel() {
+        guard !isSynchronizingSelection else { return }
+        guard selectedModel != nil, selectedEndpoint != nil else { return }
+        isSynchronizingSelection = true
+        selectedEndpoint = nil
+        isSynchronizingSelection = false
     }
 
     /// Ordered messages for the active session.
@@ -656,6 +692,10 @@ public final class ChatViewModel {
         self.toolApprovalGate = toolApprovalGate
         self.userDefaults = userDefaults
         self.sessionController = SessionController(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
+        self.modelRegistry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
         // Non-optional runtime: callers assembling through `BaseChatBootstrap`
         // pass the shared instance; tests and ad-hoc construction get a
         // standalone runtime backed by an in-memory message store. Either way,
@@ -703,6 +743,27 @@ public final class ChatViewModel {
         }
 
         startRuntimeEventDrain()
+        installRegistryObservation()
+    }
+
+    /// Re-installs an Observation tracker on ``modelRegistry/selectedModel``
+    /// so direct writes to the registry (e.g. from the new explicit-init
+    /// `ModelSelectionTabView` path) still run the endpoint-clear sync that
+    /// the legacy `chatViewModel.selectedModel` setter performed.
+    ///
+    /// Tracker fires once per change; we re-install it from inside the
+    /// `onChange` callback so subsequent registry writes keep being observed.
+    private func installRegistryObservation() {
+        let registry = modelRegistry
+        withObservationTracking {
+            _ = registry.selectedModel
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncEndpointForSelectedModel()
+                self.installRegistryObservation()
+            }
+        }
     }
 
     /// Cancels the existing event drain (if any) and starts a fresh one for

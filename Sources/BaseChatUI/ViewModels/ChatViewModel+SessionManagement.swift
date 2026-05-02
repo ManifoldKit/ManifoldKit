@@ -72,25 +72,15 @@ extension ChatViewModel {
     ///
     /// Includes the built-in Foundation model when `foundationModelProvider` returns `true`.
     /// Clears `selectedModel` if the previously selected model is no longer on disk.
+    ///
+    /// Delegates to ``ModelRegistry/refresh()``; the registry surfaces the
+    /// same directory-creation error that previously routed through
+    /// ``errorMessage``.
     public func refreshModels() {
         do {
-            try modelStorage.ensureModelsDirectory()
+            try modelRegistry.refresh()
         } catch {
             errorMessage = "Could not create models directory: \(error.localizedDescription)"
-        }
-
-        var models: [ModelInfo] = []
-
-        // Let the app inject Foundation model availability check
-        if let provider = foundationModelProvider, provider() {
-            models.append(.builtInFoundation)
-        }
-
-        models.append(contentsOf: modelStorage.discoverModels())
-        availableModels = models
-
-        if let selected = selectedModel, !availableModels.contains(where: { $0.id == selected.id }) {
-            selectedModel = nil
         }
     }
 
