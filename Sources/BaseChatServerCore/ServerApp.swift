@@ -170,7 +170,10 @@ package struct ServerApp: Sendable {
                 try await generationGate.wait()
             } catch is CancellationError {
                 return
-            } catch {}
+            } catch {
+                // AsyncSemaphore.wait() only throws CancellationError; any other error is unexpected — abort the stream.
+                return
+            }
             metrics.recordGenerationStarted()
             var streamedTokenCount = 0
             do {
