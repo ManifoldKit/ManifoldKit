@@ -20,14 +20,14 @@ import BaseChatInference
 /// Requires real Apple Silicon hardware — does not work in iOS Simulator.
 public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
-    private struct CachedLayerState {
+    struct CachedLayerState {
         let cacheTypeName: String
         let offset: Int
         let state: [MLXArray]
         let metaState: [String]
     }
 
-    private struct PromptCacheSnapshot {
+    struct PromptCacheSnapshot {
         let promptTokens: [Int]
         let layers: [CachedLayerState]
     }
@@ -307,6 +307,75 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     private static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
+    }
+
+    /// Result of `prepareInputAndCache(...)`.
+    struct PreparedGenerationInputs {
+        let generationInput: MLXPreparedInput
+        let cache: MLXPromptCache
+        /// Captured prompt token IDs when KV-cache reuse is eligible — used to
+        /// snapshot the cache after generation finishes. `nil` otherwise.
+        let promptTokenIds: [Int]?
+        /// Number of leading prompt tokens whose KV state was restored from
+        /// the previous turn. `0` when no reuse occurred.
+        let reuseLen: Int
+    }
+
+    /// Prepares the model input, allocates a KV cache, and applies the
+    /// longest-common-prefix reuse heuristic when an eligible snapshot exists.
+    ///
+    /// **CRITICAL:** the reuse path here is byte-identical to the inline
+    /// version it replaced — `longestCommonPrefixLength` clamped to
+    /// `promptTokenIds.count - 1`, gated by `isSupportedPromptCache` and
+    /// `promptTokenIds.count > 1`. Behaviour drift here corrupts the KV cache
+    /// across turns (see v0.5.3 incident).
+    @MainActor
+    static func prepareInputAndCache(
+        container: any MLXModelContainerProtocol,
+        chatMessages: [Chat.Message]?,
+        messages: [[String: String]],
+        generateConfig: GenerateParameters,
+        kvCacheReuseEligible: Bool,
+        snapshot: PromptCacheSnapshot?
+    ) async throws -> PreparedGenerationInputs {
+        let preparedInput =
+            if let chatMessages {
+                try await container.prepare(chat: SendableChatMessages(chatMessages))
+            } else {
+                try await container.prepare(messages: messages)
+            }
+        let cache = try await container.makeCache(parameters: generateConfig)
+        let promptTokenIds: [Int]? = if kvCacheReuseEligible {
+            preparedInput.promptTokenIds
+        } else {
+            nil
+        }
+
+        var generationInput = preparedInput
+        var reuseLen = 0
+        if kvCacheReuseEligible,
+           let snapshot,
+           let promptTokenIds,
+           isSupportedPromptCache(cache.value),
+           promptTokenIds.count > 1 {
+            let commonPrefixLen = longestCommonPrefixLength(
+                promptTokenIds,
+                snapshot.promptTokens
+            )
+            let candidate = min(commonPrefixLen, promptTokenIds.count - 1)
+            if candidate > 0,
+               restorePromptCache(snapshot, into: cache, reusedPromptTokenCount: candidate) {
+                generationInput = preparedInput.suffix(from: candidate)
+                reuseLen = candidate
+            }
+        }
+
+        return PreparedGenerationInputs(
+            generationInput: generationInput,
+            cache: cache,
+            promptTokenIds: promptTokenIds,
+            reuseLen: reuseLen
+        )
     }
 
     /// Resolves the active thinking-marker pair from the per-request override
@@ -890,19 +959,6 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 var thinkingTokenCount = 0
                 var thinkingLimitReached = false
 
-                let preparedInput =
-                    if let chatMessages {
-                        try await modelContainer.prepare(chat: SendableChatMessages(chatMessages))
-                    } else {
-                        try await modelContainer.prepare(messages: messages)
-                    }
-                let cache = try await modelContainer.makeCache(parameters: generateConfig)
-                var generationInput = preparedInput
-                let promptTokenIds: [Int]? = if kvCacheReuseEligible {
-                    preparedInput.promptTokenIds
-                } else {
-                    nil
-                }
                 if kvCacheReuseEligible, let pendingSnapshotTask {
                     await pendingSnapshotTask.value
                 }
@@ -912,26 +968,19 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     } else {
                         nil
                     }
-
-                if kvCacheReuseEligible,
-                   let snapshot = resolvedSnapshot,
-                   let promptTokenIds,
-                   Self.isSupportedPromptCache(cache.value),
-                   promptTokenIds.count > 1 {
-                    let commonPrefixLen = Self.longestCommonPrefixLength(
-                        promptTokenIds,
-                        snapshot.promptTokens
-                    )
-                    let reuseLen = min(commonPrefixLen, promptTokenIds.count - 1)
-                    if reuseLen > 0,
-                       Self.restorePromptCache(
-                        snapshot,
-                        into: cache,
-                        reusedPromptTokenCount: reuseLen
-                       ) {
-                        generationInput = preparedInput.suffix(from: reuseLen)
-                        continuation.yield(.kvCacheReuse(promptTokensReused: reuseLen))
-                    }
+                let prepared = try await Self.prepareInputAndCache(
+                    container: modelContainer,
+                    chatMessages: chatMessages,
+                    messages: messages,
+                    generateConfig: generateConfig,
+                    kvCacheReuseEligible: kvCacheReuseEligible,
+                    snapshot: resolvedSnapshot
+                )
+                let generationInput = prepared.generationInput
+                let cache = prepared.cache
+                let promptTokenIds = prepared.promptTokenIds
+                if prepared.reuseLen > 0 {
+                    continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
                 }
 
                 let mlxStream = try await modelContainer.generate(
