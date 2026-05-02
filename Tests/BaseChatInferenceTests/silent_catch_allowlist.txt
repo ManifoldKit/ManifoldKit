@@ -374,3 +374,13 @@ BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? Keyc
 # A nil `candidates` produces an empty array via `?? []`, so `mmprojURL`
 # stays nil — the backend safely operates in text-only mode.
 BaseChatInference/Models/ModelInfo.swift:let candidates = (try? FileManager.default.contentsOfDirectory(
+
+# ---------------------------------------------------------------------------
+# BaseChatServerCore
+# ---------------------------------------------------------------------------
+
+# ChatCompletionToolChoice uses the standard "try-each-type-in-order" decoder
+# pattern: first probes for the string forms ("auto", "none", "required"),
+# then falls through to decode the object form {"type":"function",...}.
+# The `try?` is bound to a named constant; the else-branch handles the miss.
+BaseChatServerCore/ChatCompletionsAdapter.swift:if let string = try? decoder.singleValueContainer().decode(String.self) {
