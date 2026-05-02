@@ -206,15 +206,15 @@ final class OpenAIBackendImageInputTests: XCTestCase {
     func test_dataURI_formatIsExactlyDataMimeBase64() {
         let bytes = Data([0x01, 0x02, 0x03, 0x04])
         XCTAssertEqual(
-            ImageEncoding.dataURI(data: bytes, mimeType: "image/png"),
+            CloudImageEncoding.dataURI(data: bytes, mimeType: "image/png"),
             "data:image/png;base64,AQIDBA=="
         )
     }
 
     func test_dataURI_carriesMimeTypeVerbatim() {
         let bytes = Data([0xFF])
-        XCTAssertTrue(ImageEncoding.dataURI(data: bytes, mimeType: "image/webp").hasPrefix("data:image/webp;base64,"))
-        XCTAssertTrue(ImageEncoding.dataURI(data: bytes, mimeType: "image/jpeg").hasPrefix("data:image/jpeg;base64,"))
+        XCTAssertTrue(CloudImageEncoding.dataURI(data: bytes, mimeType: "image/webp").hasPrefix("data:image/webp;base64,"))
+        XCTAssertTrue(CloudImageEncoding.dataURI(data: bytes, mimeType: "image/jpeg").hasPrefix("data:image/jpeg;base64,"))
     }
 
     // MARK: - Fallback: structured history without images keeps text path

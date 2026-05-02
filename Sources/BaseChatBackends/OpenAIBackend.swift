@@ -607,7 +607,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// shape OpenAI's docs use in their text-only examples.
     ///
     /// Each ``MessagePart/image(data:mimeType:)`` is encoded as a
-    /// `data:` URI via ``ImageEncoding/dataURI(data:mimeType:)``. Remote
+    /// `data:` URI via ``CloudImageEncoding/dataURI(data:mimeType:)``. Remote
     /// URL inputs aren't modelled in BCK today; if/when they are, this
     /// helper grows a second branch.
     ///
@@ -629,7 +629,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                 blocks.append([
                     "type": "image_url",
                     "image_url": [
-                        "url": ImageEncoding.dataURI(data: data, mimeType: mimeType)
+                        "url": CloudImageEncoding.dataURI(data: data, mimeType: mimeType)
                     ] as [String: Any]
                 ])
             case .thinking, .toolCall, .toolResult:

@@ -26,11 +26,28 @@ enum CloudImageEncoding {
         "image/webp",
     ]
 
+    /// MIME types OpenAI's Chat Completions `image_url` accepts.
+    static let openAISupportedMimeTypes: Set<String> = [
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/gif",
+        "image/webp",
+    ]
+
     /// Returns the base64-encoded payload for a `MessagePart.image` using
     /// the same encoding both Anthropic and OpenAI expect (no line breaks,
     /// no padding tweaks).
     static func base64String(from data: Data) -> String {
         data.base64EncodedString()
+    }
+
+    /// Returns a `data:<mime>;base64,<payload>` URI suitable for providers
+    /// that accept inline base64 images via a single URL field (OpenAI
+    /// `image_url`, etc.). The MIME type is forwarded verbatim — callers
+    /// validate against the per-provider allowlist above when needed.
+    static func dataURI(data: Data, mimeType: String) -> String {
+        "data:\(mimeType);base64,\(base64String(from: data))"
     }
 
     /// Counts every `.image` part across `messages`. Used by callers that
