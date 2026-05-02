@@ -32,6 +32,7 @@ swift test --filter BaseChatMCPTests --disable-default-traits
 swift test --filter BaseChatBackendsTests --disable-default-traits
 swift test --filter BaseChatTestSupportTests --disable-default-traits
 swift test --filter BaseChatAppIntentsTests --disable-default-traits
+swift test --filter BaseChatServerTests --disable-default-traits
 
 # Apple Silicon only — MLX mock tests + llama.cpp
 swift test --filter BaseChatBackendsTests --traits MLX,Llama
@@ -140,6 +141,7 @@ scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
   --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
   --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+  --filter BaseChatServerTests \
   --disable-default-traits --skip-update
 
 # 2. Swift Testing — must run in a separate process (XCTest+Swift Testing
@@ -165,6 +167,7 @@ swift build --build-tests --disable-default-traits
    --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
    --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
    --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
+   --filter BaseChatServerTests \
    --disable-default-traits --skip-update) &
 XCTEST_PID=$!
 

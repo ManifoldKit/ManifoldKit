@@ -152,6 +152,54 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(response.usage, ChatCompletionUsage(promptTokens: 5, completionTokens: 7))
     }
 
+    func testDecodesToolChoiceStringVariants() throws {
+        let autoJSON = #"{"model":"m","messages":[],"tool_choice":"auto"}"#
+        let noneJSON = #"{"model":"m","messages":[],"tool_choice":"none"}"#
+        let requiredJSON = #"{"model":"m","messages":[],"tool_choice":"required"}"#
+        let decoder = JSONDecoder()
+
+        let autoRequest = try decoder.decode(ChatCompletionRequest.self, from: Data(autoJSON.utf8))
+        let noneRequest = try decoder.decode(ChatCompletionRequest.self, from: Data(noneJSON.utf8))
+        let requiredRequest = try decoder.decode(ChatCompletionRequest.self, from: Data(requiredJSON.utf8))
+
+        XCTAssertEqual(autoRequest.toolChoice, .some(.auto))
+        XCTAssertEqual(noneRequest.toolChoice, .some(.none))
+        XCTAssertEqual(requiredRequest.toolChoice, .some(.required))
+    }
+
+    func testPromptAssemblyForMultiTurnConversation() async throws {
+        let request = ChatCompletionRequest(
+            model: "m",
+            messages: [
+                ChatCompletionMessage(role: .system, content: "You are helpful."),
+                ChatCompletionMessage(role: .user, content: "Hello"),
+                ChatCompletionMessage(role: .assistant, content: "Hi there!"),
+                ChatCompletionMessage(
+                    role: .tool,
+                    content: "42",
+                    toolCallID: "call_123"
+                ),
+                ChatCompletionMessage(role: .user, content: "Thanks")
+            ]
+        )
+
+        let adapter = DefaultChatCompletionsAdapter()
+        // Access promptParts via generationConfig indirectly — use the adapter's response
+        // with a fake backend to verify the prompt reaches the backend correctly.
+        let backend = CapturingBackend()
+        _ = try? await adapter.response(for: request, using: backend)
+
+        XCTAssertNotNil(backend.capturedSystemPrompt, "System message should be extracted as systemPrompt")
+        XCTAssertEqual(backend.capturedSystemPrompt, "You are helpful.")
+
+        let prompt = backend.capturedPrompt ?? ""
+        XCTAssertTrue(prompt.contains("user: Hello"), "User message should appear with role prefix")
+        XCTAssertTrue(prompt.contains("assistant: Hi there!"), "Assistant message should appear with role prefix")
+        XCTAssertTrue(prompt.contains("tool(call_123): 42"), "Tool message should include call ID")
+        XCTAssertTrue(prompt.contains("user: Thanks"), "Final user message should appear")
+        XCTAssertFalse(prompt.contains("You are helpful."), "System message should NOT appear in prompt")
+    }
+
     func testErrorEnvelopeRoundTrips() throws {
         let envelope = ChatCompletionErrorEnvelope(
             error: ChatCompletionError(message: "bad request", type: "invalid_request_error", param: "messages", code: "invalid")
@@ -200,6 +248,36 @@ private final class EventSequenceBackend: InferenceBackend, @unchecked Sendable 
             for event in events {
                 continuation.yield(event)
             }
+            continuation.finish()
+        })
+    }
+
+    func stopGeneration() {}
+    func unloadModel() { isModelLoaded = false }
+}
+
+private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
+    var isModelLoaded = true
+    var isGenerating = false
+    var capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: false,
+        supportsStructuredOutput: false,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false
+    )
+    private(set) var capturedPrompt: String?
+    private(set) var capturedSystemPrompt: String?
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws { isModelLoaded = true }
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        capturedPrompt = prompt
+        capturedSystemPrompt = systemPrompt
+        return GenerationStream(AsyncThrowingStream { continuation in
             continuation.finish()
         })
     }

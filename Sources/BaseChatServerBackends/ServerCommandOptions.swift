@@ -62,6 +62,15 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
         if unsafeCORS, corsOrigin != nil {
             throw ValidationError("--unsafe-cors cannot be combined with --cors-origin")
         }
+        if let origin = corsOrigin {
+            guard let url = URL(string: origin),
+                  let scheme = url.scheme, !scheme.isEmpty,
+                  let host = url.host, !host.isEmpty,
+                  !origin.contains("\r"), !origin.contains("\n") else {
+                throw ValidationError("--cors-origin must be a valid URL with scheme and host (e.g. https://example.com)")
+            }
+            _ = host // suppress unused warning
+        }
     }
 
     package func serverConfiguration() -> ServerConfiguration {
@@ -81,8 +90,7 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
             backend: backend,
             model: model,
             modelPath: modelPath,
-            ollamaBaseURL: ollamaBaseURL,
-            apiKey: apiKey
+            ollamaBaseURL: ollamaBaseURL
         )
     }
 }

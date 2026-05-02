@@ -17,20 +17,17 @@ package struct ServerBackendSelection: Equatable, Sendable {
     package var model: String?
     package var modelPath: String?
     package var ollamaBaseURL: String
-    package var apiKey: String?
 
     package init(
         backend: ServerBackendKind,
         model: String? = nil,
         modelPath: String? = nil,
-        ollamaBaseURL: String = APIProvider.ollama.defaultBaseURL,
-        apiKey: String? = nil
+        ollamaBaseURL: String = APIProvider.ollama.defaultBaseURL
     ) {
         self.backend = backend
         self.model = model
         self.modelPath = modelPath
         self.ollamaBaseURL = ollamaBaseURL
-        self.apiKey = apiKey
     }
 
     package func validate(compiledBackends: CompiledBackends = DefaultBackends.compiledBackends) throws {
@@ -72,9 +69,10 @@ package struct ServerBackendSelection: Equatable, Sendable {
     }
 }
 
-package struct TraitAwareServerBackendProvider: ServerBackendProvider {
-    package var selection: ServerBackendSelection
-    package var compiledBackends: CompiledBackends
+package actor TraitAwareServerBackendProvider: ServerBackendProvider {
+    package let selection: ServerBackendSelection
+    package let compiledBackends: CompiledBackends
+    private var cachedBackend: (any InferenceBackend)?
 
     package init(
         selection: ServerBackendSelection,
@@ -94,20 +92,27 @@ package struct TraitAwareServerBackendProvider: ServerBackendProvider {
     }
 
     package func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
+        if let cached = cachedBackend {
+            return cached
+        }
+
         try selection.validate(compiledBackends: compiledBackends)
 
+        let backend: any InferenceBackend
         switch selection.backend {
         case .mlx:
-            return try await loadMLXBackend(modelOverride: request.model)
+            backend = try await loadMLXBackend(modelOverride: request.model)
         case .llama:
-            return try await loadLlamaBackend()
+            backend = try await loadLlamaBackend()
         case .foundation:
-            return try await loadFoundationBackend()
+            backend = try await loadFoundationBackend()
         case .ollama:
-            return try await loadOllamaBackend(modelOverride: request.model)
+            backend = try await loadOllamaBackend(modelOverride: request.model)
         case .cloud:
             throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for BaseChatServer v1; configure a local or self-hosted backend instead.")
         }
+        cachedBackend = backend
+        return backend
     }
 
     private func loadMLXBackend(modelOverride: String?) async throws -> any InferenceBackend {

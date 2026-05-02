@@ -47,6 +47,19 @@ final class BaseChatServerCLITests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains("--unsafe-cors cannot be combined with --cors-origin"))
         }
     }
+
+    func testRejectsZeroParallel() {
+        // ArgumentParser calls validate() internally during parse — the error surfaces there.
+        XCTAssertThrowsError(try ServerCommandOptions.parse(["--parallel", "0"])) { error in
+            XCTAssertTrue(String(describing: error).contains("--parallel must be greater than zero"))
+        }
+    }
+
+    func testRejectsInvalidCORSOrigin() {
+        XCTAssertThrowsError(try ServerCommandOptions.parse(["--cors-origin", "not-a-url"])) { error in
+            XCTAssertTrue(String(describing: error).contains("--cors-origin must be a valid URL"))
+        }
+    }
 }
 
 final class TraitAwareServerBackendProviderTests: XCTestCase {

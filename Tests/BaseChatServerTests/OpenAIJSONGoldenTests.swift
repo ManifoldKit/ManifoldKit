@@ -1,6 +1,55 @@
+@testable import BaseChatServerCore
 import XCTest
 
 final class OpenAIJSONGoldenTests: XCTestCase {
+    func testNonStreamingChatCompletionResponseRoundTrips() throws {
+        let json = #"""
+        {
+          "id": "chatcmpl-abc123",
+          "object": "chat.completion",
+          "created": 1710000000,
+          "model": "demo-model",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "The answer is 42."
+              },
+              "finish_reason": "stop"
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 6,
+            "total_tokens": 16
+          }
+        }
+        """#
+
+        // Decode and verify the structure
+        let response = try JSONDecoder().decode(ChatCompletionResponse.self, from: Data(json.utf8))
+
+        XCTAssertEqual(response.id, "chatcmpl-abc123")
+        XCTAssertEqual(response.object, "chat.completion")
+        XCTAssertEqual(response.created, 1710000000)
+        XCTAssertEqual(response.model, "demo-model")
+        XCTAssertEqual(response.choices.count, 1)
+        XCTAssertEqual(response.choices.first?.message.role, .assistant)
+        XCTAssertEqual(response.choices.first?.message.content, "The answer is 42.")
+        XCTAssertEqual(response.choices.first?.finishReason, .stop)
+        XCTAssertEqual(response.usage?.promptTokens, 10)
+        XCTAssertEqual(response.usage?.completionTokens, 6)
+        XCTAssertEqual(response.usage?.totalTokens, 16)
+
+        // Verify round-trip fidelity via re-encode + re-decode
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let reencoded = try encoder.encode(response)
+        let roundTripped = try JSONDecoder().decode(ChatCompletionResponse.self, from: reencoded)
+        XCTAssertEqual(roundTripped, response)
+    }
+
     func testDecodesOpenAIRequestWithMessagesToolsAndStreamOptions() throws {
         let json = #"""
         {

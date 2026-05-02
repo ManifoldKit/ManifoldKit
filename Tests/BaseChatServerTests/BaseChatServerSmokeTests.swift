@@ -46,7 +46,7 @@ final class BaseChatServerSmokeTests: XCTestCase {
         }
     }
 
-    func testBearerAuthProtectsAPIButExemptsHealthAndMetrics() async throws {
+    func testBearerAuthProtectsAPIButExemptsHealthOnly() async throws {
         let server = ServerApp(
             configuration: ServerConfiguration(apiKey: "secret", metricsEnabled: true),
             backendProvider: FakeBackendProvider(models: ["tiny"]),
@@ -57,21 +57,48 @@ final class BaseChatServerSmokeTests: XCTestCase {
         try await app.test(.router) { client in
             try await client.execute(uri: "/health", method: .get) { response in
                 XCTAssertEqual(response.status, .ok)
+                // SABOTAGE: change 401 → 200 assertion below to verify auth is enforced
             }
 
+            // /metrics now requires auth (P0-3 fix)
             try await client.execute(uri: "/metrics", method: .get) { response in
-                XCTAssertEqual(response.status, .ok)
+                XCTAssertEqual(response.status, .unauthorized)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Error responses must carry application/json content type"
+                )
             }
 
             try await client.execute(uri: "/v1/models", method: .get) { response in
                 XCTAssertEqual(response.status, .unauthorized)
                 XCTAssertTrue(String(buffer: response.body).contains("invalid_api_key"))
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Error responses must carry application/json content type"
+                )
             }
 
             var headers = HTTPFields()
             headers[.authorization] = "Bearer secret"
             try await client.execute(uri: "/v1/models", method: .get, headers: headers) { response in
                 XCTAssertEqual(response.status, .ok)
+            }
+
+            // Unauthenticated POST to /v1/chat/completions must be rejected
+            let chatBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: chatBody) { response in
+                XCTAssertEqual(response.status, .unauthorized)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Error responses must carry application/json content type"
+                )
+            }
+
+            // Wrong token must also be rejected
+            var wrongHeaders = HTTPFields()
+            wrongHeaders[.authorization] = "Bearer wrong"
+            try await client.execute(uri: "/v1/chat/completions", method: .post, headers: wrongHeaders, body: chatBody) { response in
+                XCTAssertEqual(response.status, .unauthorized)
             }
         }
     }
@@ -154,6 +181,28 @@ final class BaseChatServerSmokeTests: XCTestCase {
 
         let maxObserved = await recorder.maxObserved
         XCTAssertEqual(maxObserved, 1)
+        // SABOTAGE: bump semaphore limit to 10 to verify gate is active
+    }
+
+    func testSemaphoreLimitsConcurrentStreamingChatCompletions() async throws {
+        let recorder = ConcurrencyRecorder()
+        let server = ServerApp(
+            configuration: ServerConfiguration(parallelSlots: 1),
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: DelayedStreamingChatAdapter(recorder: recorder)
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let firstBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
+            let secondBody = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
+            async let first: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: firstBody) { _ in () }
+            async let second: Void = client.execute(uri: "/v1/chat/completions", method: .post, body: secondBody) { _ in () }
+            _ = try await (first, second)
+        }
+
+        let maxObserved = await recorder.maxObserved
+        XCTAssertEqual(maxObserved, 1)
     }
 
     func testSSEHeadersAndDoneFrame() async throws {
@@ -167,13 +216,89 @@ final class BaseChatServerSmokeTests: XCTestCase {
             let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [], stream: true))
             try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
                 XCTAssertEqual(response.status, .ok)
+                // SABOTAGE: change Content-Type assertion to "text/plain" to verify SSE type is set
                 XCTAssertEqual(response.headers[.contentType], "text/event-stream")
                 XCTAssertEqual(response.headers[.cacheControl], "no-cache")
                 XCTAssertEqual(response.headers[.connection], "keep-alive")
                 XCTAssertEqual(response.headers[HTTPField.Name("X-Accel-Buffering")!], "no")
+
                 let text = String(buffer: response.body)
-                XCTAssertTrue(text.contains("stream"))
                 XCTAssertTrue(text.contains("data: [DONE]"))
+
+                // Decode each non-DONE SSE data line as ChatCompletionChunk
+                let decoder = JSONDecoder()
+                let events = text.components(separatedBy: "\n\n")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { $0.hasPrefix("data: ") && $0 != "data: [DONE]" }
+                    .compactMap { line -> ChatCompletionChunk? in
+                        let payload = line.dropFirst("data: ".count)
+                        return try? decoder.decode(ChatCompletionChunk.self, from: Data(payload.utf8))
+                    }
+
+                XCTAssertFalse(events.isEmpty, "Expected at least one decodable SSE chunk")
+                let contentTokens = events.compactMap { $0.choices.first?.delta.content }.joined()
+                XCTAssertTrue(contentTokens.contains("stream"), "Expected chunk content to contain the test token")
+
+                // The final non-DONE chunk must carry a finish_reason
+                XCTAssertEqual(events.last?.choices.first?.finishReason, .stop)
+            }
+        }
+    }
+
+    func testBackendFailureReturns500WithErrorEnvelope() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FailingChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                // SABOTAGE: change status assertion to .ok to verify this test catches regressions
+                XCTAssertEqual(response.status, .internalServerError)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Error responses must be JSON"
+                )
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertFalse(envelope.error.message.isEmpty, "Error envelope must carry a non-empty message")
+            }
+        }
+    }
+
+    func testMalformedRequestBodyReturnsError() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            var headers = HTTPFields()
+            headers[.contentType] = "application/json"
+            let malformedBody = ByteBuffer(string: "not json")
+            try await client.execute(
+                uri: "/v1/chat/completions",
+                method: .post,
+                headers: headers,
+                body: malformedBody
+            ) { response in
+                XCTAssertNotEqual(response.status, .ok)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Error responses must be JSON"
+                )
+                XCTAssertNoThrow(
+                    try JSONDecoder().decode(
+                        ChatCompletionErrorEnvelope.self,
+                        from: Data(buffer: response.body)
+                    ),
+                    "Malformed-body error must decode as ChatCompletionErrorEnvelope"
+                )
             }
         }
     }
@@ -243,11 +368,19 @@ private struct FixedStreamingChatAdapter: ChatCompletionsAdapter {
         using backend: any InferenceBackend
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
         AsyncThrowingStream { continuation in
+            // Content token chunk
             continuation.yield(ChatCompletionChunk(
                 id: "chatcmpl-test",
                 created: 0,
                 model: request.model,
                 choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: "stream"))]
+            ))
+            // Final stop chunk (matches the pattern used by ChatCompletionEventMapper)
+            continuation.yield(ChatCompletionChunk(
+                id: "chatcmpl-test",
+                created: 0,
+                model: request.model,
+                choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(), finishReason: .stop)]
             ))
             continuation.finish()
         }
@@ -293,6 +426,67 @@ private struct DelayedChatAdapter: ChatCompletionsAdapter {
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
         AsyncThrowingStream { continuation in
             continuation.finish()
+        }
+    }
+}
+
+private struct DelayedStreamingChatAdapter: ChatCompletionsAdapter {
+    let recorder: ConcurrencyRecorder
+
+    func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+        GenerationConfig()
+    }
+
+    func response(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) async throws -> ChatCompletionResponse {
+        ChatCompletionResponse(id: "chatcmpl-delayed-stream", model: request.model, content: "done")
+    }
+
+    func chunks(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
+        let recorder = recorder
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                await recorder.enter()
+                try await Task.sleep(for: .milliseconds(100))
+                await recorder.leave()
+                continuation.yield(ChatCompletionChunk(
+                    id: "chatcmpl-delayed-stream",
+                    created: 0,
+                    model: request.model,
+                    choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: "done"), finishReason: .stop)]
+                ))
+                continuation.finish()
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+}
+
+private struct FailingChatAdapter: ChatCompletionsAdapter {
+    struct GenerationFailure: Error {}
+
+    func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+        GenerationConfig()
+    }
+
+    func response(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) async throws -> ChatCompletionResponse {
+        throw GenerationFailure()
+    }
+
+    func chunks(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: GenerationFailure())
         }
     }
 }

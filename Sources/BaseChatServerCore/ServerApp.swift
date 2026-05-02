@@ -12,11 +12,11 @@ package struct ServerHealth: Codable, Equatable, Sendable {
 }
 
 package struct ServerApp: Sendable {
-    package var configuration: ServerConfiguration
-    package var backendProvider: any ServerBackendProvider
-    package var adapter: any ChatCompletionsAdapter
-    package var metrics: ServerMetrics
-    package var generationGate: AsyncSemaphore
+    package let configuration: ServerConfiguration
+    package let backendProvider: any ServerBackendProvider
+    package let adapter: any ChatCompletionsAdapter
+    package let metrics: ServerMetrics
+    package let generationGate: AsyncSemaphore
 
     package init(
         configuration: ServerConfiguration = ServerConfiguration(),
@@ -53,7 +53,8 @@ package struct ServerApp: Sendable {
             } catch {
                 metrics.recordFailure()
                 metrics.recordRequestCompleted()
-                return errorResponse(String(describing: error), status: .internalServerError)
+                let envelope = ChatCompletionErrorEnvelope.from(error)
+                return errorResponse(envelope.error.message, status: .internalServerError)
             }
         }
 
@@ -70,13 +71,17 @@ package struct ServerApp: Sendable {
             } catch {
                 metrics.recordFailure()
                 metrics.recordRequestCompleted()
-                return errorResponse(String(describing: error), status: .internalServerError)
+                let envelope = ChatCompletionErrorEnvelope.from(error)
+                return errorResponse(envelope.error.message, status: .internalServerError)
             }
         }
 
         if configuration.metricsEnabled {
-            router.get("/metrics") { _, _ in
-                metricsResponse()
+            router.get("/metrics") { request, _ in
+                if let unauthorized = authorizationFailure(for: request) {
+                    return unauthorized
+                }
+                return metricsResponse()
             }
         }
 
@@ -110,7 +115,8 @@ package struct ServerApp: Sendable {
     private func authorizationFailure(for request: Request) -> Response? {
         guard let apiKey = configuration.apiKey, !apiKey.isEmpty else { return nil }
         let expected = "Bearer \(apiKey)"
-        guard request.headers[.authorization] == expected else {
+        let provided = request.headers[.authorization] ?? ""
+        guard constantTimeEqual(provided, expected) else {
             return errorResponse(
                 "Missing or invalid bearer token.",
                 status: .unauthorized,
@@ -121,12 +127,23 @@ package struct ServerApp: Sendable {
         return nil
     }
 
+    private func constantTimeEqual(_ a: String, _ b: String) -> Bool {
+        let aBytes = Array(a.utf8)
+        let bBytes = Array(b.utf8)
+        guard aBytes.count == bBytes.count else { return false }
+        return zip(aBytes, bBytes).reduce(0 as UInt8) { $0 | ($1.0 ^ $1.1) } == 0
+    }
+
     private func chatCompletionResponse(for request: ChatCompletionRequest) async throws -> Response {
         if request.stream == true {
             return try await streamingChatCompletionResponse(for: request)
         }
 
-        await generationGate.wait()
+        do {
+            try await generationGate.wait()
+        } catch is CancellationError {
+            return errorResponse("Request was cancelled.", status: .serviceUnavailable)
+        }
         metrics.recordGenerationStarted()
         do {
             let backend = try await backendProvider.backend(for: ServerBackendRequest(model: request.model))
@@ -149,7 +166,11 @@ package struct ServerApp: Sendable {
         headers[HTTPField.Name("X-Accel-Buffering")!] = "no"
 
         let body = ResponseBody { writer in
-            await generationGate.wait()
+            do {
+                try await generationGate.wait()
+            } catch is CancellationError {
+                return
+            } catch {}
             metrics.recordGenerationStarted()
             var streamedTokenCount = 0
             do {
