@@ -79,6 +79,7 @@ BaseChatUI  ──────>  BaseChatPersistenceSwiftData  ─────�
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 - **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
 - **BaseChatServer** *(trait: `Server`, default-off)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. Server targets are trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands when working with `BaseChatServer`.
+- **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — Synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The macro plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
 
 ## Quick Start
 

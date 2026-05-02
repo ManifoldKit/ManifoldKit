@@ -1,3 +1,4 @@
+#if Macros
 import Foundation
 
 // MARK: - @ToolSchema
@@ -109,3 +110,4 @@ import Foundation
 /// `jsonSchema` property) without modifying any existing declarations.
 @attached(member, names: named(jsonSchema))
 public macro ToolSchema() = #externalMacro(module: "BaseChatMacrosPlugin", type: "ToolSchemaMacro")
+#endif

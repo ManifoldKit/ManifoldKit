@@ -1,3 +1,4 @@
+#if Macros
 import Foundation
 import SwiftSyntax
 import SwiftSyntaxMacros
@@ -454,3 +455,4 @@ enum ToolSchemaDiagnostic: DiagnosticMessage {
 
     var severity: DiagnosticSeverity { .error }
 }
+#endif

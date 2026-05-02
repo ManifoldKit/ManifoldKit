@@ -215,6 +215,9 @@ jobs:
       # - BaseChatBackendsTests without traits runs only CI-safe cloud/SSE tests.
       # - Server tests run in the sibling `server-tests` job behind a paths
       #   filter so Hummingbird only compiles when server code changes.
+      # - Macro tests run in the sibling `macros-tests` job behind a paths
+      #   filter so swift-syntax (~647 files) only compiles when macro
+      #   code changes.
       # Local-only coverage:
       # - Run `swift test --filter BaseChatBackendsTests --traits MLX,Llama` on
       #   Apple Silicon for MLX/llama.cpp paths.
@@ -413,6 +416,110 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: xcresult-server-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: test-diagnostics/
+
+  # Macro plugin tests are split out of the per-PR mega-batch because the
+  # `@ToolSchema` macro plugin pulls swift-syntax (~647 source files) into the
+  # build graph. Trait-gated behind `Macros` (off by default) so the default
+  # `test` job skips the swift-syntax compile cost; this job picks them up
+  # only when macro code or the dep graph changes.
+  macros-tests:
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # paths-filter needs the parent commit to diff against on `push` events;
+          # `pull_request` works with the default shallow clone.
+          fetch-depth: 2
+
+      - name: Detect macro-relevant changes
+        id: macros-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            macros:
+              - 'Sources/BaseChatMacrosPlugin/**'
+              - 'Sources/BaseChatInference/Macros/**'
+              - 'Tests/BaseChatInferenceTests/ToolSchemaMacro*.swift'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test.sh'
+
+      - name: Select Xcode
+        if: steps.macros-changed.outputs.macros == 'true'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        if: steps.macros-changed.outputs.macros == 'true'
+        uses: actions/cache@v5
+        with:
+          # Same path/key shape as the `test` job — both jobs share the same
+          # SwiftPM dep tarball cache so we don't re-download the graph twice
+          # per workflow run.
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Verify Swift toolchain matches Package.swift tools-version
+        if: steps.macros-changed.outputs.macros == 'true'
+        run: |
+          set -euo pipefail
+          tools_line=$(head -n 1 Package.swift)
+          tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
+          if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
+            exit 1
+          fi
+          swift_version_full=$(xcrun swift -version | head -n 1)
+          swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
+          if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not parse Swift major.minor from: $swift_version_full"
+            exit 1
+          fi
+          tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
+          swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
+          if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
+            echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
+            exit 1
+          fi
+          echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
+
+      - name: Test — @ToolSchema macro suite (Macros trait)
+        id: test-macros
+        if: steps.macros-changed.outputs.macros == 'true'
+        timeout-minutes: 12
+        env:
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-macros.log
+        run: scripts/test.sh --filter ToolSchemaMacro --disable-default-traits --traits Macros --skip-update
+
+      - name: Stage test diagnostics
+        if: failure() && steps.macros-changed.outputs.macros == 'true'
+        run: |
+          mkdir -p test-diagnostics
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=macros-tests"
+            echo "test-macros-failed=${{ steps.test-macros.outcome == 'failure' }}"
+          } > test-diagnostics/failed-steps.txt
+
+      - name: Upload test diagnostics on failure
+        if: failure() && steps.macros-changed.outputs.macros == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcresult-macros-${{ github.run_attempt }}
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
