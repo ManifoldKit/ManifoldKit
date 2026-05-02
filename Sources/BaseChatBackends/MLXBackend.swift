@@ -309,6 +309,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
     }
 
+    /// Resolves the active thinking-marker pair from the per-request override
+    /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
+    /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
+    /// neither source supplied markers — both cases keep `ThinkingParser` off.
+    static func resolveThinkingMarkers(
+        config: GenerationConfig,
+        autoDetected: ThinkingMarkers?
+    ) -> ThinkingMarkers? {
+        if config.maxThinkingTokens == 0 { return nil }
+        return config.thinkingMarkers ?? autoDetected
+    }
+
     /// Assembles the prepared chat-message inputs for the MLX container's two
     /// `prepare(...)` overloads. Returns both shapes because the caller picks
     /// `prepare(chat:)` for vision history (non-nil first element) and
@@ -853,20 +865,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 var outputTokenCount = 0
                 var isFirstToken = true
 
-                // Markers are resolved from two sources, manual-override first:
-                //   1. `config.thinkingMarkers` — caller's per-request override.
-                //   2. `autoDetectedMarkers` — sniffed from `tokenizer_config.json`'s
-                //      Jinja chat template at load time.
-                // If both are nil, the model does not advertise reasoning blocks and
-                // the parser stays off — raw `<think>` substrings (if the model emits
-                // them anyway) surface as visible `.token` text instead of being split
-                // into `.thinkingToken` events.
-                //
-                // `config.maxThinkingTokens == 0` disables thinking entirely (issue #597),
-                // overriding both sources above.
-                let thinkingDisabled = config.maxThinkingTokens == 0
-                let resolvedMarkers = config.thinkingMarkers ?? autoDetectedMarkers
-                let useThinkingParser = !thinkingDisabled && resolvedMarkers != nil
+                let resolvedMarkers = Self.resolveThinkingMarkers(
+                    config: config,
+                    autoDetected: autoDetectedMarkers
+                )
+                let useThinkingParser = resolvedMarkers != nil
                 // ThinkingParser must always be initialized (its initializer can't take nil).
                 // When useThinkingParser is false the parser is never invoked, so the
                 // placeholder marker pair is never observed.
