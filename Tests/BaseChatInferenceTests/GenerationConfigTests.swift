@@ -85,31 +85,6 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertTrue(config.jsonMode)
     }
 
-    func test_codable_omitsJsonMode_evenWhenTrue() throws {
-        let config = GenerationConfig(jsonMode: true)
-
-        let data = try JSONEncoder().encode(config)
-        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertNil(json["jsonMode"])
-    }
-
-    func test_codable_decode_resetsRuntimeOnlyJsonModeToFalse() throws {
-        let payload = """
-        {
-            "temperature": 0.7,
-            "topP": 0.9,
-            "repeatPenalty": 1.1,
-            "maxTokens": 512,
-            "jsonMode": true
-        }
-        """
-        let data = try XCTUnwrap(payload.data(using: .utf8))
-        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
-
-        XCTAssertFalse(decoded.jsonMode)
-    }
-
     func test_streamPrefillProgress_isMutable() {
         var config = GenerationConfig()
         config.streamPrefillProgress = true
@@ -209,6 +184,7 @@ final class GenerationConfigTests: XCTestCase {
             "repeatPenalty": 1.1,
             "tools": [],
             "toolChoice": {"type": "auto"},
+            "jsonMode": false,
             "maxToolIterations": 10
         }
         """

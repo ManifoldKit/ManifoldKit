@@ -164,10 +164,6 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             "max_tokens": config.maxOutputTokens ?? 2048
         ]
         if config.jsonMode {
-            // OpenAI-native providers accept `response_format`; Ollama's
-            // OpenAI-compatible adapter looks for the legacy top-level
-            // `format: "json"` switch.
-            body["format"] = "json"
             body["response_format"] = ["type": "json_object"]
         }
 
@@ -224,12 +220,19 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     ) async throws {
         let tokenStream = SSEStreamParser.parse(bytes: bytes, limits: effectiveSSEStreamLimits)
 
-        var thinking = ThinkingBlockManager()
+        var thinkingOpen = false
         let toolAccumulator = StreamingToolCallAccumulator()
         // Tracks whether we've finalised tool calls already (for non-streaming
         // whole responses delivered as a single chunk, where `finish_reason`
         // and the final `tool_calls[]` arrive in the same payload).
         var finalisedToolCalls = false
+
+        func flushThinkingCompleteIfNeeded() {
+            if thinkingOpen {
+                continuation.yield(.thinkingComplete)
+                thinkingOpen = false
+            }
+        }
 
         func finaliseToolCalls() {
             guard !finalisedToolCalls else { return }
@@ -243,132 +246,133 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             }
         }
 
-        do {
-            for try await payload in tokenStream {
-                if Task.isCancelled { break }
+        for try await payload in tokenStream {
+            if Task.isCancelled { break }
 
-                if let progress = Self.parsePrefillProgress(from: payload) {
-                    continuation.yield(.prefillProgress(
-                        nPast: progress.nPast,
-                        nTotal: progress.nTotal,
-                        tokensPerSecond: progress.tokensPerSecond
-                    ))
-                    continue
+            if let progress = Self.parsePrefillProgress(from: payload) {
+                continuation.yield(.prefillProgress(
+                    nPast: progress.nPast,
+                    nTotal: progress.nTotal,
+                    tokensPerSecond: progress.tokensPerSecond
+                ))
+                continue
+            }
+
+            // Reasoning delta: emit as thinkingToken, keep the block open.
+            if let thinking = Self.parseReasoningDelta(from: payload) {
+                continuation.yield(.thinkingToken(thinking))
+                thinkingOpen = true
+                // Fall through — a single chunk may legally carry both
+                // reasoning and content (edge case on some providers), and
+                // usage may still need emitting.
+            }
+
+            // Tool-call deltas (streaming) — keyed by `index`. The first delta
+            // for each `index` carries `id` + `function.name`; subsequent
+            // deltas carry `function.arguments` fragments. Some compat servers
+            // do not re-emit `id` on later deltas, so we sticky-buffer it.
+            let toolDeltas = Self.parseToolCallDeltas(from: payload)
+            for delta in toolDeltas {
+                let key = "\(delta.index)"
+                let isNew = toolAccumulator.upsert(
+                    key: key,
+                    id: delta.id,
+                    name: delta.name,
+                    argumentsDelta: delta.argumentsDelta
+                )
+                if isNew {
+                    flushThinkingCompleteIfNeeded()
                 }
-
-                // Reasoning delta: emit as thinkingToken, keep the block open.
-                if let reasoning = Self.parseReasoningDelta(from: payload) {
-                    continuation.yield(.thinkingToken(reasoning))
-                    thinking.open()
-                    // Fall through — a single chunk may legally carry both
-                    // reasoning and content (edge case on some providers), and
-                    // usage may still need emitting.
+                // Emit `.toolCallStart` once we have both an id and a name
+                // for this entry. Some providers send the name in a later
+                // delta than the id, hence the lazy emit.
+                if let entry = toolAccumulator.entriesByKey[key],
+                   !entry.started, !entry.name.isEmpty {
+                    let resolvedId = toolAccumulator.resolvedId(forKey: key)
+                    continuation.yield(.toolCallStart(callId: resolvedId, name: entry.name))
+                    toolAccumulator.markStarted(key: key)
                 }
-
-                // Visible content delta: close thinking first so consumers see a
-                // clean handoff before the first visible token.
-                if let token = extractToken(from: payload) {
-                    thinking.flushIfOpen(into: continuation)
-                    continuation.yield(.token(token))
+                // Stream argument fragments under the resolved (sticky) id.
+                if let fragment = delta.argumentsDelta, !fragment.isEmpty {
+                    let resolvedId = toolAccumulator.resolvedId(forKey: key)
+                    continuation.yield(.toolCallArgumentsDelta(callId: resolvedId, textDelta: fragment))
                 }
+            }
 
-                // Tool-call deltas (streaming) — keyed by `index`. The first delta
-                // for each `index` carries `id` + `function.name`; subsequent
-                // deltas carry `function.arguments` fragments. Some compat servers
-                // do not re-emit `id` on later deltas, so we sticky-buffer it.
-                let toolDeltas = Self.parseToolCallDeltas(from: payload)
-                for delta in toolDeltas {
-                    let key = "\(delta.index)"
-                    let isNew = toolAccumulator.upsert(
-                        key: key,
-                        id: delta.id,
-                        name: delta.name,
-                        argumentsDelta: delta.argumentsDelta
-                    )
-                    if isNew {
-                        thinking.flushIfOpen(into: continuation)
-                    }
-                    // Emit `.toolCallStart` once we have both an id and a name.
-                    if let entry = toolAccumulator.entriesByKey[key],
-                       !entry.started, !entry.name.isEmpty {
+            // Non-streaming whole-message tool_calls (`message.tool_calls[]`).
+            // Some compat servers — and OpenAI itself when `stream:false` —
+            // deliver tool calls on `choices[0].message.tool_calls`. Treat
+            // each call as a single start+delta+toolCall triple to keep the
+            // event surface uniform across streaming/non-streaming.
+            if !finalisedToolCalls {
+                let wholeCalls = Self.parseWholeToolCalls(from: payload)
+                if !wholeCalls.isEmpty {
+                    flushThinkingCompleteIfNeeded()
+                    for call in wholeCalls {
+                        let key = call.id.isEmpty ? UUID().uuidString : call.id
+                        toolAccumulator.upsert(
+                            key: key,
+                            id: call.id,
+                            name: call.name,
+                            argumentsDelta: call.arguments
+                        )
                         let resolvedId = toolAccumulator.resolvedId(forKey: key)
-                        continuation.yield(.toolCallStart(callId: resolvedId, name: entry.name))
+                        continuation.yield(.toolCallStart(callId: resolvedId, name: call.name))
                         toolAccumulator.markStarted(key: key)
-                    }
-                    // Stream argument fragments under the resolved (sticky) id.
-                    if let fragment = delta.argumentsDelta, !fragment.isEmpty {
-                        let resolvedId = toolAccumulator.resolvedId(forKey: key)
-                        continuation.yield(.toolCallArgumentsDelta(callId: resolvedId, textDelta: fragment))
-                    }
-                }
-
-                // Non-streaming whole-message tool_calls (`message.tool_calls[]`).
-                if !finalisedToolCalls {
-                    let wholeCalls = Self.parseWholeToolCalls(from: payload)
-                    if !wholeCalls.isEmpty {
-                        thinking.flushIfOpen(into: continuation)
-                        for call in wholeCalls {
-                            let key = call.id.isEmpty ? UUID().uuidString : call.id
-                            toolAccumulator.upsert(
-                                key: key,
-                                id: call.id,
-                                name: call.name,
-                                argumentsDelta: call.arguments
-                            )
-                            let resolvedId = toolAccumulator.resolvedId(forKey: key)
-                            continuation.yield(.toolCallStart(callId: resolvedId, name: call.name))
-                            toolAccumulator.markStarted(key: key)
-                            if !call.arguments.isEmpty {
-                                continuation.yield(.toolCallArgumentsDelta(
-                                    callId: resolvedId,
-                                    textDelta: call.arguments
-                                ))
-                            }
+                        if !call.arguments.isEmpty {
+                            continuation.yield(.toolCallArgumentsDelta(
+                                callId: resolvedId,
+                                textDelta: call.arguments
+                            ))
                         }
                     }
                 }
+            }
 
-                if let usage = extractUsage(from: payload) {
-                    handleUsage(usage)
-                    if let prompt = usage.promptTokens,
-                       let completion = usage.completionTokens {
-                        continuation.yield(.usage(prompt: prompt, completion: completion))
-                    }
-                }
+            // Visible content delta: close thinking first so consumers see a
+            // clean handoff before the first visible token.
+            if let token = extractToken(from: payload) {
+                flushThinkingCompleteIfNeeded()
+                continuation.yield(.token(token))
+            }
 
-                // `finish_reason: "tool_calls"` finalises any buffered streaming
-                // tool calls. When the assistant turn ends with `stop` we still
-                // flush any accumulated tool calls so callers in the non-stream
-                // path see a uniform shape.
-                if let reason = Self.parseFinishReason(from: payload) {
-                    if reason == "tool_calls" || !toolAccumulator.entriesByKey.isEmpty {
-                        finaliseToolCalls()
-                    }
-                }
-
-                if isStreamEnd(payload) {
-                    thinking.flushIfOpen(into: continuation)
-                    break
-                }
-
-                if let error = extractStreamError(from: payload) {
-                    throw error
+            if let usage = extractUsage(from: payload) {
+                handleUsage(usage)
+                if let prompt = usage.promptTokens,
+                   let completion = usage.completionTokens {
+                    continuation.yield(.usage(prompt: prompt, completion: completion))
                 }
             }
-        } catch {
-            // Close any open thinking block before rethrowing so consumers
-            // see a clean handoff and don't hang in a thinking-only state.
-            thinking.flushIfOpen(into: continuation)
-            throw error
+
+            // `finish_reason: "tool_calls"` finalises any buffered streaming
+            // tool calls. When the assistant turn ends with `stop` we still
+            // flush any accumulated tool calls so callers in the non-stream
+            // path see a uniform shape.
+            if let reason = Self.parseFinishReason(from: payload) {
+                if reason == "tool_calls" || !toolAccumulator.entriesByKey.isEmpty {
+                    finaliseToolCalls()
+                }
+            }
+
+            if isStreamEnd(payload) {
+                flushThinkingCompleteIfNeeded()
+                break
+            }
+
+            if let error = extractStreamError(from: payload) {
+                throw error
+            }
         }
 
-        thinking.flushIfOpen(into: continuation)
-        // Stream end fallback: if the upstream closed without a `finish_reason`
-        // (some compat servers omit it), emit any buffered tool calls now so
-        // the orchestrator can dispatch them. On cancellation we deliberately
-        // skip this — dropping the consumer mid-stream must not produce
-        // phantom `.toolCall` events.
-        if !Task.isCancelled {
+        flushThinkingCompleteIfNeeded()
+        // Stream end fallback: if the upstream closed without a
+        // `finish_reason` (some compat servers omit it), emit any buffered
+        // tool calls now so the orchestrator can dispatch them.
+        if Task.isCancelled {
+            // Cancellation: do NOT emit `.toolCall` for incomplete entries.
+            // The contract is that consumers who drop the stream must not
+            // observe partial tool dispatch.
+        } else {
             finaliseToolCalls()
         }
     }

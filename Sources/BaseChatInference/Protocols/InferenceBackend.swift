@@ -90,9 +90,7 @@ public struct GenerationConfig: Sendable, Codable {
 
     /// Requests backend-specific JSON-object-only generation for this call.
     ///
-    /// Runtime-only flag: defaults to `false` and is intentionally excluded
-    /// from Codable persistence, matching other per-request hints like
-    /// ``thinkingMarkers``. Backends that do not support structured output, or
+    /// Defaults to `false`. Backends that do not support structured output, or
     /// have not implemented JSON-mode wiring yet, silently ignore this flag.
     public var jsonMode: Bool
 
@@ -158,17 +156,7 @@ public struct GenerationConfig: Sendable, Codable {
     /// - Only honoured by `MLXBackend`; other backends ignore this field.
     public var yieldEveryNTokens: Int = 8
 
-    /// Capabilities the backend serving this request must provide.
-    ///
-    /// Empty (the default) means any wired backend may serve the request —
-    /// preserves the existing zero-config behaviour. When non-empty, ``RouterBackend``
-    /// dispatches to the first child whose ``BackendCapabilities`` satisfy every
-    /// requirement; backends used directly may use this for fail-fast validation.
-    /// Independent of ``tools`` / ``grammar`` / ``jsonMode`` — those are
-    /// per-request payloads; this is a per-request *contract*.
-    public var requiredCapabilities: Set<GenerationCapabilityRequirement> = []
-
-    @available(*, deprecated, message: "Use init(temperature:topP:repeatPenalty:topK:typicalP:minP:repetitionPenalty:seed:maxOutputTokens:tools:toolChoice:maxThinkingTokens:jsonMode:streamPrefillProgress:thinkingMarkers:maxToolIterations:grammar:yieldEveryNTokens:requiredCapabilities:) instead.")
+    @available(*, deprecated, message: "Use init(temperature:topP:repeatPenalty:topK:typicalP:minP:repetitionPenalty:seed:maxOutputTokens:tools:toolChoice:maxThinkingTokens:jsonMode:streamPrefillProgress:thinkingMarkers:maxToolIterations:grammar:yieldEveryNTokens:) instead.")
     public init(
         temperature: Float = 0.7,
         topP: Float = 0.9,
@@ -229,8 +217,7 @@ public struct GenerationConfig: Sendable, Codable {
         thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
         grammar: String? = nil,
-        yieldEveryNTokens: Int = 8,
-        requiredCapabilities: Set<GenerationCapabilityRequirement> = []
+        yieldEveryNTokens: Int = 8
     ) {
         self.temperature = temperature
         self.topP = topP
@@ -250,18 +237,16 @@ public struct GenerationConfig: Sendable, Codable {
         self.maxToolIterations = max(1, maxToolIterations)
         self.grammar = grammar
         self.yieldEveryNTokens = yieldEveryNTokens
-        self.requiredCapabilities = requiredCapabilities
     }
 
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
         case temperature, topP, repeatPenalty, maxTokens, topK, typicalP, maxOutputTokens
-        case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar
+        case tools, toolChoice, maxThinkingTokens, jsonMode, maxToolIterations, grammar
         case yieldEveryNTokens
         case streamPrefillProgress
         case minP, repetitionPenalty, seed
-        case requiredCapabilities
     }
 
     public init(from decoder: Decoder) throws {
@@ -279,9 +264,7 @@ public struct GenerationConfig: Sendable, Codable {
         tools = (try c.decodeIfPresent([ToolDefinition].self, forKey: .tools)) ?? []
         toolChoice = (try c.decodeIfPresent(ToolChoice.self, forKey: .toolChoice)) ?? .auto
         maxThinkingTokens = try c.decodeIfPresent(Int.self, forKey: .maxThinkingTokens)
-        // jsonMode is a per-request runtime hint; persisted payloads always decode
-        // with the canonical default regardless of any legacy on-disk key.
-        jsonMode = false
+        jsonMode = (try c.decodeIfPresent(Bool.self, forKey: .jsonMode)) ?? false
         streamPrefillProgress = (try c.decodeIfPresent(Bool.self, forKey: .streamPrefillProgress)) ?? false
         // maxToolIterations landed after the original shape; default to 10 when absent and
         // clamp any persisted zero/negative value to the minimum of 1.
@@ -297,12 +280,6 @@ public struct GenerationConfig: Sendable, Codable {
         minP = try c.decodeIfPresent(Float.self, forKey: .minP)
         repetitionPenalty = try c.decodeIfPresent(Float.self, forKey: .repetitionPenalty)
         seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
-        // requiredCapabilities is a per-request runtime contract; landed after
-        // the original shape, so older payloads decode to an empty set.
-        requiredCapabilities = (try c.decodeIfPresent(
-            Set<GenerationCapabilityRequirement>.self,
-            forKey: .requiredCapabilities
-        )) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -318,6 +295,7 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encode(tools, forKey: .tools)
         try c.encode(toolChoice, forKey: .toolChoice)
         try c.encodeIfPresent(maxThinkingTokens, forKey: .maxThinkingTokens)
+        try c.encode(jsonMode, forKey: .jsonMode)
         try c.encode(streamPrefillProgress, forKey: .streamPrefillProgress)
         try c.encode(maxToolIterations, forKey: .maxToolIterations)
         try c.encodeIfPresent(grammar, forKey: .grammar)
@@ -325,9 +303,6 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encodeIfPresent(minP, forKey: .minP)
         try c.encodeIfPresent(repetitionPenalty, forKey: .repetitionPenalty)
         try c.encodeIfPresent(seed, forKey: .seed)
-        if !requiredCapabilities.isEmpty {
-            try c.encode(requiredCapabilities, forKey: .requiredCapabilities)
-        }
     }
 }
 
