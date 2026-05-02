@@ -25,7 +25,6 @@ let package = Package(
         .library(name: "BaseChatTools", targets: ["BaseChatTools"]),
         .executable(name: "bck-tools", targets: ["bck-tools"]),
         .library(name: "BaseChatAppIntents", targets: ["BaseChatAppIntents"]),
-        .library(name: "BaseChatServerCore", targets: ["BaseChatServerCore"]),
         .executable(name: "BaseChatServer", targets: ["BaseChatServer"]),
     ],
     traits: [
@@ -413,41 +412,19 @@ let package = Package(
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
-        .target(
-            name: "BaseChatServerCore",
-            dependencies: [
-                "BaseChatInference",
-                .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
-            ],
-            path: "Sources/BaseChatServerCore",
-            swiftSettings: [
-                .define("Server", .when(traits: ["Server"])),
-            ]
-        ),
-        .target(
-            name: "BaseChatServerBackends",
-            dependencies: [
-                "BaseChatServerCore",
-                "BaseChatInference",
-                "BaseChatBackends",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            path: "Sources/BaseChatServerBackends",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("Server", .when(traits: ["Server"])),
-            ]
-        ),
+        // BaseChatServer: OpenAI-compatible HTTP server. Shipped as a single
+        // executable target — the routing layer, trait-aware backend provider,
+        // and `@main` entry point all live here. Trait-gated behind `Server`,
+        // which also conditionally pulls in Hummingbird. Without the trait the
+        // target compiles to a no-op stub that prints a "trait not enabled"
+        // message (see `BaseChatServerCommand.swift`).
         .executableTarget(
             name: "BaseChatServer",
             dependencies: [
-                "BaseChatServerCore",
-                "BaseChatServerBackends",
+                "BaseChatInference",
+                "BaseChatBackends",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
             ],
             path: "Sources/BaseChatServer",
             swiftSettings: [
@@ -462,8 +439,7 @@ let package = Package(
         .testTarget(
             name: "BaseChatServerTests",
             dependencies: [
-                "BaseChatServerCore",
-                "BaseChatServerBackends",
+                "BaseChatServer",
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .product(name: "HummingbirdTesting", package: "hummingbird", condition: .when(traits: ["Server"])),

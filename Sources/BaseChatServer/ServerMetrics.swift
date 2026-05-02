@@ -1,14 +1,14 @@
 #if Server
 import Foundation
 
-package struct ServerMetricsSnapshot: Equatable, Sendable {
-    package var requests: Int
-    package var inFlightGenerations: Int
-    package var completions: Int
-    package var failures: Int
-    package var tokens: Int
+internal struct ServerMetricsSnapshot: Equatable, Sendable {
+    internal var requests: Int
+    internal var inFlightGenerations: Int
+    internal var completions: Int
+    internal var failures: Int
+    internal var tokens: Int
 
-    package init(
+    internal init(
         requests: Int = 0,
         inFlightGenerations: Int = 0,
         completions: Int = 0,
@@ -23,7 +23,7 @@ package struct ServerMetricsSnapshot: Equatable, Sendable {
     }
 }
 
-package struct ServerMetrics: Sendable {
+internal struct ServerMetrics: Sendable {
     private final class Storage: @unchecked Sendable {
         private let lock = NSLock()
         private var snapshot = ServerMetricsSnapshot()
@@ -41,25 +41,25 @@ package struct ServerMetrics: Sendable {
 
     private let storage: Storage
 
-    package init() {
+    internal init() {
         self.storage = Storage()
     }
 
-    package func snapshot() -> ServerMetricsSnapshot {
+    internal func snapshot() -> ServerMetricsSnapshot {
         storage.read()
     }
 
-    package func recordRequestStarted() {
+    internal func recordRequestStarted() {
         storage.mutate { $0.requests += 1 }
     }
 
-    package func recordRequestCompleted() {}
+    internal func recordRequestCompleted() {}
 
-    package func recordGenerationStarted() {
+    internal func recordGenerationStarted() {
         storage.mutate { $0.inFlightGenerations += 1 }
     }
 
-    package func recordGenerationCompleted(tokenCount: Int = 0) {
+    internal func recordGenerationCompleted(tokenCount: Int = 0) {
         storage.mutate {
             $0.inFlightGenerations = max(0, $0.inFlightGenerations - 1)
             $0.completions += 1
@@ -67,14 +67,14 @@ package struct ServerMetrics: Sendable {
         }
     }
 
-    package func recordGenerationFailed() {
+    internal func recordGenerationFailed() {
         storage.mutate {
             $0.inFlightGenerations = max(0, $0.inFlightGenerations - 1)
             $0.failures += 1
         }
     }
 
-    package func recordFailure() {
+    internal func recordFailure() {
         storage.mutate { $0.failures += 1 }
     }
 }

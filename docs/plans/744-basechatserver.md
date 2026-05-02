@@ -12,6 +12,8 @@ This is a **plan document**, not implementation. It records the decisions taken 
 - Target release: `0.14.0` (`0.13.0` ships the tool-calling track close-out per #753 PR-C; the server gets its own headline release because the network surface is the more dangerous surface and deserves concentrated reviewer attention)
 - Greenfield work — no prior server code in the repo (`grep -r "Hummingbird\|Vapor\|NIOHTTP" Sources/` returns nothing).
 
+> **Update (#949):** The original three-target shape (`BaseChatServerCore` library + `BaseChatServerBackends` library + `BaseChatServer` executable) has been collapsed into a single `BaseChatServer` executable target. All routing, adapters, trait-aware backend provider, and the CLI entry point now live under `Sources/BaseChatServer/`. The `BaseChatServerCore` and `BaseChatServerBackends` library products no longer exist. References to those module names in the sections below are historical — the `Server` trait still gates the entire surface and the dependency boundaries (`BaseChatInference` only, `BaseChatBackends` only inside the executable wiring) are unchanged.
+
 ## What we are building
 
 A new opt-in SwiftPM target `BaseChatServer` (executable) plus `BaseChatServerCore` (library, `package`-visible, where the routing lives). Together they implement:

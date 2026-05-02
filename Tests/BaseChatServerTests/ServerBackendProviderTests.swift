@@ -1,5 +1,5 @@
 #if Server
-@testable import BaseChatServerCore
+@testable import BaseChatServer
 import BaseChatTestSupport
 import XCTest
 

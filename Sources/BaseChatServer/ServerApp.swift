@@ -4,22 +4,22 @@ import Foundation
 import Hummingbird
 import HTTPTypes
 
-package struct ServerHealth: Codable, Equatable, Sendable {
-    package var status: String
+internal struct ServerHealth: Codable, Equatable, Sendable {
+    internal var status: String
 
-    package init(status: String = "ok") {
+    internal init(status: String = "ok") {
         self.status = status
     }
 }
 
-package struct ServerApp: Sendable {
-    package let configuration: ServerConfiguration
-    package let backendProvider: any ServerBackendProvider
-    package let adapter: any ChatCompletionsAdapter
-    package let metrics: ServerMetrics
-    package let generationGate: AsyncSemaphore
+internal struct ServerApp: Sendable {
+    internal let configuration: ServerConfiguration
+    internal let backendProvider: any ServerBackendProvider
+    internal let adapter: any ChatCompletionsAdapter
+    internal let metrics: ServerMetrics
+    internal let generationGate: AsyncSemaphore
 
-    package init(
+    internal init(
         configuration: ServerConfiguration = ServerConfiguration(),
         backendProvider: any ServerBackendProvider = UnavailableServerBackendProvider(),
         adapter: any ChatCompletionsAdapter = DefaultChatCompletionsAdapter(),
@@ -32,9 +32,9 @@ package struct ServerApp: Sendable {
         self.generationGate = AsyncSemaphore(value: configuration.parallelSlots)
     }
 
-    package func health() -> ServerHealth { ServerHealth() }
+    internal func health() -> ServerHealth { ServerHealth() }
 
-    package func makeApplication() -> some ApplicationProtocol {
+    internal func makeApplication() -> some ApplicationProtocol {
         let router = Router()
         router.add(middleware: corsMiddleware())
 
@@ -93,7 +93,7 @@ package struct ServerApp: Sendable {
         return Application(router: router, configuration: appConfiguration)
     }
 
-    package func run() async throws {
+    internal func run() async throws {
         try await makeApplication().runService()
     }
 

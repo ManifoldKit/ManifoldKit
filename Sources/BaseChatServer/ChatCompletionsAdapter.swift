@@ -2,7 +2,7 @@
 import BaseChatInference
 import Foundation
 
-package enum ChatCompletionRole: String, Codable, Equatable, Sendable {
+internal enum ChatCompletionRole: String, Codable, Equatable, Sendable {
     case system
     case developer
     case user
@@ -10,15 +10,15 @@ package enum ChatCompletionRole: String, Codable, Equatable, Sendable {
     case tool
 }
 
-package struct ChatCompletionMessage: Codable, Equatable, Sendable {
-    package var role: ChatCompletionRole
-    package var content: String?
-    package var reasoningContent: String?
-    package var name: String?
-    package var toolCallID: String?
-    package var toolCalls: [ChatCompletionMessageToolCall]?
+internal struct ChatCompletionMessage: Codable, Equatable, Sendable {
+    internal var role: ChatCompletionRole
+    internal var content: String?
+    internal var reasoningContent: String?
+    internal var name: String?
+    internal var toolCallID: String?
+    internal var toolCalls: [ChatCompletionMessageToolCall]?
 
-    package init(
+    internal init(
         role: ChatCompletionRole,
         content: String? = nil,
         reasoningContent: String? = nil,
@@ -34,7 +34,7 @@ package struct ChatCompletionMessage: Codable, Equatable, Sendable {
         self.toolCalls = toolCalls
     }
 
-    package init(role: String, content: String) {
+    internal init(role: String, content: String) {
         self.init(role: ChatCompletionRole(rawValue: role) ?? .user, content: content)
     }
 
@@ -46,20 +46,20 @@ package struct ChatCompletionMessage: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionRequest: Codable, Equatable, Sendable {
-    package var model: String
-    package var messages: [ChatCompletionMessage]
-    package var stream: Bool?
-    package var streamOptions: ChatCompletionStreamOptions?
-    package var temperature: Double?
-    package var topP: Double?
-    package var maxTokens: Int?
-    package var maxCompletionTokens: Int?
-    package var responseFormat: ChatCompletionResponseFormat?
-    package var tools: [ChatCompletionTool]?
-    package var toolChoice: ChatCompletionToolChoice?
+internal struct ChatCompletionRequest: Codable, Equatable, Sendable {
+    internal var model: String
+    internal var messages: [ChatCompletionMessage]
+    internal var stream: Bool?
+    internal var streamOptions: ChatCompletionStreamOptions?
+    internal var temperature: Double?
+    internal var topP: Double?
+    internal var maxTokens: Int?
+    internal var maxCompletionTokens: Int?
+    internal var responseFormat: ChatCompletionResponseFormat?
+    internal var tools: [ChatCompletionTool]?
+    internal var toolChoice: ChatCompletionToolChoice?
 
-    package init(
+    internal init(
         model: String,
         messages: [ChatCompletionMessage],
         stream: Bool = false,
@@ -85,7 +85,7 @@ package struct ChatCompletionRequest: Codable, Equatable, Sendable {
         self.toolChoice = toolChoice
     }
 
-    package var includesStreamUsage: Bool { streamOptions?.includeUsage == true }
+    internal var includesStreamUsage: Bool { streamOptions?.includeUsage == true }
 
     private enum CodingKeys: String, CodingKey {
         case model, messages, stream, temperature, tools
@@ -98,10 +98,10 @@ package struct ChatCompletionRequest: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionStreamOptions: Codable, Equatable, Sendable {
-    package var includeUsage: Bool?
+internal struct ChatCompletionStreamOptions: Codable, Equatable, Sendable {
+    internal var includeUsage: Bool?
 
-    package init(includeUsage: Bool? = nil) {
+    internal init(includeUsage: Bool? = nil) {
         self.includeUsage = includeUsage
     }
 
@@ -110,20 +110,20 @@ package struct ChatCompletionStreamOptions: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionResponseFormat: Codable, Equatable, Sendable {
-    package enum FormatType: String, Codable, Equatable, Sendable {
+internal struct ChatCompletionResponseFormat: Codable, Equatable, Sendable {
+    internal enum FormatType: String, Codable, Equatable, Sendable {
         case text
         case jsonObject = "json_object"
         case jsonSchema = "json_schema"
     }
 
-    package struct JSONSchema: Codable, Equatable, Sendable {
-        package var name: String
-        package var description: String?
-        package var schema: JSONSchemaValue?
-        package var strict: Bool?
+    internal struct JSONSchema: Codable, Equatable, Sendable {
+        internal var name: String
+        internal var description: String?
+        internal var schema: JSONSchemaValue?
+        internal var strict: Bool?
 
-        package init(name: String, description: String? = nil, schema: JSONSchemaValue? = nil, strict: Bool? = nil) {
+        internal init(name: String, description: String? = nil, schema: JSONSchemaValue? = nil, strict: Bool? = nil) {
             self.name = name
             self.description = description
             self.schema = schema
@@ -131,10 +131,10 @@ package struct ChatCompletionResponseFormat: Codable, Equatable, Sendable {
         }
     }
 
-    package var type: FormatType
-    package var jsonSchema: JSONSchema?
+    internal var type: FormatType
+    internal var jsonSchema: JSONSchema?
 
-    package init(type: FormatType, jsonSchema: JSONSchema? = nil) {
+    internal init(type: FormatType, jsonSchema: JSONSchema? = nil) {
         self.type = type
         self.jsonSchema = jsonSchema
     }
@@ -145,16 +145,16 @@ package struct ChatCompletionResponseFormat: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionTool: Codable, Equatable, Sendable {
-    package var type: String
-    package var function: ChatCompletionFunctionDefinition
+internal struct ChatCompletionTool: Codable, Equatable, Sendable {
+    internal var type: String
+    internal var function: ChatCompletionFunctionDefinition
 
-    package init(type: String = "function", function: ChatCompletionFunctionDefinition) {
+    internal init(type: String = "function", function: ChatCompletionFunctionDefinition) {
         self.type = type
         self.function = function
     }
 
-    package func toolDefinition() -> ToolDefinition? {
+    internal func toolDefinition() -> ToolDefinition? {
         guard type == "function" else { return nil }
         return ToolDefinition(
             name: function.name,
@@ -164,13 +164,13 @@ package struct ChatCompletionTool: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionFunctionDefinition: Codable, Equatable, Sendable {
-    package var name: String
-    package var description: String?
-    package var parameters: JSONSchemaValue?
-    package var strict: Bool?
+internal struct ChatCompletionFunctionDefinition: Codable, Equatable, Sendable {
+    internal var name: String
+    internal var description: String?
+    internal var parameters: JSONSchemaValue?
+    internal var strict: Bool?
 
-    package init(name: String, description: String? = nil, parameters: JSONSchemaValue? = nil, strict: Bool? = nil) {
+    internal init(name: String, description: String? = nil, parameters: JSONSchemaValue? = nil, strict: Bool? = nil) {
         self.name = name
         self.description = description
         self.parameters = parameters
@@ -178,13 +178,13 @@ package struct ChatCompletionFunctionDefinition: Codable, Equatable, Sendable {
     }
 }
 
-package enum ChatCompletionToolChoice: Codable, Equatable, Sendable {
+internal enum ChatCompletionToolChoice: Codable, Equatable, Sendable {
     case auto
     case none
     case required
     case function(name: String)
 
-    package init(from decoder: Decoder) throws {
+    internal init(from decoder: Decoder) throws {
         if let string = try? decoder.singleValueContainer().decode(String.self) {
             switch string {
             case "auto": self = .auto
@@ -207,7 +207,7 @@ package enum ChatCompletionToolChoice: Codable, Equatable, Sendable {
         self = .function(name: function.name)
     }
 
-    package func encode(to encoder: Encoder) throws {
+    internal func encode(to encoder: Encoder) throws {
         switch self {
         case .auto:
             var container = encoder.singleValueContainer()
@@ -225,7 +225,7 @@ package enum ChatCompletionToolChoice: Codable, Equatable, Sendable {
         }
     }
 
-    package func generationToolChoice() -> BaseChatInference.ToolChoice {
+    internal func generationToolChoice() -> BaseChatInference.ToolChoice {
         switch self {
         case .auto: .auto
         case .none: .none
@@ -238,37 +238,37 @@ package enum ChatCompletionToolChoice: Codable, Equatable, Sendable {
     private struct FunctionChoice: Codable, Equatable, Sendable { var name: String }
 }
 
-package struct ChatCompletionMessageToolCall: Codable, Equatable, Sendable {
-    package var id: String
-    package var type: String
-    package var function: ChatCompletionFunctionCall
+internal struct ChatCompletionMessageToolCall: Codable, Equatable, Sendable {
+    internal var id: String
+    internal var type: String
+    internal var function: ChatCompletionFunctionCall
 
-    package init(id: String, type: String = "function", function: ChatCompletionFunctionCall) {
+    internal init(id: String, type: String = "function", function: ChatCompletionFunctionCall) {
         self.id = id
         self.type = type
         self.function = function
     }
 }
 
-package struct ChatCompletionFunctionCall: Codable, Equatable, Sendable {
-    package var name: String?
-    package var arguments: String?
+internal struct ChatCompletionFunctionCall: Codable, Equatable, Sendable {
+    internal var name: String?
+    internal var arguments: String?
 
-    package init(name: String? = nil, arguments: String? = nil) {
+    internal init(name: String? = nil, arguments: String? = nil) {
         self.name = name
         self.arguments = arguments
     }
 }
 
-package struct ChatCompletionResponse: Codable, Equatable, Sendable {
-    package var id: String
-    package var object: String
-    package var created: Int
-    package var model: String
-    package var choices: [ChatCompletionChoice]
-    package var usage: ChatCompletionUsage?
+internal struct ChatCompletionResponse: Codable, Equatable, Sendable {
+    internal var id: String
+    internal var object: String
+    internal var created: Int
+    internal var model: String
+    internal var choices: [ChatCompletionChoice]
+    internal var usage: ChatCompletionUsage?
 
-    package init(
+    internal init(
         id: String = "chatcmpl-placeholder",
         object: String = "chat.completion",
         created: Int = 0,
@@ -284,7 +284,7 @@ package struct ChatCompletionResponse: Codable, Equatable, Sendable {
         self.usage = usage
     }
 
-    package init(id: String = "chatcmpl-placeholder", model: String, content: String = "") {
+    internal init(id: String = "chatcmpl-placeholder", model: String, content: String = "") {
         self.init(
             id: id,
             model: model,
@@ -292,23 +292,23 @@ package struct ChatCompletionResponse: Codable, Equatable, Sendable {
         )
     }
 
-    package var content: String {
+    internal var content: String {
         choices.compactMap(\.message.content).joined()
     }
 }
 
-package extension ChatCompletionResponse {
+internal extension ChatCompletionResponse {
     var contentText: String {
         choices.first?.message.content ?? ""
     }
 }
 
-package struct ChatCompletionChoice: Codable, Equatable, Sendable {
-    package var index: Int
-    package var message: ChatCompletionMessage
-    package var finishReason: ChatCompletionFinishReason?
+internal struct ChatCompletionChoice: Codable, Equatable, Sendable {
+    internal var index: Int
+    internal var message: ChatCompletionMessage
+    internal var finishReason: ChatCompletionFinishReason?
 
-    package init(index: Int, message: ChatCompletionMessage, finishReason: ChatCompletionFinishReason? = nil) {
+    internal init(index: Int, message: ChatCompletionMessage, finishReason: ChatCompletionFinishReason? = nil) {
         self.index = index
         self.message = message
         self.finishReason = finishReason
@@ -320,15 +320,15 @@ package struct ChatCompletionChoice: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionChunk: Codable, Equatable, Sendable {
-    package var id: String
-    package var object: String
-    package var created: Int
-    package var model: String
-    package var choices: [ChatCompletionChunkChoice]
-    package var usage: ChatCompletionUsage?
+internal struct ChatCompletionChunk: Codable, Equatable, Sendable {
+    internal var id: String
+    internal var object: String
+    internal var created: Int
+    internal var model: String
+    internal var choices: [ChatCompletionChunkChoice]
+    internal var usage: ChatCompletionUsage?
 
-    package init(
+    internal init(
         id: String,
         object: String = "chat.completion.chunk",
         created: Int,
@@ -345,12 +345,12 @@ package struct ChatCompletionChunk: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionChunkChoice: Codable, Equatable, Sendable {
-    package var index: Int
-    package var delta: ChatCompletionDelta
-    package var finishReason: ChatCompletionFinishReason?
+internal struct ChatCompletionChunkChoice: Codable, Equatable, Sendable {
+    internal var index: Int
+    internal var delta: ChatCompletionDelta
+    internal var finishReason: ChatCompletionFinishReason?
 
-    package init(index: Int, delta: ChatCompletionDelta, finishReason: ChatCompletionFinishReason? = nil) {
+    internal init(index: Int, delta: ChatCompletionDelta, finishReason: ChatCompletionFinishReason? = nil) {
         self.index = index
         self.delta = delta
         self.finishReason = finishReason
@@ -362,13 +362,13 @@ package struct ChatCompletionChunkChoice: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionDelta: Codable, Equatable, Sendable {
-    package var role: ChatCompletionRole?
-    package var content: String?
-    package var reasoningContent: String?
-    package var toolCalls: [ChatCompletionDeltaToolCall]?
+internal struct ChatCompletionDelta: Codable, Equatable, Sendable {
+    internal var role: ChatCompletionRole?
+    internal var content: String?
+    internal var reasoningContent: String?
+    internal var toolCalls: [ChatCompletionDeltaToolCall]?
 
-    package init(
+    internal init(
         role: ChatCompletionRole? = nil,
         content: String? = nil,
         reasoningContent: String? = nil,
@@ -387,13 +387,13 @@ package struct ChatCompletionDelta: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionDeltaToolCall: Codable, Equatable, Sendable {
-    package var index: Int
-    package var id: String?
-    package var type: String?
-    package var function: ChatCompletionFunctionCall?
+internal struct ChatCompletionDeltaToolCall: Codable, Equatable, Sendable {
+    internal var index: Int
+    internal var id: String?
+    internal var type: String?
+    internal var function: ChatCompletionFunctionCall?
 
-    package init(index: Int, id: String? = nil, type: String? = nil, function: ChatCompletionFunctionCall? = nil) {
+    internal init(index: Int, id: String? = nil, type: String? = nil, function: ChatCompletionFunctionCall? = nil) {
         self.index = index
         self.id = id
         self.type = type
@@ -401,7 +401,7 @@ package struct ChatCompletionDeltaToolCall: Codable, Equatable, Sendable {
     }
 }
 
-package enum ChatCompletionFinishReason: String, Codable, Equatable, Sendable {
+internal enum ChatCompletionFinishReason: String, Codable, Equatable, Sendable {
     case stop
     case length
     case toolCalls = "tool_calls"
@@ -409,12 +409,12 @@ package enum ChatCompletionFinishReason: String, Codable, Equatable, Sendable {
     case error
 }
 
-package struct ChatCompletionUsage: Codable, Equatable, Sendable {
-    package var promptTokens: Int
-    package var completionTokens: Int
-    package var totalTokens: Int
+internal struct ChatCompletionUsage: Codable, Equatable, Sendable {
+    internal var promptTokens: Int
+    internal var completionTokens: Int
+    internal var totalTokens: Int
 
-    package init(promptTokens: Int, completionTokens: Int, totalTokens: Int? = nil) {
+    internal init(promptTokens: Int, completionTokens: Int, totalTokens: Int? = nil) {
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
         self.totalTokens = totalTokens ?? promptTokens + completionTokens
@@ -427,18 +427,18 @@ package struct ChatCompletionUsage: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
-    package var error: ChatCompletionError
+internal struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
+    internal var error: ChatCompletionError
 
-    package init(error: ChatCompletionError) {
+    internal init(error: ChatCompletionError) {
         self.error = error
     }
 
-    package init(message: String, type: String = "server_error", param: String? = nil, code: String? = nil) {
+    internal init(message: String, type: String = "server_error", param: String? = nil, code: String? = nil) {
         self.error = ChatCompletionError(message: message, type: type, param: param, code: code)
     }
 
-    package static func from(_ error: Error) -> ChatCompletionErrorEnvelope {
+    internal static func from(_ error: Error) -> ChatCompletionErrorEnvelope {
         if let serverError = error as? ServerError {
             return ChatCompletionErrorEnvelope(message: serverError.description, type: "server_error")
         }
@@ -446,13 +446,13 @@ package struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
     }
 }
 
-package struct ChatCompletionError: Codable, Equatable, Sendable {
-    package var message: String
-    package var type: String
-    package var param: String?
-    package var code: String?
+internal struct ChatCompletionError: Codable, Equatable, Sendable {
+    internal var message: String
+    internal var type: String
+    internal var param: String?
+    internal var code: String?
 
-    package init(message: String, type: String, param: String? = nil, code: String? = nil) {
+    internal init(message: String, type: String, param: String? = nil, code: String? = nil) {
         self.message = message
         self.type = type
         self.param = param
@@ -460,7 +460,7 @@ package struct ChatCompletionError: Codable, Equatable, Sendable {
     }
 }
 
-package protocol ChatCompletionsAdapter: Sendable {
+internal protocol ChatCompletionsAdapter: Sendable {
     func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig
 
     func response(
@@ -475,11 +475,11 @@ package protocol ChatCompletionsAdapter: Sendable {
 }
 
 extension ChatCompletionsAdapter {
-    package func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+    internal func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
         try DefaultChatCompletionsAdapter().generationConfig(for: request)
     }
 
-    package func chunks(
+    internal func chunks(
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
@@ -505,10 +505,10 @@ extension ChatCompletionsAdapter {
     }
 }
 
-package struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
-    package init() {}
+internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
+    internal init() {}
 
-    package func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+    internal func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
         let tools = request.tools?.compactMap { $0.toolDefinition() } ?? []
         let toolChoice = request.toolChoice?.generationToolChoice() ?? .auto
         return GenerationConfig(
@@ -521,7 +521,7 @@ package struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         )
     }
 
-    package func response(
+    internal func response(
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) async throws -> ChatCompletionResponse {
@@ -531,7 +531,7 @@ package struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         return try await mapper.response(from: stream.events)
     }
 
-    package func chunks(
+    internal func chunks(
         for request: ChatCompletionRequest,
         using backend: any InferenceBackend
     ) throws -> AsyncThrowingStream<ChatCompletionChunk, Error> {
@@ -563,18 +563,18 @@ package struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
     private func currentTimestamp() -> Int { Int(Date().timeIntervalSince1970) }
 }
 
-package struct ChatCompletionEventMapper: Sendable {
-    package var id: String
-    package var created: Int
-    package var model: String
+internal struct ChatCompletionEventMapper: Sendable {
+    internal var id: String
+    internal var created: Int
+    internal var model: String
 
-    package init(id: String, created: Int, model: String) {
+    internal init(id: String, created: Int, model: String) {
         self.id = id
         self.created = created
         self.model = model
     }
 
-    package func response<S: AsyncSequence & Sendable>(from events: S) async throws -> ChatCompletionResponse where S.Element == GenerationEvent {
+    internal func response<S: AsyncSequence & Sendable>(from events: S) async throws -> ChatCompletionResponse where S.Element == GenerationEvent {
         var state = Accumulator()
         for try await event in events {
             state.apply(event)
@@ -594,7 +594,7 @@ package struct ChatCompletionEventMapper: Sendable {
         )
     }
 
-    package func chunks<S: AsyncSequence & Sendable>(
+    internal func chunks<S: AsyncSequence & Sendable>(
         from events: S,
         includeUsage: Bool
     ) -> AsyncThrowingStream<ChatCompletionChunk, Error> where S.Element == GenerationEvent {
