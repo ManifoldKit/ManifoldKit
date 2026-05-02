@@ -157,7 +157,7 @@ BaseChatBackends/MLXBackend.swift:if let data = try? JSONSerialization.data(with
 # best-effort: if the generation Task is cancelled mid-yield we
 # intentionally fall through to the next loop iteration where
 # `Task.isCancelled` is checked, rather than observing CancellationError.
-BaseChatBackends/MLXBackend.swift:try? await Task.sleep(for: .microseconds(50))
+BaseChatBackends/MLX/MLXGenerationDriver.swift:try? await Task.sleep(for: .microseconds(50))
 
 # MLXToolCallParser.parseToolCall: defensive JSON parse of the buffered
 # payload between <tool_call>…</tool_call>. Models routinely emit

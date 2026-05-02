@@ -20,14 +20,14 @@ import BaseChatInference
 /// Requires real Apple Silicon hardware — does not work in iOS Simulator.
 public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
-    private struct CachedLayerState {
+    struct CachedLayerState {
         let cacheTypeName: String
         let offset: Int
         let state: [MLXArray]
         let metaState: [String]
     }
 
-    private struct PromptCacheSnapshot {
+    struct PromptCacheSnapshot {
         let promptTokens: [Int]
         let layers: [CachedLayerState]
     }
@@ -307,6 +307,167 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     private static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
+    }
+
+    /// Result of `prepareInputAndCache(...)`.
+    struct PreparedGenerationInputs {
+        let generationInput: MLXPreparedInput
+        let cache: MLXPromptCache
+        /// Captured prompt token IDs when KV-cache reuse is eligible — used to
+        /// snapshot the cache after generation finishes. `nil` otherwise.
+        let promptTokenIds: [Int]?
+        /// Number of leading prompt tokens whose KV state was restored from
+        /// the previous turn. `0` when no reuse occurred.
+        let reuseLen: Int
+    }
+
+    /// Prepares the model input, allocates a KV cache, and applies the
+    /// longest-common-prefix reuse heuristic when an eligible snapshot exists.
+    ///
+    /// **CRITICAL:** the reuse path here is byte-identical to the inline
+    /// version it replaced — `longestCommonPrefixLength` clamped to
+    /// `promptTokenIds.count - 1`, gated by `isSupportedPromptCache` and
+    /// `promptTokenIds.count > 1`. Behaviour drift here corrupts the KV cache
+    /// across turns (see v0.5.3 incident).
+    @MainActor
+    static func prepareInputAndCache(
+        container: any MLXModelContainerProtocol,
+        chatMessages: [Chat.Message]?,
+        messages: [[String: String]],
+        generateConfig: GenerateParameters,
+        kvCacheReuseEligible: Bool,
+        snapshot: PromptCacheSnapshot?
+    ) async throws -> PreparedGenerationInputs {
+        let preparedInput =
+            if let chatMessages {
+                try await container.prepare(chat: SendableChatMessages(chatMessages))
+            } else {
+                try await container.prepare(messages: messages)
+            }
+        let cache = try await container.makeCache(parameters: generateConfig)
+        let promptTokenIds: [Int]? = if kvCacheReuseEligible {
+            preparedInput.promptTokenIds
+        } else {
+            nil
+        }
+
+        var generationInput = preparedInput
+        var reuseLen = 0
+        if kvCacheReuseEligible,
+           let snapshot,
+           let promptTokenIds,
+           isSupportedPromptCache(cache.value),
+           promptTokenIds.count > 1 {
+            let commonPrefixLen = longestCommonPrefixLength(
+                promptTokenIds,
+                snapshot.promptTokens
+            )
+            let candidate = min(commonPrefixLen, promptTokenIds.count - 1)
+            if candidate > 0,
+               restorePromptCache(snapshot, into: cache, reusedPromptTokenCount: candidate) {
+                generationInput = preparedInput.suffix(from: candidate)
+                reuseLen = candidate
+            }
+        }
+
+        return PreparedGenerationInputs(
+            generationInput: generationInput,
+            cache: cache,
+            promptTokenIds: promptTokenIds,
+            reuseLen: reuseLen
+        )
+    }
+
+    /// Resolves the active thinking-marker pair from the per-request override
+    /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
+    /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
+    /// neither source supplied markers — both cases keep `ThinkingParser` off.
+    static func resolveThinkingMarkers(
+        config: GenerationConfig,
+        autoDetected: ThinkingMarkers?
+    ) -> ThinkingMarkers? {
+        if config.maxThinkingTokens == 0 { return nil }
+        return config.thinkingMarkers ?? autoDetected
+    }
+
+    /// Assembles the prepared chat-message inputs for the MLX container's two
+    /// `prepare(...)` overloads. Returns both shapes because the caller picks
+    /// `prepare(chat:)` for vision history (non-nil first element) and
+    /// `prepare(messages:)` otherwise.
+    static func buildChatMessages(
+        prompt: String,
+        effectiveSystemPrompt: String?,
+        conversationHistory: [(role: String, content: String)],
+        toolAwareHistory: [ToolAwareHistoryEntry]?,
+        structuredHistory: [StructuredMessage]?,
+        dialect: MLXToolDialect
+    ) throws -> (chatMessages: [Chat.Message]?, messages: [[String: String]]) {
+        let chatMessages: [Chat.Message]? =
+            if let structuredHistory, !structuredHistory.isEmpty {
+                if let toolAwareHistory, !toolAwareHistory.isEmpty {
+                    try toolAwareChatMessages(
+                        structuredHistory: structuredHistory,
+                        toolAwareHistory: toolAwareHistory,
+                        systemPrompt: effectiveSystemPrompt,
+                        dialect: dialect
+                    )
+                } else {
+                    try plainChatMessages(
+                        history: structuredHistory,
+                        systemPrompt: effectiveSystemPrompt
+                    )
+                }
+            } else {
+                nil
+            }
+
+        var msgs: [[String: String]] = []
+        if let sp = effectiveSystemPrompt, !sp.isEmpty {
+            msgs.append(["role": "system", "content": sp])
+        }
+        if let toolHistory = toolAwareHistory, !toolHistory.isEmpty {
+            for entry in toolHistory {
+                msgs.append(encodeToolAwareEntryAsText(entry, dialect: dialect))
+            }
+        } else if !conversationHistory.isEmpty {
+            for msg in conversationHistory {
+                msgs.append(["role": msg.role, "content": msg.content])
+            }
+        } else {
+            msgs.append(["role": "user", "content": prompt])
+        }
+        return (chatMessages, msgs)
+    }
+
+    /// Returns the Qwen 2.5 `<tools>…</tools>` block to append to the system
+    /// prompt, or `nil` when the dialect doesn't use this mechanism or the
+    /// caller supplied no tools.
+    static func buildQwenToolBlock(
+        config: GenerationConfig,
+        dialect: MLXToolDialect
+    ) -> String? {
+        guard !config.tools.isEmpty, dialect == .qwen25 else { return nil }
+        let toolObjects: [[String: Any]] = config.tools.map { tool -> [String: Any] in
+            var function_: [String: Any] = [
+                "name": tool.name,
+                "description": tool.description,
+            ]
+            if let paramsData = try? JSONEncoder().encode(tool.parameters),
+               let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
+                function_["parameters"] = paramsObj
+            } else {
+                function_["parameters"] = ["type": "object", "properties": [String: Any]()]
+            }
+            return ["type": "function", "function": function_]
+        }
+        let toolsJSON: String
+        if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
+           let str = String(data: data, encoding: .utf8) {
+            toolsJSON = str
+        } else {
+            toolsJSON = "[]"
+        }
+        return "\n\n# Tools\n\nYou may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:\n\n<tools>\n\(toolsJSON)\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>"
     }
 
     private func invalidatePromptCacheLocked() {
@@ -744,81 +905,21 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             (_conversationHistory, _toolAwareHistory, _structuredHistory, _dialect, _autoDetectedThinkingMarkers)
         }
 
-        // For Qwen 2.5: serialize tool definitions into a <tools>…</tools> block
-        // appended to the system message content. This is the standard Qwen chat
-        // template mechanism for exposing tools to the model.
         let effectiveSystemPrompt: String? = {
-            guard !config.tools.isEmpty, dialect == .qwen25 else {
-                return systemPrompt
+            if let toolBlock = Self.buildQwenToolBlock(config: config, dialect: dialect) {
+                return (systemPrompt ?? "") + toolBlock
             }
-            let toolObjects: [[String: Any]] = config.tools.map { tool -> [String: Any] in
-                var function_: [String: Any] = [
-                    "name": tool.name,
-                    "description": tool.description,
-                ]
-                if let paramsData = try? JSONEncoder().encode(tool.parameters),
-                   let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
-                    function_["parameters"] = paramsObj
-                } else {
-                    function_["parameters"] = ["type": "object", "properties": [String: Any]()]
-                }
-                return ["type": "function", "function": function_]
-            }
-            let toolsJSON: String
-            if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
-               let str = String(data: data, encoding: .utf8) {
-                toolsJSON = str
-            } else {
-                toolsJSON = "[]"
-            }
-            let toolBlock = "\n\n# Tools\n\nYou may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:\n\n<tools>\n\(toolsJSON)\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>"
-            let base = systemPrompt ?? ""
-            return base + toolBlock
+            return systemPrompt
         }()
 
-        let chatMessages: [Chat.Message]? =
-            if let structuredHistory, !structuredHistory.isEmpty {
-                if let toolAwareHistory, !toolAwareHistory.isEmpty {
-                    try Self.toolAwareChatMessages(
-                        structuredHistory: structuredHistory,
-                        toolAwareHistory: toolAwareHistory,
-                        systemPrompt: effectiveSystemPrompt,
-                        dialect: dialect
-                    )
-                } else {
-                    try Self.plainChatMessages(
-                        history: structuredHistory,
-                        systemPrompt: effectiveSystemPrompt
-                    )
-                }
-            } else {
-                nil
-            }
-
-        // All non-vision messages are encoded as plain [String: String]
-        // dictionaries before the container applies the tokenizer's chat
-        // template. For Qwen 2.5 tool history, tool calls are text-encoded into
-        // content fields using the same <tool_call>…</tool_call> format the
-        // model emits.
-        let messages: [[String: String]] = {
-            var msgs: [[String: String]] = []
-            if let sp = effectiveSystemPrompt, !sp.isEmpty {
-                msgs.append(["role": "system", "content": sp])
-            }
-            if let toolHistory = toolAwareHistory, !toolHistory.isEmpty {
-                // Encode tool-aware history entries into the Qwen text format.
-                for entry in toolHistory {
-                    msgs.append(Self.encodeToolAwareEntryAsText(entry, dialect: dialect))
-                }
-            } else if !conversationHistory.isEmpty {
-                for msg in conversationHistory {
-                    msgs.append(["role": msg.role, "content": msg.content])
-                }
-            } else {
-                msgs.append(["role": "user", "content": prompt])
-            }
-            return msgs
-        }()
+        let (chatMessages, messages) = try Self.buildChatMessages(
+            prompt: prompt,
+            effectiveSystemPrompt: effectiveSystemPrompt,
+            conversationHistory: conversationHistory,
+            toolAwareHistory: toolAwareHistory,
+            structuredHistory: structuredHistory,
+            dialect: dialect
+        )
 
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: GenerationEvent.self)
         let generationStream = GenerationStream(stream)
@@ -829,57 +930,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             }
 
             do {
-                let outputLimit = config.maxOutputTokens
-                var outputTokenCount = 0
-                var isFirstToken = true
+                let resolvedMarkers = Self.resolveThinkingMarkers(
+                    config: config,
+                    autoDetected: autoDetectedMarkers
+                )
 
-                // Markers are resolved from two sources, manual-override first:
-                //   1. `config.thinkingMarkers` — caller's per-request override.
-                //   2. `autoDetectedMarkers` — sniffed from `tokenizer_config.json`'s
-                //      Jinja chat template at load time.
-                // If both are nil, the model does not advertise reasoning blocks and
-                // the parser stays off — raw `<think>` substrings (if the model emits
-                // them anyway) surface as visible `.token` text instead of being split
-                // into `.thinkingToken` events.
-                //
-                // `config.maxThinkingTokens == 0` disables thinking entirely (issue #597),
-                // overriding both sources above.
-                let thinkingDisabled = config.maxThinkingTokens == 0
-                let resolvedMarkers = config.thinkingMarkers ?? autoDetectedMarkers
-                let useThinkingParser = !thinkingDisabled && resolvedMarkers != nil
-                // ThinkingParser must always be initialized (its initializer can't take nil).
-                // When useThinkingParser is false the parser is never invoked, so the
-                // placeholder marker pair is never observed.
-                var thinkingParser = ThinkingParser(markers: resolvedMarkers ?? .qwen3)
-
-                // Instantiate the tool-call parser when tools are configured and the
-                // loaded model speaks a known tool-call dialect. The parser is a no-op
-                // pass-through when tools are empty or the dialect is unknown.
-                let useToolParser = !config.tools.isEmpty && dialect != .unknown
-                var toolParser = MLXToolCallParser()
-
-                // Enforces `config.maxThinkingTokens` with the same semantics as
-                // LlamaGenerationDriver: a thinking model that runs away on a 16 GB
-                // Mac can OOM mid-generation, so when the configured budget is hit
-                // we stop emitting further thinking tokens and break out of the
-                // MLX stream. Visible `.token` events are never counted toward
-                // this budget. See issue #550.
-                var thinkingTokenCount = 0
-                var thinkingLimitReached = false
-
-                let preparedInput =
-                    if let chatMessages {
-                        try await modelContainer.prepare(chat: SendableChatMessages(chatMessages))
-                    } else {
-                        try await modelContainer.prepare(messages: messages)
-                    }
-                let cache = try await modelContainer.makeCache(parameters: generateConfig)
-                var generationInput = preparedInput
-                let promptTokenIds: [Int]? = if kvCacheReuseEligible {
-                    preparedInput.promptTokenIds
-                } else {
-                    nil
-                }
                 if kvCacheReuseEligible, let pendingSnapshotTask {
                     await pendingSnapshotTask.value
                 }
@@ -889,115 +944,35 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     } else {
                         nil
                     }
-
-                if kvCacheReuseEligible,
-                   let snapshot = resolvedSnapshot,
-                   let promptTokenIds,
-                   Self.isSupportedPromptCache(cache.value),
-                   promptTokenIds.count > 1 {
-                    let commonPrefixLen = Self.longestCommonPrefixLength(
-                        promptTokenIds,
-                        snapshot.promptTokens
-                    )
-                    let reuseLen = min(commonPrefixLen, promptTokenIds.count - 1)
-                    if reuseLen > 0,
-                       Self.restorePromptCache(
-                        snapshot,
-                        into: cache,
-                        reusedPromptTokenCount: reuseLen
-                       ) {
-                        generationInput = preparedInput.suffix(from: reuseLen)
-                        continuation.yield(.kvCacheReuse(promptTokensReused: reuseLen))
-                    }
-                }
-
-                let mlxStream = try await modelContainer.generate(
-                    input: generationInput,
-                    cache: cache,
-                    parameters: generateConfig
+                let prepared = try await Self.prepareInputAndCache(
+                    container: modelContainer,
+                    chatMessages: chatMessages,
+                    messages: messages,
+                    generateConfig: generateConfig,
+                    kvCacheReuseEligible: kvCacheReuseEligible,
+                    snapshot: resolvedSnapshot
                 )
-                // Inserts a brief cooperative yield every N tokens so sustained MLX
-                // generation doesn't starve WindowServer's GPU command queue and
-                // cause UI hitches in other apps. Mirrors the pattern in SwiftLM's
-                // `Server.swift` (50µs sleep every 8 tokens). Configurable via
-                // `GenerationConfig.yieldEveryNTokens`; `0` disables the yield.
-                let yieldEvery = config.yieldEveryNTokens
-                var completionTokenCount = 0
-                outer: for await generation in mlxStream {
-                    if Task.isCancelled { break }
-                    if let text = generation.chunk {
-                        // Stage 1: tool-call parsing (suppresses tokens inside <tool_call>…</tool_call>).
-                        // Stage 2: thinking parsing on remaining .token events.
-                        let stageOneEvents: [GenerationEvent] = useToolParser
-                            ? toolParser.process(text)
-                            : [.token(text)]
-
-                        for event in stageOneEvents {
-                            // Apply thinking parser only to visible token events.
-                            let finalEvents: [GenerationEvent]
-                            if case .token(let tokenText) = event, useThinkingParser {
-                                finalEvents = thinkingParser.process(tokenText)
-                            } else {
-                                finalEvents = [event]
-                            }
-
-                            for finalEvent in finalEvents {
-                                if isFirstToken {
-                                    switch finalEvent {
-                                    case .token, .thinkingToken, .toolCall:
-                                        await MainActor.run { generationStream.setPhase(.streaming) }
-                                        isFirstToken = false
-                                    default: break
-                                    }
-                                }
-                                // Only count visible output tokens toward maxOutputTokens limit.
-                                // Tool call events do not count as output tokens.
-                                if case .token = finalEvent { outputTokenCount += 1 }
-                                continuation.yield(finalEvent)
-                                if case .thinkingToken = finalEvent {
-                                    thinkingTokenCount += 1
-                                    if let limit = config.maxThinkingTokens, thinkingTokenCount >= limit {
-                                        thinkingLimitReached = true
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        if thinkingLimitReached { break outer }
-                        if let limit = outputLimit, outputTokenCount >= limit { break }
-
-                        // Per-chunk yield: count every MLX-emitted chunk (regardless
-                        // of whether it became a visible token, thinking token, or
-                        // got swallowed by the tool-call parser) so the cadence
-                        // tracks real generation work.
-                        completionTokenCount += 1
-                        if yieldEvery > 0 && completionTokenCount % yieldEvery == 0 {
-                            if let hook = MLXBackend._yieldHookForTesting {
-                                await hook()
-                            } else {
-                                try? await Task.sleep(for: .microseconds(50))
-                            }
-                        }
-                    }
+                if prepared.reuseLen > 0 {
+                    continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
                 }
-                // Flush any bytes held back at tag-boundary buffers.
-                if useToolParser {
-                    for event in toolParser.finalize() {
-                        if case .token(let tokenText) = event, useThinkingParser {
-                            for finalEvent in thinkingParser.process(tokenText) {
-                                continuation.yield(finalEvent)
-                            }
-                        } else {
-                            continuation.yield(event)
-                        }
-                    }
-                }
-                for event in thinkingParser.finalize() {
-                    continuation.yield(event)
-                }
+
+                let driver = MLXGenerationDriver()
+                let result = try await driver.run(
+                    container: modelContainer,
+                    generationInput: prepared.generationInput,
+                    cache: prepared.cache,
+                    generateConfig: generateConfig,
+                    config: config,
+                    dialect: dialect,
+                    markers: resolvedMarkers,
+                    generationStream: generationStream,
+                    continuation: continuation,
+                    yieldHook: MLXBackend._yieldHookForTesting
+                )
+
                 let snapshotInputs: (MLXPromptCache, [Int])? =
-                    if kvCacheReuseEligible, !Task.isCancelled, let promptTokenIds {
-                        (cache, promptTokenIds)
+                    if kvCacheReuseEligible, result.completedNormally, let ids = prepared.promptTokenIds {
+                        (prepared.cache, ids)
                     } else {
                         nil
                     }
@@ -1005,30 +980,9 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 if let self {
                     self.withStateLock { self._isGenerating = false }
                 }
-                await MainActor.run { generationStream.setPhase(.done) }
+                generationStream.setPhase(.done)
                 if let self, let (cache, promptTokenIds) = snapshotInputs {
-                    self.withStateLock {
-                        self._promptCacheWriteToken &+= 1
-                        let snapshotWriteToken = self._promptCacheWriteToken
-                        // The snapshot must capture on `@MainActor`: every MLX
-                        // call inside `capturePromptCacheSnapshot` (copy/eval/
-                        // slicing/trim) shares the single-threaded GPU scheduler
-                        // with `ModelContainer.generate`. Running it on a free
-                        // executor would race the next generation's compute.
-                        let snapshotTask = Task<Void, Never> { @MainActor [weak self] in
-                            let snapshot = Self.capturePromptCacheSnapshot(
-                                from: cache,
-                                promptTokens: promptTokenIds
-                            )
-                            guard let self else { return }
-                            self.withStateLock {
-                                guard self._promptCacheWriteToken == snapshotWriteToken else { return }
-                                self._promptCacheSnapshot = snapshot
-                                self._pendingPromptCacheSnapshotTask = nil
-                            }
-                        }
-                        self._pendingPromptCacheSnapshotTask = snapshotTask
-                    }
+                    self.scheduleSnapshotCaptureLocked(cache: cache, promptTokenIds: promptTokenIds)
                 }
                 continuation.finish()
             } catch {
@@ -1037,11 +991,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 }
                 if !Task.isCancelled {
                     Self.logger.error("MLX generation error: \(error)")
-                    await MainActor.run { generationStream.setPhase(.failed(error.localizedDescription)) }
+                    generationStream.setPhase(.failed(error.localizedDescription))
                     continuation.finish(throwing: error)
                     return
                 }
-                await MainActor.run { generationStream.setPhase(.done) }
+                generationStream.setPhase(.done)
                 continuation.finish()
             }
         }
@@ -1055,6 +1009,38 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
 
         return generationStream
+    }
+
+    /// Schedules an off-main capture of the prompt KV cache for next-turn reuse.
+    ///
+    /// The capture itself runs `@MainActor` because every MLX call inside
+    /// `capturePromptCacheSnapshot` (`copy()`, `eval`, `state` slicing, `trim`)
+    /// shares the single-threaded GPU scheduler with `ModelContainer.generate`.
+    /// A monotonic write token guards against stale snapshots overwriting a
+    /// newer turn's cache state if the next `generate()` call has already
+    /// invalidated this lineage.
+    @MainActor
+    private func scheduleSnapshotCaptureLocked(
+        cache: MLXPromptCache,
+        promptTokenIds: [Int]
+    ) {
+        withStateLock {
+            _promptCacheWriteToken &+= 1
+            let snapshotWriteToken = _promptCacheWriteToken
+            let snapshotTask = Task<Void, Never> { @MainActor [weak self] in
+                let snapshot = Self.capturePromptCacheSnapshot(
+                    from: cache,
+                    promptTokens: promptTokenIds
+                )
+                guard let self else { return }
+                self.withStateLock {
+                    guard self._promptCacheWriteToken == snapshotWriteToken else { return }
+                    self._promptCacheSnapshot = snapshot
+                    self._pendingPromptCacheSnapshotTask = nil
+                }
+            }
+            _pendingPromptCacheSnapshotTask = snapshotTask
+        }
     }
 
     // MARK: - Testing
