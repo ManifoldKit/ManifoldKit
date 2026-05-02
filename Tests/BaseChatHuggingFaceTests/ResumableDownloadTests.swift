@@ -336,6 +336,11 @@ final class ResumableDownloadTests: XCTestCase {
 
     /// Resume data must NOT appear in UserDefaults — verifies the new file-based path
     /// does not accidentally write to the old keys.
+    ///
+    /// Asserts against the per-suite `testDefaults` (the instance injected into the SUT)
+    /// rather than `UserDefaults.standard` — bare `.standard` reads race across parallel
+    /// XCTest worker processes (issue #910). The SUT writes through the injected defaults,
+    /// so this is the honest contract surface for the assertion.
     func test_persistResumeData_doesNotWriteToUserDefaults() {
         let model = makeModel()
         let data = Data("no-defaults".utf8)
@@ -344,7 +349,7 @@ final class ResumableDownloadTests: XCTestCase {
 
         let legacyKey = "resumeData.\(model.id)"
         XCTAssertNil(
-            UserDefaults.standard.data(forKey: legacyKey),
+            testDefaults.data(forKey: legacyKey),
             "Resume data must not be written to UserDefaults (legacy path)"
         )
 
