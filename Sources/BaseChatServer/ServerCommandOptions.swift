@@ -1,45 +1,44 @@
 #if Server
 import ArgumentParser
-import BaseChatServerCore
 import Foundation
 
-package struct ServerCommandOptions: ParsableArguments, Sendable {
+internal struct ServerCommandOptions: ParsableArguments, Sendable {
     @Option(help: "Host interface to bind.")
-    package var host = "127.0.0.1"
+    internal var host = "127.0.0.1"
 
     @Option(help: "Port to bind.")
-    package var port = 8080
+    internal var port = 8080
 
     @Option(help: "API key required by the server for incoming requests.")
-    package var apiKey: String?
+    internal var apiKey: String?
 
     @Option(help: "Maximum number of concurrent generation requests.")
-    package var parallel = 1
+    internal var parallel = 1
 
     @Option(help: "Backend to load: mlx, llama, foundation, ollama, or cloud.")
-    package var backend: ServerBackendKind = .foundation
+    internal var backend: ServerBackendKind = .foundation
 
     @Option(help: "Model name or identifier for the selected backend.")
-    package var model: String?
+    internal var model: String?
 
     @Option(help: "Path to a local model file or directory.")
-    package var modelPath: String?
+    internal var modelPath: String?
 
     @Option(help: "Ollama server base URL.")
-    package var ollamaBaseURL = "http://localhost:11434"
+    internal var ollamaBaseURL = "http://localhost:11434"
 
     @Flag(help: "Allow any CORS origin. Intended only for trusted local development.")
-    package var unsafeCORS = false
+    internal var unsafeCORS = false
 
     @Option(help: "Allowed CORS origin. Repeat server startup with --unsafe-cors only for development.")
-    package var corsOrigin: String?
+    internal var corsOrigin: String?
 
     @Flag(help: "Enable server metrics endpoints when HTTP routing is available.")
-    package var metrics = false
+    internal var metrics = false
 
-    package init() {}
+    internal init() {}
 
-    package static func == (lhs: ServerCommandOptions, rhs: ServerCommandOptions) -> Bool {
+    internal static func == (lhs: ServerCommandOptions, rhs: ServerCommandOptions) -> Bool {
         lhs.host == rhs.host
             && lhs.port == rhs.port
             && lhs.apiKey == rhs.apiKey
@@ -53,7 +52,7 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
             && lhs.metrics == rhs.metrics
     }
 
-    package func validate() throws {
+    internal func validate() throws {
         guard (1...65_535).contains(port) else {
             throw ValidationError("--port must be between 1 and 65535")
         }
@@ -74,7 +73,7 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
         }
     }
 
-    package func serverConfiguration() -> ServerConfiguration {
+    internal func serverConfiguration() -> ServerConfiguration {
         ServerConfiguration(
             host: host,
             port: port,
@@ -86,7 +85,7 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
         )
     }
 
-    package func backendSelection() -> ServerBackendSelection {
+    internal func backendSelection() -> ServerBackendSelection {
         ServerBackendSelection(
             backend: backend,
             model: model,

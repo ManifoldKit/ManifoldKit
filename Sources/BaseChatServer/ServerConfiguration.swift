@@ -1,16 +1,16 @@
 #if Server
 import Foundation
 
-package struct ServerConfiguration: Equatable, Sendable {
-    package var host: String
-    package var port: Int
-    package var apiKey: String?
-    package var parallelSlots: Int
-    package var unsafeCORS: Bool
-    package var corsOrigin: String?
-    package var metricsEnabled: Bool
+internal struct ServerConfiguration: Equatable, Sendable {
+    internal var host: String
+    internal var port: Int
+    internal var apiKey: String?
+    internal var parallelSlots: Int
+    internal var unsafeCORS: Bool
+    internal var corsOrigin: String?
+    internal var metricsEnabled: Bool
 
-    package init(
+    internal init(
         host: String = "127.0.0.1",
         port: Int = 8080,
         apiKey: String? = nil,

@@ -2,10 +2,9 @@
 import ArgumentParser
 import BaseChatBackends
 import BaseChatInference
-import BaseChatServerCore
 import Foundation
 
-package enum ServerBackendKind: String, CaseIterable, ExpressibleByArgument, Equatable, Sendable {
+internal enum ServerBackendKind: String, CaseIterable, ExpressibleByArgument, Equatable, Sendable {
     case mlx
     case llama
     case foundation
@@ -13,13 +12,13 @@ package enum ServerBackendKind: String, CaseIterable, ExpressibleByArgument, Equ
     case cloud
 }
 
-package struct ServerBackendSelection: Equatable, Sendable {
-    package var backend: ServerBackendKind
-    package var model: String?
-    package var modelPath: String?
-    package var ollamaBaseURL: String
+internal struct ServerBackendSelection: Equatable, Sendable {
+    internal var backend: ServerBackendKind
+    internal var model: String?
+    internal var modelPath: String?
+    internal var ollamaBaseURL: String
 
-    package init(
+    internal init(
         backend: ServerBackendKind,
         model: String? = nil,
         modelPath: String? = nil,
@@ -31,7 +30,7 @@ package struct ServerBackendSelection: Equatable, Sendable {
         self.ollamaBaseURL = ollamaBaseURL
     }
 
-    package func validate(compiledBackends: CompiledBackends = DefaultBackends.compiledBackends) throws {
+    internal func validate(compiledBackends: CompiledBackends = DefaultBackends.compiledBackends) throws {
         switch backend {
         case .mlx:
             try requireLocal(.mlx, compiledBackends: compiledBackends)
@@ -70,12 +69,12 @@ package struct ServerBackendSelection: Equatable, Sendable {
     }
 }
 
-package actor TraitAwareServerBackendProvider: ServerBackendProvider {
-    package let selection: ServerBackendSelection
-    package let compiledBackends: CompiledBackends
+internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
+    internal let selection: ServerBackendSelection
+    internal let compiledBackends: CompiledBackends
     private var cachedBackend: (any InferenceBackend)?
 
-    package init(
+    internal init(
         selection: ServerBackendSelection,
         compiledBackends: CompiledBackends = DefaultBackends.compiledBackends
     ) {
@@ -83,7 +82,7 @@ package actor TraitAwareServerBackendProvider: ServerBackendProvider {
         self.compiledBackends = compiledBackends
     }
 
-    package func listModels() async throws -> [String] {
+    internal func listModels() async throws -> [String] {
         switch selection.backend {
         case .foundation:
             return [ModelInfo.builtInFoundation.name]
@@ -92,7 +91,7 @@ package actor TraitAwareServerBackendProvider: ServerBackendProvider {
         }
     }
 
-    package func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
+    internal func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
         if let cached = cachedBackend {
             return cached
         }

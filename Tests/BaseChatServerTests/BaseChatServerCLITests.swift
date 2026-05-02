@@ -1,6 +1,5 @@
 #if Server
-@testable import BaseChatServerCore
-@testable import BaseChatServerBackends
+@testable import BaseChatServer
 import ArgumentParser
 import BaseChatInference
 import XCTest

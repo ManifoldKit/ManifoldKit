@@ -2,27 +2,27 @@
 import Foundation
 import Hummingbird
 
-package struct ModelsListResponse: Codable, Equatable, Sendable {
-    package struct Model: Codable, Equatable, Sendable {
-        package var id: String
-        package var object: String
+internal struct ModelsListResponse: Codable, Equatable, Sendable {
+    internal struct Model: Codable, Equatable, Sendable {
+        internal var id: String
+        internal var object: String
 
-        package init(id: String, object: String = "model") {
+        internal init(id: String, object: String = "model") {
             self.id = id
             self.object = object
         }
     }
 
-    package var object: String
-    package var data: [Model]
+    internal var object: String
+    internal var data: [Model]
 
-    package init(models: [String]) {
+    internal init(models: [String]) {
         self.object = "list"
         self.data = models.map { Model(id: $0) }
     }
 }
 
-package func jsonResponse(
+internal func jsonResponse(
     _ value: some Encodable,
     status: HTTPResponse.Status = .ok
 ) -> Response {
@@ -39,7 +39,7 @@ package func jsonResponse(
     }
 }
 
-package func errorResponse(
+internal func errorResponse(
     _ message: String,
     status: HTTPResponse.Status,
     type: String = "server_error",

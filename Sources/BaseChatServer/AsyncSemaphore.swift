@@ -1,18 +1,18 @@
 #if Server
 import Foundation
 
-package actor AsyncSemaphore {
+internal actor AsyncSemaphore {
     private let limit: Int
     private var available: Int
     private var waiters: [CheckedContinuation<Void, Error>] = []
 
-    package init(value: Int) {
+    internal init(value: Int) {
         let sanitized = max(1, value)
         self.limit = sanitized
         self.available = sanitized
     }
 
-    package func wait() async throws {
+    internal func wait() async throws {
         if available > 0 {
             available -= 1
             return
@@ -27,7 +27,7 @@ package actor AsyncSemaphore {
         }
     }
 
-    package func signal() {
+    internal func signal() {
         if waiters.isEmpty {
             available = min(limit, available + 1)
         } else {
