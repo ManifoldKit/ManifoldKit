@@ -1,33 +1,78 @@
 # Changelog
 
-## Unreleased
+## [0.15.0](https://github.com/roryford/BaseChatKit/compare/v0.14.5...v0.15.0) (2026-05-02)
 
 ### Highlights
 
-#### Trait-gate BaseChatServer to recover default-build wall-time
+#### ConversationRuntime is the canonical turn-loop orchestrator
 
-The `BaseChatServer` (OpenAI-compatible HTTP) target and its `Hummingbird`
-transitive dependency graph (swift-nio + NIOSSL + BoringSSL + AsyncHTTPClient)
-are now gated behind a new `Server` SwiftPM trait, off by default. The previous
-release inadvertently doubled per-PR CI wall time by adding ~18 transitive
-package pins to the default build graph; this restores the prior baseline.
+`ChatViewModel` previously fanned turn execution out through `GenerationCoordinator` (UI side, 613 LOC) and `ToolCallLoopOrchestrator` (inference side, 849 LOC), with a parallel "legacy" path kept alive for hosts that hadn't adopted `ConversationRuntime`. The cutover collapses both into the runtime: the UI turn loop, the tool-call loop, and the compaction trigger now live in one place. Net change is **−2255 LOC** with no behavior shift for hosts that go through `BaseChatBootstrap`.
 
-```bash
-swift test --filter BaseChatServerTests --disable-default-traits --traits Server
-swift run --traits Server BaseChatServer
+```swift
+// Default wiring — no code change needed
+let bootstrap = BaseChatBootstrap.default()
+let chatVM = bootstrap.chatViewModel
+
+// Ad-hoc construction (e.g. tests, custom hosts) now takes a runtime
+let chatVM = ChatViewModel(
+    inferenceService: inference,
+    conversationRuntime: ConversationRuntime(...)
+)
 ```
 
-**BREAKING CHANGE:** consumers that depend on `BaseChatServerCore` as a library
-or run the `BaseChatServer` executable must now pass `--traits Server` (or list
-`Server` in their consumer manifest's `.package(... traits: [...])`). Without
-the trait, the targets still build but the executable prints a no-op message
-and exits cleanly — no Hummingbird symbols are linked.
+**BREAKING:** hosts that build `ChatViewModel` directly must pass `conversationRuntime:` at init when they want a specific runtime. Without one, the view model spins up an in-memory runtime that's swapped to the SwiftData-backed one when `configure(persistence:)` runs — preserves single-process behavior, but multi-host setups should wire the runtime explicitly. Closes [#947]. See [#963].
 
-See [#946].
+#### Vision input across Claude and OpenAI
+
+Both `ClaudeBackend` and `OpenAIBackend` now accept image content parts on user turns, matching the schemas each provider expects (`image` blocks with base64 source for Claude; `image_url` content parts for OpenAI). MLX vision shipped earlier ([#904](https://github.com/roryford/BaseChatKit/issues/904)); this release brings the cloud backends to parity. `LlamaBackend` multimodal remains tracked separately.
+
+```swift
+let imageData = try Data(contentsOf: imageURL)
+let message = Message(
+    role: .user,
+    parts: [
+        .text("What's in this image?"),
+        .image(imageData, mimeType: "image/jpeg")
+    ]
+)
+try await backend.generate(messages: [message], ...)
+```
+
+See [#944], [#960].
+
+#### Trait-gating recovers default-build wall time + CI structural cost reduction
+
+The previous release inadvertently doubled per-PR CI wall time by adding `Hummingbird` (and its swift-nio + NIOSSL + BoringSSL + AsyncHTTPClient transitive graph, ~18 pins) to the default build. `BaseChatServer` now sits behind a new `Server` SwiftPM trait, and the `@ToolSchema` macro plugin (~647 source files of swift-syntax) sits behind a new `Macros` trait — both off by default. A new `Package.resolved` budget check fails any PR that adds >2 new pins unless explicitly labeled `deps-ok`, preventing this exact regression in the future. Three more CI structural fixes (build-modes.full → nightly, security-audits batched, 7 lint jobs → 1) cut per-PR macOS wall time substantially.
+
+```bash
+# Server (HTTP API) — now opt-in
+swift test --filter BaseChatServerTests --disable-default-traits --traits Server
+swift run --traits Server BaseChatServer
+
+# @ToolSchema macro — now opt-in
+swift test --filter ToolSchemaMacro --disable-default-traits --traits Macros
+```
+
+**BREAKING:** consumers depending on `BaseChatServerCore` or running the `BaseChatServer` executable must add `--traits Server` (or list `Server` in their manifest); the same applies to `Macros` for `@ToolSchema` users. Without the trait, the targets still build but the executable prints a no-op message and exits cleanly. See [#946], [#957], [#954], [#955], [#956], [#961].
 
 ### Features
 
-- **ci:** add `Package.resolved` budget check that fails PRs adding >2 new pins unless labeled `deps-ok` (prevents future silent dep-graph regressions)
+- **claude:** image content blocks for vision models ([#944](https://github.com/roryford/BaseChatKit/issues/944))
+- **openai:** image_url content parts for vision models ([#960](https://github.com/roryford/BaseChatKit/issues/960))
+- **runtime:** ConversationRuntime is the canonical turn-loop orchestrator ([#947](https://github.com/roryford/BaseChatKit/issues/947), [#963](https://github.com/roryford/BaseChatKit/issues/963))
+- **server:** trait-gate BaseChatServer + add Package.resolved budget guardrail ([#946](https://github.com/roryford/BaseChatKit/issues/946))
+
+### Performance Improvements
+
+- **build:** trait-gate `@ToolSchema` macro behind `Macros` trait ([#957](https://github.com/roryford/BaseChatKit/issues/957))
+- **ci:** batch security-audits' default-trait invocations ([#954](https://github.com/roryford/BaseChatKit/issues/954))
+- **ci:** consolidate 7 ubuntu lint jobs into one runner ([#956](https://github.com/roryford/BaseChatKit/issues/956))
+- **ci:** move `build-modes.full` to nightly + workflow_dispatch ([#955](https://github.com/roryford/BaseChatKit/issues/955))
+- **ci:** spike `.build/debug` caching with mtime fix — Lever C of [#953](https://github.com/roryford/BaseChatKit/issues/953) ([#961](https://github.com/roryford/BaseChatKit/issues/961))
+
+### Tests
+
+- **userdefaults:** isolate `UserDefaults.standard` reads in download tests + add tripwire ([#910](https://github.com/roryford/BaseChatKit/issues/910), [#962](https://github.com/roryford/BaseChatKit/issues/962))
 
 ## [0.14.5](https://github.com/roryford/BaseChatKit/compare/v0.14.4...v0.14.5) (2026-05-02)
 
