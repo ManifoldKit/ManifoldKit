@@ -13,17 +13,21 @@ name: Build modes + binary symbol audit
 #    Doc-only PRs, Package.swift-only edits (e.g. adding a non-backend target),
 #    and unrelated source changes don't trigger it.
 #  - **PR vs schedule matrix split.** On `pull_request`, the matrix runs only
-#    `[saas, full]`; on `schedule` (and `workflow_dispatch`) it runs all four
-#    `[offline, ollama, saas, full]`. Rationale: `full` enables the strict
-#    trait superset (`MLX,Llama,Ollama,CloudSaaS`) so any compile-time
-#    regression that the offline or ollama legs would catch also breaks the
-#    full leg — running them on every qualifying PR is duplicate macos-15
-#    spend. `saas` is retained on PRs because it carries a CloudSaaS-only
-#    test step (`BaseChatBackendsTests --traits CloudSaaS`) that is real
-#    signal not covered by ci.yml. The full 4-mode build+audit matrix
-#    continues nightly so the procurement-evidence requirement (90-day
-#    per-mode artifacts) is unchanged. Saves ~28 macos-min per qualifying PR
-#    (2 legs × ~14 min wall instead of 4).
+#    `[saas]`; on `schedule` (and `workflow_dispatch`) it runs all four
+#    `[offline, ollama, saas, full]`. Rationale: `saas` carries a
+#    CloudSaaS-only test step (`BaseChatBackendsTests --traits CloudSaaS`)
+#    that is real signal not covered by ci.yml, so it stays per-PR. `full`
+#    is a release-config + all-traits build that produces a binary symbol
+#    audit; per-PR it cost ~9 min wall-clock (~90 min billed at the 10x
+#    macos-15 multiplier) on every dep-touching PR while catching only
+#    build-graph regressions (not live bugs), so per #953 Lever A it now
+#    runs nightly + workflow_dispatch instead. `offline` and `ollama` were
+#    already nightly-only because `full` is a strict trait superset that
+#    catches every compile-time regression they would. The full 4-mode
+#    build+audit matrix continues nightly so the procurement-evidence
+#    requirement (90-day per-mode artifacts) is unchanged. Trigger the
+#    workflow manually via `gh workflow run build-modes.yml` before merging
+#    a risky dep bump if the symbol-audit signal is needed pre-merge.
 #  - All four modes run on `macos-15` (10x billing): the package depends on
 #    `os` (Apple-only) and SwiftUI throughout `BaseChatUI`/
 #    `BaseChatUIModelManagement`, so a Linux compile leg is structurally
@@ -37,9 +41,13 @@ name: Build modes + binary symbol audit
 
 on:
   schedule:
-    # 05:30 UTC daily — after nightly-slow-tests (04:30). (fuzz-nightly
+    # 05:30 UTC daily — after nightly-slow-tests (04:30) so the two macos-15
+    # nightlies don't contend for the SwiftPM artifact cache. (fuzz-nightly
     # previously held the 05:00 UTC slot but is now dispatch-only pending a
-    # self-hosted Apple-Silicon runner.)
+    # self-hosted Apple-Silicon runner.) The `full` mode is nightly-only:
+    # release-config + all-traits build is a 9-min/PR audit; runs nightly
+    # because per-PR cost dominated wall-clock without catching live bugs
+    # (#953 Lever A).
     - cron: "30 5 * * *"
   workflow_dispatch:
   pull_request:
@@ -80,12 +88,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # On PRs: only saas + full. `full` is a strict trait superset that
-        # catches every compile-time regression the offline/ollama legs would;
-        # `saas` carries a CloudSaaS-only test slice not covered by ci.yml.
-        # On schedule/workflow_dispatch: all four modes for the procurement-
-        # evidence artifact set. See the cost-discipline block at the top.
-        mode: ${{ github.event_name == 'pull_request' && fromJSON('["saas", "full"]') || fromJSON('["offline", "ollama", "saas", "full"]') }}
+        # On PRs: only saas. `saas` carries a CloudSaaS-only test slice not
+        # covered by ci.yml, which is the per-PR-relevant signal. `full` and
+        # the offline/ollama legs are audit-only builds; running them per-PR
+        # cost ~9 min wall-clock and ~90 min billed time on every dep-touching
+        # PR without catching live bugs (#953 Lever A). On schedule/
+        # workflow_dispatch: all four modes for the procurement-evidence
+        # artifact set. Trigger the workflow manually before risky merges if
+        # the `full`-leg symbol audit is needed pre-merge.
+        mode: ${{ github.event_name == 'pull_request' && fromJSON('["saas"]') || fromJSON('["offline", "ollama", "saas", "full"]') }}
 
     steps:
       - name: Checkout
