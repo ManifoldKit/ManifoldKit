@@ -6,7 +6,9 @@ SwiftUI views and view models for building on-device and cloud-connected chat in
 
 BaseChatUI provides the view layer for BaseChatKit. It depends on ``BaseChatRuntime`` (the persistence-free orchestration target) and, as an interim measure, on ``BaseChatPersistenceSwiftData`` for the `APIEndpoint` `@Model` type — that coupling is scheduled to be removed once the endpoint surface is decoupled from SwiftData. It has no knowledge of specific inference backends. Drop ``ChatView`` into your app and supply a ``ChatViewModel`` to get a fully-featured chat interface: streaming generation, model selection, and session management.
 
-`ChatInputBar` automatically exposes image attachments only when the active backend's ``BackendCapabilities/supportsVision`` flag is `true`. If a host routes image-bearing history to a text-only backend anyway, `GenerationCoordinator` fails fast rather than silently flattening the images away.
+`ChatInputBar` automatically exposes image attachments only when the active backend's ``BackendCapabilities/supportsVision`` flag is `true`. If a host routes image-bearing history to a text-only backend anyway, the runtime fails fast rather than silently flattening the images away.
+
+Turn-loop orchestration — send, regenerate, edit, cancel, and branch — lives in `ConversationRuntime` (in `BaseChatRuntime`). `ChatViewModel` forwards user actions to the runtime and renders its `ConversationEvent` stream; there is no second path.
 
 ### Minimum wiring
 

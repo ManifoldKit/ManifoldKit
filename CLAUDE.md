@@ -103,6 +103,10 @@ let storyStore = StoryStore(inferenceService: inference)
 
 Do **not** widen `inferenceService` to `public`. Exposing the full `InferenceService` API on `ChatViewModel`'s public contract would lock in load-coordination internals that the framework needs the freedom to refactor. `package` lets the sibling `BaseChatUIModelManagement` module see what it needs without leaking the surface to host apps.
 
+## Turn-loop orchestration
+
+`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`) is the single turn loop. It owns `send`, `regenerate`, `edit`, `cancel`, and `branch`, and emits `ConversationEvent`s that `ChatViewModel` renders. There is no alternative path — host apps get a configured runtime via `BaseChatBootstrap` (or by injecting one into `ChatViewModel`) and forward user actions to it.
+
 ## Coding conventions
 
 - **Concurrency**: async/await throughout. No Combine, no callback pyramids.
