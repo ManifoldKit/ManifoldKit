@@ -210,11 +210,7 @@ struct ConnectedServiceSnapshot {
             }
         }()
         if isConnected {
-            // "X of Y enabled" when the cap is biting; otherwise just "X tools".
-            if foundationModelsCapActive, enabledToolCount < toolCount {
-                return "\(stateText) · \(enabledToolCount) of \(toolCount) tools enabled"
-            }
-            return "\(stateText) · \(toolCount) tools"
+            return "\(stateText) · \(enabledToolCount) of \(toolCount) tools enabled"
         }
         return stateText
     }

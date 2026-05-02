@@ -196,6 +196,41 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
         XCTAssertEqual(executor.callCount, 1)
         XCTAssertEqual(harness!.chatViewModel.messages.last?.content, "Tool complete")
     }
+
+    func test_toolRegistry_advertisedDefinitionsLimitBackendConfigWithoutUnregisteringTools() async throws {
+        let backend = MockInferenceBackend(
+            capabilities: BackendCapabilities(
+                supportedParameters: [.temperature, .topP, .repeatPenalty],
+                maxContextTokens: 4096,
+                supportsToolCalling: true
+            )
+        )
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["Done"]
+
+        let visible = CountingExecutor(name: "visible_tool")
+        let hidden = CountingExecutor(name: "hidden_tool")
+        let registry = ToolRegistry()
+        registry.register(visible)
+        registry.register(hidden)
+        registry.advertisedToolNames = ["visible_tool"]
+
+        harness = try ConsumerRuntimeHarness(
+            inferenceService: InferenceService(
+                backend: backend,
+                name: "RuntimeToolMock",
+                toolRegistry: registry
+            )
+        )
+
+        _ = try await harness!.createAndActivateSession(title: "Tool Session")
+        harness!.chatViewModel.inputText = "Check runtime tools"
+
+        await harness!.chatViewModel.sendMessage()
+
+        XCTAssertEqual(backend.lastConfig?.tools.map(\.name), ["visible_tool"])
+        XCTAssertTrue(registry.contains(name: "hidden_tool"))
+    }
 }
 
 @MainActor

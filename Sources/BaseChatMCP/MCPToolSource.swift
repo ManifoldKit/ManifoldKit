@@ -59,9 +59,10 @@ public final class MCPToolSource: @unchecked Sendable {
     /// Returns the currently-registered tools whose JSON Schemas are compatible
     /// with Apple's Foundation Models tool surface.
     ///
-    /// Foundation Models rejects schemas that use `oneOf`, `$ref`, or whose
+    /// Foundation Models rejects schemas that use composition keywords
+    /// (`oneOf`, `anyOf`, `allOf`), `$ref`, nullable type unions, or whose
     /// nesting exceeds a small depth. This query returns the namespaced names
-    /// of tools whose schemas pass all three checks, sorted alphabetically.
+    /// of tools whose schemas pass those conservative checks, sorted alphabetically.
     ///
     /// "Deep nesting" is defined as the maximum depth of nested `object`
     /// (`properties`) or `array` (`items`) descents within the schema.
@@ -81,6 +82,12 @@ public final class MCPToolSource: @unchecked Sendable {
             .filter { isFoundationModelsCompatible($0.inputSchema, maxDepth: maxDepth) }
             .map(\.namespacedName)
             .sorted()
+    }
+
+    /// Alias for ``foundationModelsCompatibleNames(maxDepth:)`` using the
+    /// issue-tracker wording: names compatible under `maxDepth`.
+    public func foundationModelsCompatibleNames(under maxDepth: Int) async -> [String] {
+        await foundationModelsCompatibleNames(maxDepth: maxDepth)
     }
 
     /// Returns the subset of currently-registered tools that should be exposed
@@ -545,8 +552,9 @@ private func normalizedNamespace(_ namespace: String?) -> String? {
 
 // MARK: - Foundation Models schema compatibility
 
-/// Returns `true` when `schema` contains no `oneOf`, no `$ref`, and no nested
-/// `object`/`array` chain deeper than `maxDepth` levels.
+/// Returns `true` when `schema` avoids Foundation Models-incompatible JSON
+/// Schema constructs and no nested `object`/`array` chain is deeper than
+/// `maxDepth` levels.
 ///
 /// Internal so tests in the same module can exercise edge cases directly.
 internal func isFoundationModelsCompatible(_ schema: JSONSchemaValue, maxDepth: Int) -> Bool {
@@ -560,19 +568,19 @@ internal func isFoundationModelsCompatible(_ schema: JSONSchemaValue, maxDepth: 
 ///
 /// **Strategy** (PR #797 review fix): the walker visits *every* JSON Schema
 /// keyword that can carry a subschema, not just `properties`/`items`, so the
-/// rejection rules (`oneOf`, `anyOf`, `$ref`) are evaluated at every nesting
-/// level the author can construct — including those hidden inside composition
-/// keywords like `allOf`, `not`, `additionalProperties`, or `$defs`.
+/// rejection rules (`oneOf`, `anyOf`, `allOf`, `$ref`, and type unions) are
+/// evaluated at every nesting level the author can construct — including those
+/// hidden inside `not`, `additionalProperties`, or `$defs`.
 ///
 /// Two flavours of recursion:
 /// - **Depth-advancing** edges (`properties`, `items`, `prefixItems`,
 ///   `additionalProperties`, `patternProperties`, `unevaluatedProperties`,
 ///   `unevaluatedItems`, `contains`, `propertyNames`): each edge counts as one
 ///   level of user-facing object/array nesting and contributes to `maxDepth`.
-/// - **Transparent** composition edges (`allOf`, `not`, `if`/`then`/`else`,
-///   `$defs`, `definitions`, `dependentSchemas`): these compose constraints
-///   over the *current* node, so they don't add user-facing depth — but we
-///   still recurse so a nested `oneOf` can't smuggle past the filter.
+/// - **Transparent** composition edges (`not`, `if`/`then`/`else`, `$defs`,
+///   `definitions`, `dependentSchemas`): these compose constraints over the
+///   *current* node, so they don't add user-facing depth — but we still recurse
+///   so a nested unsupported keyword can't smuggle past the filter.
 private func schemaDepthIfCompatible(
     _ schema: JSONSchemaValue,
     currentDepth: Int,
@@ -588,6 +596,10 @@ private func schemaDepthIfCompatible(
         // anyOf is also not in Apple's accepted vocabulary; reject it for symmetry
         // since it's structurally the same hazard as oneOf.
         if object["anyOf"] != nil { return nil }
+        if object["allOf"] != nil { return nil }
+        // JSON Schema encodes nullable unions as `type: ["string", "null"]`.
+        // Foundation Models expects a single concrete type, so reject any union.
+        if case .array? = object["type"] { return nil }
 
         var deepest = currentDepth
 
@@ -650,14 +662,6 @@ private func schemaDepthIfCompatible(
         }
 
         // --- Transparent composition edges --------------------------------
-        // `allOf: [schema, ...]` — composes constraints over THIS node, no depth bump.
-        if case .array(let allOf)? = object["allOf"] {
-            for child in allOf {
-                guard let d = schemaDepthIfCompatible(child, currentDepth: currentDepth, maxDepth: maxDepth)
-                else { return nil }
-                deepest = max(deepest, d)
-            }
-        }
         // `not: schema`, `if`/`then`/`else: schema` — single composition schemas.
         for key in ["not", "if", "then", "else"] {
             if let value = object[key], case .object = value {

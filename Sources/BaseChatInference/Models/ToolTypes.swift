@@ -208,7 +208,7 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     ///   failure — no registered executor matched the call name, so the tool
     ///   never ran. `.notFound` is a *runtime* failure — the executor ran but the
     ///   resource it looked for (file, record, URL) did not exist.
-    public enum ErrorKind: String, Sendable, Codable, Equatable, Hashable {
+    public enum ErrorKind: String, Sendable, Codable, Equatable, Hashable, CaseIterable {
         /// Arguments did not parse as JSON or failed schema validation.
         /// Indicates a model-side formatting error; feeding the error back lets
         /// the model self-correct on the next turn.
@@ -238,6 +238,33 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
         /// No registered executor matched the call name — dispatch failed before execution.
         /// Distinct from ``notFound``, which fires inside a running executor.
         case unknownTool
+
+        /// User-facing, localizable summary for presentation surfaces.
+        ///
+        /// This deliberately does not replace ``rawValue``: raw values remain
+        /// the stable wire/persistence vocabulary, while this string is for UI.
+        public var localizedDescription: String {
+            switch self {
+            case .invalidArguments:
+                return String(localized: "tool.error.invalidArguments", defaultValue: "The tool couldn't understand those details.")
+            case .permissionDenied:
+                return String(localized: "tool.error.permissionDenied", defaultValue: "Permission is required to use this tool.")
+            case .notFound:
+                return String(localized: "tool.error.notFound", defaultValue: "The requested item couldn't be found.")
+            case .timeout:
+                return String(localized: "tool.error.timeout", defaultValue: "The tool took too long to respond.")
+            case .rateLimited:
+                return String(localized: "tool.error.rateLimited", defaultValue: "The tool is temporarily rate limited.")
+            case .cancelled:
+                return String(localized: "tool.error.cancelled", defaultValue: "The tool call was cancelled.")
+            case .transient:
+                return String(localized: "tool.error.transient", defaultValue: "The tool hit a temporary problem.")
+            case .permanent:
+                return String(localized: "tool.error.permanent", defaultValue: "The tool couldn't complete this request.")
+            case .unknownTool:
+                return String(localized: "tool.error.unknownTool", defaultValue: "This tool isn't available.")
+            }
+        }
     }
 
     /// The ``ToolCall/id`` this result corresponds to.

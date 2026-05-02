@@ -124,6 +124,24 @@ final class ToolRegistryTests: XCTestCase {
         XCTAssertEqual(names, ["alpha", "mango", "zebra"])
     }
 
+    func test_advertisedDefinitions_applyCaseInsensitiveAllowListWithoutBlockingDispatch() async {
+        let registry = ToolRegistry()
+        registry.register(makeWeatherExecutor(name: "mcp_alpha"))
+        registry.register(makeWeatherExecutor(name: "app_status"))
+        registry.register(makeWeatherExecutor(name: "mcp_zebra"))
+
+        registry.advertisedToolNames = ["MCP_ALPHA", "app_status"]
+
+        XCTAssertEqual(registry.advertisedDefinitions.map(\.name), ["app_status", "mcp_alpha"])
+        XCTAssertEqual(registry.definitions.map(\.name), ["app_status", "mcp_alpha", "mcp_zebra"])
+
+        let hiddenResult = await registry.dispatch(
+            ToolCall(id: "call-hidden", toolName: "mcp_zebra", arguments: #"{"city":"Paris"}"#)
+        )
+        XCTAssertEqual(hiddenResult.errorKind, nil)
+        XCTAssertTrue(hiddenResult.content.contains("Sunny in Paris"))
+    }
+
     func test_register_override_replacesExistingTool() async {
         let registry = ToolRegistry()
 

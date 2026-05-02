@@ -4,9 +4,12 @@ name: Nightly slow tests
 #  - LargeSessionListPerformanceTests — XCTMeasure perf baselines (~65s)
 #  - IntegratedStreamingPerformanceTests — full pipeline TTFT/cadence/E2E baselines (~20s)
 #  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s)
+#  - BaseChatMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
 # These are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
-# unconditionally (CI is also unset locally).
+# unconditionally (CI is also unset locally). MCP E2E remains separately gated
+# by RUN_MCP_E2E=1 and a narrow smoke filter so npx/network subprocess tests do
+# not run here.
 
 on:
   schedule:
@@ -71,6 +74,13 @@ jobs:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
         run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
 
+      - name: Test — MCP streamable HTTP E2E smoke
+        id: test-mcp-e2e-smoke
+        env:
+          RUN_MCP_E2E: "1"
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-e2e-smoke.log
+        run: scripts/test.sh --filter "BaseChatMCPE2ESmokeTests" --disable-default-traits --skip-update --min-passed 1
+
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so
         # diagnostics from earlier failures are preserved.
@@ -79,6 +89,7 @@ jobs:
           LARGE_SESSION_LIST_FAILED: ${{ steps.test-large-session-list.outcome == 'failure' }}
           INTEGRATED_STREAMING_FAILED: ${{ steps.test-integrated-streaming.outcome == 'failure' }}
           TRAFFIC_BOUNDARY_AUDIT_FAILED: ${{ steps.test-traffic-boundary-audit.outcome == 'failure' }}
+          MCP_E2E_SMOKE_FAILED: ${{ steps.test-mcp-e2e-smoke.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
           {
@@ -88,6 +99,7 @@ jobs:
             echo "large-session-list-failed=${LARGE_SESSION_LIST_FAILED}"
             echo "integrated-streaming-failed=${INTEGRATED_STREAMING_FAILED}"
             echo "traffic-boundary-audit-failed=${TRAFFIC_BOUNDARY_AUDIT_FAILED}"
+            echo "mcp-e2e-smoke-failed=${MCP_E2E_SMOKE_FAILED}"
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure

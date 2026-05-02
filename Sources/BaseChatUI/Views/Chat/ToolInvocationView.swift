@@ -63,18 +63,24 @@ public struct ToolInvocationView: View {
     /// Only read when ``state`` is ``State/pendingApproval``.
     public var onDeny: ((String?) -> Void)?
 
+    /// Invoked when the user taps a permission-denied re-authentication CTA.
+    /// Only shown for failed results whose presentation metadata includes a CTA.
+    public var onReauthenticate: ((ToolErrorPresentation.ReauthenticationCTA) -> Void)?
+
     public init(
         part: MessagePart,
         state: State,
         pairedResult: ToolResult? = nil,
         onApprove: (() -> Void)? = nil,
-        onDeny: ((String?) -> Void)? = nil
+        onDeny: ((String?) -> Void)? = nil,
+        onReauthenticate: ((ToolErrorPresentation.ReauthenticationCTA) -> Void)? = nil
     ) {
         self.part = part
         self.state = state
         self.pairedResult = pairedResult
         self.onApprove = onApprove
         self.onDeny = onDeny
+        self.onReauthenticate = onReauthenticate
     }
 
     public var body: some View {
@@ -185,7 +191,7 @@ public struct ToolInvocationView: View {
 
     private func failedView(call: ToolCall?, result: ToolResult?) -> some View {
         let toolName = call?.toolName ?? "tool"
-        let kindLabel = result?.errorKind.map { $0.rawValue } ?? "failed"
+        let presentation = ToolErrorPresentation(errorKind: result?.errorKind, toolName: call?.toolName)
         return DisclosureGroup {
             VStack(alignment: .leading, spacing: 6) {
                 if let call {
@@ -200,9 +206,20 @@ public struct ToolInvocationView: View {
                     Text("Error")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                    Text(presentation.summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                     Text(result.content)
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
+                }
+                if let cta = presentation.reauthenticationCTA {
+                    Button(cta.message) {
+                        onReauthenticate?(cta)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("tool-error-reauth-button")
                 }
             }
             .padding(.top, 4)
@@ -213,7 +230,7 @@ public struct ToolInvocationView: View {
                 Text(toolName)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
-                Text(kindLabel)
+                Text(presentation.summary)
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
