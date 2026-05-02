@@ -112,7 +112,7 @@ extension ChatViewModel {
             }
 
             // Fire post-generation tasks for successful turns. Cancelled and
-            // empty turns are skipped — the legacy `GenerationCoordinator`
+            // empty turns are skipped — the legacy `GenerationQueue`
             // gated on `hasVisibleContent`, so partial-cancel persistence
             // does not retroactively run summarisation hooks.
             if reason == .stop,
@@ -124,7 +124,7 @@ extension ChatViewModel {
 
             // After the first assistant response on Foundation, nudge the
             // user to consider downloading a local model for longer
-            // context. Mirrors the legacy `GenerationCoordinator` rule:
+            // context. Mirrors the legacy `GenerationQueue` rule:
             // gated on the feature flag, only on the Apple backend, only
             // once per session.
             if reason == .stop,
@@ -174,7 +174,7 @@ extension ChatViewModel {
 
         case .thinkingUpdated(let messageID, let partialText):
             // Write `partialText` into the last in-flight `.thinking` part
-            // for live preview. Mirrors GenerationCoordinator.writeThinkingPartialText.
+            // for live preview. Mirrors GenerationQueue.writeThinkingPartialText.
             mutateMessage(id: messageID) { msg in
                 guard let idx = msg.contentParts.lastIndex(where: { $0.thinkingContent != nil }) else {
                     return
@@ -200,7 +200,7 @@ extension ChatViewModel {
         // MARK: Loop detection
 
         case .loopDetected(_):
-            // Wording mirrors the legacy `GenerationCoordinator` ("appears
+            // Wording mirrors the legacy `GenerationQueue` ("appears
             // to be repeating itself") so existing UI tests that probe for
             // the substring "repeating" continue to pin the user-visible
             // message.
@@ -263,7 +263,7 @@ extension ChatViewModel {
 
     /// Writes `partial` into the message's last `.thinking` part for live preview.
     ///
-    /// Mirrors the legacy `GenerationCoordinator.writeThinkingPartialText` —
+    /// Mirrors the legacy `GenerationQueue.writeThinkingPartialText` —
     /// retained because tests assert the preserve-placeholder behaviour
     /// directly.
     static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessageRecord) {

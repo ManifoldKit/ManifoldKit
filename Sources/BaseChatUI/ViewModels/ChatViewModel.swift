@@ -290,7 +290,7 @@ public final class ChatViewModel {
     /// Cap on visible response tokens for each generation.
     ///
     /// Feeds two places:
-    /// - The trim math in ``GenerationCoordinator`` reserves this many tokens
+    /// - The trim math in ``GenerationQueue`` reserves this many tokens
     ///   of the context window so the prompt is trimmed enough to leave room
     ///   for the response (see issue #587).
     /// - Forwarded to ``InferenceService/enqueue(...)`` as `maxOutputTokens`,

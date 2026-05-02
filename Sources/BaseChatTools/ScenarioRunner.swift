@@ -16,7 +16,7 @@ import BaseChatInference
 ///    accumulated text is the final answer and assertions run against it.
 ///
 /// Conversation history is plumbed into backends that conform to
-/// ``ConversationHistoryReceiver`` (same pattern as ``GenerationCoordinator``);
+/// ``ConversationHistoryReceiver`` (same pattern as ``GenerationQueue``);
 /// backends that do not conform get a plain-text prompt with appended tool
 /// results.
 @MainActor
@@ -88,7 +88,7 @@ public final class ScenarioRunner {
                     continue
                 case .toolResult, .toolLoopLimitReached:
                     // ScenarioRunner calls backend.generate() directly and owns
-                    // dispatch below, so it never receives GenerationCoordinator's
+                    // dispatch below, so it never receives GenerationQueue's
                     // orchestrator events on this path. Stay exhaustive for growth.
                     continue
                 case .kvCacheReuse:

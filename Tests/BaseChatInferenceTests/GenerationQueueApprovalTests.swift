@@ -3,7 +3,7 @@ import os
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-/// Integration tests for the ``ToolApprovalGate`` + ``GenerationCoordinator``
+/// Integration tests for the ``ToolApprovalGate`` + ``GenerationQueue``
 /// interaction at the full-stream level.
 ///
 /// Distinct from ``ToolApprovalGateTests`` in that these exercise stream
@@ -11,7 +11,7 @@ import BaseChatTestSupport
 /// active request, the coordinator proceeds to the model's next turn, and
 /// the synthesised ``ToolResult`` flows through as a normal event.
 @MainActor
-final class GenerationCoordinatorApprovalTests: XCTestCase {
+final class GenerationQueueApprovalTests: XCTestCase {
 
     // MARK: - Fixtures
 
@@ -80,7 +80,7 @@ final class GenerationCoordinatorApprovalTests: XCTestCase {
             ["I", " cannot", " check", " the", " weather."],
         ]
 
-        let coordinator = GenerationCoordinator(
+        let coordinator = GenerationQueue(
             toolRegistry: registry,
             toolApprovalGate: FixedGate(.denied(reason: "user blocked this tool"))
         )
@@ -107,7 +107,7 @@ final class GenerationCoordinatorApprovalTests: XCTestCase {
         // Model continued past the denial: turn 2's visible tokens must have
         // flowed through the stream, proving it wasn't cancelled.
         // Sabotage-verify: deleting the `self.continuations[...].yield(.toolResult(result))`
-        // emission in GenerationCoordinator.runToolDispatchLoop empties the
+        // emission in GenerationQueue.runToolDispatchLoop empties the
         // `results` array above and this test fails. Verified, reverted.
         let tokens = events.compactMap { event -> String? in
             if case .token(let t) = event { return t } else { return nil }
@@ -131,7 +131,7 @@ final class GenerationCoordinatorApprovalTests: XCTestCase {
         ]
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
-        let coordinator = GenerationCoordinator(
+        let coordinator = GenerationQueue(
             toolRegistry: registry,
             toolApprovalGate: FixedGate(.denied(reason: nil))
         )
@@ -176,7 +176,7 @@ final class GenerationCoordinatorApprovalTests: XCTestCase {
         }
         let gate = CountingGate()
 
-        let coordinator = GenerationCoordinator(
+        let coordinator = GenerationQueue(
             toolRegistry: registry,
             toolApprovalGate: gate
         )

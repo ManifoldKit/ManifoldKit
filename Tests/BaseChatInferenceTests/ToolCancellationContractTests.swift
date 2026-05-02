@@ -7,7 +7,7 @@ import BaseChatTestSupport
 ///
 /// Coverage:
 /// - Orchestrator-driven cancellation: scripted backend emits a tool call,
-///   executor awaits forever, ``GenerationCoordinator.stopGeneration()``
+///   executor awaits forever, ``GenerationQueue.stopGeneration()``
 ///   propagates cancellation into the executor, the transcript records a
 ///   ``ToolResult/ErrorKind/cancelled`` result, and no further backend turn
 ///   runs.
@@ -109,7 +109,7 @@ final class ToolCancellationContractTests: XCTestCase {
             ["second", "-turn", "-must-not-run"]
         ]
 
-        let coordinator = GenerationCoordinator(toolRegistry: registry)
+        let coordinator = GenerationQueue(toolRegistry: registry)
         coordinator.provider = provider
 
         let (_, stream) = try coordinator.enqueue(

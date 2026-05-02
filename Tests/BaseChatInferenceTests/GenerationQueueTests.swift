@@ -3,7 +3,7 @@ import Foundation
 @testable import BaseChatInference
 import BaseChatTestSupport
 
-/// Direct unit tests for the `GenerationCoordinator`.
+/// Direct unit tests for the `GenerationQueue`.
 ///
 /// The coordinator is `internal`, so this file uses `@testable import
 /// BaseChatInference` to construct it directly. A file-local
@@ -17,17 +17,17 @@ import BaseChatTestSupport
 /// reflecting into `@Observable`-rewritten storage breaks silently when the
 /// macro changes its naming scheme.
 @MainActor
-final class GenerationCoordinatorTests: XCTestCase {
+final class GenerationQueueTests: XCTestCase {
 
     // MARK: - Fixture
 
     private var provider: FakeGenerationContextProvider!
-    private var coordinator: GenerationCoordinator!
+    private var coordinator: GenerationQueue!
 
     override func setUp() async throws {
         try await super.setUp()
         provider = FakeGenerationContextProvider()
-        coordinator = GenerationCoordinator()
+        coordinator = GenerationQueue()
         coordinator.provider = provider
     }
 
@@ -45,8 +45,8 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// Makes a coordinator with the given thermal closure.
     private func makeCoordinator(
         thermal: @escaping @Sendable () -> ProcessInfo.ThermalState
-    ) -> GenerationCoordinator {
-        let coord = GenerationCoordinator(thermalStateProvider: thermal)
+    ) -> GenerationQueue {
+        let coord = GenerationQueue(thermalStateProvider: thermal)
         coord.provider = provider
         return coord
     }
@@ -74,15 +74,15 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// traffic also goes to `Log.inference.warning`, which OSLog renders to
     /// Console.app.
     ///
-    /// Sabotage check: deleting the warning branch in `GenerationCoordinator.generate`
+    /// Sabotage check: deleting the warning branch in `GenerationQueue.generate`
     /// leaves `captured` empty and this assertion fails.
     func test_generate_jsonMode_unsupportedBackend_emitsWarning() async throws {
         // MockInferenceBackend defaults to supportsNativeJSONMode == false.
         let captured = WarningCapture()
-        GenerationCoordinator.jsonModeUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.jsonModeUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.jsonModeUnsupportedWarningHook = nil }
+        defer { GenerationQueue.jsonModeUnsupportedWarningHook = nil }
 
         let stream = try coordinator.generate(
             messages: [("user", "Return JSON")],
@@ -111,10 +111,10 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// accidentally flips the condition.
     func test_generate_jsonModeFalse_neverWarns() async throws {
         let captured = WarningCapture()
-        GenerationCoordinator.jsonModeUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.jsonModeUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.jsonModeUnsupportedWarningHook = nil }
+        defer { GenerationQueue.jsonModeUnsupportedWarningHook = nil }
 
         let stream = try coordinator.generate(
             messages: [("user", "Return plain")],
@@ -131,10 +131,10 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// `supportsNativeJSONMode = true`.
     func test_generate_jsonMode_supportedBackend_noWarning() async throws {
         let captured = WarningCapture()
-        GenerationCoordinator.jsonModeUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.jsonModeUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.jsonModeUnsupportedWarningHook = nil }
+        defer { GenerationQueue.jsonModeUnsupportedWarningHook = nil }
 
         provider.backend.capabilities = BackendCapabilities(
             supportedParameters: [.temperature],
@@ -167,15 +167,15 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// then throw `InferenceError.inferenceFailure` so callers have a clear
     /// signal that the registry will never see a dispatch.
     ///
-    /// Sabotage check: deleting the warning branch in `GenerationCoordinator.enqueue`
+    /// Sabotage check: deleting the warning branch in `GenerationQueue.enqueue`
     /// leaves `captured` empty and the warning assertion fails.
     func test_enqueue_toolsOnUnsupportedBackend_emitsWarningAndThrows() async throws {
         // MockInferenceBackend defaults to supportsToolCalling == false.
         let captured = WarningCapture()
-        GenerationCoordinator.toolsUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.toolsUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.toolsUnsupportedWarningHook = nil }
+        defer { GenerationQueue.toolsUnsupportedWarningHook = nil }
 
         let tool = ToolDefinition(
             name: "get_weather",
@@ -214,10 +214,10 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// flips the condition to `tools.isEmpty`.
     func test_enqueue_noTools_neverWarns() async throws {
         let captured = WarningCapture()
-        GenerationCoordinator.toolsUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.toolsUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.toolsUnsupportedWarningHook = nil }
+        defer { GenerationQueue.toolsUnsupportedWarningHook = nil }
 
         let (_, stream) = try coordinator.enqueue(messages: [("user", "hi")])
         for try await _ in stream.events {}
@@ -230,10 +230,10 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// even if the request includes tools.
     func test_enqueue_toolsOnSupportedBackend_noWarning() async throws {
         let captured = WarningCapture()
-        GenerationCoordinator.toolsUnsupportedWarningHook = { backendType, message in
+        GenerationQueue.toolsUnsupportedWarningHook = { backendType, message in
             captured.record(backendType: backendType, message: message)
         }
-        defer { GenerationCoordinator.toolsUnsupportedWarningHook = nil }
+        defer { GenerationQueue.toolsUnsupportedWarningHook = nil }
 
         provider.backend.capabilities = BackendCapabilities(
             supportedParameters: [.temperature],
@@ -290,7 +290,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// stream must advance to `.connecting` before either background stream.
     func test_enqueue_userInitiatedBehindBackground_drainsFirst() async throws {
         let slowProvider = SlowFakeProvider()
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         // Active slot holds one request; queue builds behind it.
@@ -323,7 +323,7 @@ final class GenerationCoordinatorTests: XCTestCase {
 
     func test_cancel_queuedRequest_removesFromQueueAndLeavesActiveRunning() async throws {
         let slowProvider = SlowFakeProvider()
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
@@ -359,7 +359,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// the continuation such that further yields are dropped.
     func test_cancel_activeRequest_noTokenAfterCancel() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (token, stream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
@@ -404,7 +404,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// stream to completion, must return without hanging.
     func test_stopGeneration_emptiesQueueAndTerminatesAllStreams() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
@@ -456,7 +456,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     func test_stopGenerationAndWait_returnsPromptly_evenWithLongTokenDelay() async throws {
         let backend = SlowMockBackend(tokenCount: 1, delayMilliseconds: 60_000)
         let slowProvider = SlowFakeProvider(backend: backend)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         _ = try coord.enqueue(messages: [("user", "long")], priority: .normal)
@@ -484,7 +484,7 @@ final class GenerationCoordinatorTests: XCTestCase {
 
     func test_discardRequests_keepsMatchingSessionCancelsOthers() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let keepSession = UUID()
@@ -566,7 +566,7 @@ final class GenerationCoordinatorTests: XCTestCase {
 
     func test_isGenerating_transitions_onCancel() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (token, stream) = try coord.enqueue(messages: [("user", "hi")], priority: .normal)
@@ -588,7 +588,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// generating, no queued requests, and a fresh enqueue succeeds.
     func test_drainQueue_reentryRace_noCrash_stateConsistent() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 2, delayMilliseconds: 5)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (token1, s1) = try coord.enqueue(messages: [("user", "a")], priority: .normal)
@@ -623,7 +623,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     /// can't silently change the observable error.
     func test_enqueue_noBackend_throwsNoModelLoaded() {
         let nilProvider = NilBackendProvider()
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = nilProvider
 
         XCTAssertThrowsError(
@@ -726,7 +726,7 @@ final class GenerationCoordinatorTests: XCTestCase {
 
         let sleepCalls = SleepCallCounter()
 
-        let coord = GenerationCoordinator(
+        let coord = GenerationQueue(
             thermalStateProvider: { @Sendable in
                 let idx = thermalReads.next()
                 return idx < states.count ? states[idx] : .nominal
@@ -810,7 +810,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     func test_perTokenLoop_thermalPause_cancellationUnwindsCleanly() async throws {
         // Provider always reports `.critical` so the pause loop would
         // otherwise spin forever. Cancellation is the only exit.
-        let coord = GenerationCoordinator(
+        let coord = GenerationQueue(
             thermalStateProvider: { @Sendable in .critical },
             thermalSleep: { @Sendable duration in
                 // Forward to the real sleep so the cooperative cancellation
@@ -881,7 +881,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.tokensToYield = ["ok"]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         let (_, stream) = try coord.enqueue(
@@ -913,7 +913,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.tokensToYield = ["trimmed"]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         // Two messages so we have something to trim.
@@ -947,7 +947,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.countTokensResponses = [80, 80, 80, 80, 80]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         // Single user message — cannot trim (would remove the only user turn).
@@ -982,7 +982,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.tokensToYield = ["done"]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         let (_, stream) = try coord.enqueue(
@@ -1023,7 +1023,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.tokensToYield = ["ok"]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         let stream = try coord.generate(
@@ -1062,7 +1062,7 @@ final class GenerationCoordinatorTests: XCTestCase {
         tcBackend.tokensToYield = ["ok"]
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = tcProvider
 
         let stream = try coord.generate(
@@ -1085,7 +1085,7 @@ final class GenerationCoordinatorTests: XCTestCase {
     func test_providerTeardown_midStream_noCrash_cleanEnd() async throws {
         let slow = SlowMockBackend(tokenCount: 20, delayMilliseconds: 20)
         var slowProvider: SlowFakeProvider? = SlowFakeProvider(backend: slow)
-        let coord = GenerationCoordinator()
+        let coord = GenerationQueue()
         coord.provider = slowProvider
 
         let (_, stream) = try coord.enqueue(messages: [("user", "x")], priority: .normal)
@@ -1112,7 +1112,7 @@ final class GenerationCoordinatorTests: XCTestCase {
 // MARK: - Warning capture (PR #615 review fix)
 
 /// Thread-safe collector for the `jsonModeUnsupportedWarningHook` on
-/// `GenerationCoordinator`. The hook is `@Sendable` and may fire from any
+/// `GenerationQueue`. The hook is `@Sendable` and may fire from any
 /// isolation; an `NSLock` keeps recorded entries race-free without
 /// introducing actor hops into the test.
 private final class WarningCapture: @unchecked Sendable {
@@ -1235,7 +1235,7 @@ private final class NilBackendProvider: GenerationContextProvider {
 // MARK: - TokenCounting fakes
 
 /// An inference backend that also conforms to `TokenCountingBackend` for testing
-/// the exact pre-flight trim loop in `GenerationCoordinator`.
+/// the exact pre-flight trim loop in `GenerationQueue`.
 ///
 /// `countTokensResponses` controls what `countTokens` returns on each successive
 /// call (FIFO). Once exhausted the last value is repeated.

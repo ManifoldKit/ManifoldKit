@@ -5,8 +5,8 @@ import Foundation
 /// Buffers streamed tokens and emits coalesced batches to reduce high-frequency
 /// mutations that would otherwise trigger excessive UI re-renders.
 ///
-/// Moved from `BaseChatUI/GenerationCoordinator` to `BaseChatInference` so both
-/// `ConversationRuntime` (in `BaseChatRuntime`) and `GenerationCoordinator` (in
+/// Moved from `BaseChatUI/GenerationQueue` to `BaseChatInference` so both
+/// `ConversationRuntime` (in `BaseChatRuntime`) and `GenerationQueue` (in
 /// `BaseChatUI`) can share the same implementation without a cross-module copy.
 public struct StreamingTokenBatcher: Sendable {
     private let interval: Duration

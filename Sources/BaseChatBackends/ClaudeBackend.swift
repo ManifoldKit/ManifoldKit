@@ -93,7 +93,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // Vision is gated on the configured model name — Claude 3, 3.5,
             // 3.7, and 4 families all accept images as content blocks; the
             // Claude 2 family and `claude-instant-*` do not. The
-            // GenerationCoordinator's pre-flight reads this flag and rejects
+            // GenerationQueue's pre-flight reads this flag and rejects
             // image attachments before we ever build a request body, so an
             // outdated model name surfaces a clear "not vision-capable"
             // error rather than a 400 from Anthropic.
@@ -215,7 +215,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             }
             // Vision pre-flight: if the configured model isn't vision-capable
             // and the structured history carries any image, fail with a
-            // clear local error. (GenerationCoordinator already gates this
+            // clear local error. (GenerationQueue already gates this
             // path on `capabilities.supportsVision`, but the backend may be
             // driven directly — e.g. the OpenAI-compat server — so keep the
             // belt-and-suspenders check here.)

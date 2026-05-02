@@ -12,7 +12,7 @@ import Foundation
 ///
 /// > Note: This protocol is distinct from the internal `GenerationContextProvider`,
 /// > which is a `@MainActor`-bound, `AnyObject`-constrained model-state provider
-/// > used by `GenerationCoordinator` to read backend / template state. The two
+/// > used by `GenerationQueue` to read backend / template state. The two
 /// > do not overlap and should not be merged.
 public protocol PromptContextProvider: Sendable {
     /// Slots to inject into the next prompt.

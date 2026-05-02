@@ -7,7 +7,7 @@ import BaseChatTestSupport
 /// These tests drive a ``MockInferenceBackend`` with scripted event sequences
 /// and assert ordering, content, and edge-case behaviour — all without hitting
 /// real network or hardware. They complement the existing ``ToolCallContractTests``
-/// (Codable round-trips, non-streaming emission) and ``GenerationCoordinatorToolLoopTests``
+/// (Codable round-trips, non-streaming emission) and ``GenerationQueueToolLoopTests``
 /// (orchestrator dispatch loop). Coverage here focuses exclusively on the
 /// streaming-event contract: ordering of start/delta/call, non-streaming
 /// back-compat, cancellation, and interleaved multi-call sequencing.
@@ -368,7 +368,7 @@ final class ToolCallStreamingContractTests: XCTestCase {
         backend.toolDeltaEmissionGate = gate
 
         let provider = FakeGenerationContextProvider(backend: backend)
-        let coordinator = GenerationCoordinator()
+        let coordinator = GenerationQueue()
         coordinator.provider = provider
 
         let (_, stream) = try coordinator.enqueue(
@@ -426,7 +426,7 @@ final class ToolCallStreamingContractTests: XCTestCase {
         }
 
         // Sabotage: removing the `guard !Task.isCancelled` check in
-        // GenerationCoordinator's dispatch loop would let the stream continue
+        // GenerationQueue's dispatch loop would let the stream continue
         // to the .call event — toolCalls would be non-empty.
         XCTAssertTrue(toolCalls.isEmpty,
             "no .toolCall must reach the consumer after stream cancellation pre-call; got \(toolCalls)")

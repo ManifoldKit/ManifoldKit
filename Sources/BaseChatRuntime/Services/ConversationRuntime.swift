@@ -325,7 +325,7 @@ actor InFlightStreamRegistry {
 /// ``regenerate(_:)``. PR-C adds ``edit(_:)`` and extracts a shared
 /// ``runGenerationTurn`` helper. PR-D adds ``branch(_:)``. PR-E absorbs
 /// the streaming-token batcher, thinking-block disclosure, loop detection,
-/// and tool-dispatch loop from `GenerationCoordinator` into
+/// and tool-dispatch loop from `GenerationQueue` into
 /// ``runGenerationTurn`` so all four sub-flows share the same rich
 /// streaming behaviour.
 public final class ConversationRuntime: Sendable {
@@ -793,7 +793,7 @@ public final class ConversationRuntime: Sendable {
         }
 
         // BranchInput does not carry streaming/loop knobs; use defaults
-        // matching GenerationCoordinator's current behaviour.
+        // matching GenerationQueue's current behaviour.
         await runGenerationTurn(
             sessionID: input.newSessionID,
             userPrompt: nil,
@@ -881,7 +881,7 @@ public final class ConversationRuntime: Sendable {
 
         // Forward the registered tool surface so the backend's GenerationConfig
         // gets `tools = registry.advertisedDefinitions` (legacy parity with
-        // GenerationCoordinator.enqueueGeneration). `advertisedDefinitions`
+        // GenerationQueue.enqueueGeneration). `advertisedDefinitions`
         // already honours `advertisedToolNames` filtering — registering a
         // tool but limiting which names go on the wire works without
         // unregistering the executor. Fetched on the main actor because the
@@ -921,7 +921,7 @@ public final class ConversationRuntime: Sendable {
 
         emit(.streamStarted(messageID: assistantID))
 
-        // Drain the stream, mirroring GenerationCoordinator's four features:
+        // Drain the stream, mirroring GenerationQueue's four features:
         //   (a) token batcher — coalesce per-token events into UI-cadenced batches
         //   (b) thinking-block disclosure — track/batch reasoning tokens and emit
         //       thinkingStarted / thinkingUpdated / thinkingFinalized events
@@ -1048,7 +1048,7 @@ public final class ConversationRuntime: Sendable {
 
         // Finalise the assistant message. If the stream produced no visible
         // content and was not cancelled, drop it — matches the
-        // `ChatViewModel`/`GenerationCoordinator` rule that keeps the
+        // `ChatViewModel`/`GenerationQueue` rule that keeps the
         // transcript clean of empty turns.
         //
         // Unregister before emitting terminal events so that any cancel(_:)
@@ -1059,7 +1059,7 @@ public final class ConversationRuntime: Sendable {
         await registry.unregister(handle: handle)
 
         // Capture token usage off the active backend before any subsequent
-        // turn can overwrite it. The legacy `GenerationCoordinator` set this
+        // turn can overwrite it. The legacy `GenerationQueue` set this
         // on the assistant `ChatMessage` immediately after the stream ended;
         // the runtime path needs the same per-turn pinning so back-to-back
         // sends do not cross-contaminate prompt/completion counts. Read on

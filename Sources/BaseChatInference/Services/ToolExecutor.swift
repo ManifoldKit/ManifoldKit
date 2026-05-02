@@ -75,7 +75,7 @@ import Foundation
 ///
 /// `execute(arguments:)` runs inside a `Task` owned by the orchestrator
 /// (``ToolRegistry/dispatch(_:)`` is invoked from a child task in
-/// `GenerationCoordinator`). When the user hits stop mid-generation, the
+/// `GenerationQueue`). When the user hits stop mid-generation, the
 /// orchestrator calls `Task.cancel()` on its active generation task and the
 /// cancellation propagates into this executor through structured concurrency.
 ///

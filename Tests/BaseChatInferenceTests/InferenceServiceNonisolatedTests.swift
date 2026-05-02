@@ -169,7 +169,7 @@ final class InferenceServiceNonisolatedTests: XCTestCase {
     ///
     /// The `#if DEBUG` `init(backend:)` debug helper does not survive
     /// the off-main reference round-trip cleanly here — `weak var provider`
-    /// inside `GenerationCoordinator` ends up nil by the time enqueue runs
+    /// inside `GenerationQueue` ends up nil by the time enqueue runs
     /// from a non-MainActor context. The supported off-main composition
     /// path is to construct via the nonisolated `init()` and load through
     /// the registered factory, which is exactly what runtime use cases

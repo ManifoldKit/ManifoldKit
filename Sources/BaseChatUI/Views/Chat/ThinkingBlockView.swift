@@ -5,7 +5,7 @@ import SwiftUI
 /// While `isThinkingStreaming` is true the view renders a collapsed disclosure
 /// group whose label is `"Thinking… <inline preview>"` — the latest few lines
 /// of partial reasoning text streamed in via the thinking batcher in
-/// ``GenerationCoordinator``. Expanding the group reveals the full
+/// ``GenerationQueue``. Expanding the group reveals the full
 /// accumulated text. Once `isThinkingStreaming` flips to false the disclosure
 /// group switches to its finalized "Reasoning" label, still collapsed by
 /// default. This is intentionally decoupled from the overall message
