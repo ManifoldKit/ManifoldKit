@@ -13,9 +13,8 @@
 ///
 /// ``toolDispatchStarted(callId:name:attempt:)`` and
 /// ``toolDispatchCompleted(callId:durationMs:errorKind:)`` are emitted by the
-/// **coordinator** (`GenerationCoordinator`), not by individual backends and not
-/// by ``ToolCallLoopOrchestrator`` (which silently drops these events — it has
-/// its own dispatch surface). Backends emit only ``toolCall(_:)`` (and, when
+/// **coordinator** (`GenerationCoordinator`), not by individual backends.
+/// Backends emit only ``toolCall(_:)`` (and, when
 /// streaming, ``toolCallStart(callId:name:)`` and
 /// ``toolCallArgumentsDelta(callId:textDelta:)``). Consumers driving generation
 /// through `InferenceService` / `GenerationCoordinator` that reconstruct

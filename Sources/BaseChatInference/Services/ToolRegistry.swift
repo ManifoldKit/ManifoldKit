@@ -257,7 +257,7 @@ public protocol JSONSchemaValidating: Sendable {
     /// Returns the registered executor for `toolName` (case-insensitive),
     /// or `nil` when no tool is registered under that name.
     ///
-    /// Used by ``ToolCallLoopOrchestrator`` to read
+    /// Used by agent-loop drivers to read
     /// ``ToolExecutor/supportsConcurrentDispatch`` on every executor in a
     /// batch before deciding whether to dispatch the batch in parallel.
     /// The lookup does not mutate the registry and does not increment the
