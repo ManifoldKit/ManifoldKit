@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 
 package struct ServerMetricsSnapshot: Equatable, Sendable {
@@ -77,3 +78,5 @@ package struct ServerMetrics: Sendable {
         storage.mutate { $0.failures += 1 }
     }
 }
+
+#endif

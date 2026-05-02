@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import BaseChatInference
 import BaseChatTestSupport
@@ -285,3 +286,5 @@ private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
     func stopGeneration() {}
     func unloadModel() { isModelLoaded = false }
 }
+
+#endif

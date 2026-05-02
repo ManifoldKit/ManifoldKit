@@ -78,7 +78,7 @@ BaseChatUI  ──────>  BaseChatPersistenceSwiftData  ─────�
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 - **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
-- **BaseChatServer** — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`.
+- **BaseChatServer** *(trait: `Server`, default-off)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. Server targets are trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands when working with `BaseChatServer`.
 
 ## Quick Start
 
@@ -198,11 +198,11 @@ scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --traits MCPB
 
 ### 2.2 BaseChatServer
 
-`BaseChatServer` runs an OpenAI-compatible local HTTP surface backed by BaseChatKit inference. Build it without default traits for the CI-safe/core server surface:
+`BaseChatServer` runs an OpenAI-compatible local HTTP surface backed by BaseChatKit inference. The server target and its `Hummingbird` dependency are trait-gated behind `Server` (default-off), so add `--traits Server` to every build/run/test command:
 
 ```bash
-swift build --product BaseChatServer --disable-default-traits --traits Ollama
-swift run --disable-default-traits --traits Ollama BaseChatServer -- \
+swift build --product BaseChatServer --disable-default-traits --traits Server,Ollama
+swift run --disable-default-traits --traits Server,Ollama BaseChatServer -- \
   --backend ollama --model llama3.2 --host 127.0.0.1 --port 8080 \
   --api-key local-dev --cors-origin http://localhost:3000 --metrics
 ```

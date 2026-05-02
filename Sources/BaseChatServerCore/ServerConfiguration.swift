@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 
 package struct ServerConfiguration: Equatable, Sendable {
@@ -27,3 +28,5 @@ package struct ServerConfiguration: Equatable, Sendable {
         self.metricsEnabled = metricsEnabled
     }
 }
+
+#endif

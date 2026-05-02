@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 import Hummingbird
 
@@ -46,3 +47,5 @@ package func errorResponse(
 ) -> Response {
     jsonResponse(ChatCompletionErrorEnvelope(message: message, type: type, code: code), status: status)
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import BaseChatInference
 import BaseChatTestSupport
@@ -99,3 +100,5 @@ enum ServerTestBackendFactory {
         return backend
     }
 }
+
+#endif

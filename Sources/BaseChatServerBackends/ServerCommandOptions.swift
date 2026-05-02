@@ -1,3 +1,4 @@
+#if Server
 import ArgumentParser
 import BaseChatServerCore
 import Foundation
@@ -94,3 +95,5 @@ package struct ServerCommandOptions: ParsableArguments, Sendable {
         )
     }
 }
+
+#endif

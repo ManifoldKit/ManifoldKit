@@ -1,3 +1,4 @@
+#if Server
 import BaseChatInference
 import Foundation
 import Hummingbird
@@ -229,3 +230,5 @@ package struct ServerApp: Sendable {
         }
     }
 }
+
+#endif

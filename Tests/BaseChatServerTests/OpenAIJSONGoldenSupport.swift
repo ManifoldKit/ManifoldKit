@@ -1,3 +1,4 @@
+#if Server
 import Foundation
 import XCTest
 
@@ -190,3 +191,5 @@ enum JSONValue: Codable, Equatable {
         }
     }
 }
+
+#endif

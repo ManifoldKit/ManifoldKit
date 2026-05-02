@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import XCTest
 
@@ -96,3 +97,5 @@ private actor ConcurrencyCounter {
         current -= 1
     }
 }
+
+#endif

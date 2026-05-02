@@ -1,3 +1,4 @@
+#if Server
 import ArgumentParser
 import BaseChatServerBackends
 import BaseChatServerCore
@@ -22,3 +23,14 @@ struct BaseChatServerCommand: AsyncParsableCommand {
         try await app.run()
     }
 }
+#else
+// Stub entry point when the `Server` trait is disabled. Building the
+// executable still requires a `@main`; this prints a clear "trait not
+// enabled" message instead of pulling Hummingbird into the default build.
+@main
+struct BaseChatServerDisabled {
+    static func main() {
+        print("BaseChatServer was built without the `Server` trait. Re-build with `--traits Server` to enable.")
+    }
+}
+#endif

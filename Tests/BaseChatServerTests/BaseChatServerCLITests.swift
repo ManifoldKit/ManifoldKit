@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 @testable import BaseChatServerBackends
 import ArgumentParser
@@ -132,3 +133,5 @@ final class TraitAwareServerBackendProviderTests: XCTestCase {
         XCTAssertEqual(models, ["mlx-community/example", "Models/example"])
     }
 }
+
+#endif

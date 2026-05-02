@@ -1,3 +1,4 @@
+#if Server
 @testable import BaseChatServerCore
 import XCTest
 
@@ -34,3 +35,5 @@ final class ServerConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.metricsEnabled)
     }
 }
+
+#endif
