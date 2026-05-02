@@ -40,6 +40,7 @@ BaseChatInference/Models/ToolTypes.swift:} else if let arr = try? container.deco
 
 BaseChatInference/Models/ModelInfo.swift:guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
 BaseChatInference/Models/ModelInfo.swift:if let metadata = try? GGUFMetadataReader.readMetadata(from: url) {
+BaseChatInference/Models/ModelInfo.swift:if let metadata = try? GGUFMetadataReader.readMetadata(from: localURL) {
 BaseChatInference/Models/ModelInfo.swift:guard let contents = try? fileManager.contentsOfDirectory(
 BaseChatInference/Models/ModelInfo.swift:let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
 
