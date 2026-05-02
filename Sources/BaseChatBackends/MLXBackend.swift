@@ -930,34 +930,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             }
 
             do {
-                let outputLimit = config.maxOutputTokens
-                var outputTokenCount = 0
-                var isFirstToken = true
-
                 let resolvedMarkers = Self.resolveThinkingMarkers(
                     config: config,
                     autoDetected: autoDetectedMarkers
                 )
-                let useThinkingParser = resolvedMarkers != nil
-                // ThinkingParser must always be initialized (its initializer can't take nil).
-                // When useThinkingParser is false the parser is never invoked, so the
-                // placeholder marker pair is never observed.
-                var thinkingParser = ThinkingParser(markers: resolvedMarkers ?? .qwen3)
-
-                // Instantiate the tool-call parser when tools are configured and the
-                // loaded model speaks a known tool-call dialect. The parser is a no-op
-                // pass-through when tools are empty or the dialect is unknown.
-                let useToolParser = !config.tools.isEmpty && dialect != .unknown
-                var toolParser = MLXToolCallParser()
-
-                // Enforces `config.maxThinkingTokens` with the same semantics as
-                // LlamaGenerationDriver: a thinking model that runs away on a 16 GB
-                // Mac can OOM mid-generation, so when the configured budget is hit
-                // we stop emitting further thinking tokens and break out of the
-                // MLX stream. Visible `.token` events are never counted toward
-                // this budget. See issue #550.
-                var thinkingTokenCount = 0
-                var thinkingLimitReached = false
 
                 if kvCacheReuseEligible, let pendingSnapshotTask {
                     await pendingSnapshotTask.value
@@ -976,100 +952,27 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     kvCacheReuseEligible: kvCacheReuseEligible,
                     snapshot: resolvedSnapshot
                 )
-                let generationInput = prepared.generationInput
-                let cache = prepared.cache
-                let promptTokenIds = prepared.promptTokenIds
                 if prepared.reuseLen > 0 {
                     continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
                 }
 
-                let mlxStream = try await modelContainer.generate(
-                    input: generationInput,
-                    cache: cache,
-                    parameters: generateConfig
+                let driver = MLXGenerationDriver()
+                let result = try await driver.run(
+                    container: modelContainer,
+                    generationInput: prepared.generationInput,
+                    cache: prepared.cache,
+                    generateConfig: generateConfig,
+                    config: config,
+                    dialect: dialect,
+                    markers: resolvedMarkers,
+                    generationStream: generationStream,
+                    continuation: continuation,
+                    yieldHook: MLXBackend._yieldHookForTesting
                 )
-                // Inserts a brief cooperative yield every N tokens so sustained MLX
-                // generation doesn't starve WindowServer's GPU command queue and
-                // cause UI hitches in other apps. Mirrors the pattern in SwiftLM's
-                // `Server.swift` (50µs sleep every 8 tokens). Configurable via
-                // `GenerationConfig.yieldEveryNTokens`; `0` disables the yield.
-                let yieldEvery = config.yieldEveryNTokens
-                var completionTokenCount = 0
-                outer: for await generation in mlxStream {
-                    if Task.isCancelled { break }
-                    if let text = generation.chunk {
-                        // Stage 1: tool-call parsing (suppresses tokens inside <tool_call>…</tool_call>).
-                        // Stage 2: thinking parsing on remaining .token events.
-                        let stageOneEvents: [GenerationEvent] = useToolParser
-                            ? toolParser.process(text)
-                            : [.token(text)]
 
-                        for event in stageOneEvents {
-                            // Apply thinking parser only to visible token events.
-                            let finalEvents: [GenerationEvent]
-                            if case .token(let tokenText) = event, useThinkingParser {
-                                finalEvents = thinkingParser.process(tokenText)
-                            } else {
-                                finalEvents = [event]
-                            }
-
-                            for finalEvent in finalEvents {
-                                if isFirstToken {
-                                    switch finalEvent {
-                                    case .token, .thinkingToken, .toolCall:
-                                        await MainActor.run { generationStream.setPhase(.streaming) }
-                                        isFirstToken = false
-                                    default: break
-                                    }
-                                }
-                                // Only count visible output tokens toward maxOutputTokens limit.
-                                // Tool call events do not count as output tokens.
-                                if case .token = finalEvent { outputTokenCount += 1 }
-                                continuation.yield(finalEvent)
-                                if case .thinkingToken = finalEvent {
-                                    thinkingTokenCount += 1
-                                    if let limit = config.maxThinkingTokens, thinkingTokenCount >= limit {
-                                        thinkingLimitReached = true
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        if thinkingLimitReached { break outer }
-                        if let limit = outputLimit, outputTokenCount >= limit { break }
-
-                        // Per-chunk yield: count every MLX-emitted chunk (regardless
-                        // of whether it became a visible token, thinking token, or
-                        // got swallowed by the tool-call parser) so the cadence
-                        // tracks real generation work.
-                        completionTokenCount += 1
-                        if yieldEvery > 0 && completionTokenCount % yieldEvery == 0 {
-                            if let hook = MLXBackend._yieldHookForTesting {
-                                await hook()
-                            } else {
-                                try? await Task.sleep(for: .microseconds(50))
-                            }
-                        }
-                    }
-                }
-                // Flush any bytes held back at tag-boundary buffers.
-                if useToolParser {
-                    for event in toolParser.finalize() {
-                        if case .token(let tokenText) = event, useThinkingParser {
-                            for finalEvent in thinkingParser.process(tokenText) {
-                                continuation.yield(finalEvent)
-                            }
-                        } else {
-                            continuation.yield(event)
-                        }
-                    }
-                }
-                for event in thinkingParser.finalize() {
-                    continuation.yield(event)
-                }
                 let snapshotInputs: (MLXPromptCache, [Int])? =
-                    if kvCacheReuseEligible, !Task.isCancelled, let promptTokenIds {
-                        (cache, promptTokenIds)
+                    if kvCacheReuseEligible, result.completedNormally, let ids = prepared.promptTokenIds {
+                        (prepared.cache, ids)
                     } else {
                         nil
                     }
@@ -1077,30 +980,9 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 if let self {
                     self.withStateLock { self._isGenerating = false }
                 }
-                await MainActor.run { generationStream.setPhase(.done) }
+                generationStream.setPhase(.done)
                 if let self, let (cache, promptTokenIds) = snapshotInputs {
-                    self.withStateLock {
-                        self._promptCacheWriteToken &+= 1
-                        let snapshotWriteToken = self._promptCacheWriteToken
-                        // The snapshot must capture on `@MainActor`: every MLX
-                        // call inside `capturePromptCacheSnapshot` (copy/eval/
-                        // slicing/trim) shares the single-threaded GPU scheduler
-                        // with `ModelContainer.generate`. Running it on a free
-                        // executor would race the next generation's compute.
-                        let snapshotTask = Task<Void, Never> { @MainActor [weak self] in
-                            let snapshot = Self.capturePromptCacheSnapshot(
-                                from: cache,
-                                promptTokens: promptTokenIds
-                            )
-                            guard let self else { return }
-                            self.withStateLock {
-                                guard self._promptCacheWriteToken == snapshotWriteToken else { return }
-                                self._promptCacheSnapshot = snapshot
-                                self._pendingPromptCacheSnapshotTask = nil
-                            }
-                        }
-                        self._pendingPromptCacheSnapshotTask = snapshotTask
-                    }
+                    self.scheduleSnapshotCaptureLocked(cache: cache, promptTokenIds: promptTokenIds)
                 }
                 continuation.finish()
             } catch {
@@ -1109,11 +991,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 }
                 if !Task.isCancelled {
                     Self.logger.error("MLX generation error: \(error)")
-                    await MainActor.run { generationStream.setPhase(.failed(error.localizedDescription)) }
+                    generationStream.setPhase(.failed(error.localizedDescription))
                     continuation.finish(throwing: error)
                     return
                 }
-                await MainActor.run { generationStream.setPhase(.done) }
+                generationStream.setPhase(.done)
                 continuation.finish()
             }
         }
@@ -1127,6 +1009,38 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
 
         return generationStream
+    }
+
+    /// Schedules an off-main capture of the prompt KV cache for next-turn reuse.
+    ///
+    /// The capture itself runs `@MainActor` because every MLX call inside
+    /// `capturePromptCacheSnapshot` (`copy()`, `eval`, `state` slicing, `trim`)
+    /// shares the single-threaded GPU scheduler with `ModelContainer.generate`.
+    /// A monotonic write token guards against stale snapshots overwriting a
+    /// newer turn's cache state if the next `generate()` call has already
+    /// invalidated this lineage.
+    @MainActor
+    private func scheduleSnapshotCaptureLocked(
+        cache: MLXPromptCache,
+        promptTokenIds: [Int]
+    ) {
+        withStateLock {
+            _promptCacheWriteToken &+= 1
+            let snapshotWriteToken = _promptCacheWriteToken
+            let snapshotTask = Task<Void, Never> { @MainActor [weak self] in
+                let snapshot = Self.capturePromptCacheSnapshot(
+                    from: cache,
+                    promptTokens: promptTokenIds
+                )
+                guard let self else { return }
+                self.withStateLock {
+                    guard self._promptCacheWriteToken == snapshotWriteToken else { return }
+                    self._promptCacheSnapshot = snapshot
+                    self._pendingPromptCacheSnapshotTask = nil
+                }
+            }
+            _pendingPromptCacheSnapshotTask = snapshotTask
+        }
     }
 
     // MARK: - Testing
