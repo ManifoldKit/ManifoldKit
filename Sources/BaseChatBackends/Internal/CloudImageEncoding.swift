@@ -33,6 +33,20 @@ enum CloudImageEncoding {
         data.base64EncodedString()
     }
 
+    /// Returns a `data:` URI (RFC 2397) suitable for OpenAI's
+    /// `image_url.url` field — `data:<mime>;base64,<payload>`. OpenAI also
+    /// accepts public `https://` URLs there, but we always have the bytes
+    /// in-process at this layer, so the data URI is the simplest path.
+    ///
+    /// The MIME type is passed through untouched. OpenAI's vision endpoint
+    /// accepts at least `image/png`, `image/jpeg`, `image/gif`, and
+    /// `image/webp`; an exotic value will surface as an upstream 400, which
+    /// matches the same failure mode persisted images would already have on
+    /// other backends.
+    static func dataURI(data: Data, mimeType: String) -> String {
+        "data:\(mimeType);base64,\(base64String(from: data))"
+    }
+
     /// Counts every `.image` part across `messages`. Used by callers that
     /// enforce a per-request image cap (Anthropic = 5 per *turn*, but the
     /// caller decides whether the cap applies turn-by-turn or
