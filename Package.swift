@@ -417,7 +417,7 @@ let package = Package(
         // and `@main` entry point all live here. Trait-gated behind `Server`,
         // which also conditionally pulls in Hummingbird. Without the trait the
         // target compiles to a no-op stub that prints a "trait not enabled"
-        // message (see `main.swift`).
+        // message (see `BaseChatServerCommand.swift`).
         .executableTarget(
             name: "BaseChatServer",
             dependencies: [
