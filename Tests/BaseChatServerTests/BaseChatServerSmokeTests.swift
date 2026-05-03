@@ -104,6 +104,50 @@ final class BaseChatServerSmokeTests: XCTestCase {
         }
     }
 
+    func testAuthMiddlewareInjectionRejectsMissingAndAcceptsValid() async throws {
+        // Wires BearerTokenMiddleware via the explicit `authMiddleware:`
+        // injection (issue #976) rather than the legacy `apiKey` field.
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter(),
+            authMiddleware: BearerTokenMiddleware(token: "via-middleware")
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/models", method: .get) { response in
+                XCTAssertEqual(response.status, .unauthorized)
+            }
+
+            var malformed = HTTPFields()
+            malformed[.authorization] = "Basic dXNlcjpwYXNz"
+            try await client.execute(uri: "/v1/models", method: .get, headers: malformed) { response in
+                XCTAssertEqual(response.status, .unauthorized)
+            }
+
+            var headers = HTTPFields()
+            headers[.authorization] = "Bearer via-middleware"
+            try await client.execute(uri: "/v1/models", method: .get, headers: headers) { response in
+                XCTAssertEqual(response.status, .ok)
+            }
+        }
+    }
+
+    func testAnonymousMiddlewareDefaultPreservesUnauthenticatedAccess() async throws {
+        // No apiKey, no middleware → AnonymousAuthMiddleware default → today's behavior.
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/models", method: .get) { response in
+                XCTAssertEqual(response.status, .ok)
+            }
+        }
+    }
+
     func testCORSDefaultsConfiguredOriginUnsafeWildcardAndPreflight() async throws {
         try await ServerApp(
             configuration: ServerConfiguration(corsOrigin: "https://example.com")
