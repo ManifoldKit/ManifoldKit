@@ -208,7 +208,7 @@ wait $ST_PID;     ST_RC=$?
 
 Per-shell `TMPDIR` keeps `scripts/test.sh`'s `test_output.txt` from clobbering. Wall-clock ≈ max(batch1, batch2) instead of sum.
 
-Within-batch parallelism (`--parallel`) is still blocked by the `UserDefaults.standard` race in `test_autoSelectFirstRunModel_*` and download-tests legacy-key reads — tracked in issue #910.
+Within-batch parallelism (`--parallel`) is enabled. Every test that touched `UserDefaults.standard` has been migrated to a per-suite `UserDefaults(suiteName:)` instance, and `Tests/BaseChatCoreTests/UserDefaultsStandardAuditTest` is the tripwire that fails CI if a future test reintroduces the bare `.standard` access. Add `--parallel` to the XCTest batch invocation when you want max wall-clock throughput on a strong machine. CI's XCTest batch already runs with `--parallel` (see `.github/workflows/ci.yml`).
 
 ### Spike gate (bounded changes only)
 

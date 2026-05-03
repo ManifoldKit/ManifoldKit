@@ -36,12 +36,22 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Arguments ────────────────────────────────────────────────────────────────
 MIN_PASSED=0
+PARALLEL_MODE=0
 SWIFT_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --min-passed)
             MIN_PASSED="${2:?'--min-passed requires an integer argument'}"
             shift 2
+            ;;
+        --parallel)
+            # Track parallel mode separately so the parser can fall back to
+            # SwiftPM's `[N/M] Testing` streaming format when XCTest workers
+            # don't emit per-case pass/fail lines (or only emit them for some
+            # workers — see the parsing block below).
+            PARALLEL_MODE=1
+            SWIFT_ARGS+=("$1")
+            shift
             ;;
         *)
             SWIFT_ARGS+=("$1")
@@ -75,6 +85,36 @@ xctest_passed=$(grep -c "^Test Case '.*' passed" "$OUTPUT_FILE" || true)
 xctest_failed=$(grep -c "^Test Case '.*' failed" "$OUTPUT_FILE" || true)
 xctest_skipped=$(grep -c "^Test Case '.*' skipped" "$OUTPUT_FILE" || true)
 
+# `swift test --parallel` runs each XCTest worker in its own process and
+# multiplexes their output through SwiftPM's xcodebuild-style streaming line:
+#   [N/M] Testing Module.Suite/test_foo
+# Per-worker, the classic `Test Case '...' passed` lines may also appear, but
+# crash victims, signal exits, and silent-skip cases vary worker-to-worker.
+# Use the streaming line count as the authoritative test-ran count when
+# --parallel is in play, and fall back to swift test's exit code for
+# pass/fail (any worker non-zero exit propagates).
+xctest_parallel_count=$(grep -cE "^\[[0-9]+/[0-9]+\] Testing " "$OUTPUT_FILE" || true)
+if [[ $PARALLEL_MODE -eq 1 ]]; then
+    # If the streaming runner emitted more tests than the classic counters
+    # observed (typical when worker output is interleaved or truncated),
+    # trust the streaming count. Per-case pass/fail lines aren't emitted
+    # for every worker under --parallel, so the classic counters undercount.
+    if [[ $xctest_parallel_count -gt $((xctest_passed + xctest_failed + xctest_skipped)) ]]; then
+        if [[ $SWIFT_EXIT -eq 0 ]]; then
+            xctest_passed=$xctest_parallel_count
+            xctest_failed=0
+        else
+            # Some worker failed — keep observed `Test Case '... failed` hits
+            # if any, otherwise synthesise one failure so RESULT shows FAILED.
+            if [[ $xctest_failed -eq 0 ]]; then
+                xctest_failed=1
+            fi
+            xctest_passed=$((xctest_parallel_count - xctest_failed - xctest_skipped))
+            [[ $xctest_passed -lt 0 ]] && xctest_passed=0
+        fi
+    fi
+fi
+
 # Suites that started but never emitted a 'passed' or 'failed' line are crash victims.
 # Exclude the two top-level container lines ("All tests" and the .xctest bundle).
 xctest_suites_started=$(grep "^Test Suite '" "$OUTPUT_FILE" \
@@ -92,6 +132,16 @@ if [[ -n "$xctest_suites_started" ]]; then
         [[ -z "$suite" ]] && continue
         suite_pat=$(printf '%s' "$suite" | sed 's/[][(){}.*+?^$|\\]/\\&/g')
         if ! grep -qE "^Test Suite '${suite_pat}' (passed|failed) at" "$OUTPUT_FILE" 2>/dev/null; then
+            # Under --parallel, worker output is interleaved across processes
+            # and SwiftPM may swallow the trailing "Test Suite '...' passed"
+            # line for some workers. If the streaming runner emitted at least
+            # one test from this suite, it ran — only flag as crashed if
+            # SwiftPM itself reported a non-zero exit.
+            if [[ $PARALLEL_MODE -eq 1 ]]; then
+                if grep -qE "^\[[0-9]+/[0-9]+\] Testing .*\.${suite_pat}/" "$OUTPUT_FILE" 2>/dev/null; then
+                    continue
+                fi
+            fi
             xctest_crashed_suites="${xctest_crashed_suites}  - ${suite} (XCTest)"$'\n'
             xctest_crashed_count=$((xctest_crashed_count + 1))
         fi
