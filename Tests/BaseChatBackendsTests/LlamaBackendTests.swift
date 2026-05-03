@@ -613,6 +613,19 @@ final class LlamaBackendTests: XCTestCase {
     /// the `maxOutputTokens` budget is set generously (256) while the prompt asks
     /// for a brief reply, so any well-behaved model hits EOG before the budget.
     ///
+    /// Per #968: modern instruct models (Qwen3, Llama 3, Gemma) only emit their
+    /// EOG token (`<|im_end|>`, `<|eot_id|>`, `<end_of_turn>`) inside a Jinja
+    /// chat-templated response. Sending a raw prompt produces open-ended text
+    /// that never hits EOG — the model just continues until the budget is
+    /// exhausted. `LlamaBackend.capabilities.requiresPromptTemplate` is `true`
+    /// for exactly this reason; the test honours that contract by formatting
+    /// the prompt with the ChatML template (the most widely supported variant
+    /// across Qwen2/Qwen3/Mistral instruct GGUFs). Llama-3 and Gemma GGUFs
+    /// understand ChatML well enough to still terminate cleanly because the
+    /// `<|im_end|>` token is only consumed as a string terminator — the actual
+    /// EOG token emitted by the model is the one its own tokenizer marked as
+    /// EOG, regardless of which delimiter format wrapped the prompt.
+    ///
     /// Gated on a real GGUF today — per #519, unskipping requires refactoring
     /// `LlamaGenerationDriver` to accept a mockable sampler, which is out of
     /// scope for a fixture PR that is not allowed to modify the driver.
@@ -620,7 +633,10 @@ final class LlamaBackendTests: XCTestCase {
     /// Sabotage check: delete the `if llama_vocab_is_eog(vocab, token) { break }`
     /// line in `LlamaGenerationDriver.run`. Generation runs until `maxOutputTokens`
     /// instead of terminating on EOG, so `tokenCount == maxOutputTokens` rather
-    /// than strictly less.
+    /// than strictly less. Alternative sabotage (per #968): replace the
+    /// chat-templated prompt with the raw "Reply with just the word 'ok'."
+    /// string — Qwen3-0.6B-Q4_K_M then exhausts the 256-token budget and the
+    /// `tokenCount < maxBudget` assertion fails.
     func test_fixture_eogTokenTerminatesStreamBeforeBudget_regression519() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this fixture.")
@@ -632,8 +648,17 @@ final class LlamaBackendTests: XCTestCase {
 
         let maxBudget = 256
         let config = GenerationConfig(temperature: 0.1, maxOutputTokens: maxBudget)
+        // ChatML-templated prompt (#968). Modern instruct GGUFs only emit their
+        // EOG token at the end of a templated assistant turn — the trailing
+        // `<|im_start|>assistant\n` cues the model to produce a reply and stop.
+        let chatMLPrompt = """
+            <|im_start|>user
+            Reply with just the word 'ok'.<|im_end|>
+            <|im_start|>assistant
+
+            """
         let stream = try backend.generate(
-            prompt: "Reply with just the word 'ok'.",
+            prompt: chatMLPrompt,
             systemPrompt: nil,
             config: config
         )
