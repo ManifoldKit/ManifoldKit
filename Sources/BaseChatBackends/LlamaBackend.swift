@@ -321,9 +321,21 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // is no race between this read and those two paths under stateLock.
         let previousTokens = withStateLock { sessionKVState?.tokens ?? [] }
         let commonPrefixLen = zip(tokens, previousTokens).prefix(while: { $0.0 == $0.1 }).count
-        // Must leave at least one token for the sampler (the last prompt token),
-        // so cap reuse at tokens.count - 1.
-        let reuseLen = min(commonPrefixLen, tokens.count - 1)
+        // Cap reuse at tokens.count - 2 so the driver always re-decodes the last
+        // *two* prompt tokens as a 2-token batch. Why two and not one: Metal's
+        // attention kernels select different parallel-reduction strategies for
+        // 1-token vs N-token decode batches. A 1-token re-decode of position
+        // N-1 would take a different reduction path than Turn 1 (which decoded
+        // the prompt as one batched call) and the resulting FP-accumulation
+        // drift can flip the argmax on near-tied tokens (e.g. Qwen3-0.6B
+        // splitting between "," and "." after " Paris"). Re-decoding the last
+        // two tokens batched matches Turn 1's kernel path for position N-1,
+        // restoring greedy determinism. KV reuse for positions 0..N-3 is
+        // preserved, so the perf cost is exactly one extra token decode per
+        // reuse turn. See #966. The `max(0, …)` floor handles short prompts
+        // (tokens.count < 2) where the cap would go negative — in that case
+        // reuse is not viable anyway and the driver decodes the whole prompt.
+        let reuseLen = max(0, min(commonPrefixLen, tokens.count - 2))
 
         // Trim the KV cache tail beyond the reuse prefix before flipping
         // isGenerating. The context pointer is safe to snapshot here: the outer
