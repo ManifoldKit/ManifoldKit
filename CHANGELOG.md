@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.16.0](https://github.com/roryford/BaseChatKit/compare/v0.15.0...v0.16.0) (2026-05-03)
+
+### Highlights
+
+#### Verify downloaded weights with SHA-256
+
+`DownloadableModel` and `CuratedModel` now accept an optional `expectedSHA256`. When set, `DownloadFileValidator` streams the SHA-256 digest as the file lands and rejects on mismatch — closing a Medium-severity finding from the April 2026 security review where a compromised mirror could serve tampered weights with valid GGUF magic bytes. Curated demo manifests can opt in per entry; user-supplied URLs stay unverified and are labeled as such in the model browser row.
+
+```swift
+CuratedModel(
+    id: "smollm2-360m-instruct-q4-k-m",
+    huggingFaceRepoID: "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
+    fileName: "smollm2-360m-instruct-q4_k_m.gguf",
+    sizeBytes: 270_398_944,
+    expectedSHA256: "5f3aa9..."  // populated from the HF LFS pointer
+)
+```
+
+This is Phase 1 of [#367](https://github.com/roryford/BaseChatKit/issues/367); Phase 2 (Ed25519-signed manifests) and Phase 3 (strict mode where unverified downloads are rejected by default) remain. See [#978](https://github.com/roryford/BaseChatKit/pull/978).
+
+#### `ModelInfo` factory for HuggingFace-sourced GGUFs
+
+A new factory closes the awkward gap where post-download HF flows had to either hand-roll the public memberwise `ModelInfo.init` or fall back to `init?(ggufURL:)` (which re-reads file attributes the caller already had from the manifest).
+
+```swift
+guard let info = ModelInfo(
+    huggingFaceRepoID: "Qwen/Qwen3-0.6B-GGUF",
+    fileName: "Qwen3-0.6B-Q4_K_M.gguf",
+    sizeBytes: 462_341_024,
+    localURL: localPath
+) else { return }
+```
+
+Trusts the caller-supplied `sizeBytes` (skipping the disk attributes lookup) but still reads the GGUF header so prompt-template detection, context length, architecture, raw chat template, and KV-cache estimate all populate. Adds an additive `huggingFaceRepoID: String?` stored property to `ModelInfo` for provenance — threaded through the public memberwise init with a default of `nil` so existing call sites compile unchanged. See [#981](https://github.com/roryford/BaseChatKit/pull/981).
+
+### Bug Fixes
+
+- **build:** trait-gate `BaseChatServer`'s `BaseChatBackends` dep — fixes "Multiple commands produce `llama.framework`" build error in `xcodebuild test` introduced by the v0.15.0 server-module collapse ([#983](https://github.com/roryford/BaseChatKit/pull/983))
+- **build:** wrapper script for MLX integration tests with env passthrough — `scripts/test-mlx-integration.sh` patches `.xctestrun` so real-model tests don't silently `XCTSkip` ([#991](https://github.com/roryford/BaseChatKit/pull/991))
+- **llama:** re-decode last 2 tokens batched in KV-reuse turn to match Metal kernel path — restores greedy determinism on Apple Silicon, where 1-token vs N-token decode kernels produced different FP accumulation ([#985](https://github.com/roryford/BaseChatKit/pull/985))
+- **test:** chat-template the prompt in `test_fixture_eogTokenTerminatesStreamBeforeBudget_regression519` — modern instruct models only emit EOG inside a Jinja chat turn; the test now exercises the EOG path it was originally meant to guard ([#984](https://github.com/roryford/BaseChatKit/pull/984))
+
 ## [0.15.0](https://github.com/roryford/BaseChatKit/compare/v0.14.5...v0.15.0) (2026-05-02)
 
 ### Highlights
