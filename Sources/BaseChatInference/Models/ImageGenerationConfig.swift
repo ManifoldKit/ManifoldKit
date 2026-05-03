@@ -1,0 +1,146 @@
+import Foundation
+import CoreFoundation
+
+/// Sampling and diffusion parameters shared across on-device image generation
+/// backends.
+///
+/// Mirrors the role ``GenerationConfig`` plays for text inference: a single
+/// value type the caller hands to ``ImageGenerationBackend/generate(prompt:config:)``
+/// so backends do not have to invent their own per-request shape. Backends that
+/// do not honour a specific field silently ignore it, matching the
+/// ``GenerationConfig`` convention.
+///
+/// ## Snapshot vs. runtime
+///
+/// This is the *runtime* config. For persistence, use
+/// ``ImageGenerationConfigSnapshot`` — a separate value type with the same
+/// fields but no expectation that future runtime additions become wire-format
+/// changes. See ``ImageGenerationConfigSnapshot`` for rationale.
+public struct ImageGenerationConfig: Sendable, Codable, Equatable {
+
+    /// Number of denoising steps the backend should run.
+    ///
+    /// Typical ranges: 1–4 for distilled models (FLUX Schnell, SDXL Turbo),
+    /// 20–50 for full-precision diffusion. Backends that expose a fixed step
+    /// count (e.g. distilled-only conformers) clamp to their supported range.
+    public var steps: Int
+
+    /// Target output width in pixels. See ``resolution`` for the
+    /// `CGSize`-shaped accessor.
+    public var width: Int
+
+    /// Target output height in pixels. See ``resolution`` for the
+    /// `CGSize`-shaped accessor.
+    public var height: Int
+
+    /// Target output resolution in pixels.
+    ///
+    /// Stored as separate ``width``/``height`` fields so this type
+    /// auto-synthesises `Codable` / `Equatable` on every platform — `CGSize`
+    /// does not carry those conformances on Linux. Backends with a
+    /// constrained native resolution (e.g. SDXL 1024×1024) either round to
+    /// the closest supported size or surface a backend-level error — they
+    /// MUST NOT silently scale.
+    public var resolution: CGSize {
+        get { CGSize(width: Double(width), height: Double(height)) }
+        set {
+            // Round (not truncate) so `1023.7` becomes 1024, matching the
+            // intuition that `CGSize` callers express logical pixel counts
+            // rather than mathematically-floored values.
+            width = Int(newValue.width.rounded())
+            height = Int(newValue.height.rounded())
+        }
+    }
+
+    /// Deterministic sampling seed.
+    ///
+    /// When set, backends that expose a sampler seed initialise their RNG
+    /// from this value so two runs with the same prompt and config produce
+    /// the same image. Backends without a configurable seed silently ignore
+    /// it. Stored as `UInt64` for parity with ``GenerationConfig/seed``.
+    public var seed: UInt64?
+
+    /// Classifier-free-guidance scale.
+    ///
+    /// Higher values push the model harder toward the prompt at the cost of
+    /// fidelity. Typical range: 5.0–12.0 for SD/SDXL; distilled models often
+    /// ignore this knob entirely. `nil` lets the backend apply its own
+    /// default.
+    public var guidanceScale: Float?
+
+    /// Destination directory the backend should write the produced image
+    /// into.
+    ///
+    /// `nil` means *backend's discretion* — typically
+    /// `FileManager.default.temporaryDirectory`. Specifying an explicit
+    /// directory lets the host control the storage container (app-group
+    /// sharing, backup exclusion, cleanup policy) without each backend
+    /// inventing its own location convention. Backends MUST honour this
+    /// value when set; the URL emitted by ``ImageGenerationEvent/completed(_:)``
+    /// then resolves under this directory.
+    public var outputDirectory: URL?
+
+    public init(
+        steps: Int = 20,
+        width: Int = 1024,
+        height: Int = 1024,
+        seed: UInt64? = nil,
+        guidanceScale: Float? = nil,
+        outputDirectory: URL? = nil
+    ) {
+        self.steps = steps
+        self.width = width
+        self.height = height
+        self.seed = seed
+        self.guidanceScale = guidanceScale
+        self.outputDirectory = outputDirectory
+    }
+
+    /// Convenience initializer that accepts a `CGSize`. Rounds to the
+    /// nearest integer pixels — backends operate on whole-pixel resolutions,
+    /// never fractions.
+    public init(
+        steps: Int = 20,
+        resolution: CGSize,
+        seed: UInt64? = nil,
+        guidanceScale: Float? = nil,
+        outputDirectory: URL? = nil
+    ) {
+        self.init(
+            steps: steps,
+            width: Int(resolution.width.rounded()),
+            height: Int(resolution.height.rounded()),
+            seed: seed,
+            guidanceScale: guidanceScale,
+            outputDirectory: outputDirectory
+        )
+    }
+
+    // MARK: - Codable
+
+    // Custom Codable so `outputDirectory` rides as `encodeIfPresent` and an
+    // older payload that omits it decodes to `nil` rather than failing.
+    private enum CodingKeys: String, CodingKey {
+        case steps, width, height, seed, guidanceScale, outputDirectory
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.steps = try c.decode(Int.self, forKey: .steps)
+        self.width = try c.decode(Int.self, forKey: .width)
+        self.height = try c.decode(Int.self, forKey: .height)
+        self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
+        self.guidanceScale = try c.decodeIfPresent(Float.self, forKey: .guidanceScale)
+        self.outputDirectory = try c.decodeIfPresent(URL.self, forKey: .outputDirectory)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(steps, forKey: .steps)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+        try c.encodeIfPresent(seed, forKey: .seed)
+        try c.encodeIfPresent(guidanceScale, forKey: .guidanceScale)
+        try c.encodeIfPresent(outputDirectory, forKey: .outputDirectory)
+    }
+}

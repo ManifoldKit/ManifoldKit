@@ -90,7 +90,66 @@ struct MessagePartsView: View {
                     state: result.errorKind == nil ? .completed : .failed
                 )
             }
+
+        case .generatedImage(let payload):
+            generatedImageView(payload)
         }
+    }
+
+    @ViewBuilder
+    private func generatedImageView(_ payload: ImageMessagePayload) -> some View {
+        // The image binary lives on disk (see ``ImageMessagePayload``); load
+        // it lazily and gracefully handle the file-missing case (deleted,
+        // container migration, restored backup without binary).
+        if FileManager.default.fileExists(atPath: payload.imageURL.path) {
+            #if os(iOS)
+            if let uiImage = UIImage(contentsOfFile: payload.imageURL.path) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel(Text(payload.prompt))
+            } else {
+                missingImagePlaceholder(payload: payload)
+            }
+            #elseif os(macOS)
+            if let nsImage = NSImage(contentsOf: payload.imageURL) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel(Text(payload.prompt))
+            } else {
+                missingImagePlaceholder(payload: payload)
+            }
+            #endif
+        } else {
+            missingImagePlaceholder(payload: payload)
+        }
+    }
+
+    @ViewBuilder
+    private func missingImagePlaceholder(payload: ImageMessagePayload) -> some View {
+        // Recoverable: the persisted row points at a binary that is no longer
+        // on disk. Surface a placeholder rather than crashing so history
+        // remains browsable. Logged at warning level — never fatal.
+        let _: Void = {
+            Log.ui.warning(
+                "Generated image binary missing on disk: \(payload.imageURL.path, privacy: .public)"
+            )
+        }()
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.gray.opacity(0.15))
+            .overlay {
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                    Text("Image unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 160)
     }
 
     @ViewBuilder

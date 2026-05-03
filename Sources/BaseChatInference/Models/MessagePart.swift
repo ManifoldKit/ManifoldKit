@@ -20,6 +20,11 @@ import Foundation
 /// malformed JSON until V5.
 public enum MessagePart: Hashable, Sendable {
     case text(String)
+    /// Raw image bytes the *user* uploaded as input to a multimodal model.
+    ///
+    /// Distinct from ``generatedImage(_:)`` — this case carries inline
+    /// bytes the model is asked to look at; that case carries a file URL
+    /// pointing at an image the model produced.
     case image(data: Data, mimeType: String)
     /// Accumulated model reasoning. Excluded from context window (textContent returns nil).
     ///
@@ -39,6 +44,15 @@ public enum MessagePart: Hashable, Sendable {
     ///
     /// Excluded from ``textContent`` and from the accessibility label.
     case toolResult(ToolResult)
+    /// An image produced by an ``ImageGenerationBackend`` and attached to
+    /// a saved message.
+    ///
+    /// Distinct from ``image(data:mimeType:)`` — that case carries raw
+    /// bytes the user submitted as multimodal *input*; this case references
+    /// a file URL whose binary is the model's *output*. Excluded from
+    /// ``textContent`` (the payload's prompt is metadata, not visible
+    /// chat text).
+    case generatedImage(ImageMessagePayload)
 }
 
 // MARK: - Codable
@@ -50,7 +64,7 @@ extension MessagePart: Codable {
     // assertions in MessagePartToolCasesTests / MessagePartThinkingTests are
     // the sentries that catch such drift.
     private enum CodingKeys: String, CodingKey {
-        case text, image, thinking, toolCall, toolResult
+        case text, image, thinking, toolCall, toolResult, generatedImage
     }
 
     private enum ImageKeys: String, CodingKey {
@@ -115,6 +129,8 @@ extension MessagePart: Codable {
             self = .toolCall(try container.decode(ToolCall.self, forKey: .toolCall))
         case .toolResult:
             self = .toolResult(try container.decode(ToolResult.self, forKey: .toolResult))
+        case .generatedImage:
+            self = .generatedImage(try container.decode(ImageMessagePayload.self, forKey: .generatedImage))
         }
     }
 
@@ -137,6 +153,8 @@ extension MessagePart: Codable {
             try container.encode(call, forKey: .toolCall)
         case .toolResult(let result):
             try container.encode(result, forKey: .toolResult)
+        case .generatedImage(let payload):
+            try container.encode(payload, forKey: .generatedImage)
         }
     }
 }
@@ -171,6 +189,13 @@ extension MessagePart {
     /// The ``ToolResult`` payload of this part, or `nil` for non-tool-result parts.
     public var toolResultContent: ToolResult? {
         if case .toolResult(let r) = self { return r }
+        return nil
+    }
+
+    /// The ``ImageMessagePayload`` of a `.generatedImage` part, or `nil`
+    /// for any other case.
+    public var generatedImageContent: ImageMessagePayload? {
+        if case .generatedImage(let p) = self { return p }
         return nil
     }
 }
