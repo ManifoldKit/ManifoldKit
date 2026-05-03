@@ -418,11 +418,21 @@ let package = Package(
         // which also conditionally pulls in Hummingbird. Without the trait the
         // target compiles to a no-op stub that prints a "trait not enabled"
         // message (see `BaseChatServerCommand.swift`).
+        //
+        // BaseChatBackends and BaseChatInference are also `Server`-conditional
+        // for the same reason `fuzz-chat`'s BaseChatBackends dep is `Fuzz`-
+        // conditional (see comment on the `Fuzz` trait above): an unconditional
+        // BaseChatBackends dep on a second executable in the auto-generated
+        // `BaseChatKit-Package` Xcode scheme produces two `Copy llama.framework`
+        // tasks that collide on the same output path — breaking
+        // `xcodebuild test -only-testing BaseChatMLXIntegrationTests`. Gating
+        // the deps keeps `bck-tools` as the sole executable that pulls
+        // llama.framework into the auto-scheme. See issue #982.
         .executableTarget(
             name: "BaseChatServer",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatBackends",
+                .target(name: "BaseChatInference", condition: .when(traits: ["Server"])),
+                .target(name: "BaseChatBackends", condition: .when(traits: ["Server"])),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
             ],
