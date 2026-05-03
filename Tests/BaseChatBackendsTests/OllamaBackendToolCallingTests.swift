@@ -311,5 +311,86 @@ final class OllamaBackendToolCallingTests: XCTestCase {
             "no .toolCall event must fire after the consumer cancels the stream"
         )
     }
+
+    /// Mid-line cancellation contract (regression for #972).
+    ///
+    /// PR #970 decomposed `handleLine` into `processToolCalls` →
+    /// `processThinking` → `processContent`. The original single-method form
+    /// caught `Task.isCancelled` mid-loop with `return`, which exited
+    /// `handleLine` entirely. After the split, that bare `return` exited
+    /// only the helper, so any thinking/content fields on the SAME NDJSON
+    /// line still fired post-cancel.
+    ///
+    /// This test drives a single line carrying many tool_calls plus
+    /// thinking and content fields, cancels the producer task while it is
+    /// iterating tool_calls, and asserts that no `.thinkingToken` /
+    /// `.token` events surface after the cancellation point.
+    func test_cancellation_midLine_doesNotEmitThinkingOrContentAfterStop() async throws {
+        // Build a single NDJSON line carrying many tool_calls plus thinking
+        // and content fields. The high call count widens the in-loop
+        // cancellation window so the producer reliably observes
+        // `Task.isCancelled` partway through `processToolCalls`.
+        let callCount = 64
+        let toolCallsJSON = (0..<callCount).map { i in
+            #"{"id":"call-\#(i)","type":"function","function":{"name":"f_\#(i)","arguments":"{}"}}"#
+        }.joined(separator: ",")
+        let bigLine = #"""
+        {"model":"llama3.2","message":{"role":"assistant","thinking":"LEAKED_THINKING","content":"LEAKED_CONTENT","tool_calls":[\#(toolCallsJSON)]},"done":false}
+        """#
+
+        let (backend, chatURL) = makeBackend()
+        try await loadBackend(backend)
+
+        let chunks: [Data] = [
+            ndjsonLine(bigLine),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}"#),
+        ]
+        MockURLProtocol.stub(
+            url: chatURL,
+            response: .asyncSSE(chunks: chunks, chunkDelay: 0.030, statusCode: 200)
+        )
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "go", systemPrompt: nil, config: GenerationConfig())
+
+        var observed: [GenerationEvent] = []
+        let task = Task<Void, Error> {
+            for try await event in stream.events {
+                observed.append(event)
+                // Cancel the producer the moment the first tool_call event
+                // surfaces. The producer is mid-`processToolCalls` for the
+                // big line; with #972's fix it bails out of `handleLine`,
+                // so subsequent thinking/content fields on the same line
+                // never reach the consumer.
+                if case .toolCallStart = event {
+                    backend.stopGeneration()
+                }
+            }
+        }
+        do {
+            try await task.value
+        } catch is CancellationError {
+            // Expected on cancellation
+        } catch {
+            // Cancellation may also surface as a clean stream end
+        }
+
+        let leakedThinking = observed.contains { event in
+            if case .thinkingToken(let text) = event { return text.contains("LEAKED_THINKING") }
+            return false
+        }
+        let leakedContent = observed.contains { event in
+            if case .token(let text) = event { return text.contains("LEAKED_CONTENT") }
+            return false
+        }
+        XCTAssertFalse(
+            leakedThinking,
+            "no .thinkingToken event must fire from the same line after cancellation interrupts processToolCalls"
+        )
+        XCTAssertFalse(
+            leakedContent,
+            "no .token event must fire from the same line after cancellation interrupts processToolCalls"
+        )
+    }
 }
 #endif

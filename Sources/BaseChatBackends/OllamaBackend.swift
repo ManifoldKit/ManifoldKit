@@ -514,8 +514,21 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         // `StreamingToolCallAccumulator` from `OpenAIToolEncoding.swift`
         // and key by tool-call index here. `streamsToolCallArguments`
         // would flip to `true` at the same time.
-        func processToolCalls(_ parsed: ParsedLine) throws {
-            guard let toolCalls = parsed.toolCalls, !toolCalls.isEmpty else { return }
+        // Returns `false` when `Task.isCancelled` is observed at any point
+        // during this helper so `handleLine` can skip the remaining
+        // sub-handlers (`processThinking` / `processContent`) for the same
+        // NDJSON line. Pre-#970 the equivalent in-loop `if Task.isCancelled
+        // { return }` exited `handleLine` directly; after the decomposition
+        // a bare `return` exits only this helper, which would let
+        // post-cancel thinking and content events surface — the regression
+        // #972 fixes by mirroring `processContent`'s `Bool` convention.
+        func processToolCalls(_ parsed: ParsedLine) throws -> Bool {
+            guard let toolCalls = parsed.toolCalls, !toolCalls.isEmpty else {
+                // Even with no tool_calls on this line, a cancel that
+                // arrived between sub-handlers must short-circuit
+                // downstream emission for the same line.
+                return !Task.isCancelled
+            }
             for call in toolCalls {
                 // Cancellation contract: a consumer that drops the stream
                 // mid-flight must NOT observe `.toolCall` events for
@@ -523,7 +536,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
                 // `Task.isCancelled` at the emit boundary so a single-line
                 // tool_calls payload arriving alongside the cancel doesn't
                 // fire a phantom dispatch.
-                if Task.isCancelled { return }
+                if Task.isCancelled { return false }
                 try noteEventYielded()
                 continuation.yield(.toolCallStart(callId: call.id, name: call.toolName))
                 if !call.arguments.isEmpty {
@@ -536,6 +549,10 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
                 try noteEventYielded()
                 continuation.yield(.toolCall(call))
             }
+            // Post-loop cancellation: if the cancel arrived after the last
+            // tool_call was emitted but before this helper returned, still
+            // bail so thinking/content on the same line don't surface.
+            return !Task.isCancelled
         }
 
         // Route thinking field (if any) first so downstream consumers see
@@ -659,7 +676,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
         func handleLine(_ line: String) throws {
             guard let parsed = Self.parseLine(line) else { return }
-            try processToolCalls(parsed)
+            guard try processToolCalls(parsed) else { return }
             try processThinking(parsed)
             guard try processContent(parsed) else { return }
             if parsed.done {
