@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.16.1](https://github.com/roryford/BaseChatKit/compare/v0.16.0...v0.16.1) (2026-05-03)
+
+### Highlights
+
+#### ImageGenerationBackend — protocol foundation for on-device image generation
+
+There was no stable contract for image-generation backends in BaseChatKit — any integration required host-app glue and a bespoke persistence strategy. `ImageGenerationBackend` defines the protocol surface (parallel to `InferenceBackend`, using `AnyObject + Sendable` to support the synchronous denoising loops that stable-diffusion.cpp conformers require) and introduces `MessagePart.generatedImage` for storing produced images in conversation history. No concrete backends ship in this release — the protocol and wire format are stable so downstream consumers can build against them now.
+
+```swift
+// Stub conformer — real diffusion backends implement this shape
+final class MyDiffusionBackend: ImageGenerationBackend {
+    var isLoaded: Bool { ... }
+    func loadModel(_ config: ImageGenerationConfig) async throws { ... }
+    func generate(_ config: ImageGenerationConfig) -> AsyncThrowingStream<ImageGenerationEvent, Error> { ... }
+    func stopGeneration() { ... }
+    func unloadModel() async { ... }
+}
+```
+
+`ImageGenerationConfigSnapshot` is deliberately a separate type from `ImageGenerationConfig` so future runtime knobs do not silently change the on-disk wire format of saved image messages. No SwiftData migration needed — the new `.generatedImage` case is additive to the JSON-encoded `[MessagePart]` column.
+
+See [#992](https://github.com/roryford/BaseChatKit/pull/992), [#987](https://github.com/roryford/BaseChatKit/issues/987), [#990](https://github.com/roryford/BaseChatKit/issues/990).
+
+#### Bearer-token authentication for BaseChatServer
+
+`BaseChatServer` had no authentication abstraction — hosts either used the raw `apiKey` field or handled auth outside the framework entirely. `RequestAuthMiddleware` is a new protocol with two built-in implementations: `AnonymousAuthMiddleware` (the default, zero behavior change for existing hosts) and `BearerTokenMiddleware` (constant-time `Authorization: Bearer <token>` validation with typed `AuthError` cases). `ServerApp.init` gains an optional `authMiddleware:` parameter; the legacy `apiKey` field is auto-wrapped as `BearerTokenMiddleware` so existing configuration compiles unchanged.
+
+```swift
+let server = ServerApp(
+    configuration: config,
+    authMiddleware: BearerTokenMiddleware(token: "secret", scopes: [.read, .write])
+)
+```
+
+See [#994](https://github.com/roryford/BaseChatKit/pull/994), [#976](https://github.com/roryford/BaseChatKit/issues/976).
+
+### Features
+
+- **inference:** `ImageGenerationBackend` protocol + `MessagePart.generatedImage` case for on-device image generation ([#992](https://github.com/roryford/BaseChatKit/pull/992))
+- **server:** `RequestAuthMiddleware` with `AnonymousAuthMiddleware` and `BearerTokenMiddleware` impls ([#994](https://github.com/roryford/BaseChatKit/pull/994))
+
+### Bug Fixes
+
+- **backends:** `OllamaBackend.processToolCalls` returns `Bool` to signal cancellation, preventing post-cancel `thinking` and `content` events from leaking when a single NDJSON line carries multiple payload fields ([#995](https://github.com/roryford/BaseChatKit/pull/995))
+
+### Performance Improvements
+
+- **test:** `swift test --parallel` enabled for the full XCTest batch; CI wall-clock drops ~47% and `scripts/test.sh` updated to parse streaming output mode ([#996](https://github.com/roryford/BaseChatKit/pull/996))
+
 ## [0.16.0](https://github.com/roryford/BaseChatKit/compare/v0.15.0...v0.16.0) (2026-05-03)
 
 ### Highlights
