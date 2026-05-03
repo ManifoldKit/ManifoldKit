@@ -27,5 +27,10 @@ public enum ImageGenerationEvent: Sendable {
 
     /// Terminal event: generation finished and the image was written to
     /// `url`. The file at `url` is fully closed and safe to read.
+    ///
+    /// The directory portion of `url` is determined by
+    /// ``ImageGenerationConfig/outputDirectory``: when set, the backend
+    /// MUST write under it; when `nil`, the backend picks its own location
+    /// (typically `FileManager.default.temporaryDirectory`).
     case completed(URL)
 }

@@ -44,8 +44,11 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     public var resolution: CGSize {
         get { CGSize(width: Double(width), height: Double(height)) }
         set {
-            width = Int(newValue.width)
-            height = Int(newValue.height)
+            // Round (not truncate) so `1023.7` becomes 1024, matching the
+            // intuition that `CGSize` callers express logical pixel counts
+            // rather than mathematically-floored values.
+            width = Int(newValue.width.rounded())
+            height = Int(newValue.height.rounded())
         }
     }
 
@@ -65,34 +68,79 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     /// default.
     public var guidanceScale: Float?
 
+    /// Destination directory the backend should write the produced image
+    /// into.
+    ///
+    /// `nil` means *backend's discretion* — typically
+    /// `FileManager.default.temporaryDirectory`. Specifying an explicit
+    /// directory lets the host control the storage container (app-group
+    /// sharing, backup exclusion, cleanup policy) without each backend
+    /// inventing its own location convention. Backends MUST honour this
+    /// value when set; the URL emitted by ``ImageGenerationEvent/completed(_:)``
+    /// then resolves under this directory.
+    public var outputDirectory: URL?
+
     public init(
         steps: Int = 20,
         width: Int = 1024,
         height: Int = 1024,
         seed: UInt64? = nil,
-        guidanceScale: Float? = nil
+        guidanceScale: Float? = nil,
+        outputDirectory: URL? = nil
     ) {
         self.steps = steps
         self.width = width
         self.height = height
         self.seed = seed
         self.guidanceScale = guidanceScale
+        self.outputDirectory = outputDirectory
     }
 
-    /// Convenience initializer that accepts a `CGSize`. Truncates to integer
-    /// pixels — backends operate on whole-pixel resolutions, never fractions.
+    /// Convenience initializer that accepts a `CGSize`. Rounds to the
+    /// nearest integer pixels — backends operate on whole-pixel resolutions,
+    /// never fractions.
     public init(
         steps: Int = 20,
         resolution: CGSize,
         seed: UInt64? = nil,
-        guidanceScale: Float? = nil
+        guidanceScale: Float? = nil,
+        outputDirectory: URL? = nil
     ) {
         self.init(
             steps: steps,
-            width: Int(resolution.width),
-            height: Int(resolution.height),
+            width: Int(resolution.width.rounded()),
+            height: Int(resolution.height.rounded()),
             seed: seed,
-            guidanceScale: guidanceScale
+            guidanceScale: guidanceScale,
+            outputDirectory: outputDirectory
         )
+    }
+
+    // MARK: - Codable
+
+    // Custom Codable so `outputDirectory` rides as `encodeIfPresent` and an
+    // older payload that omits it decodes to `nil` rather than failing.
+    private enum CodingKeys: String, CodingKey {
+        case steps, width, height, seed, guidanceScale, outputDirectory
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.steps = try c.decode(Int.self, forKey: .steps)
+        self.width = try c.decode(Int.self, forKey: .width)
+        self.height = try c.decode(Int.self, forKey: .height)
+        self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
+        self.guidanceScale = try c.decodeIfPresent(Float.self, forKey: .guidanceScale)
+        self.outputDirectory = try c.decodeIfPresent(URL.self, forKey: .outputDirectory)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(steps, forKey: .steps)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+        try c.encodeIfPresent(seed, forKey: .seed)
+        try c.encodeIfPresent(guidanceScale, forKey: .guidanceScale)
+        try c.encodeIfPresent(outputDirectory, forKey: .outputDirectory)
     }
 }

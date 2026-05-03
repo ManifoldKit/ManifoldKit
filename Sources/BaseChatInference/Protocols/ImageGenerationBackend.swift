@@ -49,6 +49,16 @@ public protocol ImageGenerationBackend: AnyObject, Sendable {
     /// the returned `AsyncThrowingStream` and observe ``ImageGenerationEvent``
     /// values until either ``ImageGenerationEvent/completed(_:)`` or a
     /// thrown error terminates it.
+    ///
+    /// ## Output destination contract
+    ///
+    /// Backends MUST honour ``ImageGenerationConfig/outputDirectory`` when
+    /// it is non-`nil`: the URL surfaced in
+    /// ``ImageGenerationEvent/completed(_:)`` must resolve under that
+    /// directory. When `outputDirectory` is `nil` the backend picks its
+    /// own location (typically `FileManager.default.temporaryDirectory`).
+    /// Either way, the file at the emitted URL must be fully written and
+    /// closed before the event is yielded.
     func generate(
         prompt: String,
         config: ImageGenerationConfig

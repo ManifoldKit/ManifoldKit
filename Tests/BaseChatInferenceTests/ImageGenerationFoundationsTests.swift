@@ -61,6 +61,91 @@ final class ImageGenerationFoundationsTests: XCTestCase {
         XCTAssertEqual(config.height, 1024)
     }
 
+    // MARK: - resolution rounding
+
+    /// `1023.7 → 1024` rather than `1023`. Truncation here would silently
+    /// lose a pixel column whenever a `CGSize` came from a layout calculation
+    /// and landed `.7` of a pixel high.
+    func test_resolutionSetter_roundsRatherThanTruncates() {
+        var config = ImageGenerationConfig()
+        config.resolution = CGSize(width: 1023.7, height: 1023.7)
+        XCTAssertEqual(config.width, 1024)
+        XCTAssertEqual(config.height, 1024)
+
+        var snapshot = ImageGenerationConfigSnapshot(steps: 1, width: 0, height: 0)
+        snapshot.resolution = CGSize(width: 1023.7, height: 1023.7)
+        XCTAssertEqual(snapshot.width, 1024)
+        XCTAssertEqual(snapshot.height, 1024)
+    }
+
+    func test_resolutionInit_roundsCGSizeFractionalPixels() {
+        let config = ImageGenerationConfig(
+            resolution: CGSize(width: 1023.7, height: 511.4)
+        )
+        XCTAssertEqual(config.width, 1024)
+        XCTAssertEqual(config.height, 511)
+    }
+
+    // MARK: - outputDirectory Codable behaviour
+
+    /// Setting `outputDirectory` must round-trip through Codable. Hosts that
+    /// pin a specific storage container (app-group sharing, backup
+    /// exclusion) rely on this field surviving persistence.
+    func test_imageGenerationConfig_outputDirectorySet_roundtrips() throws {
+        let dir = URL(fileURLWithPath: "/var/mobile/Containers/Shared/AppGroup/imgs", isDirectory: true)
+        let config = ImageGenerationConfig(
+            steps: 4,
+            width: 512,
+            height: 512,
+            outputDirectory: dir
+        )
+
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: data)
+
+        XCTAssertEqual(decoded.outputDirectory, dir)
+    }
+
+    /// Absent `outputDirectory` must decode as `nil`, not throw. Older
+    /// payloads (and the default-init common case) omit the field entirely.
+    func test_imageGenerationConfig_outputDirectoryAbsent_decodesAsNil() throws {
+        // Payload deliberately omits outputDirectory — emulates an older
+        // serialised row from before the field existed.
+        let json = #"{"steps":4,"width":512,"height":512}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: json)
+
+        XCTAssertNil(decoded.outputDirectory)
+        XCTAssertEqual(decoded.steps, 4)
+        XCTAssertEqual(decoded.width, 512)
+    }
+
+    /// Snapshot mirrors the runtime config: `outputDirectory` rides through
+    /// snapshot ↔ config conversion and through Codable.
+    func test_imageGenerationConfigSnapshot_outputDirectory_roundtrips() throws {
+        let dir = URL(fileURLWithPath: "/tmp/bck-imgs", isDirectory: true)
+        let snapshot = ImageGenerationConfigSnapshot(
+            steps: 8,
+            width: 768,
+            height: 768,
+            outputDirectory: dir
+        )
+
+        // Codable
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(ImageGenerationConfigSnapshot.self, from: data)
+        XCTAssertEqual(decoded.outputDirectory, dir)
+
+        // Snapshot → config → snapshot
+        let viaConfig = ImageGenerationConfigSnapshot(from: snapshot.toConfig())
+        XCTAssertEqual(viaConfig.outputDirectory, dir)
+    }
+
+    func test_imageGenerationConfigSnapshot_outputDirectoryAbsent_decodesAsNil() throws {
+        let json = #"{"steps":4,"width":512,"height":512}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ImageGenerationConfigSnapshot.self, from: json)
+        XCTAssertNil(decoded.outputDirectory)
+    }
+
     // MARK: - Snapshot ↔ runtime conversion identity
 
     func test_imageGenerationConfigSnapshot_roundtripsViaConfig() {
