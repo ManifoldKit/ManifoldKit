@@ -18,18 +18,30 @@ internal struct ServerApp: Sendable {
     internal let adapter: any ChatCompletionsAdapter
     internal let metrics: ServerMetrics
     internal let generationGate: AsyncSemaphore
+    internal let authMiddleware: any RequestAuthMiddleware
 
     internal init(
         configuration: ServerConfiguration = ServerConfiguration(),
         backendProvider: any ServerBackendProvider = UnavailableServerBackendProvider(),
         adapter: any ChatCompletionsAdapter = DefaultChatCompletionsAdapter(),
-        metrics: ServerMetrics = ServerMetrics()
+        metrics: ServerMetrics = ServerMetrics(),
+        authMiddleware: (any RequestAuthMiddleware)? = nil
     ) {
         self.configuration = configuration
         self.backendProvider = backendProvider
         self.adapter = adapter
         self.metrics = metrics
         self.generationGate = AsyncSemaphore(value: configuration.parallelSlots)
+        // Back-compat: when no explicit middleware is supplied, the legacy
+        // `apiKey` field still works — it's wrapped in a BearerTokenMiddleware.
+        // An empty/nil apiKey means anonymous access (today's default).
+        if let authMiddleware {
+            self.authMiddleware = authMiddleware
+        } else if let apiKey = configuration.apiKey, !apiKey.isEmpty {
+            self.authMiddleware = BearerTokenMiddleware(token: apiKey)
+        } else {
+            self.authMiddleware = AnonymousAuthMiddleware()
+        }
     }
 
     internal func health() -> ServerHealth { ServerHealth() }
@@ -43,7 +55,7 @@ internal struct ServerApp: Sendable {
         }
 
         router.get("/v1/models") { request, _ in
-            if let unauthorized = authorizationFailure(for: request) {
+            if let unauthorized = await authorizationFailure(for: request) {
                 return unauthorized
             }
             metrics.recordRequestStarted()
@@ -60,7 +72,7 @@ internal struct ServerApp: Sendable {
         }
 
         router.post("/v1/chat/completions") { request, context in
-            if let unauthorized = authorizationFailure(for: request) {
+            if let unauthorized = await authorizationFailure(for: request) {
                 return unauthorized
             }
             metrics.recordRequestStarted()
@@ -79,7 +91,7 @@ internal struct ServerApp: Sendable {
 
         if configuration.metricsEnabled {
             router.get("/metrics") { request, _ in
-                if let unauthorized = authorizationFailure(for: request) {
+                if let unauthorized = await authorizationFailure(for: request) {
                     return unauthorized
                 }
                 return metricsResponse()
@@ -113,11 +125,13 @@ internal struct ServerApp: Sendable {
         )
     }
 
-    private func authorizationFailure(for request: Request) -> Response? {
-        guard let apiKey = configuration.apiKey, !apiKey.isEmpty else { return nil }
-        let expected = "Bearer \(apiKey)"
-        let provided = request.headers[.authorization] ?? ""
-        guard constantTimeEqual(provided, expected) else {
+    private func authorizationFailure(for request: Request) async -> Response? {
+        // AnonymousAuthMiddleware always succeeds, so the cost here is one
+        // protocol dispatch per request — same shape as the original guard.
+        do {
+            _ = try await authMiddleware.authenticate(AuthRequest.from(request))
+            return nil
+        } catch {
             return errorResponse(
                 "Missing or invalid bearer token.",
                 status: .unauthorized,
@@ -125,14 +139,6 @@ internal struct ServerApp: Sendable {
                 code: "invalid_api_key"
             )
         }
-        return nil
-    }
-
-    private func constantTimeEqual(_ a: String, _ b: String) -> Bool {
-        let aBytes = Array(a.utf8)
-        let bBytes = Array(b.utf8)
-        guard aBytes.count == bBytes.count else { return false }
-        return zip(aBytes, bBytes).reduce(0 as UInt8) { $0 | ($1.0 ^ $1.1) } == 0
     }
 
     private func chatCompletionResponse(for request: ChatCompletionRequest) async throws -> Response {
