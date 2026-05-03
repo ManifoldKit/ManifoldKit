@@ -56,9 +56,14 @@ swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuilti
 # in past runs — filter to the streamable suite to avoid that path.
 RUN_MCP_E2E=1 swift test --filter BaseChatMCPE2ESmokeTests --disable-default-traits
 
-# Xcode-only — real MLX model inference (metallib required)
+# Xcode-only — real MLX model inference (metallib required).
 # Cannot run via swift test; MLX Metal shaders are only compiled by Xcode.
-xcodebuild test -scheme BaseChatKit-Package -only-testing BaseChatMLXIntegrationTests -destination 'platform=macOS'
+# Use the wrapper — bare `xcodebuild test` builds and runs but every test
+# silently `XCTSkip`s because xcodebuild does not propagate the
+# `BASECHAT_DISCOVER_LOCAL_MODELS=1` env to the xctest runner. The wrapper
+# patches the .xctestrun file's EnvironmentVariables before running. See #986.
+scripts/test-mlx-integration.sh                              # discover any valid MLX dir
+scripts/test-mlx-integration.sh Meta-Llama-3.1-8B-Instruct  # prefer dir whose name contains the hint
 
 # Example app UI tests — prefer build-for-testing once, then targeted reruns
 scripts/example-ui-tests.sh build-for-testing
@@ -147,6 +152,7 @@ When Apple ships a new major OS each September, bump both minimums by one and re
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
 | `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). Passes `--traits Fuzz,MLX,Llama` automatically. See [FUZZING.md](FUZZING.md). |
+| `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into the `.xctestrun` so real-model tests don't silently skip. Use instead of bare `xcodebuild test`. See #986. |
 
 ## Pre-push checklist
 
