@@ -49,10 +49,11 @@ public extension HuggingFaceService {
     ///
     /// Resolves the manifest (`model_index.json`) to determine which submodules
     /// the snapshot carries (UNet, VAE, one or two text encoders, tokenizer(s),
-    /// scheduler), then sequentially downloads each required file using the same
-    /// `URLSession` the underlying `HubClient` was configured with. Each file is
-    /// validated via ``DownloadFileValidator/validate(_:diffusionRole:expectedSize:)``
-    /// before the next one starts; a failure aborts the whole download.
+    /// scheduler), then sequentially downloads each required file using the
+    /// `urlSession` argument (or a freshly created ephemeral session when nil).
+    /// Each file is validated via
+    /// ``DownloadFileValidator/validate(_:diffusionRole:expectedSize:)`` before
+    /// the next one starts; a failure aborts the whole download.
     ///
     /// Sequential downloads keep the implementation small and let the validator
     /// surface a corrupt file before consuming bandwidth on the rest. The runtime
@@ -70,8 +71,12 @@ public extension HuggingFaceService {
     ///   - displayName: Human-readable name for the resulting `ImageModelInfo`.
     ///     Defaults to the last path component of `repoID`.
     ///   - urlSession: URL session used for the file downloads. Tests inject a
-    ///     `URLSession` configured with `MockURLProtocol`. When `nil`, a default
-    ///     ephemeral session is used.
+    ///     `URLSession` configured with `MockURLProtocol`. When `nil`, a fresh
+    ///     ephemeral session is created for this call (the underlying
+    ///     `HubClient`'s session is **not** reused — manifest fetching shares
+    ///     `HubClient`, but file streaming runs through this dedicated session
+    ///     so per-call cancellation is straightforward). Pass an explicit
+    ///     session if you need shared auth headers or a custom user-agent.
     ///   - progress: Called with cumulative progress as bytes arrive.
     /// - Returns: An `ImageModelInfo` whose `format == .mlxDiffusion` and whose
     ///   `huggingFaceRepoID == repoID`.
@@ -132,7 +137,10 @@ public extension HuggingFaceService {
                 using: session,
                 onChunk: { received, expected in
                     let cumulative = baseline + received
-                    let total = baseline + max(expected, received)
+                    // When `Content-Length` is unknown (often `-1`), keep
+                    // `totalBytesExpected` at `0` so `fractionCompleted`
+                    // reports as indeterminate rather than spuriously ~1.0.
+                    let total: Int64 = expected > 0 ? baseline + expected : 0
                     progress(DiffusionDownloadProgress(
                         currentFile: relativePath,
                         totalBytesReceived: cumulative,
@@ -229,25 +237,28 @@ public extension HuggingFaceService {
         manifest: DiffusionManifest,
         destinationDirectory: URL
     ) throws -> DiffusionDownloadPlan {
+        // UNet + VAE are required for every diffusers pipeline we support.
+        // Surface a clear error here rather than letting the loader trip later
+        // on a missing submodule.
+        for required in ["unet", "vae"] where !manifest.submodules.contains(required) {
+            throw HuggingFaceError.invalidDownloadedFile(
+                reason: "Manifest is missing required submodule \"\(required)\""
+            )
+        }
+
         var items: [DiffusionDownloadItem] = []
 
-        // UNet — required.
-        if manifest.submodules.contains("unet") {
-            items.append(contentsOf: try plan(
-                submodule: "unet",
-                weights: "diffusion_pytorch_model.safetensors",
-                destinationDirectory: destinationDirectory
-            ))
-        }
+        items.append(contentsOf: try plan(
+            submodule: "unet",
+            weights: "diffusion_pytorch_model.safetensors",
+            destinationDirectory: destinationDirectory
+        ))
 
-        // VAE — required.
-        if manifest.submodules.contains("vae") {
-            items.append(contentsOf: try plan(
-                submodule: "vae",
-                weights: "diffusion_pytorch_model.safetensors",
-                destinationDirectory: destinationDirectory
-            ))
-        }
+        items.append(contentsOf: try plan(
+            submodule: "vae",
+            weights: "diffusion_pytorch_model.safetensors",
+            destinationDirectory: destinationDirectory
+        ))
 
         // Text encoder(s).
         for name in ["text_encoder", "text_encoder_2"] where manifest.submodules.contains(name) {
@@ -360,6 +371,13 @@ public extension HuggingFaceService {
             at: local.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        // Explicitly remove any leftover from a previous attempt so a partial
+        // file's tail can't survive into the new download. `createFile(...)`
+        // is documented to overwrite, but a stale file could otherwise pass
+        // size/header validation if the new write is short.
+        if FileManager.default.fileExists(atPath: local.path) {
+            try? FileManager.default.removeItem(at: local)
+        }
         FileManager.default.createFile(atPath: local.path, contents: nil)
         guard let handle = try? FileHandle(forWritingTo: local) else {
             throw HuggingFaceError.invalidDownloadedFile(reason: "Cannot open file for writing: \(local.lastPathComponent)")

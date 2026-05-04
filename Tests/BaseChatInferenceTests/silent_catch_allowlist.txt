@@ -74,10 +74,14 @@ BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:guard let headerLength
 
 # Diffusion download — same pattern. Best-effort handle close after
 # write, and a `try? attributesOfItem` whose `nil` result is the
-# documented "size unknown" branch of `URL.fileSize`.
+# documented "size unknown" branch of `URL.fileSize`. The
+# `try? removeItem` wipes a possible partial file from a previous
+# attempt before we recreate it — the createFile call below succeeds
+# either way, so a failed remove is non-actionable.
 BaseChatHuggingFace/DiffusionDownload.swift:guard let handle = try? FileHandle(forWritingTo: local) else {
 BaseChatHuggingFace/DiffusionDownload.swift:defer { try? handle.close() }
 BaseChatHuggingFace/DiffusionDownload.swift:let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+BaseChatHuggingFace/DiffusionDownload.swift:try? FileManager.default.removeItem(at: local)
 BaseChatInference/Services/GGUFMetadataReader.swift:guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
 BaseChatInference/Services/ModelStorageService.swift:guard let contents = try? fileManager.contentsOfDirectory(
 

@@ -113,7 +113,12 @@ extension DownloadFileValidator {
             )
         }
 
-        let headerLength = headerLengthData.withUnsafeBytes { $0.load(as: UInt64.self) }.littleEndian
+        // Use `loadUnaligned` — `Data`'s underlying buffer has no alignment
+        // guarantee, so a plain `load(as: UInt64.self)` can trap on hosts that
+        // enforce alignment for 8-byte loads.
+        let headerLength = headerLengthData.withUnsafeBytes {
+            $0.loadUnaligned(as: UInt64.self)
+        }.littleEndian
 
         // Plausibility: header must fit between the 8-byte prefix and EOF,
         // with at least 1 byte of tensor payload (margin avoids a degenerate
