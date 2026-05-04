@@ -103,12 +103,12 @@ jobs:
           '
 
       - name: Attest SBOM build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/sbom.cdx.json
 
       - name: Attest dependency-tree build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: artifacts/dependency-tree.json
 
