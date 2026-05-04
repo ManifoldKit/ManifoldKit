@@ -15,116 +15,46 @@
 | `BaseChatTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.) | None |
 | `BaseChatMLXIntegrationTests` | Xcode-only real MLX model E2E tests | MLX |
 
-`BaseChatUI` depends on `BaseChatRuntime`, `BaseChatPersistenceSwiftData`, and `BaseChatInference`. Never import `BaseChatBackends` from UI, and never import `BaseChatUIModelManagement` from `BaseChatUI` (the v2.0 peel deliberately makes this a one-way edge — the back-edge would close a dep cycle, and a CI lint blocks the regression). `BaseChatUIModelManagement` depends on `BaseChatUI` (its views consume `ChatViewModel` via `@Environment`); cycle dissolved by closure-injecting `APIConfigurationView` into `ChatView` and `GenerationSettingsView`. `ChatView` and `GenerationSettingsView` are now generic over an `APIConfig: View` type and require an `apiConfiguration:` `@ViewBuilder` parameter — typically `{ APIConfigurationView() }` from `BaseChatUIModelManagement`. `BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference` directly (not `BaseChatRuntime` or `BaseChatPersistenceSwiftData`), so backend and MCP integrations stay free of SwiftData. Apps that only need inference orchestration can depend on `BaseChatInference` alone; apps that need persistence-agnostic orchestration (ports, use cases) can stop at `BaseChatRuntime` and supply their own adapters. Files that use `InferenceService` or other inference types directly must `import BaseChatInference` explicitly. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
+**Dependency rules:** Never import `BaseChatBackends` from UI; never import `BaseChatUIModelManagement` from `BaseChatUI` (CI lint enforces this). `BaseChatUIModelManagement` depends on `BaseChatUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. `BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference` directly (not `BaseChatRuntime`), keeping them free of SwiftData. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
 
 ## Running tests
 
-```bash
-# Runs in CI — no hardware required (disable default MLX trait to skip heavy deps)
-swift test --filter BaseChatCoreTests --disable-default-traits
-swift test --filter BaseChatRuntimeTests --disable-default-traits
-swift test --filter BaseChatPersistenceSwiftDataTests --disable-default-traits
-swift test --filter BaseChatInferenceTests --disable-default-traits
-swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits
-swift test --filter BaseChatUITests --disable-default-traits
-swift test --filter BaseChatUIModelManagementTests --disable-default-traits
-swift test --filter BaseChatMCPTests --disable-default-traits
-swift test --filter BaseChatBackendsTests --disable-default-traits
-swift test --filter BaseChatTestSupportTests --disable-default-traits
-swift test --filter BaseChatAppIntentsTests --disable-default-traits
-swift test --filter BaseChatServerTests --disable-default-traits --traits Server
+Use `scripts/test.sh` — it runs configured suites and prints an honest summary. Key flags:
+- `--disable-default-traits` — excludes MLX/Llama/hardware-gated tests (required for CI)
+- `--skip-update` — skips per-invocation git-remote contact (drop only if you edited Package.swift)
+- `--traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace` — for full-traits builds
 
-# @ToolSchema macro (trait-gated; off by default — keeps swift-syntax out
-# of default builds, ~647 source files saved). The macro plugin and the
-# `@ToolSchema` declaration in BaseChatInference are wrapped in `#if Macros`,
-# so the bare invocation runs zero macro tests.
-swift test --filter ToolSchemaMacro --disable-default-traits --traits Macros
-
-# Apple Silicon only — MLX mock tests + llama.cpp
-swift test --filter BaseChatBackendsTests --traits MLX,Llama
-
-# Additional headless E2E coverage (mock backends; no special hardware).
-# The trailing `\.` anchor is required — bare `BaseChatE2ETests` matches no class names.
-swift test --filter "BaseChatE2ETests\." --disable-default-traits
-
-# MCP built-in catalog descriptors (trait-gated)
-swift test --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog
-
-# MCP E2E — requires npx installed and network access.
-# The streamable-HTTP smoke is fast and stable; the everything-server smoke
-# (`EverythingServerSmokeTests`) has hung for 28+ minutes on `mcp-server-everything`
-# in past runs — filter to the streamable suite to avoid that path.
-RUN_MCP_E2E=1 swift test --filter BaseChatMCPE2ESmokeTests --disable-default-traits
-
-# Xcode-only — real MLX model inference (metallib required).
-# Cannot run via swift test; MLX Metal shaders are only compiled by Xcode.
-# Use the wrapper — bare `xcodebuild test` builds and runs but every test
-# silently `XCTSkip`s because xcodebuild does not propagate the
-# `BASECHAT_DISCOVER_LOCAL_MODELS=1` env to the xctest runner. The wrapper
-# patches the .xctestrun file's EnvironmentVariables before running. See #986.
-scripts/test-mlx-integration.sh                              # discover any valid MLX dir
-scripts/test-mlx-integration.sh Meta-Llama-3.1-8B-Instruct  # prefer dir whose name contains the hint
-
-# Example app UI tests — prefer build-for-testing once, then targeted reruns
-scripts/example-ui-tests.sh build-for-testing
-scripts/example-ui-tests.sh test-without-building -only-testing:BaseChatDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
-
-# Real Ollama server E2E (requires Ollama running at localhost:11434).
-# `--traits Ollama` is required — Ollama was dropped from default traits in v2.0,
-# so the bare `--disable-default-traits` invocation runs zero tests.
-swift test --filter OllamaE2ETests --disable-default-traits --traits Ollama
-
-# Fuzz harness — requires Ollama running at localhost:11434
-# The Fuzz trait gates real inference backends; without it, fuzz-chat builds mock-only.
-# Always use #if Fuzz in addition to the backend trait (#if MLX, #if Llama) when
-# writing tests that depend on real inference — keeps them out of --disable-default-traits CI runs.
-scripts/fuzz.sh                    # 5-minute Ollama run (default)
-scripts/fuzz.sh --with-llama --minutes 2  # Llama GGUF run
-
-# Isolated Llama tests — runs each Llama-touching XCTestCase subclass in its
-# own xctest process so llama.cpp / GGML / Metal global state cannot leak
-# across classes. Use this when the in-process run accumulates state on a
-# memory-pressured host. Wall-clock cost ~1-2 min (build is reused).
-RUN_LLAMA_TESTS=1 BASECHAT_DISCOVER_LOCAL_MODELS=1 \
-  LLAMA_TEST_MODEL=$HOME/Documents/Models/<model>.gguf \
-  scripts/test-llama-isolated.sh
-```
-
-When writing hardware-gated tests, add `XCTSkipIf` guards at the top of the test rather than assuming the environment.
+**Special cases:**
+- MLX integration tests require Xcode (Metal shaders): `scripts/test-mlx-integration.sh`
+- Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
+- MCP E2E: `RUN_MCP_E2E=1 swift test --filter BaseChatMCPE2ESmokeTests` — filter to streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs
+- Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
+- Llama: use `scripts/test-llama-isolated.sh` when in-process runs accumulate Metal global state
 
 ## Test conventions
 
-- Use `XCTestCase` for new tests (existing Swift Testing suites use `@Suite`/`@Test` — match the file you're editing).
-- Tests must honestly reflect their classification: a test that hits SwiftData is an integration test, not a unit test. Name and place it accordingly.
-- Do not mock the persistence layer to make tests faster. Use in-memory SwiftData stores.
-- Async tests: use real `async/await`, not `XCTestExpectation` wrappers unless testing callback-based code. Avoid artificial `sleep` or fixed timeouts — instead use `XCTestExpectation` / `XCTWaiter` with tight deadlines for callback-based code.
-- After asserting an expected outcome, add a sabotage check: temporarily break the code path being tested and confirm the test fails. Remove the sabotage before committing.
-- Performance tests use `measure { }` (XCTMeasure). Build all fixtures before the measure block.
-- `withKnownIssue` is test debt, not a fix. Every use must have a `// FIXME: <issue URL>` comment on the line above. Remove the wrapper in the same PR that fixes the underlying bug. Never use it in critical E2E paths — see [TESTING.md §withKnownIssue Policy](TESTING.md#withknownissue-policy).
+- Use `XCTestCase` for new tests; match `@Suite`/`@Test` in files that already use Swift Testing.
+- A test that hits SwiftData is an integration test — name and place it accordingly.
+- Do not mock the persistence layer. Use in-memory SwiftData stores.
+- Async tests: use real `async/await`. Use `XCTestExpectation`/`XCTWaiter` with tight deadlines for callback-based code only.
+- After asserting an expected outcome, add a sabotage check to confirm the test fails when the code path breaks. Remove before committing.
+- `withKnownIssue` is test debt. Every use requires `// FIXME: <issue URL>` above it. Never in critical E2E paths.
 
 ## Service sharing
 
-`ChatViewModel.inferenceService` is `internal` — sibling modules (`BaseChatUIModelManagement`) read what they need from `ChatViewModel.modelRegistry` (a `@MainActor @Observable ModelRegistry` exposed publicly), not from the inference service itself. Apps that need the same `InferenceService` instance in multiple components (e.g., a story engine, character creator) create it at the app level and inject it via the constructor:
-
-```swift
-let inference = InferenceService()
-let chatVM = ChatViewModel(inferenceService: inference)
-let storyStore = StoryStore(inferenceService: inference)
-```
-
-This keeps `ChatViewModel`'s load coordination and state machine consistent. Do not widen `inferenceService` past `internal`. Model-management views accept a `ModelRegistry` directly (`ModelManagementSheet(modelRegistry:)`); the legacy environment-based init is `@available(*, deprecated)` and forwards to the same registry path.
+`ChatViewModel.inferenceService` is `internal`. Sibling modules read from `ChatViewModel.modelRegistry` (a `@MainActor @Observable ModelRegistry`). Apps needing the same `InferenceService` in multiple components create it at the app level and inject via constructor. Do not widen `inferenceService` past `internal`.
 
 ## Turn-loop orchestration
 
-`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`) is the single turn loop. It owns `send`, `regenerate`, `edit`, `cancel`, and `branch`, and emits `ConversationEvent`s that `ChatViewModel` renders. There is no alternative path — host apps get a configured runtime via `BaseChatBootstrap` (or by injecting one into `ChatViewModel`) and forward user actions to it.
+`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`) is the single turn loop — owns `send`, `regenerate`, `edit`, `cancel`, and `branch`. No alternative path. Host apps get a configured runtime via `BaseChatBootstrap` and forward user actions to it.
 
 ## Coding conventions
 
 - **Concurrency**: async/await throughout. No Combine, no callback pyramids.
 - **Observable state**: `@Observable` + `@MainActor`. Not `ObservableObject`/`@Published`.
 - **Persistence**: SwiftData only. No CoreData.
-- **Error handling**: only validate at system boundaries (user input, external APIs, file I/O). Don't add defensive guards for internal invariants that Swift's type system already enforces.
-- **Comments**: explain *why*, not *what*. Omit when the code is self-evident.
+- **Error handling**: validate at system boundaries only. Don't guard internal invariants the type system already enforces.
+- **Comments**: explain *why*, not *what*.
 
 ## Platform policy
 
@@ -135,14 +65,14 @@ BaseChatKit targets **n-1**: the current Apple OS release and the one immediatel
 | macOS    | 26          | 15            |
 | iOS      | 26          | 18            |
 
-When Apple ships a new major OS each September, bump both minimums by one and remove any `#available` guards that were added to paper over the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without first checking their availability annotation.
+When Apple ships a new major OS each September, bump both minimums and remove `#available` guards added for the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without checking their availability.
 
 ## Hardware constraints (simulator / CI)
 
-- `LlamaBackend` uses a global `llama_backend_init` — only one instance can exist per process. Tests must share a single instance or use `MockInferenceBackend`.
-- Metal is unavailable in the simulator. Any test that touches `MLXBackend` or `LlamaBackend` will fail in CI — gate with `XCTSkipIf`.
+- `LlamaBackend` uses a global `llama_backend_init` — only one instance per process. Tests must share a single instance or use `MockInferenceBackend`.
+- Metal is unavailable in the simulator. Gate any `MLXBackend`/`LlamaBackend` test with `XCTSkipIf`.
 - `FoundationBackend` requires iOS 26 / macOS 26. Gate accordingly.
-- Context window is capped at 512 tokens in the simulator to avoid OOM.
+- Context window capped at 512 tokens in the simulator to avoid OOM.
 
 ## Tooling
 
@@ -151,15 +81,15 @@ When Apple ships a new major OS each September, bump both minimums by one and re
 | `scripts/test.sh` | Runs configured Swift test suites and prints an honest summary. |
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
-| `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). Passes `--traits Fuzz,MLX,Llama` automatically. See [FUZZING.md](FUZZING.md). |
-| `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into the `.xctestrun` so real-model tests don't silently skip. Use instead of bare `xcodebuild test`. See #986. |
+| `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). |
+| `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
 
 ## Pre-push checklist
 
-Before pushing any branch, run all CI-safe test suites locally and confirm zero failures. Use the **same two-invocation shape CI uses** (`.github/workflows/ci.yml`) — running each suite as a separate `swift test` call pays the build-graph + git-remote + test-bundle-link cost 9× instead of 2× and is ~4–5× slower for identical coverage.
+Run the same two-invocation shape CI uses (see `.github/workflows/ci.yml`). Running each suite as a separate `swift test` call is ~4–5× slower — don't do it.
 
 ```bash
-# 1. XCTest suites — single invocation, all filters at once
+# 1. XCTest suites
 scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
   --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
@@ -168,88 +98,29 @@ scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
   --filter BaseChatServerTests \
   --disable-default-traits --skip-update
 
-# 2. Swift Testing — must run in a separate process (XCTest+Swift Testing
-#    in one process triggers a libmalloc SIGABRT — see #681)
+# 2. Swift Testing — separate process (mixing with XCTest causes libmalloc SIGABRT — #681)
 scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
   --disable-default-traits --skip-update
 ```
 
-`--skip-update` skips the per-invocation git-remote contact for every dependency (Package.resolved already pins the graph). Drop it only if you've just edited Package.swift.
+**Spike gate** (bounded changes only): `swift build --build-tests --disable-default-traits` then run only the affected suite. Valid only when the diff touches one module and you've run the full suite once already on this branch. Full two-invocation gate is mandatory before the final push and after any rebase.
 
-Never push based on a subset passing. After rebasing, always re-run the full suite before pushing — conflicts can silently break tests that compiled fine before.
-
-### Strong-machine variant: run both invocations concurrently
-
-The two invocations are separate processes — the libmalloc SIGABRT only triggers when XCTest + Swift Testing share a single process (issue #681). On a multi-core machine you can pre-build once and run them in parallel:
-
-```bash
-swift build --build-tests --disable-default-traits
-
-(scripts/test.sh \
-   --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
-   --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
-   --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
-   --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
-   --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
-   --filter BaseChatServerTests \
-   --disable-default-traits --skip-update) &
-XCTEST_PID=$!
-
-(TMPDIR=/tmp/bck-st-$$ mkdir -p /tmp/bck-st-$$ && \
- TMPDIR=/tmp/bck-st-$$ scripts/test.sh \
-   --filter BaseChatInferenceSwiftTestingTests \
-   --disable-default-traits --skip-update) &
-ST_PID=$!
-
-wait $XCTEST_PID; XCTEST_RC=$?
-wait $ST_PID;     ST_RC=$?
-[[ $XCTEST_RC -eq 0 && $ST_RC -eq 0 ]] || { echo "FAILED (XCTest=$XCTEST_RC, SwiftTesting=$ST_RC)"; exit 1; }
-```
-
-Per-shell `TMPDIR` keeps `scripts/test.sh`'s `test_output.txt` from clobbering. Wall-clock ≈ max(batch1, batch2) instead of sum.
-
-Within-batch parallelism (`--parallel`) is enabled. Every test that touched `UserDefaults.standard` has been migrated to a per-suite `UserDefaults(suiteName:)` instance, and `Tests/BaseChatCoreTests/UserDefaultsStandardAuditTest` is the tripwire that fails CI if a future test reintroduces the bare `.standard` access. Add `--parallel` to the XCTest batch invocation when you want max wall-clock throughput on a strong machine. CI's XCTest batch already runs with `--parallel` (see `.github/workflows/ci.yml`).
-
-### Spike gate (bounded changes only)
-
-For changes scoped to a single module or a CI-fix push where you've already validated the rest, you may run only the affected slice:
-
-```bash
-swift build --build-tests --disable-default-traits   # cheap compile gate
-scripts/test.sh --filter <OnlyAffectedSuite> --disable-default-traits --skip-update
-```
-
-This is a **spike gate**, not the pre-push gate. Use it only when:
-- The diff touches one module (e.g. only `BaseChatBackends`), AND
-- You've run the full suite once already on this branch and the change since then is bounded (e.g. fixing a CI failure, addressing a single review comment).
-
-The full two-invocation gate above is mandatory before the **final push** of a branch and after any rebase.
-
-### Trait-combo build sweep (only when needed)
-
-A full-traits build is needed only when a PR adds/modifies a switched enum in a trait-gated file (per past incidents where default-trait build missed CloudSaaS/Ollama-gated cases):
-
+**Trait-combo sweep** (only when a PR adds/modifies a switched enum in a trait-gated file):
 ```bash
 swift build --build-tests --traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace
 ```
 
-Skip it for pure logic/test changes that don't touch enum surfaces.
+CI runs on macOS (10× billing). Each failed push wastes ~25 billed minutes. Test locally first.
 
-When changing behavior of any function or type, grep for ALL test references across the entire `Tests/` directory, not just the obvious test file. Behavior changes require updating every test that asserts on the old behavior:
+When changing behavior of any function or type, grep for ALL test references across `Tests/` — not just the obvious test file.
 
-```bash
-grep -r "functionOrTypeName" Tests/
-```
+## Error handling
 
-CI runs on macOS (10x billing multiplier). Each failed push wastes ~25 billed minutes. Test locally first.
-
-## Error handling in recoverable paths
-
-Never use `assertionFailure` or `fatalError` for conditions that have fallback logic. These trap in debug builds (including `swift test`), crashing the test process even when tests pass. Use `Log.*` warnings instead. Reserve `assertionFailure` for true programmer errors with no recovery path.
+Never use `assertionFailure`/`fatalError` for conditions that have fallback logic — they trap in `swift test`. Use `Log.*` warnings. Reserve `assertionFailure` for true programmer errors with no recovery path.
 
 ## Commit style
 
-This repo uses Conventional Commits. Release Please reads these to determine version bumps and generate the changelog.
+Conventional Commits. Release Please reads these for version bumps.
 
 ```
 feat: add streaming cancellation to FoundationBackend
@@ -257,121 +128,38 @@ fix: prevent context overflow when system prompt exceeds budget
 perf: cache tokenizer lookups in ContextWindowManager
 test: add XCTMeasure baselines for trimMessages hot path
 chore: update mlx-swift-lm to 2.31.0
-docs: clarify TokenizerProvider fallback behaviour
 ```
 
-- `feat` → MINOR bump
-- `fix` → PATCH bump
-- Everything else → no release
-- `BREAKING CHANGE:` in the commit footer → MAJOR bump
-
-**Enforced surface: PR titles.** All PRs squash-merge, so Release Please reads the *PR title*, not the individual commit messages on the branch. CI lints the PR title via `amannn/action-semantic-pull-request`. Individual commit messages on a feature branch should follow the same format as a matter of habit, but they are not linted and can be rewritten freely during review.
+- `feat` → MINOR, `fix` → PATCH, `BREAKING CHANGE:` footer → MAJOR, everything else → no release
+- **CI lints PR titles** (squash-merge means Release Please reads the PR title, not branch commits). Individual branch commits should follow the format but aren't linted.
 
 ## Release workflow
 
-Release Please auto-creates a release PR after `feat:` or `fix:` merges. The auto-generated one-liner bullets **must be rewritten before merging** — a pre-merge hook and the `changelog-lint` CI job both block the merge until this is done.
+Release Please auto-creates a release PR after `feat:`/`fix:` merges. The auto-generated bullets **must be rewritten** before merging — `changelog-lint` CI and a pre-merge hook both block until done.
 
-BaseChatKit uses a **Prisma-style Highlights format** for release notes (adopted v0.11.2, PR #649). Structure:
+Use **Prisma-style Highlights format** (adopted v0.11.2, PR #649): `### Highlights` with short verb-led headlines, 2–3 sentences of context, and a runnable code snippet for new/changed public APIs. Small features and fixes go as one-line bullets under `### Features`/`### Fixes`. Pre-0.11.2 entries stay in their original format.
 
-```markdown
-## [X.Y.Z](https://…/compare/vA.B.C...vX.Y.Z) (YYYY-MM-DD)
+Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge via `gh api -X PUT repos/roryford/BaseChatKit/pulls/<N>/merge -f merge_method=squash`.
 
-### Highlights
-
-#### Short verb-led headline
-
-2–3 sentences: the problem, what shipped, how it fits together.
-
-` ` `swift
-// 4–8 lines showing the new API in use
-` ` `
-
-One more sentence of caveats or opt-in/out semantics.
-
-See [#N], [#M].
-
-### Features
-
-- **scope:** what changed ([#N])
-
-### Fixes
-
-- **scope:** what changed — why it matters ([#N])
-```
-
-Aim for 1–3 Highlights (one per headline theme). Each Highlight gets a short prose paragraph and a runnable code snippet if it introduces or changes a public API. Small features and routine fixes live as one-line bullets in the Features/Fixes sections below. Pre-0.11.2 releases stay in their original `**Bold title** —` prose format — don't retrofit.
-
-### Workflow steps
-
-1. Release Please opens PR titled `chore(main): release X.Y.Z`.
-2. Check out the release branch via the existing worktree at `.claude/worktrees/agent-ae95b0e8` (branch `release-please--branches--main`) — or create a fresh worktree. Do **not** `git checkout` the branch in the main repo; it's held by that worktree.
-3. Rewrite the CHANGELOG.md entry in the Prisma format above. Use the `## Release Note` sections of the included `feat:`/`fix:` PRs as source material — they're written at PR time when context is fresh.
-4. Amend the Release Please commit and force-push: `git commit --amend --no-edit && git push --force-with-lease`.
-5. Merge the release PR. The release PR's `gh pr merge` is blocked by a hook on unrewriten CHANGELOGs — once the rewrite is in, merge via `gh api -X PUT repos/roryford/BaseChatKit/pulls/<N>/merge -f merge_method=squash`.
-6. The `sync-release-notes` workflow copies the CHANGELOG section into the GitHub release body on merge. If you retroactively edit CHANGELOG later, resync manually: `awk '/^## \[/{n++; if(n==2) exit} n==1' CHANGELOG.md > /tmp/body.md && gh release edit vX.Y.Z --notes-file /tmp/body.md`.
-
-### `changelog-lint` rules
-
-The CI lint rejects auto-generated output and requires evidence of a manual rewrite. The regex accepts either format:
-
-- `^### ` (Prisma-style subheading — the default since v0.11.2)
-- `^\*\*[^*]+\*\* — ` (bold title + em-dash prose — legacy, still accepted)
-
-The lint also rejects any `* lowercase` Release Please bullet that slips through unrewriten.
+`changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
 
 ## PR workflow
 
-All changes go through PRs — direct pushes to `main` are blocked for everyone.
+All changes go through PRs — direct pushes to `main` are blocked.
 
-1. Branch off `main`
-2. Write code, commit with conventional commits
-3. Open a PR: `gh pr create --title "feat: ..." --body "..."`
-4. Report the PR URL — the maintainer reviews and merges manually
-5. Do NOT pass `--auto` or `--merge` — merges require human approval
+1. Branch off `main`, commit with conventional commits
+2. `gh pr create --title "feat: ..." --body "..."`
+3. Report the PR URL — maintainer reviews and merges manually
+4. Do NOT pass `--auto` or `--merge`
 
-CI must pass (`BaseChatCoreTests` + `BaseChatRuntimeTests` + `BaseChatPersistenceSwiftDataTests` + `BaseChatInferenceTests` + `BaseChatInferenceSwiftTestingTests` + `BaseChatUITests` + `BaseChatUIModelManagementTests` + `BaseChatMCPTests` + `BaseChatBackendsTests` + `BaseChatTestSupportTests` + `BaseChatAppIntentsTests`) before merge is allowed.
-
-`BaseChatBackendsTests` runs in CI without hardware traits — only cloud backend and SSE tests execute; MLX and Llama tests are excluded by `#if MLX`/`#if Llama` conditional compilation. Run with `--traits MLX,Llama` locally on Apple Silicon before merging backend changes. `BaseChatE2ETests` requires physical hardware and does not run in CI.
+CI must pass all suites before merge. `BaseChatBackendsTests` runs without hardware traits in CI — run with `--traits MLX,Llama` locally before merging backend changes.
 
 ## Issue & PR hygiene
 
-CI is macOS-only (10× billing) and runs ~5 minutes per push. Each unnecessary PR or issue costs real money and the maintainer's attention. The default is **fewer, larger units of work**.
+CI is macOS-only (10× billing), ~5 min per push. Default is **fewer, larger units of work**.
 
-### Don't open GitHub issues for follow-ups, phases, or "while I'm here" cleanups
-
-The issue tracker is for things that need cross-session memory **and** external visibility (real bugs, real feature asks, things a future contributor would search for). It is **not**:
-
-- A scratchpad for ideas surfaced during a session.
-- Cross-session memory for Claude Code (use the memory system or `TODO.md` instead).
-- A pre-written list of PR titles waiting to be opened.
-- A way to track sub-phases of a larger effort (use a checklist on the parent issue).
-
-If you find yourself wanting to open more than **one** issue in a session, stop. Either fold the work into the current PR, add it as a checkbox on an existing tracking issue, or leave a `// TODO:` comment in the code. Don't ask the user "should I open an issue for this?" — default to no.
-
-When an issue genuinely is needed, the bar is: would an external contributor benefit from seeing this in the open queue? If no, don't open it.
-
-### One feature = one PR, even across backends
-
-A change like "tool calling" or "thinking budget" touches MLX + Llama + Foundation + Cloud + fixtures. Ship it as **one PR with a backend checklist in the body**, not five PRs. Per-backend fan-out drove past PR storms (15–24 PRs in a day). Reviewers see the cross-cutting types once, CI runs once.
-
-Exceptions: when one backend is genuinely blocked (e.g., waiting on an upstream fix), ship the unblocked backends and add a `track:` comment on the umbrella issue listing what's left.
-
-### Tests and docs ship in the feature PR
-
-Don't open standalone `test:` or `docs:` PRs for in-flight features. Acceptance tests belong in the PR that introduces the capability — splitting them costs CI minutes and invents merge conflicts. The same applies to demo scenarios that exercise a new capability: they ship with the capability, not as a follow-up.
-
-Standalone `test:`/`docs:` PRs are appropriate only for already-shipped features (e.g., adding coverage for a corner case discovered later, or rewriting prose that's now wrong).
-
-### Single-file PRs are a smell
-
-Before opening a PR that touches one file, check whether there's a sibling PR you could batch into. If you've opened 3+ single-file PRs in a row, the third should have been part of the first.
-
-### Tracking issues
-
-When work genuinely needs to be split across multiple PRs (e.g., depends on a prerequisite landing first), use **one** tracking issue with a checklist of PR-sized batches. Don't open one issue per batch. Existing tracking umbrellas:
-
-- #753 — tool calling coordinated rollout
-- #754 — demo-picker test-suite matrix
-- #755 — fuzz harness v2
-
-Add to these instead of creating new umbrellas in the same area.
+- **Don't open issues for follow-ups, phases, or "while I'm here" cleanups.** The tracker is for real bugs and feature asks with external visibility. Use `TODO.md` or code comments for cross-session notes. Default to no when considering opening an issue.
+- **One feature = one PR across all backends.** Don't fan out per-backend (past storms hit 15–24 PRs/day). Ship as one PR with a backend checklist in the body.
+- **Tests and docs ship in the feature PR**, not as follow-ups.
+- **Single-file PRs are a smell.** Batch them.
+- **Tracking issues**: use one issue with a checklist for multi-PR work. Existing umbrellas: #753 (tool calling), #754 (demo-picker test matrix), #755 (fuzz harness v2). Add to these rather than creating new ones in the same area.
