@@ -57,11 +57,23 @@ public final class BaseChatBootstrap {
     /// path.
     public let conversationRuntime: ConversationRuntime
 
+    /// The image-generation service, when the host opted in to image generation.
+    /// `nil` when ``BaseChatBootstrap`` was constructed without an
+    /// `imageGenerationService` parameter.
+    public let imageGenerationService: ImageGenerationService?
+
+    /// The image-generation runtime, pre-wired against ``imageGenerationService``
+    /// and ``persistence``. Pass to ``ChatViewModel/configure(imageRuntime:)``
+    /// to enable image generation in the chat view model.
+    /// `nil` when ``imageGenerationService`` is `nil`.
+    public let imageRuntime: ImageGenerationRuntime?
+
     public var modelContext: ModelContext { modelContainer.mainContext }
 
     public init(
         configuration: BaseChatConfiguration,
         inferenceService: InferenceService? = nil,
+        imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) throws {
@@ -91,6 +103,15 @@ public final class BaseChatBootstrap {
                 sessionStore: resolvedPersistence,
                 inferenceService: resolvedInferenceService
             )
+            self.imageGenerationService = imageGenerationService
+            if let imageGenerationService {
+                self.imageRuntime = ImageGenerationRuntime(
+                    service: imageGenerationService,
+                    messageStore: resolvedPersistence
+                )
+            } else {
+                self.imageRuntime = nil
+            }
         } catch {
             BaseChatConfiguration.shared = previousConfiguration
             throw error
@@ -104,7 +125,8 @@ public final class BaseChatBootstrap {
         persistence: SwiftDataPersistenceProvider,
         samplerPresetStore: SwiftDataSamplerPresetStore,
         benchmarkCache: SwiftDataBenchmarkCache,
-        endpointStore: SwiftDataEndpointStore
+        endpointStore: SwiftDataEndpointStore,
+        imageGenerationService: ImageGenerationService? = nil
     ) {
         self.inferenceService = inferenceService
         self.diagnostics = diagnostics
@@ -118,11 +140,21 @@ public final class BaseChatBootstrap {
             sessionStore: persistence,
             inferenceService: inferenceService
         )
+        self.imageGenerationService = imageGenerationService
+        if let imageGenerationService {
+            self.imageRuntime = ImageGenerationRuntime(
+                service: imageGenerationService,
+                messageStore: persistence
+            )
+        } else {
+            self.imageRuntime = nil
+        }
     }
 
     public static func build(
         configuration: BaseChatConfiguration,
         inferenceService: InferenceService? = nil,
+        imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<BaseChatBootstrap, any Error>) {
@@ -165,7 +197,8 @@ public final class BaseChatBootstrap {
                     persistence: persistence,
                     samplerPresetStore: samplerPresetStore,
                     benchmarkCache: benchmarkCache,
-                    endpointStore: endpointStore
+                    endpointStore: endpointStore,
+                    imageGenerationService: imageGenerationService
                 )
             } catch {
                 BaseChatConfiguration.shared = previousConfiguration
