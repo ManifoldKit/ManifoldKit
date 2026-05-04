@@ -187,8 +187,7 @@ public struct GenerationConfig: Sendable, Codable {
     ///
     /// Sustained MLX inference on Mac can starve WindowServer's GPU command
     /// queue and cause hitches in other apps. To mitigate this, ``MLXBackend``
-    /// inserts a 50µs `Task.sleep` every `yieldEveryNTokens` tokens. The same
-    /// pattern is used in `SwiftLM/Server.swift`.
+    /// inserts a cooperative `Task.yield()` every `yieldEveryNTokens` tokens.
     ///
     /// - Defaults to `8` (one yield per ~8 tokens).
     /// - `0` disables the yield entirely.
