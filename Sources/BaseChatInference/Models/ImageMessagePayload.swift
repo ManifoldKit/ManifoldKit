@@ -12,7 +12,7 @@ import Foundation
 /// ## Why URL instead of inline bytes?
 ///
 /// Generated images are typically 1–4 MB PNGs. Storing the bytes in
-/// ``BaseChatSchemaV3/ChatMessage/contentPartsJSON`` would balloon the
+/// ``BaseChatSchemaV4/ChatMessage/contentPartsJSON`` would balloon the
 /// JSON payload size for every saved row and make pagination expensive.
 /// The image binary is owned by the host app's storage strategy; this
 /// payload only references it.

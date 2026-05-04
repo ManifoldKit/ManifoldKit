@@ -16,29 +16,38 @@ final class SchemaMigrationTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    // MARK: - BaseChatSchemaV3
-
-    func test_schemaV3_versionIdentifier() {
-        XCTAssertEqual(BaseChatSchemaV3.versionIdentifier, Schema.Version(3, 0, 0))
+    private func makeStoreDirectory(named prefix: String) throws -> URL {
+        let storeDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".build", isDirectory: true)
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+        tempStoreDirectory = storeDirectory
+        return storeDirectory
     }
 
-    func test_schemaV3_modelsContainsAllExpectedTypes() {
-        let models = BaseChatSchemaV3.models
+    // MARK: - BaseChatSchemaV4
+
+    func test_schemaV4_versionIdentifier() {
+        XCTAssertEqual(BaseChatSchemaV4.versionIdentifier, Schema.Version(4, 0, 0))
+    }
+
+    func test_schemaV4_modelsContainsAllExpectedTypes() {
+        let models = BaseChatSchemaV4.models
         XCTAssertEqual(models.count, 5)
         let ids = models.map { ObjectIdentifier($0) }
-        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV3.ChatMessage.self)))
-        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV3.ChatSession.self)))
-        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV3.SamplerPreset.self)))
-        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV3.APIEndpoint.self)))
-        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV3.ModelBenchmarkCache.self)))
+        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV4.ChatMessage.self)))
+        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV4.ChatSession.self)))
+        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV4.SamplerPreset.self)))
+        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV4.APIEndpoint.self)))
+        XCTAssertTrue(ids.contains(ObjectIdentifier(BaseChatSchemaV4.ModelBenchmarkCache.self)))
     }
 
-    func test_publicTypealiases_matchV3ModelTypes() {
-        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(BaseChatSchemaV3.ChatMessage.self))
-        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(BaseChatSchemaV3.ChatSession.self))
-        XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(BaseChatSchemaV3.SamplerPreset.self))
-        XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(BaseChatSchemaV3.APIEndpoint.self))
-        XCTAssertEqual(ObjectIdentifier(ModelBenchmarkCache.self), ObjectIdentifier(BaseChatSchemaV3.ModelBenchmarkCache.self))
+    func test_publicTypealiases_matchV4ModelTypes() {
+        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(BaseChatSchemaV4.ChatMessage.self))
+        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(BaseChatSchemaV4.ChatSession.self))
+        XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(BaseChatSchemaV4.SamplerPreset.self))
+        XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(BaseChatSchemaV4.APIEndpoint.self))
+        XCTAssertEqual(ObjectIdentifier(ModelBenchmarkCache.self), ObjectIdentifier(BaseChatSchemaV4.ModelBenchmarkCache.self))
     }
 
     // MARK: - ModelContainerFactory
@@ -64,15 +73,12 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV3() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(BaseChatSchemaV3.self))
+    func test_containerFactory_currentSchema_isV4() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(BaseChatSchemaV4.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {
-        let storeDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("BaseChatSchemaV3-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
-        tempStoreDirectory = storeDirectory
+        let storeDirectory = try makeStoreDirectory(named: "BaseChatSchemaV4")
         let storeURL = storeDirectory.appendingPathComponent("BaseChat.sqlite")
         let originalSessionID: UUID
 
@@ -98,11 +104,55 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(fetchedSessions.first?.title, "Persisted session")
     }
 
+    func test_migrationPlan_migratesV3SamplerPresetToV4WithNilPenaltyKnobs() throws {
+        let storeDirectory = try makeStoreDirectory(named: "BaseChatSchemaV3ToV4")
+        let storeURL = storeDirectory.appendingPathComponent("BaseChat.sqlite")
+        let presetID: UUID
+
+        do {
+            let config = ModelConfiguration(url: storeURL)
+            let container = try ModelContainer(
+                for: Schema(versionedSchema: BaseChatSchemaV3.self),
+                configurations: [config]
+            )
+            let context = ModelContext(container)
+            let preset = BaseChatSchemaV3.SamplerPreset(
+                name: "Legacy",
+                temperature: 0.4,
+                topP: 0.8,
+                repeatPenalty: 1.2
+            )
+            context.insert(preset)
+            try context.save()
+            presetID = preset.id
+        }
+
+        let migratedContainer = try ModelContainerFactory.makeContainer(
+            configurations: [ModelConfiguration(url: storeURL)]
+        )
+        let migratedContext = ModelContext(migratedContainer)
+        let fetched = try migratedContext.fetch(FetchDescriptor<SamplerPreset>(
+            predicate: #Predicate { $0.id == presetID }
+        ))
+
+        XCTAssertEqual(fetched.count, 1)
+        let migratedPreset = try XCTUnwrap(fetched.first)
+        XCTAssertEqual(migratedPreset.name, "Legacy")
+        XCTAssertEqual(migratedPreset.temperature, 0.4, accuracy: 0.001)
+        XCTAssertEqual(migratedPreset.topP, 0.8, accuracy: 0.001)
+        XCTAssertEqual(migratedPreset.repeatPenalty, 1.2, accuracy: 0.001)
+        XCTAssertNil(migratedPreset.presencePenalty)
+        XCTAssertNil(migratedPreset.frequencyPenalty)
+        XCTAssertNil(migratedPreset.repetitionContextSize)
+        XCTAssertNil(migratedPreset.presenceContextSize)
+        XCTAssertNil(migratedPreset.frequencyContextSize)
+    }
+
     func test_schemaOwnedModelAndPublicAlias_areInterchangeable() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let nestedMessage = BaseChatSchemaV3.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
+        let nestedMessage = BaseChatSchemaV4.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
         context.insert(nestedMessage)
         try context.save()
         let nestedMessageID = nestedMessage.id
@@ -172,7 +222,17 @@ final class SchemaMigrationTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let preset = SamplerPreset(name: "Creative", temperature: 1.2, topP: 0.95, repeatPenalty: 1.05)
+        let preset = SamplerPreset(
+            name: "Creative",
+            temperature: 1.2,
+            topP: 0.95,
+            repeatPenalty: 1.05,
+            presencePenalty: 0.2,
+            frequencyPenalty: 0.3,
+            repetitionContextSize: 96,
+            presenceContextSize: 48,
+            frequencyContextSize: 24
+        )
         context.insert(preset)
         try context.save()
 
@@ -187,6 +247,11 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(fetched0.temperature, 1.2, accuracy: 0.001)
         XCTAssertEqual(fetched0.topP, 0.95, accuracy: 0.001)
         XCTAssertEqual(fetched0.repeatPenalty, 1.05, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(fetched0.presencePenalty), 0.2, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(fetched0.frequencyPenalty), 0.3, accuracy: 0.001)
+        XCTAssertEqual(fetched0.repetitionContextSize, 96)
+        XCTAssertEqual(fetched0.presenceContextSize, 48)
+        XCTAssertEqual(fetched0.frequencyContextSize, 24)
     }
 
     // MARK: - Codable round-trip (APIEndpoint)
