@@ -31,6 +31,17 @@ struct LlamaGenerationDriver {
     /// Capacity of the phrase-detection token buffer (maxPhraseLen × minPhraseRepeats + 1).
     private static let phraseWindowCap = maxPhraseLen * minPhraseRepeats + 1
 
+    struct DRYSamplerDescriptor: Equatable {
+        let nCtxTrain: Int32
+        let options: LlamaDRYSamplerOptions
+
+        init?(config: GenerationConfig, nCtxTrain: Int32) {
+            guard let options = config.llamaDRY else { return nil }
+            self.nCtxTrain = nCtxTrain
+            self.options = options
+        }
+    }
+
     // MARK: - Run
 
     /// Executes the generation loop: clears the KV cache, builds the sampler
@@ -118,7 +129,7 @@ struct LlamaGenerationDriver {
         // `std::runtime_error: Unexpected empty grammar stack` across the C ABI
         // and aborts the process with libc++abi (see prior crash logs from
         // test_grammar_cancelCleansTeardown). Final order:
-        //   penalties → grammar → top_k → top_p → min_p → temp → dist
+        //   penalties → grammar → dry → top_k → top_p → min_p → temp → dist
         let sparams = llama_sampler_chain_default_params()
         guard let sampler = llama_sampler_chain_init(sparams) else {
             await MainActor.run { generationStream.setPhase(.failed("Failed to create sampler")) }
@@ -173,6 +184,26 @@ struct LlamaGenerationDriver {
                 // so the cache is still coherent and the caller can keep `sessionKVState`.
                 return true
             }
+        }
+
+        if let model = llama_get_model(context),
+           let dry = DRYSamplerDescriptor(config: config, nCtxTrain: llama_model_n_ctx_train(model)) {
+            let drySampler = withCStringArray(dry.options.sequenceBreakers) { breakers in
+                var mutableBreakers = breakers
+                return mutableBreakers.withUnsafeMutableBufferPointer { breakerBuffer in
+                    llama_sampler_init_dry(
+                        vocab,
+                        dry.nCtxTrain,
+                        dry.options.multiplier,
+                        dry.options.base,
+                        dry.options.allowedLength,
+                        dry.options.penaltyLastN,
+                        breakerBuffer.baseAddress,
+                        breakerBuffer.count
+                    )
+                }
+            }
+            llama_sampler_chain_add(sampler, drySampler)
         }
 
         // Surface `config.topK` to the sampler chain. Historical default of 40 is
@@ -469,6 +500,27 @@ struct LlamaGenerationDriver {
             if window[start..<end].elementsEqual(phrase) == false { return false }
         }
         return true
+    }
+
+    private func withCStringArray<Result>(
+        _ strings: [String],
+        _ body: ([UnsafePointer<CChar>?]) -> Result
+    ) -> Result {
+        var pointers: [UnsafePointer<CChar>?] = []
+
+        func append(_ index: Int) -> Result {
+            guard index < strings.count else {
+                return body(pointers)
+            }
+
+            return strings[index].withCString { pointer in
+                pointers.append(pointer)
+                defer { pointers.removeLast() }
+                return append(index + 1)
+            }
+        }
+
+        return append(0)
     }
 }
 #endif

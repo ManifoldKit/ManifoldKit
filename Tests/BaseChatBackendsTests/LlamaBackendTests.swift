@@ -71,6 +71,7 @@ final class LlamaBackendTests: XCTestCase {
         XCTAssertTrue(caps.supportedParameters.contains(.repetitionPenalty))
         XCTAssertTrue(caps.supportedParameters.contains(.presencePenalty))
         XCTAssertTrue(caps.supportedParameters.contains(.frequencyPenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.llamaDRY))
     }
 
     func test_capabilities_requiresPromptTemplate() {
