@@ -140,11 +140,11 @@ public protocol SSEPayloadHandler: Sendable {
     /// Extracts a text token from a JSON payload, or `nil` if not a token event.
     ///
     /// - Important: Prefer ``extractEvents(from:)`` for new conformers. This
-    ///   method is preserved for backwards compatibility and will be removed
-    ///   once the remaining cloud backends (`ClaudeBackend`, `OpenAIBackend`)
-    ///   migrate to event-level routing.
-    // TODO: remove once #604 (Claude thinking_delta) and #605 (OpenAI
-    // reasoning_content) migrate to `extractEvents(from:)`.
+    ///   method is preserved for backwards compatibility — every shipping
+    ///   handler (Ollama, Claude, OpenAI Chat Completions, OpenAI Responses)
+    ///   now also implements ``extractEvents(from:)``, but the legacy hook
+    ///   stays in the protocol so external SSEPayloadHandler conformers
+    ///   continue to compile.
     func extractToken(from payload: String) -> String?
 
     /// Maps a single SSE JSON payload to zero or more generation events.

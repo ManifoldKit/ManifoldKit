@@ -1085,12 +1085,49 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
     /// Ollama-specific ``SSEPayloadHandler`` for use with ``SSEStreamParser``.
     ///
-    /// ``OllamaBackend`` overrides ``parseResponseStream(bytes:continuation:)``
-    /// to handle NDJSON directly, so these methods are not called during normal
-    /// operation. They are provided for completeness and external reuse.
+    /// Ollama uses **NDJSON**, not strict SSE — every line is a complete
+    /// JSON object with no `data:` prefix and no blank-line event boundary.
+    /// The shared SSE byte parser cannot strip those frames, so
+    /// ``OllamaBackend`` overrides ``parseResponseStream(bytes:config:continuation:)``
+    /// to walk the byte stream line-by-line instead of via
+    /// ``SSEStreamParser/parse(bytes:limits:eventIDTracker:)``.
+    ///
+    /// What this handler *does* provide is the per-line classification: given
+    /// one NDJSON payload, it surfaces the visible-text and reasoning events
+    /// it carries. Tests for the migration assert against
+    /// ``extractEvents(from:)`` directly, so the handler is the canonical
+    /// per-payload contract even when the production backend bypasses
+    /// ``SSEStreamParser/streamEvents(from:using:limits:)`` for the byte
+    /// loop.
     struct OllamaPayloadHandler: SSEPayloadHandler {
+        init() {}
+
         func extractToken(from payload: String) -> String? {
             OllamaBackend.extractToken(from: payload)
+        }
+
+        /// Maps a single Ollama NDJSON line to the visible-text /
+        /// reasoning-text events it carries.
+        ///
+        /// Emission order matches the on-the-wire field order: any
+        /// `message.thinking` (or top-level `thinking`) on the line emits
+        /// `.thinkingToken` first, then any `message.content` (or top-level
+        /// `response`) emits `.token`.
+        ///
+        /// Tool calls, `done`-line bookkeeping, the per-stream visible /
+        /// thinking caps, and the inline `<think>` fallback all live in the
+        /// stateful byte loop because they require cross-payload state a
+        /// handler cannot model.
+        func extractEvents(from payload: String) -> [GenerationEvent] {
+            guard let parsed = OllamaBackend.parseLine(payload) else { return [] }
+            var events: [GenerationEvent] = []
+            if let thinking = parsed.thinking, !thinking.isEmpty {
+                events.append(.thinkingToken(thinking))
+            }
+            if let content = parsed.content, !content.isEmpty {
+                events.append(.token(content))
+            }
+            return events
         }
 
         /// Extracts Ollama's per-turn usage from a single NDJSON payload.

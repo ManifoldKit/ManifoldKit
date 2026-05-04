@@ -709,17 +709,24 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                     continue
                 }
 
-                // Thinking delta: emit as thinkingToken, keep the block open.
-                if eventType == "content_block_delta", let thinkingDelta = Self.parseThinkingDelta(from: payload) {
-                    continuation.yield(.thinkingToken(thinkingDelta))
-                    thinking.open()
-                    continue
-                }
-
-                // Plain text delta: close any open thinking block first, then yield.
-                if let token = extractToken(from: payload) {
-                    thinking.flushIfOpen(into: continuation)
-                    continuation.yield(.token(token))
+                // Thinking + plain text deltas: route via the handler's
+                // `extractEvents`, which classifies thinking_delta vs.
+                // text_delta in one place. Tool-use / signature / message_*
+                // shapes return `[]` from the handler and are handled inline
+                // above because they need cross-payload state the handler
+                // cannot model.
+                let payloadEvents = extractEvents(from: payload)
+                for event in payloadEvents {
+                    switch event {
+                    case .thinkingToken:
+                        continuation.yield(event)
+                        thinking.open()
+                    case .token:
+                        thinking.flushIfOpen(into: continuation)
+                        continuation.yield(event)
+                    default:
+                        continuation.yield(event)
+                    }
                 }
 
                 // Non-streaming whole-message tool_use shape. Some callers
@@ -848,6 +855,33 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         func extractToken(from payload: String) -> String? {
             ClaudeBackend.parseToken(from: payload)
         }
+
+        /// Maps a single Anthropic SSE payload to the visible-text /
+        /// reasoning-text events it carries.
+        ///
+        /// - `content_block_delta` with `delta.type == "thinking_delta"`
+        ///   produces a single `.thinkingToken`.
+        /// - `content_block_delta` with a `delta.text` (i.e. the regular
+        ///   text-delta path) produces a single `.token`.
+        /// - All other event shapes (tool_use, signature, message_*) are
+        ///   handled inline in
+        ///   ``ClaudeBackend/parseResponseStream(bytes:config:continuation:)``
+        ///   because they require cross-payload state (tool-call accumulator,
+        ///   index→id routing) that a stateless handler cannot model.
+        ///
+        /// Returning an empty array for those shapes is safe: the inline
+        /// parser still inspects them via the same `payload` string before
+        /// consulting the handler.
+        func extractEvents(from payload: String) -> [GenerationEvent] {
+            if let thinking = ClaudeBackend.parseThinkingDelta(from: payload) {
+                return [.thinkingToken(thinking)]
+            }
+            if let token = ClaudeBackend.parseToken(from: payload) {
+                return [.token(token)]
+            }
+            return []
+        }
+
         func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
             ClaudeBackend.parseUsage(from: payload)
         }
