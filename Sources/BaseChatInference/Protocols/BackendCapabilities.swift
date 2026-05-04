@@ -7,6 +7,10 @@ public enum GenerationParameter: String, CaseIterable, Sendable, Codable {
     case repeatPenalty
     case topK
     case typicalP
+    case minP
+    case repetitionPenalty
+    case presencePenalty
+    case frequencyPenalty
 }
 
 /// How the backend loads model weights into memory.

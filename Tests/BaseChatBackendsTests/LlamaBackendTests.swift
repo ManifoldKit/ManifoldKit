@@ -35,7 +35,12 @@ final class LlamaBackendTests: XCTestCase {
         let caps = backend.capabilities
         XCTAssertTrue(caps.supportedParameters.contains(.temperature))
         XCTAssertTrue(caps.supportedParameters.contains(.topP))
+        XCTAssertTrue(caps.supportedParameters.contains(.topK))
         XCTAssertTrue(caps.supportedParameters.contains(.repeatPenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.minP))
+        XCTAssertTrue(caps.supportedParameters.contains(.repetitionPenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.presencePenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.frequencyPenalty))
     }
 
     func test_capabilities_requiresPromptTemplate() {

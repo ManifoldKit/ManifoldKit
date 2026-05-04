@@ -110,6 +110,81 @@ struct OllamaBackendTests {
         #expect(caps.supportedParameters.contains(.topP))
         #expect(caps.supportedParameters.contains(.topK))
         #expect(caps.supportedParameters.contains(.repeatPenalty))
+        // Additive penalties + min_p added in the per-generation knobs PR.
+        #expect(caps.supportedParameters.contains(.minP))
+        #expect(caps.supportedParameters.contains(.presencePenalty))
+        #expect(caps.supportedParameters.contains(.frequencyPenalty))
+    }
+
+    /// New per-generation knobs (`min_p`, `presence_penalty`, `frequency_penalty`,
+    /// `repeat_last_n`) flow into Ollama's `options` dict only when the caller set
+    /// them. Omitting preserves whatever Ollama's server-side default is and keeps
+    /// wire payloads identical for callers that haven't migrated.
+    ///
+    /// Sabotage check: drop one of the `if let … = config.X` guards in
+    /// `OllamaBackend.swift` and the corresponding assertion below will fail.
+    @Test func generate_includesAdditivePenaltyOptionsWhenSet() async throws {
+        let (backend, chatURL) = makeConfiguredBackend()
+        try await loadBackend(backend)
+
+        let chunks: [Data] = [
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":false}"#),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}"#),
+        ]
+        MockURLProtocol.stub(url: chatURL, response: .sse(chunks: chunks, statusCode: 200))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        var config = GenerationConfig()
+        // Values chosen for clean Float→JSON→Double roundtripping (binary-fraction friendly).
+        config.minP = 0.0625
+        config.presencePenalty = 0.5
+        config.frequencyPenalty = 0.25
+        config.repetitionContextSize = 96
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: config)
+        for try await _ in stream.events { }
+
+        let captured = MockURLProtocol.capturedRequests.last(where: {
+            $0.url?.absoluteString.contains("api/chat") == true
+        })
+        let body = try extractBody(from: captured)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let options = try #require(json["options"] as? [String: Any])
+
+        #expect((options["min_p"] as? Double) == 0.0625)
+        #expect((options["presence_penalty"] as? Double) == 0.5)
+        #expect((options["frequency_penalty"] as? Double) == 0.25)
+        #expect((options["repeat_last_n"] as? Int) == 96)
+    }
+
+    /// Mirror of the previous test confirming default omission. The wire payload
+    /// for callers that didn't set the new fields must not carry them, so on-disk
+    /// preset compactness and Ollama Modelfile defaults stay untouched.
+    @Test func generate_omitsAdditivePenaltyOptionsWhenNil() async throws {
+        let (backend, chatURL) = makeConfiguredBackend()
+        try await loadBackend(backend)
+
+        let chunks: [Data] = [
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":false}"#),
+            ndjsonLine(#"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true}"#),
+        ]
+        MockURLProtocol.stub(url: chatURL, response: .sse(chunks: chunks, statusCode: 200))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
+        for try await _ in stream.events { }
+
+        let captured = MockURLProtocol.capturedRequests.last(where: {
+            $0.url?.absoluteString.contains("api/chat") == true
+        })
+        let body = try extractBody(from: captured)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let options = try #require(json["options"] as? [String: Any])
+
+        #expect(options["min_p"] == nil)
+        #expect(options["presence_penalty"] == nil)
+        #expect(options["frequency_penalty"] == nil)
+        #expect(options["repeat_last_n"] == nil)
     }
 
     @Test func capabilities_supportsSystemPrompt() {

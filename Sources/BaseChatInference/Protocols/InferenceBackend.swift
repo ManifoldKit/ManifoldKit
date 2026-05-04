@@ -34,6 +34,43 @@ public struct GenerationConfig: Sendable, Codable {
     /// repetition penalty (e.g. ``FoundationBackend``) ignore it.
     public var repetitionPenalty: Float?
 
+    /// Window size (in recent tokens) over which ``repetitionPenalty`` applies.
+    ///
+    /// `nil` lets each backend use its own default — llama.cpp uses 64, mlx-swift-lm
+    /// uses 20. Honoured by ``MLXBackend`` and ``LlamaBackend``; other backends ignore.
+    public var repetitionContextSize: Int?
+
+    /// Additive penalty for tokens that already appeared in the recent window
+    /// (OpenAI-style "presence" penalty, distinct from the multiplicative
+    /// ``repetitionPenalty``).
+    ///
+    /// `nil` (the default) lets each backend apply no presence penalty. Honoured by
+    /// ``MLXBackend`` (mapped to `GenerateParameters.presencePenalty`) and
+    /// ``LlamaBackend`` (mapped to the third arg of `llama_sampler_init_penalties`).
+    /// Other backends ignore it.
+    public var presencePenalty: Float?
+
+    /// Window size (in recent tokens) over which ``presencePenalty`` applies.
+    ///
+    /// `nil` lets each backend use its own default. MLX exposes this as a separate
+    /// knob from ``repetitionContextSize``; llama.cpp shares one window for all three
+    /// penalties (repeat, frequency, presence) and ignores this field — the shared
+    /// window comes from ``repetitionContextSize``.
+    public var presenceContextSize: Int?
+
+    /// Additive penalty that scales with how often each token has already
+    /// appeared in the recent window (OpenAI-style "frequency" penalty).
+    ///
+    /// `nil` (the default) lets each backend apply no frequency penalty. Honoured by
+    /// ``MLXBackend`` and ``LlamaBackend``; other backends ignore.
+    public var frequencyPenalty: Float?
+
+    /// Window size (in recent tokens) over which ``frequencyPenalty`` applies.
+    ///
+    /// `nil` lets each backend use its own default. MLX-only — see
+    /// ``presenceContextSize`` for why llama.cpp ignores it.
+    public var frequencyContextSize: Int?
+
     /// Deterministic sampling seed.
     ///
     /// When set, backends that expose a sampler seed (``MLXBackend``,
@@ -219,6 +256,11 @@ public struct GenerationConfig: Sendable, Codable {
         typicalP: Float? = nil,
         minP: Float? = nil,
         repetitionPenalty: Float? = nil,
+        repetitionContextSize: Int? = nil,
+        presencePenalty: Float? = nil,
+        presenceContextSize: Int? = nil,
+        frequencyPenalty: Float? = nil,
+        frequencyContextSize: Int? = nil,
         seed: UInt64? = nil,
         maxOutputTokens: Int? = 2048,
         tools: [ToolDefinition] = [],
@@ -239,6 +281,11 @@ public struct GenerationConfig: Sendable, Codable {
         self.typicalP = typicalP
         self.minP = minP
         self.repetitionPenalty = repetitionPenalty
+        self.repetitionContextSize = repetitionContextSize
+        self.presencePenalty = presencePenalty
+        self.presenceContextSize = presenceContextSize
+        self.frequencyPenalty = frequencyPenalty
+        self.frequencyContextSize = frequencyContextSize
         self.seed = seed
         self.maxOutputTokens = maxOutputTokens
         self.tools = tools
@@ -261,6 +308,9 @@ public struct GenerationConfig: Sendable, Codable {
         case yieldEveryNTokens
         case streamPrefillProgress
         case minP, repetitionPenalty, seed
+        case repetitionContextSize
+        case presencePenalty, presenceContextSize
+        case frequencyPenalty, frequencyContextSize
         case requiredCapabilities
     }
 
@@ -297,6 +347,14 @@ public struct GenerationConfig: Sendable, Codable {
         minP = try c.decodeIfPresent(Float.self, forKey: .minP)
         repetitionPenalty = try c.decodeIfPresent(Float.self, forKey: .repetitionPenalty)
         seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
+        // repetitionContextSize / presencePenalty / presenceContextSize / frequencyPenalty /
+        // frequencyContextSize landed after the above; absent from older payloads,
+        // default to nil so each backend applies its own default.
+        repetitionContextSize = try c.decodeIfPresent(Int.self, forKey: .repetitionContextSize)
+        presencePenalty = try c.decodeIfPresent(Float.self, forKey: .presencePenalty)
+        presenceContextSize = try c.decodeIfPresent(Int.self, forKey: .presenceContextSize)
+        frequencyPenalty = try c.decodeIfPresent(Float.self, forKey: .frequencyPenalty)
+        frequencyContextSize = try c.decodeIfPresent(Int.self, forKey: .frequencyContextSize)
         // requiredCapabilities is a per-request runtime contract; landed after
         // the original shape, so older payloads decode to an empty set.
         requiredCapabilities = (try c.decodeIfPresent(
@@ -325,6 +383,11 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encodeIfPresent(minP, forKey: .minP)
         try c.encodeIfPresent(repetitionPenalty, forKey: .repetitionPenalty)
         try c.encodeIfPresent(seed, forKey: .seed)
+        try c.encodeIfPresent(repetitionContextSize, forKey: .repetitionContextSize)
+        try c.encodeIfPresent(presencePenalty, forKey: .presencePenalty)
+        try c.encodeIfPresent(presenceContextSize, forKey: .presenceContextSize)
+        try c.encodeIfPresent(frequencyPenalty, forKey: .frequencyPenalty)
+        try c.encodeIfPresent(frequencyContextSize, forKey: .frequencyContextSize)
         if !requiredCapabilities.isEmpty {
             try c.encode(requiredCapabilities, forKey: .requiredCapabilities)
         }

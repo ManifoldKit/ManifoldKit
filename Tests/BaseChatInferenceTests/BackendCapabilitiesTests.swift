@@ -420,6 +420,23 @@ final class BackendCapabilitiesTests: XCTestCase {
         XCTAssertFalse(caps.isRemote)
     }
 
+    // MARK: - GenerationParameter additive-penalty cases
+
+    func test_generationParameter_includesAdditivePenaltyCases() {
+        let allCases = Set(GenerationParameter.allCases)
+        XCTAssertTrue(allCases.contains(.minP))
+        XCTAssertTrue(allCases.contains(.repetitionPenalty))
+        XCTAssertTrue(allCases.contains(.presencePenalty))
+        XCTAssertTrue(allCases.contains(.frequencyPenalty))
+    }
+
+    func test_generationParameter_codableRoundTrip_additivePenalties() throws {
+        let cases: [GenerationParameter] = [.minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty]
+        let data = try JSONEncoder().encode(cases)
+        let decoded = try JSONDecoder().decode([GenerationParameter].self, from: data)
+        XCTAssertEqual(decoded, cases)
+    }
+
     func test_promptAssembler_capabilities_overload_trimsWhenContextSmall() {
         struct CharTok: TokenizerProvider { func tokenCount(_ t: String) -> Int { t.count } }
         let caps = BackendCapabilities(

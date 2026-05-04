@@ -70,7 +70,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     public var capabilities: BackendCapabilities {
         withStateLock {
             BackendCapabilities(
-                supportedParameters: [.temperature, .topP, .repeatPenalty],
+                supportedParameters: [
+                    .temperature, .topP, .topK, .repeatPenalty,
+                    .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+                ],
                 maxContextTokens: 8192,
                 requiresPromptTemplate: false,
                 supportsSystemPrompt: true,
@@ -889,13 +892,19 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
         // Honour `config.minP` and `config.repetitionPenalty` when set; fall back to the
         // upstream defaults / `repeatPenalty` for callers that haven't migrated to the
-        // explicit knobs yet.
+        // explicit knobs yet. `nil` on a context-size knob falls through to upstream's
+        // own default (20 in mlx-swift-lm) by passing the upstream default explicitly.
         let generateConfig = GenerateParameters(
             temperature: config.temperature,
             topP: config.topP,
             topK: Int(config.topK ?? 0),
             minP: config.minP ?? 0.0,
-            repetitionPenalty: config.repetitionPenalty ?? config.repeatPenalty
+            repetitionPenalty: config.repetitionPenalty ?? config.repeatPenalty,
+            repetitionContextSize: config.repetitionContextSize ?? 20,
+            presencePenalty: config.presencePenalty,
+            presenceContextSize: config.presenceContextSize ?? 20,
+            frequencyPenalty: config.frequencyPenalty,
+            frequencyContextSize: config.frequencyContextSize ?? 20
         )
 
         // Build messages in chat format, using full conversation history when available

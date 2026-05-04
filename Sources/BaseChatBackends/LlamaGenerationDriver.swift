@@ -128,15 +128,24 @@ struct LlamaGenerationDriver {
         defer { llama_sampler_free(sampler) }
 
         // Prefer the explicit `repetitionPenalty` knob when callers supplied it; fall
-        // back to the legacy `repeatPenalty` field otherwise. Both flow through the
-        // same > 1.0 gate so a no-op penalty (1.0) skips the sampler chain.
+        // back to the legacy `repeatPenalty` field otherwise. The chain is added when
+        // ANY of the three penalties is non-no-op; presence and frequency are additive
+        // so 0.0 is the no-op value, while repetition is multiplicative so 1.0 is no-op.
         let effectiveRepetitionPenalty = config.repetitionPenalty ?? config.repeatPenalty
-        if effectiveRepetitionPenalty > 1.0 {
+        let effectivePresencePenalty = config.presencePenalty ?? 0.0
+        let effectiveFrequencyPenalty = config.frequencyPenalty ?? 0.0
+        // llama.cpp uses one shared window for all three penalties; default 64 matches
+        // pre-existing behaviour. MLX exposes per-penalty windows; llama does not.
+        let effectivePenaltyWindow = Int32(config.repetitionContextSize ?? 64)
+        let penaltiesActive = effectiveRepetitionPenalty > 1.0
+            || effectivePresencePenalty != 0.0
+            || effectiveFrequencyPenalty != 0.0
+        if penaltiesActive {
             llama_sampler_chain_add(sampler, llama_sampler_init_penalties(
-                64,                            // last_n tokens to penalize
-                effectiveRepetitionPenalty,    // repeat penalty
-                0.0,                           // frequency penalty
-                0.0                            // presence penalty
+                effectivePenaltyWindow,        // last_n tokens to penalize (shared window)
+                effectiveRepetitionPenalty,    // repeat penalty (multiplicative; 1.0 = no-op)
+                effectiveFrequencyPenalty,     // frequency penalty (additive; 0.0 = no-op)
+                effectivePresencePenalty       // presence penalty (additive; 0.0 = no-op)
             ))
         }
 
@@ -166,7 +175,11 @@ struct LlamaGenerationDriver {
             }
         }
 
-        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40))
+        // Surface `config.topK` to the sampler chain. Historical default of 40 is
+        // preserved when the caller leaves it nil, so existing behaviour is unchanged
+        // for callers that never set the field (which previously had no effect).
+        let effectiveTopK = config.topK.map { Int32($0) } ?? 40
+        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(effectiveTopK))
         if config.topP < 1.0 {
             llama_sampler_chain_add(sampler, llama_sampler_init_top_p(config.topP, 1))
         }
