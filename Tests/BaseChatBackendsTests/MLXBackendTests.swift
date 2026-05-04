@@ -38,6 +38,15 @@ final class MLXBackendTests: XCTestCase {
         XCTAssertTrue(MLXBackend().capabilities.supportedParameters.contains(.temperature))
     }
 
+    func test_capabilities_supportsAdditivePenaltyKnobs() {
+        let caps = MLXBackend().capabilities
+        XCTAssertTrue(caps.supportedParameters.contains(.topK))
+        XCTAssertTrue(caps.supportedParameters.contains(.minP))
+        XCTAssertTrue(caps.supportedParameters.contains(.repetitionPenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.presencePenalty))
+        XCTAssertTrue(caps.supportedParameters.contains(.frequencyPenalty))
+    }
+
     func test_capabilities_contextSize() {
         XCTAssertEqual(MLXBackend().capabilities.maxContextTokens, 8192)
     }

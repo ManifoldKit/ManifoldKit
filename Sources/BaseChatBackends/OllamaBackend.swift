@@ -95,7 +95,10 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
     public override var capabilities: BackendCapabilities {
         BackendCapabilities(
-            supportedParameters: [.temperature, .topP, .topK, .repeatPenalty],
+            supportedParameters: [
+                .temperature, .topP, .topK, .repeatPenalty,
+                .minP, .presencePenalty, .frequencyPenalty,
+            ],
             maxContextTokens: 128_000,
             requiresPromptTemplate: false,
             supportsSystemPrompt: true,
@@ -308,7 +311,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             thinkDirective = nil
         }
 
-        let options: [String: Any] = [
+        var options: [String: Any] = [
             "temperature": config.temperature,
             "top_p": config.topP,
             "top_k": config.topK.map { Int($0) } ?? 40,
@@ -321,6 +324,14 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             // server honours whatever budget we decided on at load time.
             "num_ctx": effectiveNumCtx,
         ]
+        // Only include the modern penalty knobs when the caller set them. Omitting
+        // preserves whatever the Ollama server-side default is (typically 0 for
+        // additive penalties, 1.0 for multiplicative) and keeps wire payloads
+        // identical for callers that haven't migrated.
+        if let minP = config.minP { options["min_p"] = minP }
+        if let presence = config.presencePenalty { options["presence_penalty"] = presence }
+        if let frequency = config.frequencyPenalty { options["frequency_penalty"] = frequency }
+        if let repWindow = config.repetitionContextSize { options["repeat_last_n"] = repWindow }
 
         // Ollama's modern `/api/chat` returns `tool_calls` inside
         // `message.tool_calls` on streaming NDJSON lines. Earlier versions

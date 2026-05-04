@@ -47,7 +47,10 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
         return BackendCapabilities(
-            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            supportedParameters: [
+                .temperature, .topP, .topK, .repeatPenalty,
+                .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+            ],
             maxContextTokens: ctxSize,
             requiresPromptTemplate: true,
             supportsSystemPrompt: true,

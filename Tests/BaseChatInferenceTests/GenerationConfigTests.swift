@@ -220,4 +220,119 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(decoded.seed)
         XCTAssertFalse(decoded.streamPrefillProgress)
     }
+
+    // MARK: - Additive penalty knobs + per-penalty windows
+
+    func test_defaultInit_presencePenalty_isNil() {
+        XCTAssertNil(GenerationConfig().presencePenalty)
+    }
+
+    func test_defaultInit_frequencyPenalty_isNil() {
+        XCTAssertNil(GenerationConfig().frequencyPenalty)
+    }
+
+    func test_defaultInit_repetitionContextSize_isNil() {
+        XCTAssertNil(GenerationConfig().repetitionContextSize)
+    }
+
+    func test_defaultInit_presenceContextSize_isNil() {
+        XCTAssertNil(GenerationConfig().presenceContextSize)
+    }
+
+    func test_defaultInit_frequencyContextSize_isNil() {
+        XCTAssertNil(GenerationConfig().frequencyContextSize)
+    }
+
+    func test_customInit_propagatesAdditivePenaltyKnobs() {
+        let config = GenerationConfig(
+            repetitionContextSize: 128,
+            presencePenalty: 0.4,
+            presenceContextSize: 32,
+            frequencyPenalty: 0.6,
+            frequencyContextSize: 16
+        )
+
+        XCTAssertEqual(config.repetitionContextSize, 128)
+        XCTAssertEqual(config.presencePenalty, 0.4)
+        XCTAssertEqual(config.presenceContextSize, 32)
+        XCTAssertEqual(config.frequencyPenalty, 0.6)
+        XCTAssertEqual(config.frequencyContextSize, 16)
+    }
+
+    func test_codableRoundtrip_preservesAdditivePenaltyKnobs() throws {
+        var original = GenerationConfig(temperature: 0.7)
+        original.presencePenalty = 0.25
+        original.frequencyPenalty = 0.5
+        original.repetitionContextSize = 96
+        original.presenceContextSize = 48
+        original.frequencyContextSize = 24
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+
+        XCTAssertEqual(decoded.presencePenalty, 0.25)
+        XCTAssertEqual(decoded.frequencyPenalty, 0.5)
+        XCTAssertEqual(decoded.repetitionContextSize, 96)
+        XCTAssertEqual(decoded.presenceContextSize, 48)
+        XCTAssertEqual(decoded.frequencyContextSize, 24)
+    }
+
+    func test_codableDecode_legacyPayload_omittingAdditivePenaltyKnobs() throws {
+        // Payloads written before this PR don't carry the additive-penalty fields.
+        // Forward-compat: every new field must default to nil rather than throw.
+        let legacyJSON = """
+        {
+            "temperature": 0.7,
+            "topP": 0.9,
+            "repeatPenalty": 1.1,
+            "tools": [],
+            "toolChoice": {"type": "auto"},
+            "maxToolIterations": 10
+        }
+        """
+        let data = try XCTUnwrap(legacyJSON.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
+
+        XCTAssertNil(decoded.presencePenalty)
+        XCTAssertNil(decoded.frequencyPenalty)
+        XCTAssertNil(decoded.repetitionContextSize)
+        XCTAssertNil(decoded.presenceContextSize)
+        XCTAssertNil(decoded.frequencyContextSize)
+    }
+
+    func test_codable_omitsAdditivePenaltyKnobsWhenNil() throws {
+        // Defaults stay out of the wire payload to keep on-disk presets compact.
+        let config = GenerationConfig()
+        let data = try JSONEncoder().encode(config)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertNil(json["presencePenalty"])
+        XCTAssertNil(json["frequencyPenalty"])
+        XCTAssertNil(json["repetitionContextSize"])
+        XCTAssertNil(json["presenceContextSize"])
+        XCTAssertNil(json["frequencyContextSize"])
+    }
+
+    // MARK: - Mock backend captures additive-penalty fields
+
+    func test_mockBackend_capturesAdditivePenaltyKnobs() async throws {
+        let backend = MockInferenceBackend()
+        try await backend.loadModel(from: URL(string: "file:///mock")!, plan: .testStub(effectiveContextSize: 512))
+
+        let config = GenerationConfig(
+            repetitionContextSize: 80,
+            presencePenalty: 0.3,
+            presenceContextSize: 40,
+            frequencyPenalty: 0.7,
+            frequencyContextSize: 20
+        )
+        let stream = try backend.generate(prompt: "test", systemPrompt: nil, config: config)
+        for try await _ in stream.events {}
+
+        XCTAssertEqual(backend.lastConfig?.repetitionContextSize, 80)
+        XCTAssertEqual(backend.lastConfig?.presencePenalty, 0.3)
+        XCTAssertEqual(backend.lastConfig?.presenceContextSize, 40)
+        XCTAssertEqual(backend.lastConfig?.frequencyPenalty, 0.7)
+        XCTAssertEqual(backend.lastConfig?.frequencyContextSize, 20)
+    }
 }
