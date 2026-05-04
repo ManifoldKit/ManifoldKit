@@ -62,6 +62,22 @@ BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let contents = try? Fi
 
 BaseChatHuggingFace/DownloadFileValidator.swift:guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
 BaseChatHuggingFace/DownloadFileValidator.swift:guard let headerData = try? handle.read(upToCount: 4), headerData.count == 4 else {
+
+# Diffusion validator — same pattern as the GGUF validator above. Opening
+# the safetensors file or reading the 8-byte header is the actual probe;
+# failure is converted into a HuggingFaceError on the next line. The
+# `defer { try? handle.close() }` is deterministic best-effort cleanup —
+# the close result is never actionable once we've finished reading.
+BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:guard let handle = try? FileHandle(forReadingFrom: url) else {
+BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:defer { try? handle.close() }
+BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:guard let headerLengthData = try? handle.read(upToCount: 8),
+
+# Diffusion download — same pattern. Best-effort handle close after
+# write, and a `try? attributesOfItem` whose `nil` result is the
+# documented "size unknown" branch of `URL.fileSize`.
+BaseChatHuggingFace/DiffusionDownload.swift:guard let handle = try? FileHandle(forWritingTo: local) else {
+BaseChatHuggingFace/DiffusionDownload.swift:defer { try? handle.close() }
+BaseChatHuggingFace/DiffusionDownload.swift:let attrs = try? FileManager.default.attributesOfItem(atPath: path)
 BaseChatInference/Services/GGUFMetadataReader.swift:guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
 BaseChatInference/Services/ModelStorageService.swift:guard let contents = try? fileManager.contentsOfDirectory(
 
