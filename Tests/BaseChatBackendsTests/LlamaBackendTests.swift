@@ -28,6 +28,36 @@ final class LlamaBackendTests: XCTestCase {
         XCTAssertFalse(backend.isGenerating)
     }
 
+    // MARK: - Load Options Plumbing
+
+    func test_loadOptions_defaultIsHistoricalBehavior() {
+        let backend = LlamaBackend()
+        let opts = backend.loadOptionsForTesting
+        XCTAssertEqual(opts.kvCacheQuantization, .f16)
+        XCTAssertFalse(opts.flashAttention)
+        XCTAssertNil(opts.prefillBatchSize)
+    }
+
+    func test_setLoadOptions_persistsForNextLoad() {
+        let backend = LlamaBackend()
+        backend.setLoadOptions(BackendLoadOptions(
+            kvCacheQuantization: .q8,
+            flashAttention: true,
+            prefillBatchSize: 1024
+        ))
+        let opts = backend.loadOptionsForTesting
+        XCTAssertEqual(opts.kvCacheQuantization, .q8)
+        XCTAssertTrue(opts.flashAttention)
+        XCTAssertEqual(opts.prefillBatchSize, 1024)
+    }
+
+    func test_setLoadOptions_overridesPreviousValue() {
+        let backend = LlamaBackend()
+        backend.setLoadOptions(BackendLoadOptions(kvCacheQuantization: .q4))
+        backend.setLoadOptions(BackendLoadOptions(kvCacheQuantization: .q8))
+        XCTAssertEqual(backend.loadOptionsForTesting.kvCacheQuantization, .q8)
+    }
+
     // MARK: - Capabilities
 
     func test_capabilities_supportsAllSamplingParameters() {
