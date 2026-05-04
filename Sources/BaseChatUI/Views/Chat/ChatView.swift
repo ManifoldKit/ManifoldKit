@@ -47,18 +47,27 @@ public struct ChatView<APIConfig: View>: View {
     /// forcing `BaseChatUI` to depend on optional sibling modules.
     private let composerAccessoryBuilder: (() -> AnyView)?
 
+    /// Optional opt-in metadata provider for URL preview cards in messages.
+    ///
+    /// The default is `nil`: `BaseChatUI` performs no network fetching and
+    /// renders no link previews unless a host supplies this closure.
+    private let linkPreviewProvider: LinkPreviewProvider?
+
     public init(
         showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
         self.customEmptyPlaceholder = nil
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = nil
+        self.linkPreviewProvider = linkPreviewProvider
     }
 
     public init<ComposerAccessory: View>(
         showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
@@ -66,6 +75,7 @@ public struct ChatView<APIConfig: View>: View {
         self.customEmptyPlaceholder = nil
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
+        self.linkPreviewProvider = linkPreviewProvider
     }
 
     /// Creates a ``ChatView`` with a host-supplied empty-state view rendered
@@ -75,6 +85,7 @@ public struct ChatView<APIConfig: View>: View {
     /// tour, or any other call-to-action in place of the default placeholder.
     public init<EmptyContent: View>(
         showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
@@ -82,10 +93,12 @@ public struct ChatView<APIConfig: View>: View {
         self.customEmptyPlaceholder = AnyView(emptyState())
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = nil
+        self.linkPreviewProvider = linkPreviewProvider
     }
 
     public init<EmptyContent: View, ComposerAccessory: View>(
         showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
@@ -94,6 +107,7 @@ public struct ChatView<APIConfig: View>: View {
         self.customEmptyPlaceholder = AnyView(emptyState())
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
+        self.linkPreviewProvider = linkPreviewProvider
     }
 
     // MARK: - Body
@@ -416,7 +430,8 @@ public struct ChatView<APIConfig: View>: View {
                         MessageBubbleView(
                             message: message,
                             isStreaming: isMessageStreaming(message),
-                            isPinned: viewModel.isMessagePinned(id: message.id)
+                            isPinned: viewModel.isMessagePinned(id: message.id),
+                            linkPreviewProvider: linkPreviewProvider
                         )
                         .messageActionMenu(message: message, viewModel: viewModel)
                         .id(message.id)
