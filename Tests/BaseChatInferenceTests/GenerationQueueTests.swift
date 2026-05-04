@@ -502,7 +502,7 @@ final class GenerationQueueTests: XCTestCase {
             messages: [("user", "drop")], priority: .normal, sessionID: dropSession
         )
 
-        coord.discardRequests(notMatching: keepSession)
+        await coord.discardRequests(notMatching: keepSession)
 
         // The dropped stream must terminate — no tokens.
         var dropTokens: [String] = []

@@ -404,7 +404,7 @@ final class InferenceServiceQueueTests: XCTestCase {
             sessionID: sessionB
         )
 
-        service.discardRequests(notMatching: sessionB)
+        await service.discardRequests(notMatching: sessionB)
 
         // Session A queued request should be cancelled.
         if case .failed = streamA.phase {
@@ -433,7 +433,7 @@ final class InferenceServiceQueueTests: XCTestCase {
             sessionID: nil
         )
 
-        service.discardRequests(notMatching: sessionB)
+        await service.discardRequests(notMatching: sessionB)
 
         XCTAssertEqual(streamNil.phase, .queued,
                        "nil sessionID should survive discardRequests")

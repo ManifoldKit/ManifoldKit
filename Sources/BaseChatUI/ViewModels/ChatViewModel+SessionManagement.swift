@@ -9,21 +9,44 @@ extension ChatViewModel {
 
     /// Switches to a different chat session, loading its messages and settings.
     public func switchToSession(_ session: ChatSessionRecord) async {
-        // Stop any active generation for the old session.
+        // Drive the UI back to idle synchronously so the toolbar/stop button
+        // observes the transition immediately. The runtime handle and queue
+        // tear-down are awaited via `discardRequests` below before any
+        // backend mutation runs.
         if isGenerating {
-            stopGeneration()
+            transitionPhase(to: .idle)
         }
 
         isRestoringSession = true
         defer { isRestoringSession = false }
 
         let selectionState = sessionController.activateSession(session)
+
+        // Discard any queued requests that belong to a different session.
+        // Awaiting here is load-bearing: the call cancels the active turn
+        // (when its session ≠ `session.id`) and drives the task's defer
+        // block to completion before returning. Running the discard
+        // *before* `resetConversation()` / `secureWipe()` keeps those
+        // backend KV-cache mutations from racing the dying turn — a race
+        // that previously left B's first send to land on a half-torn-down
+        // queue and yield zero tokens (issue #965).
+        await inferenceService.discardRequests(notMatching: session.id)
+
         inferenceService.resetConversation()
         inferenceService.secureWipe()
         inferenceService.selectedPromptTemplate = sessionController.selectedPromptTemplate
 
-        // Discard any queued requests that belong to a different session.
-        inferenceService.discardRequests(notMatching: session.id)
+        // Cancel the runtime's stream handle for the prior session if one is
+        // still attached. `discardRequests` made the queue idle; this
+        // closes the runtime-level bookkeeping so the next send opens a
+        // fresh handle. Awaited inline so the runtime registry is fully
+        // torn down before the caller's next send registers a new handle —
+        // a fire-and-forget Task here flaked under heavy parallel load
+        // (issue #965).
+        if let handle = activeConversationStreamHandle {
+            await conversationRuntime.cancel(handle)
+            activeConversationStreamHandle = nil
+        }
 
         // Clear any still-pending tool approvals and the once-per-session
         // latch so approvals from the prior session do not leak into this one.

@@ -1049,7 +1049,7 @@ final class GenerationQueue {
         }
     }
 
-    func discardRequests(notMatching sessionID: UUID) {
+    func discardRequests(notMatching sessionID: UUID) async {
         requestQueue.removeAll { req in
             guard let reqSession = req.sessionID, reqSession != sessionID else { return false }
             req.stream.setPhase(.failed("Session changed"))
@@ -1059,7 +1059,16 @@ final class GenerationQueue {
         if let active = activeRequest,
            let activeSession = active.sessionID,
            activeSession != sessionID {
+            // Capture the active task handle before `cancel` clears it. The
+            // task's `defer` block in `drainQueue` clears `activeRequest`,
+            // releases `isGenerating`, and finishes the continuation; if the
+            // caller (a session switch) re-enqueues before that defer runs,
+            // the new request can land on a queue mid-tear-down (issue #965).
+            // Awaiting the task's value here serialises the next enqueue
+            // behind the dying turn so B's send sees a clean slot.
+            let dyingTask = activeTask
             cancel(active.token)
+            await dyingTask?.value
         }
     }
 

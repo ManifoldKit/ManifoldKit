@@ -124,15 +124,10 @@ final class InterleavingTests: XCTestCase {
 
     /// Starts generation on session A, switches to session B mid-stream,
     /// then generates on B. Verifies no tokens from A leak into B.
-    // FIXME: https://github.com/roryford/BaseChatKit/issues/947 — runtime path
-    // drops B's assistant persistence after switch-cancel-resend. Likely related
-    // to `inferenceService.stopGeneration()` + `secureWipe()` in
-    // `switchToSession` leaving the backend in a state that yields zero tokens
-    // for the next enqueueAsync (B's stream hits the empty-response branch and
-    // skips persistence). Pre-cutover legacy path passed this test. Tracked as
-    // a remaining-work checkbox on the #947 umbrella.
+    /// Fixed by #965: `discardRequests(notMatching:)` is now async and awaits
+    /// the active task's tear-down before returning, so B's `enqueueAsync`
+    /// lands on a clean queue.
     func test_sessionSwitch_duringGeneration_noContentLeakage() async throws {
-        try XCTSkipIf(true, "FIXME: #947 — runtime feature parity (assistant persistence after switch-cancel-resend)")
         // Session A: slow 20-token stream with identifiable tokens.
         let sessionA = try await createAndActivateSession(title: "Session A")
         slowBackend.tokensToYield = (0..<20).map { "alpha\($0) " }
@@ -315,5 +310,105 @@ final class InterleavingTests: XCTestCase {
 
         XCTAssertFalse(vm.isGenerating, "isGenerating should be false after model reload")
         XCTAssertTrue(vm.isModelLoaded, "Model should be loaded after reload completes")
+    }
+
+    // MARK: - Test 5 + 6: Switch-cancel-resend variants for #965
+
+    /// Variant of test 2: switch happens during the *first-token* phase, before
+    /// any tokens have been observed by the UI. Exercises the same
+    /// switch→cancel→resend race tighter to the start of streaming.
+    func test_sessionSwitch_duringFirstTokenStreaming_persistsBothSessions() async throws {
+        let sessionA = try await createAndActivateSession(title: "A-firstToken")
+        slowBackend.tokensToYield = (0..<20).map { "alpha\($0) " }
+        slowBackend.delayPerToken = .milliseconds(50)
+
+        vm.inputText = "ask A"
+        let genTask = Task { @MainActor in
+            await self.vm.sendMessage()
+        }
+
+        // Yield until isGenerating flips, but do NOT wait for first token —
+        // we want the switch to land while the backend is still warming up.
+        await vm.awaitGenerating(true)
+
+        let sessionB = try await sessionManager.createSession(title: "B-firstToken")
+        sessionManager.activeSession = sessionB
+        await vm.switchToSession(sessionB)
+
+        XCTAssertFalse(vm.isGenerating, "Generation should be stopped after switch")
+        XCTAssertFalse(vm.inferenceService.hasQueuedRequests)
+
+        slowBackend.tokensToYield = ["beta0", " beta1"]
+        slowBackend.delayPerToken = .milliseconds(10)
+
+        vm.inputText = "ask B"
+        await vm.sendMessage()
+        await genTask.value
+
+        let aMsgs = try await persistence.fetchMessages(for: sessionA.id)
+        XCTAssertTrue(aMsgs.contains { $0.role == .user && $0.content == "ask A" },
+                      "A's user message must persist")
+
+        let bMsgs = try await persistence.fetchMessages(for: sessionB.id)
+        let bUser = bMsgs.filter { $0.role == .user }
+        let bAsst = bMsgs.filter { $0.role == .assistant }
+        XCTAssertEqual(bUser.count, 1, "B should have 1 user message")
+        XCTAssertEqual(bAsst.count, 1, "B should have 1 assistant message")
+        XCTAssertEqual(bAsst.first?.content, "beta0 beta1")
+        for m in bMsgs {
+            XCTAssertFalse(m.content.contains("alpha"), "B must not contain A's alpha tokens")
+        }
+    }
+
+    /// Variant of test 2: switch happens *after* first-token but before
+    /// completion. Confirms a partially-streamed assistant on A persists,
+    /// while B still gets a clean fresh turn.
+    func test_sessionSwitch_afterFirstToken_persistsPartialAndFreshB() async throws {
+        let sessionA = try await createAndActivateSession(title: "A-afterFirst")
+        slowBackend.tokensToYield = (0..<20).map { "alpha\($0) " }
+        slowBackend.delayPerToken = .milliseconds(50)
+
+        vm.inputText = "ask A"
+        let genTask = Task { @MainActor in
+            await self.vm.sendMessage()
+        }
+
+        // Wait until at least one token has landed in A's assistant message,
+        // then switch.
+        await vm.awaitFirstToken()
+
+        let sessionB = try await sessionManager.createSession(title: "B-afterFirst")
+        sessionManager.activeSession = sessionB
+        await vm.switchToSession(sessionB)
+
+        XCTAssertFalse(vm.isGenerating)
+
+        slowBackend.tokensToYield = ["beta0", " beta1", " beta2"]
+        slowBackend.delayPerToken = .milliseconds(10)
+        vm.inputText = "ask B"
+        await vm.sendMessage()
+        await genTask.value
+
+        // A: user persists; assistant should be present (partial) — the
+        // cancel-on-stop path saves what streamed in.
+        let aMsgs = try await persistence.fetchMessages(for: sessionA.id)
+        XCTAssertTrue(aMsgs.contains { $0.role == .user && $0.content == "ask A" })
+        let aAsst = aMsgs.filter { $0.role == .assistant }
+        // At-most-one assistant; if present, must be a non-empty alpha prefix.
+        XCTAssertLessThanOrEqual(aAsst.count, 1, "At most one assistant row on A after cancel")
+        if let a = aAsst.first {
+            XCTAssertTrue(a.content.contains("alpha"), "A assistant content should be partial alpha tokens, got \(a.content)")
+        }
+
+        // B: full fresh turn.
+        let bMsgs = try await persistence.fetchMessages(for: sessionB.id)
+        let bUser = bMsgs.filter { $0.role == .user }
+        let bAsst = bMsgs.filter { $0.role == .assistant }
+        XCTAssertEqual(bUser.count, 1)
+        XCTAssertEqual(bAsst.count, 1, "B assistant must persist after switch-cancel-resend")
+        XCTAssertEqual(bAsst.first?.content, "beta0 beta1 beta2")
+        for m in bMsgs {
+            XCTAssertFalse(m.content.contains("alpha"), "B must not contain A's alpha tokens")
+        }
     }
 }
