@@ -529,10 +529,10 @@ let package = Package(
         .target(
             name: "BaseChatFuzzBackends",
             dependencies: [
-                .target(name: "BaseChatFuzz", condition: .when(traits: ["Fuzz"])),
+                "BaseChatFuzz",
                 "BaseChatInference",
                 "BaseChatTestSupport",
-                .target(name: "BaseChatBackends", condition: .when(traits: ["Fuzz"])),
+                "BaseChatBackends",
             ],
             path: "Sources/BaseChatFuzzBackends",
             swiftSettings: [

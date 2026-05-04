@@ -76,11 +76,15 @@ final class PackageTraitGateAuditTest: XCTestCase {
         // BaseChatAppIntents — gated by AppIntents on the test target.
         .init(description: "BaseChatAppIntentsTests → BaseChatAppIntents", module: "BaseChatAppIntents", trait: "AppIntents"),
 
-        // BaseChatFuzz / BaseChatFuzzBackends — gated by Fuzz across every
-        // consumer edge: the BaseChatFuzzBackends factories target, the
-        // fuzz-chat CLI, and the BaseChatFuzzTests test target.
-        .init(description: "BaseChatFuzzBackends → BaseChatFuzz", module: "BaseChatFuzz", trait: "Fuzz"),
-        .init(description: "BaseChatFuzzBackends → BaseChatBackends", module: "BaseChatBackends", trait: "Fuzz"),
+        // BaseChatFuzz / BaseChatFuzzBackends — gated by Fuzz at the
+        // consumer edges (fuzz-chat CLI and BaseChatFuzzTests). The
+        // internal edges from BaseChatFuzzBackends to BaseChatFuzz /
+        // BaseChatBackends are intentionally unconditional: BaseChatFuzzBackends
+        // source files `import BaseChatBackends` unconditionally, so gating
+        // those internal edges on Fuzz makes the target fail compilation
+        // under `--traits Macros` (no Fuzz). The target compiles always;
+        // nothing in the default trait set imports it, so it never gets
+        // linked into a default-traits binary.
         .init(description: "fuzz-chat → BaseChatFuzz", module: "BaseChatFuzz", trait: "Fuzz"),
         .init(description: "fuzz-chat → BaseChatFuzzBackends", module: "BaseChatFuzzBackends", trait: "Fuzz"),
         .init(description: "BaseChatFuzzTests → BaseChatFuzz", module: "BaseChatFuzz", trait: "Fuzz"),
