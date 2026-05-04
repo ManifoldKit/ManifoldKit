@@ -562,6 +562,29 @@ public final class ChatViewModel {
     /// Handle to the in-flight ConversationRuntime stream, used to cancel it.
     var activeConversationStreamHandle: ConversationStreamHandle?
 
+    // MARK: - ImageGenerationRuntime
+    //
+    // Optional sibling to `conversationRuntime` for the image-generation
+    // path. Hosts that opt in to image generation install one via
+    // `configure(imageRuntime:)` (typically through `BaseChatBootstrap`);
+    // chat-only hosts leave this nil and the public image-generation methods
+    // throw `.notConfigured`. Storage lives on the main type because
+    // extensions cannot add stored properties — all behavior lives in
+    // `ChatViewModel+ImageGeneration.swift`.
+
+    /// Backing storage for ``imageRuntime``. Internal so the
+    /// `ChatViewModel+ImageGeneration` extension can mutate it.
+    var _imageRuntime: ImageGenerationRuntime?
+
+    /// Drain task for the image runtime event stream. Cancelled when the
+    /// runtime is replaced (latest-wins) or the view model is torn down.
+    @ObservationIgnored
+    var imageRuntimeEventDrainTask: Task<Void, Never>?
+
+    /// Per-message-ID progress dictionary for in-flight or completed image
+    /// generations. Driven by the `ImageGenerationRuntime` event drain.
+    public internal(set) var imageGenerationProgress: [UUID: ImageGenerationProgress] = [:]
+
     /// The assistant `messageID` carried by the most-recent `streamStarted`
     /// event. Used by ``ChatViewModel/handle(runtimeEvent:)`` to gate
     /// terminal events against the active turn — late events from a
