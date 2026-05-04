@@ -418,3 +418,17 @@ BaseChatInference/Models/ModelInfo.swift:let candidates = (try? FileManager.defa
 # then falls through to decode the object form {"type":"function",...}.
 # The `try?` is bound to a named constant; the else-branch handles the miss.
 BaseChatServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleValueContainer().decode(String.self) {
+
+# ---------------------------------------------------------------------------
+# BaseChatBackends — MLXDiffusionBackend
+# ---------------------------------------------------------------------------
+
+# File-size probe for ImageModelLoadPlan pre-flight. Missing files return 0
+# bytes; the plan treats them as "not present" and may undercount, erring on
+# the side of allowing the load rather than blocking with a stale denial.
+BaseChatBackends/MLXDiffusionBackend.swift:return (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int64 ?? 0
+
+# Temporary-symlink teardown after loadModel completes. The symlink bridges
+# BCK's slug-based download path to Hub's expected directory convention;
+# removal is pure cleanup and its result is never actionable.
+BaseChatBackends/MLXDiffusionBackend.swift:return (tmpBase, { try? FileManager.default.removeItem(at: tmpBase) })

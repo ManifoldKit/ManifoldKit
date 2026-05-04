@@ -54,6 +54,15 @@ let package = Package(
         // manual revision pin) and adds the `gemma4` model_type to LLMTypeRegistry so
         // mlx-community/gemma-4-* can load.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
+        // mlx-swift-examples ships the `StableDiffusion` library used by
+        // `MLXDiffusionBackend`. Pinned to the post-swift-transformers-1.3.0-bump
+        // commit on `main` (Apr 17 2026) — the latest tag (2.29.1) pins
+        // swift-transformers to 1.0.x which conflicts with BCK's 1.3.0+. Revision
+        // pin until upstream cuts a new tag. See umbrella issue #1002.
+        .package(
+            url: "https://github.com/ml-explore/mlx-swift-examples.git",
+            revision: "357c97fbd39abe600704b889dd114c208b0ed915"
+        ),
         .package(url: "https://github.com/huggingface/swift-huggingface.git", from: "0.9.0"),
         .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
@@ -164,6 +173,11 @@ let package = Package(
                 .product(name: "MLXVLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXHuggingFace", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
+                // StableDiffusion library from mlx-swift-examples, used by
+                // MLXDiffusionBackend (ImageGenerationBackend conformer).
+                // MLX-trait-gated so chat-only / default-trait builds don't pull
+                // the diffusion code into the link graph.
+                .product(name: "StableDiffusion", package: "mlx-swift-examples", condition: .when(traits: ["MLX"])),
                 .product(name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
             ],
             path: "Sources/BaseChatBackends",
