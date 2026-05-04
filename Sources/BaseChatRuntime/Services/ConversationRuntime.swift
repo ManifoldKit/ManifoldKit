@@ -348,6 +348,25 @@ public final class ConversationRuntime: Sendable {
 
     private let registry = InFlightStreamRegistry()
 
+    // MARK: Diagnostics (test-injectable)
+
+    /// Test-only observer fired when the turn loop drops an empty assistant
+    /// response (i.e. `emptyResponse && !cancelled && streamFailed == nil`).
+    /// Production callers pass `nil`; tests inject a closure to verify the
+    /// silent-drop path is reachable. The observer fires from the same
+    /// detached task that drives generation, so receivers must tolerate
+    /// off-main delivery.
+    package struct EmptyResponseDiagnostic: Sendable {
+        public let sessionID: UUID
+        public let backendName: String?
+        public init(sessionID: UUID, backendName: String?) {
+            self.sessionID = sessionID
+            self.backendName = backendName
+        }
+    }
+
+    private let emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
+
     // MARK: Init
 
     /// Creates a runtime that composes the supplied ports.
@@ -368,16 +387,36 @@ public final class ConversationRuntime: Sendable {
     ///     to keep the event sequence stable, then enqueues with no extra
     ///     slots. When present, the pipeline is queried before each turn
     ///     and the resulting slots are surfaced via `.contextAssembled`.
-    public init(
+    public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil
     ) {
+        self.init(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: inferenceService,
+            pipeline: pipeline,
+            emptyResponseObserver: nil
+        )
+    }
+
+    /// Test-only init that lets the caller observe the empty-assistant drop
+    /// path. Wrapped in `package` so test targets can reach it without
+    /// widening the public surface.
+    package init(
+        messageStore: any MessageStore,
+        sessionStore: (any SessionStore)? = nil,
+        inferenceService: InferenceService,
+        pipeline: PromptContextPipeline? = nil,
+        emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
+    ) {
         self.messageStore = messageStore
         self.sessionStore = sessionStore
         self.inferenceService = inferenceService
         self.pipeline = pipeline
+        self.emptyResponseObserver = emptyResponseObserver
         var cap: AsyncStream<ConversationEvent>.Continuation!
         self.events = AsyncStream(bufferingPolicy: .unbounded) { cap = $0 }
         self.continuation = cap
@@ -1122,6 +1161,19 @@ public final class ConversationRuntime: Sendable {
         if reason == .empty {
             // Drop the empty assistant message. No persistence happens; we
             // emit the terminal events and return.
+            //
+            // Issue #965: a switch-cancel-resend race used to silently drop
+            // the resent turn here. The fix lives in
+            // `GenerationQueue.discardRequests(notMatching:)`, but a stream
+            // may still legitimately reach this branch (e.g. backend yields
+            // zero tokens for a malformed prompt). Log a warning with backend
+            // + sessionID so a future regression is observable instead of
+            // silent. Semantics are unchanged — this branch still drops.
+            let backendName = await readActiveBackendName()
+            Log.inference.warning(
+                "ConversationRuntime: dropping empty assistant turn (sessionID=\(sessionID, privacy: .private), backend=\(backendName ?? "nil", privacy: .public))"
+            )
+            emptyResponseObserver?(EmptyResponseDiagnostic(sessionID: sessionID, backendName: backendName))
             emit(.streamFinished(messageID: assistantID, reason: reason))
             emit(.afterGeneration(messageID: assistantID, finalText: ""))
             return
@@ -1205,6 +1257,13 @@ public final class ConversationRuntime: Sendable {
     @MainActor
     private func readLastTokenUsage() async -> (promptTokens: Int, completionTokens: Int)? {
         inferenceService.lastTokenUsage
+    }
+
+    /// Reads ``InferenceService/activeBackendName`` off the main actor for
+    /// diagnostic logging on the empty-response drop path (issue #965).
+    @MainActor
+    private func readActiveBackendName() async -> String? {
+        inferenceService.activeBackendName
     }
 
     @MainActor

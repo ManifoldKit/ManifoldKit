@@ -76,7 +76,9 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
         XCTAssertNotNil(cancel as Any)
 
         // discardRequests(notMatching:) takes a UUID, returns Void.
-        let discard: (UUID) -> Void = service.discardRequests(notMatching:)
+        // Async to serialise tear-down of the active task before the next
+        // enqueue lands (issue #965).
+        let discard: (UUID) async -> Void = service.discardRequests(notMatching:)
         XCTAssertNotNil(discard as Any)
     }
 

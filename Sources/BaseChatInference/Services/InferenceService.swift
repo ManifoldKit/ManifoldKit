@@ -329,9 +329,9 @@ public final class InferenceService {
         generation.cancel(token)
     }
 
-    public func discardRequests(notMatching sessionID: UUID) {
+    public func discardRequests(notMatching sessionID: UUID) async {
         ensureProviderWired()
-        generation.discardRequests(notMatching: sessionID)
+        await generation.discardRequests(notMatching: sessionID)
     }
 
     public var lastTokenUsage: (promptTokens: Int, completionTokens: Int)? {
