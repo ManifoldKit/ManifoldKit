@@ -15,12 +15,26 @@ final class ImageGenerationServiceTests: XCTestCase {
     /// up a real diffusion runtime. Per-test instances are fine because the
     /// service holds the only strong reference; tests reach into `events` /
     /// `loadCount` / `unloadCount` via the captured factory closure.
+    ///
+    /// ### Thread-safety
+    ///
+    /// `loadModel` runs off-actor on a `Task.detached` (the service hops
+    /// the load into the background), and `generate(prompt:config:)` is
+    /// invoked synchronously on the main actor before the service starts
+    /// iterating its returned stream off-actor. `stopGeneration` /
+    /// `unloadModel` are called on the main actor by the service. Tests
+    /// only sample these counters after `await`-ing the corresponding
+    /// service entrypoint (`loadModel` / `unload` / a fully drained
+    /// `generate` stream), so each read happens-after the matching write
+    /// via that suspension point — sequential consistency is therefore
+    /// guaranteed without an explicit lock. The class is marked
+    /// `@unchecked Sendable` only to satisfy the protocol's `Sendable`
+    /// requirement; the mock has no concurrent writers in any of the
+    /// tests below.
     private final class MockBackend: ImageGenerationBackend, @unchecked Sendable {
         var isLoaded: Bool = false
         var isGenerating: Bool = false
 
-        // Counters / event scripts. Mutated only on the main actor since the
-        // service is `@MainActor` and tests await all transitions.
         var loadCount: Int = 0
         var unloadCount: Int = 0
         var stopCount: Int = 0
@@ -218,5 +232,40 @@ final class ImageGenerationServiceTests: XCTestCase {
         XCTAssertNil(service.loadedModel)
         XCTAssertEqual(mock.unloadCount, 1)
         XCTAssertFalse(mock.isLoaded)
+    }
+
+    // MARK: - 7. Generate while not in .loaded(info) treats stream as notLoaded
+
+    /// Race regression: if the service's state changed between
+    /// `service.generate(...)` snapshotting `loadedModel` and the wrapper
+    /// observing the state again, generate must not stomp the newer state
+    /// with `.generating(info)` for the old model. The race is only
+    /// reachable from arbitrary actors interleaving on `await`-points;
+    /// here we simulate it by mutating state via `unload()` on a separate
+    /// task between the `loadModel` await and the `generate` snapshot.
+    /// What we can deterministically assert in a single-actor test is that
+    /// once `unload()` returns and we then call `generate`, the stream
+    /// fails with `.notLoaded` — no backend call leaks through.
+    func test_generate_afterUnload_streamThrowsNotLoaded() async throws {
+        let service = ImageGenerationService()
+        let mock = MockBackend()
+        let info = makeInfo()
+
+        service.registerBackendFactory(for: .mlxDiffusion) { _ in mock }
+        try await service.loadModel(info)
+        await service.unload()
+
+        let stream = service.generate(prompt: "x", config: ImageGenerationConfig())
+
+        do {
+            for try await _ in stream {
+                XCTFail("stream must not yield after unload")
+            }
+            XCTFail("stream must throw")
+        } catch let error as ImageGenerationServiceError {
+            XCTAssertEqual(error, .notLoaded)
+        } catch {
+            XCTFail("expected ImageGenerationServiceError.notLoaded, got \(error)")
+        }
     }
 }

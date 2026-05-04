@@ -34,11 +34,16 @@ public enum ImageGenerationServiceError: Error, Equatable, Sendable {
 ///
 /// ## Concurrency
 ///
-/// `@MainActor`-isolated; all state transitions and backend method calls
-/// happen on the main actor. Backends remain `AnyObject + Sendable` and are
-/// expected to protect their own internals (NSLock per
-/// ``ImageGenerationBackend``'s contract). The service itself does not hold a
-/// lock — main-actor isolation is sufficient.
+/// `@MainActor`-isolated; all state transitions and the synchronous-throw
+/// portion of every backend call (`generate(prompt:config:)`'s entrypoint,
+/// `stopGeneration()`, `unloadModel()`, `isLoaded` / `isGenerating` reads)
+/// happen on the main actor. The two operations that may do heavy work —
+/// `loadModel(from:)` and the per-event iteration of a generation stream —
+/// run off-actor on a detached task so the UI thread is never held across
+/// them. Backends remain `AnyObject + Sendable` and protect their own
+/// internals (NSLock per ``ImageGenerationBackend``'s contract). The service
+/// itself does not hold a lock — main-actor isolation is sufficient for its
+/// own state.
 @MainActor
 @Observable
 public final class ImageGenerationService {
@@ -132,7 +137,16 @@ public final class ImageGenerationService {
         state = .loading(info)
         do {
             let newBackend = try await factory(info)
-            try await newBackend.loadModel(from: info.directoryURL)
+            // Hop the backend's `loadModel` call onto a detached task so any
+            // synchronous heavy lifting inside the backend (model file reads,
+            // Metal shader compile, weight unpack) cannot block the main
+            // actor and the UI. Mirrors `ModelLifecycleCoordinator`'s
+            // `Task.detached(priority: .userInitiated)` dispatch on the text
+            // path. State commits below stay on MainActor.
+            let url = info.directoryURL
+            try await Task.detached(priority: .userInitiated) {
+                try await newBackend.loadModel(from: url)
+            }.value
             backend = newBackend
             loadedModel = info
             state = .loaded(info)
@@ -150,13 +164,18 @@ public final class ImageGenerationService {
     /// Streams events from the loaded backend's `generate(prompt:config:)`.
     ///
     /// The returned stream is the backend's own stream wrapped to drive
-    /// service state transitions: `.loaded → .generating` when the first
-    /// event arrives, `.generating → .loaded` when the stream finishes
-    /// (normally or via thrown error).
+    /// service state transitions: `.loaded → .generating` synchronously on
+    /// the main actor (after the backend's `generate` synchronous-throw
+    /// entrypoint returns), `.generating → .loaded` when the stream finishes
+    /// (normally or via thrown error). Cancellation is treated as a normal
+    /// finish: the wrapper task is cancelled and `backend.stopGeneration()`
+    /// is invoked, but no `CancellationError` propagates to the consumer.
     ///
     /// - Returns: a stream that finishes with
-    ///   ``ImageGenerationServiceError/notLoaded`` when no model is loaded.
-    ///   All other errors come from the underlying backend.
+    ///   ``ImageGenerationServiceError/notLoaded`` when no model is loaded
+    ///   (or when state has moved off `.loaded` between the entry check and
+    ///   the backend `generate` call). All other errors come from the
+    ///   underlying backend.
     public func generate(
         prompt: String,
         config: ImageGenerationConfig
@@ -168,42 +187,96 @@ public final class ImageGenerationService {
         }
 
         return AsyncThrowingStream { continuation in
-            // Detached: backend `generate` is synchronous-throw to start the
-            // stream; the per-event consumption then awaits. Wrapping in a
-            // detached task lets us hop back to MainActor for state writes
-            // without blocking the caller.
-            let task = Task {
+            // Start the backend stream and commit `.generating` synchronously
+            // on the main actor. Doing it here (rather than inside the
+            // detached task below) means a follow-up `loadModel` /
+            // `unload` issued from the same actor cannot interleave between
+            // the load check and the state write — the next operation
+            // observes `.generating(info)` deterministically.
+            //
+            // We also gate the transition on the current state being
+            // `.loaded(info)`. If the caller raced an `unload()` /
+            // `loadModel(other)` in before reaching here, we must not stomp
+            // the newer state by writing `.generating(info)` for a model
+            // that's no longer current.
+            let upstream: AsyncThrowingStream<ImageGenerationEvent, Error>
+            do {
+                upstream = try backend.generate(prompt: prompt, config: config)
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
+
+            guard case .loaded(let active) = state, active == info else {
+                // State moved on between the `loadedModel` snapshot above
+                // and this point (callers can drive lifecycle from the same
+                // actor between awaits). Treat exactly like `.notLoaded` —
+                // do not start a generation against a model the service no
+                // longer considers active.
+                continuation.finish(throwing: ImageGenerationServiceError.notLoaded)
+                return
+            }
+            state = .generating(info)
+
+            // Iteration of the upstream stream is the only off-actor work.
+            // The detached task forwards events; all state writes still hop
+            // back to MainActor. Cancellation is treated as a normal finish
+            // (matches GenerationStream's policy).
+            //
+            // We must check `Task.isCancelled` per-iteration because
+            // `AsyncThrowingStream` does not auto-propagate Task cancellation
+            // into the producer — without the check, a backend that yields
+            // events on a timer keeps feeding the wrapper even after the
+            // downstream consumer dropped its iterator.
+            let task = Task.detached(priority: .userInitiated) { [weak self] in
                 do {
-                    let upstream = try backend.generate(prompt: prompt, config: config)
-                    await MainActor.run {
-                        self.state = .generating(info)
-                    }
                     for try await event in upstream {
+                        if Task.isCancelled {
+                            await self?.restoreLoadedState(for: info)
+                            continuation.finish()
+                            return
+                        }
                         continuation.yield(event)
                     }
-                    await MainActor.run {
-                        // Only reset to .loaded when our generation is the
-                        // one currently observed. If the caller unloaded
-                        // mid-stream the state will already be .idle and we
-                        // must not overwrite it.
-                        if case .generating(let active) = self.state, active == info {
-                            self.state = .loaded(info)
-                        }
-                    }
+                    await self?.restoreLoadedState(for: info)
+                    continuation.finish()
+                } catch is CancellationError {
+                    await self?.restoreLoadedState(for: info)
                     continuation.finish()
                 } catch {
-                    await MainActor.run {
-                        if case .generating(let active) = self.state, active == info {
-                            self.state = .loaded(info)
-                        }
+                    if Task.isCancelled {
+                        await self?.restoreLoadedState(for: info)
+                        continuation.finish()
+                    } else {
+                        await self?.restoreLoadedState(for: info)
+                        continuation.finish(throwing: error)
                     }
-                    continuation.finish(throwing: error)
                 }
             }
 
-            continuation.onTermination = { _ in
+            continuation.onTermination = { [weak self] termination in
+                // On cancellation, also tell the backend to stop — otherwise
+                // the denoising loop can keep running even though no one is
+                // reading the stream. `.finished` paths already had the
+                // upstream exit cleanly; only `.cancelled` needs the nudge.
                 task.cancel()
+                if case .cancelled = termination {
+                    Task { @MainActor [weak self] in
+                        self?.backend?.stopGeneration()
+                    }
+                }
             }
+        }
+    }
+
+    /// Returns the service to `.loaded(info)` after a generation finishes,
+    /// but only if the currently-observed state is still
+    /// `.generating(info)`. If the caller unloaded mid-stream or a newer
+    /// load is in flight, the state has already moved on and we must not
+    /// overwrite it.
+    private func restoreLoadedState(for info: ImageModelInfo) {
+        if case .generating(let active) = state, active == info {
+            state = .loaded(info)
         }
     }
 
