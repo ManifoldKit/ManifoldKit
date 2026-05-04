@@ -182,6 +182,9 @@ public final class ChatViewModel {
         set { sessionController.messages = newValue }
     }
 
+    /// One-shot command consumed by ``ChatView`` to bring a message into view.
+    public internal(set) var scrollToMessageRequest: ChatScrollToMessageRequest?
+
     /// The user's current input text.
     public var inputText: String = ""
 
