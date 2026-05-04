@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.16.2](https://github.com/roryford/BaseChatKit/compare/v0.16.1...v0.16.2) (2026-05-04)
+
+### Highlights
+
+#### End-to-end on-device image generation
+
+v0.16.1 shipped `ImageGenerationBackend` as a protocol with no concrete conformers. This release closes the loop: a complete integration stack lands across nine PRs, making BaseChatKit a viable foundation for on-device image-generation apps alongside the text path it already serves. `ImageGenerationService` owns the backend lifecycle, `ImageGenerationRuntime` (in `BaseChatRuntime`) translates backend-level denoising events into `ImageRuntimeEvent`s keyed to message IDs and persists `.generatedImage` parts through the existing `MessageStore` port — no SwiftData migration required. `BaseChatBootstrap` gains an optional `imageGenerationService:` parameter; hosts that don't pass one get the identical text-only behaviour they had before.
+
+```swift
+let imageService = ImageGenerationService()
+let bootstrap = try BaseChatBootstrap(
+    configuration: config,
+    imageGenerationService: imageService
+)
+#if MLX
+imageService.registerMLXDiffusionBackend()  // Apple Silicon only
+#endif
+chatViewModel.configure(bootstrap)           // wires both runtimes in one call
+```
+
+The first concrete conformer, `MLXDiffusionBackend`, ships in `BaseChatBackends` behind the existing `MLX` trait and auto-detects SD 2.1 Base and SDXL Turbo layouts from the weights directory. `DiffusionModelCatalog` seeds the install UI with both models; `HuggingFaceService` gains a parallel `downloadDiffusionModel(from:to:progress:)` path for the multi-file safetensors layout. `MLXDiffusionBackend` depends on `mlx-swift-examples` at a revision pin (`357c97f`) pending the upstream library's next tagged release.
+
+See [#1002](https://github.com/roryford/BaseChatKit/issues/1002), [#1003](https://github.com/roryford/BaseChatKit/pull/1003), [#1008](https://github.com/roryford/BaseChatKit/pull/1008), [#1009](https://github.com/roryford/BaseChatKit/pull/1009), [#1016](https://github.com/roryford/BaseChatKit/pull/1016), [#1018](https://github.com/roryford/BaseChatKit/pull/1018), [#1024](https://github.com/roryford/BaseChatKit/pull/1024), [#1025](https://github.com/roryford/BaseChatKit/pull/1025), [#1027](https://github.com/roryford/BaseChatKit/pull/1027), [#1028](https://github.com/roryford/BaseChatKit/pull/1028).
+
+### Features
+
+- **inference:** `ImageModelInfo` + `ImageModelFormat` value type for on-disk image models ([#1003](https://github.com/roryford/BaseChatKit/pull/1003))
+- **inference:** `ImageGenerationService` — backend registration + lifecycle coordinator, sibling to `InferenceService` ([#1008](https://github.com/roryford/BaseChatKit/pull/1008))
+- **inference:** `ImageModelLoadPlan` for diffusion memory pre-flight at load time ([#1009](https://github.com/roryford/BaseChatKit/pull/1009))
+- **runtime:** `ImageGenerationRuntime` + `ImageRuntimeEvent` in `BaseChatRuntime` ([#1016](https://github.com/roryford/BaseChatKit/pull/1016))
+- **huggingface:** diffusion download topology (multi-file safetensors) + `DownloadFileValidator` diffusion path ([#1018](https://github.com/roryford/BaseChatKit/pull/1018))
+- **backends:** `MLXDiffusionBackend` — first `ImageGenerationBackend` conformer (SD 2.1 Base + SDXL Turbo, `MLX` trait) ([#1027](https://github.com/roryford/BaseChatKit/pull/1027))
+- **ui:** `ChatViewModel.generateImage(prompt:config:)` + `imageGenerationProgress` observable dict ([#1024](https://github.com/roryford/BaseChatKit/pull/1024))
+- **ui:** `ImageModelInstallView` + `DiffusionModelCatalog` in `BaseChatUIModelManagement` ([#1025](https://github.com/roryford/BaseChatKit/pull/1025))
+- **persistence:** `BaseChatBootstrap` opt-in wiring — `imageGenerationService:` parameter + `configure(_:)` convenience ([#1028](https://github.com/roryford/BaseChatKit/pull/1028))
+
+### Bug Fixes
+
+- **runtime:** persist session B turn after switch-cancel-resend ([#1005](https://github.com/roryford/BaseChatKit/pull/1005))
+
 ## [0.16.1](https://github.com/roryford/BaseChatKit/compare/v0.16.0...v0.16.1) (2026-05-03)
 
 ### Highlights
