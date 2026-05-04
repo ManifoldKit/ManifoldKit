@@ -126,7 +126,7 @@ jobs:
         # Belt-and-suspenders: if the release upload step is rate-limited or
         # removed, the artifacts (and their attestations in the transparency
         # log) are still recoverable from the workflow run itself.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-supply-chain-${{ steps.tag.outputs.name }}
           path: artifacts/
