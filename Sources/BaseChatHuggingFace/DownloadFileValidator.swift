@@ -9,7 +9,13 @@ import os
 /// Checks GGUF magic bytes and file size for GGUF models; verifies directory
 /// structure (config.json + .safetensors) for MLX snapshot downloads.
 /// All methods are pure: they take a URL and throw — no instance state required.
-struct DownloadFileValidator {
+public struct DownloadFileValidator {
+
+    /// Public initializer so external callers (e.g. `BaseChatRuntime`) can
+    /// construct the validator. The type carries no instance state today,
+    /// but keeping a memberwise init reserved to package code preserved
+    /// flexibility to add some.
+    public init() {}
 
     /// GGUF magic bytes: "GGUF" in ASCII (0x47, 0x47, 0x55, 0x46).
     private static let ggufMagic: [UInt8] = [0x47, 0x47, 0x55, 0x46]
