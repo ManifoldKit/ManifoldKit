@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -163,3 +164,4 @@ final class FindingsMergerTests: XCTestCase {
         return worker
     }
 }
+#endif

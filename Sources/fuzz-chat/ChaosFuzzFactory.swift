@@ -1,3 +1,4 @@
+#if Fuzz
 import Foundation
 import BaseChatFuzz
 import BaseChatInference
@@ -37,3 +38,4 @@ public struct ChaosFuzzFactory: FuzzBackendFactory {
         )
     }
 }
+#endif

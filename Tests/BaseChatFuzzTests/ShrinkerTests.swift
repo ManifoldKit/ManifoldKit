@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -447,3 +448,4 @@ final class ShrinkerTests: XCTestCase {
         }
     }
 }
+#endif

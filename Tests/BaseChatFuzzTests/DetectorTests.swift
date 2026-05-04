@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import BaseChatInference
@@ -301,3 +302,4 @@ final class DetectorTests: XCTestCase {
         XCTAssertFalse(findings.contains { $0.subCheck == "unbalanced-thinking-events" })
     }
 }
+#endif

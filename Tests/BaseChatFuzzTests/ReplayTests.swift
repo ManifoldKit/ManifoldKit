@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -371,3 +372,4 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(outcome, .nonDeterministicBackend("stub"))
     }
 }
+#endif

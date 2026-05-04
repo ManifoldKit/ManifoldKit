@@ -1,3 +1,4 @@
+#if AppIntents
 import XCTest
 import BaseChatInference
 @testable import BaseChatAppIntents
@@ -398,3 +399,4 @@ final class AppIntentToolExecutorTests: XCTestCase {
 }
 
 #endif // canImport(AppIntents)
+#endif

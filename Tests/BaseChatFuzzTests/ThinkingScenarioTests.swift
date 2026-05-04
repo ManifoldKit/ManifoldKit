@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 @testable import BaseChatFuzz
@@ -101,3 +102,4 @@ final class ThinkingScenarioTests: XCTestCase {
         XCTAssertEqual(finding?.trigger, "because reasons")
     }
 }
+#endif

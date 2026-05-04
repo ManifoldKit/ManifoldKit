@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import BaseChatInference
@@ -59,3 +60,4 @@ final class EventRecorderTests: XCTestCase {
         XCTAssertEqual(capture.raw, "response")
     }
 }
+#endif

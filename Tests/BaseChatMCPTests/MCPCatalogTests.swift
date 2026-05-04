@@ -1,3 +1,4 @@
+#if MCP
 import XCTest
 import BaseChatMCP
 
@@ -40,3 +41,4 @@ final class MCPCatalogTests: XCTestCase {
     }
     #endif
 }
+#endif

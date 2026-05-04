@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 
 /// Integration test for `scripts/fuzz-ci-gate.sh`. The gate is the enforcement
@@ -117,3 +118,4 @@ final class FuzzCIGateScriptTests: XCTestCase {
         XCTAssertEqual(status, 0, "a campaign with zero findings must pass the gate trivially")
     }
 }
+#endif

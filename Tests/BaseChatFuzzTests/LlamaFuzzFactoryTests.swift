@@ -1,3 +1,4 @@
+#if Fuzz
 #if Llama
 import XCTest
 import BaseChatFuzz
@@ -75,4 +76,5 @@ final class LlamaFuzzFactoryTests: XCTestCase {
         )
     }
 }
+#endif
 #endif

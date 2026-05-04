@@ -1,3 +1,4 @@
+#if MCP
 import XCTest
 @testable import BaseChatMCP
 
@@ -44,3 +45,4 @@ final class MCPContentSanitizerTests: XCTestCase {
         XCTAssertTrue(textResult.contains("trust=\"untrusted\""))
     }
 }
+#endif

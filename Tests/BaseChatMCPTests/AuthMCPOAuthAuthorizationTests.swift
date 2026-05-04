@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -1476,3 +1477,4 @@ private func XCTAssertThrowsErrorAsync<T>(
         handler(error)
     }
 }
+#endif

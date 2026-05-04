@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -29,3 +30,4 @@ final class SmokeTests: XCTestCase {
         XCTAssertNotEqual(base.hash, differentTrigger.hash, "trigger must influence hash")
     }
 }
+#endif

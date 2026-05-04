@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -706,3 +707,4 @@ private actor AsyncGate {
         continuation = nil
     }
 }
+#endif

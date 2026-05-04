@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import Foundation
@@ -225,3 +226,4 @@ final class CalibrationTests: XCTestCase {
         XCTAssertTrue(wouldFail, "FP gate would not catch a 100 %-firing detector — arithmetic is broken")
     }
 }
+#endif

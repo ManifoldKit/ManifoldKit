@@ -1,3 +1,4 @@
+#if MCP
 import XCTest
 import Security
 @testable import BaseChatMCP
@@ -114,3 +115,4 @@ final class MCPOAuthTokenStoreKeychainTests: XCTestCase {
         )
     }
 }
+#endif

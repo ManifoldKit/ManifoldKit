@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -111,3 +112,4 @@ final class ModelRotationTests: XCTestCase {
         XCTAssertEqual(first, ["a", "b", "c", "a", "b", "c", "a", "b", "c"])
     }
 }
+#endif

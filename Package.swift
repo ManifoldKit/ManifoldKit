@@ -38,6 +38,8 @@ let package = Package(
         .trait(name: "MCP", description: "Enable the BaseChatMCP module and MCP client surface."),
         .trait(name: "MCPBuiltinCatalog", description: "Enable BaseChatMCP's built-in catalog descriptors."),
         .trait(name: "Voice", description: "Enable the BaseChatVoice speech I/O spike and voice composer UI."),
+        .trait(name: "Tools", description: "Enable the BaseChatTools end-to-end tool-calling validation harness and its `bck-tools` CLI."),
+        .trait(name: "AppIntents", description: "Enable the BaseChatAppIntents AppIntent ↔ ToolDefinition bridge."),
         .trait(name: "Server", description: "Enable BaseChatServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds BaseChatBackends
@@ -326,12 +328,26 @@ let package = Package(
         ),
         .testTarget(
             name: "BaseChatMCPTests",
-            dependencies: ["BaseChatMCP", "BaseChatInference", "BaseChatTestSupport"],
-            resources: [.copy("Fixtures")]
+            dependencies: [
+                .target(name: "BaseChatMCP", condition: .when(traits: ["MCP"])),
+                "BaseChatInference",
+                "BaseChatTestSupport",
+            ],
+            resources: [.copy("Fixtures")],
+            swiftSettings: [
+                .define("MCP", .when(traits: ["MCP"])),
+            ]
         ),
         .testTarget(
             name: "BaseChatMCPE2ETests",
-            dependencies: ["BaseChatMCP", "BaseChatInference", "BaseChatTestSupport"]
+            dependencies: [
+                .target(name: "BaseChatMCP", condition: .when(traits: ["MCP"])),
+                "BaseChatInference",
+                "BaseChatTestSupport",
+            ],
+            swiftSettings: [
+                .define("MCP", .when(traits: ["MCP"])),
+            ]
         ),
         .testTarget(
             name: "BaseChatBackendsTests",
@@ -366,7 +382,7 @@ let package = Package(
         .testTarget(
             name: "BaseChatVoiceTests",
             dependencies: [
-                "BaseChatVoice",
+                .target(name: "BaseChatVoice", condition: .when(traits: ["Voice"])),
                 .product(name: "ViewInspector", package: "ViewInspector"),
             ],
             swiftSettings: [
@@ -467,7 +483,7 @@ let package = Package(
                 "BaseChatPersistenceSwiftData",
                 "BaseChatInference",
                 "BaseChatTestSupport",
-                "BaseChatTools",
+                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
                 .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
             swiftSettings: [
@@ -476,6 +492,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Tools", .when(traits: ["Tools"])),
             ]
         ),
         .testTarget(
@@ -524,6 +541,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
         ),
         // CLI driver. Wires Ollama, Llama, Foundation; MLX runs via xcodebuild fuzz path.
@@ -533,7 +551,7 @@ let package = Package(
         .executableTarget(
             name: "fuzz-chat",
             dependencies: [
-                "BaseChatFuzz",
+                .target(name: "BaseChatFuzz", condition: .when(traits: ["Fuzz"])),
                 "BaseChatInference",
                 "BaseChatTestSupport",
                 .target(name: "BaseChatFuzzBackends", condition: .when(traits: ["Fuzz"])),
@@ -551,9 +569,9 @@ let package = Package(
         .testTarget(
             name: "BaseChatFuzzTests",
             dependencies: [
-                "BaseChatFuzz",
-                "BaseChatFuzzBackends",
-                "BaseChatBackends",
+                .target(name: "BaseChatFuzz", condition: .when(traits: ["Fuzz"])),
+                .target(name: "BaseChatFuzzBackends", condition: .when(traits: ["Fuzz"])),
+                .target(name: "BaseChatBackends", condition: .when(traits: ["Fuzz"])),
                 "BaseChatInference",
                 "BaseChatTestSupport",
             ],
@@ -563,6 +581,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
         ),
         // BaseChatTools: end-to-end tool-calling validation harness.
@@ -585,12 +604,13 @@ let package = Package(
         .executableTarget(
             name: "bck-tools",
             dependencies: [
-                "BaseChatTools",
-                "BaseChatBackends",
+                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
+                .target(name: "BaseChatBackends", condition: .when(traits: ["Tools"])),
                 "BaseChatInference",
             ],
             path: "Sources/bck-tools",
             swiftSettings: [
+                .define("Tools", .when(traits: ["Tools"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
@@ -599,9 +619,12 @@ let package = Package(
         .testTarget(
             name: "BaseChatToolsTests",
             dependencies: [
-                "BaseChatTools",
+                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
                 "BaseChatInference",
                 "BaseChatTestSupport",
+            ],
+            swiftSettings: [
+                .define("Tools", .when(traits: ["Tools"])),
             ]
         ),
         // BaseChatAppIntents: AppIntent ↔ ToolDefinition bridge.
@@ -617,8 +640,11 @@ let package = Package(
         .testTarget(
             name: "BaseChatAppIntentsTests",
             dependencies: [
-                "BaseChatAppIntents",
+                .target(name: "BaseChatAppIntents", condition: .when(traits: ["AppIntents"])),
                 "BaseChatInference",
+            ],
+            swiftSettings: [
+                .define("AppIntents", .when(traits: ["AppIntents"])),
             ]
         ),
         // Xcode-only: real MLX model inference requiring Metal shader library.

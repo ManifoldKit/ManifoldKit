@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -68,3 +69,4 @@ final class SessionScriptTests: XCTestCase {
         XCTAssertEqual(SessionScript.Step.delete(messageIndex: 0).opName, "delete")
     }
 }
+#endif

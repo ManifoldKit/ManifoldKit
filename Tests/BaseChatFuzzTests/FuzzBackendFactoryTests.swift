@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -97,3 +98,4 @@ final class FuzzBackendFactoryTests: XCTestCase {
         XCTAssertTrue(report.findings.isEmpty)
     }
 }
+#endif

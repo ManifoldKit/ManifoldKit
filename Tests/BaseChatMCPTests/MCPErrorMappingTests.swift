@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -177,3 +178,4 @@ final class MCPErrorMappingTests: XCTestCase {
         }
     }
 }
+#endif

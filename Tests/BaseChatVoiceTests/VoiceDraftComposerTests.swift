@@ -1,3 +1,4 @@
+#if Voice
 import XCTest
 @testable import BaseChatVoice
 
@@ -24,3 +25,4 @@ final class VoiceDraftComposerTests: XCTestCase {
         )
     }
 }
+#endif
