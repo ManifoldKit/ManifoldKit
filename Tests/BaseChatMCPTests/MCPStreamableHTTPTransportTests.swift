@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -255,3 +256,4 @@ private actor RetryingAuthorization: MCPAuthorization {
         return .retry
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -91,3 +92,4 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
         XCTAssertNotNil(tokenType as Any)
     }
 }
+#endif

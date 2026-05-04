@@ -1,3 +1,4 @@
+#if Voice
 import XCTest
 import ViewInspector
 @testable import BaseChatVoice
@@ -40,3 +41,4 @@ final class VoiceViewContractTests: XCTestCase {
         XCTAssertEqual(label, WakeWordToast.accessibilityLabel(for: "hey base chat"))
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -92,3 +93,4 @@ final class ChaosFuzzFactoryTests: XCTestCase {
         XCTAssertEqual(report.totalRuns, 1, "runner must absorb stream errors and still tally the iteration")
     }
 }
+#endif

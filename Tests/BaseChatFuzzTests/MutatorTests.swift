@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -107,3 +108,4 @@ final class MutatorTests: XCTestCase {
         }
     }
 }
+#endif

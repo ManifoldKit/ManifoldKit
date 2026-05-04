@@ -1,3 +1,4 @@
+#if Tools
 import XCTest
 import BaseChatInference
 @testable import BaseChatTools
@@ -134,3 +135,4 @@ final class ReferenceToolsTests: XCTestCase {
         return url
     }
 }
+#endif

@@ -1,9 +1,13 @@
+// Body gated on the `Fuzz` trait. Without the trait, the executable links to
+// a no-op stub that prints a "trait not enabled" message — mirrors the
+// BaseChatServer trait pattern (PR #946) and keeps fuzz-chat out of the
+// default-trait build's link graph for the BaseChatFuzz / BaseChatBackends
+// symbols.
+#if Fuzz
 import Foundation
 import BaseChatFuzz
 import BaseChatInference
-#if Fuzz
 import BaseChatFuzzBackends
-#endif
 
 @main
 @MainActor
@@ -558,3 +562,12 @@ func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("fuzz-chat: \(message)\n".utf8))
     exit(2)
 }
+#else
+import Foundation
+@main
+struct FuzzChatDisabled {
+    static func main() {
+        print("fuzz-chat was built without the `Fuzz` trait. Re-build with `--traits Fuzz` (or use scripts/fuzz.sh) to enable.")
+    }
+}
+#endif

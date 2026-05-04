@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 import BaseChatInference
 import BaseChatTestSupport
@@ -90,3 +91,4 @@ final class MockFuzzFactoryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(smoke.count, 5, "smoke set should have at least a handful of prompts to exercise mutators")
     }
 }
+#endif

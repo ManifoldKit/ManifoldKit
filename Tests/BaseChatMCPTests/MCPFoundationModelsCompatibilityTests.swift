@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -325,3 +326,4 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
         )
     }
 }
+#endif

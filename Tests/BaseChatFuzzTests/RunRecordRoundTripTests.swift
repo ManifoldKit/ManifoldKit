@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -133,3 +134,4 @@ final class RunRecordRoundTripTests: XCTestCase {
         }
     }
 }
+#endif

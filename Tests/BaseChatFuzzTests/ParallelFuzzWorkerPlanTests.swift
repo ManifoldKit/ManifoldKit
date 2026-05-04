@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -84,3 +85,4 @@ final class ParallelFuzzWorkerPlanTests: XCTestCase {
         XCTAssertEqual(plan.map(\.iterations), [1, 1])
     }
 }
+#endif

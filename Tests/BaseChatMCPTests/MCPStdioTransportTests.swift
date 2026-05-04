@@ -1,3 +1,4 @@
+#if MCP
 import Darwin
 import Foundation
 import XCTest
@@ -280,3 +281,4 @@ final class MCPStdioTransportTests: XCTestCase {
         }
     }
 }
+#endif

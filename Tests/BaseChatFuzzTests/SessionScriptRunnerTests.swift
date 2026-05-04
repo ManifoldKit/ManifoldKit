@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import BaseChatInference
@@ -125,3 +126,4 @@ final class SessionScriptRunnerTests: XCTestCase {
             "only the two enqueue-producing steps should appear in turnRecords")
     }
 }
+#endif

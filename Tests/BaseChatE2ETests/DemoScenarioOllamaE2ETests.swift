@@ -1,4 +1,4 @@
-#if Ollama
+#if Ollama && Tools
 import XCTest
 import BaseChatInference
 import BaseChatTools

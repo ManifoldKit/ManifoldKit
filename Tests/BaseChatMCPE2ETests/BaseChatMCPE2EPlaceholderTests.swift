@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -87,3 +88,4 @@ final class BaseChatMCPE2ESmokeTests: XCTestCase {
         XCTAssertEqual(firstToolName, "ping")
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -41,3 +42,4 @@ final class MCPJSONRPCCodecTests: XCTestCase {
         // Sabotage: removing the JSON nesting-depth counter in MCPJSONRPCCodec.decode() so it never enforces maxJSONNestingDepth would allow the deeply nested payload through without throwing, causing XCTAssertThrowsError to fail
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if Fuzz
 #if MLX
 import XCTest
 import BaseChatFuzz
@@ -167,4 +168,5 @@ final class MLXFuzzTests: XCTestCase {
         return trimmed
     }
 }
+#endif
 #endif

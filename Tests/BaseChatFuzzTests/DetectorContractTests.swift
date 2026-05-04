@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import BaseChatInference
@@ -861,3 +862,4 @@ final class TimeoutContractTests: XCTestCase {
         DetectorContractAsserter.assertAdversarial(TimeoutContract.self)
     }
 }
+#endif

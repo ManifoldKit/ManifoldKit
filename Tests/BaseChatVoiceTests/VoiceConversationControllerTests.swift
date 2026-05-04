@@ -1,3 +1,4 @@
+#if Voice
 import XCTest
 @testable import BaseChatVoice
 
@@ -225,3 +226,4 @@ private final class ControlledToastSleeper {
         continuation = nil
     }
 }
+#endif

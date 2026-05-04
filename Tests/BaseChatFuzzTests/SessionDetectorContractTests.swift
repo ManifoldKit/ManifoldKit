@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 
@@ -346,3 +347,4 @@ final class SessionContextLeakDetectorContractTests: XCTestCase {
         XCTAssertTrue(detector.inspect([a, b]).isEmpty)
     }
 }
+#endif

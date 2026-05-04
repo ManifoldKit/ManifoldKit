@@ -2,6 +2,13 @@
 // `Ollama` trait (default-on for now); pass `--disable-default-traits`
 // to drop it. The mock path is always available.
 // For generation fuzzing with real backends, see scripts/fuzz.sh.
+//
+// The body is gated on the `Tools` trait. Without the trait, the executable
+// links to a no-op stub that prints a "trait not enabled" message — this
+// mirrors the BaseChatServer trait pattern (PR #946) and keeps `bck-tools`
+// out of the default-trait build's link graph for the BaseChatTools and
+// BaseChatBackends symbols.
+#if Tools
 import Foundation
 import BaseChatInference
 import BaseChatBackends
@@ -255,3 +262,8 @@ enum MockFactory {
 
 let exitCode = await runCLI()
 exit(exitCode)
+#else
+import Foundation
+print("bck-tools was built without the `Tools` trait. Re-build with `--traits Tools` to enable.")
+exit(0)
+#endif

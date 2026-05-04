@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -51,3 +52,4 @@ final class BaseChatMCPScaffoldTests: XCTestCase {
     }
     #endif
 }
+#endif

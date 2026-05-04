@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -540,3 +541,4 @@ struct PKCEVerifierTestHarness {
 func bearerRedactedForTest(_ data: Data) -> String {
     mcpBearerRedacted(data)
 }
+#endif

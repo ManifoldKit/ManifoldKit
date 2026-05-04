@@ -1,3 +1,4 @@
+#if MCP
 import Foundation
 import XCTest
 @testable import BaseChatMCP
@@ -81,3 +82,4 @@ final class MCPStreamableHTTPIntegrationTests: XCTestCase {
         XCTAssertEqual(firstToolName, "ping")
     }
 }
+#endif

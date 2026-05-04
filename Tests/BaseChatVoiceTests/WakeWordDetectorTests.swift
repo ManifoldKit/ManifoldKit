@@ -1,3 +1,4 @@
+#if Voice
 import XCTest
 @testable import BaseChatVoice
 
@@ -37,3 +38,4 @@ final class WakeWordDetectorTests: XCTestCase {
         XCTAssertNil(detector.ingest(.init(text: "hey base chat", isFinal: false)))
     }
 }
+#endif

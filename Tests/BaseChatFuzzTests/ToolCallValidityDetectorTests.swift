@@ -1,3 +1,4 @@
+#if Fuzz
 import XCTest
 @testable import BaseChatFuzz
 import BaseChatInference
@@ -227,3 +228,4 @@ final class ToolCallValidityDetectorTests: XCTestCase {
         XCTAssertTrue(DetectorRegistry.all.contains { $0.id == "tool-call-validity" })
     }
 }
+#endif

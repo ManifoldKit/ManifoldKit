@@ -1,3 +1,4 @@
+#if Fuzz
 #if canImport(FoundationModels)
 import XCTest
 import BaseChatBackends
@@ -60,4 +61,5 @@ final class FoundationFuzzFactoryTests: XCTestCase {
         )
     }
 }
+#endif
 #endif
