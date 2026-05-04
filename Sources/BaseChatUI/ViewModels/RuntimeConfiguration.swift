@@ -14,6 +14,24 @@ extension ChatViewModel {
     public func configure(runtime: BaseChatBootstrap) {
         configure(persistence: runtime.persistence)
     }
+
+    /// Wires the bootstrap's runtimes into this ``ChatViewModel``.
+    ///
+    /// Equivalent to calling `configure(persistence:)` with the bootstrap's
+    /// persistence layer and (if image generation is enabled)
+    /// `configure(imageRuntime:)` with the bootstrap's
+    /// ``BaseChatBootstrap/imageRuntime``.
+    ///
+    /// - Parameter bootstrap: The fully-constructed ``BaseChatBootstrap``
+    ///   instance produced by ``BaseChatBootstrap/init(configuration:inferenceService:imageGenerationService:diagnostics:makeModelContainer:)``
+    ///   or ``BaseChatBootstrap/build(configuration:inferenceService:imageGenerationService:diagnostics:makeModelContainer:)``.
+    @MainActor
+    public func configure(_ bootstrap: BaseChatBootstrap) {
+        configure(persistence: bootstrap.persistence)
+        if let imageRuntime = bootstrap.imageRuntime {
+            configure(imageRuntime: imageRuntime)
+        }
+    }
 }
 
 extension SessionManagerViewModel {
