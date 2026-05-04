@@ -86,16 +86,23 @@ final class LlamaModelLoader: @unchecked Sendable {
     func serializedModelLoad(
         at url: URL,
         effectiveContextSize: Int32,
+        loadOptions: BackendLoadOptions,
         progressHandler: (@Sendable (Double) async -> Void)?
     ) throws -> LoadedResources {
         loadSerializationLock.lock()
         defer { loadSerializationLock.unlock() }
-        return try Self.initializeModel(at: url, effectiveContextSize: effectiveContextSize, progressHandler: progressHandler)
+        return try Self.initializeModel(
+            at: url,
+            effectiveContextSize: effectiveContextSize,
+            loadOptions: loadOptions,
+            progressHandler: progressHandler
+        )
     }
 
     static func initializeModel(
         at url: URL,
         effectiveContextSize: Int32,
+        loadOptions: BackendLoadOptions = .default,
         progressHandler: (@Sendable (Double) async -> Void)? = nil
     ) throws -> LoadedResources {
         var modelParams = llama_model_default_params()
@@ -166,9 +173,41 @@ final class LlamaModelLoader: @unchecked Sendable {
         ctxParams.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2)))
         ctxParams.n_threads_batch = ctxParams.n_threads
 
-        Self.logger.info(
-            "LlamaBackend: initializing context at \(effectiveContextSize) tokens (plan-authoritative)"
-        )
+        // Apply BackendLoadOptions. Each branch is no-op when the option matches
+        // the library default, preserving bit-exact behaviour for callers that
+        // don't set load options explicitly.
+        switch loadOptions.kvCacheQuantization {
+        case .f16:
+            // Library default; leave ctxParams.type_k / type_v as-is (GGML_TYPE_F16).
+            break
+        case .q8:
+            ctxParams.type_k = GGML_TYPE_Q8_0
+            ctxParams.type_v = GGML_TYPE_Q8_0
+        case .q4:
+            ctxParams.type_k = GGML_TYPE_Q4_0
+            ctxParams.type_v = GGML_TYPE_Q4_0
+        }
+
+        // Flash attention. Simulator path stays disabled regardless of the
+        // requested value: simulator Metal does not reliably support FA kernels.
+        #if !targetEnvironment(simulator)
+        if loadOptions.flashAttention {
+            ctxParams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        }
+        #endif
+
+        if let prefillBatch = loadOptions.prefillBatchSize {
+            ctxParams.n_batch = UInt32(max(1, prefillBatch))
+        }
+
+        let prefillBatchDescription = loadOptions.prefillBatchSize.map(String.init) ?? "default"
+        let kvDescription = loadOptions.kvCacheQuantization.rawValue
+        let faDescription = loadOptions.flashAttention ? "on" : "off"
+        Self.logger.info("""
+            LlamaBackend: initializing context at \(effectiveContextSize, privacy: .public) tokens (plan-authoritative); \
+            kv=\(kvDescription, privacy: .public), fa=\(faDescription, privacy: .public), \
+            prefillBatch=\(prefillBatchDescription, privacy: .public)
+            """)
 
         // Single attempt. The plan is authoritative — it has already clamped the
         // context to a memory-safe value. If llama_init_from_model still returns

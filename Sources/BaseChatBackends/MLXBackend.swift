@@ -138,6 +138,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Access only under `stateLock`.
     private var _supportsVision = false
 
+    /// Backend tuning knobs (KV cache quantization, prefill batch size).
+    /// Applied at every ``generate`` call's ``GenerateParameters`` construction.
+    /// Access only under `stateLock`. MLX honours `kvCacheQuantization` and
+    /// `prefillBatchSize`; `flashAttention` is silently ignored (MLX's SDPA
+    /// path is always flash-attention-shaped).
+    private var _loadOptions: BackendLoadOptions = .default
+
+    /// Test-only read-side accessor that snapshots `_loadOptions` under the
+    /// state lock. Lets plumbing tests assert the setter persisted the value
+    /// without needing a real model load.
+    var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
+
     // MARK: - Load Progress
 
     /// Guarded by `stateLock`. Set by `setLoadProgressHandler(_:)` before each load.
@@ -890,11 +902,27 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             MLXRandom.seed(seed)
         }
 
+        // Snapshot load options under the lock — same pattern as the prompt-cache
+        // snapshot. Per-generation reads stay coherent even if `setLoadOptions(_:)`
+        // is called mid-flight from another actor.
+        let loadOptions = withStateLock { _loadOptions }
+        // KV cache quantization: nil = library default (FP16). 8 / 4 map to mlx's
+        // explicit kvBits levels. Group size 64 and quantizedKVStart 0 match mlx-lm
+        // Python conventions and have no exposure on the BCK API yet.
+        let kvBits: Int? = {
+            switch loadOptions.kvCacheQuantization {
+            case .f16: return nil
+            case .q8:  return 8
+            case .q4:  return 4
+            }
+        }()
+
         // Honour `config.minP` and `config.repetitionPenalty` when set; fall back to the
         // upstream defaults / `repeatPenalty` for callers that haven't migrated to the
         // explicit knobs yet. `nil` on a context-size knob falls through to upstream's
         // own default (20 in mlx-swift-lm) by passing the upstream default explicitly.
         let generateConfig = GenerateParameters(
+            kvBits: kvBits,
             temperature: config.temperature,
             topP: config.topP,
             topK: Int(config.topK ?? 0),
@@ -904,7 +932,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             presencePenalty: config.presencePenalty,
             presenceContextSize: config.presenceContextSize ?? 20,
             frequencyPenalty: config.frequencyPenalty,
-            frequencyContextSize: config.frequencyContextSize ?? 20
+            frequencyContextSize: config.frequencyContextSize ?? 20,
+            prefillStepSize: loadOptions.prefillBatchSize ?? 512
         )
 
         // Build messages in chat format, using full conversation history when available
@@ -1263,6 +1292,24 @@ extension MLXBackend: LoadProgressReporting {
     /// a non-zero progress indicator rather than a flat 0% spinner.
     public func setLoadProgressHandler(_ handler: (@Sendable (Double) async -> Void)?) {
         withStateLock { _loadProgressHandler = handler }
+    }
+
+    /// Installs backend tuning knobs (KV cache quantization, prefill batch size)
+    /// applied at every ``generate(prompt:systemPrompt:config:)``
+    /// ``GenerateParameters`` construction.
+    ///
+    /// MLX honours `kvCacheQuantization` (mapped to `kvBits = nil/8/4`) and
+    /// `prefillBatchSize` (mapped to `prefillStepSize`). The `flashAttention`
+    /// field is silently ignored — MLX's SDPA path is always
+    /// flash-attention-shaped.
+    ///
+    /// Defaults preserve historical behaviour bit-for-bit. Per the BCK API
+    /// shape, `BackendLoadOptions` is named "load" because llama.cpp wires
+    /// these into `ctxParams` at context-creation time. MLX could in
+    /// principle change them per-generation; the API stays load-time-shaped
+    /// to keep both backends symmetric.
+    public func setLoadOptions(_ options: BackendLoadOptions) {
+        withStateLock { _loadOptions = options }
     }
 }
 #endif

@@ -47,6 +47,29 @@ final class MLXBackendTests: XCTestCase {
         XCTAssertTrue(caps.supportedParameters.contains(.frequencyPenalty))
     }
 
+    // MARK: - Load Options Plumbing (no hardware gate)
+
+    func test_loadOptions_defaultIsHistoricalBehavior() {
+        let opts = MLXBackend().loadOptionsForTesting
+        XCTAssertEqual(opts.kvCacheQuantization, .f16)
+        XCTAssertFalse(opts.flashAttention)
+        XCTAssertNil(opts.prefillBatchSize)
+    }
+
+    func test_setLoadOptions_persistsForNextLoad() {
+        let backend = MLXBackend()
+        backend.setLoadOptions(BackendLoadOptions(
+            kvCacheQuantization: .q4,
+            flashAttention: true,
+            prefillBatchSize: 2048
+        ))
+        let opts = backend.loadOptionsForTesting
+        XCTAssertEqual(opts.kvCacheQuantization, .q4)
+        XCTAssertTrue(opts.flashAttention,
+                      "flashAttention must round-trip through state even though MLX silently ignores it on the generate path")
+        XCTAssertEqual(opts.prefillBatchSize, 2048)
+    }
+
     func test_capabilities_contextSize() {
         XCTAssertEqual(MLXBackend().capabilities.maxContextTokens, 8192)
     }

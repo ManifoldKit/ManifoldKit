@@ -93,6 +93,16 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// Guarded by `stateLock`. Set by `setLoadProgressHandler(_:)` before each load.
     private var _loadProgressHandler: (@Sendable (Double) async -> Void)?
 
+    /// Backend tuning knobs applied at the next ``loadModel(from:plan:)`` call.
+    /// Guarded by `stateLock`. Set via ``setLoadOptions(_:)``; defaults preserve
+    /// historical behaviour bit-for-bit.
+    private var _loadOptions: BackendLoadOptions = .default
+
+    /// Test-only read-side accessor that snapshots `_loadOptions` under the
+    /// state lock. Lets plumbing tests assert the setter persisted the value
+    /// without needing a real model load.
+    var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
+
     // MARK: - Multimodal Projector
 
     /// URL of the mmproj companion file, set by ``MultimodalProjectorConfigurable`` before each load.
@@ -216,10 +226,16 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // InferenceService.applyLoadProgress(_:for:) drops values whose request
         // token no longer matches the active loading phase.
         let capturedHandler = withStateLock { _loadProgressHandler }
+        let capturedLoadOptions = withStateLock { _loadOptions }
         let effectiveContextSize = Int32(plan.effectiveContextSize)
 
         let loadedResources = try await Task.detached(priority: .userInitiated) { [modelLoader] in
-            return try modelLoader.serializedModelLoad(at: url, effectiveContextSize: effectiveContextSize, progressHandler: capturedHandler)
+            return try modelLoader.serializedModelLoad(
+                at: url,
+                effectiveContextSize: effectiveContextSize,
+                loadOptions: capturedLoadOptions,
+                progressHandler: capturedHandler
+            )
         }.value
 
         let didCommit = withStateLock {
@@ -606,6 +622,18 @@ extension LlamaBackend: LoadProgressReporting {
     /// The handler fires from the loader thread via an unstructured Task.
     public func setLoadProgressHandler(_ handler: (@Sendable (Double) async -> Void)?) {
         withStateLock { _loadProgressHandler = handler }
+    }
+
+    /// Installs backend tuning knobs (KV cache quantization, Flash Attention,
+    /// prefill batch size) that take effect on the **next** ``loadModel(from:plan:)``
+    /// call. Defaults preserve historical behaviour bit-for-bit; opt in
+    /// per ``BackendLoadOptions`` to trade memory for context size or perf.
+    ///
+    /// Calling this after a model is already loaded does not retune the live
+    /// context — applying KV-quantization changes requires rebuilding the
+    /// llama context, which only happens at load time.
+    public func setLoadOptions(_ options: BackendLoadOptions) {
+        withStateLock { _loadOptions = options }
     }
 }
 
