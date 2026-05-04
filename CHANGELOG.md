@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.16.3](https://github.com/roryford/BaseChatKit/compare/v0.16.2...v0.16.3) (2026-05-04)
+
+### Highlights
+
+#### Backend tuning knobs — per-generation samplers and load-time options
+
+BaseChatKit ignored several `llama.cpp` and `mlx-swift-lm` knobs at the `GenerationConfig` boundary, and `LlamaGenerationDriver` hardcoded `top_k = 40` so any caller-supplied `GenerationConfig.topK` was silently dropped. This release surfaces those knobs through two value types — one for per-generation sampler controls, one for load-time context options — and fixes the `topK` bug. Defaults preserve historical behaviour bit-for-bit; every new field is optional and falls through to each backend's library default when unset.
+
+```swift
+// Per-generation sampler knobs (#1022) — added to GenerationConfig
+var config = GenerationConfig()
+config.presencePenalty = 0.6        // OpenAI-style additive
+config.frequencyPenalty = 0.3
+config.repetitionContextSize = 128  // window for repetitionPenalty
+config.topK = 1                     // now actually applied on llama.cpp
+
+// Load-time options (#1026) — applied at loadModel time
+let backend = LlamaBackend()
+backend.setLoadOptions(BackendLoadOptions(
+    kvCacheQuantization: .q8,        // ~50% KV memory cut
+    flashAttention: true,            // free perf on Metal at long context
+    prefillBatchSize: 2048           // faster TTFT on long prompts
+))
+try await backend.loadModel(from: url, plan: plan)
+```
+
+`GenerationConfig` gains `presencePenalty`, `frequencyPenalty`, `repetitionContextSize`, `presenceContextSize`, and `frequencyContextSize` (the per-penalty windows are MLX-only; llama.cpp uses one shared window). The `GenerationParameter` capability enum gains matching `.minP`, `.repetitionPenalty`, `.presencePenalty`, and `.frequencyPenalty` cases so UI can render the right controls and `RouterBackend` can dispatch by required capability. MLX, llama.cpp, and Ollama backends all wire the new fields through to their native sampler APIs; OpenAI/Claude wiring is deferred (Claude's API doesn't support presence/frequency).
+
+`BackendLoadOptions` is a separate type from `GenerationConfig` because llama.cpp wires KV cache quantization and Flash Attention into `ctxParams` at context-creation time — they cannot change per-generation without rebuilding the context. The split is deliberate so the API shape stays symmetric across MLX (which could change them per-generation) and llama. Calling `setLoadOptions` after a model is already loaded does not retune the live context. On the simulator, `flash_attn_type` is suppressed because Metal's FA kernels aren't reliable there. MLX silently ignores `flashAttention` because its SDPA path is always flash-attention-shaped.
+
+The `LlamaGenerationDriver` `top_k` fix is a behaviour change for any caller that was setting `GenerationConfig.topK` and seeing no effect — `LlamaTopKConsumptionTests` uses `topK = 1` (greedy sampling) as the regression guard.
+
+Default flips for `kvCacheQuantization = .q8` and `flashAttention = true` are deferred to issue [#1017](https://github.com/roryford/BaseChatKit/issues/1017) after the opt-in surface soaks. Persisting the new sampler fields through `SamplerPresetRecord` is deferred to [#1019](https://github.com/roryford/BaseChatKit/issues/1019) (requires `BaseChatSchemaV4` migration). DRY/XTC/mirostat samplers are tracked in [#1021](https://github.com/roryford/BaseChatKit/issues/1021).
+
+See [#1022](https://github.com/roryford/BaseChatKit/pull/1022), [#1026](https://github.com/roryford/BaseChatKit/pull/1026).
+
 ## [0.16.2](https://github.com/roryford/BaseChatKit/compare/v0.16.1...v0.16.2) (2026-05-04)
 
 ### Highlights
