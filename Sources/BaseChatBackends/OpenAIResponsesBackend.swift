@@ -63,10 +63,12 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         super.init(
             defaultModelName: "gpt-5",
             urlSession: urlSession ?? URLSessionProvider.pinned,
-            // Payload handler is unused — this backend overrides
-            // `parseResponseStream` to walk the named-event stream directly.
-            // A no-op handler keeps the base class's compile-time contract.
-            payloadHandler: NoopPayloadHandler()
+            // The payload handler classifies `data:` payloads for the named-
+            // event SSE stream. This backend overrides `parseResponseStream`
+            // to dispatch on `event:` names, but routes the per-payload
+            // reasoning / text classification through the handler so the
+            // mapping lives in one place — see `OpenAIResponsesPayloadHandler`.
+            payloadHandler: OpenAIResponsesPayloadHandler()
         )
     }
 
@@ -323,15 +325,18 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         }
 
         func handleReasoningDelta(data: String, thinking: inout ThinkingBlockManager) {
-            guard let delta = Self.parseDelta(from: data), !delta.isEmpty else { return }
-            continuation.yield(.thinkingToken(delta))
-            thinking.open()
+            for event in Self.eventsForReasoningDelta(data: data) {
+                continuation.yield(event)
+                if case .thinkingToken = event { thinking.open() }
+            }
         }
 
         func handleOutputTextDelta(data: String, thinking: inout ThinkingBlockManager) {
-            guard let delta = Self.parseDelta(from: data), !delta.isEmpty else { return }
-            thinking.flushIfOpen(into: continuation)
-            continuation.yield(.token(delta))
+            let events = Self.eventsForOutputTextDelta(data: data)
+            if !events.isEmpty {
+                thinking.flushIfOpen(into: continuation)
+                for event in events { continuation.yield(event) }
+            }
         }
 
         // Function-call lifecycle:
@@ -575,16 +580,69 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         return parsed["message"] as? String
     }
 
-    // MARK: - No-op payload handler
+    // MARK: - SSE Payload Handler
 
-    /// Placeholder handler — the base ``SSECloudBackend`` requires one at
-    /// init, but this backend overrides ``parseResponseStream`` so the
-    /// handler is never consulted.
-    private struct NoopPayloadHandler: SSEPayloadHandler {
-        func extractToken(from payload: String) -> String? { nil }
-        func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? { nil }
+    /// Classifies a single Responses-API SSE payload into the
+    /// reasoning/text events it carries.
+    ///
+    /// The named-event dispatcher in
+    /// ``parseResponseStream(bytes:config:continuation:)`` already routes
+    /// on `event:` names; the handler centralises the per-payload
+    /// `delta` extraction so reasoning vs. visible-text classification
+    /// lives in one place.
+    ///
+    /// - `delta` payload (any of the reasoning summary or output text
+    ///   delta event names) shapes as `{"delta":"..."}`. The handler
+    ///   distinguishes thinking vs. plain by inspecting the named-event
+    ///   `event:` line, which the dispatcher passes alongside the data.
+    ///   When the dispatcher routes a reasoning-delta `data:` line in
+    ///   isolation (e.g. unit tests against `extractEvents` directly),
+    ///   the handler returns `.token` for any `delta` payload because the
+    ///   wire shape is indistinguishable without the surrounding
+    ///   `event:` field; callers that need the thinking classification
+    ///   use ``OpenAIResponsesBackend/eventsForReasoningDelta(data:)``
+    ///   and ``OpenAIResponsesBackend/eventsForOutputTextDelta(data:)``
+    ///   helpers, which are what the dispatcher itself calls.
+    struct OpenAIResponsesPayloadHandler: SSEPayloadHandler {
+        func extractToken(from payload: String) -> String? {
+            OpenAIResponsesBackend.parseDelta(from: payload)
+        }
+
+        /// Default `extractEvents` returns `.token(...)` for any payload
+        /// carrying a `delta` field. The named-event dispatcher overrides
+        /// this classification when it knows the surrounding `event:` is
+        /// a reasoning event — see the helpers in
+        /// ``OpenAIResponsesBackend``.
+        func extractEvents(from payload: String) -> [GenerationEvent] {
+            if let delta = OpenAIResponsesBackend.parseDelta(from: payload), !delta.isEmpty {
+                return [.token(delta)]
+            }
+            return []
+        }
+
+        func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
+            OpenAIResponsesBackend.parseUsage(from: payload)
+        }
         func isStreamEnd(_ payload: String) -> Bool { false }
         func extractStreamError(from payload: String) -> Error? { nil }
+    }
+
+    // MARK: - Per-event-name classification helpers
+
+    /// Maps a `response.reasoning_summary*.delta` payload to the events the
+    /// dispatcher should yield. Always emits `.thinkingToken` for non-empty
+    /// deltas. Centralised so the unit test for the named-event dispatcher
+    /// has a single classification surface to assert against.
+    static func eventsForReasoningDelta(data: String) -> [GenerationEvent] {
+        guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
+        return [.thinkingToken(delta)]
+    }
+
+    /// Maps a `response.output_text.delta` payload to the events the
+    /// dispatcher should yield.
+    static func eventsForOutputTextDelta(data: String) -> [GenerationEvent] {
+        guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
+        return [.token(delta)]
     }
 }
 #endif

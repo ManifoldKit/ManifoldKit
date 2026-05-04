@@ -186,11 +186,11 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// Subclasses may override for additional processing, but providing a
     /// custom ``SSEPayloadHandler`` at init is the preferred approach.
     ///
-    /// - Important: Prefer ``extractEvents(from:)`` — this hook is retained
-    ///   so existing subclasses continue to compile during the #604 / #605
-    ///   migration and will be removed once they finish.
-    // TODO: remove once ClaudeBackend / OpenAIBackend migrate to
-    // `extractEvents(from:)` and no subclass overrides this hook.
+    /// - Important: Prefer ``extractEvents(from:)``. The shipping subclasses
+    ///   (Ollama, Claude, OpenAI Chat Completions, OpenAI Responses) all
+    ///   route per-payload classification through ``extractEvents(from:)``;
+    ///   this hook stays for compatibility with external subclasses that
+    ///   only override ``extractToken(from:)``.
     open func extractToken(from payload: String) -> String? {
         payloadHandler.extractToken(from: payload)
     }

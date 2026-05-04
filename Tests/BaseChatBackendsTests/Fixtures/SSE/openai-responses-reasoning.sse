@@ -1,0 +1,18 @@
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"type":"reasoning"}}
+
+event: response.reasoning_summary_text.delta
+data: {"delta":"Considering "}
+
+event: response.reasoning_summary_text.delta
+data: {"delta":"the question"}
+
+event: response.reasoning_summary_text.done
+data: {}
+
+event: response.output_text.delta
+data: {"delta":"42"}
+
+event: response.completed
+data: {"response":{"usage":{"input_tokens":10,"output_tokens":3}}}
+
