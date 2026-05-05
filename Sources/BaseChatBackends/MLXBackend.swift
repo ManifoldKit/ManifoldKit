@@ -516,7 +516,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     private static func imageInputs(from parts: [MessagePart]) throws -> [UserInput.Image] {
         try parts.compactMap { part in
-            guard case let .image(data, mimeType) = part else { return nil }
+            guard case let .image(data, mimeType, _) = part else { return nil }
             return try userInputImage(from: data, mimeType: mimeType)
         }
     }

@@ -203,9 +203,9 @@ public struct ChatInputBar: View {
 
     @ViewBuilder
     private func draftAttachmentPreview(for part: MessagePart, at index: Int) -> some View {
-        if case let .image(data, _) = part {
+        if case let .image(data, _, placeholderHash) = part {
             ZStack(alignment: .topTrailing) {
-                draftThumbnail(data: data)
+                draftThumbnail(data: data, placeholderHash: placeholderHash)
                     .frame(width: 72, height: 72)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
@@ -225,18 +225,22 @@ public struct ChatInputBar: View {
     }
 
     @ViewBuilder
-    private func draftThumbnail(data: Data) -> some View {
+    private func draftThumbnail(data: Data, placeholderHash: ImagePlaceholderHash?) -> some View {
         #if os(iOS)
         if let uiImage = UIImage(data: data) {
             Image(uiImage: uiImage)
                 .resizable()
                 .scaledToFill()
+        } else {
+            ImagePlaceholderView(placeholderHash: placeholderHash)
         }
         #elseif os(macOS)
         if let nsImage = NSImage(data: data) {
             Image(nsImage: nsImage)
                 .resizable()
                 .scaledToFill()
+        } else {
+            ImagePlaceholderView(placeholderHash: placeholderHash)
         }
         #endif
     }
