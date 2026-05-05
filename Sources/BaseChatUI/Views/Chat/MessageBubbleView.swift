@@ -15,13 +15,20 @@ public struct MessageBubbleView: View {
     public let message: ChatMessageRecord
     public let isStreaming: Bool
     public let isPinned: Bool
+    public let linkPreviewProvider: LinkPreviewProvider?
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    public init(message: ChatMessageRecord, isStreaming: Bool, isPinned: Bool = false) {
+    public init(
+        message: ChatMessageRecord,
+        isStreaming: Bool,
+        isPinned: Bool = false,
+        linkPreviewProvider: LinkPreviewProvider? = nil
+    ) {
         self.message = message
         self.isStreaming = isStreaming
         self.isPinned = isPinned
+        self.linkPreviewProvider = linkPreviewProvider
     }
 
     // MARK: - Body
@@ -30,10 +37,18 @@ public struct MessageBubbleView: View {
         HStack {
             if message.role == .user { Spacer(minLength: spacerMinLength) }
 
-            bubbleContent
+            VStack(alignment: stackAlignment, spacing: 6) {
+                bubbleContent
+                    .frame(maxWidth: 700, alignment: alignment)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(Self.accessibilityLabel(for: message))
+
+                LinkPreviewAttachmentView(
+                    text: message.content,
+                    provider: linkPreviewProvider
+                )
                 .frame(maxWidth: 700, alignment: alignment)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(Self.accessibilityLabel(for: message))
+            }
 
             if message.role == .assistant { Spacer(minLength: spacerMinLength) }
         }
@@ -162,6 +177,14 @@ public struct MessageBubbleView: View {
     // MARK: - Layout Helpers
 
     private var alignment: Alignment {
+        switch message.role {
+        case .user: .trailing
+        case .assistant: .leading
+        case .system: .center
+        }
+    }
+
+    private var stackAlignment: HorizontalAlignment {
         switch message.role {
         case .user: .trailing
         case .assistant: .leading

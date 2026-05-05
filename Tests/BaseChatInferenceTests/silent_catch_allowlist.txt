@@ -298,6 +298,12 @@ BaseChatTools/ReferenceTools/SampleRepoSearchTool.swift:guard let contents = try
 # the work that would otherwise execute on a stale query.
 BaseChatUI/Views/Sidebar/SessionListView.swift:try? await Task.sleep(nanoseconds: 200_000_000)
 
+# LinkPreviewDetector.firstURL: NSDataDetector init throws only for invalid
+# CheckingType bitmasks; `.link.rawValue` is a compile-time constant so this
+# cannot fail in practice. nil return means "no URL found", which is the
+# correct no-preview fallback.
+BaseChatUI/Views/Chat/LinkPreview.swift:let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
 # ---------------------------------------------------------------------------
 # BaseChatMCP
 # ---------------------------------------------------------------------------
