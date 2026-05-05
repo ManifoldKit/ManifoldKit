@@ -167,6 +167,15 @@ final class BackendCapabilitiesContractTests: XCTestCase {
     }
 
     @available(iOS 26, macOS 26, *)
+    func test_foundationBackend_supportsGuidedStructuredOutput() {
+        let caps = FoundationBackend().capabilities
+
+        XCTAssertTrue(caps.supportsGuidedStructuredOutput,
+                      "FoundationBackend routes structured generation through FoundationModels GuidedGeneration.")
+        XCTAssertEqual(caps.preferredStructuredOutputSupport, .guidedGeneration)
+    }
+
+    @available(iOS 26, macOS 26, *)
     func test_foundationBackend_doesNotSupportNativeJSONMode() {
         XCTAssertFalse(FoundationBackend().capabilities.supportsNativeJSONMode,
                        "FoundationBackend does not expose a native JSON mode in this version")
