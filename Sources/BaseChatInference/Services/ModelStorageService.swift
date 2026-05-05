@@ -89,6 +89,10 @@ public final class ModelStorageService {
             guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
                   isDirectory.boolValue else { continue }
 
+            if isImagePackageDirectory(url) {
+                continue
+            }
+
             if let model = ModelInfo(mlxDirectory: url) {
                 models.append(model)
                 continue
@@ -107,12 +111,39 @@ public final class ModelStorageService {
             for nestedURL in nestedContents {
                 var nestedIsDir: ObjCBool = false
                 guard fileManager.fileExists(atPath: nestedURL.path, isDirectory: &nestedIsDir),
+                      !isImagePackageDirectory(nestedURL),
                       nestedIsDir.boolValue,
                       let model = ModelInfo(mlxDirectory: nestedURL, namespace: namespace) else {
                     continue
                 }
                 models.append(model)
             }
+        }
+
+        return models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Scans for atomically completed image model packages under `rootDirectory`.
+    ///
+    /// A package is surfaced only when its local readiness manifest exists and
+    /// every component listed in that manifest is present. Staging directories or
+    /// partially downloaded packages without the manifest are intentionally hidden.
+    public func discoverImageModels(in rootDirectory: URL? = nil) -> [ImageModelInfo] {
+        let root = rootDirectory ?? modelsDirectory
+
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        let models = contents.compactMap { url -> ImageModelInfo? in
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { return nil }
+            return imageModelInfoIfReady(at: url)
         }
 
         return models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -178,5 +209,72 @@ public final class ModelStorageService {
         resourceValues.isExcludedFromBackup = true
         try resourceURL.setResourceValues(resourceValues)
         #endif
+    }
+
+    private func imageModelInfoIfReady(at directory: URL) -> ImageModelInfo? {
+        let manifestURL = directory.appendingPathComponent(DownloadedModelPackageManifest.fileName)
+        let manifest: DownloadedModelPackageManifest
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            manifest = try JSONDecoder().decode(DownloadedModelPackageManifest.self, from: data)
+        } catch {
+            return nil
+        }
+        guard manifest.packageKind == .diffusion,
+              manifest.format == .mlxDiffusion else {
+            return nil
+        }
+
+        for relativePath in manifest.files {
+            guard isSafeRelativePackagePath(relativePath) else { return nil }
+            let fileURL = directory.appendingPathComponent(relativePath)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                return nil
+            }
+        }
+
+        return ImageModelInfo(
+            id: manifest.id,
+            name: manifest.displayName,
+            directoryURL: directory,
+            format: .mlxDiffusion,
+            fileSize: packageSize(at: directory, files: manifest.files),
+            huggingFaceRepoID: manifest.huggingFaceRepoID
+        )
+    }
+
+    private func packageSize(at directory: URL, files: [String]) -> Int64 {
+        files.reduce(Int64(0)) { total, relativePath in
+            let url = directory.appendingPathComponent(relativePath)
+            let size: Int64
+            do {
+                size = Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+            } catch {
+                size = 0
+            }
+            return total + size
+        }
+    }
+
+    private func isImagePackageDirectory(_ directory: URL) -> Bool {
+        let manifestURL = directory.appendingPathComponent(DownloadedModelPackageManifest.fileName)
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            let manifest = try JSONDecoder().decode(DownloadedModelPackageManifest.self, from: data)
+            return manifest.packageKind == .diffusion
+        } catch {
+            return false
+        }
+    }
+
+    private func isSafeRelativePackagePath(_ path: String) -> Bool {
+        guard !path.isEmpty, !path.hasPrefix("/"), !path.contains("\\") else { return false }
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty else { return false }
+        return components.allSatisfy { component in
+            !component.isEmpty && component != "." && component != ".." && !component.hasPrefix(".")
+        }
     }
 }

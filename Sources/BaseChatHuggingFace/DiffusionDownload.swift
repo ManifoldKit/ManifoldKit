@@ -93,11 +93,45 @@ public extension HuggingFaceService {
         let session = urlSession ?? URLSession(configuration: .ephemeral)
         let resolvedDisplayName = displayName ?? repoID.split(separator: "/").last.map(String.init) ?? repoID
 
-        try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        let parentDirectory = destinationDirectory.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parentDirectory, withIntermediateDirectories: true)
+        let stagingDirectory = parentDirectory.appendingPathComponent(
+            ".staging-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+
+        do {
+            return try await downloadDiffusionModelAtomically(
+                from: repoID,
+                to: destinationDirectory,
+                stagingDirectory: stagingDirectory,
+                displayName: resolvedDisplayName,
+                using: session,
+                progress: progress
+            )
+        } catch {
+            do {
+                try FileManager.default.removeItem(at: stagingDirectory)
+            } catch {
+                Log.download.warning("Failed to remove diffusion staging directory: \(error.localizedDescription)")
+            }
+            throw error
+        }
+    }
+
+    private func downloadDiffusionModelAtomically(
+        from repoID: String,
+        to destinationDirectory: URL,
+        stagingDirectory: URL,
+        displayName resolvedDisplayName: String,
+        using session: URLSession,
+        progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
+    ) async throws -> ImageModelInfo {
 
         // 1. Fetch manifest.
         let manifestRemoteURL = downloadURL(repoID: repoID, filePath: "model_index.json")
-        let manifestLocalURL = destinationDirectory.appendingPathComponent("model_index.json")
+        let manifestLocalURL = stagingDirectory.appendingPathComponent("model_index.json")
         try await downloadFile(
             from: manifestRemoteURL,
             to: manifestLocalURL,
@@ -111,7 +145,7 @@ public extension HuggingFaceService {
         // 3. Plan the file list.
         let plan = try buildDiffusionDownloadPlan(
             manifest: manifest,
-            destinationDirectory: destinationDirectory
+            destinationDirectory: stagingDirectory
         )
 
         // 4. Download each file sequentially with summed progress.
@@ -172,13 +206,44 @@ public extension HuggingFaceService {
             "Diffusion download complete: \(repoID, privacy: .private) (\(plan.items.count) files, \(totalBytes) bytes)"
         )
 
-        return ImageModelInfo(
+        let info = ImageModelInfo(
             id: repoID,
             name: resolvedDisplayName,
             directoryURL: destinationDirectory,
             format: .mlxDiffusion,
             fileSize: totalBytes,
             huggingFaceRepoID: repoID
+        )
+
+        try writePackageManifest(
+            for: info,
+            files: ["model_index.json"] + plan.items.map(\.relativePath),
+            in: stagingDirectory
+        )
+        if FileManager.default.fileExists(atPath: destinationDirectory.path) {
+            try FileManager.default.removeItem(at: destinationDirectory)
+        }
+        try FileManager.default.moveItem(at: stagingDirectory, to: destinationDirectory)
+        return info
+    }
+
+    private func writePackageManifest(
+        for info: ImageModelInfo,
+        files: [String],
+        in directory: URL
+    ) throws {
+        let manifest = DownloadedModelPackageManifest(
+            packageKind: .diffusion,
+            id: info.id,
+            displayName: info.name,
+            format: info.format,
+            huggingFaceRepoID: info.huggingFaceRepoID,
+            files: files.sorted()
+        )
+        let data = try JSONEncoder().encode(manifest)
+        try data.write(
+            to: directory.appendingPathComponent(DownloadedModelPackageManifest.fileName),
+            options: .atomic
         )
     }
 
