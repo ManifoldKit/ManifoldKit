@@ -23,6 +23,36 @@ final class MessagePartTests: XCTestCase {
         XCTAssertEqual(decoded, [part])
     }
 
+    func test_imagePartWithPlaceholder_codableRoundTrip() throws {
+        let imageData = ImageFixtures.oneByOnePNGData
+        let placeholder = try XCTUnwrap(ImagePlaceholderHash.generate(from: imageData))
+        let part = MessagePart.image(data: imageData, mimeType: "image/png", placeholderHash: placeholder)
+
+        let data = try JSONEncoder().encode([part])
+        let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
+
+        XCTAssertEqual(decoded, [part])
+        XCTAssertNotNil(decoded.first?.imagePlaceholderHash?.colorGrid)
+    }
+
+    func test_imagePart_withoutPlaceholder_decodesLegacyJSON() throws {
+        let imageData = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        let legacyJSON = #"[{"image":{"data":"\#(imageData.base64EncodedString())","mimeType":"image/jpeg"}}]"#
+
+        let decoded = try JSONDecoder().decode([MessagePart].self, from: Data(legacyJSON.utf8))
+
+        XCTAssertEqual(decoded, [.image(data: imageData, mimeType: "image/jpeg")])
+        XCTAssertNil(decoded.first?.imagePlaceholderHash)
+    }
+
+    func test_generatingImagePlaceholderIfNeeded_preservesExistingPlaceholder() throws {
+        let imageData = ImageFixtures.oneByOnePNGData
+        let placeholder = try XCTUnwrap(ImagePlaceholderHash.generate(from: imageData))
+        let part = MessagePart.image(data: imageData, mimeType: "image/png", placeholderHash: placeholder)
+
+        XCTAssertEqual(part.generatingImagePlaceholderIfNeeded(), part)
+    }
+
     func test_mixedParts_codableRoundTrip() throws {
         let parts: [MessagePart] = [
             .text("Here is the weather:"),

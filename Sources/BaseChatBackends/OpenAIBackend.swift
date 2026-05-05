@@ -609,7 +609,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             contentParts.append(["type": "text", "text": text])
         }
         for part in message.parts {
-            if case .image(let data, let mimeType) = part {
+            if case .image(let data, let mimeType, _) = part {
                 contentParts.append([
                     "type": "image_url",
                     "image_url": [

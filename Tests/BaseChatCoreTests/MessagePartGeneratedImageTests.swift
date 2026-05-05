@@ -242,7 +242,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         XCTAssertEqual(think, "reasoning")
         XCTAssertEqual(sig, "sig-1")
 
-        guard case .image(let data, let mime) = parts[2] else { return XCTFail("2: expected .image") }
+        guard case .image(let data, let mime, _) = parts[2] else { return XCTFail("2: expected .image") }
         XCTAssertEqual(data, Data([0x01, 0x02]))
         XCTAssertEqual(mime, "image/png")
 

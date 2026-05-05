@@ -92,17 +92,18 @@ final class ChatViewModelIngestTests: XCTestCase {
             source: .shareExtension
         )
         await vm.ingest(payload)
+        let expectedImage = image.generatingImagePlaceholderIfNeeded()
 
         // The user message is the first one in the active session.
         let userMessage = vm.messages.first(where: { $0.role == .user })
         XCTAssertNotNil(userMessage, "Ingest should seed a user message")
         XCTAssertEqual(
             userMessage?.contentParts,
-            [.text("here is the prompt"), image],
+            [.text("here is the prompt"), expectedImage],
             "User message should carry the prompt plus the image attachment"
         )
         XCTAssertEqual(vm.draftAttachments, [], "Ingested attachments should be consumed by sendMessage()")
-        XCTAssertEqual(mock.lastReceivedStructuredHistory?.first?.parts, [.text("here is the prompt"), image])
+        XCTAssertEqual(mock.lastReceivedStructuredHistory?.first?.parts, [.text("here is the prompt"), expectedImage])
     }
 
     func test_switchToSession_clearsDraftAttachments() async throws {

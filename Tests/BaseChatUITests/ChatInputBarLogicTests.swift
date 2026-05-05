@@ -223,14 +223,15 @@ final class ChatInputBarLogicTests: XCTestCase {
         mock.tokensToYield = ["Done"]
         let (vm, backend) = makeViewModelWithMock(mock: mock)
         let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        let expectedImage = image.generatingImagePlaceholderIfNeeded()
         vm.stageDraftAttachment(image)
 
         await vm.sendMessage()
 
         XCTAssertTrue(vm.draftAttachments.isEmpty, "Draft attachments should be cleared after sending")
         let userMessage = vm.messages.first(where: { $0.role == .user })
-        XCTAssertEqual(userMessage?.contentParts, [image])
-        XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, [image])
+        XCTAssertEqual(userMessage?.contentParts, [expectedImage])
+        XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, [expectedImage])
     }
 
     func test_sendMessage_textAndAttachmentPreservesPartOrder() async {
@@ -238,12 +239,13 @@ final class ChatInputBarLogicTests: XCTestCase {
         mock.tokensToYield = ["Done"]
         let (vm, backend) = makeViewModelWithMock(mock: mock)
         let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
+        let expectedImage = image.generatingImagePlaceholderIfNeeded()
         vm.inputText = "Describe this image"
         vm.stageDraftAttachment(image)
 
         await vm.sendMessage()
 
-        let expectedParts: [MessagePart] = [.text("Describe this image"), image]
+        let expectedParts: [MessagePart] = [.text("Describe this image"), expectedImage]
         let userMessage = vm.messages.first(where: { $0.role == .user })
         XCTAssertEqual(userMessage?.contentParts, expectedParts)
         XCTAssertEqual(backend.lastReceivedStructuredHistory?.first?.parts, expectedParts)

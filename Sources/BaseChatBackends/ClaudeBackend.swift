@@ -343,7 +343,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // Image blocks (rare on assistant turns; supported for
             // round-trip parity with persisted rows).
             for part in message.parts {
-                if case .image(let data, let mimeType) = part {
+                if case .image(let data, let mimeType, _) = part {
                     blocks.append(encodeImageBlock(data: data, mimeType: mimeType))
                 }
             }
@@ -379,7 +379,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         if message.role == "user", hasImage {
             var blocks: [[String: Any]] = []
             for part in message.parts {
-                if case .image(let data, let mimeType) = part {
+                if case .image(let data, let mimeType, _) = part {
                     blocks.append(encodeImageBlock(data: data, mimeType: mimeType))
                 }
             }

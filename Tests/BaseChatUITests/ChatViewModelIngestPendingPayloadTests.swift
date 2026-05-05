@@ -180,10 +180,13 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
         // Image payloads don't carry a text body, so the draft text is cleared
         // while the image itself is staged in the compose bar.
         XCTAssertEqual(vm.inputText, "")
-        XCTAssertEqual(
-            vm.draftAttachments,
-            [.image(data: imageData, mimeType: "image/png")]
-        )
+        XCTAssertEqual(vm.draftAttachments.count, 1)
+        guard case .image(let data, let mimeType, let placeholderHash) = vm.draftAttachments[0] else {
+            return XCTFail("Expected image draft attachment")
+        }
+        XCTAssertEqual(data, imageData)
+        XCTAssertEqual(mimeType, "image/png")
+        XCTAssertNotNil(placeholderHash?.colorGrid)
 
         // No new messages should have been persisted.
         let messages = fetchMessages(for: session.id)
@@ -203,7 +206,13 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
         )
 
         XCTAssertEqual(vm.inputText, "Please inspect this")
-        XCTAssertEqual(vm.draftAttachments, [.image(data: imageData, mimeType: "image/png")])
+        XCTAssertEqual(vm.draftAttachments.count, 1)
+        guard case .image(let data, let mimeType, let placeholderHash) = vm.draftAttachments[0] else {
+            return XCTFail("Expected image draft attachment")
+        }
+        XCTAssertEqual(data, imageData)
+        XCTAssertEqual(mimeType, "image/png")
+        XCTAssertNotNil(placeholderHash?.colorGrid)
 
         let messages = fetchMessages(for: session.id)
         XCTAssertTrue(messages.isEmpty, "Appending an image payload should stay in draft state until the user sends")

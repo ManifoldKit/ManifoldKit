@@ -319,7 +319,7 @@ extension ChatViewModel {
     }
 
     func stageDraftAttachment(_ part: MessagePart) {
-        draftAttachments.append(part)
+        draftAttachments.append(part.generatingImagePlaceholderIfNeeded())
     }
 
     func removeDraftAttachment(id index: Int) {
