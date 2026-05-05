@@ -2,6 +2,19 @@
 
 ## [0.16.4](https://github.com/roryford/BaseChatKit/compare/v0.16.3...v0.16.4) (2026-05-05)
 
+### Highlights
+
+#### DRY sampler and penalty knob persistence for llama.cpp
+
+llama.cpp's DRY (Don't Repeat Yourself) repetition penalty is now wired into `LlamaGenerationDriver` via `GenerationConfig`. DRY multiplier, allowed length, base, and sequence breakers are all exposed and default to llama.cpp's library defaults, so existing callers are unaffected. Sampler preset penalty knobs (`repetitionPenalty`, `presencePenalty`, `frequencyPenalty`, and the new DRY fields) are now persisted in SwiftData so they survive app restarts.
+
+```swift
+var config = GenerationConfig()
+config.dryMultiplier = 0.8
+config.dryAllowedLength = 2
+config.dryBase = 1.75
+config.drySequenceBreakers = ["\n", ":", "\"", "*"]
+```
 
 ### Features
 
