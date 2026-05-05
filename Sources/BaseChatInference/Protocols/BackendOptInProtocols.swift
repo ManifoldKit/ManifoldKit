@@ -189,8 +189,9 @@ public protocol TokenCountingBackend: AnyObject {
 ///
 /// ``ModelLifecycleCoordinator`` calls ``setMmprojURL(_:)`` with the URL from
 /// ``ModelInfo/mmprojURL`` before each ``InferenceBackend/loadModel(from:plan:)`` call.
-/// Conformers that receive a non-nil URL should set ``BackendCapabilities/supportsVision``
-/// to `true` in their `capabilities` implementation.
+/// Conformers should set ``BackendCapabilities/supportsVision`` to `true` only
+/// once they can translate ``MessagePart/image(data:mimeType:)`` into backend
+/// image embeddings, not merely because a projector URL is present.
 ///
 /// - Note: Passing `nil` clears the projector, returning the backend to text-only mode.
 ///   ``ModelLifecycleCoordinator`` always calls this before load so the projector state

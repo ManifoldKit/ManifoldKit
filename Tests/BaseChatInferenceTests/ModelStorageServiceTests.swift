@@ -85,6 +85,45 @@ final class ModelStorageServiceTests: XCTestCase {
         return url
     }
 
+    @discardableResult
+    private func createDiffusionPackage(
+        named name: String = "diffusion-\(UUID().uuidString)",
+        writeManifest: Bool = true,
+        omitFile omitted: String? = nil
+    ) throws -> URL {
+        let dir = service.modelsDirectory.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let files = [
+            "model_index.json",
+            "unet/config.json",
+            "unet/diffusion_pytorch_model.safetensors",
+            "vae/config.json",
+            "vae/diffusion_pytorch_model.safetensors",
+            "text_encoder/config.json",
+            "text_encoder/model.safetensors",
+            "scheduler/scheduler_config.json",
+        ]
+        for file in files where file != omitted {
+            let url = dir.appendingPathComponent(file)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: url)
+        }
+        if writeManifest {
+            let manifest = DownloadedModelPackageManifest(
+                packageKind: .diffusion,
+                id: "test-org/\(name)",
+                displayName: "Diffusion \(name)",
+                format: .mlxDiffusion,
+                huggingFaceRepoID: "test-org/\(name)",
+                files: files
+            )
+            let data = try JSONEncoder().encode(manifest)
+            try data.write(to: dir.appendingPathComponent(DownloadedModelPackageManifest.fileName))
+        }
+        createdURLs.append(dir)
+        return dir
+    }
+
     // MARK: - ensureModelsDirectory
 
     func test_ensureModelsDirectory_createsDirectory() throws {
@@ -115,6 +154,19 @@ final class ModelStorageServiceTests: XCTestCase {
         XCTAssertNotNil(match, "Should discover the GGUF file")
         XCTAssertEqual(match?.modelType, .gguf)
         XCTAssertEqual(match?.fileSize, 1024)
+    }
+
+    func test_discoverModels_singleFileCompatibilityIgnoresPackageManifest() throws {
+        let ggufURL = try createGgufFile()
+        try createDiffusionPackage()
+
+        let models = service.discoverModels()
+
+        XCTAssertNotNil(models.first { $0.fileName == ggufURL.lastPathComponent })
+        XCTAssertNil(
+            models.first { $0.modelType == .mlx && $0.fileName.contains("diffusion") },
+            "Image packages must not alter the existing text-model discovery list"
+        )
     }
 
     func test_discoverModels_findsMlxDirectories() throws {
@@ -230,6 +282,52 @@ final class ModelStorageServiceTests: XCTestCase {
         XCTAssertNotNil(
             models.first { $0.fileName == "\(nsB.lastPathComponent)/model-b" },
             "Namespaced MLX directory under \(nsB.lastPathComponent) should be discovered"
+        )
+    }
+
+    func test_discoverImageModels_ignoresPartialPackageWithoutManifest() throws {
+        let packageURL = try createDiffusionPackage(writeManifest: false)
+
+        let imageModels = service.discoverImageModels()
+
+        XCTAssertNil(
+            imageModels.first {
+                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+            },
+            "Partially downloaded packages without readiness manifests must stay hidden"
+        )
+    }
+
+    func test_discoverImageModels_ignoresManifestWhenComponentMissing() throws {
+        let packageURL = try createDiffusionPackage(omitFile: "vae/diffusion_pytorch_model.safetensors")
+
+        let imageModels = service.discoverImageModels()
+
+        XCTAssertNil(
+            imageModels.first {
+                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+            },
+            "Readiness manifests are atomic: every listed component must exist"
+        )
+    }
+
+    func test_discoverImageModels_surfacesCompletePackageAsSingleEntry() throws {
+        let packageURL = try createDiffusionPackage(named: "ready-diffusion-\(UUID().uuidString)")
+
+        let imageModels = service.discoverImageModels()
+        let match = imageModels.first {
+            $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+        }
+
+        XCTAssertNotNil(match)
+        XCTAssertEqual(match?.format, .mlxDiffusion)
+        XCTAssertEqual(match?.huggingFaceRepoID, match?.id)
+        XCTAssertEqual(
+            imageModels.filter {
+                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+            }.count,
+            1,
+            "A multi-component package should appear as one logical model"
         )
     }
 

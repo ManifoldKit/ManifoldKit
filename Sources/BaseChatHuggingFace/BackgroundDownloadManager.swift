@@ -278,7 +278,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Layered defence: the URL-standardized prefix check below already blocks
         // path-traversal writes, but validating the filename at the boundary
         // catches malformed input before any disk operation runs.
-        try DownloadableModel.validate(fileName: model.fileName)
+        if model.packageKind == .diffusion {
+            try validatePackageName(model.fileName)
+        } else {
+            try DownloadableModel.validate(fileName: model.fileName)
+        }
         try await checkDiskSpace(requiredBytes: model.sizeBytes)
         try storageService.ensureModelsDirectory()
 
@@ -333,8 +337,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Reject retries with a corrupted persisted filename — the metadata file lives
         // in Caches and a malicious or damaged entry must not be allowed to escape the
         // models directory on resume.
+        let packageKind = info["packageKind"].flatMap(ModelPackageKind.init(rawValue:))
         do {
-            try DownloadableModel.validate(fileName: fileName)
+            if packageKind == .diffusion {
+                try validatePackageName(fileName)
+            } else {
+                try DownloadableModel.validate(fileName: fileName)
+            }
         } catch {
             Log.download.error("Refusing to retry \(id): persisted fileName failed validation: \(error.localizedDescription)")
             activeDownloads[id]?.markFailed(error: "Download metadata is invalid; please re-add the model.")
@@ -349,12 +358,28 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             fileName: fileName,
             displayName: displayName,
             modelType: modelType,
-            sizeBytes: sizeBytes
+            sizeBytes: sizeBytes,
+            packageKind: packageKind
         )
 
         // Reset to queued so the UI reflects that a new attempt is underway.
         let state = DownloadState(model: model)
         activeDownloads[model.id] = state
+
+        let snapshotFiles = decodePendingSnapshotFiles(info["snapshotFiles"], repoID: repoID)
+
+        // Snapshot downloads are retried file-by-file from the persisted package
+        // plan. URLSession resume blobs are only valid for single-file tasks.
+        if let snapshotFiles, !snapshotFiles.isEmpty {
+            _ = consumeResumeData(for: id)
+            do {
+                try startSnapshotDownload(model: model, files: snapshotFiles)
+            } catch {
+                Log.download.error("Failed to restart snapshot download for \(id): \(error.localizedDescription)")
+                activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
+            }
+            return
+        }
 
         // Consume any persisted resume data. Clean it up regardless of outcome so
         // we never retry with stale data on a subsequent failure.
@@ -383,17 +408,35 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
     }
 
+    private func decodePendingSnapshotFiles(_ json: String?, repoID: String) -> [ModelDownloadFile]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        do {
+            let metadata = try JSONDecoder().decode([SnapshotFileMetadata].self, from: data)
+            return metadata.map { file in
+                ModelDownloadFile(
+                    relativePath: file.relativePath,
+                    url: huggingFaceDownloadURL(repoID: repoID, filePath: file.relativePath),
+                    sizeBytes: file.sizeBytes,
+                    expectedChecksum: file.expectedChecksum
+                )
+            }
+        } catch {
+            Log.download.error("Failed to decode pending snapshot metadata for \(repoID): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// Starts a fresh single-file download for a model from its HuggingFace URL.
     ///
     /// Used as the fallback when resume data is absent or rejected by the server.
     @MainActor private func retryWithFreshDownload(model: DownloadableModel) async {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "huggingface.co"
-        let segments = ([model.repoID, "resolve", "main"] + model.fileName.components(separatedBy: "/"))
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
-        components.percentEncodedPath = "/" + segments.joined(separator: "/")
-        guard let url = components.url else {
+        guard model.modelType != .mlx || model.packageKind == nil else {
+            Log.download.error("Cannot retry snapshot download \(model.id) without persisted package metadata")
+            activeDownloads[model.id]?.markFailed(error: "Download metadata is incomplete; please re-add the model.")
+            return
+        }
+        let url = huggingFaceDownloadURL(repoID: model.repoID, filePath: model.fileName)
+        guard url.host == "huggingface.co" else {
             Log.download.error("Failed to build retry URL for \(model.id)")
             activeDownloads[model.id]?.markFailed(error: "Could not construct download URL for retry")
             return
@@ -404,6 +447,20 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             Log.download.error("Failed to start fresh retry download for \(model.id): \(error.localizedDescription)")
             activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
         }
+    }
+
+    private func huggingFaceDownloadURL(repoID: String, filePath: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        let segments = ([repoID, "resolve", "main"] + filePath.components(separatedBy: "/"))
+            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
+        components.percentEncodedPath = "/" + segments.joined(separator: "/")
+        guard let url = components.url else {
+            Log.download.error("Failed to build download URL for \(repoID)/\(filePath)")
+            return URL(string: "https://huggingface.co")!
+        }
+        return url
     }
 
     /// Cancels an in-progress download.
@@ -753,10 +810,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             try FileManager.default.removeItem(at: resolvedDestination)
         }
         try FileManager.default.moveItem(at: tempURL, to: resolvedDestination)
-        try DownloadFileValidator().validateChecksum(
-            at: resolvedDestination,
-            expectedChecksum: snapshot.files[relativePath]?.expectedChecksum
-        )
+        if activeDownloads[modelID]?.model.packageKind == .diffusion {
+            try validateDiffusionComponent(at: resolvedDestination, relativePath: relativePath)
+        } else {
+            try DownloadFileValidator().validateChecksum(
+                at: resolvedDestination,
+                expectedChecksum: snapshot.files[relativePath]?.expectedChecksum
+            )
+        }
 
         let fileSize = (try FileManager.default.attributesOfItem(atPath: resolvedDestination.path)[.size] as? NSNumber)?.int64Value ?? snapshot.progressByFile[relativePath]?.expectedBytes ?? 0
         snapshot.completedFiles.insert(relativePath)
@@ -777,8 +838,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         guard snapshot.completedFiles.count == snapshot.files.count else { return }
 
-        try validateDownloadedFile(at: snapshot.stagingDirectory, modelType: .mlx)
-        let finalFileName = activeDownloads[modelID]?.model.fileName ?? snapshot.stagingDirectory.lastPathComponent
+        let packageModel = activeDownloads[modelID]?.model
+        if packageModel?.packageKind == .diffusion {
+            try validateDiffusionPackage(at: snapshot.stagingDirectory, files: Array(snapshot.files.keys))
+        } else {
+            try validateDownloadedFile(at: snapshot.stagingDirectory, modelType: .mlx)
+        }
+        let finalFileName = packageModel?.fileName ?? snapshot.stagingDirectory.lastPathComponent
         let finalURL = storageService.modelsDirectory.appendingPathComponent(finalFileName)
         let resolvedFinalURL = finalURL.standardized
         let resolvedModelsDir = storageService.modelsDirectory.standardized
@@ -792,10 +858,95 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         if FileManager.default.fileExists(atPath: finalURL.path) {
             try FileManager.default.removeItem(at: finalURL)
         }
+        if packageModel?.packageKind == .diffusion, let packageModel {
+            try writePackageManifest(for: packageModel, files: Array(snapshot.files.keys), in: snapshot.stagingDirectory)
+        }
         try FileManager.default.moveItem(at: snapshot.stagingDirectory, to: finalURL)
         activeDownloads[modelID]?.markCompleted(localURL: finalURL)
         removePendingDownload(id: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
+    }
+
+    private func validatePackageName(_ packageName: String) throws {
+        guard !packageName.isEmpty,
+              packageName.count < 255,
+              !packageName.contains("/"),
+              !packageName.contains("\\"),
+              packageName != ".",
+              packageName != "..",
+              !packageName.hasPrefix(".") else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Invalid package directory name: \(packageName)")
+        }
+        guard packageName.unicodeScalars.allSatisfy({ scalar in
+            let v = scalar.value
+            return v >= 0x20 && v != 0x7F && !(0x80...0x9F).contains(v)
+        }) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Package directory name contains control characters")
+        }
+    }
+
+    private func validateDiffusionComponent(at url: URL, relativePath: String) throws {
+        guard let role = diffusionRole(for: relativePath) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Unsupported diffusion package component: \(relativePath)")
+        }
+        try DownloadFileValidator.validate(url, diffusionRole: role)
+    }
+
+    private func validateDiffusionPackage(at directory: URL, files: [String]) throws {
+        let fileSet = Set(files)
+        for required in [
+            "model_index.json",
+            "vae/config.json",
+            "vae/diffusion_pytorch_model.safetensors",
+        ] where !fileSet.contains(required) {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Diffusion package is missing required component: \(required)")
+        }
+        let hasDenoiser = fileSet.contains("unet/diffusion_pytorch_model.safetensors")
+            || fileSet.contains("transformer/diffusion_pytorch_model.safetensors")
+            || fileSet.contains("transformer/model.safetensors")
+        guard hasDenoiser else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Diffusion package is missing transformer/UNet weights")
+        }
+        for relativePath in files {
+            try validateDiffusionComponent(at: directory.appendingPathComponent(relativePath), relativePath: relativePath)
+        }
+    }
+
+    private func diffusionRole(for relativePath: String) -> DownloadFileValidator.DiffusionFileRole? {
+        switch relativePath {
+        case "model_index.json":
+            return .manifest
+        case let path where path.hasSuffix("/config.json") || path.hasSuffix("/scheduler_config.json"):
+            return .submoduleConfig
+        case let path where path.hasSuffix(".safetensors"):
+            return .weights
+        case let path where path.hasSuffix("/vocab.json"):
+            return .tokenizerVocab
+        case let path where path.hasSuffix("/merges.txt"):
+            return .tokenizerMerges
+        default:
+            return nil
+        }
+    }
+
+    private func writePackageManifest(
+        for model: DownloadableModel,
+        files: [String],
+        in directory: URL
+    ) throws {
+        let manifest = DownloadedModelPackageManifest(
+            packageKind: .diffusion,
+            id: model.repoID,
+            displayName: model.displayName,
+            format: .mlxDiffusion,
+            huggingFaceRepoID: model.repoID,
+            files: files.sorted()
+        )
+        let data = try JSONEncoder().encode(manifest)
+        try data.write(
+            to: directory.appendingPathComponent(DownloadedModelPackageManifest.fileName),
+            options: .atomic
+        )
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
@@ -806,7 +957,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 return
             }
             activeDownloads[modelID]?.markFailed(error: error)
-            removePendingDownload(id: modelID)
             return
         }
 
@@ -824,7 +974,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
 
         activeDownloads[modelID]?.markFailed(error: error)
-        removePendingDownload(id: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
         do {
             try FileManager.default.removeItem(at: snapshot.stagingDirectory)
@@ -908,6 +1057,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             "modelType": model.modelType == .gguf ? "gguf" : "mlx",
             "sizeBytes": String(model.sizeBytes),
         ]
+        if let packageKind = model.packageKind {
+            entry["packageKind"] = packageKind.rawValue
+        }
         if !snapshotFiles.isEmpty {
             let data = try JSONEncoder().encode(snapshotFiles)
             guard let json = String(data: data, encoding: .utf8) else {
@@ -958,7 +1110,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             // URL-standardized prefix check would reject it — skip early so the
             // stale entry is also pruned from the pending-downloads JSON.
             do {
-                try DownloadableModel.validate(fileName: fileName)
+                if info["packageKind"] == ModelPackageKind.diffusion.rawValue {
+                    try validatePackageName(fileName)
+                } else {
+                    try DownloadableModel.validate(fileName: fileName)
+                }
             } catch {
                 Log.download.warning("Dropping pending download \(id) with invalid fileName: \(error.localizedDescription)")
                 removePendingDownload(id: id)
@@ -971,7 +1127,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 fileName: fileName,
                 displayName: displayName,
                 modelType: modelType,
-                sizeBytes: UInt64(info["sizeBytes"] ?? "") ?? 0
+                sizeBytes: UInt64(info["sizeBytes"] ?? "") ?? 0,
+                packageKind: info["packageKind"].flatMap(ModelPackageKind.init(rawValue:))
             )
             let state = DownloadState(model: model)
             activeDownloads[id] = state

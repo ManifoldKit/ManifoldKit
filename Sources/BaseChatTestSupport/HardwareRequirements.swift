@@ -267,15 +267,16 @@ public enum HardwareRequirements {
     /// `BASECHAT_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
     /// When `LLAMA_TEST_MODEL` is set, the first GGUF whose path contains that
-    /// value wins. Otherwise falls back to `nameContains`, then to the first
-    /// discovered candidate in deterministic path order.
+    /// value wins. Otherwise falls back to `nameContains`, then to the smallest
+    /// discovered candidate that satisfies the size bounds.
     public static func findGGUFModel(
         nameContains substring: String? = nil,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        maximumModelSize: Int64? = nil
     ) -> URL? {
         if let override = directFilesystemModelOverride(
             environment["LLAMA_TEST_MODEL"],
-            isValid: { isValidGGUFModel($0) }
+            isValid: { isValidGGUFModel($0, maximumModelSize: maximumModelSize) }
         ) {
             return override
         }
@@ -290,7 +291,8 @@ public enum HardwareRequirements {
             in: modelSearchDirectories(fileManager: .default),
             nameContains: substring,
             environment: environment,
-            fileManager: .default
+            fileManager: .default,
+            maximumModelSize: maximumModelSize
         )
     }
 
@@ -299,14 +301,16 @@ public enum HardwareRequirements {
         nameContains substring: String? = nil,
         environment: [String: String] = [:],
         fileManager: FileManager = .default,
-        minimumModelSize: Int64 = 50 * 1024 * 1024
+        minimumModelSize: Int64 = 50 * 1024 * 1024,
+        maximumModelSize: Int64? = nil
     ) -> URL? {
-        let candidates = discoverGGUFModels(
+        let candidates = discoverGGUFModelCandidates(
             in: searchDirs,
             fileManager: fileManager,
-            minimumModelSize: minimumModelSize
+            minimumModelSize: minimumModelSize,
+            maximumModelSize: maximumModelSize
         )
-        return selectFilesystemModel(
+        return selectGGUFModel(
             from: candidates,
             environmentKey: "LLAMA_TEST_MODEL",
             nameContains: substring,
@@ -317,9 +321,24 @@ public enum HardwareRequirements {
     static func discoverGGUFModels(
         in searchDirs: [URL],
         fileManager: FileManager = .default,
-        minimumModelSize: Int64 = 50 * 1024 * 1024
+        minimumModelSize: Int64 = 50 * 1024 * 1024,
+        maximumModelSize: Int64? = nil
     ) -> [URL] {
-        var results: [URL] = []
+        discoverGGUFModelCandidates(
+            in: searchDirs,
+            fileManager: fileManager,
+            minimumModelSize: minimumModelSize,
+            maximumModelSize: maximumModelSize
+        ).map(\.url)
+    }
+
+    private static func discoverGGUFModelCandidates(
+        in searchDirs: [URL],
+        fileManager: FileManager = .default,
+        minimumModelSize: Int64,
+        maximumModelSize: Int64?
+    ) -> [GGUFModelCandidate] {
+        var results: [GGUFModelCandidate] = []
         for dir in searchDirs {
             guard let contents = try? fileManager.contentsOfDirectory(
                 at: dir,
@@ -328,7 +347,12 @@ public enum HardwareRequirements {
             ) else { continue }
 
             for candidate in contents {
-                appendGGUFModel(candidate, to: &results, minimumModelSize: minimumModelSize)
+                appendGGUFModel(
+                    candidate,
+                    to: &results,
+                    minimumModelSize: minimumModelSize,
+                    maximumModelSize: maximumModelSize
+                )
 
                 var isDirectory: ObjCBool = false
                 guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
@@ -340,11 +364,16 @@ public enum HardwareRequirements {
                       ) else { continue }
 
                 for nestedCandidate in nestedContents {
-                    appendGGUFModel(nestedCandidate, to: &results, minimumModelSize: minimumModelSize)
+                    appendGGUFModel(
+                        nestedCandidate,
+                        to: &results,
+                        minimumModelSize: minimumModelSize,
+                        maximumModelSize: maximumModelSize
+                    )
                 }
             }
         }
-        return sortedUniqueURLs(results)
+        return sortedUniqueGGUFCandidates(results)
     }
 
     /// Checks whether a directory looks like a loadable local MLX snapshot.
@@ -383,15 +412,14 @@ public enum HardwareRequirements {
 
     static func isValidGGUFModel(
         _ url: URL,
-        minimumModelSize: Int64 = 50 * 1024 * 1024
+        minimumModelSize: Int64 = 50 * 1024 * 1024,
+        maximumModelSize: Int64? = nil
     ) -> Bool {
-        guard url.pathExtension.lowercased() == "gguf" else { return false }
-        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values?.isRegularFile == true,
-              let size = values?.fileSize else {
-            return false
-        }
-        return Int64(size) >= minimumModelSize
+        ggufModelCandidate(
+            url,
+            minimumModelSize: minimumModelSize,
+            maximumModelSize: maximumModelSize
+        ) != nil
     }
 
     static func selectFilesystemModel(
@@ -461,14 +489,76 @@ public enum HardwareRequirements {
         return isValid(url) ? url : nil
     }
 
+    private static func selectGGUFModel(
+        from candidates: [GGUFModelCandidate],
+        environmentKey: String,
+        nameContains substring: String?,
+        environment: [String: String] = [:]
+    ) -> URL? {
+        let ordered = sortedUniqueGGUFCandidates(candidates).map(\.url)
+        guard !ordered.isEmpty else { return nil }
+
+        if let override = normalizedModelSelector(environment[environmentKey]),
+           let matched = matchingFilesystemModel(override, in: ordered) {
+            return matched
+        }
+
+        if let substring = normalizedModelSelector(substring),
+           let matched = matchingFilesystemModel(substring, in: ordered) {
+            return matched
+        }
+
+        return ordered.first
+    }
+
     private static func appendGGUFModel(
         _ candidate: URL,
-        to results: inout [URL],
-        minimumModelSize: Int64
+        to results: inout [GGUFModelCandidate],
+        minimumModelSize: Int64,
+        maximumModelSize: Int64?
     ) {
-        if isValidGGUFModel(candidate, minimumModelSize: minimumModelSize) {
+        if let candidate = ggufModelCandidate(
+            candidate,
+            minimumModelSize: minimumModelSize,
+            maximumModelSize: maximumModelSize
+        ) {
             results.append(candidate)
         }
+    }
+
+    private static func ggufModelCandidate(
+        _ url: URL,
+        minimumModelSize: Int64,
+        maximumModelSize: Int64?
+    ) -> GGUFModelCandidate? {
+        guard url.pathExtension.lowercased() == "gguf" else { return nil }
+        let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard values?.isRegularFile == true,
+              let size = values?.fileSize else {
+            return nil
+        }
+        let modelSize = Int64(size)
+        guard modelSize >= minimumModelSize else { return nil }
+        if let maximumModelSize, modelSize > maximumModelSize { return nil }
+        return GGUFModelCandidate(url: url, size: modelSize)
+    }
+
+    private static func sortedUniqueGGUFCandidates(
+        _ candidates: [GGUFModelCandidate]
+    ) -> [GGUFModelCandidate] {
+        var seen: Set<String> = []
+        let deduped = candidates.filter { seen.insert($0.url.standardizedFileURL.path).inserted }
+        return deduped.sorted { lhs, rhs in
+            if lhs.size != rhs.size { return lhs.size < rhs.size }
+            return lhs.url.standardizedFileURL.path.localizedStandardCompare(
+                rhs.url.standardizedFileURL.path
+            ) == .orderedAscending
+        }
+    }
+
+    private struct GGUFModelCandidate {
+        let url: URL
+        let size: Int64
     }
 
     private static func sortedUniqueURLs(_ urls: [URL]) -> [URL] {
