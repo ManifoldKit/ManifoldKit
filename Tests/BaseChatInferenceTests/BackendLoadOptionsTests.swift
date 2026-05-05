@@ -8,14 +8,14 @@ final class BackendLoadOptionsTests: XCTestCase {
 
     // MARK: - Defaults
 
-    func test_default_isHistoricalBehavior() {
+    func test_default_usesBackendTunedDefaults() {
         let opts = BackendLoadOptions.default
-        XCTAssertEqual(opts.kvCacheQuantization, .f16,
-                       "Default must preserve full-precision KV cache so opt-in PR doesn't shift behaviour")
-        XCTAssertFalse(opts.flashAttention,
-                       "Default must keep Flash Attention disabled so existing token streams don't change")
+        XCTAssertEqual(opts.kvCacheQuantization, .q8,
+                       "Default uses Q8 KV cache to reduce local backend memory pressure")
+        XCTAssertEqual(opts.flashAttention, BackendLoadOptions.platformDefaultFlashAttention,
+                       "Flash Attention defaults on for physical devices and off for simulator")
         XCTAssertNil(opts.prefillBatchSize,
-                     "Default leaves prefill batch at the library default (nil sentinel)")
+                      "Default leaves prefill batch at the library default (nil sentinel)")
     }
 
     func test_init_propagatesAllFields() {
@@ -102,15 +102,15 @@ final class BackendLoadOptionsTests: XCTestCase {
 
     func test_codableDecode_partialPayload_fillsMissingFieldsWithDefaults() throws {
         // Only `kvCacheQuantization` set — flashAttention and prefillBatchSize must
-        // decode to their library defaults so callers get a coherent value type.
+        // decode to current defaults so callers get a coherent value type.
         let partialJSON = """
-        { "kvCacheQuantization": "q8" }
+        { "kvCacheQuantization": "q4" }
         """
         let data = try XCTUnwrap(partialJSON.data(using: .utf8))
         let decoded = try JSONDecoder().decode(BackendLoadOptions.self, from: data)
 
-        XCTAssertEqual(decoded.kvCacheQuantization, .q8)
-        XCTAssertFalse(decoded.flashAttention)
+        XCTAssertEqual(decoded.kvCacheQuantization, .q4)
+        XCTAssertEqual(decoded.flashAttention, BackendLoadOptions.platformDefaultFlashAttention)
         XCTAssertNil(decoded.prefillBatchSize)
     }
 }
