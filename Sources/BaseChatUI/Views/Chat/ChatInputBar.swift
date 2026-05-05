@@ -176,7 +176,7 @@ public struct ChatInputBar: View {
         .buttonStyle(.plain)
         .disabled(viewModel.activeSession == nil || !viewModel.isModelLoaded || viewModel.isGenerating || viewModel.isLoading)
         .accessibilityLabel(title)
-        .accessibilityHint("Sends "\(title)" as a message")
+        .accessibilityHint("Sends \"\(title)\" as a message")
     }
 
     // MARK: - Helpers
