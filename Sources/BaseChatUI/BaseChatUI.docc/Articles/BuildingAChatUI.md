@@ -12,31 +12,29 @@ Create both view models at the app level and share the same `InferenceService` b
 
 ```swift
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
-import SwiftData
 import SwiftUI
 
 @main
 struct MyApp: App {
-    let runtime: BaseChatBootstrap
+    let runtime: any ChatRuntimeBootstrap
+    let inferenceService: InferenceService
     let chatVM: ChatViewModel
     let sessionVM: SessionManagerViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
-                appName: "MyApp",
-                bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
-            )
-        )
+        let inferenceService = InferenceService()
+        DefaultBackends.register(with: inferenceService)
+
+        // AppRuntime lives in your app composition root. It may wrap the
+        // shipped SwiftData bootstrap or your own SessionStore/MessageStore.
+        let runtime = AppRuntime.make(inferenceService: inferenceService)
         self.runtime = runtime
+        self.inferenceService = inferenceService
 
-        DefaultBackends.register(with: runtime.inferenceService)
-
-        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        let chatVM = ChatViewModel(inferenceService: inferenceService)
         chatVM.configure(runtime: runtime)
         chatVM.refreshModels()
         self.chatVM = chatVM
@@ -57,7 +55,7 @@ struct MyApp: App {
                 await sessionVM.autoRenameSession(
                     session,
                     firstMessage: firstMessage,
-                    inferenceService: runtime.inferenceService
+                    inferenceService: inferenceService
                 )
             }
         }
@@ -69,7 +67,6 @@ struct MyApp: App {
                 .environment(chatVM)
                 .environment(sessionVM)
         }
-        .modelContainer(runtime.modelContainer)
     }
 }
 ```
@@ -99,7 +96,7 @@ struct RootView: View {
 }
 ```
 
-Both view models share the same runtime-backed ``SwiftDataPersistenceProvider`` instance, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
+Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore`` ports, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
 
 ### Switching sessions
 
@@ -160,36 +157,29 @@ Tasks run sequentially off `@MainActor`. Errors surface in ``ChatViewModel/backg
 
 ### Migrating from `configure(persistence:)`
 
-Pre-runtime BaseChatKit apps wired persistence by reading `@Environment(\.modelContext)` from a root view's `.task` and calling `chatViewModel.configure(persistence:)` once the SwiftData container was attached. ``BaseChatBootstrap`` collapses that into a single bootstrap call in `App.init()`.
+Pre-runtime BaseChatKit apps often wired persistence from a root view's `.task` and called `chatViewModel.configure(persistence:)` once stores were available. A ``ChatRuntimeBootstrap`` collapses that into a single bootstrap value in `App.init()` while keeping BaseChatUI behind runtime ports.
 
 **Before** — view-lifecycle late-binding:
 
 ```swift
-import SwiftData
 import SwiftUI
-import BaseChatPersistenceSwiftData
 import BaseChatInference
+import BaseChatRuntime
 import BaseChatUI
 
 @main
 struct LegacyApp: App {
     @State private var chatViewModel = ChatViewModel()
-    let modelContainer: ModelContainer
-
-    init() {
-        modelContainer = try! ModelContainer(for: ChatSessionRecord.self, ChatMessageRecord.self)
-    }
+    private let stores = AppStores.open()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(chatViewModel)
                 .task {
-                    let provider = SwiftDataPersistenceProvider(modelContext: modelContainer.mainContext)
-                    chatViewModel.configure(persistence: provider)
+                    chatViewModel.configure(persistence: stores)
                 }
         }
-        .modelContainer(modelContainer)
     }
 }
 ```
@@ -197,29 +187,23 @@ struct LegacyApp: App {
 **After** — runtime-driven bootstrap:
 
 ```swift
-import SwiftData
 import SwiftUI
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatUI
 
 @main
 struct ModernApp: App {
-    private let runtime: BaseChatBootstrap
+    private let runtime: any ChatRuntimeBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
-                appName: "My App",
-                bundleIdentifier: "com.example.myapp"
-            )
-        )
+        let inferenceService = InferenceService()
+        let runtime = AppRuntime.make(inferenceService: inferenceService)
         self.runtime = runtime
 
-        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        let chatVM = ChatViewModel(inferenceService: inferenceService)
         chatVM.configure(runtime: runtime)
         _chatViewModel = State(initialValue: chatVM)
 
@@ -234,29 +218,15 @@ struct ModernApp: App {
                 .environment(chatViewModel)
                 .environment(sessionManager)
         }
-        .modelContainer(runtime.modelContainer)
     }
 }
 ```
 
-Both view models must be configured from the runtime: `ChatViewModel.configure(runtime:)` wires persistence for chat sessions, and `SessionManagerViewModel.configure(runtime:)` wires persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. The MinimalExample app shows the canonical pattern. `@Query` and `@Environment(\.modelContext)` views still work because `runtime.modelContainer` is attached to the scene via the standard `.modelContainer(_:)` modifier. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
+Both view models must be configured from the runtime: `ChatViewModel.configure(runtime:)` wires persistence for chat sessions, and `SessionManagerViewModel.configure(runtime:)` wires persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
 
-Apps using a second ``ModelContainer`` for non-chat data should construct it independently and attach it via a separate `.modelContainer(_:)` modifier alongside `runtime.modelContainer`. The runtime only owns the chat schema:
+Attach any persistence-specific scene modifiers from the app or persistence target. BaseChatUI only requires the runtime-port values exposed by ``ChatRuntimeBootstrap``.
 
-```swift
-import SwiftData
-
-var body: some Scene {
-    WindowGroup {
-        RootView()
-            .environment(chatViewModel)
-    }
-    .modelContainer(runtime.modelContainer)
-    .modelContainer(analyticsContainer)
-}
-```
-
-Keep `configure(persistence:)` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. ``BaseChatBootstrap`` is the SwiftData-backed bootstrap; runtime support for custom stores is tracked separately.
+Keep `configure(persistence:)` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. The shipped SwiftData bootstrap and custom stores both satisfy the same runtime-port boundary.
 
 ## Next Steps
 

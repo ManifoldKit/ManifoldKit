@@ -1,6 +1,5 @@
 import Foundation
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 // MARK: - LoadIntent
@@ -8,7 +7,7 @@ import BaseChatInference
 /// The two kinds of load request that can be dispatched to the coordinator.
 enum LoadIntent {
     case localModel(ModelInfo)
-    case cloudEndpoint(APIEndpoint)
+    case cloudEndpoint(APIEndpointRecord)
 }
 
 // MARK: - ModelLoadCoordinator
@@ -192,7 +191,7 @@ final class ModelLoadCoordinator {
         }
     }
 
-    func loadCloudEndpointInternal(_ endpoint: APIEndpoint, generation: UInt64?) async {
+    func loadCloudEndpointInternal(_ endpoint: APIEndpointRecord, generation: UInt64?) async {
         guard beginLoadUIState(generation: generation) else { return }
         let bridge = Task { @MainActor [weak self] in
             await self?.observeModelLoadProgress(generation: generation)

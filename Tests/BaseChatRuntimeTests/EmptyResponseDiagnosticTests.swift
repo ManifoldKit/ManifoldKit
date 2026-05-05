@@ -129,4 +129,55 @@ final class EmptyResponseDiagnosticTests: XCTestCase {
         XCTAssertTrue(persistedAsst, "Happy path: assistant should persist")
         XCTAssertTrue(box.snapshot.isEmpty, "Observer must not fire when the assistant streamed content")
     }
+
+    func test_emptyStreamError_doesNotFireObserver() async throws {
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = []
+        backend.shouldThrowInsideStream = InferenceError.inferenceFailure("empty failure")
+
+        let inference = InferenceService(backend: backend, name: "FailingBackend")
+        let store = FakeMessageStore()
+        let box = DiagnosticBox()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            sessionStore: nil,
+            inferenceService: inference,
+            pipeline: nil,
+            emptyResponseObserver: { d in box.append(d) }
+        )
+
+        let drain = Task.detached { [runtime] in
+            for await event in runtime.events {
+                if case .streamFinished = event { return }
+            }
+        }
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "fail empty"))
+        try await wait(for: drain)
+
+        XCTAssertTrue(box.snapshot.isEmpty,
+                      "Observer must not fire when an empty turn failed instead of being dropped")
+        let persisted = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(persisted.filter { $0.role == .assistant }.count, 0,
+                       "Failed empty assistant must remain unpersisted")
+    }
+
+    private func wait(for task: Task<Void, Never>) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try await Task.sleep(for: .seconds(3))
+                task.cancel()
+                throw TestError.deadlineElapsed
+            }
+            try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private enum TestError: Error {
+        case deadlineElapsed
+    }
 }

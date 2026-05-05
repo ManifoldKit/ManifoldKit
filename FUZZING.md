@@ -18,6 +18,7 @@ On its first real-model smoke run against `qwen3.5:4b` via Ollama, the harness l
 - [Adding a New Detector](#adding-a-new-detector)
 - [Real-Bug Rediscovery Recipes](#real-bug-rediscovery-recipes)
 - [Calibration Corpus](#calibration-corpus)
+- [Regression Positioning](#regression-positioning)
 - [Known Gaps](#known-gaps)
 - [CI tiers](#ci-tiers)
 
@@ -324,6 +325,24 @@ All ten single-turn detectors pass both gates as of [#488](https://github.com/ro
 3. A new detector added to `DetectorRegistry.all` will fail `test_badCorpusCoverage_allDetectorsCovered` until at least one bad record is added for it.
 
 See `Sources/BaseChatTestSupport/FuzzCalibrationCorpus/README.md` for the full schema reference and corpus-group descriptions.
+
+---
+
+## Regression Positioning
+
+The fuzz harness should record the new architecture regressions as fixtures or documented gaps, but it should not become a broader CI gate by default. Keep the PR tier bounded to the existing mock/chaos smoke campaigns; promote any expensive real-backend campaign only after the detector or scenario has a deterministic fixture and an allowlist policy.
+
+Use this map when turning a runtime/backend bug into fuzz coverage:
+
+| Regression class | Fuzz representation | Gate position |
+|---|---|---|
+| Runtime empty/cancel/error finish-state | Prefer session-level fixtures, because these are turn-loop outcomes rather than single `RunRecord` text anomalies. Extend `Resources/session_scripts/rapid-send-cancel.json` or add a sibling script when the bug is reproducible through `SessionScriptRunner`; keep unit tests as the source of truth for exact terminal-event order. | Local/session-script smoke only until a session fixture corpus exists; do not add a required CI gate for it. |
+| Context trimming edge cases | Represent prompt-shape pressure with deterministic mock or scenario fixtures: overlong system prompts, assistant-only histories, latest-user preservation, `maxOutputTokens == nil`, reserve greater than context, and token-counter failure. Random prompt mutators are not a substitute for these boundary fixtures. | Unit/scenario tests first; optional `--backend mock --corpus-subset smoke` fuzz once fixture-backed. |
+| Tool-call streaming order | Use `--tools` plus `tool-call-validity` for structural tool-call findings, and add focused tool-stream records for the ordered event contract `toolCallStart -> toolCallArgumentsDelta -> toolCall`. Whole-call local backends and incremental cloud backends should have separate labeled records so ordering normalization is explicit. | Keep in tool contract tests or calibration fixtures; do not require real cloud fuzz in CI. |
+| Backend capability rejection / unsupported inputs | Treat negative requests as capability fixtures, not stochastic model prompts: unsupported images/tools/JSON/thinking should fail early with a clear error or be explicitly marked unsupported. Add bad records only when a detector can distinguish honest rejection from silent ignore. | Mock/fixture gate only; hardware traits remain opt-in. |
+| Server invalid-request handling | `fuzz-chat` drives `InferenceBackend`, not HTTP routes. Preserve invalid request bodies as server request-validation fixtures or a future server-specific fuzz corpus; link any generated backend finding back to the request validation test that owns the 4xx contract. | No new CI fuzz gate; server validation tests remain the gate. |
+
+When adding a new detector for any row above, add at least one labeled bad record and enough good records to keep the existing calibration thresholds meaningful. When the regression is multi-turn or request-level and cannot fit `RunRecord`, document the fixture gap here rather than forcing it into the single-turn corpus.
 
 ---
 

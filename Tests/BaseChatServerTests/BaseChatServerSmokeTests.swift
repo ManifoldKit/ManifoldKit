@@ -315,6 +315,98 @@ final class BaseChatServerSmokeTests: XCTestCase {
         }
     }
 
+    func testUnsupportedToolRequestReturnsClearInvalidRequestError() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let request = ChatCompletionRequest(
+                model: "tiny",
+                messages: [.init(role: "user", content: "hi")],
+                tools: [ChatCompletionTool(function: ChatCompletionFunctionDefinition(name: "lookup"))]
+            )
+            let body = try requestBody(request)
+
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .badRequest)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Capability errors must be JSON"
+                )
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                XCTAssertEqual(envelope.error.param, "tools")
+                XCTAssertEqual(envelope.error.code, "unsupported_capability")
+                XCTAssertTrue(envelope.error.message.contains("tool calling"))
+            }
+        }
+    }
+
+    func testUnsupportedStreamingResponseFormatReturnsJSONErrorBeforeSSE() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: FixedStreamingChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let request = ChatCompletionRequest(
+                model: "tiny",
+                messages: [.init(role: "user", content: "hi")],
+                stream: true,
+                responseFormat: ChatCompletionResponseFormat(type: .jsonObject)
+            )
+            let body = try requestBody(request)
+
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .badRequest)
+                XCTAssertTrue(
+                    response.headers[.contentType]?.contains("application/json") == true,
+                    "Pre-stream capability errors must be JSON"
+                )
+                XCTAssertNotEqual(response.headers[.contentType], "text/event-stream")
+                let envelope = try JSONDecoder().decode(
+                    ChatCompletionErrorEnvelope.self,
+                    from: Data(buffer: response.body)
+                )
+                XCTAssertEqual(envelope.error.type, "invalid_request_error")
+                XCTAssertEqual(envelope.error.param, "response_format")
+                XCTAssertTrue(envelope.error.message.contains("native JSON mode"))
+            }
+        }
+    }
+
+    func testToolRequestSucceedsWhenBackendAdvertisesToolCalling() async throws {
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(supportsToolCalling: true))
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"], backend: backend),
+            adapter: FixedChatAdapter(content: "tool ready")
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let request = ChatCompletionRequest(
+                model: "tiny",
+                messages: [.init(role: "user", content: "hi")],
+                tools: [ChatCompletionTool(function: ChatCompletionFunctionDefinition(name: "lookup"))],
+                toolChoice: .function(name: "lookup")
+            )
+            let body = try requestBody(request)
+
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+                let completion = try JSONDecoder().decode(ChatCompletionResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(completion.content, "tool ready")
+            }
+        }
+    }
+
     func testMalformedRequestBodyReturnsError() async throws {
         let server = ServerApp(
             backendProvider: FakeBackendProvider(models: ["tiny"]),
@@ -355,7 +447,12 @@ private func requestBody(_ request: ChatCompletionRequest) throws -> ByteBuffer 
 
 private struct FakeBackendProvider: ServerBackendProvider {
     let models: [String]
-    let backend = MockInferenceBackend()
+    let backend: any InferenceBackend
+
+    init(models: [String], backend: any InferenceBackend = MockInferenceBackend()) {
+        self.models = models
+        self.backend = backend
+    }
 
     func listModels() async throws -> [String] {
         models

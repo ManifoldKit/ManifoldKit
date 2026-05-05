@@ -111,6 +111,9 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             supportsStreaming: true,
             isRemote: true,
             supportsThinking: true,
+            // Responses API image input stays disabled until this backend encodes
+            // MessagePart.image as input_image content items.
+            supportsVision: BackendVisionCapability.openAIResponsesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )

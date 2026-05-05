@@ -149,7 +149,7 @@ final class ChatViewModelRegistryForwardingTests: XCTestCase {
         let vm = try makeViewModel()
 
         // Pre-condition: an endpoint is selected.
-        let endpoint = APIEndpoint(name: "Test", provider: .openAI)
+        let endpoint = APIEndpointRecord(name: "Test", provider: .openAI)
         vm.availableEndpoints = [endpoint]
         vm.selectedEndpoint = endpoint
         XCTAssertNotNil(vm.selectedEndpoint)

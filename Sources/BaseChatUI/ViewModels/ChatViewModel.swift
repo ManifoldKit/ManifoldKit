@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 /// Central view model for the chat interface.
@@ -77,6 +76,8 @@ public final class ChatViewModel {
         set { sessionController.persistence = newValue }
     }
 
+    var endpointStore: (any EndpointStore)?
+
     // MARK: - Session
 
     /// The currently active chat session. Set via `switchToSession(_:)`.
@@ -143,7 +144,7 @@ public final class ChatViewModel {
     }
 
     /// Enabled cloud endpoints available for selection.
-    public internal(set) var availableEndpoints: [APIEndpoint] = []
+    public internal(set) var availableEndpoints: [APIEndpointRecord] = []
 
     /// The model the user has selected in the sidebar.
     ///
@@ -161,7 +162,7 @@ public final class ChatViewModel {
 
     /// The cloud API endpoint the user has selected, or `nil` for local models.
     /// Setting this clears `selectedModel` and vice versa.
-    public var selectedEndpoint: APIEndpoint? {
+    public var selectedEndpoint: APIEndpointRecord? {
         didSet {
             guard !isSynchronizingSelection else { return }
             guard selectedEndpoint != nil, selectedModel != nil else { return }
@@ -572,6 +573,9 @@ public final class ChatViewModel {
     /// Handle to the in-flight ConversationRuntime stream, used to cancel it.
     var activeConversationStreamHandle: ConversationStreamHandle?
 
+    @ObservationIgnored
+    var endpointRefreshTask: Task<Void, Never>?
+
     // MARK: - ImageGenerationRuntime
     //
     // Optional sibling to `conversationRuntime` for the image-generation
@@ -779,6 +783,12 @@ public final class ChatViewModel {
         installRegistryObservation()
     }
 
+    deinit {
+        runtimeEventDrainTask?.cancel()
+        imageRuntimeEventDrainTask?.cancel()
+        endpointRefreshTask?.cancel()
+    }
+
     /// Re-installs an Observation tracker on ``modelRegistry/selectedModel``
     /// so direct writes to the registry (e.g. from the new explicit-init
     /// `ModelSelectionTabView` path) still run the endpoint-clear sync that
@@ -843,6 +853,14 @@ public final class ChatViewModel {
                 inferenceService: inferenceService
             )
             startRuntimeEventDrain()
+        }
+    }
+
+    public func configure(endpointStore: any EndpointStore) {
+        self.endpointStore = endpointStore
+        endpointRefreshTask?.cancel()
+        endpointRefreshTask = Task { [weak self] in
+            await self?.refreshAvailableEndpointsFromStore()
         }
     }
 

@@ -4,7 +4,7 @@ SwiftUI views and view models for building on-device and cloud-connected chat in
 
 ## Overview
 
-BaseChatUI provides the view layer for BaseChatKit. It depends on ``BaseChatRuntime`` (the persistence-free orchestration target) and, as an interim measure, on ``BaseChatPersistenceSwiftData`` for the `APIEndpoint` `@Model` type — that coupling is scheduled to be removed once the endpoint surface is decoupled from SwiftData. It has no knowledge of specific inference backends. Drop ``ChatView`` into your app and supply a ``ChatViewModel`` to get a fully-featured chat interface: streaming generation, model selection, and session management.
+BaseChatUI provides the view layer for BaseChatKit. It depends on ``BaseChatRuntime`` (the persistence-free orchestration target) and exposes cloud endpoint selection through SwiftData-free `APIEndpointRecord` values. SwiftData `APIEndpoint` rows are converted by the persistence adapters before reaching UI state. It has no knowledge of specific inference backends. Drop ``ChatView`` into your app and supply a ``ChatViewModel`` to get a fully-featured chat interface: streaming generation, model selection, and session management.
 
 `ChatInputBar` automatically exposes image attachments only when the active backend's ``BackendCapabilities/supportsVision`` flag is `true`. If a host routes image-bearing history to a text-only backend anyway, the runtime fails fast rather than silently flattening the images away.
 
@@ -14,30 +14,28 @@ Turn-loop orchestration — send, regenerate, edit, cancel, and branch — lives
 
 ```swift
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
-import SwiftData
 import SwiftUI
 
 @main
 struct MyApp: App {
-    let runtime: BaseChatBootstrap
+    let runtime: any ChatRuntimeBootstrap
+    let inferenceService: InferenceService
     let chatVM: ChatViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
-                appName: "MyApp",
-                bundleIdentifier: Bundle.main.bundleIdentifier ?? "com.example.myapp"
-            )
-        )
+        let inferenceService = InferenceService()
+        DefaultBackends.register(with: inferenceService)
+
+        // AppRuntime lives in your app composition root. It may wrap the
+        // shipped SwiftData bootstrap or your own SessionStore/MessageStore.
+        let runtime = AppRuntime.make(inferenceService: inferenceService)
         self.runtime = runtime
+        self.inferenceService = inferenceService
 
-        DefaultBackends.register(with: runtime.inferenceService)
-
-        let chatVM = ChatViewModel(inferenceService: runtime.inferenceService)
+        let chatVM = ChatViewModel(inferenceService: inferenceService)
         chatVM.configure(runtime: runtime)
         chatVM.refreshModels()
 
@@ -56,7 +54,6 @@ struct MyApp: App {
             ContentView()
                 .environment(chatVM)
         }
-        .modelContainer(runtime.modelContainer)
     }
 }
 ```

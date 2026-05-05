@@ -440,6 +440,14 @@ internal struct ChatCompletionErrorEnvelope: Codable, Equatable, Sendable {
 
     internal static func from(_ error: Error) -> ChatCompletionErrorEnvelope {
         if let serverError = error as? ServerError {
+            if case .invalidRequest(let message, let param, let code) = serverError {
+                return ChatCompletionErrorEnvelope(
+                    message: message,
+                    type: "invalid_request_error",
+                    param: param,
+                    code: code
+                )
+            }
             return ChatCompletionErrorEnvelope(message: serverError.description, type: "server_error")
         }
         return ChatCompletionErrorEnvelope(message: String(describing: error), type: "server_error")

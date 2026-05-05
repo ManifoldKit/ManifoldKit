@@ -246,3 +246,10 @@ public final class BaseChatBootstrap {
         return KeychainService.sweep(validAccounts: validAccounts)
     }
 }
+
+extension BaseChatBootstrap: ChatRuntimeBootstrap {
+    public var persistenceStores: any SessionStore & MessageStore { persistence }
+    public var apiEndpointStore: any EndpointStore { endpointStore }
+    public var diagnosticsService: DiagnosticsService { diagnostics }
+    public var imageGenerationRuntime: ImageGenerationRuntime? { imageRuntime }
+}

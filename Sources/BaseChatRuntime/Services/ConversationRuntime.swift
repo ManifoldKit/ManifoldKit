@@ -972,6 +972,7 @@ public final class ConversationRuntime: Sendable {
         var accumulated = ""
         var emptyResponse = true
         var streamFailed: ConversationError?
+        var tokenUsage: (promptTokens: Int, completionTokens: Int)?
 
         var consumer = GenerationStreamConsumer(loopDetectionEnabled: loopDetectionEnabled)
         var batcher = StreamingTokenBatcher(
@@ -1046,10 +1047,8 @@ public final class ConversationRuntime: Sendable {
                         InferenceError.inferenceFailure("Tool-call loop stopped after \(iterations) iterations.")
                     )))
 
-                case .recordUsage:
-                    // Usage events are advisory; adapters that need token counts
-                    // observe InferenceService.lastTokenUsage directly.
-                    break
+                case .recordUsage(let prompt, let completion):
+                    tokenUsage = (prompt, completion)
 
                 case .ignore:
                     break
@@ -1106,10 +1105,20 @@ public final class ConversationRuntime: Sendable {
         // sends do not cross-contaminate prompt/completion counts. Read on
         // the main actor — `InferenceService.lastTokenUsage` is MainActor-
         // isolated.
-        let usage = await readLastTokenUsage()
+        let usage: (promptTokens: Int, completionTokens: Int)?
+        if let tokenUsage {
+            usage = tokenUsage
+        } else {
+            usage = await readLastTokenUsage()
+        }
         if let usage {
             assistantMessage.promptTokens = usage.promptTokens
             assistantMessage.completionTokens = usage.completionTokens
+            emit(.tokenUsageRecorded(
+                messageID: assistantID,
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens
+            ))
         }
 
         let reason: FinishReason
@@ -1287,6 +1296,7 @@ public final class ConversationRuntime: Sendable {
             Log.persistence.warning(
                 "ConversationRuntime: touchSession failed: \(error.localizedDescription)"
             )
+            emit(.sessionTouchFailed(sessionID: sessionID))
         }
     }
 

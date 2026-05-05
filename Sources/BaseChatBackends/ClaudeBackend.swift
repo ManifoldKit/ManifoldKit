@@ -97,7 +97,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // image attachments before we ever build a request body, so an
             // outdated model name surfaces a clear "not vision-capable"
             // error rather than a 400 from Anthropic.
-            supportsVision: Self.isVisionCapableModel(modelName),
+            supportsVision: BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )
@@ -108,29 +108,6 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// instead so callers can prompt the user to drop attachments without
     /// burning a round-trip.
     static let maxImagesPerTurn: Int = 5
-
-    /// Returns `true` when `modelName` belongs to a Claude family that
-    /// accepts image content blocks. The matcher is intentionally
-    /// permissive — any name containing a vision-capable family token
-    /// counts, so dated-suffix variants (`claude-3-5-sonnet-20241022`) and
-    /// vendor aliases (`anthropic.claude-sonnet-4`) both light up.
-    static func isVisionCapableModel(_ modelName: String) -> Bool {
-        let lowered = modelName.lowercased()
-        // Explicit denylist: every Claude name that pre-dates vision support.
-        // These have to be rejected even when the broader `claude-*` match
-        // below would otherwise pass.
-        if lowered.contains("claude-2") || lowered.contains("claude-instant") {
-            return false
-        }
-        // Allowlist of vision-capable family tokens. Update when Anthropic
-        // ships a new family; the deny rules above fence off the legacy
-        // text-only models so a wildcard `claude-` match would be unsafe.
-        let visionFamilies = [
-            "claude-3", "claude-sonnet-4", "claude-opus-4", "claude-haiku-4",
-            "claude-4", "claude-sonnet-3", "claude-opus-3", "claude-haiku-3",
-        ]
-        return visionFamilies.contains(where: lowered.contains)
-    }
 
     // MARK: - Tool-Aware Conversation History
 
@@ -220,7 +197,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // driven directly — e.g. the OpenAI-compat server — so keep the
             // belt-and-suspenders check here.)
             let totalImages = CloudImageEncoding.imageCount(in: structured)
-            if totalImages > 0, !Self.isVisionCapableModel(modelName) {
+            if totalImages > 0, !BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName) {
                 throw InferenceError.inferenceFailure(
                     "Model \"\(modelName)\" does not support image input. Switch to a Claude 3, 3.5, 3.7, or 4 family model and retry."
                 )

@@ -67,7 +67,7 @@ internal struct ServerApp: Sendable {
                 metrics.recordFailure()
                 metrics.recordRequestCompleted()
                 let envelope = ChatCompletionErrorEnvelope.from(error)
-                return errorResponse(envelope.error.message, status: .internalServerError)
+                return jsonResponse(envelope, status: httpStatus(for: error))
             }
         }
 
@@ -85,7 +85,7 @@ internal struct ServerApp: Sendable {
                 metrics.recordFailure()
                 metrics.recordRequestCompleted()
                 let envelope = ChatCompletionErrorEnvelope.from(error)
-                return errorResponse(envelope.error.message, status: .internalServerError)
+                return jsonResponse(envelope, status: httpStatus(for: error))
             }
         }
 
@@ -153,7 +153,7 @@ internal struct ServerApp: Sendable {
         }
         metrics.recordGenerationStarted()
         do {
-            let backend = try await backendProvider.backend(for: ServerBackendRequest(model: request.model))
+            let backend = try await validatedBackend(for: request)
             let response = try await adapter.response(for: request, using: backend)
             await generationGate.signal()
             metrics.recordGenerationCompleted(tokenCount: tokenCount(in: response.contentText))
@@ -166,6 +166,22 @@ internal struct ServerApp: Sendable {
     }
 
     private func streamingChatCompletionResponse(for request: ChatCompletionRequest) async throws -> Response {
+        do {
+            try await generationGate.wait()
+        } catch is CancellationError {
+            return errorResponse("Request was cancelled.", status: .serviceUnavailable)
+        }
+        metrics.recordGenerationStarted()
+
+        let backend: any InferenceBackend
+        do {
+            backend = try await validatedBackend(for: request)
+        } catch {
+            await generationGate.signal()
+            metrics.recordGenerationFailed()
+            throw error
+        }
+
         var headers = HTTPFields()
         headers[.contentType] = "text/event-stream"
         headers[.cacheControl] = "no-cache"
@@ -173,18 +189,8 @@ internal struct ServerApp: Sendable {
         headers[HTTPField.Name("X-Accel-Buffering")!] = "no"
 
         let body = ResponseBody { writer in
-            do {
-                try await generationGate.wait()
-            } catch is CancellationError {
-                return
-            } catch {
-                // AsyncSemaphore.wait() only throws CancellationError; any other error is unexpected — abort the stream.
-                return
-            }
-            metrics.recordGenerationStarted()
             var streamedTokenCount = 0
             do {
-                let backend = try await backendProvider.backend(for: ServerBackendRequest(model: request.model))
                 let chunks = try adapter.chunks(for: request, using: backend)
                 let encoder = JSONEncoder()
                 for try await chunk in chunks {
@@ -204,6 +210,72 @@ internal struct ServerApp: Sendable {
         }
 
         return Response(status: .ok, headers: headers, body: body)
+    }
+
+    private func validatedBackend(for request: ChatCompletionRequest) async throws -> any InferenceBackend {
+        let backend = try await backendProvider.backend(for: ServerBackendRequest(model: request.model))
+        try validateRequestCapabilities(for: request, backend: backend)
+        return backend
+    }
+
+    private func validateRequestCapabilities(for request: ChatCompletionRequest, backend: any InferenceBackend) throws {
+        let capabilities = backend.capabilities
+        let unsupportedCode = "unsupported_capability"
+
+        if request.messages.contains(where: { $0.role == .system || $0.role == .developer }),
+           !capabilities.supportsSystemPrompt {
+            throw ServerError.invalidRequest(
+                message: "This backend does not support system or developer messages; remove those messages or choose a backend with system-prompt support.",
+                param: "messages",
+                code: unsupportedCode
+            )
+        }
+
+        if request.tools?.isEmpty == false, !capabilities.supportsToolCalling {
+            throw ServerError.invalidRequest(
+                message: "This backend does not support tool calling; remove tools or choose a tool-capable backend.",
+                param: "tools",
+                code: unsupportedCode
+            )
+        }
+
+        if let toolChoice = request.toolChoice,
+           toolChoice.requiresToolCalling,
+           !capabilities.supportsToolCalling {
+            throw ServerError.invalidRequest(
+                message: "This backend does not support tool_choice values that require tool calling; remove tool_choice or choose a tool-capable backend.",
+                param: "tool_choice",
+                code: unsupportedCode
+            )
+        }
+
+        switch request.responseFormat?.type {
+        case .jsonObject:
+            if !capabilities.supportsNativeJSONMode {
+                throw ServerError.invalidRequest(
+                    message: "response_format json_object requires a backend that supports native JSON mode.",
+                    param: "response_format",
+                    code: unsupportedCode
+                )
+            }
+        case .jsonSchema:
+            if !capabilities.supportsStructuredOutput {
+                throw ServerError.invalidRequest(
+                    message: "response_format json_schema requires a backend that supports structured output.",
+                    param: "response_format",
+                    code: unsupportedCode
+                )
+            }
+        case .text, .none:
+            break
+        }
+    }
+
+    private func httpStatus(for error: Error) -> HTTPResponse.Status {
+        if case .invalidRequest = error as? ServerError {
+            return .badRequest
+        }
+        return .internalServerError
     }
 
     private func metricsResponse() -> Response {
@@ -233,6 +305,17 @@ internal struct ServerApp: Sendable {
     private func tokenCount(in chunk: ChatCompletionChunk) -> Int {
         chunk.choices.reduce(0) { count, choice in
             count + tokenCount(in: choice.delta.content ?? "")
+        }
+    }
+}
+
+private extension ChatCompletionToolChoice {
+    var requiresToolCalling: Bool {
+        switch self {
+        case .function, .required:
+            return true
+        case .auto, .none:
+            return false
         }
     }
 }

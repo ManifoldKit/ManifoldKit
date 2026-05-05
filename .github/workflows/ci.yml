@@ -165,25 +165,13 @@ jobs:
         # BaseChatUI must not reach the SwiftData adapter layer directly.
         # All persistence access goes through the port protocols in BaseChatRuntime.
         #
-        # Known exceptions (tracked for cleanup):
-        #   - RuntimeConfiguration.swift: bootstrap wiring that references BaseChatBootstrap
-        #     (which owns ModelContainer — can't be in BaseChatRuntime).
-        #   - ChatViewModel*.swift + ModelLoadCoordinator.swift: use APIEndpoint which is
-        #     currently a typealias for BaseChatSchemaV3.APIEndpoint (@Model). These files
-        #     must be updated to use APIEndpointRecord instead — tracked as Phase 2 follow-up.
         run: |
           set -euo pipefail
-          # `+` and `.` are escaped because grep -vE treats them as regex
-          # metacharacters; without escaping, `ChatViewModel+ModelLoading.swift`
-          # parses as `ChatViewModel` + one-or-more `l` + `ModelLoading.swift`,
-          # which never matches the literal filename containing a `+`.
-          KNOWN_EXCEPTIONS='RuntimeConfiguration\.swift|ChatViewModel\.swift|ChatViewModel\+ModelLoading\.swift|ChatViewModel\+SessionManagement\.swift|ModelLoadCoordinator\.swift|ExportButton\.swift'
-          if grep -rn --include='*.swift' 'import BaseChatPersistenceSwiftData' Sources/BaseChatUI/ \
-             | grep -vE "$KNOWN_EXCEPTIONS"; then
+          if grep -rn --include='*.swift' 'import BaseChatPersistenceSwiftData' Sources/BaseChatUI/; then
             echo "::error::BaseChatUI must not import BaseChatPersistenceSwiftData directly."
             exit 1
           fi
-          echo "BaseChatUI -> BaseChatPersistenceSwiftData edge is clean (known exceptions excluded)."
+          echo "BaseChatUI -> BaseChatPersistenceSwiftData edge is clean."
 
       - name: Lint — Macro plugin builds inside the SwiftPM sandbox
         # SwiftPM compiles macro plugins (`BaseChatMacrosPlugin`) inside a

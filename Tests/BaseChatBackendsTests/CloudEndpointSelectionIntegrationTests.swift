@@ -93,7 +93,16 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         return session
     }
 
-    private func persistEndpoint(_ endpoint: APIEndpoint) throws {
+    private func persistEndpoint(_ record: APIEndpointRecord) throws {
+        let endpoint = APIEndpoint(
+            name: record.name,
+            provider: record.provider,
+            baseURL: record.baseURL,
+            modelName: record.modelName
+        )
+        endpoint.id = record.id
+        endpoint.createdAt = record.createdAt
+        endpoint.isEnabled = record.isEnabled
         context.insert(endpoint)
         try context.save()
     }
@@ -120,7 +129,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     // MARK: - Select → Load → isModelLoaded
 
     func test_selectedEndpointAndLoad_setsIsModelLoaded() async throws {
-        let endpoint = APIEndpoint(
+        let endpoint = APIEndpointRecord(
             name: "Local Ollama",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -151,7 +160,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let uniqueHost = UUID().uuidString + ".invalid"
 
         try await makeSession(title: "Cloud Chat")
-        let endpoint = APIEndpoint(
+        let endpoint = APIEndpointRecord(
             name: "Local LM Studio",
             provider: .lmStudio,
             baseURL: "https://\(uniqueHost):1234",
@@ -212,7 +221,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
     func test_modelAndEndpointSelection_areMutuallyExclusive() {
         let localModel = makeLocalModel()
-        let endpoint = APIEndpoint(
+        let endpoint = APIEndpointRecord(
             name: "Cloud Endpoint",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -238,13 +247,13 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     // MARK: - Session Persistence
 
     func test_sessionRestoresSelectedEndpoint() async throws {
-        let endpointA = APIEndpoint(
+        let endpointA = APIEndpointRecord(
             name: "Endpoint A",
             provider: .ollama,
             baseURL: "http://localhost:11434",
             modelName: "llama3.2"
         )
-        let endpointB = APIEndpoint(
+        let endpointB = APIEndpointRecord(
             name: "Endpoint B",
             provider: .lmStudio,
             baseURL: "http://localhost:1234",
@@ -287,7 +296,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
     func test_switchingLocalToCloudAndBack_preservesSessionState() async throws {
         let localModel = makeLocalModel()
-        let endpoint = APIEndpoint(
+        let endpoint = APIEndpointRecord(
             name: "Cloud Endpoint",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -335,7 +344,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     // MARK: - Error Paths
 
     func test_loadCloudEndpoint_invalidURL_surfacesError() async throws {
-        let invalidEndpoint = APIEndpoint(
+        let invalidEndpoint = APIEndpointRecord(
             name: "Bad URL",
             provider: .custom,
             baseURL: "http://foo\0bar",
@@ -354,7 +363,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         XCTAssertFalse(vm.isModelLoaded)
 
         // Sabotage: a valid URL should not produce an invalid-URL error.
-        let validEndpoint = APIEndpoint(
+        let validEndpoint = APIEndpointRecord(
             name: "Valid URL",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -371,7 +380,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let claudeVM = makeViewModel { _ in
             ConfiguringClaudeCloudBackend(urlSession: Self.makeMockURLSession())
         }
-        let claudeEndpoint = APIEndpoint(
+        let claudeEndpoint = APIEndpointRecord(
             name: "Claude Endpoint",
             provider: .claude,
             baseURL: "https://api.anthropic.com",
@@ -395,7 +404,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let ollamaVM = makeViewModel { [cloudSession] _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
-        let ollamaEndpoint = APIEndpoint(
+        let ollamaEndpoint = APIEndpointRecord(
             name: "Ollama (no key)",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -415,7 +424,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
             )
         }
         // https:// is required for non-localhost endpoints per endpoint validation.
-        let networkEndpoint = APIEndpoint(
+        let networkEndpoint = APIEndpointRecord(
             name: "Flaky Endpoint",
             provider: .ollama,
             baseURL: "https://\(uniqueHost):11434",
@@ -464,7 +473,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
             let privateVM = makeViewModel { [cloudSession] _ in
                 ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
             }
-            let endpoint = APIEndpoint(
+            let endpoint = APIEndpointRecord(
                 name: "Private",
                 provider: .custom,
                 baseURL: baseURL,
@@ -483,7 +492,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let validVM = makeViewModel { [cloudSession] _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
-        let validEndpoint = APIEndpoint(
+        let validEndpoint = APIEndpointRecord(
             name: "Valid",
             provider: .ollama,
             baseURL: "http://localhost:11434",
@@ -497,7 +506,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let imdsVM = makeViewModel { [cloudSession] _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
-        let imdsEndpoint = APIEndpoint(
+        let imdsEndpoint = APIEndpointRecord(
             name: "IMDS",
             provider: .custom,
             baseURL: "https://169.254.169.254/latest/meta-data",
@@ -514,7 +523,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let insecureVM = makeViewModel { [cloudSession] _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
-        let insecureEndpoint = APIEndpoint(
+        let insecureEndpoint = APIEndpointRecord(
             name: "Insecure",
             provider: .custom,
             baseURL: "http://api.example.com",
@@ -530,7 +539,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let httpsVM = makeViewModel { [cloudSession] _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSession!)
         }
-        let httpsEndpoint = APIEndpoint(
+        let httpsEndpoint = APIEndpointRecord(
             name: "Secure",
             provider: .custom,
             baseURL: "https://api.example.com",

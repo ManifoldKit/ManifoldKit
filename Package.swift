@@ -189,12 +189,10 @@ let package = Package(
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
-        // UI: SwiftUI views and view models — needs inference, runtime, and persistence.
-        // TODO: decouple APIEndpoint (@Model) out of BaseChatUI into BaseChatRuntime
-        // so the CI lint rule (BaseChatUI must not import BaseChatPersistenceSwiftData) can be enforced.
+        // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
         .target(
             name: "BaseChatUI",
-            dependencies: ["BaseChatRuntime", "BaseChatPersistenceSwiftData", "BaseChatInference"],
+            dependencies: ["BaseChatRuntime", "BaseChatInference"],
             path: "Sources/BaseChatUI",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),

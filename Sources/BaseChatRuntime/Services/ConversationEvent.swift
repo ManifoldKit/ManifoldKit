@@ -8,7 +8,7 @@ import BaseChatInference
 // themselves and key off the underlying ``GenerationStream`` directly —
 // they do not consume this event surface.
 //
-// Phase 1.2.5 PR-A ships the full 12-case enum but only emits a subset
+// Phase 1.2.5 PR-A ships the initial event enum but only emits a subset
 // from the send sub-flow:
 //   - `.beforeContextAssembly`, `.contextAssembled` — fire each turn (with
 //     empty slots when no providers are registered)
@@ -21,11 +21,11 @@ import BaseChatInference
 // later PRs as the corresponding behaviour migrates from
 // ``GenerationQueue`` and ``ChatViewModel``.
 //
-// Phase 1.2.5 PR-B adds `.messageRemoved` (the 13th case) and emits it
+// Phase 1.2.5 PR-B adds `.messageRemoved` and emits it
 // from the regenerate sub-flow when the runtime deletes the last assistant
 // message before replacing it.
 //
-// Phase 1.2.5 PR-C adds `.messageUpdated` (the 14th case) and emits it
+// Phase 1.2.5 PR-C adds `.messageUpdated` and emits it
 // from the edit sub-flow when the runtime updates an existing message's
 // content in place.
 
@@ -79,6 +79,12 @@ public enum ConversationEvent: Sendable {
     /// display.
     case tokenEmitted(messageID: ChatMessageRecord.ID, delta: String)
 
+    /// The backend reported token usage for the turn. Fires before the
+    /// terminal stream event when usage is available, including partial-output
+    /// error and cancellation paths. The runtime also copies these counts onto
+    /// the persisted assistant message when one is saved.
+    case tokenUsageRecorded(messageID: ChatMessageRecord.ID, promptTokens: Int, completionTokens: Int)
+
     /// The model began emitting a thinking block. Fires when the first thinking
     /// token arrives. Adapters use this to show a "Thinking…" indicator.
     case thinkingStarted(messageID: ChatMessageRecord.ID)
@@ -107,6 +113,11 @@ public enum ConversationEvent: Sendable {
     /// error UI; the runtime has already cleaned up partial state by the
     /// time this event fires.
     case errorRaised(ConversationError)
+
+    /// Updating the session timestamp failed. This is intentionally distinct
+    /// from ``errorRaised(_:)`` because sidebar recency is best-effort and
+    /// must not fail the user's turn.
+    case sessionTouchFailed(sessionID: UUID)
 
     // MARK: Context pipeline (runtime hook points)
 

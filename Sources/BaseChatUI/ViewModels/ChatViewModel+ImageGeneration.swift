@@ -109,17 +109,15 @@ extension ChatViewModel {
     /// Cancels the existing image-runtime drain task (if any) and starts a
     /// fresh one for `runtime`.
     ///
-    /// Strong `self` capture: the drain task is the long-lived owner of the
-    /// progress dictionary's update path and must not silently drop events
-    /// if the host releases its last `ChatViewModel` reference mid-flight.
-    /// The `@MainActor` ownership model means the view model lives for the
-    /// host's lifetime in practice; per the CLAUDE.md memory note on
-    /// `Task.detached`, weak capture would risk dropping the work.
+    /// Weak capture mirrors the chat-runtime drain: the host owns the view
+    /// model, and the drain task must not keep old test or preview instances
+    /// alive after their bootstrap and SwiftData container tear down.
     private func startImageRuntimeEventDrain(runtime: ImageGenerationRuntime) {
         imageRuntimeEventDrainTask?.cancel()
-        imageRuntimeEventDrainTask = Task { [self] in
+        imageRuntimeEventDrainTask = Task { [weak self] in
             for await event in runtime.events {
                 if Task.isCancelled { return }
+                guard let self else { return }
                 self.handle(imageRuntimeEvent: event)
             }
         }

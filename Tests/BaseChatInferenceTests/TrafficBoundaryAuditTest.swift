@@ -41,8 +41,10 @@ import XCTest
 ///    code at build time).
 ///
 /// 6. **Import-graph boundary** — locks in the layered architecture from
-///    `CLAUDE.md`. UI must not depend on Backends; Inference must not
-///    depend on Core or Backends.
+///    `CLAUDE.md`. UI must not depend on Backends or SwiftData persistence;
+///    Inference must not depend on Core or Backends. The rule checks both
+///    source imports and the SwiftPM manifest so a target dependency cannot
+///    reintroduce a forbidden module before an import lands.
 ///
 /// 7. **Trait gate sanity** — every `#if`/`#elseif` identifier in
 ///    `Sources/` that looks trait-named (TitleCase or UPPERCASE, not a
@@ -368,8 +370,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // (file-path-prefix, forbidden-imports, why)
         let rules: [(prefix: String, forbidden: [String], why: String)] = [
             ("BaseChatUI/",
-             ["BaseChatBackends"],
-             "BaseChatUI must not depend on BaseChatBackends. UI is consumer-facing; backend code carries cloud-SDK weight that local-only builds want to exclude."),
+             ["BaseChatBackends", "BaseChatPersistenceSwiftData"],
+             "BaseChatUI must not depend on BaseChatBackends or BaseChatPersistenceSwiftData. UI is consumer-facing; backend code carries cloud-SDK weight and persistence adapters belong behind BaseChatRuntime ports."),
             ("BaseChatCore/",
              ["BaseChatBackends"],
              "BaseChatCore is the persistence layer; backend code belongs above it."),
@@ -399,6 +401,42 @@ final class TrafficBoundaryAuditTest: XCTestCase {
                         ))
                     }
                 }
+            }
+        }
+
+        Self.assertNoOffenders(offenders)
+    }
+
+    func test_rule6_packageManifestTargetBoundaries() throws {
+        let packageURL = try Self.locatePackageManifest()
+        let manifest = try String(contentsOf: packageURL, encoding: .utf8)
+        var offenders: [Offender] = []
+
+        let rules: [(target: String, forbidden: [String], why: String)] = [
+            ("BaseChatUI",
+             ["BaseChatBackends", "BaseChatPersistenceSwiftData", "BaseChatUIModelManagement"],
+             "BaseChatUI must stay a chat-only consumer surface. Backends, SwiftData adapters, and model-management UI belong behind lower-layer ports or sibling modules."),
+            ("BaseChatUIModelManagement",
+             ["BaseChatPersistenceSwiftData"],
+             "BaseChatUIModelManagement must use BaseChatRuntime endpoint-store ports instead of depending on concrete SwiftData adapters.")
+        ]
+
+        for rule in rules {
+            guard let block = Self.manifestTargetBlock(in: manifest, targetName: rule.target) else {
+                XCTFail("Could not locate Package.swift target '\(rule.target)' for Rule 6 manifest boundary audit.")
+                continue
+            }
+
+            for forbidden in rule.forbidden where Self.manifestTarget(block.text, declaresDependencyOn: forbidden) {
+                offenders.append(.init(
+                    rule: 6,
+                    ruleName: "Package manifest target boundary",
+                    file: "Package.swift",
+                    line: block.startLine,
+                    text: ".target(name: \"\(rule.target)\", dependencies: ... \(forbidden) ...)",
+                    why: rule.why,
+                    fix: "Remove the \(forbidden) dependency from \(rule.target). Depend on BaseChatRuntime/BaseChatInference ports or closure-inject the sibling surface instead."
+                ))
             }
         }
 
@@ -639,6 +677,52 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         if line.hasPrefix("///") { return false }
         if line.hasPrefix("*") { return false }
         return true
+    }
+
+    // MARK: - Rule 6 helpers (Package.swift target boundaries)
+
+    private static func manifestTargetBlock(
+        in manifest: String,
+        targetName: String
+    ) -> (text: String, startLine: Int)? {
+        let marker = ".target("
+        var searchStart = manifest.startIndex
+
+        while let targetStart = manifest.range(of: marker, range: searchStart..<manifest.endIndex)?.lowerBound {
+            var depth = 0
+            var end = targetStart
+            var index = targetStart
+            while index < manifest.endIndex {
+                let character = manifest[index]
+                if character == "(" {
+                    depth += 1
+                } else if character == ")" {
+                    depth -= 1
+                    if depth == 0 {
+                        end = manifest.index(after: index)
+                        break
+                    }
+                }
+                index = manifest.index(after: index)
+            }
+
+            guard end > targetStart else { return nil }
+            let block = String(manifest[targetStart..<end])
+            if block.contains("name: \"\(targetName)\"") {
+                let startLine = manifest[..<targetStart].reduce(1) { count, character in
+                    character == "\n" ? count + 1 : count
+                }
+                return (block, startLine)
+            }
+
+            searchStart = end
+        }
+
+        return nil
+    }
+
+    private static func manifestTarget(_ block: String, declaresDependencyOn dependency: String) -> Bool {
+        block.contains("\"\(dependency)\"") || block.contains("name: \"\(dependency)\"")
     }
 
     // MARK: - Reporting
@@ -921,7 +1005,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         XCTAssertEqual(parsed, ["MLX", "Llama", "Ollama", "CloudSaaS", "Fuzz"])
     }
 
-    func test_sabotage_rule6_detectsForbiddenImports() {
+    func test_sabotage_rule6_detectsForbiddenImportsAndManifestDependencies() {
         // Rule 6 is implemented inline in test_rule6_importGraphBoundary
         // (it's a per-line `import X` check rather than a single regex), so
         // the sabotage check verifies the prefix-matching logic works.
@@ -936,5 +1020,21 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // BaseChatBackends — the trailing space distinguishes them.
         XCTAssertFalse(unrelated == "import BaseChatBackends" || unrelated.hasPrefix("import BaseChatBackends "),
                        "Rule 6 must not flag unrelated module names that share a prefix")
+
+        let manifest = """
+            .target(
+                name: "BaseChatUI",
+                dependencies: [
+                    "BaseChatRuntime",
+                    "BaseChatPersistenceSwiftData",
+                ],
+                path: "Sources/BaseChatUI"
+            ),
+            """
+        let block = Self.manifestTargetBlock(in: manifest, targetName: "BaseChatUI")
+        XCTAssertNotNil(block)
+        XCTAssertTrue(Self.manifestTarget(block?.text ?? "", declaresDependencyOn: "BaseChatPersistenceSwiftData"))
+        XCTAssertFalse(Self.manifestTarget(block?.text ?? "", declaresDependencyOn: "BaseChatPersistenceSwiftDataExtras"),
+                       "Rule 6 manifest check must not flag dependency names that only share a prefix")
     }
 }

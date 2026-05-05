@@ -1078,6 +1078,210 @@ final class GenerationQueueTests: XCTestCase {
                        "generate must succeed without trimming when thinking reserve is zero.")
     }
 
+    /// Passing `maxOutputTokens: nil` must still reserve the documented
+    /// default visible-output budget (2048 tokens) during exact preflight.
+    ///
+    /// Scenario:
+    ///   contextSize = 3000, maxOutput = nil -> visible reserve = 2048.
+    ///   First countTokens returns 1000 -> over budget (3048 > 3000) -> trim.
+    ///   Second countTokens returns 900 -> fits (2948 <= 3000) -> generate.
+    ///
+    /// Sabotage check: if nil were treated as a zero-token reservation, the
+    /// first count would fit and `countTokensCalled` would be 1.
+    func test_exactPreflightAndTrim_maxOutputNilUsesDefaultVisibleReserve() async throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 3000)
+        tcBackend.countTokensResponses = [1000, 900]
+        tcBackend.tokensToYield = ["ok"]
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        let stream = try coord.generate(
+            messages: [
+                (role: "user", content: "oldest — trimmed because nil maxOutput reserves 2048"),
+                (role: "user", content: "latest — kept")
+            ],
+            maxOutputTokens: nil
+        )
+        for try await _ in stream.events {}
+
+        XCTAssertEqual(tcBackend.countTokensCalled, 2,
+                       "nil maxOutputTokens must reserve 2048, forcing one trim in this fixture")
+        XCTAssertEqual(tcBackend.generateCallCount, 1)
+    }
+
+    /// If the reserved output budget itself exceeds the context window, exact
+    /// preflight must surface `contextExhausted` before the backend generate
+    /// call, preserving the associated values callers use for remediation UI.
+    func test_exactPreflightAndTrim_reserveGreaterThanContextThrowsContextExhausted() throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 1000)
+        tcBackend.countTokensResponses = [1]
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        XCTAssertThrowsError(
+            try coord.generate(
+                messages: [(role: "user", content: "tiny prompt")],
+                maxOutputTokens: 1500
+            )
+        ) { error in
+            guard case InferenceError.contextExhausted(let promptTokens, let maxOutputTokens, let contextSize) = error else {
+                XCTFail("Expected contextExhausted, got \(error)")
+                return
+            }
+            XCTAssertEqual(promptTokens, 1)
+            XCTAssertEqual(maxOutputTokens, 1500)
+            XCTAssertEqual(contextSize, 1000)
+        }
+
+        XCTAssertEqual(tcBackend.generateCallCount, 0,
+                       "over-reserved prompts must not reach backend.generate")
+    }
+
+    /// The exact trim loop is intentionally bounded. When every count remains
+    /// over budget and enough user turns exist that the last-user guard is not
+    /// reached first, it must stop after the default 20 trim attempts.
+    func test_exactPreflightAndTrim_maxTrimAttemptsExhaustedThrows() throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 500)
+        tcBackend.countTokensResponses = Array(repeating: 1000, count: 25)
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        let messages = (0..<25).map { idx in
+            (role: "user", content: "message \(idx)")
+        }
+
+        XCTAssertThrowsError(
+            try coord.generate(messages: messages, maxOutputTokens: 100)
+        ) { error in
+            guard case InferenceError.contextExhausted(let promptTokens, let maxOutputTokens, let contextSize) = error else {
+                XCTFail("Expected contextExhausted, got \(error)")
+                return
+            }
+            XCTAssertEqual(promptTokens, 1000)
+            XCTAssertEqual(maxOutputTokens, 100)
+            XCTAssertEqual(contextSize, 500)
+        }
+
+        XCTAssertEqual(tcBackend.countTokensCalled, 21,
+                       "default maxTrimAttempts is 20: initial count plus 20 retry counts")
+        XCTAssertEqual(tcBackend.generateCallCount, 0)
+    }
+
+    /// A history containing only system-role tuples has no non-system message
+    /// available to trim, so exact preflight must fail closed with
+    /// `contextExhausted` rather than forwarding an over-budget prompt.
+    func test_exactPreflightAndTrim_systemOnlyHistoryThrowsContextExhausted() throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 100)
+        tcBackend.countTokensResponses = [80]
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        XCTAssertThrowsError(
+            try coord.generate(
+                messages: [(role: "system", content: "system-only injected history")],
+                maxOutputTokens: 50
+            )
+        ) { error in
+            guard case InferenceError.contextExhausted = error else {
+                XCTFail("Expected contextExhausted, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertEqual(tcBackend.countTokensCalled, 1)
+        XCTAssertEqual(tcBackend.generateCallCount, 0)
+    }
+
+    /// Assistant-only histories are trimmable because no user turn would be
+    /// lost. If trimming all assistant content brings the prompt under budget,
+    /// generation may proceed with the reduced prompt.
+    func test_exactPreflightAndTrim_assistantOnlyHistoryCanTrimToFit() async throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 100)
+        tcBackend.countTokensResponses = [80, 10]
+        tcBackend.tokensToYield = ["ok"]
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        let stream = try coord.generate(
+            messages: [(role: "assistant", content: "assistant-only stale response")],
+            maxOutputTokens: 50
+        )
+        for try await _ in stream.events {}
+
+        XCTAssertEqual(tcBackend.countTokensCalled, 2)
+        XCTAssertEqual(tcBackend.generateCallCount, 1)
+        XCTAssertFalse(tcBackend.lastPrompt?.contains("assistant-only stale response") ?? true,
+                       "assistant-only content should be removed before generation")
+    }
+
+    /// Once trimming would remove the only remaining user turn, exact preflight
+    /// must throw instead of preserving context fit by deleting the latest user
+    /// message.
+    func test_exactPreflightAndTrim_preservesLatestUserMessageWhenStillOverBudget() throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 100)
+        tcBackend.countTokensResponses = [80, 80, 10]
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        XCTAssertThrowsError(
+            try coord.generate(
+                messages: [
+                    (role: "assistant", content: "old assistant response that can be trimmed"),
+                    (role: "user", content: "latest user question must remain")
+                ],
+                maxOutputTokens: 50
+            )
+        ) { error in
+            guard case InferenceError.contextExhausted = error else {
+                XCTFail("Expected contextExhausted, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertEqual(tcBackend.countTokensCalled, 2,
+                       "the loop should stop before counting an empty prompt created by deleting the latest user turn")
+        XCTAssertEqual(tcBackend.generateCallCount, 0)
+    }
+
+    /// Tokenizer failures are authoritative exact-preflight failures. They
+    /// must propagate without falling back to heuristic counting or calling
+    /// the backend generate path.
+    func test_exactPreflightAndTrim_tokenCounterErrorPropagates() throws {
+        let tcBackend = TokenCountingMockBackend(contextSize: 256)
+        tcBackend.countTokensError = TokenCountingTestError.tokenizerUnavailable
+        let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
+
+        let coord = GenerationQueue()
+        coord.provider = tcProvider
+
+        XCTAssertThrowsError(
+            try coord.generate(
+                messages: [(role: "user", content: "hello")],
+                maxOutputTokens: 50
+            )
+        ) { error in
+            guard case TokenCountingTestError.tokenizerUnavailable = error else {
+                XCTFail("Expected tokenizerUnavailable, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertEqual(tcBackend.generateCallCount, 0,
+                       "generate must not run when exact token counting throws")
+    }
+
     // MARK: - Provider teardown safety
 
     /// Deallocating the provider mid-stream must not crash the coordinator.
@@ -1230,6 +1434,10 @@ private final class NilBackendProvider: GenerationContextProvider {
     var currentBackend: (any InferenceBackend)? { nil }
     var isBackendLoaded: Bool { false }
     var selectedPromptTemplate: PromptTemplate { .chatML }
+}
+
+private enum TokenCountingTestError: Error {
+    case tokenizerUnavailable
 }
 
 // MARK: - TokenCounting fakes
