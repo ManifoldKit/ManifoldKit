@@ -60,8 +60,8 @@ struct MessagePartsView: View {
         case .text(let text):
             textView(text)
 
-        case .image(let data, _):
-            imageView(data)
+        case .image(let data, _, let placeholderHash):
+            ImageAttachmentView(data: data, placeholderHash: placeholderHash)
 
         case .audio(let url, let duration, let waveform):
             AudioMessageView(url: url, duration: duration, waveform: waveform, role: role)
@@ -198,27 +198,6 @@ struct MessagePartsView: View {
                 .foregroundStyle(role == .user ? .white : .primary)
                 .textSelection(.enabled)
         }
-    }
-
-    @ViewBuilder
-    private func imageView(_ data: Data) -> some View {
-        #if os(iOS)
-        if let uiImage = UIImage(data: data) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        #elseif os(macOS)
-        if let nsImage = NSImage(data: data) {
-            Image(nsImage: nsImage)
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        #endif
     }
 
 }

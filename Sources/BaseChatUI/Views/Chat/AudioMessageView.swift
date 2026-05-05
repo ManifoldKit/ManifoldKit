@@ -102,6 +102,7 @@ struct AudioMessageView: View {
             player?.prepareToPlay()
             elapsed = min(elapsed, displayDuration)
         } catch {
+            Log.ui.warning("Failed to prepare audio message for playback: \(error)")
             loadError = "Audio unavailable"
         }
     }

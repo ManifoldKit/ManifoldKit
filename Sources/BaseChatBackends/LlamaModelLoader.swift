@@ -173,9 +173,9 @@ final class LlamaModelLoader: @unchecked Sendable {
         ctxParams.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2)))
         ctxParams.n_threads_batch = ctxParams.n_threads
 
-        // Apply BackendLoadOptions. Each branch is no-op when the option matches
-        // the library default, preserving bit-exact behaviour for callers that
-        // don't set load options explicitly.
+        // Apply BackendLoadOptions. Defaults prefer Q8 KV cache and Flash
+        // Attention on physical devices; callers can still choose llama.cpp's
+        // F16/no-FA library defaults explicitly.
         switch loadOptions.kvCacheQuantization {
         case .f16:
             // Library default; leave ctxParams.type_k / type_v as-is (GGML_TYPE_F16).

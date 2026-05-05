@@ -23,6 +23,36 @@ final class MessagePartTests: XCTestCase {
         XCTAssertEqual(decoded, [part])
     }
 
+    func test_imagePartWithPlaceholder_codableRoundTrip() throws {
+        let imageData = ImageFixtures.oneByOnePNGData
+        let placeholder = try XCTUnwrap(ImagePlaceholderHash.generate(from: imageData))
+        let part = MessagePart.image(data: imageData, mimeType: "image/png", placeholderHash: placeholder)
+
+        let data = try JSONEncoder().encode([part])
+        let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
+
+        XCTAssertEqual(decoded, [part])
+        XCTAssertNotNil(decoded.first?.imagePlaceholderHash?.colorGrid)
+    }
+
+    func test_imagePart_withoutPlaceholder_decodesLegacyJSON() throws {
+        let imageData = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        let legacyJSON = #"[{"image":{"data":"\#(imageData.base64EncodedString())","mimeType":"image/jpeg"}}]"#
+
+        let decoded = try JSONDecoder().decode([MessagePart].self, from: Data(legacyJSON.utf8))
+
+        XCTAssertEqual(decoded, [.image(data: imageData, mimeType: "image/jpeg")])
+        XCTAssertNil(decoded.first?.imagePlaceholderHash)
+    }
+
+    func test_generatingImagePlaceholderIfNeeded_preservesExistingPlaceholder() throws {
+        let imageData = ImageFixtures.oneByOnePNGData
+        let placeholder = try XCTUnwrap(ImagePlaceholderHash.generate(from: imageData))
+        let part = MessagePart.image(data: imageData, mimeType: "image/png", placeholderHash: placeholder)
+
+        XCTAssertEqual(part.generatingImagePlaceholderIfNeeded(), part)
+    }
+
     func test_audioPart_codableRoundTrip() throws {
         let part = MessagePart.audio(
             url: URL(fileURLWithPath: "/Users/example/Library/Containers/app/audio.m4a"),
@@ -128,7 +158,7 @@ final class MessagePartTests: XCTestCase {
     // `.text` bubble containing the raw JSON so the user sees something rather than losing the message.
     func test_chatMessage_decode_legacyToolCaseJSON_fallsBackToRawTextPart() {
         let legacyJSON = #"""
-        [{"text":{"_0":"Hello"}},{"toolCall":{"_0":{"id":"tc1","name":"get_weather","arguments":"{\"city\":\"London\"}"}}}]
+        [{"text":{"_0":"Hello"}},{"toolCall":{"_0":{"id":"tc1","name":"get_weather","arguments":"{"city":"London"}"}}}]
         """#
 
         let parts = BaseChatSchemaV4.ChatMessage.decode(legacyJSON)

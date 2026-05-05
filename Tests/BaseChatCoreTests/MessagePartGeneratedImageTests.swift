@@ -215,7 +215,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         // encoder; the outer shape and the other discriminators are
         // hand-written so a renamed key (e.g. `text` → `t`) shows up as a
         // test failure rather than a silent migration.
-        let toolCall = ToolCall(id: "c1", toolName: "search", arguments: "{\"q\":\"swift\"}")
+        let toolCall = ToolCall(id: "c1", toolName: "search", arguments: "{"q":"swift"}")
         let toolResult = ToolResult(callId: "c1", content: "ok", isError: false)
         let toolCallJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolCall), encoding: .utf8))
         let toolResultJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolResult), encoding: .utf8))
@@ -244,7 +244,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         XCTAssertEqual(think, "reasoning")
         XCTAssertEqual(sig, "sig-1")
 
-        guard case .image(let data, let mime) = parts[2] else { return XCTFail("2: expected .image") }
+        guard case .image(let data, let mime, _) = parts[2] else { return XCTFail("2: expected .image") }
         XCTAssertEqual(data, Data([0x01, 0x02]))
         XCTAssertEqual(mime, "image/png")
 

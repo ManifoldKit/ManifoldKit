@@ -122,7 +122,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_specialCharacters() {
-        let specialContent = "Hello <world> & \"friends\" — it's a 'test' with émojis 🎉 and CJK 你好"
+        let specialContent = "Hello <world> & "friends" — it's a 'test' with émojis 🎉 and CJK 你好"
         let msg = ChatMessageRecord(
             role: .user,
             content: specialContent,
@@ -132,7 +132,10 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_multilineContent() {
-        let multiline = "Line 1\nLine 2\n\nLine 4"
+        let multiline = "Line 1
+Line 2
+
+Line 4"
         let msg = ChatMessageRecord(
             role: .assistant,
             content: multiline,
