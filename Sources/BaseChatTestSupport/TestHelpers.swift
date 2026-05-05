@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Darwin
 import SwiftData
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
@@ -94,6 +95,27 @@ public func collectTokens(_ stream: GenerationStream) async throws -> String {
         }
     }
     return tokens.joined()
+}
+
+// MARK: - Resident memory measurement
+
+/// Returns the current process's resident set size in bytes.
+///
+/// Returns RSS in bytes; 0 on failure. Used in perf tests for
+/// memory-delta measurement (vision-session resident-memory baselines).
+/// Values are noisy — callers should sample several times and take the
+/// median, and assert sanity floors rather than tight upper bounds.
+public func currentResidentBytes() -> UInt64 {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(
+        MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<integer_t>.size
+    )
+    let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+        }
+    }
+    return kr == KERN_SUCCESS ? UInt64(info.resident_size) : 0
 }
 
 // MARK: - Bounded async timeout
