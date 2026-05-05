@@ -152,6 +152,23 @@ final class FoundationBackendUnitTests: XCTestCase {
         )
     }
 
+    /// Pins the multimodal capability to `false` until Apple ships an
+    /// image-input surface in the FoundationModels SDK.
+    ///
+    /// This is a regression guard: if `supportsVision` ever flips to `true`
+    /// without simultaneously translating `MessagePart.image` into a real
+    /// SDK type, the runtime would advertise vision support, the UI would
+    /// expose the image picker, and image-bearing turns would either be
+    /// silently dropped or fail at the SDK boundary with an opaque error.
+    /// See the doc comment on ``FoundationBackend`` for the SDK audit and
+    /// issue #20 for the multimodal umbrella.
+    func test_capabilities_supportsVision_isFalse_whileSDKHasNoImageInput() {
+        XCTAssertFalse(
+            backend.capabilities.supportsVision,
+            "FoundationBackend must advertise supportsVision == false until Apple's FoundationModels SDK exposes an image-input surface (Transcript.Segment.image, Data-accepting Prompt init, or CGImage/UIImage PromptRepresentable). Flip with care — wire MessagePart.image through the new SDK type in the same change."
+        )
+    }
+
     // MARK: - 7. generate() while already generating throws alreadyGenerating
 
     func test_generate_whileAlreadyGenerating_throwsAlreadyGenerating() throws {

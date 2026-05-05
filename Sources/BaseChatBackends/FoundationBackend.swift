@@ -50,6 +50,43 @@ import BaseChatInference
 /// `.thinkingToken` while reasoning is in flight and `.thinkingComplete`
 /// exactly once at the transition to visible content, matching the pattern
 /// already used by ``OllamaBackend``.
+///
+/// ## Multimodal / vision support
+///
+/// BaseChatKit surfaces image attachments via ``MessagePart/image(data:mimeType:)``
+/// and gates UI affordances on ``BackendCapabilities/supportsVision``. The
+/// MLX, Claude, and OpenAI backends accept image input today; **FoundationBackend
+/// does not**, because Apple's public FoundationModels SDK (Xcode 26.4,
+/// module version 1.4.34) exposes no image-input surface:
+///
+/// - `Transcript.Segment` is `text(TextSegment) | structure(StructuredSegment)`.
+///   There is no `image` / `attachment` / `media` case, and `TextSegment` /
+///   `StructuredSegment` carry only `String` and `GeneratedContent` payloads.
+/// - `Transcript.Entry` (instructions, prompt, toolCalls, toolOutput, response)
+///   has no image-bearing case.
+/// - `Transcript.Prompt` carries only `[Transcript.Segment]`.
+/// - `LanguageModelSession.respond(to:)` and `streamResponse(to:)` accept only
+///   `String`, `Prompt`, or `@PromptBuilder` closures whose components conform
+///   to `PromptRepresentable` — a protocol whose sole requirement is a
+///   `Prompt`-typed `promptRepresentation` (text-only, transitively).
+/// - A case-insensitive search of the entire `FoundationModels.swiftinterface`
+///   for `image|vision|multimodal|cgimage|uiimage|nsimage|cvpixelbuffer|jpeg|png`
+///   returns zero hits outside `LanguageModelFeedback.logFeedbackAttachment`,
+///   which is a telemetry helper unrelated to model input.
+///
+/// In other words: the SDK has no Data/CGImage/PixelBuffer ingress for the
+/// model. The on-device model itself may be multimodal-capable internally, but
+/// host apps cannot pass images through the public API. The backend therefore
+/// advertises ``BackendCapabilities/supportsVision`` as `false`; the runtime's
+/// pre-flight in ``GenerationQueue`` rejects image-bearing turns with a clear
+/// local error before any request is built. Tracked by issue #20.
+///
+/// When Apple ships an image-input surface (e.g. an `image` case on
+/// `Transcript.Segment`, a `Data`-accepting `Prompt` initialiser, or a
+/// `PromptRepresentable` extension on `CGImage` / `UIImage`), this backend
+/// should be updated to flip the capability flag and translate
+/// ``MessagePart/image(data:mimeType:)`` parts into the new SDK type, matching
+/// the pattern already used by ``ClaudeBackend`` and ``OpenAIBackend``.
 @available(iOS 26, macOS 26, *)
 public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
@@ -91,6 +128,13 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         maxOutputTokens: 4096,
         supportsStreaming: true,
         isRemote: false,
+        // Apple's FoundationModels SDK (Xcode 26.4) exposes no image-input
+        // surface — `Transcript.Segment` is text/structure only, `Prompt`
+        // carries only segments, and there is no `Data`/`CGImage` ingress
+        // anywhere in the public API. See the type-level doc comment above
+        // for the full audit. Flip to `true` and wire MessagePart.image
+        // through the SDK when Apple ships an image-bearing segment.
+        supportsVision: false,
         // Whole-call emission only — Apple's GuidedGeneration streams the
         // partially-decoded structure but we do not surface name/argument
         // deltas as separate events (parity with MLXBackend's inline parser).
