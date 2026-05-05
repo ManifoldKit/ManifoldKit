@@ -33,6 +33,60 @@ public struct LlamaDRYSamplerOptions: Sendable, Codable, Equatable {
     }
 }
 
+/// llama.cpp XTC ("Exclude Top Choices") sampler configuration.
+///
+/// XTC trims the highest-probability tokens to push variety; popular in creative
+/// writing presets. llama.cpp inserts XTC after the temperature step. This is
+/// llama.cpp-specific: other backends ignore it. Defaults mirror llama.cpp's
+/// `common_params_sampling` (`probability = 0.0` = disabled in the library).
+public struct LlamaXTCSamplerOptions: Sendable, Codable, Equatable {
+    /// Probability of applying XTC at each step. `0.0` disables XTC in llama.cpp.
+    public var probability: Float
+    /// Probability threshold below which tokens are not excluded.
+    public var threshold: Float
+    /// Minimum number of tokens to keep after exclusion.
+    public var minKeep: Int
+    /// Sampler seed; `nil` falls back to ``GenerationConfig/seed`` or a random value.
+    public var seed: UInt32?
+
+    public init(
+        probability: Float = 0.0,
+        threshold: Float = 0.10,
+        minKeep: Int = 1,
+        seed: UInt32? = nil
+    ) {
+        self.probability = probability
+        self.threshold = threshold
+        self.minKeep = minKeep
+        self.seed = seed
+    }
+}
+
+/// llama.cpp Mirostat v2 sampler configuration.
+///
+/// Mirostat v2 is an entropy-controlled sampler — when active, llama.cpp
+/// **replaces** the temperature + dist tail of the chain with a single Mirostat
+/// step. This is llama.cpp-specific: other backends ignore it. Defaults mirror
+/// llama.cpp's `common_params_sampling` (`tau = 5.0`, `eta = 0.1`).
+public struct LlamaMirostatV2SamplerOptions: Sendable, Codable, Equatable {
+    /// Target cross-entropy (surprise). Higher = more variety.
+    public var tau: Float
+    /// Learning rate for the mu update.
+    public var eta: Float
+    /// Sampler seed; `nil` falls back to ``GenerationConfig/seed`` or a random value.
+    public var seed: UInt32?
+
+    public init(
+        tau: Float = 5.0,
+        eta: Float = 0.1,
+        seed: UInt32? = nil
+    ) {
+        self.tau = tau
+        self.eta = eta
+        self.seed = seed
+    }
+}
+
 /// Sampling and generation parameters shared across all inference backends.
 public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
@@ -110,6 +164,20 @@ public struct GenerationConfig: Sendable, Codable {
     /// set, ``LlamaBackend`` inserts `llama_sampler_init_dry` after penalties
     /// and grammar, before probability filters. Other backends ignore it.
     public var llamaDRY: LlamaDRYSamplerOptions?
+
+    /// llama.cpp XTC sampler options.
+    ///
+    /// `nil` (the default) preserves the backend's existing sampler chain. When
+    /// set, ``LlamaBackend`` inserts `llama_sampler_init_xtc` immediately after
+    /// the temperature step. Other backends ignore it.
+    public var llamaXTC: LlamaXTCSamplerOptions?
+
+    /// llama.cpp Mirostat v2 sampler options.
+    ///
+    /// `nil` (the default) preserves the backend's existing sampler chain. When
+    /// set, ``LlamaBackend`` **replaces** the temperature + dist sampler tail
+    /// with `llama_sampler_init_mirostat_v2`. Other backends ignore it.
+    public var llamaMirostatV2: LlamaMirostatV2SamplerOptions?
 
     /// Deterministic sampling seed.
     ///
@@ -265,7 +333,9 @@ public struct GenerationConfig: Sendable, Codable {
         maxToolIterations: Int = 10,
         grammar: String? = nil,
         yieldEveryNTokens: Int = 8,
-        llamaDRY: LlamaDRYSamplerOptions? = nil
+        llamaDRY: LlamaDRYSamplerOptions? = nil,
+        llamaXTC: LlamaXTCSamplerOptions? = nil,
+        llamaMirostatV2: LlamaMirostatV2SamplerOptions? = nil
     ) {
         self.temperature = temperature
         self.topP = topP
@@ -287,6 +357,8 @@ public struct GenerationConfig: Sendable, Codable {
         self.grammar = grammar
         self.yieldEveryNTokens = yieldEveryNTokens
         self.llamaDRY = llamaDRY
+        self.llamaXTC = llamaXTC
+        self.llamaMirostatV2 = llamaMirostatV2
     }
 
     public init(
@@ -303,6 +375,8 @@ public struct GenerationConfig: Sendable, Codable {
         frequencyPenalty: Float? = nil,
         frequencyContextSize: Int? = nil,
         llamaDRY: LlamaDRYSamplerOptions? = nil,
+        llamaXTC: LlamaXTCSamplerOptions? = nil,
+        llamaMirostatV2: LlamaMirostatV2SamplerOptions? = nil,
         seed: UInt64? = nil,
         maxOutputTokens: Int? = 2048,
         tools: [ToolDefinition] = [],
@@ -329,6 +403,8 @@ public struct GenerationConfig: Sendable, Codable {
         self.frequencyPenalty = frequencyPenalty
         self.frequencyContextSize = frequencyContextSize
         self.llamaDRY = llamaDRY
+        self.llamaXTC = llamaXTC
+        self.llamaMirostatV2 = llamaMirostatV2
         self.seed = seed
         self.maxOutputTokens = maxOutputTokens
         self.tools = tools
@@ -355,6 +431,8 @@ public struct GenerationConfig: Sendable, Codable {
         case presencePenalty, presenceContextSize
         case frequencyPenalty, frequencyContextSize
         case llamaDRY
+        case llamaXTC
+        case llamaMirostatV2
         case requiredCapabilities
     }
 
@@ -400,6 +478,8 @@ public struct GenerationConfig: Sendable, Codable {
         frequencyPenalty = try c.decodeIfPresent(Float.self, forKey: .frequencyPenalty)
         frequencyContextSize = try c.decodeIfPresent(Int.self, forKey: .frequencyContextSize)
         llamaDRY = try c.decodeIfPresent(LlamaDRYSamplerOptions.self, forKey: .llamaDRY)
+        llamaXTC = try c.decodeIfPresent(LlamaXTCSamplerOptions.self, forKey: .llamaXTC)
+        llamaMirostatV2 = try c.decodeIfPresent(LlamaMirostatV2SamplerOptions.self, forKey: .llamaMirostatV2)
         // requiredCapabilities is a per-request runtime contract; landed after
         // the original shape, so older payloads decode to an empty set.
         requiredCapabilities = (try c.decodeIfPresent(
@@ -434,6 +514,8 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encodeIfPresent(frequencyPenalty, forKey: .frequencyPenalty)
         try c.encodeIfPresent(frequencyContextSize, forKey: .frequencyContextSize)
         try c.encodeIfPresent(llamaDRY, forKey: .llamaDRY)
+        try c.encodeIfPresent(llamaXTC, forKey: .llamaXTC)
+        try c.encodeIfPresent(llamaMirostatV2, forKey: .llamaMirostatV2)
         if !requiredCapabilities.isEmpty {
             try c.encode(requiredCapabilities, forKey: .requiredCapabilities)
         }

@@ -429,10 +429,15 @@ final class BackendCapabilitiesTests: XCTestCase {
         XCTAssertTrue(allCases.contains(.presencePenalty))
         XCTAssertTrue(allCases.contains(.frequencyPenalty))
         XCTAssertTrue(allCases.contains(.llamaDRY))
+        XCTAssertTrue(allCases.contains(.llamaXTC))
+        XCTAssertTrue(allCases.contains(.llamaMirostatV2))
     }
 
     func test_generationParameter_codableRoundTrip_additivePenalties() throws {
-        let cases: [GenerationParameter] = [.minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty, .llamaDRY]
+        let cases: [GenerationParameter] = [
+            .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+            .llamaDRY, .llamaXTC, .llamaMirostatV2,
+        ]
         let data = try JSONEncoder().encode(cases)
         let decoded = try JSONDecoder().decode([GenerationParameter].self, from: data)
         XCTAssertEqual(decoded, cases)

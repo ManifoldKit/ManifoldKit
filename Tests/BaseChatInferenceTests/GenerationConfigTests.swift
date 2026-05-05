@@ -247,6 +247,14 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(GenerationConfig().llamaDRY)
     }
 
+    func test_defaultInit_llamaXTC_isNil() {
+        XCTAssertNil(GenerationConfig().llamaXTC)
+    }
+
+    func test_defaultInit_llamaMirostatV2_isNil() {
+        XCTAssertNil(GenerationConfig().llamaMirostatV2)
+    }
+
     func test_customInit_propagatesAdditivePenaltyKnobs() {
         let config = GenerationConfig(
             repetitionContextSize: 128,
@@ -254,7 +262,9 @@ final class GenerationConfigTests: XCTestCase {
             presenceContextSize: 32,
             frequencyPenalty: 0.6,
             frequencyContextSize: 16,
-            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.8)
+            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.8),
+            llamaXTC: LlamaXTCSamplerOptions(probability: 0.5),
+            llamaMirostatV2: LlamaMirostatV2SamplerOptions(tau: 6.0)
         )
 
         XCTAssertEqual(config.repetitionContextSize, 128)
@@ -263,6 +273,8 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(config.frequencyPenalty, 0.6)
         XCTAssertEqual(config.frequencyContextSize, 16)
         XCTAssertEqual(config.llamaDRY, LlamaDRYSamplerOptions(multiplier: 0.8))
+        XCTAssertEqual(config.llamaXTC, LlamaXTCSamplerOptions(probability: 0.5))
+        XCTAssertEqual(config.llamaMirostatV2, LlamaMirostatV2SamplerOptions(tau: 6.0))
     }
 
     func test_llamaDRY_defaultsMatchLlamaCppCommonParams() {
@@ -273,6 +285,23 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(options.allowedLength, 2)
         XCTAssertEqual(options.penaltyLastN, -1)
         XCTAssertEqual(options.sequenceBreakers, ["\n", ":", "\"", "*"])
+    }
+
+    func test_llamaXTC_defaultsMatchLlamaCppCommonParams() {
+        let options = LlamaXTCSamplerOptions()
+
+        XCTAssertEqual(options.probability, 0.0)
+        XCTAssertEqual(options.threshold, 0.10)
+        XCTAssertEqual(options.minKeep, 1)
+        XCTAssertNil(options.seed)
+    }
+
+    func test_llamaMirostatV2_defaultsMatchLlamaCppCommonParams() {
+        let options = LlamaMirostatV2SamplerOptions()
+
+        XCTAssertEqual(options.tau, 5.0)
+        XCTAssertEqual(options.eta, 0.1)
+        XCTAssertNil(options.seed)
     }
 
     func test_codableRoundtrip_preservesAdditivePenaltyKnobs() throws {
@@ -289,6 +318,17 @@ final class GenerationConfigTests: XCTestCase {
             penaltyLastN: 256,
             sequenceBreakers: ["\n", "</s>"]
         )
+        original.llamaXTC = LlamaXTCSamplerOptions(
+            probability: 0.4,
+            threshold: 0.15,
+            minKeep: 2,
+            seed: 12_345
+        )
+        original.llamaMirostatV2 = LlamaMirostatV2SamplerOptions(
+            tau: 6.5,
+            eta: 0.2,
+            seed: 777
+        )
 
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
@@ -299,6 +339,8 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(decoded.presenceContextSize, 48)
         XCTAssertEqual(decoded.frequencyContextSize, 24)
         XCTAssertEqual(decoded.llamaDRY, original.llamaDRY)
+        XCTAssertEqual(decoded.llamaXTC, original.llamaXTC)
+        XCTAssertEqual(decoded.llamaMirostatV2, original.llamaMirostatV2)
     }
 
     func test_codableDecode_legacyPayload_omittingAdditivePenaltyKnobs() throws {
@@ -323,6 +365,8 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(decoded.presenceContextSize)
         XCTAssertNil(decoded.frequencyContextSize)
         XCTAssertNil(decoded.llamaDRY)
+        XCTAssertNil(decoded.llamaXTC)
+        XCTAssertNil(decoded.llamaMirostatV2)
     }
 
     func test_codable_omitsAdditivePenaltyKnobsWhenNil() throws {
@@ -337,6 +381,8 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(json["presenceContextSize"])
         XCTAssertNil(json["frequencyContextSize"])
         XCTAssertNil(json["llamaDRY"])
+        XCTAssertNil(json["llamaXTC"])
+        XCTAssertNil(json["llamaMirostatV2"])
     }
 
     // MARK: - Mock backend captures additive-penalty fields
@@ -351,7 +397,9 @@ final class GenerationConfigTests: XCTestCase {
             presenceContextSize: 40,
             frequencyPenalty: 0.7,
             frequencyContextSize: 20,
-            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.6)
+            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.6),
+            llamaXTC: LlamaXTCSamplerOptions(probability: 0.3),
+            llamaMirostatV2: LlamaMirostatV2SamplerOptions(tau: 4.5)
         )
         let stream = try backend.generate(prompt: "test", systemPrompt: nil, config: config)
         for try await _ in stream.events {}
@@ -362,5 +410,7 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(backend.lastConfig?.frequencyPenalty, 0.7)
         XCTAssertEqual(backend.lastConfig?.frequencyContextSize, 20)
         XCTAssertEqual(backend.lastConfig?.llamaDRY, LlamaDRYSamplerOptions(multiplier: 0.6))
+        XCTAssertEqual(backend.lastConfig?.llamaXTC, LlamaXTCSamplerOptions(probability: 0.3))
+        XCTAssertEqual(backend.lastConfig?.llamaMirostatV2, LlamaMirostatV2SamplerOptions(tau: 4.5))
     }
 }

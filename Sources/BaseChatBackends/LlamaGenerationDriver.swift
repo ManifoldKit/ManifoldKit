@@ -42,6 +42,28 @@ struct LlamaGenerationDriver {
         }
     }
 
+    struct XTCSamplerDescriptor: Equatable {
+        let options: LlamaXTCSamplerOptions
+        let resolvedSeed: UInt32
+
+        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+            guard let options = config.llamaXTC else { return nil }
+            self.options = options
+            self.resolvedSeed = options.seed ?? fallbackSeed
+        }
+    }
+
+    struct MirostatV2SamplerDescriptor: Equatable {
+        let options: LlamaMirostatV2SamplerOptions
+        let resolvedSeed: UInt32
+
+        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+            guard let options = config.llamaMirostatV2 else { return nil }
+            self.options = options
+            self.resolvedSeed = options.seed ?? fallbackSeed
+        }
+    }
+
     // MARK: - Run
 
     /// Executes the generation loop: clears the KV cache, builds the sampler
@@ -129,7 +151,10 @@ struct LlamaGenerationDriver {
         // `std::runtime_error: Unexpected empty grammar stack` across the C ABI
         // and aborts the process with libc++abi (see prior crash logs from
         // test_grammar_cancelCleansTeardown). Final order:
-        //   penalties → grammar → dry → top_k → top_p → min_p → temp → dist
+        //   penalties → grammar → dry → top_k → top_p → min_p → temp → xtc → dist
+        // When mirostat v2 is active it replaces the (temp, xtc, dist) tail with
+        // a single `mirostat_v2` step that handles both temperature and final
+        // selection.
         let sparams = llama_sampler_chain_default_params()
         guard let sampler = llama_sampler_chain_init(sparams) else {
             await MainActor.run { generationStream.setPhase(.failed("Failed to create sampler")) }
@@ -217,7 +242,6 @@ struct LlamaGenerationDriver {
         // Honour `config.minP` when supplied; default to 0.05 for parity with prior behaviour.
         let effectiveMinP = config.minP ?? 0.05
         llama_sampler_chain_add(sampler, llama_sampler_init_min_p(effectiveMinP, 1))
-        llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
 
         // Use the caller-supplied seed when available so consecutive runs with the same
         // prompt + config produce identical token streams. `llama_sampler_init_dist`
@@ -231,7 +255,28 @@ struct LlamaGenerationDriver {
         } else {
             samplerSeed = UInt32.random(in: 0...UInt32.max)
         }
-        llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
+
+        // Mirostat v2 owns both the temperature step and the final token selection
+        // (it samples internally), so when it is active we skip temp/xtc/dist
+        // entirely. When inactive we keep the historical chain tail.
+        if let mirostat = MirostatV2SamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+            llama_sampler_chain_add(sampler, llama_sampler_init_mirostat_v2(
+                mirostat.resolvedSeed,
+                mirostat.options.tau,
+                mirostat.options.eta
+            ))
+        } else {
+            llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
+            if let xtc = XTCSamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+                llama_sampler_chain_add(sampler, llama_sampler_init_xtc(
+                    xtc.options.probability,
+                    xtc.options.threshold,
+                    xtc.options.minKeep,
+                    xtc.resolvedSeed
+                ))
+            }
+            llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
+        }
 
         // MARK: Chunked prompt decode
 
