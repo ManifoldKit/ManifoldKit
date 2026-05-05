@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.17.0](https://github.com/roryford/BaseChatKit/compare/v0.16.4...v0.17.0) (2026-05-05)
 
 ### Highlights
 
@@ -16,10 +16,38 @@ config.llamaMirostatV2 = LlamaMirostatV2SamplerOptions(tau: 5.0, eta: 0.1)
 
 Each sampler advertises through `GenerationParameter.llamaXTC` / `.llamaMirostatV2` so UI and `RouterBackend` can dispatch on the new capabilities. Defaults mirror llama.cpp's `common_params_sampling`. With this, [#1021](https://github.com/roryford/BaseChatKit/issues/1021) is complete.
 
+#### Per-message context menu with extensibility seam
+
+The chat UI now ships a default context menu on every message bubble — Copy, Regenerate (assistant only), Branch from here, and Delete — wired to the existing `ConversationRuntime` actions. Right-click on macOS, long-press on iOS, both via the same `.contextMenu { }` modifier. Hosts can append items via a new `contextMenuItems:` `@ViewBuilder` parameter on `ChatView`, mirroring the existing `apiConfiguration:` injection pattern; the closure receives the `ChatMessageRecord` so menu items can vary by role or content.
+
+```swift
+ChatView(viewModel: viewModel, contextMenuItems: { message in
+    Button("Copy as Markdown") { copyMarkdown(message) }
+    if message.role == .assistant {
+        Button("Share via AirDrop") { share(message) }
+    }
+})
+```
+
+`ChatViewModel` gains public `deleteMessage(id:)` and `branch(from:)` methods plus an `onSessionBranched: (UUID) async -> Void` callback so hosts can refresh their sidebar and select the new session when the runtime forks. Closes [#1011](https://github.com/roryford/BaseChatKit/issues/1011).
+
+#### FoundationBackend multimodal gap documented
+
+Audited Apple FoundationModels in Xcode 26.4: `Transcript.Segment` / `Prompt` / `LanguageModelSession.respond(to:)` carry no public image surface. `BackendCapabilities.supportsVision` is now explicitly `false` for `FoundationBackend` (previously fell through to the protocol default), and a regression-guard test fails CI if that flips without `MessagePart.image` actually being wired through the SDK. Only Llama remains on the [#20](https://github.com/roryford/BaseChatKit/issues/20) umbrella, blocked upstream by the missing `mtmd.h` in the xcframework ([#416](https://github.com/roryford/BaseChatKit/issues/416)).
+
 ### Features
 
-* **backends:** add llama XTC sampler option
-* **backends:** add llama mirostat v2 sampler option
+* **backends:** add llama XTC sampler option ([#1037](https://github.com/roryford/BaseChatKit/pull/1037))
+* **backends:** add llama mirostat v2 sampler option ([#1037](https://github.com/roryford/BaseChatKit/pull/1037))
+* **ui:** add per-message context menu with copy/regenerate/branch/delete + `contextMenuItems` extensibility seam ([#1039](https://github.com/roryford/BaseChatKit/pull/1039))
+
+### Documentation
+
+* **foundation:** document multimodal gap and explicitly gate `supportsVision` capability flag ([#1038](https://github.com/roryford/BaseChatKit/pull/1038))
+
+### Performance
+
+* **ci:** revert `.build/debug` cache spike from PR #961 — 8-run measurement showed median 263s vs 253s baseline; no measurable wins (Lever C of [#953](https://github.com/roryford/BaseChatKit/issues/953)) ([#1036](https://github.com/roryford/BaseChatKit/pull/1036))
 
 ## [0.16.4](https://github.com/roryford/BaseChatKit/compare/v0.16.3...v0.16.4) (2026-05-05)
 
