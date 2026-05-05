@@ -50,6 +50,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             supportedParameters: [
                 .temperature, .topP, .topK, .repeatPenalty,
                 .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+                .llamaDRY,
             ],
             maxContextTokens: ctxSize,
             requiresPromptTemplate: true,

@@ -1,5 +1,38 @@
 import Foundation
 
+/// llama.cpp DRY sampler configuration.
+///
+/// DRY ("Don't Repeat Yourself") penalizes tokens that would extend repeated
+/// token sequences. This is llama.cpp-specific: other backends ignore it. The
+/// defaults mirror llama.cpp's `common_params_sampling` defaults; keep
+/// ``GenerationConfig/llamaDRY`` `nil` to preserve each backend's sampler chain.
+public struct LlamaDRYSamplerOptions: Sendable, Codable, Equatable {
+    /// Penalty multiplier. `0.0` disables DRY in llama.cpp.
+    public var multiplier: Float
+    /// Exponential penalty base. llama.cpp treats values below `1.0` as disabled.
+    public var base: Float
+    /// Repetition length allowed before DRY applies a penalty.
+    public var allowedLength: Int32
+    /// Number of recent tokens to scan (`-1` = training context, `0` = disabled).
+    public var penaltyLastN: Int32
+    /// Sequence breakers that reset repetition scanning.
+    public var sequenceBreakers: [String]
+
+    public init(
+        multiplier: Float = 0.0,
+        base: Float = 1.75,
+        allowedLength: Int32 = 2,
+        penaltyLastN: Int32 = -1,
+        sequenceBreakers: [String] = ["\n", ":", "\"", "*"]
+    ) {
+        self.multiplier = multiplier
+        self.base = base
+        self.allowedLength = allowedLength
+        self.penaltyLastN = penaltyLastN
+        self.sequenceBreakers = sequenceBreakers
+    }
+}
+
 /// Sampling and generation parameters shared across all inference backends.
 public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
@@ -70,6 +103,13 @@ public struct GenerationConfig: Sendable, Codable {
     /// `nil` lets each backend use its own default. MLX-only — see
     /// ``presenceContextSize`` for why llama.cpp ignores it.
     public var frequencyContextSize: Int?
+
+    /// llama.cpp DRY repetition sampler options.
+    ///
+    /// `nil` (the default) preserves the backend's existing sampler chain. When
+    /// set, ``LlamaBackend`` inserts `llama_sampler_init_dry` after penalties
+    /// and grammar, before probability filters. Other backends ignore it.
+    public var llamaDRY: LlamaDRYSamplerOptions?
 
     /// Deterministic sampling seed.
     ///
@@ -225,7 +265,8 @@ public struct GenerationConfig: Sendable, Codable {
         thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
         grammar: String? = nil,
-        yieldEveryNTokens: Int = 8
+        yieldEveryNTokens: Int = 8,
+        llamaDRY: LlamaDRYSamplerOptions? = nil
     ) {
         self.temperature = temperature
         self.topP = topP
@@ -246,6 +287,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.maxToolIterations = max(1, maxToolIterations)
         self.grammar = grammar
         self.yieldEveryNTokens = yieldEveryNTokens
+        self.llamaDRY = llamaDRY
     }
 
     public init(
@@ -261,6 +303,7 @@ public struct GenerationConfig: Sendable, Codable {
         presenceContextSize: Int? = nil,
         frequencyPenalty: Float? = nil,
         frequencyContextSize: Int? = nil,
+        llamaDRY: LlamaDRYSamplerOptions? = nil,
         seed: UInt64? = nil,
         maxOutputTokens: Int? = 2048,
         tools: [ToolDefinition] = [],
@@ -286,6 +329,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.presenceContextSize = presenceContextSize
         self.frequencyPenalty = frequencyPenalty
         self.frequencyContextSize = frequencyContextSize
+        self.llamaDRY = llamaDRY
         self.seed = seed
         self.maxOutputTokens = maxOutputTokens
         self.tools = tools
@@ -311,6 +355,7 @@ public struct GenerationConfig: Sendable, Codable {
         case repetitionContextSize
         case presencePenalty, presenceContextSize
         case frequencyPenalty, frequencyContextSize
+        case llamaDRY
         case requiredCapabilities
     }
 
@@ -355,6 +400,7 @@ public struct GenerationConfig: Sendable, Codable {
         presenceContextSize = try c.decodeIfPresent(Int.self, forKey: .presenceContextSize)
         frequencyPenalty = try c.decodeIfPresent(Float.self, forKey: .frequencyPenalty)
         frequencyContextSize = try c.decodeIfPresent(Int.self, forKey: .frequencyContextSize)
+        llamaDRY = try c.decodeIfPresent(LlamaDRYSamplerOptions.self, forKey: .llamaDRY)
         // requiredCapabilities is a per-request runtime contract; landed after
         // the original shape, so older payloads decode to an empty set.
         requiredCapabilities = (try c.decodeIfPresent(
@@ -388,6 +434,7 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encodeIfPresent(presenceContextSize, forKey: .presenceContextSize)
         try c.encodeIfPresent(frequencyPenalty, forKey: .frequencyPenalty)
         try c.encodeIfPresent(frequencyContextSize, forKey: .frequencyContextSize)
+        try c.encodeIfPresent(llamaDRY, forKey: .llamaDRY)
         if !requiredCapabilities.isEmpty {
             try c.encode(requiredCapabilities, forKey: .requiredCapabilities)
         }

@@ -243,13 +243,18 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(GenerationConfig().frequencyContextSize)
     }
 
+    func test_defaultInit_llamaDRY_isNil() {
+        XCTAssertNil(GenerationConfig().llamaDRY)
+    }
+
     func test_customInit_propagatesAdditivePenaltyKnobs() {
         let config = GenerationConfig(
             repetitionContextSize: 128,
             presencePenalty: 0.4,
             presenceContextSize: 32,
             frequencyPenalty: 0.6,
-            frequencyContextSize: 16
+            frequencyContextSize: 16,
+            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.8)
         )
 
         XCTAssertEqual(config.repetitionContextSize, 128)
@@ -257,6 +262,17 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(config.presenceContextSize, 32)
         XCTAssertEqual(config.frequencyPenalty, 0.6)
         XCTAssertEqual(config.frequencyContextSize, 16)
+        XCTAssertEqual(config.llamaDRY, LlamaDRYSamplerOptions(multiplier: 0.8))
+    }
+
+    func test_llamaDRY_defaultsMatchLlamaCppCommonParams() {
+        let options = LlamaDRYSamplerOptions()
+
+        XCTAssertEqual(options.multiplier, 0.0)
+        XCTAssertEqual(options.base, 1.75)
+        XCTAssertEqual(options.allowedLength, 2)
+        XCTAssertEqual(options.penaltyLastN, -1)
+        XCTAssertEqual(options.sequenceBreakers, ["\n", ":", "\"", "*"])
     }
 
     func test_codableRoundtrip_preservesAdditivePenaltyKnobs() throws {
@@ -266,6 +282,13 @@ final class GenerationConfigTests: XCTestCase {
         original.repetitionContextSize = 96
         original.presenceContextSize = 48
         original.frequencyContextSize = 24
+        original.llamaDRY = LlamaDRYSamplerOptions(
+            multiplier: 0.7,
+            base: 1.9,
+            allowedLength: 3,
+            penaltyLastN: 256,
+            sequenceBreakers: ["\n", "</s>"]
+        )
 
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: data)
@@ -275,6 +298,7 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(decoded.repetitionContextSize, 96)
         XCTAssertEqual(decoded.presenceContextSize, 48)
         XCTAssertEqual(decoded.frequencyContextSize, 24)
+        XCTAssertEqual(decoded.llamaDRY, original.llamaDRY)
     }
 
     func test_codableDecode_legacyPayload_omittingAdditivePenaltyKnobs() throws {
@@ -298,6 +322,7 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(decoded.repetitionContextSize)
         XCTAssertNil(decoded.presenceContextSize)
         XCTAssertNil(decoded.frequencyContextSize)
+        XCTAssertNil(decoded.llamaDRY)
     }
 
     func test_codable_omitsAdditivePenaltyKnobsWhenNil() throws {
@@ -311,6 +336,7 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertNil(json["repetitionContextSize"])
         XCTAssertNil(json["presenceContextSize"])
         XCTAssertNil(json["frequencyContextSize"])
+        XCTAssertNil(json["llamaDRY"])
     }
 
     // MARK: - Mock backend captures additive-penalty fields
@@ -324,7 +350,8 @@ final class GenerationConfigTests: XCTestCase {
             presencePenalty: 0.3,
             presenceContextSize: 40,
             frequencyPenalty: 0.7,
-            frequencyContextSize: 20
+            frequencyContextSize: 20,
+            llamaDRY: LlamaDRYSamplerOptions(multiplier: 0.6)
         )
         let stream = try backend.generate(prompt: "test", systemPrompt: nil, config: config)
         for try await _ in stream.events {}
@@ -334,5 +361,6 @@ final class GenerationConfigTests: XCTestCase {
         XCTAssertEqual(backend.lastConfig?.presenceContextSize, 40)
         XCTAssertEqual(backend.lastConfig?.frequencyPenalty, 0.7)
         XCTAssertEqual(backend.lastConfig?.frequencyContextSize, 20)
+        XCTAssertEqual(backend.lastConfig?.llamaDRY, LlamaDRYSamplerOptions(multiplier: 0.6))
     }
 }
