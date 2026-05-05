@@ -135,6 +135,23 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// `false`.
     public let supportsParallelToolCalls: Bool
 
+    /// Whether the backend supports Foundation-style guided structured output.
+    public let supportsGuidedStructuredOutput: Bool
+
+    /// Preferred structured-output mechanism implied by this capability set.
+    public var preferredStructuredOutputSupport: StructuredOutputSupport {
+        if supportsGrammarConstrainedSampling {
+            return .grammarConstrainedSampling
+        }
+        if supportsGuidedStructuredOutput {
+            return .guidedGeneration
+        }
+        if supportsStructuredOutput {
+            return .jsonSchema
+        }
+        return .jsonPrompting
+    }
+
     /// Parameters the UI should present controls for.
     public var visibleParameters: [GenerationParameter] {
         GenerationParameter.allCases.filter { supportedParameters.contains($0) }
@@ -159,7 +176,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsThinking: Bool = false,
         supportsVision: Bool = false,
         streamsToolCallArguments: Bool = false,
-        supportsParallelToolCalls: Bool = false
+        supportsParallelToolCalls: Bool = false,
+        supportsGuidedStructuredOutput: Bool = false
     ) {
         self.supportedParameters = supportedParameters
         self.maxContextTokens = maxContextTokens
@@ -180,6 +198,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.supportsVision = supportsVision
         self.streamsToolCallArguments = streamsToolCallArguments
         self.supportsParallelToolCalls = supportsParallelToolCalls
+        self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -202,6 +221,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case supportsVision
         case streamsToolCallArguments
         case supportsParallelToolCalls
+        case supportsGuidedStructuredOutput
     }
 
     public init(from decoder: Decoder) throws {
@@ -225,6 +245,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsVision = (try c.decodeIfPresent(Bool.self, forKey: .supportsVision)) ?? false
         streamsToolCallArguments = (try c.decodeIfPresent(Bool.self, forKey: .streamsToolCallArguments)) ?? false
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
+        supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -248,5 +269,6 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(supportsVision, forKey: .supportsVision)
         try c.encode(streamsToolCallArguments, forKey: .streamsToolCallArguments)
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
+        try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)
     }
 }
