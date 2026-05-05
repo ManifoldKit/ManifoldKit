@@ -2,27 +2,52 @@
 
 ## [0.17.1](https://github.com/roryford/BaseChatKit/compare/v0.17.0...v0.17.1) (2026-05-05)
 
+### Highlights
+
+#### Route structured outputs by backend capability
+
+`GenerationConfig` now accepts a runtime-only `structuredOutput` strategy, and `StructuredOutputRouter` picks the strongest representation a backend can actually honor — GBNF when available, guided decoding when supported, JSON Schema when possible, and JSON prompting as the fallback. Callers can describe the target once and let capability routing choose the enforcement mechanism instead of branching per backend in app code.
+
+```swift
+struct Event: Decodable { let title: String }
+
+let target = StructuredOutputTarget.guided(Event.self)
+let strategy = StructuredOutputRouter.selectStrategy(
+    capabilities: backend.capabilities,
+    target: target
+)
+
+let config = GenerationConfig(structuredOutput: strategy)
+```
+
+See [#1054](https://github.com/roryford/BaseChatKit/pull/1054).
+
+#### Keep image attachments visible while full assets load
+
+Image parts now carry an optional `ImagePlaceholderHash` generated during draft staging, pending payload ingest, and runtime send paths. Chat bubbles and draft thumbnails render a blurred color grid immediately, then crossfade to the decoded asset once bytes load from memory or persistence, while legacy stored images keep working without migration.
+
+#### Treat multi-component image models as one installable package
+
+Diffusers-style Hugging Face packages now write a narrow readiness manifest and only surface in the model browser once every required component is present. Downloads report aggregate progress and finalize atomically, so half-downloaded image models no longer appear ready to use.
 
 ### Features
 
-* add image loading placeholders ([#1047](https://github.com/roryford/BaseChatKit/issues/1047)) ([ab5f506](https://github.com/roryford/BaseChatKit/commit/ab5f506fa3d4f22e0345d7021b8babf6a55a77d3))
-* add structured output strategy routing ([#1054](https://github.com/roryford/BaseChatKit/issues/1054)) ([ac17931](https://github.com/roryford/BaseChatKit/commit/ac17931291d14a1e842e48f8731181f189813058))
-* flip default backend load options ([#1046](https://github.com/roryford/BaseChatKit/issues/1046)) ([63ba72a](https://github.com/roryford/BaseChatKit/commit/63ba72abb6ced645ce63f630ae4b5c388eb87da5))
-* **huggingface:** support multi-component packages ([#1053](https://github.com/roryford/BaseChatKit/issues/1053)) ([91d3da9](https://github.com/roryford/BaseChatKit/commit/91d3da941c4845436fa649a3ed5ff8ef5e12bcb6))
+* **ui:** show image loading placeholders with legacy-compatible `MessagePart.image` persistence and crossfade rendering ([#1047](https://github.com/roryford/BaseChatKit/pull/1047))
+* **inference:** add `StructuredOutputStrategy`, `StructuredOutputTarget`, and `StructuredOutputRouter` for capability-aware structured output routing ([#1054](https://github.com/roryford/BaseChatKit/pull/1054))
+* **backends:** flip default backend load options to `kvCacheQuantization = .q8` and off-simulator `flashAttention = true` ([#1046](https://github.com/roryford/BaseChatKit/pull/1046))
+* **huggingface:** support multi-component packages with aggregate progress and atomic finalization ([#1053](https://github.com/roryford/BaseChatKit/pull/1053))
 
+### Fixes
 
-### Bug Fixes
+* **foundation:** keep multimodal support explicitly gated off until the public FoundationModels SDK can accept image input, and surface a backend-agnostic attachment error when vision is unavailable ([#1050](https://github.com/roryford/BaseChatKit/pull/1050))
+* **mlx:** convert Gemma4 MoE `fatalError` crashes into thrown `InferenceError.inferenceFailure` errors callers can surface gracefully ([#1055](https://github.com/roryford/BaseChatKit/pull/1055)), closes [#802](https://github.com/roryford/BaseChatKit/issues/802)
+* **tests:** prefer the smallest GGUF fixture so backend test runs stay leaner and less brittle ([#1044](https://github.com/roryford/BaseChatKit/issues/1044))
+* **demo:** repair scripted demo scenario tool flows and the UI/E2E assertions around completed tool calls and approval flows ([#1057](https://github.com/roryford/BaseChatKit/pull/1057))
+* **tests:** tighten the system-prompt-change KV reuse assertion so it permits shared template tokens while still catching body reuse ([#1048](https://github.com/roryford/BaseChatKit/pull/1048))
 
-* close Foundation multimodal support gap ([#1050](https://github.com/roryford/BaseChatKit/issues/1050)) ([99ea4ef](https://github.com/roryford/BaseChatKit/commit/99ea4ef3b8fbb53648ff9d7bc53b26cab1317922))
-* **mlx:** convert Gemma4 MoE fatalError to thrown InferenceError ([#1055](https://github.com/roryford/BaseChatKit/issues/1055)) ([a19e553](https://github.com/roryford/BaseChatKit/commit/a19e553ad1c85a35cf8f59832965b5c107b17eec)), closes [#802](https://github.com/roryford/BaseChatKit/issues/802)
-* prefer smallest GGUF test model ([#1044](https://github.com/roryford/BaseChatKit/issues/1044)) ([52d2191](https://github.com/roryford/BaseChatKit/commit/52d2191504eb119e9292af35c4e992078f4de34c))
-* repair demo scenario tool flows ([#1057](https://github.com/roryford/BaseChatKit/issues/1057)) ([6c4c4cb](https://github.com/roryford/BaseChatKit/commit/6c4c4cba8177126cb0752bd0f8e22dbcb024be75))
-* **test:** tighten system-prompt-change KV reuse assertion ([#1048](https://github.com/roryford/BaseChatKit/issues/1048)) ([3127b42](https://github.com/roryford/BaseChatKit/commit/3127b42265d0327daa5c4ff107af1870292e24fd))
+### Performance
 
-
-### Performance Improvements
-
-* spike SwiftPM debug cache reuse in CI ([#1045](https://github.com/roryford/BaseChatKit/issues/1045)) ([3cb46d1](https://github.com/roryford/BaseChatKit/commit/3cb46d12bcec124fc14f9d6f26b0eff03c21ec5d))
+* **ci:** add an experimental SwiftPM `.build/debug` cache path plus mtime normalization to improve incremental reuse on CI cache hits ([#1045](https://github.com/roryford/BaseChatKit/pull/1045))
 
 ## [0.17.0](https://github.com/roryford/BaseChatKit/compare/v0.16.4...v0.17.0) (2026-05-05)
 
