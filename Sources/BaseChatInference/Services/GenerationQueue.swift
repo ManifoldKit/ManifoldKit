@@ -293,7 +293,7 @@ final class GenerationQueue {
     ) throws -> GenerationStream {
         if Self.containsImages(messages), !backend.capabilities.supportsVision {
             throw InferenceError.inferenceFailure(
-                "Image attachments require a vision-capable backend. Load an MLX vision model before sending image parts."
+                "Image attachments require a backend whose capabilities.supportsVision is true. Select a vision-capable backend before sending image parts."
             )
         }
         // Exact-count pre-flight: backends that conform to TokenCountingBackend
