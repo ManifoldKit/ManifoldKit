@@ -15,6 +15,8 @@ final class ThinkingScenarioTests: XCTestCase {
         XCTAssertTrue(ids.contains("cancel-during-thinking"), "Cancel-during-thinking scenario must be discoverable")
         XCTAssertTrue(ids.contains("thinking-across-retry"), "Thinking-across-retry scenario must be discoverable")
         XCTAssertTrue(ids.contains("kv-reuse-coverage"), "KV-reuse coverage scenario must be discoverable")
+        XCTAssertTrue(ids.contains("mlx-vlm-gate"), "MLX VLM-gate scenario must be discoverable")
+        XCTAssertTrue(ids.contains("warmup-cost"), "Warmup-cost scenario must be discoverable")
     }
 
     func test_kvReuseCoverage_invariantHolds() async throws {
@@ -34,6 +36,37 @@ final class ThinkingScenarioTests: XCTestCase {
         for value in reuseValues {
             XCTAssertGreaterThanOrEqual(value, 0, "promptTokensReused must never be negative")
         }
+    }
+
+    func test_warmupCost_recordsTtftDeltaInExtras() async throws {
+        let outcome = try await WarmupCostScenario().run()
+        XCTAssertTrue(
+            outcome.invariantHeld,
+            "Warmup-cost invariant failed: \(outcome.failureReason ?? "<unknown>")"
+        )
+
+        // The whole point of this scenario is the recorded numbers — assert
+        // every required key is present and parseable so the summary script
+        // never has to handle a half-populated record.
+        XCTAssertNotNil(outcome.extras["ttft1Ms"], "TTFT-1 must be recorded")
+        XCTAssertNotNil(outcome.extras["ttft2Ms"], "TTFT-2 must be recorded")
+        XCTAssertNotNil(outcome.extras["warmupDeltaMs"], "warmup delta must be recorded")
+        XCTAssertNotNil(outcome.extras["backendName"], "backend identity must be recorded")
+        XCTAssertNotNil(outcome.extras["modelId"], "model identity must be recorded")
+
+        if let ttft1 = outcome.extras["ttft1Ms"], let ttft2 = outcome.extras["ttft2Ms"], let delta = outcome.extras["warmupDeltaMs"] {
+            XCTAssertNotNil(Double(ttft1), "ttft1Ms must parse back as a Double")
+            XCTAssertNotNil(Double(ttft2), "ttft2Ms must parse back as a Double")
+            XCTAssertNotNil(Double(delta), "warmupDeltaMs must parse back as a Double")
+        }
+
+        // Both turns must have produced at least one .token event — the
+        // scenario's only correctness invariant beyond the recorded numbers.
+        let tokenEventCount = outcome.events.reduce(0) { acc, e in
+            if case .token = e { return acc + 1 }
+            return acc
+        }
+        XCTAssertGreaterThanOrEqual(tokenEventCount, 2, "Two turns must each yield at least one token")
     }
 
     func test_thinkingBudgetZero_emitsNoThinkingEvents() async throws {
