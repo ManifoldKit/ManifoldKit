@@ -92,6 +92,13 @@ public final class ChatViewModel {
     /// Set by the view layer to connect to SessionManagerViewModel.
     public var onFirstMessage: (@MainActor (ChatSessionRecord, String) async -> Void)?
 
+    /// Called after ``branch(from:)`` forks a conversation, with the new
+    /// session's ID. Hosts wire this to their session-manager flow so the
+    /// sidebar refreshes and the new session is selected. The runtime
+    /// persists the new session and its copied messages itself; this callback
+    /// only signals "a new session exists, show it".
+    public var onSessionBranched: (@MainActor (UUID) async -> Void)?
+
     // MARK: - First Run / Onboarding
 
     /// Called on the first launch instead of the default first-run behaviour.
