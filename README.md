@@ -482,13 +482,13 @@ SwiftData-backed bootstrap and does not yet support custom providers.
 
 | Type | Backend | Format | Source | Image input |
 |------|---------|--------|--------|-------------|
-| GGUF | `LlamaBackend` (llama.cpp) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/roryford/BaseChatKit/issues/416) |
+| GGUF | `LlamaBackend` (llama.cpp) | Single `.gguf` file | HuggingFace, local | No; blocked on LlamaSwift multimodal bindings |
 | MLX | `MLXBackend` (mlx-swift) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
-| Foundation | `FoundationBackend` | Built-in (no download) | Apple Intelligence | No public FoundationModels image-input API yet |
-| OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | Vision-capable models |
-| Claude | `ClaudeBackend` | Cloud API | api.anthropic.com | Vision-capable models |
-| Ollama | `OpenAIBackend` | Local API | localhost:11434 | Vision-capable OpenAI-compatible models |
-| LM Studio | `OpenAIBackend` | Local API | localhost:1234 | Vision-capable OpenAI-compatible models |
+| Foundation | `FoundationBackend` | Built-in (no download) | Apple Intelligence | No; no public FoundationModels image-input API yet |
+| OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | OpenAI vision models only |
+| Claude | `ClaudeBackend` | Cloud API | api.anthropic.com | Claude vision models only |
+| Ollama | `OllamaBackend` | Local API | localhost:11434 | No; native Ollama image parts are not wired yet |
+| LM Studio | `OpenAIBackend` | Local API | localhost:1234 | OpenAI-compatible vision models recognized by `OpenAIBackend` |
 
 ## Key Types
 
