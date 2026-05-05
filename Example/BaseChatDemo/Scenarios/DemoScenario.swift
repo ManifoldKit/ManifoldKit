@@ -29,6 +29,13 @@ struct DemoScenario: Identifiable, Sendable {
     /// Prompt prefilled into the chat composer when the scenario is launched.
     let prompt: String
 
+    /// Scenario-specific system prompt installed before the prompt is sent.
+    ///
+    /// Keeps the demo cards honest on real backends by steering the model
+    /// toward the intended tool and argument shape instead of relying on the
+    /// currently-selected model to infer the demo contract on its own.
+    let systemPrompt: String
+
     /// Tool names the scenario is expected to invoke. Asserted loosely by
     /// the Layer 3 E2E suite (a model may pick a near-synonym) and exactly
     /// by the Layer 1 unit suite (where the mock backend is scripted).

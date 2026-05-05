@@ -73,15 +73,7 @@ struct BaseChatDemoApp: App {
         // Sandbox root: under --uitesting we route writes (notably WriteFileTool)
         // into a per-launch temp directory so XCUITests leave no residue in
         // Application Support. Production runs use the long-lived demo root.
-        let resolvedSandbox: URL = {
-            if testing {
-                let tempRoot = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("BaseChatDemo-UITest-\(UUID().uuidString)", isDirectory: true)
-                try? FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-                return tempRoot
-            }
-            return DemoToolRoot.resolve()
-        }()
+        let resolvedSandbox: URL = Self.resolveSandboxRoot(isTesting: testing)
         self.sandboxRoot = resolvedSandbox
 
         let registry = ToolRegistry()
@@ -456,5 +448,38 @@ struct BaseChatDemoApp: App {
             return nil
         }
         return args[flagIndex + 1]
+    }
+
+    /// Resolves the demo sandbox root.
+    ///
+    /// UI tests may inject a fixed root via `BASECHAT_DEMO_SANDBOX_ROOT` so
+    /// they can assert side effects from `write_file`. Otherwise UI-testing
+    /// launches use a disposable temp directory and production uses the
+    /// long-lived Application Support root.
+    private static func resolveSandboxRoot(isTesting: Bool) -> URL {
+        let fm = FileManager.default
+        if let override = ProcessInfo.processInfo.environment["BASECHAT_DEMO_SANDBOX_ROOT"],
+           !override.isEmpty {
+            let root = URL(fileURLWithPath: override, isDirectory: true)
+            do {
+                try fm.createDirectory(at: root, withIntermediateDirectories: true)
+            } catch {
+                Log.ui.warning("Failed to create overridden demo sandbox at \(root.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+            return root
+        }
+
+        if isTesting {
+            let tempRoot = fm.temporaryDirectory
+                .appendingPathComponent("BaseChatDemo-UITest-\(UUID().uuidString)", isDirectory: true)
+            do {
+                try fm.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+            } catch {
+                Log.ui.warning("Failed to create UI-test sandbox at \(tempRoot.path, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+            return tempRoot
+        }
+
+        return DemoToolRoot.resolve()
     }
 }
