@@ -852,7 +852,7 @@ final class MLXBackendGenerationTests: XCTestCase {
 
     /// Asserts the cooperative yield inserted to prevent WindowServer GPU-queue
     /// starvation fires every `yieldEveryNTokens` MLX-emitted chunks. We replace
-    /// the production `Task.sleep(for: .microseconds(50))` with a counting hook
+    /// the production `Task.yield()` with a counting hook
     /// so the test is deterministic and free of timing assumptions. Setting
     /// `yieldEveryNTokens = 0` must disable the yield entirely.
     ///
@@ -935,10 +935,10 @@ final class MLXBackendGenerationTests: XCTestCase {
     /// and the next loop iteration's `Task.isCancelled` check must terminate
     /// the stream cleanly.
     ///
-    /// The hook substitutes for `Task.sleep`, so to model "cancellation while
-    /// the task is sleeping" we cancel the surrounding generation Task from
-    /// inside the hook itself — this exercises the same control-flow shape as
-    /// a real cancel arriving during the 50µs sleep.
+    /// The hook substitutes for `Task.yield()`, so to model "cancellation while
+    /// yielding" we cancel the surrounding generation Task from inside the hook
+    /// itself — this exercises the same control-flow shape as a real cancel
+    /// arriving at a cooperative yield point.
     func test_yieldEveryNTokens_cancellationDuringYield_terminatesCleanly() async throws {
         let mock = MockMLXModelContainer()
         mock.tokensToYield = Array(repeating: "x", count: 32)
@@ -966,10 +966,9 @@ final class MLXBackendGenerationTests: XCTestCase {
         )
 
         // Drain the stream — must complete without throwing, even though the
-        // surrounding task was cancelled mid-yield. The `try?` on the sleep
-        // (allowlisted in SilentCatchAuditTest) intentionally swallows any
-        // CancellationError so the for-await observes cancellation at the top
-        // of the next iteration.
+        // surrounding task was cancelled mid-yield. The yield hook does not throw,
+        // matching production `Task.yield()`, so the for-await observes
+        // cancellation at the top of the next iteration.
         let tokens = try await collectTokens(from: stream)
 
         // Expect at most ~yieldEvery tokens to have been emitted before the

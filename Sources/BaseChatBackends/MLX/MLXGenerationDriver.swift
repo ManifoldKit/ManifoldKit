@@ -31,7 +31,7 @@ struct MLXGenerationDriver {
     ///   2. Routes each chunk through the optional tool-call parser, then the optional
     ///      thinking parser.
     ///   3. Enforces `config.maxOutputTokens` and `config.maxThinkingTokens`.
-    ///   4. Issues a cooperative `Task.sleep(50µs)` (or the test hook) every
+    ///   4. Issues a cooperative `Task.yield()` (or the test hook) every
     ///      `config.yieldEveryNTokens` chunks to keep the WindowServer GPU queue moving.
     ///   5. Flushes both parsers' tail buffers on exit.
     ///
@@ -129,7 +129,7 @@ struct MLXGenerationDriver {
                 if let yieldHook {
                     await yieldHook()
                 } else {
-                    try? await Task.sleep(for: .microseconds(50))
+                    await Task.yield()
                 }
             }
         }

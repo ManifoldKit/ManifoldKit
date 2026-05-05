@@ -170,11 +170,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Test seams
 
-    /// Invoked in place of `Task.sleep(for: .microseconds(50))` at every
+    /// Invoked in place of `Task.yield()` at every
     /// `yieldEveryNTokens`-th token during generation. Tests use this to count
     /// yield occurrences deterministically without timing assertions.
     ///
-    /// `nil` in production — the real microsecond sleep runs instead.
+    /// `nil` in production — the real cooperative yield runs instead.
     nonisolated(unsafe) static var _yieldHookForTesting: (@Sendable () async -> Void)?
 
     // MARK: - Init
