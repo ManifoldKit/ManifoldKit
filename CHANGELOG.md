@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Highlights
+
+#### XTC and Mirostat v2 samplers complete the modern llama.cpp surface
+
+DRY shipped in v0.16.4; this release adds the remaining two samplers from [#1021](https://github.com/roryford/BaseChatKit/issues/1021) — XTC ("Exclude Top Choices") and Mirostat v2. Both are llama.cpp-only and live behind nullable `GenerationConfig` fields so existing callers keep their bit-identical sampler chain. XTC inserts immediately after the temperature step to trim high-probability tokens for variety; Mirostat v2 replaces the temperature + dist tail with an entropy-controlled selector when active.
+
+```swift
+var config = GenerationConfig()
+config.llamaXTC = LlamaXTCSamplerOptions(probability: 0.5, threshold: 0.10, minKeep: 1)
+config.llamaMirostatV2 = LlamaMirostatV2SamplerOptions(tau: 5.0, eta: 0.1)
+```
+
+Each sampler advertises through `GenerationParameter.llamaXTC` / `.llamaMirostatV2` so UI and `RouterBackend` can dispatch on the new capabilities. Defaults mirror llama.cpp's `common_params_sampling`. With this, [#1021](https://github.com/roryford/BaseChatKit/issues/1021) is complete.
+
+### Features
+
+* **backends:** add llama XTC sampler option
+* **backends:** add llama mirostat v2 sampler option
+
 ## [0.16.4](https://github.com/roryford/BaseChatKit/compare/v0.16.3...v0.16.4) (2026-05-05)
 
 ### Highlights
