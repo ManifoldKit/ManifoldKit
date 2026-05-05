@@ -89,6 +89,10 @@ public enum ScenarioRegistry {
             ThinkingBudgetZeroScenario(),
             CancelDuringThinkingScenario(),
             ThinkingAcrossRetryScenario(),
+            // Registered factory-less so the scenario is discoverable from
+            // listings and the registry test. Real-MLX runs construct it
+            // explicitly with `MLXFuzzFactory` from `BaseChatFuzzBackends`.
+            MLXVLMGateScenario(),
         ]
     }
 
