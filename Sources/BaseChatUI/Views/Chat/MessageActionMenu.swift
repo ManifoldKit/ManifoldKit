@@ -4,19 +4,31 @@ import BaseChatInference
 
 /// A view modifier that attaches a context menu to a message bubble.
 ///
-/// Provides copy, edit (user messages only), and regenerate (assistant messages
-/// only) actions. Uses platform-appropriate clipboard APIs.
-public struct MessageActionMenuModifier: ViewModifier {
+/// Surfaces per-message actions on macOS via secondary-tap (right-click) and
+/// on iOS / iPadOS via long-press. Default actions cover pin, copy, edit
+/// (user messages only), regenerate (assistant messages only), branch from
+/// here, and delete.
+///
+/// Hosts extend the menu by passing a `@ViewBuilder` closure to
+/// ``SwiftUICore/View/messageActionMenu(message:viewModel:contextMenuItems:)``;
+/// the extra items render after the default set.
+public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
 
     public let message: ChatMessageRecord
     public let viewModel: ChatViewModel
+    private let extraItems: (ChatMessageRecord) -> ExtraItems
 
     @State private var isEditing: Bool = false
     @State private var editText: String = ""
 
-    public init(message: ChatMessageRecord, viewModel: ChatViewModel) {
+    public init(
+        message: ChatMessageRecord,
+        viewModel: ChatViewModel,
+        @ViewBuilder extraItems: @escaping (ChatMessageRecord) -> ExtraItems
+    ) {
         self.message = message
         self.viewModel = viewModel
+        self.extraItems = extraItems
     }
 
     public func body(content: Content) -> some View {
@@ -37,6 +49,14 @@ public struct MessageActionMenuModifier: ViewModifier {
                 if message.role == .assistant {
                     regenerateButton
                 }
+
+                branchButton
+
+                Divider()
+
+                deleteButton
+
+                extraItems(message)
             }
             .sheet(isPresented: $isEditing) {
                 editSheet
@@ -88,6 +108,22 @@ public struct MessageActionMenuModifier: ViewModifier {
         }
     }
 
+    private var branchButton: some View {
+        Button {
+            Task { await viewModel.branch(from: message.id) }
+        } label: {
+            Label("Branch from here", systemImage: "arrow.triangle.branch")
+        }
+    }
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            Task { await viewModel.deleteMessage(id: message.id) }
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
     // MARK: - Edit Sheet
 
     private var editSheet: some View {
@@ -124,9 +160,29 @@ public struct MessageActionMenuModifier: ViewModifier {
 // MARK: - View Extension
 
 extension View {
-    /// Attaches a context menu with message actions (copy, edit, regenerate).
-    public func messageActionMenu(message: ChatMessageRecord, viewModel: ChatViewModel) -> some View {
-        modifier(MessageActionMenuModifier(message: message, viewModel: viewModel))
+    /// Attaches a context menu with the default message actions (pin, copy,
+    /// edit, regenerate, branch, delete).
+    public func messageActionMenu(
+        message: ChatMessageRecord,
+        viewModel: ChatViewModel
+    ) -> some View {
+        modifier(MessageActionMenuModifier(message: message, viewModel: viewModel) { _ in
+            EmptyView()
+        })
+    }
+
+    /// Attaches a context menu with the default message actions plus the
+    /// host-supplied items rendered after the defaults.
+    public func messageActionMenu<ExtraItems: View>(
+        message: ChatMessageRecord,
+        viewModel: ChatViewModel,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+    ) -> some View {
+        modifier(MessageActionMenuModifier(
+            message: message,
+            viewModel: viewModel,
+            extraItems: contextMenuItems
+        ))
     }
 }
 

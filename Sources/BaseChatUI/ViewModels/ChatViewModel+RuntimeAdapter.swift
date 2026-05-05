@@ -207,11 +207,22 @@ extension ChatViewModel {
             errorMessage = "Generation stopped: the model appears to be repeating itself."
             transitionPhase(to: .idle)
 
+        // MARK: Session branching
+
+        case .sessionBranched(let newSessionID, _):
+            // Forward to the host so its session-manager can refresh the
+            // sidebar and select the new session. The runtime has already
+            // persisted the new session and copied messages; the callback is
+            // pure notification.
+            if let onSessionBranched {
+                await onSessionBranched(newSessionID)
+            }
+
         // MARK: Observational / future cases
 
         case .beforeContextAssembly, .contextAssembled, .afterGeneration,
              .compressionTriggered, .toolCallRequested, .toolCallApproved,
-             .toolCallCompleted, .sessionBranched:
+             .toolCallCompleted:
             // These are observational or reserved for future sub-flows.
             // No ChatViewModel state mutation is needed here yet.
             break

@@ -53,6 +53,13 @@ public struct ChatView<APIConfig: View>: View {
     /// renders no link previews unless a host supplies this closure.
     private let linkPreviewProvider: LinkPreviewProvider?
 
+    /// Builder for extra per-message context-menu items rendered after the
+    /// built-in actions (pin, copy, edit, regenerate, branch, delete).
+    /// Defaults to `nil`, in which case only the built-in items appear.
+    /// The closure is invoked per message so hosts can vary items by role
+    /// or content.
+    private let contextMenuItemsBuilder: ((ChatMessageRecord) -> AnyView)?
+
     public init(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
@@ -63,6 +70,7 @@ public struct ChatView<APIConfig: View>: View {
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = nil
     }
 
     public init<ComposerAccessory: View>(
@@ -76,6 +84,7 @@ public struct ChatView<APIConfig: View>: View {
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = nil
     }
 
     /// Creates a ``ChatView`` with a host-supplied empty-state view rendered
@@ -94,6 +103,7 @@ public struct ChatView<APIConfig: View>: View {
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = nil
     }
 
     public init<EmptyContent: View, ComposerAccessory: View>(
@@ -108,6 +118,75 @@ public struct ChatView<APIConfig: View>: View {
         self.apiConfigurationBuilder = apiConfiguration
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = nil
+    }
+
+    /// Creates a ``ChatView`` with host-supplied extra items appended to each
+    /// message's context menu.
+    ///
+    /// The `contextMenuItems` closure is invoked per ``ChatMessageRecord``;
+    /// items it returns render after the built-in pin/copy/edit/regenerate/
+    /// branch/delete actions. Use this overload to add app-specific actions
+    /// such as "Reply", "Translate", or "Send to…" without forking the
+    /// stock message bubble.
+    public init<ExtraItems: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = nil
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = nil
+        self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+    }
+
+    public init<ExtraItems: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = nil
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
+        self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+    }
+
+    public init<EmptyContent: View, ExtraItems: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = AnyView(emptyState())
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = nil
+        self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+    }
+
+    public init<EmptyContent: View, ExtraItems: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = AnyView(emptyState())
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
+        self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
     }
 
     // MARK: - Body
@@ -427,14 +506,23 @@ public struct ChatView<APIConfig: View>: View {
                     }
 
                     ForEach(viewModel.messages) { message in
-                        MessageBubbleView(
+                        let bubble = MessageBubbleView(
                             message: message,
                             isStreaming: isMessageStreaming(message),
                             isPinned: viewModel.isMessagePinned(id: message.id),
                             linkPreviewProvider: linkPreviewProvider
                         )
-                        .messageActionMenu(message: message, viewModel: viewModel)
-                        .id(message.id)
+                        if let contextMenuItemsBuilder {
+                            bubble
+                                .messageActionMenu(message: message, viewModel: viewModel) { msg in
+                                    contextMenuItemsBuilder(msg)
+                                }
+                                .id(message.id)
+                        } else {
+                            bubble
+                                .messageActionMenu(message: message, viewModel: viewModel)
+                                .id(message.id)
+                        }
                     }
 
                     // Invisible anchor for auto-scrolling.

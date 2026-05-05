@@ -167,6 +167,52 @@ extension ChatViewModel {
         Log.ui.debug("Generation stopped by user")
     }
 
+    /// Removes a single message from the active session.
+    ///
+    /// Deletes the message from persistence and the in-memory transcript.
+    /// No-op when the message is not present in the active session, or when
+    /// no session is active. Errors propagate via ``surfaceError(_:kind:)``.
+    public func deleteMessage(id messageID: UUID) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        let message = messages[index]
+        // Remove from in-memory transcript first so the UI reflects the
+        // deletion immediately. If persistence fails we surface the error
+        // and reload to reconcile — matches `clearChat`'s pattern.
+        messages.remove(at: index)
+        tokenCountCache.removeValue(forKey: messageID)
+        pinnedMessageIDs.remove(messageID)
+        do {
+            try await deleteMessage(message)
+            updateContextEstimate()
+        } catch {
+            Log.persistence.error("Failed to delete message: \(error)")
+            await loadMessages()
+            updateContextEstimate()
+            surfaceError(error, kind: .persistence)
+        }
+    }
+
+    /// Forks the current session at `messageID`, creating a new session that
+    /// contains the messages up to and including the branch point.
+    ///
+    /// The runtime persists the new session and copied messages; the
+    /// ``onSessionBranched`` callback (when set) is invoked with the new
+    /// session ID so the host can refresh its sidebar and select the new
+    /// session. No-op when no session is active.
+    public func branch(from messageID: UUID) async {
+        guard let activeSessionID else { return }
+        let input = BranchInput(
+            sourceSessionID: activeSessionID,
+            branchMessageID: messageID
+        )
+        do {
+            _ = try await conversationRuntime.branch(input)
+        } catch {
+            Log.ui.error("ConversationRuntime.branch failed: \(error)")
+            surfaceError(error, kind: .persistence)
+        }
+    }
+
     /// Clears all messages in the current session.
     ///
     /// Cancels any in-flight generation before clearing to avoid inconsistent UI state.
