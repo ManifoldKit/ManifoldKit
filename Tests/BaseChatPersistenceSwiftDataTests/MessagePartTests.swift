@@ -158,7 +158,7 @@ final class MessagePartTests: XCTestCase {
     // `.text` bubble containing the raw JSON so the user sees something rather than losing the message.
     func test_chatMessage_decode_legacyToolCaseJSON_fallsBackToRawTextPart() {
         let legacyJSON = #"""
-        [{"text":{"_0":"Hello"}},{"toolCall":{"_0":{"id":"tc1","name":"get_weather","arguments":"{"city":"London"}"}}}]
+        [{"text":{"_0":"Hello"}},{"toolCall":{"_0":{"id":"tc1","name":"get_weather","arguments":"{\"city\":\"London\"}"}}}]
         """#
 
         let parts = BaseChatSchemaV4.ChatMessage.decode(legacyJSON)
