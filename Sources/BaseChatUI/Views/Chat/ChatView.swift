@@ -430,7 +430,14 @@ public struct ChatView<APIConfig: View>: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .onAppear {
+                _ = consumeScrollToMessageRequest(proxy: proxy)
+            }
+            .onChange(of: viewModel.scrollToMessageRequest?.requestID) {
+                _ = consumeScrollToMessageRequest(proxy: proxy)
+            }
             .onChange(of: viewModel.messages.count) {
+                if consumeScrollToMessageRequest(proxy: proxy) { return }
                 // Only auto-scroll to bottom for new messages appended at the end,
                 // not when older messages are prepended at the top.
                 if !viewModel.isLoadingOlderMessages {
@@ -438,6 +445,7 @@ public struct ChatView<APIConfig: View>: View {
                 }
             }
             .onChange(of: viewModel.messages.last?.content) {
+                if consumeScrollToMessageRequest(proxy: proxy) { return }
                 scrollToBottom(proxy: proxy)
             }
         }
@@ -581,9 +589,42 @@ public struct ChatView<APIConfig: View>: View {
         }
     }
 
+    @discardableResult
+    private func consumeScrollToMessageRequest(proxy: ScrollViewProxy) -> Bool {
+        guard let request = viewModel.scrollToMessageRequest else { return false }
+        guard Self.canConsumeScrollToMessageRequest(request, in: viewModel.messages) else { return false }
+        withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo(request.messageID, anchor: request.anchor.unitPoint)
+        }
+        viewModel.consumeScrollToMessageRequest(request)
+        return true
+    }
+
+    static func canConsumeScrollToMessageRequest(
+        _ request: ChatScrollToMessageRequest,
+        in messages: [ChatMessageRecord]
+    ) -> Bool {
+        messages.contains(where: { $0.id == request.messageID })
+    }
+
     private func scrollToBottom(proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.15)) {
             proxy.scrollTo("chatBottom", anchor: .bottom)
+        }
+    }
+}
+
+private extension Optional where Wrapped == ChatMessageScrollAnchor {
+    var unitPoint: UnitPoint? {
+        switch self {
+        case .some(.top):
+            .top
+        case .some(.center):
+            .center
+        case .some(.bottom):
+            .bottom
+        case nil:
+            nil
         }
     }
 }

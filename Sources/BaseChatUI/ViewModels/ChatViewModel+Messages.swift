@@ -250,6 +250,28 @@ extension ChatViewModel {
         pinnedMessageIDs.contains(messageID)
     }
 
+    // MARK: - Scroll Requests
+
+    /// Requests that the bound ``ChatView`` scroll the message into view.
+    ///
+    /// Calling this repeatedly for the same message creates distinct requests
+    /// so observers can deterministically consume each command.
+    public func requestScrollToMessage(
+        id messageID: ChatMessageRecord.ID,
+        anchor: ChatMessageScrollAnchor? = nil
+    ) {
+        scrollToMessageRequest = ChatScrollToMessageRequest(messageID: messageID, anchor: anchor)
+    }
+
+    /// Clears a pending scroll request once the view has attempted it.
+    ///
+    /// The request identity check prevents a stale consumer from clearing a
+    /// newer request issued for the same or a different message.
+    public func consumeScrollToMessageRequest(_ request: ChatScrollToMessageRequest) {
+        guard scrollToMessageRequest?.requestID == request.requestID else { return }
+        scrollToMessageRequest = nil
+    }
+
     func stageDraftAttachment(_ part: MessagePart) {
         draftAttachments.append(part)
     }
