@@ -98,19 +98,26 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         try await runScenario(
             registry: registry,
             systemPrompt: "Use the `calc` tool to evaluate any arithmetic in the user's question. Then answer in one sentence.",
-            userPrompt: "What's an 18% tip on $73.40?"
+            userPrompt: "What's an 18% tip on $73.40?",
+            expectedToolNames: ["calc"]
         )
     }
 
     func test_worldClock_invokesToolAndReturnsAnswer() async throws {
         let registry = ToolRegistry()
-        registry.register(NowTool.makeExecutor())
+        registry.register(makeCurrentTimeExecutor())
 
         try await runScenario(
             registry: registry,
-            systemPrompt: "Use the `now` tool to read the current time. Then answer in one sentence.",
-            userPrompt: "What time is it right now?"
-        )
+            systemPrompt: "Use the `now` tool to answer time questions. For Tokyo, pass the exact IANA timezone `Asia/Tokyo` and answer with the tool result; do not guess the current time.",
+            userPrompt: "What time is it in Tokyo right now?",
+            expectedToolNames: ["now"]
+        ) { dispatchedCalls, _ in
+            XCTAssertTrue(
+                dispatchedCalls.contains(where: { $0.arguments.contains("Asia/Tokyo") }),
+                "World-clock scenario should call now with Asia/Tokyo"
+            )
+        }
     }
 
     func test_workspaceSearch_invokesToolAndReturnsAnswer() async throws {
@@ -129,8 +136,14 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         try await runScenario(
             registry: registry,
             systemPrompt: "Use the `sample_repo_search` tool to look for the user's query. Then answer with a short summary.",
-            userPrompt: "Find any note that mentions 'MCP'."
-        )
+            userPrompt: "Find any note that mentions 'MCP'.",
+            expectedToolNames: ["sample_repo_search"]
+        ) { _, visibleAnswer in
+            XCTAssertTrue(
+                visibleAnswer.localizedCaseInsensitiveContains("MCP"),
+                "Workspace-search answer should mention MCP"
+            )
+        }
     }
 
     func test_journalWrite_invokesToolAndReturnsAnswer() async throws {
@@ -140,16 +153,14 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         try await runScenario(
             registry: registry,
             systemPrompt: "Use the `write_file` tool to save the user's content. Path must be relative. Then confirm in one sentence.",
-            userPrompt: "Write a one-sentence journal entry to journal/today.md saying I had a productive day."
-        )
-
-        // Best-effort assertion: the tool was supposed to write *something*
-        // under the sandbox. Skip on flaky model behaviour rather than fail
-        // hard — Layer 1 covers the dispatch contract; this layer just
-        // proves a real model can drive write_file end-to-end.
-        let journalDir = sandboxRoot.appendingPathComponent("journal", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: journalDir.path) {
-            print("[DemoE2E] note: model did not create the expected journal/ directory under \(sandboxRoot.path)")
+            userPrompt: "Write a one-sentence journal entry to journal/today.md saying I had a productive day.",
+            expectedToolNames: ["write_file"]
+        ) { _, _ in
+            let journalPath = sandboxRoot.appendingPathComponent("journal/today.md")
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: journalPath.path),
+                "Journal-write scenario should create journal/today.md"
+            )
         }
     }
 
@@ -166,7 +177,9 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         registry: ToolRegistry,
         systemPrompt: String,
         userPrompt: String,
-        maxIterations: Int = 4
+        maxIterations: Int = 4,
+        expectedToolNames: [String] = [],
+        extraAssertions: ((_ dispatchedCalls: [ToolCall], _ visibleAnswer: String) -> Void)? = nil
     ) async throws {
         var history: [ToolAwareHistoryEntry] = [
             ToolAwareHistoryEntry(role: "system", content: systemPrompt),
@@ -224,6 +237,58 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
             visibleAnswer.isEmpty,
             "Scenario must produce a non-empty visible answer (model=\(modelName ?? "?"))"
         )
+        if !expectedToolNames.isEmpty {
+            XCTAssertEqual(
+                Set(dispatchedCalls.map(\.toolName)),
+                Set(expectedToolNames),
+                "Scenario should dispatch the expected tool set (model=\(modelName ?? "?"))"
+            )
+        }
+        extraAssertions?(dispatchedCalls, visibleAnswer)
+    }
+
+    private func makeCurrentTimeExecutor() -> any ToolExecutor {
+        struct Args: Decodable, Sendable {
+            let timezone: String?
+        }
+        struct Result: Encodable, Sendable {
+            let timestamp: String
+            let timezone: String
+            let localTime: String
+        }
+
+        let definition = ToolDefinition(
+            name: "now",
+            description: "Returns the current date and time. If the user asks for a place-specific time, pass an IANA timezone like 'Asia/Tokyo' when possible; never guess.",
+            parameters: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "timezone": .object([
+                        "type": .string("string"),
+                        "description": .string("Optional IANA timezone identifier, for example 'Asia/Tokyo'.")
+                    ])
+                ]),
+                "required": .array([])
+            ])
+        )
+
+        return TypedToolExecutor<Args, Result>(definition: definition) { args in
+            let timeZone = args.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
+            let clock = ISO8601DateFormatter()
+            clock.timeZone = timeZone
+
+            let localFormatter = DateFormatter()
+            localFormatter.locale = Locale(identifier: "en_US_POSIX")
+            localFormatter.timeZone = timeZone
+            localFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss zzz"
+
+            let now = Date()
+            return Result(
+                timestamp: clock.string(from: now),
+                timezone: timeZone.identifier,
+                localTime: localFormatter.string(from: now)
+            )
+        }
     }
 
     /// Demo-mirror of the production `WriteFileTool` — kept here so the E2E

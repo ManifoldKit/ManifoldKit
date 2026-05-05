@@ -47,6 +47,7 @@ enum DemoScenarioRunner {
             return
         }
 
+        chat.systemPrompt = scenario.systemPrompt
         chat.inputText = scenario.prompt
         if scenario.autoSend {
             await chat.sendMessage()
