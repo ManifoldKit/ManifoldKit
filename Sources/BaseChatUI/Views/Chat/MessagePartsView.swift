@@ -63,6 +63,9 @@ struct MessagePartsView: View {
         case .image(let data, _, let placeholderHash):
             ImageAttachmentView(data: data, placeholderHash: placeholderHash)
 
+        case .audio(let url, let duration, let waveform):
+            AudioMessageView(url: url, duration: duration, waveform: waveform, role: role)
+
         case .thinking(let text, _):
             // While reasoning is in progress (`isThinkingStreaming`), the part's
             // text holds whatever has been flushed so far by the streaming

@@ -2,6 +2,9 @@ import SwiftUI
 import BaseChatRuntime
 import BaseChatInference
 import UniformTypeIdentifiers
+#if os(iOS)
+import AVFoundation
+#endif
 
 /// The text input bar at the bottom of the chat view.
 ///
@@ -16,6 +19,10 @@ public struct ChatInputBar: View {
 
     @FocusState private var isInputFocused: Bool
     @State private var isImageImporterPresented = false
+#if os(iOS)
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var isRecordingAudio = false
+#endif
 
     public init() {}
 
@@ -73,6 +80,10 @@ public struct ChatInputBar: View {
                 attachImageButton
             }
 
+#if os(iOS)
+            recordAudioButton
+#endif
+
             if showRegenerateButton {
                 Button {
                     Task {
@@ -115,6 +126,22 @@ public struct ChatInputBar: View {
         .accessibilityLabel("Attach image")
         .help("Attach image")
     }
+
+#if os(iOS)
+    private var recordAudioButton: some View {
+        Button {
+            toggleAudioRecording()
+        } label: {
+            Image(systemName: isRecordingAudio ? "stop.circle.fill" : "mic.circle.fill")
+                .font(.title2)
+                .foregroundStyle(isRecordingAudio ? .red : .secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isRecordingAudio && !canRecordAudio)
+        .accessibilityLabel(isRecordingAudio ? "Stop recording audio" : "Record audio message")
+        .help(isRecordingAudio ? "Stop recording audio" : "Record audio message")
+    }
+#endif
 
     // MARK: - Quick Action Pills
 
@@ -169,6 +196,15 @@ public struct ChatInputBar: View {
         && !viewModel.isLoading
     }
 
+#if os(iOS)
+    private var canRecordAudio: Bool {
+        viewModel.activeSession != nil
+        && viewModel.isModelLoaded
+        && !viewModel.isGenerating
+        && !viewModel.isLoading
+    }
+#endif
+
     private var showRegenerateButton: Bool {
         !viewModel.isGenerating
         && !viewModel.messages.isEmpty
@@ -188,6 +224,141 @@ public struct ChatInputBar: View {
             await viewModel.sendMessage()
         }
     }
+
+#if os(iOS)
+    private func toggleAudioRecording() {
+        if isRecordingAudio {
+            finishAudioRecording()
+        } else {
+            Task { await beginAudioRecording() }
+        }
+    }
+
+    private func beginAudioRecording() async {
+        guard canRecordAudio else { return }
+        let granted = await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { allowed in
+                continuation.resume(returning: allowed)
+            }
+        }
+        guard granted else {
+            viewModel.surfaceError(
+                InferenceError.inferenceFailure("Microphone access is required to record audio messages."),
+                kind: .configuration,
+                context: "recording audio"
+            )
+            return
+        }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try session.setActive(true)
+
+            let url = try makeAudioRecordingURL()
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            ]
+            let recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder.isMeteringEnabled = true
+            recorder.prepareToRecord()
+            guard recorder.record() else {
+                throw InferenceError.inferenceFailure("Unable to start audio recording.")
+            }
+            audioRecorder = recorder
+            isRecordingAudio = true
+        } catch {
+            viewModel.surfaceError(error, kind: .configuration, context: "recording audio")
+            deactivateRecordingSession()
+        }
+    }
+
+    private func finishAudioRecording() {
+        guard let recorder = audioRecorder else { return }
+        let url = recorder.url.standardizedFileURL
+        let duration = recorder.currentTime
+        recorder.stop()
+        audioRecorder = nil
+        isRecordingAudio = false
+        deactivateRecordingSession()
+
+        guard duration > 0.1 else {
+            deleteRecordingIfPresent(at: url)
+            return
+        }
+
+        viewModel.stageDraftAttachment(.audio(
+            url: url,
+            duration: duration,
+            waveform: waveformSamples(for: url)
+        ))
+    }
+
+    private func makeAudioRecordingURL() throws -> URL {
+        guard let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw InferenceError.inferenceFailure("Unable to locate an audio recording directory.")
+        }
+        let directory = root.appendingPathComponent("BaseChatKit/AudioMessages", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("\(UUID().uuidString).m4a")
+    }
+
+    private func waveformSamples(for url: URL, targetCount: Int = 48) -> [Float]? {
+        guard url.isFileURL, targetCount > 0 else { return nil }
+        do {
+            let file = try AVAudioFile(forReading: url)
+            let frameCount = AVAudioFrameCount(min(file.length, Int64(44_100 * 60 * 10)))
+            guard frameCount > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+                return nil
+            }
+            try file.read(into: buffer, frameCount: frameCount)
+            guard let channel = buffer.floatChannelData?[0] else { return nil }
+            let frames = Int(buffer.frameLength)
+            guard frames > 0 else { return nil }
+            let bucketSize = max(frames / targetCount, 1)
+            var samples: [Float] = []
+            samples.reserveCapacity(targetCount)
+            for start in stride(from: 0, to: frames, by: bucketSize) {
+                let end = min(start + bucketSize, frames)
+                var peak: Float = 0
+                for frame in start..<end {
+                    peak = max(peak, abs(channel[frame]))
+                }
+                samples.append(peak)
+                if samples.count == targetCount { break }
+            }
+            let maxPeak = samples.max() ?? 0
+            guard maxPeak > 0 else { return samples }
+            return samples.map { min(max($0 / maxPeak, 0), 1) }
+        } catch {
+            Log.ui.warning("Failed to compute audio waveform: \(error)")
+            return nil
+        }
+    }
+
+    private func deactivateRecordingSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        } catch {
+            Log.ui.warning("Failed to deactivate audio recording session: \(error)")
+        }
+    }
+
+    private func deleteRecordingIfPresent(at url: URL) {
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch CocoaError.fileNoSuchFile {
+            return
+        } catch {
+            Log.ui.warning("Failed to remove discarded audio recording: \(error)")
+        }
+    }
+#endif
 
     @ViewBuilder
     private var draftAttachmentStrip: some View {
@@ -221,7 +392,33 @@ public struct ChatInputBar: View {
                 .accessibilityLabel("Remove attachment")
             }
             .padding(.trailing, 4)
+        } else if case let .audio(_, duration, _) = part {
+            ZStack(alignment: .topTrailing) {
+                Label("Audio \(formattedAudioDuration(duration))", systemImage: "waveform")
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.fill.tertiary, in: Capsule())
+
+                Button {
+                    viewModel.removeDraftAttachment(id: index)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.white, .black.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 6, y: -6)
+                .accessibilityLabel("Remove audio attachment")
+            }
+            .padding(.trailing, 4)
         }
+    }
+
+    private func formattedAudioDuration(_ value: TimeInterval) -> String {
+        guard value.isFinite else { return "0:00" }
+        let totalSeconds = max(Int(value.rounded()), 0)
+        return "\(totalSeconds / 60):\(String(format: "%02d", totalSeconds % 60))"
     }
 
     @ViewBuilder

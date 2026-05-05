@@ -82,15 +82,16 @@ final class MessagePartGeneratedImageTests: XCTestCase {
             "ImageMessagePayload.generatedAt must encode under the literal key 'generatedAt'")
     }
 
-    // MARK: - Mixed-array round-trip with all six cases
+    // MARK: - Mixed-array round-trip with all seven cases
 
-    func test_allSixCases_mixedArray_codableRoundtrip() throws {
+    func test_allSevenCases_mixedArray_codableRoundtrip() throws {
         let parts: [MessagePart] = [
             .text("Here is what I generated:"),
             .thinking("Let me think about composition."),
             .toolCall(ToolCall(id: "c1", toolName: "render", arguments: "{}")),
             .toolResult(ToolResult(callId: "c1", content: "ok", isError: false)),
             .image(data: Data([0xFF]), mimeType: "image/jpeg"),
+            .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 4, waveform: [0.1, 0.9]),
             .generatedImage(makePayload()),
         ]
 
@@ -126,6 +127,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         XCTAssertNil(MessagePart.text("x").generatedImageContent)
         XCTAssertNil(MessagePart.thinking("x").generatedImageContent)
         XCTAssertNil(MessagePart.image(data: Data(), mimeType: "image/png").generatedImageContent)
+        XCTAssertNil(MessagePart.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 1, waveform: nil).generatedImageContent)
         XCTAssertNil(MessagePart.toolCall(ToolCall(id: "c", toolName: "t", arguments: "{}")).generatedImageContent)
         XCTAssertNil(MessagePart.toolResult(ToolResult(callId: "c", content: "x", isError: false)).generatedImageContent)
     }
@@ -204,8 +206,8 @@ final class MessagePartGeneratedImageTests: XCTestCase {
 
     // MARK: - Backwards-compat: legacy-only fixture (no .generatedImage)
 
-    /// Decodes a hand-written `[MessagePart]` JSON containing only the
-    /// pre-existing cases (text, thinking, image, toolCall, toolResult) —
+    /// Decodes a hand-written `[MessagePart]` JSON containing only older
+    /// cases (text, thinking, image, toolCall, toolResult) —
     /// no `.generatedImage`. Proves additive persistence: rows persisted
     /// before the new case existed still decode through the new build.
     func test_legacyMessageParts_withoutGeneratedImage_decodeIntact() throws {

@@ -53,10 +53,22 @@ final class MessagePartTests: XCTestCase {
         XCTAssertEqual(part.generatingImagePlaceholderIfNeeded(), part)
     }
 
+    func test_audioPart_codableRoundTrip() throws {
+        let part = MessagePart.audio(
+            url: URL(fileURLWithPath: "/Users/example/Library/Containers/app/audio.m4a"),
+            duration: 12.5,
+            waveform: [0, 0.25, 1]
+        )
+        let data = try JSONEncoder().encode([part])
+        let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
+        XCTAssertEqual(decoded, [part])
+    }
+
     func test_mixedParts_codableRoundTrip() throws {
         let parts: [MessagePart] = [
             .text("Here is the weather:"),
             .image(data: Data([0xFF, 0xD8, 0xFF, 0xE0]), mimeType: "image/jpeg"),
+            .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 3, waveform: nil),
             .text("It's rainy today."),
             .image(data: Data([0x89, 0x50, 0x4E, 0x47]), mimeType: "image/png"),
         ]
@@ -77,6 +89,15 @@ final class MessagePartTests: XCTestCase {
         XCTAssertNil(part.textContent)
     }
 
+    func test_audioContent_returnsAudioPayload() {
+        let url = URL(fileURLWithPath: "/Users/example/audio.m4a")
+        let part = MessagePart.audio(url: url, duration: 9, waveform: [0.1, 0.8])
+        XCTAssertNil(part.textContent)
+        XCTAssertEqual(part.audioContent?.url, url)
+        XCTAssertEqual(part.audioContent?.duration, 9)
+        XCTAssertEqual(part.audioContent?.waveform, [0.1, 0.8])
+    }
+
     // MARK: - ChatMessageRecord backward compatibility
 
     func test_chatMessageRecord_contentStringInit_createsTextPart() {
@@ -88,7 +109,12 @@ final class MessagePartTests: XCTestCase {
     func test_chatMessageRecord_contentParts_concatenatesTextParts() {
         let record = ChatMessageRecord(
             role: .assistant,
-            contentParts: [.text("Part 1"), .image(data: Data(), mimeType: "image/png"), .text("Part 2")],
+            contentParts: [
+                .text("Part 1"),
+                .image(data: Data(), mimeType: "image/png"),
+                .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 3, waveform: nil),
+                .text("Part 2"),
+            ],
             sessionID: UUID()
         )
         XCTAssertEqual(record.content, "Part 1Part 2")
@@ -146,7 +172,12 @@ final class MessagePartTests: XCTestCase {
         let sessionID = UUID()
         let message = ChatMessage(
             role: .assistant,
-            contentParts: [.text("hello "), .image(data: Data(), mimeType: "image/png"), .text("world")],
+            contentParts: [
+                .text("hello "),
+                .image(data: Data(), mimeType: "image/png"),
+                .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 3, waveform: nil),
+                .text("world"),
+            ],
             sessionID: sessionID
         )
         context.insert(message)
