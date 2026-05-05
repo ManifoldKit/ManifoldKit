@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.17.1](https://github.com/roryford/BaseChatKit/compare/v0.17.0...v0.17.1) (2026-05-05)
+
+
+### Features
+
+* add image loading placeholders ([#1047](https://github.com/roryford/BaseChatKit/issues/1047)) ([ab5f506](https://github.com/roryford/BaseChatKit/commit/ab5f506fa3d4f22e0345d7021b8babf6a55a77d3))
+* add structured output strategy routing ([#1054](https://github.com/roryford/BaseChatKit/issues/1054)) ([ac17931](https://github.com/roryford/BaseChatKit/commit/ac17931291d14a1e842e48f8731181f189813058))
+* flip default backend load options ([#1046](https://github.com/roryford/BaseChatKit/issues/1046)) ([63ba72a](https://github.com/roryford/BaseChatKit/commit/63ba72abb6ced645ce63f630ae4b5c388eb87da5))
+* **huggingface:** support multi-component packages ([#1053](https://github.com/roryford/BaseChatKit/issues/1053)) ([91d3da9](https://github.com/roryford/BaseChatKit/commit/91d3da941c4845436fa649a3ed5ff8ef5e12bcb6))
+
+
+### Bug Fixes
+
+* close Foundation multimodal support gap ([#1050](https://github.com/roryford/BaseChatKit/issues/1050)) ([99ea4ef](https://github.com/roryford/BaseChatKit/commit/99ea4ef3b8fbb53648ff9d7bc53b26cab1317922))
+* **mlx:** convert Gemma4 MoE fatalError to thrown InferenceError ([#1055](https://github.com/roryford/BaseChatKit/issues/1055)) ([a19e553](https://github.com/roryford/BaseChatKit/commit/a19e553ad1c85a35cf8f59832965b5c107b17eec)), closes [#802](https://github.com/roryford/BaseChatKit/issues/802)
+* prefer smallest GGUF test model ([#1044](https://github.com/roryford/BaseChatKit/issues/1044)) ([52d2191](https://github.com/roryford/BaseChatKit/commit/52d2191504eb119e9292af35c4e992078f4de34c))
+* repair demo scenario tool flows ([#1057](https://github.com/roryford/BaseChatKit/issues/1057)) ([6c4c4cb](https://github.com/roryford/BaseChatKit/commit/6c4c4cba8177126cb0752bd0f8e22dbcb024be75))
+* **test:** tighten system-prompt-change KV reuse assertion ([#1048](https://github.com/roryford/BaseChatKit/issues/1048)) ([3127b42](https://github.com/roryford/BaseChatKit/commit/3127b42265d0327daa5c4ff107af1870292e24fd))
+
+
+### Performance Improvements
+
+* spike SwiftPM debug cache reuse in CI ([#1045](https://github.com/roryford/BaseChatKit/issues/1045)) ([3cb46d1](https://github.com/roryford/BaseChatKit/commit/3cb46d12bcec124fc14f9d6f26b0eff03c21ec5d))
+
 ## [0.17.0](https://github.com/roryford/BaseChatKit/compare/v0.16.4...v0.17.0) (2026-05-05)
 
 ### Highlights
