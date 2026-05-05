@@ -15,9 +15,8 @@ import Foundation
 /// `flashAttention` knob — it is always on in mlx-swift's SDPA) silently
 /// ignore that field.
 ///
-/// Defaults preserve historical behaviour bit-for-bit. See issue #1017 for
-/// the planned default flips after the opt-in surface has soaked through one
-/// release.
+/// Defaults favor memory/performance for local models: Q8 KV cache, Flash
+/// Attention on physical devices, and backend-default prefill batching.
 public struct BackendLoadOptions: Sendable, Codable, Equatable {
 
     /// KV cache element type.
@@ -27,11 +26,11 @@ public struct BackendLoadOptions: Sendable, Codable, Equatable {
     /// model's weight quantization (Q4 weights + ``q8`` KV is the standard
     /// recipe in mlx-lm Python and llama.cpp).
     public enum KVCacheQuantization: String, Sendable, Codable, CaseIterable {
-        /// Full-precision FP16. Library default. Highest quality, highest memory.
+        /// Full-precision FP16. Highest quality, highest memory.
         case f16
         /// 8-bit quantized. ~50% memory reduction at effectively zero quality
         /// loss. Maps to llama.cpp's `GGML_TYPE_Q8_0` and mlx-swift-lm's
-        /// `kvBits = 8`. Recommended once the opt-in surface soaks (#1017).
+        /// `kvBits = 8`. Default.
         case q8
         /// 4-bit quantized. ~75% memory reduction with measurable quality
         /// loss, especially on GQA/MQA models. Use only when memory pressure
@@ -56,9 +55,22 @@ public struct BackendLoadOptions: Sendable, Codable, Equatable {
     /// on long prompts at the cost of a memory spike during prefill.
     public var prefillBatchSize: Int?
 
+    /// Platform default for ``flashAttention``.
+    ///
+    /// Simulator Metal does not reliably support Flash Attention kernels, so
+    /// the default remains disabled there and ``LlamaModelLoader`` also guards
+    /// against explicit simulator requests.
+    public static var platformDefaultFlashAttention: Bool {
+        #if targetEnvironment(simulator)
+        false
+        #else
+        true
+        #endif
+    }
+
     public init(
-        kvCacheQuantization: KVCacheQuantization = .f16,
-        flashAttention: Bool = false,
+        kvCacheQuantization: KVCacheQuantization = .q8,
+        flashAttention: Bool = BackendLoadOptions.platformDefaultFlashAttention,
         prefillBatchSize: Int? = nil
     ) {
         self.kvCacheQuantization = kvCacheQuantization
@@ -66,8 +78,8 @@ public struct BackendLoadOptions: Sendable, Codable, Equatable {
         self.prefillBatchSize = prefillBatchSize
     }
 
-    /// Library-default options. Behaviour matches BCK pre-PR (no quantized KV,
-    /// no Flash Attention, library-default prefill batch).
+    /// Default options: Q8 KV cache, platform-default Flash Attention, and
+    /// backend-default prefill batch.
     public static let `default` = BackendLoadOptions()
 
     // MARK: Codable
@@ -80,11 +92,12 @@ public struct BackendLoadOptions: Sendable, Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        // Forward-compat: every field decodes to its library-default when absent
+        // Forward-compat: every field decodes to its current default when absent
         // so older payloads written before this type existed decode cleanly.
         kvCacheQuantization =
-            (try c.decodeIfPresent(KVCacheQuantization.self, forKey: .kvCacheQuantization)) ?? .f16
-        flashAttention = (try c.decodeIfPresent(Bool.self, forKey: .flashAttention)) ?? false
+            (try c.decodeIfPresent(KVCacheQuantization.self, forKey: .kvCacheQuantization)) ?? .q8
+        flashAttention =
+            (try c.decodeIfPresent(Bool.self, forKey: .flashAttention)) ?? BackendLoadOptions.platformDefaultFlashAttention
         prefillBatchSize = try c.decodeIfPresent(Int.self, forKey: .prefillBatchSize)
     }
 

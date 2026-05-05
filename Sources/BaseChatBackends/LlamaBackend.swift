@@ -627,8 +627,8 @@ extension LlamaBackend: LoadProgressReporting {
 
     /// Installs backend tuning knobs (KV cache quantization, Flash Attention,
     /// prefill batch size) that take effect on the **next** ``loadModel(from:plan:)``
-    /// call. Defaults preserve historical behaviour bit-for-bit; opt in
-    /// per ``BackendLoadOptions`` to trade memory for context size or perf.
+    /// call. Defaults use Q8 KV cache and platform-gated Flash Attention; pass
+    /// explicit ``BackendLoadOptions`` to choose different memory/perf tradeoffs.
     ///
     /// Calling this after a model is already loaded does not retune the live
     /// context — applying KV-quantization changes requires rebuilding the

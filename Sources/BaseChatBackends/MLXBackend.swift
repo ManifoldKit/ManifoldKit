@@ -1303,11 +1303,11 @@ extension MLXBackend: LoadProgressReporting {
     /// field is silently ignored — MLX's SDPA path is always
     /// flash-attention-shaped.
     ///
-    /// Defaults preserve historical behaviour bit-for-bit. Per the BCK API
-    /// shape, `BackendLoadOptions` is named "load" because llama.cpp wires
-    /// these into `ctxParams` at context-creation time. MLX could in
-    /// principle change them per-generation; the API stays load-time-shaped
-    /// to keep both backends symmetric.
+    /// Defaults use Q8 KV cache and backend-default prefill batching. Per the
+    /// BCK API shape, `BackendLoadOptions` is named "load" because llama.cpp
+    /// wires these into `ctxParams` at context-creation time. MLX could in
+    /// principle change them per-generation; the API stays load-time-shaped to
+    /// keep both backends symmetric.
     public func setLoadOptions(_ options: BackendLoadOptions) {
         withStateLock { _loadOptions = options }
     }

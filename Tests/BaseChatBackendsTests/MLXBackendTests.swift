@@ -49,10 +49,10 @@ final class MLXBackendTests: XCTestCase {
 
     // MARK: - Load Options Plumbing (no hardware gate)
 
-    func test_loadOptions_defaultIsHistoricalBehavior() {
+    func test_loadOptions_defaultUsesBackendTunedDefaults() {
         let opts = MLXBackend().loadOptionsForTesting
-        XCTAssertEqual(opts.kvCacheQuantization, .f16)
-        XCTAssertFalse(opts.flashAttention)
+        XCTAssertEqual(opts.kvCacheQuantization, .q8)
+        XCTAssertEqual(opts.flashAttention, BackendLoadOptions.platformDefaultFlashAttention)
         XCTAssertNil(opts.prefillBatchSize)
     }
 
