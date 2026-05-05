@@ -1,5 +1,6 @@
 #if MLX
 import Foundation
+@preconcurrency import MLX
 import MLXLMCommon
 import os
 import BaseChatInference
@@ -73,11 +74,29 @@ struct MLXGenerationDriver {
         var thinkingTokenCount = 0
         var thinkingLimitReached = false
 
-        let mlxStream = try await container.generate(
-            input: generationInput,
-            cache: cache,
-            parameters: generateConfig
-        )
+        // Wrap `container.generate` in MLX's error handler so that fatal model
+        // errors (e.g. Gemma4 MoE broadcast shape mismatch — issue #802) are
+        // converted from uncatchable `fatalError` calls into thrown Swift errors
+        // that the caller can surface as InferenceError rather than crashing the app.
+        //
+        // MLXError.ErrorCapture is @unchecked Sendable so the @Sendable handler
+        // can write into it; we read back on the same actor after generate() returns.
+        final class MLXErrorCapture: @unchecked Sendable {
+            var message: String?
+        }
+        let capture = MLXErrorCapture()
+        let mlxStream = try await withErrorHandler(
+            { capture.message = capture.message ?? $0 }
+        ) { @MainActor in
+            try await container.generate(
+                input: generationInput,
+                cache: cache,
+                parameters: generateConfig
+            )
+        }
+        if let message = capture.message {
+            throw InferenceError.inferenceFailure(message)
+        }
 
         let yieldEvery = config.yieldEveryNTokens
         var completionTokenCount = 0

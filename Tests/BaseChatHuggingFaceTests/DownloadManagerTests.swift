@@ -58,6 +58,49 @@ final class DownloadManagerTests: XCTestCase {
         ]
     }
 
+    private func makeDiffusionPackageFiles() -> [ModelDownloadFile] {
+        [
+            "model_index.json",
+            "unet/config.json",
+            "unet/diffusion_pytorch_model.safetensors",
+            "vae/config.json",
+            "vae/diffusion_pytorch_model.safetensors",
+            "text_encoder/config.json",
+            "text_encoder/model.safetensors",
+            "scheduler/scheduler_config.json",
+        ].enumerated().map { index, path in
+            ModelDownloadFile(
+                relativePath: path,
+                url: URL(string: "https://example.com/component-\(index)")!,
+                sizeBytes: 100
+            )
+        }
+    }
+
+    private func makeSafetensorsBlob(payloadByteCount: Int = 4) -> Data {
+        let headerJSON = #"{"x":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#
+        let headerBytes = Data(headerJSON.utf8)
+        var prefix = Data(count: 8)
+        let headerLen = UInt64(headerBytes.count).littleEndian
+        prefix.withUnsafeMutableBytes { raw in
+            raw.storeBytes(of: headerLen, as: UInt64.self)
+        }
+        var blob = prefix
+        blob.append(headerBytes)
+        blob.append(Data(repeating: 0, count: payloadByteCount))
+        return blob
+    }
+
+    private func fixtureData(forDiffusionRelativePath relativePath: String) -> Data {
+        if relativePath.hasSuffix(".safetensors") {
+            return makeSafetensorsBlob()
+        }
+        if relativePath.hasSuffix("merges.txt") {
+            return Data("#version: 0.2\na b\n".utf8)
+        }
+        return Data(#"{"ok": true}"#.utf8)
+    }
+
     // MARK: - Disk Space
 
     func test_diskSpaceCheck_sufficientSpace() async {
@@ -393,6 +436,43 @@ final class DownloadManagerTests: XCTestCase {
         XCTAssertEqual(progress, 0.55, accuracy: 0.001)
     }
 
+    func test_updateSnapshotProgress_aggregatesDiffusionPackageAsSingleDownload() {
+        let model = DownloadableModel(
+            repoID: "stabilityai/sdxl-test",
+            fileName: "stabilityai__sdxl-test",
+            displayName: "SDXL Test",
+            modelType: .mlx,
+            sizeBytes: 800,
+            packageKind: .diffusion
+        )
+        let state = DownloadState(model: model)
+        manager.activeDownloads[model.id] = state
+
+        let stagingDirectory = tempDirectory.appendingPathComponent(".staging-diffusion-progress", isDirectory: true)
+        try? FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        manager.prepareSnapshotDownload(model: model, files: makeDiffusionPackageFiles(), stagingDirectory: stagingDirectory)
+
+        manager.updateSnapshotProgress(
+            modelID: model.id,
+            relativePath: "unet/diffusion_pytorch_model.safetensors",
+            bytesDownloaded: 250,
+            totalBytesExpected: 400
+        )
+        manager.updateSnapshotProgress(
+            modelID: model.id,
+            relativePath: "vae/diffusion_pytorch_model.safetensors",
+            bytesDownloaded: 150,
+            totalBytesExpected: 400
+        )
+
+        guard case .downloading(let progress, let bytesDownloaded, let totalBytes) = state.status else {
+            return XCTFail("Expected diffusion package progress to be aggregated in one DownloadState")
+        }
+        XCTAssertEqual(bytesDownloaded, 400)
+        XCTAssertEqual(totalBytes, 800)
+        XCTAssertEqual(progress, 0.5, accuracy: 0.001)
+    }
+
     func test_completeSnapshotFile_finalizesDirectoryAfterLastFile() throws {
         let model = DownloadableModel(
             repoID: "mlx-community/Test-4bit",
@@ -438,6 +518,42 @@ final class DownloadManagerTests: XCTestCase {
             FileManager.default.fileExists(
                 atPath: finalURL.appendingPathComponent("weights/model.safetensors").path
             )
+        )
+    }
+
+    func test_completeSnapshotFile_writesReadinessManifestForDiffusionPackage() throws {
+        let model = DownloadableModel(
+            repoID: "stabilityai/sdxl-test",
+            fileName: "stabilityai__sdxl-test",
+            displayName: "SDXL Test",
+            modelType: .mlx,
+            sizeBytes: 800,
+            packageKind: .diffusion
+        )
+        let state = DownloadState(model: model)
+        manager.activeDownloads[model.id] = state
+
+        let stagingDirectory = tempDirectory.appendingPathComponent(".staging-diffusion-finalize", isDirectory: true)
+        try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        let files = makeDiffusionPackageFiles()
+        manager.prepareSnapshotDownload(model: model, files: files, stagingDirectory: stagingDirectory)
+
+        for file in files {
+            let tempURL = tempDirectory.appendingPathComponent(UUID().uuidString)
+            try fixtureData(forDiffusionRelativePath: file.relativePath).write(to: tempURL)
+            try manager.completeSnapshotFile(modelID: model.id, relativePath: file.relativePath, tempURL: tempURL)
+        }
+
+        let finalURL = tempDirectory.appendingPathComponent("stabilityai__sdxl-test", isDirectory: true)
+        guard case .completed(let localURL) = state.status else {
+            return XCTFail("Diffusion package should complete after every component is validated")
+        }
+        XCTAssertEqual(localURL.standardizedFileURL.path, finalURL.standardizedFileURL.path)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: finalURL.appendingPathComponent(DownloadedModelPackageManifest.fileName).path
+            ),
+            "Completed diffusion packages need a local readiness manifest for atomic discovery"
         )
     }
 
