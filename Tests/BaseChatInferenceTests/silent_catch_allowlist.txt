@@ -172,13 +172,6 @@ BaseChatBackends/MLXBackend.swift:let parsed = try? JSONSerialization.jsonObject
 # ensures only successfully-encoded calls are appended.
 BaseChatBackends/MLXBackend.swift:if let data = try? JSONSerialization.data(withJSONObject: callObj),
 
-# 50µs cooperative yield inserted every N tokens to prevent
-# WindowServer GPU-queue starvation during sustained MLX generation
-# (see issue #747; mirrors SwiftLM/Server.swift). The sleep is
-# best-effort: if the generation Task is cancelled mid-yield we
-# intentionally fall through to the next loop iteration where
-# `Task.isCancelled` is checked, rather than observing CancellationError.
-BaseChatBackends/MLX/MLXGenerationDriver.swift:try? await Task.sleep(for: .microseconds(50))
 
 # MLXToolCallParser.parseToolCall: defensive JSON parse of the buffered
 # payload between <tool_call>…</tool_call>. Models routinely emit
