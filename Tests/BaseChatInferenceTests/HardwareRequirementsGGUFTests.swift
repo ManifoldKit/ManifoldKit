@@ -8,8 +8,13 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        tempDirectory = fm.temporaryDirectory
-            .appendingPathComponent("HardwareRequirementsGGUFTests-\(UUID().uuidString)")
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        tempDirectory = repoRoot
+            .appendingPathComponent(".build/test-temp/HardwareRequirementsGGUFTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try? fm.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
     }
 
@@ -44,17 +49,45 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertEqual(result?.standardizedFileURL.path, nested.standardizedFileURL.path)
     }
 
-    func test_findGGUFModel_overrideFallsBackToFirstSortedCandidate() {
-        _ = createGGUFFile("zeta.gguf")
-        let alpha = createGGUFFile("alpha.gguf")
+    func test_findGGUFModel_missingOverrideFallsBackToSmallestValidCandidate() {
+        _ = createGGUFFile("alpha.gguf", size: 12)
+        let smallest = createGGUFFile("zeta.gguf", size: 4)
+        _ = createGGUFFile("tiny.gguf", size: 1)
 
         let result = HardwareRequirements.findGGUFModel(
             in: [tempDirectory],
             environment: ["LLAMA_TEST_MODEL": "missing"],
+            minimumModelSize: 2
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, smallest.standardizedFileURL.path)
+    }
+
+    func test_findGGUFModel_envOverrideWinsRegardlessOfCandidateSize() {
+        _ = createGGUFFile("small.gguf", size: 4)
+        let selected = createGGUFFile("large.gguf", size: 24)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            environment: ["LLAMA_TEST_MODEL": "large"],
             minimumModelSize: 1
         )
 
-        XCTAssertEqual(result?.standardizedFileURL.path, alpha.standardizedFileURL.path)
+        XCTAssertEqual(result?.standardizedFileURL.path, selected.standardizedFileURL.path)
+    }
+
+    func test_findGGUFModel_respectsMaximumModelSize() {
+        _ = createGGUFFile("too-large.gguf", size: 20)
+        let selected = createGGUFFile("fits.gguf", size: 12)
+        _ = createGGUFFile("too-small.gguf", size: 4)
+
+        let result = HardwareRequirements.findGGUFModel(
+            in: [tempDirectory],
+            minimumModelSize: 10,
+            maximumModelSize: 15
+        )
+
+        XCTAssertEqual(result?.standardizedFileURL.path, selected.standardizedFileURL.path)
     }
 
     func test_publicFindGGUFModel_withoutOptInDoesNotScanDefaultDirectories() {
@@ -70,6 +103,7 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
 
         XCTAssertFalse(HardwareRequirements.isValidGGUFModel(directory, minimumModelSize: 1))
         XCTAssertFalse(HardwareRequirements.isValidGGUFModel(tiny, minimumModelSize: 2))
+        XCTAssertFalse(HardwareRequirements.isValidGGUFModel(tiny, minimumModelSize: 1, maximumModelSize: 0))
     }
 
     @discardableResult
