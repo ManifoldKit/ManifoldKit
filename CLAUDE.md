@@ -27,7 +27,7 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 **Special cases:**
 - MLX integration tests require Xcode (Metal shaders): `scripts/test-mlx-integration.sh`
 - Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
-- MCP E2E: `RUN_MCP_E2E=1 swift test --filter BaseChatMCPE2ESmokeTests` — filter to streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs
+- MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter BaseChatMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
 - Llama: use `scripts/test-llama-isolated.sh` when in-process runs accumulate Metal global state
 
