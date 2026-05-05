@@ -50,17 +50,25 @@ public struct ScenarioOutcome: Sendable, Equatable {
     public let invariantHeld: Bool
     public let failureReason: String?
     public let events: [GenerationEvent]
+    /// Free-form key/value payload scenarios can use to surface measurements
+    /// alongside the invariant result — e.g. ``WarmupCostScenario`` records
+    /// `ttft1Ms`, `ttft2Ms`, and `warmupDeltaMs` so the perf-audit summary
+    /// script can aggregate them into a Markdown table without re-running.
+    /// Defaults to empty so existing scenarios stay source-compatible.
+    public let extras: [String: String]
 
     public init(
         scenarioId: String,
         invariantHeld: Bool,
         failureReason: String? = nil,
-        events: [GenerationEvent] = []
+        events: [GenerationEvent] = [],
+        extras: [String: String] = [:]
     ) {
         self.scenarioId = scenarioId
         self.invariantHeld = invariantHeld
         self.failureReason = failureReason
         self.events = events
+        self.extras = extras
     }
 
     public func finding(modelId: String) -> Finding? {
@@ -89,6 +97,12 @@ public enum ScenarioRegistry {
             ThinkingBudgetZeroScenario(),
             CancelDuringThinkingScenario(),
             ThinkingAcrossRetryScenario(),
+            KVReuseCoverageScenario(),
+            // Registered factory-less so the scenario is discoverable from
+            // listings and the registry test. Real-MLX runs construct it
+            // explicitly with `MLXFuzzFactory` from `BaseChatFuzzBackends`.
+            MLXVLMGateScenario(),
+            WarmupCostScenario(),
         ]
     }
 

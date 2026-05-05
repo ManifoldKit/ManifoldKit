@@ -30,8 +30,21 @@ enum CloudImageEncoding {
     /// the same encoding both Anthropic and OpenAI expect (no line breaks,
     /// no padding tweaks).
     static func base64String(from data: Data) -> String {
-        data.base64EncodedString()
+        let encoded = data.base64EncodedString()
+        encodeHook?()
+        return encoded
     }
+
+    /// Test-only hook fired once per ``base64String(from:)`` call.
+    ///
+    /// Mirrors `GenerationQueue.toolDispatchLogHook`: production callers
+    /// never set this; it exists so tests can count how many times a cloud
+    /// backend re-encodes the same `MessagePart.image` payload across turns
+    /// without instrumenting the encoder itself. Tests must reset it in
+    /// `tearDown` to avoid cross-test leakage. See
+    /// `CloudImageEncodeCountTests` for the invariant the perf-audit plan
+    /// (PR-α work unit α-3) is grounding on.
+    nonisolated(unsafe) static var encodeHook: (@Sendable () -> Void)?
 
     /// Returns a `data:` URI (RFC 2397) suitable for OpenAI's
     /// `image_url.url` field — `data:<mime>;base64,<payload>`. OpenAI also

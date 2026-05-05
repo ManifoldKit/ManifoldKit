@@ -85,6 +85,22 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     /// `.toolCallArgumentsDelta` verbatim before the closing `.toolCall`.
     public var scriptedToolCallDeltasPerTurn: [[ScriptedToolCallDelta]] = []
 
+    /// When non-nil the mock yields `.kvCacheReuse(promptTokensReused:)` at the
+    /// very start of every `generate()` call before any thinking or visible
+    /// tokens. Mirrors the real-backend contract — `LlamaGenerationDriver` and
+    /// `MLXBackend` both emit this event before the first decode step when a
+    /// prefix from the previous turn was preserved. Tests assert on the count
+    /// and value to ground-truth tool-loop / multi-turn KV-reuse coverage
+    /// without needing a real model. Per-turn scripting via
+    /// ``kvCacheReuseToYieldPerTurn`` takes precedence when configured.
+    public var kvCacheReuseToYield: Int?
+
+    /// Per-turn KV-reuse counts. Each call to `generate()` pops the first
+    /// entry; that value is yielded as `.kvCacheReuse(promptTokensReused:)`.
+    /// Falls back to ``kvCacheReuseToYield`` once the queue drains. Use to
+    /// assert tool-loop reuse is non-decreasing across rounds.
+    public var kvCacheReuseToYieldPerTurn: [Int] = []
+
     // Track calls
     public var loadModelCallCount = 0
     public var generateCallCount = 0
@@ -199,6 +215,16 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
 
         let thinkingTokens = thinkingTokensToYield
 
+        // Per-turn reuse counts take precedence over the flat property — popped
+        // in step with `generate()` so successive calls drive different rounds
+        // of a tool loop or multi-turn session.
+        let kvReuseCount: Int?
+        if !kvCacheReuseToYieldPerTurn.isEmpty {
+            kvReuseCount = kvCacheReuseToYieldPerTurn.removeFirst()
+        } else {
+            kvReuseCount = kvCacheReuseToYield
+        }
+
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
             continuationLock.lock()
             self.activeContinuation = continuation
@@ -211,6 +237,12 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
             let multiBlocks = self.thinkingBlocksToYield
             let signatures = self.signaturesPerThinkingBlock
             Task {
+                // Real backends emit `.kvCacheReuse` before the first decode
+                // step — match that ordering so tests asserting "reuse precedes
+                // tokens" hold against both the mock and the real path.
+                if let reuseCount = kvReuseCount, !Task.isCancelled {
+                    continuation.yield(.kvCacheReuse(promptTokensReused: reuseCount))
+                }
                 if !multiBlocks.isEmpty {
                     // Multi-block reasoning script: each inner array is one
                     // `<think>…</think>` round, separated by its own
