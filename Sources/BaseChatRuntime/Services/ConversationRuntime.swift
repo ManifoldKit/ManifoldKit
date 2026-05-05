@@ -26,7 +26,8 @@ public struct SendInput: Sendable {
     /// non-empty the runtime builds the user record's `contentParts` as
     /// `[.text(userText), <attachments>...]` so vision-capable backends see
     /// the images and the persisted record preserves them. The runtime does
-    /// not transform the attachments — backends own the on-wire shape.
+    /// only fills in missing image placeholder hashes; backends own the
+    /// remaining on-wire shape.
     public let attachments: [MessagePart]
     public let systemPrompt: String?
     public let temperature: Float
@@ -457,13 +458,14 @@ public final class ConversationRuntime: Sendable {
         // both carry `[.text, <attachments>...]`. Empty text + attachments
         // yields an attachment-only record (e.g. a "describe this image"
         // turn with no caption).
+        let attachments = input.attachments.map { $0.generatingImagePlaceholderIfNeeded() }
         let userContentParts: [MessagePart]
-        if input.attachments.isEmpty {
+        if attachments.isEmpty {
             userContentParts = [.text(input.userText)]
         } else if input.userText.isEmpty {
-            userContentParts = input.attachments
+            userContentParts = attachments
         } else {
-            userContentParts = [.text(input.userText)] + input.attachments
+            userContentParts = [.text(input.userText)] + attachments
         }
         let userMessage = ChatMessageRecord(
             role: .user,

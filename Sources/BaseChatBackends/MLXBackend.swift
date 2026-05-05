@@ -516,7 +516,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     private static func imageInputs(from parts: [MessagePart]) throws -> [UserInput.Image] {
         try parts.compactMap { part in
-            guard case let .image(data, mimeType) = part else { return nil }
+            guard case let .image(data, mimeType, _) = part else { return nil }
             return try userInputImage(from: data, mimeType: mimeType)
         }
     }
@@ -1303,11 +1303,11 @@ extension MLXBackend: LoadProgressReporting {
     /// field is silently ignored — MLX's SDPA path is always
     /// flash-attention-shaped.
     ///
-    /// Defaults preserve historical behaviour bit-for-bit. Per the BCK API
-    /// shape, `BackendLoadOptions` is named "load" because llama.cpp wires
-    /// these into `ctxParams` at context-creation time. MLX could in
-    /// principle change them per-generation; the API stays load-time-shaped
-    /// to keep both backends symmetric.
+    /// Defaults use Q8 KV cache and backend-default prefill batching. Per the
+    /// BCK API shape, `BackendLoadOptions` is named "load" because llama.cpp
+    /// wires these into `ctxParams` at context-creation time. MLX could in
+    /// principle change them per-generation; the API stays load-time-shaped to
+    /// keep both backends symmetric.
     public func setLoadOptions(_ options: BackendLoadOptions) {
         withStateLock { _loadOptions = options }
     }

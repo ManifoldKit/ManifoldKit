@@ -30,11 +30,11 @@ final class LlamaBackendTests: XCTestCase {
 
     // MARK: - Load Options Plumbing
 
-    func test_loadOptions_defaultIsHistoricalBehavior() {
+    func test_loadOptions_defaultUsesBackendTunedDefaults() {
         let backend = LlamaBackend()
         let opts = backend.loadOptionsForTesting
-        XCTAssertEqual(opts.kvCacheQuantization, .f16)
-        XCTAssertFalse(opts.flashAttention)
+        XCTAssertEqual(opts.kvCacheQuantization, .q8)
+        XCTAssertEqual(opts.flashAttention, BackendLoadOptions.platformDefaultFlashAttention)
         XCTAssertNil(opts.prefillBatchSize)
     }
 

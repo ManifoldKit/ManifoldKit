@@ -24,8 +24,10 @@ public enum MessagePart: Hashable, Sendable {
     ///
     /// Distinct from ``generatedImage(_:)`` — this case carries inline
     /// bytes the model is asked to look at; that case carries a file URL
-    /// pointing at an image the model produced.
-    case image(data: Data, mimeType: String)
+    /// pointing at an image the model produced. ``placeholderHash`` is optional
+    /// so legacy persisted images and callers that do not need placeholder
+    /// rendering can continue to omit it.
+    case image(data: Data, mimeType: String, placeholderHash: ImagePlaceholderHash? = nil)
     /// Accumulated model reasoning. Excluded from context window (textContent returns nil).
     ///
     /// ``signature`` carries the provider-supplied opaque token that some
@@ -47,11 +49,11 @@ public enum MessagePart: Hashable, Sendable {
     /// An image produced by an ``ImageGenerationBackend`` and attached to
     /// a saved message.
     ///
-    /// Distinct from ``image(data:mimeType:)`` — that case carries raw
-    /// bytes the user submitted as multimodal *input*; this case references
-    /// a file URL whose binary is the model's *output*. Excluded from
-    /// ``textContent`` (the payload's prompt is metadata, not visible
-    /// chat text).
+    /// Distinct from ``image(data:mimeType:placeholderHash:)`` — that case
+    /// carries raw bytes the user submitted as multimodal *input*; this case
+    /// references a file URL whose binary is the model's *output*. Excluded
+    /// from ``textContent`` (the payload's prompt is metadata, not visible chat
+    /// text).
     case generatedImage(ImageMessagePayload)
 }
 
@@ -68,7 +70,7 @@ extension MessagePart: Codable {
     }
 
     private enum ImageKeys: String, CodingKey {
-        case data, mimeType
+        case data, mimeType, placeholderHash
     }
 
     /// Nested payload used for the `.thinking` discriminator.
@@ -109,7 +111,8 @@ extension MessagePart: Codable {
             let nested = try container.nestedContainer(keyedBy: ImageKeys.self, forKey: .image)
             let data = try nested.decode(Data.self, forKey: .data)
             let mimeType = try nested.decode(String.self, forKey: .mimeType)
-            self = .image(data: data, mimeType: mimeType)
+            let placeholderHash = try nested.decodeIfPresent(ImagePlaceholderHash.self, forKey: .placeholderHash)
+            self = .image(data: data, mimeType: mimeType, placeholderHash: placeholderHash)
         case .thinking:
             // Accept both shapes:
             //   legacy:  {"thinking": "text"}
@@ -139,10 +142,11 @@ extension MessagePart: Codable {
         switch self {
         case .text(let text):
             try container.encode(text, forKey: .text)
-        case .image(let data, let mimeType):
+        case .image(let data, let mimeType, let placeholderHash):
             var nested = container.nestedContainer(keyedBy: ImageKeys.self, forKey: .image)
             try nested.encode(data, forKey: .data)
             try nested.encode(mimeType, forKey: .mimeType)
+            try nested.encodeIfPresent(placeholderHash, forKey: .placeholderHash)
         case .thinking(let text, let signature):
             // Always emit the structured object form; legacy readers in
             // BaseChatSchemaV3 decode through the branch above. A nil
@@ -197,5 +201,25 @@ extension MessagePart {
     public var generatedImageContent: ImageMessagePayload? {
         if case .generatedImage(let p) = self { return p }
         return nil
+    }
+
+    /// The compact placeholder hash for an uploaded image part, or `nil` for
+    /// non-image parts and legacy image parts that pre-date placeholders.
+    public var imagePlaceholderHash: ImagePlaceholderHash? {
+        if case .image(_, _, let placeholderHash) = self { return placeholderHash }
+        return nil
+    }
+
+    /// Returns the same image part with a generated placeholder hash when one
+    /// is missing. Non-image parts and images that already carry a hash are
+    /// returned unchanged.
+    public func generatingImagePlaceholderIfNeeded() -> MessagePart {
+        guard case .image(let data, let mimeType, let placeholderHash) = self else { return self }
+        guard placeholderHash == nil else { return self }
+        return .image(
+            data: data,
+            mimeType: mimeType,
+            placeholderHash: ImagePlaceholderHash.generate(from: data)
+        )
     }
 }

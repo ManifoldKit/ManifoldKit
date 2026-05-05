@@ -29,7 +29,11 @@ public enum PendingPayload: Sendable {
     /// `mimeType` defaults to `"image/png"` since most extension
     /// pasteboards expose PNG; pass an explicit value for JPEG, HEIC,
     /// etc.
-    case image(Data, mimeType: String = "image/png")
+    case image(
+        Data,
+        mimeType: String = "image/png",
+        placeholderHash: ImagePlaceholderHash? = nil
+    )
 
     /// A file URL pointing at content the host has already staged
     /// inside the app group. Today the file's path is rendered into
@@ -314,8 +318,17 @@ private extension PendingPayload {
             return (string, [])
         case .url(let url):
             return (url.absoluteString, [])
-        case .image(let data, let mimeType):
-            return ("", [.image(data: data, mimeType: mimeType)])
+        case .image(let data, let mimeType, let placeholderHash):
+            return (
+                "",
+                [
+                    .image(
+                        data: data,
+                        mimeType: mimeType,
+                        placeholderHash: placeholderHash ?? ImagePlaceholderHash.generate(from: data)
+                    ),
+                ]
+            )
         case .file(let url):
             // No file part exists in MessagePart yet (issue #441 will
             // add one), so render the path as the message body. This
