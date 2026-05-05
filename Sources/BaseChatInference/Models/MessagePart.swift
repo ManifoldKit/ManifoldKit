@@ -2,12 +2,12 @@ import Foundation
 
 /// A discrete piece of content within a chat message.
 ///
-/// Messages can contain multiple parts to support multimodal input (images)
-/// alongside plain text, model reasoning (``thinking``), and tool calling
-/// (``toolCall`` / ``toolResult``). Each part is independently typed so the
-/// UI can render appropriate controls (e.g., inline images, collapsible
-/// reasoning blocks) and backends can map parts to their native message
-/// formats.
+/// Messages can contain multiple parts to support multimodal input (images
+/// and audio) alongside plain text, model reasoning (``thinking``), and tool
+/// calling (``toolCall`` / ``toolResult``). Each part is independently typed
+/// so the UI can render appropriate controls (e.g., inline images, playable
+/// audio, collapsible reasoning blocks) and backends can map parts to their
+/// native message formats.
 ///
 /// ## Persistence compatibility
 ///
@@ -26,6 +26,12 @@ public enum MessagePart: Hashable, Sendable {
     /// bytes the model is asked to look at; that case carries a file URL
     /// pointing at an image the model produced.
     case image(data: Data, mimeType: String)
+    /// A sandbox-local audio file rendered as an inline player.
+    ///
+    /// ``url`` should point at a file inside the host app's container.
+    /// ``waveform`` stores precomputed normalized amplitude buckets so chat
+    /// history can render without re-reading the audio file.
+    case audio(url: URL, duration: TimeInterval, waveform: [Float]?)
     /// Accumulated model reasoning. Excluded from context window (textContent returns nil).
     ///
     /// ``signature`` carries the provider-supplied opaque token that some
@@ -64,11 +70,15 @@ extension MessagePart: Codable {
     // assertions in MessagePartToolCasesTests / MessagePartThinkingTests are
     // the sentries that catch such drift.
     private enum CodingKeys: String, CodingKey {
-        case text, image, thinking, toolCall, toolResult, generatedImage
+        case text, image, audio, thinking, toolCall, toolResult, generatedImage
     }
 
     private enum ImageKeys: String, CodingKey {
         case data, mimeType
+    }
+
+    private enum AudioKeys: String, CodingKey {
+        case url, duration, waveform
     }
 
     /// Nested payload used for the `.thinking` discriminator.
@@ -110,6 +120,13 @@ extension MessagePart: Codable {
             let data = try nested.decode(Data.self, forKey: .data)
             let mimeType = try nested.decode(String.self, forKey: .mimeType)
             self = .image(data: data, mimeType: mimeType)
+        case .audio:
+            let nested = try container.nestedContainer(keyedBy: AudioKeys.self, forKey: .audio)
+            self = .audio(
+                url: try nested.decode(URL.self, forKey: .url),
+                duration: try nested.decode(TimeInterval.self, forKey: .duration),
+                waveform: try nested.decodeIfPresent([Float].self, forKey: .waveform)
+            )
         case .thinking:
             // Accept both shapes:
             //   legacy:  {"thinking": "text"}
@@ -143,6 +160,11 @@ extension MessagePart: Codable {
             var nested = container.nestedContainer(keyedBy: ImageKeys.self, forKey: .image)
             try nested.encode(data, forKey: .data)
             try nested.encode(mimeType, forKey: .mimeType)
+        case .audio(let url, let duration, let waveform):
+            var nested = container.nestedContainer(keyedBy: AudioKeys.self, forKey: .audio)
+            try nested.encode(url, forKey: .url)
+            try nested.encode(duration, forKey: .duration)
+            try nested.encodeIfPresent(waveform, forKey: .waveform)
         case .thinking(let text, let signature):
             // Always emit the structured object form; legacy readers in
             // BaseChatSchemaV3 decode through the branch above. A nil
@@ -169,6 +191,14 @@ extension MessagePart {
 
     public var thinkingContent: String? {
         if case .thinking(let t, _) = self { return t }
+        return nil
+    }
+
+    /// The audio payload of this part, or `nil` for non-audio parts.
+    public var audioContent: (url: URL, duration: TimeInterval, waveform: [Float]?)? {
+        if case .audio(let url, let duration, let waveform) = self {
+            return (url, duration, waveform)
+        }
         return nil
     }
 

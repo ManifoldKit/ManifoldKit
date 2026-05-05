@@ -27,13 +27,13 @@ final class ChatA11yContractTests: XCTestCase {
     /// a drive-by change to the source helper is caught by a failing assertion
     /// rather than quietly updating the "expected" side of the test.
     ///
-    /// When `hasThinking` is `true`, `. Includes reasoning.` is appended so that
-    /// VoiceOver announces the presence of a reasoning block without reading its
-    /// contents inline.
+    /// When `hasThinking` / `hasAudio` are `true`, suffixes are appended so that
+    /// VoiceOver announces non-text message parts without reading hidden data.
     private func expectedMessageBubbleLabel(
         role: MessageRole,
         content: String,
-        hasThinking: Bool = false
+        hasThinking: Bool = false,
+        hasAudio: Bool = false
     ) -> String {
         let roleName: String
         switch role {
@@ -42,7 +42,10 @@ final class ChatA11yContractTests: XCTestCase {
         case .system: roleName = "System"
         }
         let base = "\(roleName) said: \(content)"
-        return hasThinking ? "\(base). Includes reasoning." : base
+        var suffixes: [String] = []
+        if hasThinking { suffixes.append("Includes reasoning.") }
+        if hasAudio { suffixes.append("Includes audio.") }
+        return suffixes.isEmpty ? base : "\(base). \(suffixes.joined(separator: " "))"
     }
 
     private let sessionID = UUID()
@@ -157,6 +160,24 @@ final class ChatA11yContractTests: XCTestCase {
         XCTAssertTrue(
             label.hasSuffix(". Includes reasoning."),
             "Label must end with '. Includes reasoning.' suffix"
+        )
+    }
+
+    func test_messageBubble_withAudioPart_appendsIncludesAudio() {
+        let msg = ChatMessageRecord(
+            role: .user,
+            contentParts: [
+                .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 2, waveform: nil)
+            ],
+            sessionID: sessionID
+        )
+
+        let label = MessageBubbleView.accessibilityLabel(for: msg)
+
+        XCTAssertEqual(
+            label,
+            expectedMessageBubbleLabel(role: .user, content: "", hasAudio: true),
+            "Label must append '. Includes audio.' when audio parts are present"
         )
     }
 

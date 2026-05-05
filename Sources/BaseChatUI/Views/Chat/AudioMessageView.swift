@@ -74,18 +74,26 @@ struct AudioMessageView: View {
             guard isPlaying else { return }
             while !Task.isCancelled, isPlaying {
                 refreshPlaybackState()
-                try? await Task.sleep(for: .milliseconds(150))
+                do {
+                    try await Task.sleep(for: .milliseconds(150))
+                } catch is CancellationError {
+                    break
+                } catch {
+                    Log.ui.warning("Audio playback timer failed: \(error)")
+                    break
+                }
             }
         }
         .onDisappear {
             player?.stop()
+            player = nil
             isPlaying = false
         }
     }
 
     private func preparePlayerIfNeeded() {
         guard player == nil, loadError == nil else { return }
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard isRegularFile(url) else {
             loadError = "Audio unavailable"
             return
         }
@@ -109,8 +117,11 @@ struct AudioMessageView: View {
                 player.currentTime = 0
                 elapsed = 0
             }
-            player.play()
-            isPlaying = true
+            if player.play() {
+                isPlaying = true
+            } else {
+                loadError = "Audio unavailable"
+            }
         }
     }
 
@@ -138,6 +149,16 @@ struct AudioMessageView: View {
         let totalSeconds = max(Int(value.rounded()), 0)
         return "\(totalSeconds / 60):\(String(format: "%02d", totalSeconds % 60))"
     }
+
+    private func isRegularFile(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        do {
+            return try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
+        } catch {
+            Log.ui.warning("Failed to inspect audio file URL: \(error)")
+            return false
+        }
+    }
 }
 
 private struct WaveformStrip: View {
@@ -151,13 +172,13 @@ private struct WaveformStrip: View {
         } else {
             source = Array(repeating: 0.35, count: 32)
         }
-        guard source.count > 48 else { return source }
+        guard source.count > 48 else { return source.map(clampedSample) }
         let bucketSize = Double(source.count) / 48.0
         return (0..<48).map { index in
             let start = Int(Double(index) * bucketSize)
             let end = min(Int(Double(index + 1) * bucketSize), source.count)
             guard start < end else { return 0 }
-            return source[start..<end].map { abs($0) }.max() ?? 0
+            return clampedSample(source[start..<end].map { abs($0) }.max() ?? 0)
         }
     }
 
@@ -174,13 +195,16 @@ private struct WaveformStrip: View {
         }
     }
 
+    private func clampedSample(_ sample: Float) -> Float {
+        min(max(abs(sample), 0), 1)
+    }
+
     private func barWidth(in width: CGFloat) -> CGFloat {
         max((width - CGFloat(max(bars.count - 1, 0)) * 2) / CGFloat(max(bars.count, 1)), 2)
     }
 
     private func barHeight(_ sample: Float, maxHeight: CGFloat) -> CGFloat {
-        let normalized = min(max(CGFloat(abs(sample)), 0), 1)
-        return max(4, maxHeight * (0.2 + normalized * 0.8))
+        max(4, maxHeight * (0.2 + CGFloat(sample) * 0.8))
     }
 }
 

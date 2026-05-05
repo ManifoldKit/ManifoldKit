@@ -203,8 +203,9 @@ public struct MessageBubbleView: View {
     /// Builds the VoiceOver label for a chat message bubble.
     ///
     /// Format: `"<Role> said: <content>"` (e.g. `"Assistant said: Hello"`).
-    /// When the message contains thinking parts, appends `". Includes reasoning."` so
-    /// VoiceOver users know a reasoning block is available without having it read inline.
+    /// When the message contains non-text parts, appends short suffixes so
+    /// VoiceOver users know audio/reasoning controls are available without
+    /// reading hidden payloads inline.
     /// Exposed so the accessibility contract can be asserted by tests without
     /// duplicating the string-building logic.
     public static func accessibilityLabel(for message: ChatMessageRecord) -> String {
@@ -215,7 +216,11 @@ public struct MessageBubbleView: View {
         }
         let base = "\(roleName) said: \(message.content)"
         let hasThinking = message.contentParts.contains(where: { $0.thinkingContent != nil })
-        return hasThinking ? "\(base). Includes reasoning." : base
+        let hasAudio = message.contentParts.contains(where: { $0.audioContent != nil })
+        var suffixes: [String] = []
+        if hasThinking { suffixes.append("Includes reasoning.") }
+        if hasAudio { suffixes.append("Includes audio.") }
+        return suffixes.isEmpty ? base : "\(base). \(suffixes.joined(separator: " "))"
     }
 }
 

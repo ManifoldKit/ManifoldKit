@@ -77,10 +77,25 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     func test_messageRecord_multiplePartsJoinForContent() {
         let msg = ChatMessageRecord(
             role: .assistant,
-            contentParts: [.text("Hello"), .text(" world")],
+            contentParts: [
+                .text("Hello"),
+                .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 2, waveform: nil),
+                .text(" world"),
+            ],
             sessionID: sessionID
         )
         XCTAssertEqual(msg.content, "Hello world", "Content should be the concatenation of all text parts")
+    }
+
+    func test_messageRecord_audioOnlyHasNoVisibleTextButHasContentPart() {
+        let msg = ChatMessageRecord(
+            role: .user,
+            contentParts: [.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 2, waveform: [1])],
+            sessionID: sessionID
+        )
+        XCTAssertEqual(msg.content, "")
+        XCTAssertFalse(msg.hasVisibleContent)
+        XCTAssertNotNil(msg.contentParts.first?.audioContent)
     }
 
     // MARK: - Empty content edge cases
