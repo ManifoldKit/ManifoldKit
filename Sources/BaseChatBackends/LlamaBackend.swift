@@ -43,7 +43,6 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
-        let hasMMProj = withStateLock { _mmprojURL != nil }
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
         return BackendCapabilities(
@@ -67,7 +66,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             supportsKVCachePersistence: true,
             supportsGrammarConstrainedSampling: true,
             supportsThinking: true,
-            supportsVision: hasMMProj
+            supportsVision: false
         )
     }
 
@@ -109,12 +108,9 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// URL of the mmproj companion file, set by ``MultimodalProjectorConfigurable`` before each load.
     ///
     /// Guarded by `stateLock`. Non-nil when a vision-capable model's projector is staged for load.
-    /// Cleared by ``unloadModel()``. When non-nil, ``capabilities`` advertises `supportsVision = true`.
-    ///
-    /// - Note: The bundled mattt/llama.swift 2.8772.0 (llama.cpp build b8772) does not expose
-    ///   the CLIP / mmproj C APIs (`clip.h`, `mtmd.h`). The URL is stored so `supportsVision`
-    ///   accurately reflects the projector's presence for model-selection UI; actual image token
-    ///   embedding will be wired when the xcframework is upgraded to a build that includes those headers.
+    /// Cleared by ``unloadModel()``. The current vendored LlamaSwift xcframework does not expose
+    /// the CLIP / mtmd C APIs needed to turn images into embeddings, so ``capabilities`` continues
+    /// to advertise `supportsVision = false` until that binding exists.
     private var _mmprojURL: URL?
 
     /// Structured history set by ``StructuredHistoryReceiver``. Guarded by `stateLock`.
@@ -701,9 +697,8 @@ extension LlamaBackend: MultimodalProjectorConfigurable {
     /// Stages the mmproj companion URL before the next ``loadModel(from:plan:)`` call.
     ///
     /// Called by ``ModelLifecycleCoordinator`` with ``ModelInfo/mmprojURL`` before loading.
-    /// When non-nil, ``capabilities`` advertises `supportsVision = true` so the coordinator
-    /// routes image-bearing turns to this backend. Actual image embedding requires a future
-    /// xcframework upgrade — see the comment on ``_mmprojURL``.
+    /// The URL is retained for future multimodal loading, but it does not flip
+    /// ``BackendCapabilities/supportsVision`` until this backend can embed images.
     public func setMmprojURL(_ url: URL?) {
         withStateLock { _mmprojURL = url }
     }

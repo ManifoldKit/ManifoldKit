@@ -1021,12 +1021,12 @@ final class LlamaBackendTests: XCTestCase {
                        "supportsVision must be false when no mmproj URL has been set")
     }
 
-    func test_capabilities_supportsVision_afterSetMmprojURL_isTrue() {
+    func test_capabilities_supportsVision_afterSetMmprojURL_remainsFalseUntilImageEmbeddingIsWired() {
         let backend = LlamaBackend()
         let fakeMMProj = URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf")
         backend.setMmprojURL(fakeMMProj)
-        XCTAssertTrue(backend.capabilities.supportsVision,
-                      "supportsVision must be true once a mmproj URL is staged")
+        XCTAssertFalse(backend.capabilities.supportsVision,
+                       "supportsVision must remain false until LlamaBackend can pass image embeddings to llama.cpp")
     }
 
     func test_capabilities_supportsVision_afterClearingMmprojURL_isFalse() {
@@ -1034,7 +1034,7 @@ final class LlamaBackendTests: XCTestCase {
         backend.setMmprojURL(URL(fileURLWithPath: "/nonexistent/mmproj-model.gguf"))
         backend.setMmprojURL(nil)
         XCTAssertFalse(backend.capabilities.supportsVision,
-                       "supportsVision must revert to false after setMmprojURL(nil)")
+                       "supportsVision must remain false after setMmprojURL(nil)")
     }
 
     func test_capabilities_supportsVision_afterUnload_isFalse() {

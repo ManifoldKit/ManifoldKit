@@ -163,9 +163,14 @@ final class LlamaKVReuseTests: XCTestCase {
             messages: [(role: "user", content: userPrompt)],
             systemPrompt: "You are a helpful assistant."
         )
+        // Use a second system prompt with zero text overlap so only the
+        // structural template header (<|im_start|>system\n) can be shared.
+        // The prior assertion expected == 0, but real tokenisation always
+        // shares the BOS + template-header tokens (~3–4 tokens) regardless
+        // of system content. "< 10" allows that and rules out content reuse.
         let secondFullPrompt = PromptTemplate.chatML.format(
             messages: [(role: "user", content: userPrompt)],
-            systemPrompt: "You are a sarcastic critic who only answers in haiku."
+            systemPrompt: "Respond only in formal Latin."
         )
 
         // Turn 1: builds KV state for the first system prompt + user prompt.
@@ -173,18 +178,18 @@ final class LlamaKVReuseTests: XCTestCase {
         _ = try await drainAllEvents(stream1)
         try await waitForGeneratingFalse(backend)
 
-        // Turn 2: system prompt differs, so the prefix diverges very early in
-        // the buffer. Reuse should not happen, or should report zero.
+        // Turn 2: system prompt content has no text overlap with turn 1.
+        // Only BOS + template-header tokens can be shared — not the system body.
         let stream2 = try backend.generate(prompt: secondFullPrompt, systemPrompt: nil, config: config)
         let events2 = try await drainAllEvents(stream2)
 
         if let reused = kvReuseValue(in: events2) {
-            XCTAssertEqual(
-                reused, 0,
-                "System-prompt change must not preserve prior KV state — saw promptTokensReused=\(reused)"
+            XCTAssertLessThan(
+                reused, 10,
+                "System-prompt change must not reuse content tokens — saw promptTokensReused=\(reused) (only BOS+header expected)"
             )
         }
-        // Either branch (no event, or event with 0) satisfies the invariant.
+        // Either branch (no event, or event with < 10) satisfies the invariant.
     }
 }
 #endif
