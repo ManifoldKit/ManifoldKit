@@ -286,6 +286,15 @@ final class RouterBackendTests: XCTestCase {
         XCTAssertTrue(router.capabilities.supportsThinking)
     }
 
+    func test_capabilities_unionsGuidedStructuredOutputFlags() {
+        let guidedOnly = loaded(BackendCapabilities(supportsGuidedStructuredOutput: true))
+        let plain = loaded(minimalCaps())
+        let router = RouterBackend(children: [plain, guidedOnly])
+
+        XCTAssertTrue(router.capabilities.supportsGuidedStructuredOutput)
+        XCTAssertEqual(router.capabilities.preferredStructuredOutputSupport, .guidedGeneration)
+    }
+
     func test_capabilities_takesMaxContext() {
         let small = loaded(minimalCaps(maxContext: 2048))
         let large = loaded(capableCaps(maxContext: 32_000))

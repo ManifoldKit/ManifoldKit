@@ -258,6 +258,13 @@ public struct GenerationConfig: Sendable, Codable {
     /// Defaults to `nil` (no grammar constraint).
     public var grammar: String?
 
+    /// Routed structured-output strategy for this generation request.
+    ///
+    /// Runtime-only hint: callers can use ``StructuredOutputRouter`` to choose a
+    /// strategy from backend capabilities, then pass it through config without
+    /// forcing every backend to understand every representation.
+    public var structuredOutput: StructuredOutputStrategy?
+
     /// Per-request override for the thinking-marker pair the backend should use
     /// to split reasoning tokens from visible output.
     ///
@@ -332,6 +339,7 @@ public struct GenerationConfig: Sendable, Codable {
         thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
         grammar: String? = nil,
+        structuredOutput: StructuredOutputStrategy? = nil,
         yieldEveryNTokens: Int = 8,
         llamaDRY: LlamaDRYSamplerOptions? = nil,
         llamaXTC: LlamaXTCSamplerOptions? = nil,
@@ -355,6 +363,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.thinkingMarkers = thinkingMarkers
         self.maxToolIterations = max(1, maxToolIterations)
         self.grammar = grammar
+        self.structuredOutput = structuredOutput
         self.yieldEveryNTokens = yieldEveryNTokens
         self.llamaDRY = llamaDRY
         self.llamaXTC = llamaXTC
@@ -387,6 +396,7 @@ public struct GenerationConfig: Sendable, Codable {
         thinkingMarkers: ThinkingMarkers? = nil,
         maxToolIterations: Int = 10,
         grammar: String? = nil,
+        structuredOutput: StructuredOutputStrategy? = nil,
         yieldEveryNTokens: Int = 8,
         requiredCapabilities: Set<GenerationCapabilityRequirement> = []
     ) {
@@ -415,6 +425,7 @@ public struct GenerationConfig: Sendable, Codable {
         self.thinkingMarkers = thinkingMarkers
         self.maxToolIterations = max(1, maxToolIterations)
         self.grammar = grammar
+        self.structuredOutput = structuredOutput
         self.yieldEveryNTokens = yieldEveryNTokens
         self.requiredCapabilities = requiredCapabilities
     }
@@ -462,6 +473,8 @@ public struct GenerationConfig: Sendable, Codable {
         // thinkingMarkers is a per-request runtime hint; it is not persisted.
         thinkingMarkers = nil
         grammar = try c.decodeIfPresent(String.self, forKey: .grammar)
+        // structuredOutput is a per-request runtime hint; it is not persisted.
+        structuredOutput = nil
         // yieldEveryNTokens landed after the original shape; default to 8 when absent.
         yieldEveryNTokens = (try c.decodeIfPresent(Int.self, forKey: .yieldEveryNTokens)) ?? 8
         // minP / repetitionPenalty / seed landed after the original shape; absent

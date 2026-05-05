@@ -78,6 +78,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
         var supportsVision = first.supportsVision
         var streamsToolCallArguments = first.streamsToolCallArguments
         var supportsParallelToolCalls = first.supportsParallelToolCalls
+        var supportsGuidedStructuredOutput = first.supportsGuidedStructuredOutput
 
         for child in children.dropFirst() {
             let c = child.capabilities
@@ -108,6 +109,7 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
             supportsVision = supportsVision || c.supportsVision
             streamsToolCallArguments = streamsToolCallArguments || c.streamsToolCallArguments
             supportsParallelToolCalls = supportsParallelToolCalls || c.supportsParallelToolCalls
+            supportsGuidedStructuredOutput = supportsGuidedStructuredOutput || c.supportsGuidedStructuredOutput
         }
         return BackendCapabilities(
             supportedParameters: supportedParameters,
@@ -128,7 +130,8 @@ public final class RouterBackend: InferenceBackend, @unchecked Sendable {
             supportsThinking: supportsThinking,
             supportsVision: supportsVision,
             streamsToolCallArguments: streamsToolCallArguments,
-            supportsParallelToolCalls: supportsParallelToolCalls
+            supportsParallelToolCalls: supportsParallelToolCalls,
+            supportsGuidedStructuredOutput: supportsGuidedStructuredOutput
         )
     }
 
