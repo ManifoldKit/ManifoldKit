@@ -6,7 +6,7 @@ import SwiftData
 /// Default ``EndpointStore`` backed by SwiftData.
 ///
 /// Operates on the ``ModelContext`` injected at init time, converting between
-/// ``BaseChatSchemaV3/APIEndpoint`` `@Model` rows and
+/// ``BaseChatSchemaV4/APIEndpoint`` `@Model` rows and
 /// ``APIEndpointRecord`` value types at the boundary.
 @MainActor
 public final class SwiftDataEndpointStore: EndpointStore {

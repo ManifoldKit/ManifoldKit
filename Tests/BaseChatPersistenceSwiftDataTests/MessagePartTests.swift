@@ -92,7 +92,7 @@ final class MessagePartTests: XCTestCase {
     }
 
     func test_chatMessage_decode_emptyString_returnsEmptyArray() {
-        let parts = BaseChatSchemaV3.ChatMessage.decode("")
+        let parts = BaseChatSchemaV4.ChatMessage.decode("")
         XCTAssertEqual(parts, [])
     }
 
@@ -105,7 +105,7 @@ final class MessagePartTests: XCTestCase {
         [{"text":{"_0":"Hello"}},{"toolCall":{"_0":{"id":"tc1","name":"get_weather","arguments":"{\"city\":\"London\"}"}}}]
         """#
 
-        let parts = BaseChatSchemaV3.ChatMessage.decode(legacyJSON)
+        let parts = BaseChatSchemaV4.ChatMessage.decode(legacyJSON)
 
         XCTAssertEqual(parts, [.text(legacyJSON)])
     }

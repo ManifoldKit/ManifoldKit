@@ -3,13 +3,13 @@ import BaseChatInference
 import BaseChatRuntime
 @preconcurrency import SwiftData
 
-/// BaseChatKit SwiftData schema version 3.
+/// BaseChatKit SwiftData schema version 4.
 ///
 /// All model definitions live here. Previous schema versions (V1, V2) were
 /// removed while the repo was still private — no users carry legacy data that
-/// needs migration.
-public enum BaseChatSchemaV3: VersionedSchema {
-    public static let versionIdentifier = Schema.Version(3, 0, 0)
+/// needs migration before V3. V4 adds optional sampler penalty columns.
+public enum BaseChatSchemaV4: VersionedSchema {
+    public static let versionIdentifier = Schema.Version(4, 0, 0)
 
     public static var models: [any PersistentModel.Type] {
         [
@@ -195,14 +195,34 @@ public enum BaseChatSchemaV3: VersionedSchema {
         public var temperature: Float
         public var topP: Float
         public var repeatPenalty: Float
+        public var presencePenalty: Float?
+        public var frequencyPenalty: Float?
+        public var repetitionContextSize: Int?
+        public var presenceContextSize: Int?
+        public var frequencyContextSize: Int?
         public var createdAt: Date
 
-        public init(name: String, temperature: Float = 0.7, topP: Float = 0.9, repeatPenalty: Float = 1.1) {
+        public init(
+            name: String,
+            temperature: Float = 0.7,
+            topP: Float = 0.9,
+            repeatPenalty: Float = 1.1,
+            presencePenalty: Float? = nil,
+            frequencyPenalty: Float? = nil,
+            repetitionContextSize: Int? = nil,
+            presenceContextSize: Int? = nil,
+            frequencyContextSize: Int? = nil
+        ) {
             self.id = UUID()
             self.name = name
             self.temperature = temperature
             self.topP = topP
             self.repeatPenalty = repeatPenalty
+            self.presencePenalty = presencePenalty
+            self.frequencyPenalty = frequencyPenalty
+            self.repetitionContextSize = repetitionContextSize
+            self.presenceContextSize = presenceContextSize
+            self.frequencyContextSize = frequencyContextSize
             self.createdAt = Date()
         }
     }

@@ -10,22 +10,37 @@ final class SamplerPresetTests: XCTestCase {
         XCTAssertEqual(preset.temperature, 0.7, accuracy: 0.01)
         XCTAssertEqual(preset.topP, 0.9, accuracy: 0.01)
         XCTAssertEqual(preset.repeatPenalty, 1.1, accuracy: 0.01)
+        XCTAssertNil(preset.presencePenalty)
+        XCTAssertNil(preset.frequencyPenalty)
+        XCTAssertNil(preset.repetitionContextSize)
+        XCTAssertNil(preset.presenceContextSize)
+        XCTAssertNil(preset.frequencyContextSize)
         XCTAssertNotNil(preset.id)
         XCTAssertNotNil(preset.createdAt)
     }
 
-    func test_init_customValues() {
+    func test_init_customValues() throws {
         let preset = SamplerPreset(
             name: "Creative",
             temperature: 1.5,
             topP: 0.95,
-            repeatPenalty: 1.3
+            repeatPenalty: 1.3,
+            presencePenalty: 0.4,
+            frequencyPenalty: 0.2,
+            repetitionContextSize: 128,
+            presenceContextSize: 64,
+            frequencyContextSize: 32
         )
 
         XCTAssertEqual(preset.name, "Creative")
         XCTAssertEqual(preset.temperature, 1.5, accuracy: 0.01)
         XCTAssertEqual(preset.topP, 0.95, accuracy: 0.01)
         XCTAssertEqual(preset.repeatPenalty, 1.3, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(preset.presencePenalty), 0.4, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(preset.frequencyPenalty), 0.2, accuracy: 0.01)
+        XCTAssertEqual(preset.repetitionContextSize, 128)
+        XCTAssertEqual(preset.presenceContextSize, 64)
+        XCTAssertEqual(preset.frequencyContextSize, 32)
     }
 
     func test_uniqueIDs() {

@@ -6,7 +6,7 @@ import SwiftData
 /// Default ``SamplerPresetStore`` backed by SwiftData.
 ///
 /// Operates on the ``ModelContext`` injected at init time, converting between
-/// ``BaseChatSchemaV3/SamplerPreset`` `@Model` rows and ``SamplerPresetRecord``
+/// ``BaseChatSchemaV4/SamplerPreset`` `@Model` rows and ``SamplerPresetRecord``
 /// value types at the boundary.
 @MainActor
 public final class SwiftDataSamplerPresetStore: SamplerPresetStore {
@@ -29,7 +29,12 @@ public final class SwiftDataSamplerPresetStore: SamplerPresetStore {
             name: record.name,
             temperature: record.temperature,
             topP: record.topP,
-            repeatPenalty: record.repeatPenalty
+            repeatPenalty: record.repeatPenalty,
+            presencePenalty: record.presencePenalty,
+            frequencyPenalty: record.frequencyPenalty,
+            repetitionContextSize: record.repetitionContextSize,
+            presenceContextSize: record.presenceContextSize,
+            frequencyContextSize: record.frequencyContextSize
         )
         preset.id = record.id
         preset.createdAt = record.createdAt
@@ -58,6 +63,11 @@ extension SamplerPreset {
             temperature: temperature,
             topP: topP,
             repeatPenalty: repeatPenalty,
+            presencePenalty: presencePenalty,
+            frequencyPenalty: frequencyPenalty,
+            repetitionContextSize: repetitionContextSize,
+            presenceContextSize: presenceContextSize,
+            frequencyContextSize: frequencyContextSize,
             createdAt: createdAt
         )
     }

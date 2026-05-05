@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reasons an ``BaseChatSchemaV3/APIEndpoint`` URL can fail structural validation.
+/// Reasons an ``BaseChatSchemaV4/APIEndpoint`` URL can fail structural validation.
 ///
 /// Produced by `APIEndpoint.validate()`. Conforms to `LocalizedError` so settings
 /// UI can render `localizedDescription` directly as the reason the endpoint is
@@ -8,7 +8,7 @@ import Foundation
 ///
 /// The SSRF-related cases (``privateHost``, ``linkLocalHost``, ``ipv6UniqueLocal``,
 /// ``ipv4MappedLoopback``, ``multicastReserved``) correspond to the address-class
-/// blocks enforced by ``BaseChatSchemaV3/APIEndpoint`` — see `validate()` for the
+/// blocks enforced by ``BaseChatSchemaV4/APIEndpoint`` — see `validate()` for the
 /// full classification.
 public enum APIEndpointValidationReason: Error, Equatable, Sendable {
     /// The base URL string is empty or only whitespace.

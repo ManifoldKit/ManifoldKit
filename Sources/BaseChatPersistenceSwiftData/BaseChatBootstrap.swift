@@ -211,7 +211,7 @@ public final class BaseChatBootstrap {
 
     // MARK: - Boot hooks
 
-    /// Removes Keychain items whose owning ``BaseChatSchemaV3/APIEndpoint`` row
+    /// Removes Keychain items whose owning ``BaseChatSchemaV4/APIEndpoint`` row
     /// no longer exists.
     ///
     /// Orphans accumulate when an endpoint row is deleted while the matching
@@ -235,7 +235,7 @@ public final class BaseChatBootstrap {
 
         let validAccounts: Set<String>
         do {
-            let descriptor = FetchDescriptor<BaseChatSchemaV3.APIEndpoint>()
+            let descriptor = FetchDescriptor<APIEndpoint>()
             let endpoints = try modelContext.fetch(descriptor)
             validAccounts = Set(endpoints.map(\.keychainAccount))
         } catch {

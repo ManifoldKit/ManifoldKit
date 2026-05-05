@@ -36,7 +36,12 @@ final class SwiftDataSamplerPresetStoreTests: XCTestCase {
             name: "Precise",
             temperature: 0.2,
             topP: 0.85,
-            repeatPenalty: 1.05
+            repeatPenalty: 1.05,
+            presencePenalty: 0.25,
+            frequencyPenalty: 0.5,
+            repetitionContextSize: 96,
+            presenceContextSize: 48,
+            frequencyContextSize: 24
         )
 
         try await store.insertPreset(record)
@@ -49,6 +54,11 @@ final class SwiftDataSamplerPresetStoreTests: XCTestCase {
         XCTAssertEqual(fetched.temperature, 0.2, accuracy: 0.001)
         XCTAssertEqual(fetched.topP, 0.85, accuracy: 0.001)
         XCTAssertEqual(fetched.repeatPenalty, 1.05, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(fetched.presencePenalty), 0.25, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(fetched.frequencyPenalty), 0.5, accuracy: 0.001)
+        XCTAssertEqual(fetched.repetitionContextSize, 96)
+        XCTAssertEqual(fetched.presenceContextSize, 48)
+        XCTAssertEqual(fetched.frequencyContextSize, 24)
     }
 
     func test_fetchPresets_returnsMostRecentFirst() async throws {

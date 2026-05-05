@@ -94,7 +94,7 @@ final class MessagePartThinkingSignatureTests: XCTestCase {
         ]
         let record = ChatMessageRecord(role: .assistant, contentParts: parts, sessionID: UUID())
 
-        // Round-trip via JSON to mirror what BaseChatSchemaV3.ChatMessage does.
+        // Round-trip via JSON to mirror what BaseChatSchemaV4.ChatMessage does.
         let data = try JSONEncoder().encode(record.contentParts)
         let decoded = try JSONDecoder().decode([MessagePart].self, from: data)
 
