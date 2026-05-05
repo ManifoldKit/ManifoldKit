@@ -28,12 +28,12 @@ extension DemoScenarios {
 
         case worldClock.id:
             return [
-                // NowTool accepts zero arguments; its schema declares
-                // `properties: {}` / `required: []`. Pass an empty object so
-                // the scripted call mirrors what a well-behaved model emits.
-                .toolCall(name: "now", arguments: #"{}"#),
+                // The demo-local executor accepts an optional IANA timezone.
+                // Tokyo must route through Asia/Tokyo so the scripted UI path
+                // matches what the real demo now asks models to do.
+                .toolCall(name: "now", arguments: #"{"timezone":"Asia/Tokyo"}"#),
                 .tokens([
-                    "It's ", "currently ", "the ", "afternoon ", "in ", "Tokyo."
+                    "It's ", "currently ", "time ", "in ", "Tokyo."
                 ])
             ]
 
