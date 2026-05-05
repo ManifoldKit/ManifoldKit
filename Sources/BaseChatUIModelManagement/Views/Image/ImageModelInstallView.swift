@@ -73,6 +73,9 @@ public struct ImageModelInstallView: View {
             }
         }
         .accessibilityIdentifier("image-model-install-list")
+        .onAppear {
+            refreshInstalledModels()
+        }
     }
 
     @ViewBuilder
@@ -168,6 +171,12 @@ public struct ImageModelInstallView: View {
     /// don't collide on disk.
     private func slug(for repoID: String) -> String {
         repoID.replacingOccurrences(of: "/", with: "__")
+    }
+
+    private func refreshInstalledModels() {
+        let discovered = ModelStorageService(baseDirectory: storageRoot)
+            .discoverImageModels()
+        installedModels = Dictionary(uniqueKeysWithValues: discovered.map { ($0.id, $0) })
     }
 }
 #endif

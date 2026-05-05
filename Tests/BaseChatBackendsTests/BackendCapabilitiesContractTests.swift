@@ -179,5 +179,15 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertFalse(FoundationBackend().capabilities.supportsThinking,
                        "FoundationBackend does not emit thinking events — supportsThinking must be false")
     }
+
+    /// Apple's public FoundationModels SDK currently exposes text and
+    /// structured prompt segments, but no image-bearing prompt/input type.
+    /// Keep the capability explicit so the runtime rejects image-bearing
+    /// turns locally instead of flattening them away for FoundationBackend.
+    @available(iOS 26, macOS 26, *)
+    func test_foundationBackend_doesNotAdvertiseVision() {
+        XCTAssertFalse(FoundationBackend().capabilities.supportsVision,
+                       "FoundationBackend must not advertise image input until FoundationModels exposes an image-bearing Prompt/Transcript surface")
+    }
 #endif
 }

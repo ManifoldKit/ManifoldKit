@@ -33,6 +33,13 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
     /// alongside ``fileName``. Mirrors ``CuratedModel/mmprojFileName`` for curated entries.
     public let mmprojFileName: String?
 
+    /// Logical package kind when this downloadable resolves to multiple files.
+    ///
+    /// `nil` preserves the historical single-file GGUF behavior. `.mlxSnapshot`
+    /// represents existing MLX directory downloads, while `.diffusion` lets the
+    /// same background transfer machinery surface diffusers packages as one model.
+    public let packageKind: ModelPackageKind?
+
     /// Expected SHA-256 digest (lowercase hex, 64 chars) for the downloaded file.
     ///
     /// When set, ``DownloadFileValidator`` computes the SHA-256 of the
@@ -83,6 +90,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.promptTemplate = curated.promptTemplate
         self.description = curated.description
         self.mmprojFileName = curated.mmprojFileName
+        self.packageKind = nil
         self.expectedSHA256 = curated.expectedSHA256
     }
 
@@ -99,6 +107,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         promptTemplate: PromptTemplate? = nil,
         description: String? = nil,
         mmprojFileName: String? = nil,
+        packageKind: ModelPackageKind? = nil,
         expectedSHA256: String? = nil
     ) {
         self.id = "\(repoID)/\(fileName)"
@@ -112,6 +121,7 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
         self.promptTemplate = promptTemplate
         self.description = description
         self.mmprojFileName = mmprojFileName
+        self.packageKind = packageKind
         self.expectedSHA256 = expectedSHA256
     }
 }

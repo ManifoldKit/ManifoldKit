@@ -117,9 +117,11 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
                 Log.network.error("Failed to fetch MLX snapshot for \(model.repoID): \(error.localizedDescription)")
                 throw HuggingFaceError.modelNotFound(repoID: model.repoID)
             }
-            let files = snapshotFiles(from: detailed)
+            let files = model.packageKind == .diffusion
+                ? diffusionPackageFiles(from: detailed)
+                : snapshotFiles(from: detailed)
             guard !files.isEmpty else {
-                throw HuggingFaceError.invalidDownloadedFile(reason: "MLX repo has no snapshot files to download")
+                throw HuggingFaceError.invalidDownloadedFile(reason: "Repo has no package files to download")
             }
             return .snapshot(files: files)
         case .foundation:
@@ -169,6 +171,23 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             ))
         }
 
+        let diffusionFiles = diffusionPackageFiles(from: model)
+        if !diffusionFiles.isEmpty {
+            let repoName = model.id.name
+            results.append(DownloadableModel(
+                repoID: repoID,
+                fileName: packageDirectoryName(for: repoID),
+                displayName: Self.cleanDisplayName(from: repoName),
+                modelType: .mlx,
+                sizeBytes: diffusionFiles.reduce(0) { $0 + $1.sizeBytes },
+                downloads: model.downloads,
+                isCurated: false,
+                promptTemplate: nil,
+                description: nil,
+                packageKind: .diffusion
+            ))
+        }
+
         let snapshotFiles = snapshotFiles(from: model)
         if !snapshotFiles.isEmpty {
             let repoName = model.id.name
@@ -181,7 +200,8 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
                 downloads: model.downloads,
                 isCurated: false,
                 promptTemplate: nil,
-                description: nil
+                description: nil,
+                packageKind: .mlxSnapshot
             ))
         }
 
@@ -190,7 +210,7 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
 
     private func isDownloadableRepo(_ model: Model) -> Bool {
         guard let siblings = model.siblings else { return false }
-        return hasGGUFFiles(in: siblings) || isMLXSnapshot(model)
+        return hasGGUFFiles(in: siblings) || isMLXSnapshot(model) || isDiffusionPackage(model)
     }
 
     private func hasGGUFFiles(in siblings: [Model.SiblingInfo]) -> Bool {
@@ -221,6 +241,46 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
                 sizeBytes: UInt64(file.size ?? 0)
             )
         }
+    }
+
+    private func isDiffusionPackage(_ model: Model) -> Bool {
+        guard let siblings = model.siblings else { return false }
+        let names = Set(siblings.map { $0.relativeFilename.lowercased() })
+        let hasManifest = names.contains("model_index.json")
+        let hasVAE = names.contains("vae/config.json")
+            && names.contains("vae/diffusion_pytorch_model.safetensors")
+        let hasDenoiser = names.contains("unet/diffusion_pytorch_model.safetensors")
+            || names.contains("transformer/diffusion_pytorch_model.safetensors")
+            || names.contains("transformer/model.safetensors")
+        let hasTextEncoder = names.contains("text_encoder/model.safetensors")
+            || names.contains("text_encoder_2/model.safetensors")
+        let hasScheduler = names.contains("scheduler/scheduler_config.json")
+        return hasManifest && hasVAE && hasDenoiser && hasTextEncoder && hasScheduler
+    }
+
+    private func diffusionPackageFiles(from model: Model) -> [ModelDownloadFile] {
+        guard let siblings = model.siblings, isDiffusionPackage(model) else { return [] }
+        let allowed: (String) -> Bool = { name in
+            name == "model_index.json"
+                || name.hasSuffix("/config.json")
+                || name.hasSuffix("/scheduler_config.json")
+                || name.hasSuffix(".safetensors")
+                || name.hasSuffix("/vocab.json")
+                || name.hasSuffix("/merges.txt")
+        }
+        return siblings
+            .filter { allowed($0.relativeFilename.lowercased()) }
+            .map { file in
+                ModelDownloadFile(
+                    relativePath: file.relativeFilename,
+                    url: downloadURL(repoID: model.id.rawValue, filePath: file.relativeFilename),
+                    sizeBytes: UInt64(file.size ?? 0)
+                )
+            }
+    }
+
+    private func packageDirectoryName(for repoID: String) -> String {
+        repoID.replacingOccurrences(of: "/", with: "__")
     }
 
     private static func cleanDisplayName(from name: String) -> String {
