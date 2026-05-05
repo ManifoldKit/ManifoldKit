@@ -98,6 +98,15 @@ else
     echo "==> Discovering MLX models from \$HOME/Documents/Models/ (first valid wins)"
 fi
 
+# Optional VLM-only selector for tests that need a vision model in addition to
+# (or instead of) the text-only MLX_TEST_MODEL fixture. Forwarded only when set
+# in the calling shell so default runs stay green without a downloaded VLM.
+if [[ -n "${MLX_VLM_TEST_MODEL:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Add $ENV_PATH:MLX_VLM_TEST_MODEL string $MLX_VLM_TEST_MODEL" "$RUNFILE" 2>/dev/null \
+        || /usr/libexec/PlistBuddy -c "Set $ENV_PATH:MLX_VLM_TEST_MODEL $MLX_VLM_TEST_MODEL" "$RUNFILE"
+    echo "==> Forwarding MLX_VLM_TEST_MODEL=$MLX_VLM_TEST_MODEL to the VLM gate experiment"
+fi
+
 echo "==> Running tests (xcodebuild test-without-building)…"
 xcodebuild test-without-building \
     -xctestrun "$RUNFILE" \
