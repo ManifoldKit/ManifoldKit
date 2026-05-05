@@ -366,6 +366,21 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         let state = DownloadState(model: model)
         activeDownloads[model.id] = state
 
+        let snapshotFiles = decodePendingSnapshotFiles(info["snapshotFiles"], repoID: repoID)
+
+        // Snapshot downloads are retried file-by-file from the persisted package
+        // plan. URLSession resume blobs are only valid for single-file tasks.
+        if let snapshotFiles, !snapshotFiles.isEmpty {
+            _ = consumeResumeData(for: id)
+            do {
+                try startSnapshotDownload(model: model, files: snapshotFiles)
+            } catch {
+                Log.download.error("Failed to restart snapshot download for \(id): \(error.localizedDescription)")
+                activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
+            }
+            return
+        }
+
         // Consume any persisted resume data. Clean it up regardless of outcome so
         // we never retry with stale data on a subsequent failure.
         let resumeData = consumeResumeData(for: id)
@@ -393,17 +408,35 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
     }
 
+    private func decodePendingSnapshotFiles(_ json: String?, repoID: String) -> [ModelDownloadFile]? {
+        guard let json, let data = json.data(using: .utf8) else { return nil }
+        do {
+            let metadata = try JSONDecoder().decode([SnapshotFileMetadata].self, from: data)
+            return metadata.map { file in
+                ModelDownloadFile(
+                    relativePath: file.relativePath,
+                    url: huggingFaceDownloadURL(repoID: repoID, filePath: file.relativePath),
+                    sizeBytes: file.sizeBytes,
+                    expectedChecksum: file.expectedChecksum
+                )
+            }
+        } catch {
+            Log.download.error("Failed to decode pending snapshot metadata for \(repoID): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     /// Starts a fresh single-file download for a model from its HuggingFace URL.
     ///
     /// Used as the fallback when resume data is absent or rejected by the server.
     @MainActor private func retryWithFreshDownload(model: DownloadableModel) async {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "huggingface.co"
-        let segments = ([model.repoID, "resolve", "main"] + model.fileName.components(separatedBy: "/"))
-            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
-        components.percentEncodedPath = "/" + segments.joined(separator: "/")
-        guard let url = components.url else {
+        guard model.modelType != .mlx || model.packageKind == nil else {
+            Log.download.error("Cannot retry snapshot download \(model.id) without persisted package metadata")
+            activeDownloads[model.id]?.markFailed(error: "Download metadata is incomplete; please re-add the model.")
+            return
+        }
+        let url = huggingFaceDownloadURL(repoID: model.repoID, filePath: model.fileName)
+        guard url.host == "huggingface.co" else {
             Log.download.error("Failed to build retry URL for \(model.id)")
             activeDownloads[model.id]?.markFailed(error: "Could not construct download URL for retry")
             return
@@ -414,6 +447,20 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             Log.download.error("Failed to start fresh retry download for \(model.id): \(error.localizedDescription)")
             activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
         }
+    }
+
+    private func huggingFaceDownloadURL(repoID: String, filePath: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "huggingface.co"
+        let segments = ([repoID, "resolve", "main"] + filePath.components(separatedBy: "/"))
+            .map { $0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0 }
+        components.percentEncodedPath = "/" + segments.joined(separator: "/")
+        guard let url = components.url else {
+            Log.download.error("Failed to build download URL for \(repoID)/\(filePath)")
+            return URL(string: "https://huggingface.co")!
+        }
+        return url
     }
 
     /// Cancels an in-progress download.
@@ -910,7 +957,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 return
             }
             activeDownloads[modelID]?.markFailed(error: error)
-            removePendingDownload(id: modelID)
             return
         }
 
@@ -928,7 +974,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
 
         activeDownloads[modelID]?.markFailed(error: error)
-        removePendingDownload(id: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
         do {
             try FileManager.default.removeItem(at: snapshot.stagingDirectory)
