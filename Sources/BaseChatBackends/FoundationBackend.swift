@@ -138,7 +138,8 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // Whole-call emission only — Apple's GuidedGeneration streams the
         // partially-decoded structure but we do not surface name/argument
         // deltas as separate events (parity with MLXBackend's inline parser).
-        streamsToolCallArguments: false
+        streamsToolCallArguments: false,
+        supportsGuidedStructuredOutput: true
     )
 
     // MARK: - Private
