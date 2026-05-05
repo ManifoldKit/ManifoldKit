@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.4](https://github.com/roryford/BaseChatKit/compare/v0.16.3...v0.16.4) (2026-05-05)
+
+### Highlights
+
+#### DRY sampler and penalty knob persistence for llama.cpp
+
+llama.cpp's DRY (Don't Repeat Yourself) repetition penalty is now wired into `LlamaGenerationDriver` via `GenerationConfig`. DRY multiplier, allowed length, base, and sequence breakers are all exposed and default to llama.cpp's library defaults, so existing callers are unaffected. Sampler preset penalty knobs (`repetitionPenalty`, `presencePenalty`, `frequencyPenalty`, and the new DRY fields) are now persisted in SwiftData so they survive app restarts.
+
+```swift
+var config = GenerationConfig()
+config.dryMultiplier = 0.8
+config.dryAllowedLength = 2
+config.dryBase = 1.75
+config.drySequenceBreakers = ["\n", ":", "\"", "*"]
+```
+
+### Features
+
+* **backends:** add llama DRY sampler option ([#1031](https://github.com/roryford/BaseChatKit/issues/1031)) ([fe34220](https://github.com/roryford/BaseChatKit/commit/fe3422049d1bc7201968b56fb761f1373219931a))
+* **persistence:** persist sampler preset penalty knobs ([#1033](https://github.com/roryford/BaseChatKit/issues/1033)) ([c7ff806](https://github.com/roryford/BaseChatKit/commit/c7ff806b01c6bfa9afc359857db71ab5d75a6e42))
+* **ui:** add scroll-to-message request API ([#1030](https://github.com/roryford/BaseChatKit/issues/1030)) ([58947e9](https://github.com/roryford/BaseChatKit/commit/58947e95d97241e4cfd3d9d41fb11f9acba2ca0f))
+
 ## [0.16.3](https://github.com/roryford/BaseChatKit/compare/v0.16.2...v0.16.3) (2026-05-04)
 
 ### Highlights
