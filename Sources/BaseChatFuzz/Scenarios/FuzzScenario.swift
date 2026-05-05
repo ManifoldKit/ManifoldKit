@@ -89,6 +89,7 @@ public enum ScenarioRegistry {
             ThinkingBudgetZeroScenario(),
             CancelDuringThinkingScenario(),
             ThinkingAcrossRetryScenario(),
+            KVReuseCoverageScenario(),
         ]
     }
 

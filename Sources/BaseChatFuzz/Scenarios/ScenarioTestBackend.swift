@@ -37,6 +37,15 @@ public final class ScenarioTestBackend: InferenceBackend, @unchecked Sendable {
     public var streamErrorOnFirstCall: Error?
     public var streamErrorAfterThinking: Error?
 
+    /// Per-turn KV-reuse counts. When non-empty each `generate(…)` pops the
+    /// first entry and yields `.kvCacheReuse(promptTokensReused:)` before any
+    /// thinking or visible token. Empty queue → no reuse event.
+    ///
+    /// Mirrors `MockInferenceBackend.kvCacheReuseToYieldPerTurn` so KV-reuse
+    /// coverage scenarios can drive deterministic per-round counts without
+    /// needing a real backend.
+    public var kvCacheReuseToYieldPerTurn: [Int] = []
+
     /// Incremented each time `generate(…)` is entered. Scenarios use this to
     /// flip behaviour between the first (flaky) call and the retry.
     public private(set) var generateCallCount: Int = 0
@@ -89,6 +98,13 @@ public final class ScenarioTestBackend: InferenceBackend, @unchecked Sendable {
         // and lets the scenario run without needing the real HTTP layer.
         let thinkingLimit = config.maxThinkingTokens
 
+        // Pop the per-turn reuse count in step with `generate()`. Done here
+        // (outside the stream Task) so successive calls observe the queue's
+        // state monotonically rather than racing on it.
+        let kvReuseCount: Int? = kvCacheReuseToYieldPerTurn.isEmpty
+            ? nil
+            : kvCacheReuseToYieldPerTurn.removeFirst()
+
         isGenerating = true
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
             continuationLock.lock()
@@ -101,6 +117,12 @@ public final class ScenarioTestBackend: InferenceBackend, @unchecked Sendable {
             }
 
             Task { [firstThinkingTokenEmitted] in
+                // Real backends emit `.kvCacheReuse` before the first decode
+                // step, so do the same here.
+                if let reuseCount = kvReuseCount, !Task.isCancelled {
+                    continuation.yield(.kvCacheReuse(promptTokensReused: reuseCount))
+                }
+
                 // Thinking burst.
                 if !thinking.isEmpty {
                     if let limit = thinkingLimit, limit <= 0 {
