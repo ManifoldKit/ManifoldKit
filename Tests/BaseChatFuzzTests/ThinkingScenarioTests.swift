@@ -14,6 +14,26 @@ final class ThinkingScenarioTests: XCTestCase {
         XCTAssertTrue(ids.contains("thinking-budget-zero"), "Budget-zero scenario must be discoverable")
         XCTAssertTrue(ids.contains("cancel-during-thinking"), "Cancel-during-thinking scenario must be discoverable")
         XCTAssertTrue(ids.contains("thinking-across-retry"), "Thinking-across-retry scenario must be discoverable")
+        XCTAssertTrue(ids.contains("kv-reuse-coverage"), "KV-reuse coverage scenario must be discoverable")
+    }
+
+    func test_kvReuseCoverage_invariantHolds() async throws {
+        let outcome = try await KVReuseCoverageScenario().run()
+        XCTAssertTrue(
+            outcome.invariantHeld,
+            "KV-reuse coverage invariant failed: \(outcome.failureReason ?? "<unknown>")"
+        )
+
+        // Every recorded `.kvCacheReuse` value must be non-negative — defensive
+        // check against a backend that yields the count as a signed-int
+        // overflow.
+        let reuseValues = outcome.events.compactMap { event -> Int? in
+            if case .kvCacheReuse(let n) = event { return n } else { return nil }
+        }
+        XCTAssertFalse(reuseValues.isEmpty, "scenario must record at least one .kvCacheReuse event")
+        for value in reuseValues {
+            XCTAssertGreaterThanOrEqual(value, 0, "promptTokensReused must never be negative")
+        }
     }
 
     func test_thinkingBudgetZero_emitsNoThinkingEvents() async throws {
