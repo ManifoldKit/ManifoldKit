@@ -9,6 +9,21 @@ public typealias BackendFactory = @MainActor (ModelType) -> (any InferenceBacken
 /// Return `nil` if this factory does not handle the given provider.
 public typealias CloudBackendFactory = @MainActor (APIProvider) -> (any InferenceBackend)?
 
+/// Readiness state for the primary model managed by ``InferenceService``.
+public enum ModelLoadReadinessState: Equatable, Sendable {
+    /// No model is loaded and no load operation is currently in flight.
+    case idle
+    /// A model load is currently in flight.
+    case loading(progress: Double?)
+    /// The primary model is loaded and ready for generation.
+    case ready
+
+    /// Whether generation can be attempted against the primary backend.
+    public var isReady: Bool {
+        self == .ready
+    }
+}
+
 /// Orchestrates inference across multiple backends.
 ///
 /// Selects the appropriate backend based on model format and delegates all
@@ -71,6 +86,11 @@ public final class InferenceService {
     public var activeBackendName: String? { lifecycle.activeBackendName }
     public var activeModelName: String? { lifecycle.activeModelName }
     public var modelLoadProgress: Double? { lifecycle.modelLoadProgress }
+    public var modelLoadReadinessState: ModelLoadReadinessState {
+        if lifecycle.isModelLoaded { return .ready }
+        if let progress = lifecycle.modelLoadProgress { return .loading(progress: progress) }
+        return .idle
+    }
 
     /// The prompt template to apply for backends that require one (GGUF).
     public var selectedPromptTemplate: PromptTemplate {
@@ -179,6 +199,73 @@ public final class InferenceService {
         ensureProviderWired()
         generation.stopGeneration()
         lifecycle.unloadModel()
+    }
+
+    /// Streams primary-model readiness transitions.
+    ///
+    /// The stream yields the current state immediately, then yields subsequent
+    /// changes observed through Swift Observation. Values are buffered newest-only
+    /// so callers interested in readiness never build an event backlog.
+    public func modelLoadReadinessUpdates() -> AsyncStream<ModelLoadReadinessState> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let observer = ModelLoadReadinessObserver(service: self, continuation: continuation)
+            continuation.onTermination = { _ in
+                Task { @MainActor in observer.cancel() }
+            }
+            observer.start()
+        }
+    }
+
+    /// Waits for an in-flight model load to finish before generation begins.
+    ///
+    /// - Returns: `true` when the model is already ready, or becomes ready within
+    ///   the compatibility timeout window. Returns `false` when no load is in
+    ///   progress, the load finishes without a ready model, timeout elapses, or
+    ///   the waiting task is cancelled.
+    public func waitUntilModelReady(
+        maxPollCount: Int = 300,
+        pollIntervalNanoseconds: UInt64 = 50_000_000
+    ) async -> Bool {
+        switch modelLoadReadinessState {
+        case .ready:
+            return true
+        case .idle:
+            return false
+        case .loading:
+            break
+        }
+
+        let timeoutNanoseconds = Self.modelReadyTimeoutNanoseconds(
+            maxPollCount: maxPollCount,
+            pollIntervalNanoseconds: pollIntervalNanoseconds
+        )
+
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                let updates = await self.modelLoadReadinessUpdates()
+                for await state in updates {
+                    if Task.isCancelled { return false }
+                    switch state {
+                    case .ready:
+                        return true
+                    case .idle:
+                        return false
+                    case .loading:
+                        continue
+                    }
+                }
+                return false
+            }
+            group.addTask {
+                guard timeoutNanoseconds > 0 else { return false }
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return false
+            }
+
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
     }
 
     // MARK: - Generation
@@ -472,6 +559,15 @@ public final class InferenceService {
         }
     }
 
+    private nonisolated static func modelReadyTimeoutNanoseconds(
+        maxPollCount: Int,
+        pollIntervalNanoseconds: UInt64
+    ) -> UInt64 {
+        guard maxPollCount > 0, pollIntervalNanoseconds > 0 else { return 0 }
+        let (timeout, overflow) = UInt64(maxPollCount).multipliedReportingOverflow(by: pollIntervalNanoseconds)
+        return overflow ? UInt64.max : timeout
+    }
+
     // MARK: - Fast-Backend Dispatch
 
     /// Dispatches a backend-level generation request through the optional
@@ -546,6 +642,50 @@ public final class InferenceService {
     private func ensureProviderWired() {
         if generation.provider == nil {
             generation.provider = self
+        }
+    }
+}
+
+@MainActor
+private final class ModelLoadReadinessObserver {
+    private weak var service: InferenceService?
+    private let continuation: AsyncStream<ModelLoadReadinessState>.Continuation
+    private var isCancelled = false
+    private var lastState: ModelLoadReadinessState?
+
+    init(
+        service: InferenceService,
+        continuation: AsyncStream<ModelLoadReadinessState>.Continuation
+    ) {
+        self.service = service
+        self.continuation = continuation
+    }
+
+    func start() {
+        emitAndTrack()
+    }
+
+    func cancel() {
+        isCancelled = true
+    }
+
+    private func emitAndTrack() {
+        guard !isCancelled else { return }
+        guard let service else {
+            continuation.finish()
+            return
+        }
+
+        withObservationTracking {
+            let state = service.modelLoadReadinessState
+            if state != lastState {
+                lastState = state
+                continuation.yield(state)
+            }
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.emitAndTrack()
+            }
         }
     }
 }
