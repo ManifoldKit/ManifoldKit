@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/roryford/BaseChatKit/compare/v0.17.2...v0.17.3) (2026-05-06)
+
+### Fixes
+
+* **Search scope resets on clear** — `clearSearch()` now resets `searchScope` to `.titles` synchronously. Previously, clearing a search query while the Messages scope tab was selected left the tab stuck on "Messages" for the next query ([92c9676](https://github.com/roryford/BaseChatKit/commit/92c96763d42b5d45fc2c05eb1bbd7c7871467096))
+* **Appearance mode, AFM label, toolbar overflow** — Three UI fixes: appearance mode now takes effect via `.preferredColorScheme` on the `WindowGroup`; the sidebar model label shows "Apple Intelligence" when the Foundation backend is active with no explicit model selected; toolbar action buttons are individually wrapped in `ToolbarItem` to prevent overflow clipping ([faba071](https://github.com/roryford/BaseChatKit/commit/faba071b3dff43c175f9405fda12da2b7d149715))
+
 ## [0.17.2](https://github.com/roryford/BaseChatKit/compare/v0.17.1...v0.17.2) (2026-05-06)
 
 ### Highlights
