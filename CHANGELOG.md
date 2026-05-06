@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.4](https://github.com/roryford/BaseChatKit/compare/v0.17.3...v0.17.4) (2026-05-06)
+
+
+### Fixes
+
+* **Swift 6 `@Sendable` error in `MLXGenerationDriver`** — The body and handler closures passed to `withErrorHandler` were not marked `@Sendable`, causing a `#SendingRisksDataRace` compile error for consumers building with Swift 6 strict concurrency. All captured parameters already conform to `Sendable`; both closures are now explicitly annotated ([#1068](https://github.com/roryford/BaseChatKit/issues/1068))
+* **`mlx-swift-examples` removed from dependency graph** — The upstream package declared `platforms: [.iOS(.v16)]` while its dependency `mlx-swift` requires iOS 17, triggering SPM platform-validation errors on Xcode 15+. The `StableDiffusion` library (9 files, MIT © 2024 ml-explore) is now vendored in `Sources/StableDiffusion/` with `#if MLX` guards; `mlx-swift-examples` and its transitive `GzipSwift` dependency are no longer in the resolved graph ([#1068](https://github.com/roryford/BaseChatKit/issues/1068))
+
 ## [0.17.3](https://github.com/roryford/BaseChatKit/compare/v0.17.2...v0.17.3) (2026-05-06)
 
 ### Fixes
