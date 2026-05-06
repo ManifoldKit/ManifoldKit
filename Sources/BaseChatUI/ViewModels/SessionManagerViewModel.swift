@@ -313,8 +313,12 @@ public final class SessionManagerViewModel {
     }
 
     /// Clears search state and falls back to the unfiltered session list.
+    ///
+    /// Resets ``searchScope`` to `.titles` so the scope tab snaps back when
+    /// the user clears a query entered while on the Messages tab.
     public func clearSearch() {
         searchQuery = ""
+        searchScope = .titles
         service?.clearSearch()
     }
 
