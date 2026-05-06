@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.2](https://github.com/roryford/BaseChatKit/compare/v0.17.1...v0.17.2) (2026-05-06)
+
+
+### Features
+
+* improve architecture boundaries and capability contracts ([#1060](https://github.com/roryford/BaseChatKit/issues/1060)) ([0501b0d](https://github.com/roryford/BaseChatKit/commit/0501b0d59cf25abc173d305d879e175cfaaf2337))
+* llama XTC + Mirostat V2 samplers and structured output routing ([#1061](https://github.com/roryford/BaseChatKit/issues/1061)) ([f39b5cd](https://github.com/roryford/BaseChatKit/commit/f39b5cd9ecfad4c2932aaf98835a3841c0284577))
+
+
+### Bug Fixes
+
+* rewrite 0.17.1 changelog ([#1058](https://github.com/roryford/BaseChatKit/issues/1058)) ([d18c01a](https://github.com/roryford/BaseChatKit/commit/d18c01a425d4f5f453b1f27f65e98651c1ba048b))
+
 ## [0.17.1](https://github.com/roryford/BaseChatKit/compare/v0.17.0...v0.17.1) (2026-05-05)
 
 ### Highlights
