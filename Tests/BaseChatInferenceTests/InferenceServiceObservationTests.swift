@@ -170,17 +170,21 @@ final class InferenceServiceObservationTests: XCTestCase {
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
         var iterator = service.modelLoadReadinessUpdates().makeAsyncIterator()
-        XCTAssertEqual(await iterator.next(), .idle)
+        // XCTAssertEqual takes non-async autoclosures; extract awaited values first.
+        let initialState = await iterator.next()
+        XCTAssertEqual(initialState, .idle)
 
         let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
         await backend.waitUntilLoadStarted()
 
-        XCTAssertEqual(await iterator.next(), .loading(progress: 0.0))
+        let loadingState = await iterator.next()
+        XCTAssertEqual(loadingState, .loading(progress: 0.0))
 
         await backend.releaseLoad()
         try await loadTask.value
 
-        XCTAssertEqual(await iterator.next(), .ready)
+        let readyState = await iterator.next()
+        XCTAssertEqual(readyState, .ready)
     }
 
     func test_waitUntilModelReady_returnsFalseWhenIdle() async {
