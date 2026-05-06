@@ -146,6 +146,25 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
         XCTAssertFalse(vm.hasNoSearchResults)
     }
 
+    /// Regression: when the user selects Messages scope, types a query, then
+    /// clears it, `clearSearch()` must snap the scope tab back to `.titles` so
+    /// the Messages chip does not remain selected with an empty field.
+    func test_clearSearch_resetsScopeToTitles() async throws {
+        try await seedSessions(titles: ["alpha"])
+        await vm.loadSessions()
+
+        vm.searchScope = .messages
+        vm.searchQuery = "hello"
+        XCTAssertEqual(vm.searchScope, .messages)
+
+        vm.clearSearch()
+
+        XCTAssertEqual(vm.searchScope, .titles,
+                       "clearSearch must reset scope so the Messages tab does not remain selected")
+        // Sabotage: the assertion must fail if scope is NOT reset.
+        // (Remove this comment before merging if needed; the real check is the line above.)
+    }
+
     // MARK: - Pagination
 
     func test_loadSessions_loadsFirstPageOnly() async throws {
