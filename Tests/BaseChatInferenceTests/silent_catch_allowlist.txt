@@ -440,3 +440,15 @@ BaseChatBackends/MLXDiffusionBackend.swift:return (try? FileManager.default.attr
 # BCK's slug-based download path to Hub's expected directory convention;
 # removal is pure cleanup and its result is never actionable.
 BaseChatBackends/MLXDiffusionBackend.swift:return (tmpBase, { try? FileManager.default.removeItem(at: tmpBase) })
+
+# ---------------------------------------------------------------------------
+# StableDiffusion — vendored from mlx-swift-examples (MIT, PR #1068)
+# ---------------------------------------------------------------------------
+
+# Optional JSON field decoding in UNet/VAE configuration. These keys are
+# absent from older stable-diffusion checkpoints; nil is the correct fallback,
+# not an error to surface. Uses the "try-each-key-or-nil" pattern.
+StableDiffusion/Configuration.swift:try (try? container.decode([Int].self, forKey: .layersPerBlock))
+StableDiffusion/Configuration.swift:(try? container.decode([Int].self, forKey: .transformerLayersPerBlock)) ?? [1, 1, 1, 1]
+StableDiffusion/Configuration.swift:try (try? container.decodeIfPresent([Int].self, forKey: .numHeads))
+StableDiffusion/Configuration.swift:try (try? container.decode([Int].self, forKey: .crossAttentionDimension))
