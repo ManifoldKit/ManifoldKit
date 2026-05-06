@@ -79,15 +79,18 @@ struct MLXGenerationDriver {
         // converted from uncatchable `fatalError` calls into thrown Swift errors
         // that the caller can surface as InferenceError rather than crashing the app.
         //
-        // MLXError.ErrorCapture is @unchecked Sendable so the @Sendable handler
-        // can write into it; we read back on the same actor after generate() returns.
+        // The handler is @Sendable because MLX may invoke it from a C++ thread.
+        // MLXErrorCapture is @unchecked Sendable so it can safely cross the
+        // boundary. The body is @Sendable because all captured params (container,
+        // generationInput, cache, generateConfig) conform to Sendable; generate()
+        // handles its own actor isolation internally via ModelContainer.perform.
         final class MLXErrorCapture: @unchecked Sendable {
             var message: String?
         }
         let capture = MLXErrorCapture()
         let mlxStream = try await withErrorHandler(
-            { capture.message = capture.message ?? $0 }
-        ) { @MainActor in
+            { @Sendable in capture.message = capture.message ?? $0 }
+        ) { @Sendable in
             try await container.generate(
                 input: generationInput,
                 cache: cache,
