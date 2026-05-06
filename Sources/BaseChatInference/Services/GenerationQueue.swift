@@ -85,6 +85,15 @@ final class GenerationQueue {
     /// its registry is never invoked. Tests must reset this in `tearDown`.
     nonisolated(unsafe) static var toolsUnsupportedWarningHook: (@Sendable (String, String) -> Void)?
 
+    /// Test-only hook invoked alongside `Log.inference.warning` when a request
+    /// passes thinking-only hints to a backend whose capabilities report
+    /// `supportsThinking == false`. Receives `(backendTypeName, message)`.
+    ///
+    /// Unsupported thinking hints are not fatal because older callers may set
+    /// a default budget globally, but they must never be silently ignored.
+    /// Tests must reset this in `tearDown` to avoid cross-test leakage.
+    nonisolated(unsafe) static var thinkingUnsupportedWarningHook: (@Sendable (String, String) -> Void)?
+
     /// Test-only hook invoked alongside `Log.inference.info` for each tool
     /// dispatch lifecycle log line (`tool_dispatch_started` /
     /// `tool_dispatch_completed`). Receives `(eventName, fields)` where
@@ -221,6 +230,8 @@ final class GenerationQueue {
         )
         config.maxThinkingTokens = maxThinkingTokens
 
+        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+
         return try dispatchToBackend(
             backend: backend,
             messages: messages,
@@ -268,6 +279,8 @@ final class GenerationQueue {
             Self.jsonModeUnsupportedWarningHook?(backendType, message)
         }
 
+        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+
         return try dispatchToBackend(
             backend: backend,
             messages: messages,
@@ -277,6 +290,28 @@ final class GenerationQueue {
     }
 
     // MARK: - Backend dispatch (Private)
+
+    private static func warnIfThinkingUnsupported(
+        backend: InferenceBackend,
+        config: GenerationConfig
+    ) {
+        guard !backend.capabilities.supportsThinking else { return }
+
+        var requestedHints: [String] = []
+        if config.maxThinkingTokens != nil {
+            requestedHints.append("maxThinkingTokens")
+        }
+        if config.thinkingMarkers != nil {
+            requestedHints.append("thinkingMarkers")
+        }
+        guard !requestedHints.isEmpty else { return }
+
+        let backendType = String(describing: type(of: backend))
+        let hintList = requestedHints.joined(separator: ", ")
+        let message = "GenerationQueue: thinking hint(s) \(hintList) requested but \(backendType) reports capabilities.supportsThinking == false; the backend may ignore these hints. Check `backend.capabilities.supportsThinking` before setting thinking budgets or markers."
+        Log.inference.warning("\(message, privacy: .public)")
+        Self.thinkingUnsupportedWarningHook?(backendType, message)
+    }
 
     /// Common dispatch path shared by ``generate(structuredMessages:...)``
     /// and ``generateWithConfig(structuredMessages:...)``.
@@ -586,6 +621,8 @@ final class GenerationQueue {
         )
         config.maxThinkingTokens = maxThinkingTokens
         config.grammar = grammar
+
+        Self.warnIfThinkingUnsupported(backend: backend, config: config)
 
         let request = QueuedRequest(
             token: token,

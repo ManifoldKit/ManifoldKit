@@ -1,6 +1,5 @@
 import Foundation
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 // MARK: - ChatViewModel + Model Loading (facade)
@@ -57,7 +56,7 @@ extension ChatViewModel {
     ///
     /// - Note: Prefer `dispatchSelectedLoad()` for UI-driven loads — it coordinates
     ///   intent and cancels superseded requests.
-    public func loadCloudEndpoint(_ endpoint: APIEndpoint) async {
+    public func loadCloudEndpoint(_ endpoint: APIEndpointRecord) async {
         await loadCoordinator.loadCloudEndpointInternal(endpoint, generation: nil)
     }
 

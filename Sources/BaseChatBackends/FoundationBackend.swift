@@ -149,6 +149,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     private var _isGenerating = false
     private var session: LanguageModelSession?
     private var generationTask: Task<Void, Never>?
+    private var generationSequence: UInt64 = 0
     /// Tracks the system prompt used to create the current session, so we only
     /// recreate when the prompt actually changes.
     private var currentSystemPrompt: String?
@@ -332,13 +333,15 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             }
         }()
 
-        let activeSession: LanguageModelSession = try withStateLock {
+        let (activeSession, generationID): (LanguageModelSession, UInt64) = try withStateLock {
             guard _isModelLoaded else {
                 throw InferenceError.inferenceFailure("No model loaded")
             }
             guard !_isGenerating else {
                 throw InferenceError.alreadyGenerating
             }
+            generationSequence &+= 1
+            let generationID = generationSequence
             _isGenerating = true
 
             // Reuse the existing session to preserve conversation history.
@@ -360,7 +363,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 _sessionIsClean = true  // fresh session always starts clean
             }
 
-            return session!
+            return (session!, generationID)
         }
 
         Self.logger.debug("Foundation generate started (tools=\(toolsForRound.count, privacy: .public))")
@@ -376,8 +379,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
             defer {
                 backend.withStateLock {
-                    backend._isGenerating = false
-                    backend.generationTask = nil
+                    if backend.generationSequence == generationID {
+                        backend._isGenerating = false
+                        backend.generationTask = nil
+                    }
                 }
                 Self.logger.debug("Foundation generate finished")
             }
@@ -620,18 +625,18 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
     public func stopGeneration() {
         let task = withStateLock { () -> Task<Void, Never>? in
-            defer { generationTask = nil }
-            return generationTask
-        }
-        task?.cancel()
-
-        // Discard the session after cancellation so the partial response
-        // doesn't corrupt the conversation history for subsequent turns.
-        withStateLock {
+            generationSequence &+= 1
+            let task = generationTask
+            generationTask = nil
+            _isGenerating = false
+            // Discard the session after cancellation so the partial response
+            // doesn't corrupt the conversation history for subsequent turns.
             session = nil
             currentSystemPrompt = nil
             _sessionIsClean = true
+            return task
         }
+        task?.cancel()
     }
 
 }

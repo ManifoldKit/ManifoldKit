@@ -295,7 +295,7 @@ This matrix maps every major feature area to its current test coverage and ident
 | Sampler presets | SamplerPresetTests | - | - | - | No integration test |
 | System prompt templating | - | ChatViewModelSystemPromptContextTests | - | - | - |
 | Generation settings | GenerationConfigTests | GenerationViewModelTests | - | SettingsUITests | - |
-| Backend capabilities | BackendCapabilitiesTests | - | - | - | - |
+| Backend capabilities | BackendCapabilitiesTests, BackendCapabilityMatrixTests | BackendVisionCapabilityTests | - | - | Claims must match supported tool/vision/JSON behavior |
 | Backend contract | BackendContractTests | - | - | - | - |
 
 ### System & Lifecycle

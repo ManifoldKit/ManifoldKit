@@ -85,67 +85,10 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // and rejects image attachments before we ever build a request,
             // so a non-vision model surfaces a clear local error rather than
             // a 400 from upstream.
-            supportsVision: Self.isVisionCapableModel(modelName),
+            supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
         )
-    }
-
-    /// Returns `true` when `modelName` belongs to an OpenAI family that
-    /// accepts `image_url` content parts on the Chat Completions API.
-    ///
-    /// Two matcher styles are used together:
-    ///
-    /// - **Substring tokens** (`gpt-4o`, `gpt-4-turbo`, `gpt-4.1`) — long
-    ///   enough to be unambiguous on their own, so a `contains` check
-    ///   picks up dated-suffix variants (`gpt-4o-2024-08-06`) and vendor
-    ///   aliases (`openai/gpt-4o`) automatically.
-    /// - **Anchored prefixes** (`o1`, `o3`) — too short to be safe as a
-    ///   substring (a name like `gpt-foo1bar` would accidentally match),
-    ///   so we require the token at the start of the name or
-    ///   immediately after a `/` or `:` separator (vendor namespaces like
-    ///   `openai/o1-mini`), and the token must either end the string or
-    ///   be followed by a `-`.
-    ///
-    /// Allowlist source: OpenAI's "Models with vision" docs as of 2026.
-    /// Update ``OpenAIVisionModels`` when OpenAI ships a new family.
-    static func isVisionCapableModel(_ modelName: String) -> Bool {
-        let lowered = modelName.lowercased()
-        if OpenAIVisionModels.substringTokens.contains(where: lowered.contains) {
-            return true
-        }
-        for prefix in OpenAIVisionModels.anchoredPrefixes {
-            if matchesAnchoredPrefix(lowered, prefix: prefix) {
-                return true
-            }
-        }
-        return false
-    }
-
-    /// Returns `true` when `prefix` appears at the start of `name` or
-    /// immediately after a `/` or `:` separator, and is followed either by
-    /// the end of the string or by a `-`. Used by ``isVisionCapableModel``
-    /// for short tokens (`o1`, `o3`) where a bare substring match would
-    /// produce false positives.
-    static func matchesAnchoredPrefix(_ name: String, prefix: String) -> Bool {
-        let chars = Array(name)
-        let prefixChars = Array(prefix)
-        guard prefixChars.count <= chars.count else { return false }
-        // Walk every plausible start position: index 0 or right after a `/`/`:`.
-        var startIndices: [Int] = [0]
-        for (i, c) in chars.enumerated() where c == "/" || c == ":" {
-            startIndices.append(i + 1)
-        }
-        for start in startIndices {
-            guard start + prefixChars.count <= chars.count else { continue }
-            if Array(chars[start..<start + prefixChars.count]) == prefixChars {
-                let after = start + prefixChars.count
-                if after == chars.count || chars[after] == "-" {
-                    return true
-                }
-            }
-        }
-        return false
     }
 
     // MARK: - Structured History
@@ -241,7 +184,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // the backend may be driven directly (e.g. the OpenAI-compat
             // server, or callers wiring their own pipeline), so keep the
             // belt-and-suspenders check here.
-            if !Self.isVisionCapableModel(modelName) {
+            if !BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName) {
                 throw InferenceError.inferenceFailure(
                     "Model \"\(modelName)\" does not support image input. Switch to a vision-capable OpenAI model (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4.1, o1, o3) and retry."
                 )
@@ -834,38 +777,4 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
 }
 
-/// Allowlist of OpenAI model-name family tokens that accept `image_url`
-/// content parts on the Chat Completions API.
-///
-/// Lives next to ``OpenAIBackend`` so the matcher stays a one-line
-/// substring check. Adding a new token here is the single edit required
-/// when OpenAI ships a new vision-capable family — the dated-suffix
-/// variants (e.g. `gpt-4o-2024-08-06`) and vendor aliases (e.g.
-/// `openai/gpt-4o`) match automatically because the classifier uses
-/// substring containment.
-///
-/// Kept here (rather than as a public type) because it is an
-/// implementation detail of one backend's capability gating; promoting it
-/// would invite host apps to take a dependency on a list that needs to
-/// move whenever OpenAI updates their model lineup.
-enum OpenAIVisionModels {
-    /// Tokens long enough to be safe as substring matches. A name like
-    /// `gpt-4o-2024-08-06` or `openai/gpt-4o-mini` lights these up.
-    /// Tokens are lowercase; the classifier lowercases its input first.
-    static let substringTokens: [String] = [
-        "gpt-4o",       // gpt-4o, gpt-4o-mini, gpt-4o-2024-* — full vision family
-        "gpt-4-turbo",  // gpt-4-turbo, gpt-4-turbo-2024-* — original vision turbo
-        "gpt-4.1",      // gpt-4.1 family — vision-capable per the 2025 refresh
-    ]
-
-    /// Tokens that are too short for a bare `contains` check (a name like
-    /// `gpt-foo1bar` would otherwise accidentally match `o1`). Matched via
-    /// ``OpenAIBackend/matchesAnchoredPrefix(_:prefix:)`` which requires
-    /// the token at a name boundary (start or after `/` / `:`) and either
-    /// ending the string or followed by a `-`.
-    static let anchoredPrefixes: [String] = [
-        "o1",           // o1, o1-preview, o1-mini-* — reasoning family with vision
-        "o3",           // o3, o3-mini-* — newer reasoning family with vision
-    ]
-}
 #endif

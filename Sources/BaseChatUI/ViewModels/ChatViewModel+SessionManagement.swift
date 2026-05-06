@@ -1,6 +1,5 @@
 import Foundation
 import BaseChatRuntime
-import BaseChatPersistenceSwiftData
 import BaseChatInference
 
 // MARK: - ChatViewModel + Session Management
@@ -57,6 +56,8 @@ extension ChatViewModel {
         backgroundTask = nil
         backgroundTaskError = nil
 
+        await refreshAvailableEndpointsFromStore()
+
         let resolvedEndpoint = selectionState.selectedEndpointID.flatMap { endpointID in
             availableEndpoints.first(where: { $0.id == endpointID })
         }
@@ -110,11 +111,20 @@ extension ChatViewModel {
     /// Replaces the in-memory list of selectable cloud endpoints.
     ///
     /// Clears `selectedEndpoint` when that endpoint is no longer available.
-    public func setAvailableEndpoints(_ endpoints: [APIEndpoint]) {
-        availableEndpoints = endpoints
+    public func setAvailableEndpoints(_ endpoints: [APIEndpointRecord]) {
+        availableEndpoints = endpoints.filter(\.isEnabled)
         if let selected = selectedEndpoint,
            !availableEndpoints.contains(where: { $0.id == selected.id }) {
             selectedEndpoint = nil
+        }
+    }
+
+    func refreshAvailableEndpointsFromStore() async {
+        guard let endpointStore else { return }
+        do {
+            setAvailableEndpoints(try await endpointStore.fetchEndpoints())
+        } catch {
+            Log.persistence.error("Failed to fetch endpoints: \(error)")
         }
     }
 

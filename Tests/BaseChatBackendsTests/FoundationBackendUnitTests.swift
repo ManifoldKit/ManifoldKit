@@ -246,8 +246,12 @@ final class FoundationBackendUnitTests: XCTestCase {
         )
         backend.stopGeneration()
 
-        // Drain the cancelled stream so the generation task's defer block runs
-        // and clears isGenerating before we attempt a second generate().
+        XCTAssertFalse(
+            backend.isGenerating,
+            "stopGeneration() must synchronously clear isGenerating"
+        )
+
+        // Drain the cancelled stream before we attempt a second generate().
         for try await _ in stream.events {}
 
         XCTAssertTrue(

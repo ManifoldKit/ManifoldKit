@@ -492,12 +492,14 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .sessionBranched(newSessionID: UUID(), copiedCount: 0),
             .streamStarted(messageID: UUID()),
             .tokenEmitted(messageID: UUID(), delta: ""),
+            .tokenUsageRecorded(messageID: UUID(), promptTokens: 0, completionTokens: 0),
             .thinkingStarted(messageID: UUID()),
             .thinkingUpdated(messageID: UUID(), partialText: ""),
             .thinkingFinalized(messageID: UUID(), text: "", signature: nil),
             .loopDetected(messageID: UUID()),
             .streamFinished(messageID: UUID(), reason: .stop),
             .errorRaised(.cancelled),
+            .sessionTouchFailed(sessionID: UUID()),
             .beforeContextAssembly(prompt: nil, request: PromptContextRequest(sessionID: UUID(), messageCount: 0, userInput: nil)),
             .contextAssembled(slots: []),
             .afterGeneration(messageID: UUID(), finalText: ""),
@@ -511,8 +513,9 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         for event in samples {
             switch event {
             case .messageInserted, .messageRemoved, .messageUpdated, .sessionBranched,
-                 .streamStarted, .tokenEmitted, .thinkingStarted, .thinkingUpdated,
-                 .thinkingFinalized, .loopDetected, .streamFinished, .errorRaised,
+                 .streamStarted, .tokenEmitted, .tokenUsageRecorded,
+                 .thinkingStarted, .thinkingUpdated, .thinkingFinalized,
+                 .loopDetected, .streamFinished, .errorRaised, .sessionTouchFailed,
                  .beforeContextAssembly, .contextAssembled, .afterGeneration,
                  .compressionTriggered, .toolCallRequested, .toolCallApproved,
                  .toolCallCompleted:
@@ -521,6 +524,6 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         }
         // Pin the exact case count as a runtime assertion too — the
         // sample list is the source of truth.
-        XCTAssertEqual(samples.count, 19, "ConversationEvent case count drifted — image-side cases may have leaked in")
+        XCTAssertEqual(samples.count, 21, "ConversationEvent case count drifted — image-side cases may have leaked in")
     }
 }

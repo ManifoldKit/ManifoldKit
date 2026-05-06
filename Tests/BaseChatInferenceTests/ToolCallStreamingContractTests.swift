@@ -67,6 +67,81 @@ final class ToolCallStreamingContractTests: XCTestCase {
         return backend
     }
 
+    private struct ToolCallLifecycleState {
+        var started = false
+        var deltaFragments: [String] = []
+        var completed = false
+    }
+
+    /// Validate the public lifecycle contract for tool-call stream events:
+    /// `.toolCallStart` must open a call, argument deltas (when present) must
+    /// follow that start, and the authoritative `.toolCall` must close it.
+    private func toolCallLifecycleViolations(
+        in events: [GenerationEvent],
+        requireArgumentDelta: Bool = false
+    ) -> [String] {
+        var states: [String: ToolCallLifecycleState] = [:]
+        var violations: [String] = []
+
+        for (index, event) in events.enumerated() {
+            switch event {
+            case .toolCallStart(let callId, let name):
+                if callId.isEmpty {
+                    violations.append("event \(index): toolCallStart has empty callId")
+                }
+                if name.isEmpty {
+                    violations.append("event \(index): toolCallStart(\(callId)) has empty name")
+                }
+                var state = states[callId, default: ToolCallLifecycleState()]
+                if state.started {
+                    violations.append("event \(index): duplicate toolCallStart for \(callId)")
+                }
+                if state.completed {
+                    violations.append("event \(index): toolCallStart after toolCall for \(callId)")
+                }
+                state.started = true
+                states[callId] = state
+
+            case .toolCallArgumentsDelta(let callId, let textDelta):
+                var state = states[callId, default: ToolCallLifecycleState()]
+                if !state.started {
+                    violations.append("event \(index): arguments delta before toolCallStart for \(callId)")
+                }
+                if state.completed {
+                    violations.append("event \(index): arguments delta after toolCall for \(callId)")
+                }
+                state.deltaFragments.append(textDelta)
+                states[callId] = state
+
+            case .toolCall(let call):
+                var state = states[call.id, default: ToolCallLifecycleState()]
+                if !state.started {
+                    violations.append("event \(index): toolCall before toolCallStart for \(call.id)")
+                }
+                if requireArgumentDelta && state.deltaFragments.isEmpty {
+                    violations.append("event \(index): toolCall without arguments delta for \(call.id)")
+                }
+                if state.completed {
+                    violations.append("event \(index): duplicate toolCall for \(call.id)")
+                }
+                let streamedArguments = state.deltaFragments.joined()
+                if !streamedArguments.isEmpty && streamedArguments != call.arguments {
+                    violations.append("event \(index): streamed arguments differ from toolCall.arguments for \(call.id)")
+                }
+                state.completed = true
+                states[call.id] = state
+
+            default:
+                break
+            }
+        }
+
+        for (callId, state) in states where state.started && !state.completed {
+            violations.append("stream ended before toolCall for \(callId)")
+        }
+        return violations
+    }
+
     // MARK: - 1. Streaming backend: start → deltas → call
 
     /// Contract: a streaming backend emits `.toolCallStart` first, then one or
@@ -99,6 +174,11 @@ final class ToolCallStreamingContractTests: XCTestCase {
             XCTFail("Expected 4 tool events (start + 2 deltas + call), got \(toolEvents.count)")
             return
         }
+        XCTAssertEqual(
+            toolCallLifecycleViolations(in: toolEvents, requireArgumentDelta: true),
+            [],
+            "streaming backend must emit start → delta(s) → toolCall for each call"
+        )
         if case .toolCallStart(let id, let name) = toolEvents[0] {
             XCTAssertEqual(id, "c1")
             XCTAssertEqual(name, "get_weather")
@@ -157,6 +237,61 @@ final class ToolCallStreamingContractTests: XCTestCase {
         XCTAssertTrue(deltas.isEmpty, "non-streaming backend must not emit .toolCallArgumentsDelta")
         XCTAssertEqual(calls.count, 1)
         XCTAssertEqual(calls.first?.id, "c2")
+    }
+
+    // MARK: - 2b. Whole-call local backend: canonical start → delta → call triple
+
+    /// Contract: local whole-call backends that normalise a completed tool call
+    /// into progressive events still advertise `streamsToolCallArguments == false`,
+    /// but emit a canonical `.toolCallStart` → single full-arguments
+    /// `.toolCallArgumentsDelta` → `.toolCall` triple for UI consumers.
+    func test_wholeCallLocalBackend_emitsCanonicalStartDeltaToolCallTriple() async throws {
+        let backend = try makeNonStreamingBackend()
+        XCTAssertFalse(
+            backend.capabilities.streamsToolCallArguments,
+            "whole-call local backend must not advertise incremental argument streaming"
+        )
+
+        let call = ToolCall(id: "local-1", toolName: "lookup", arguments: #"{"q":"swift"}"#)
+        backend.tokensToYield = []
+        backend.scriptedToolCallDeltasPerTurn = [[
+            .start(callId: call.id, name: call.toolName),
+            .delta(callId: call.id, textDelta: call.arguments),
+            .call(call),
+        ]]
+
+        let stream = try backend.generate(prompt: "lookup swift", systemPrompt: nil, config: .init())
+        let events = try await collectEvents(stream)
+        let toolEvents = events.filter {
+            switch $0 {
+            case .toolCallStart, .toolCallArgumentsDelta, .toolCall: return true
+            default: return false
+            }
+        }
+
+        XCTAssertEqual(
+            toolCallLifecycleViolations(in: toolEvents, requireArgumentDelta: true),
+            [],
+            "whole-call local normalization must preserve start → delta → toolCall ordering"
+        )
+        XCTAssertEqual(toolEvents.count, 3)
+        if case .toolCallStart(let id, let name) = toolEvents[0] {
+            XCTAssertEqual(id, "local-1")
+            XCTAssertEqual(name, "lookup")
+        } else {
+            XCTFail("First tool event must be .toolCallStart, got \(toolEvents[0])")
+        }
+        if case .toolCallArgumentsDelta(let id, let textDelta) = toolEvents[1] {
+            XCTAssertEqual(id, "local-1")
+            XCTAssertEqual(textDelta, #"{"q":"swift"}"#)
+        } else {
+            XCTFail("Second tool event must be .toolCallArgumentsDelta, got \(toolEvents[1])")
+        }
+        if case .toolCall(let received) = toolEvents[2] {
+            XCTAssertEqual(received, call)
+        } else {
+            XCTFail("Third tool event must be .toolCall, got \(toolEvents[2])")
+        }
     }
 
     // MARK: - 3. Exactly one .toolCall per callId
@@ -319,6 +454,11 @@ final class ToolCallStreamingContractTests: XCTestCase {
 
         XCTAssertNotNil(receivedA, "toolCall for a1 must be present")
         XCTAssertNotNil(receivedB, "toolCall for b1 must be present")
+        XCTAssertEqual(
+            toolCallLifecycleViolations(in: events, requireArgumentDelta: true),
+            [],
+            "interleaved calls must each preserve start → delta(s) → toolCall ordering"
+        )
 
         // Sabotage: mixing all deltas into a single accumulator (ignoring callId)
         // would make concatenation equal one giant string rather than per-id slices.
@@ -430,6 +570,32 @@ final class ToolCallStreamingContractTests: XCTestCase {
         // to the .call event — toolCalls would be non-empty.
         XCTAssertTrue(toolCalls.isEmpty,
             "no .toolCall must reach the consumer after stream cancellation pre-call; got \(toolCalls)")
+    }
+
+    // MARK: - 7b. Lifecycle validator catches out-of-order streams
+
+    func test_lifecycleValidator_reportsOutOfOrderToolCallEvents() {
+        let call = ToolCall(id: "bad-1", toolName: "broken", arguments: #"{"x":1}"#)
+        let events: [GenerationEvent] = [
+            .toolCallArgumentsDelta(callId: "bad-1", textDelta: #"{"x":"#),
+            .toolCall(call),
+            .toolCallStart(callId: "bad-1", name: "broken"),
+        ]
+
+        let violations = toolCallLifecycleViolations(in: events, requireArgumentDelta: true)
+
+        XCTAssertTrue(
+            violations.contains { $0.contains("arguments delta before toolCallStart") },
+            "validator must flag deltas that arrive before toolCallStart; got \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains { $0.contains("toolCall before toolCallStart") },
+            "validator must flag toolCall before toolCallStart; got \(violations)"
+        )
+        XCTAssertTrue(
+            violations.contains { $0.contains("toolCallStart after toolCall") },
+            "validator must flag starts that arrive after the authoritative call; got \(violations)"
+        )
     }
 
     // MARK: - 8. Orphan start (no matching call): silently dropped, no error

@@ -88,6 +88,12 @@ extension ChatViewModel {
             // when none exists).
             mutateMessage(id: messageID) { Self.appendVisibleText(delta, into: &$0) }
 
+        case .tokenUsageRecorded(let messageID, let promptTokens, let completionTokens):
+            mutateMessage(id: messageID) {
+                $0.promptTokens = promptTokens
+                $0.completionTokens = completionTokens
+            }
+
         case .streamFinished(let messageID, let reason):
             // Drop terminal events that belong to a previous turn —
             // `switchToSession` cancels the current turn but a NEW turn may
@@ -221,6 +227,7 @@ extension ChatViewModel {
         // MARK: Observational / future cases
 
         case .beforeContextAssembly, .contextAssembled, .afterGeneration,
+             .sessionTouchFailed,
              .compressionTriggered, .toolCallRequested, .toolCallApproved,
              .toolCallCompleted:
             // These are observational or reserved for future sub-flows.

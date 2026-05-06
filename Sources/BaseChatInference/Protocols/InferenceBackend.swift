@@ -219,7 +219,8 @@ public struct GenerationConfig: Sendable, Codable {
     /// - `0` — **disable thinking entirely.** On supporting backends (Ollama
     ///   with thinking-capable models, MLX/Llama with reasoning GGUFs), this
     ///   instructs the model to skip the reasoning phase and emit visible
-    ///   output directly. On non-thinking models this is a no-op.
+    ///   output directly. On non-thinking models this is a no-op after
+    ///   `GenerationQueue` emits an explicit unsupported-thinking warning.
     /// - `N > 0` — cap thinking tokens at `N`; additional reasoning tokens are
     ///   dropped. Visible output is still produced.
     ///
@@ -277,10 +278,10 @@ public struct GenerationConfig: Sendable, Codable {
     ///   when the caller knows better (e.g. a fine-tune that ships an empty
     ///   chat template but still emits `<think>` blocks at runtime).
     ///
-    /// Backends without thinking support (`BackendCapabilities.supportsThinking == false`)
-    /// silently ignore this field. There is no longer a hardcoded fallback to
-    /// `.qwen3` — if neither auto-detection nor the caller surfaces markers,
-    /// the parser stays off.
+    /// `GenerationQueue` emits an explicit warning when callers pass markers
+    /// to a backend with `BackendCapabilities.supportsThinking == false`.
+    /// There is no longer a hardcoded fallback to `.qwen3` — if neither
+    /// auto-detection nor the caller surfaces markers, the parser stays off.
     public var thinkingMarkers: ThinkingMarkers?
 
     /// Maximum number of tool-call iterations permitted inside a single

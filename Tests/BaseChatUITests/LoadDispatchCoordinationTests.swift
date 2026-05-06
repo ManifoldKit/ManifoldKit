@@ -39,8 +39,8 @@ final class LoadDispatchCoordinationTests: XCTestCase {
         )
     }
 
-    private func makeEndpoint(name: String, provider: APIProvider, modelName: String) -> APIEndpoint {
-        APIEndpoint(
+    private func makeEndpoint(name: String, provider: APIProvider, modelName: String) -> APIEndpointRecord {
+        APIEndpointRecord(
             name: name,
             provider: provider,
             baseURL: provider.defaultBaseURL,

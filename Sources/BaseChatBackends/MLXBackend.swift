@@ -795,7 +795,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 )
                 probedCapabilities = nil
             }
-            let supportsVision = probedCapabilities?.supportsVision ?? false
+            let supportsVision = BackendVisionCapability.mlxSupportsImageInput(probedCapabilities: probedCapabilities)
             let routeThroughVLMFactory = Self.requiresVLMFactory(at: url, precomputedCapabilities: probedCapabilities)
             // Load from a local directory containing config.json + .safetensors.
             // We dispatch directly to either `LLMModelFactory.shared` or

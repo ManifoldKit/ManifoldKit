@@ -116,6 +116,34 @@ final class BaseChatBootstrapTests: XCTestCase {
             "Session inserted via runtime.persistence must be visible through runtime.modelContainer.mainContext")
     }
 
+    func test_init_endpointStoreSharesContainerWithPersistence() async throws {
+        let originalConfiguration = BaseChatConfiguration.shared
+        defer { BaseChatConfiguration.shared = originalConfiguration }
+
+        let runtime = try BaseChatBootstrap(
+            configuration: BaseChatConfiguration(
+                appName: "Endpoint Store Wiring",
+                bundleIdentifier: "com.basechatkit.runtime-tests.endpoint-store.\(UUID().uuidString)"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        let endpoint = APIEndpointRecord(name: "Shared Endpoint", provider: .openAI)
+        var session = ChatSessionRecord(title: "Shared Session")
+        session.selectedEndpointID = endpoint.id
+
+        try await runtime.endpointStore.insertEndpoint(endpoint)
+        try await runtime.persistence.insertSession(session)
+
+        let endpointsViaContainer = try runtime.modelContainer.mainContext.fetch(FetchDescriptor<APIEndpoint>())
+        let sessionsViaPersistence = try await runtime.persistence.fetchSessions()
+
+        XCTAssertTrue(endpointsViaContainer.contains(where: { $0.id == endpoint.id }),
+            "Endpoint inserted through runtime.endpointStore must be visible through runtime.modelContainer.mainContext")
+        XCTAssertEqual(sessionsViaPersistence.first(where: { $0.id == session.id })?.selectedEndpointID, endpoint.id,
+            "Session settings persisted through runtime.persistence must reference the same endpoint id")
+    }
+
     func test_persistence_roundTripsSessionsThroughRuntimeProvider() async throws {
         let originalConfiguration = BaseChatConfiguration.shared
         defer { BaseChatConfiguration.shared = originalConfiguration }

@@ -4,6 +4,88 @@ import Foundation
 @testable import BaseChatInference
 import BaseChatTestSupport
 
+private final class RuntimeUsageBackend: InferenceBackend, TokenUsageProvider, @unchecked Sendable {
+    struct Turn: Sendable {
+        let tokens: [String]
+        let usage: (promptTokens: Int, completionTokens: Int)?
+        let streamErrorMessage: String?
+
+        init(
+            tokens: [String],
+            usage: (promptTokens: Int, completionTokens: Int)?,
+            streamErrorMessage: String? = nil
+        ) {
+            self.tokens = tokens
+            self.usage = usage
+            self.streamErrorMessage = streamErrorMessage
+        }
+    }
+
+    var isModelLoaded = true
+    var isGenerating = false
+    var capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP, .repeatPenalty],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+    var lastUsage: (promptTokens: Int, completionTokens: Int)?
+
+    private let lock = NSLock()
+    private var turns: [Turn]
+
+    init(turns: [Turn]) {
+        self.turns = turns
+    }
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
+        isModelLoaded = true
+    }
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
+        let turn = nextTurn()
+        isGenerating = true
+
+        return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
+            Task {
+                for token in turn.tokens {
+                    if Task.isCancelled { break }
+                    continuation.yield(.token(token))
+                }
+                if let usage = turn.usage, !Task.isCancelled {
+                    continuation.yield(.usage(prompt: usage.promptTokens, completion: usage.completionTokens))
+                    self.lastUsage = usage
+                }
+                self.isGenerating = false
+                if let message = turn.streamErrorMessage, !Task.isCancelled {
+                    continuation.finish(throwing: InferenceError.inferenceFailure(message))
+                } else {
+                    continuation.finish()
+                }
+            }
+        })
+    }
+
+    func stopGeneration() {
+        isGenerating = false
+    }
+
+    func unloadModel() {
+        isModelLoaded = false
+        isGenerating = false
+    }
+
+    private func nextTurn() -> Turn {
+        lock.lock()
+        defer { lock.unlock() }
+        if turns.isEmpty {
+            return Turn(tokens: [], usage: nil)
+        }
+        return turns.removeFirst()
+    }
+}
+
 /// Phase 1.2.5 PR-A — coverage for the new `ConversationRuntime` send sub-flow.
 ///
 /// Send is the only sub-flow PR-A ships. Regenerate / edit / branch are
@@ -28,8 +110,16 @@ final class ConversationRuntimeTests: XCTestCase {
         /// of performing the update. Cleared after the throw so subsequent
         /// updates succeed normally.
         var updateError: (any Error)?
+        /// When set, the next `insertMessage` call throws this error instead
+        /// of performing the insert. Cleared after the throw so subsequent
+        /// inserts succeed normally.
+        var insertError: (any Error)?
 
         func insertMessage(_ message: ChatMessageRecord) async throws {
+            if let error = insertError {
+                insertError = nil
+                throw error
+            }
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
@@ -84,6 +174,12 @@ final class ConversationRuntimeTests: XCTestCase {
         /// When set, the next `insertSession` call throws this error instead
         /// of performing the insert. Cleared after the throw.
         var insertError: (any Error)?
+        /// When set, the next `updateSession` call throws this error instead
+        /// of performing the update. Cleared after the throw.
+        var updateError: (any Error)?
+        /// When set, the next `fetchSessions` call throws this error instead
+        /// of returning sessions. Cleared after the throw.
+        var fetchError: (any Error)?
 
         func insertSession(_ session: ChatSessionRecord) async throws {
             if let error = insertError {
@@ -94,6 +190,10 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         func updateSession(_ session: ChatSessionRecord) async throws {
+            if let error = updateError {
+                updateError = nil
+                throw error
+            }
             guard sessions[session.id] != nil else {
                 throw ChatPersistenceError.sessionNotFound(session.id)
             }
@@ -108,7 +208,11 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         func fetchSessions() async throws -> [ChatSessionRecord] {
-            sessions.values.sorted { $0.updatedAt > $1.updatedAt }
+            if let error = fetchError {
+                fetchError = nil
+                throw error
+            }
+            return sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
     }
 
@@ -181,6 +285,51 @@ final class ConversationRuntimeTests: XCTestCase {
             return first ?? []
         }
         return result
+    }
+
+    private func waitForEvents(
+        from task: Task<[ConversationEvent], Never>,
+        deadline: Duration = .seconds(5)
+    ) async throws -> [ConversationEvent] {
+        try await withThrowingTaskGroup(of: [ConversationEvent].self) { group in
+            group.addTask { await task.value }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                task.cancel()
+                throw TestError.deadlineElapsed
+            }
+            let first = try await group.next()
+            group.cancelAll()
+            return first ?? []
+        }
+    }
+
+    private func collectUntilStreamFinished(
+        from runtime: ConversationRuntime,
+        deadline: Duration = .seconds(5)
+    ) async throws -> [ConversationEvent] {
+        try await collectEvents(from: runtime, until: { event in
+            if case .streamFinished = event { return true }
+            return false
+        }, deadline: deadline)
+    }
+
+    private func drainUntilStreamFinished(from runtime: ConversationRuntime) -> Task<[ConversationEvent], Never> {
+        Task { @MainActor [runtime] in
+            var events: [ConversationEvent] = []
+            for await event in runtime.events {
+                events.append(event)
+                if case .streamFinished = event { return events }
+            }
+            return events
+        }
+    }
+
+    private func streamFinishedReasons(in events: [ConversationEvent]) -> [FinishReason] {
+        events.compactMap { event in
+            if case let .streamFinished(_, reason) = event { return reason }
+            return nil
+        }
     }
 
     enum TestError: Error { case deadlineElapsed }
@@ -286,6 +435,292 @@ final class ConversationRuntimeTests: XCTestCase {
         }), "Stream finishes with .empty when no tokens were emitted")
     }
 
+    // MARK: - Finish-state regressions
+
+    func test_finishState_success_emitsSingleStopTerminalAfterAssistantInsert() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["done"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "go"))
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Successful generation emits exactly one .stop terminal")
+        let assistantInsertIndex = events.firstIndex {
+            if case let .messageInserted(record) = $0, record.role == .assistant { return true }
+            return false
+        }
+        let finishIndex = events.firstIndex {
+            if case .streamFinished = $0 { return true }
+            return false
+        }
+        XCTAssertNotNil(assistantInsertIndex)
+        XCTAssertNotNil(finishIndex)
+        if let assistantInsertIndex, let finishIndex {
+            XCTAssertLessThan(assistantInsertIndex, finishIndex,
+                              "Assistant insert precedes the terminal event on success")
+        }
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["done"])
+    }
+
+    func test_finishState_emptyResponse_emitsSingleEmptyTerminalAndDropsAssistant() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = []
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "empty"))
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.empty],
+                       "Empty generation emits exactly one .empty terminal")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "Empty assistant response is not persisted")
+        guard case let .afterGeneration(_, finalText) = events.last else {
+            XCTFail("Expected afterGeneration after empty terminal")
+            return
+        }
+        XCTAssertEqual(finalText, "")
+    }
+
+    func test_finishState_cancelBeforeFirstToken_emitsSingleCancelledTerminalAndNoAssistant() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["late"]
+        let gate = TokenEmissionGate()
+        mock.tokenEmissionGate = gate
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+        let drain = drainUntilStreamFinished(from: runtime)
+
+        let handle = try await runtime.send(SendInput(
+            sessionID: UUID(),
+            userText: "cancel",
+            streamingBatchCharacterLimit: 1
+        ))
+        await runtime.cancel(handle)
+
+        let events = try await waitForEvents(from: drain)
+        await gate.release()
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled],
+                       "Cancel before the first visible token emits exactly one cancelled terminal")
+        XCTAssertFalse(events.contains {
+            if case .tokenEmitted = $0 { return true }
+            return false
+        }, "No token event should escape after pre-token cancel")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "Pre-token cancel drops the empty assistant")
+    }
+
+    func test_finishState_cancelAfterPartialOutput_persistsPartialAndEmitsSingleCancelledTerminal() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["one", " two"]
+        let gate = TokenEmissionGate()
+        mock.tokenEmissionGate = gate
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let handle = try await runtime.send(SendInput(
+            sessionID: UUID(),
+            userText: "cancel partial",
+            streamingBatchCharacterLimit: 1
+        ))
+        let drain = Task { @MainActor [runtime] in
+            var events: [ConversationEvent] = []
+            var didCancel = false
+            for await event in runtime.events {
+                events.append(event)
+                switch event {
+                case .tokenEmitted:
+                    if !didCancel {
+                        didCancel = true
+                        await runtime.cancel(handle)
+                        await gate.release()
+                    }
+                case .streamFinished:
+                    return events
+                default:
+                    break
+                }
+            }
+            return events
+        }
+
+        await gate.advance()
+        let events = try await waitForEvents(from: drain)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled],
+                       "Cancel after partial output emits exactly one cancelled terminal")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["one"],
+                       "Cancel after partial output persists only the streamed prefix")
+    }
+
+    func test_finishState_streamErrorWithoutPartial_emitsErrorBeforeSingleStopTerminalAndNoAssistant() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = []
+        mock.shouldThrowInsideStream = InferenceError.inferenceFailure("no partial")
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Stream error emits exactly one terminal event")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "No assistant is persisted when the stream errors before visible output")
+        let errorIndex = events.firstIndex {
+            if case let .errorRaised(error) = $0, case .inference = error { return true }
+            return false
+        }
+        let finishIndex = events.firstIndex {
+            if case .streamFinished = $0 { return true }
+            return false
+        }
+        XCTAssertNotNil(errorIndex)
+        XCTAssertNotNil(finishIndex)
+        if let errorIndex, let finishIndex {
+            XCTAssertLessThan(errorIndex, finishIndex,
+                              "Inference error is surfaced before the terminal event")
+        }
+    }
+
+    func test_finishState_streamErrorWithPartial_persistsPartialThenErrorsBeforeSingleStopTerminal() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["partial"]
+        mock.shouldThrowInsideStream = InferenceError.inferenceFailure("partial")
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail partial"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Partial stream error emits exactly one terminal event")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["partial"])
+        let assistantInsertIndex = events.firstIndex {
+            if case let .messageInserted(record) = $0, record.role == .assistant { return true }
+            return false
+        }
+        let errorIndex = events.firstIndex {
+            if case let .errorRaised(error) = $0, case .inference = error { return true }
+            return false
+        }
+        let finishIndex = events.firstIndex {
+            if case .streamFinished = $0 { return true }
+            return false
+        }
+        XCTAssertNotNil(assistantInsertIndex)
+        XCTAssertNotNil(errorIndex)
+        XCTAssertNotNil(finishIndex)
+        if let assistantInsertIndex, let errorIndex, let finishIndex {
+            XCTAssertLessThan(assistantInsertIndex, errorIndex,
+                              "Partial assistant insert precedes the inference error event")
+            XCTAssertLessThan(errorIndex, finishIndex,
+                              "Inference error precedes the terminal event")
+        }
+    }
+
+    func test_finishState_thinkingOnlySuccess_finalizesThinkingThenDropsEmptyAssistant() async throws {
+        let mock = MockInferenceBackend()
+        mock.thinkingBlocksToYield = [["plan"]]
+        mock.signaturesPerThinkingBlock = ["sig-thinking"]
+        mock.tokensToYield = []
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "think only"))
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.empty],
+                       "Thinking-only success currently has no visible assistant text and finishes as empty")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "Thinking-only output must not leave an empty assistant in the transcript")
+        let finalized = events.compactMap { event -> (String, String?)? in
+            if case let .thinkingFinalized(_, text, signature) = event { return (text, signature) }
+            return nil
+        }
+        XCTAssertEqual(finalized.count, 1)
+        XCTAssertEqual(finalized.first?.0, "plan")
+        XCTAssertEqual(finalized.first?.1, "sig-thinking")
+    }
+
+    func test_finishState_thinkingOnlyError_finalizesThinkingThenErrorsWithoutAssistantInsert() async throws {
+        let mock = MockInferenceBackend()
+        mock.thinkingBlocksToYield = [["reason"]]
+        mock.tokensToYield = []
+        mock.shouldThrowInsideStream = InferenceError.inferenceFailure("thinking failed")
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "think fail"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Thinking-only stream error emits exactly one terminal event")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "Thinking-only error without visible text does not persist an assistant")
+        let finalizedIndex = events.firstIndex {
+            if case .thinkingFinalized = $0 { return true }
+            return false
+        }
+        let errorIndex = events.firstIndex {
+            if case let .errorRaised(error) = $0, case .inference = error { return true }
+            return false
+        }
+        XCTAssertNotNil(finalizedIndex)
+        XCTAssertNotNil(errorIndex)
+        if let finalizedIndex, let errorIndex {
+            XCTAssertLessThan(finalizedIndex, errorIndex,
+                              "Thinking block is finalized before the inference error is surfaced")
+        }
+    }
+
+    func test_finishState_assistantInsertFailure_emitsPersistenceErrorBeforeSingleStopTerminal() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["will not persist"]
+        let gate = TokenEmissionGate()
+        mock.tokenEmissionGate = gate
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let drain = drainUntilStreamFinished(from: runtime)
+        _ = try await runtime.send(SendInput(
+            sessionID: UUID(),
+            userText: "persist fail",
+            streamingBatchCharacterLimit: 1
+        ))
+        store.insertError = ChatPersistenceError.providerNotConfigured
+        await gate.advance()
+
+        let events = try await waitForEvents(from: drain)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Assistant insert failure still emits exactly one terminal event")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
+                       "Failed assistant insert must not leave transcript state behind")
+        let persistenceErrorIndex = events.firstIndex {
+            if case let .errorRaised(error) = $0, case .persistence = error { return true }
+            return false
+        }
+        let finishIndex = events.firstIndex {
+            if case .streamFinished = $0 { return true }
+            return false
+        }
+        XCTAssertNotNil(persistenceErrorIndex)
+        XCTAssertNotNil(finishIndex)
+        if let persistenceErrorIndex, let finishIndex {
+            XCTAssertLessThan(persistenceErrorIndex, finishIndex,
+                              "Persistence error is surfaced before the terminal event")
+        }
+        XCTAssertFalse(events.contains {
+            if case .afterGeneration = $0 { return true }
+            return false
+        }, "afterGeneration is skipped when final assistant persistence fails")
+    }
+
     // MARK: - Inference error
 
     func test_send_inferenceErrorAtStream_emitsErrorRaised() async throws {
@@ -357,6 +792,85 @@ final class ConversationRuntimeTests: XCTestCase {
             return false
         }
         XCTAssertTrue(hasError, "errorRaised(.inference) fires on mid-stream failure")
+    }
+
+    // MARK: - Token usage
+
+    func test_send_tokenUsageEventPinsPerStreamUsageAcrossBackToBackSends() async throws {
+        let backend = RuntimeUsageBackend(turns: [
+            .init(tokens: ["one"], usage: (promptTokens: 11, completionTokens: 1)),
+            .init(tokens: ["two"], usage: (promptTokens: 22, completionTokens: 2))
+        ])
+        let inference = InferenceService(backend: backend, name: "Usage")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
+        let drain = Task { @MainActor [runtime] in
+            var events: [ConversationEvent] = []
+            var completedTurns = 0
+            for await event in runtime.events {
+                events.append(event)
+                if case .afterGeneration = event {
+                    completedTurns += 1
+                    if completedTurns == 2 { return events }
+                }
+            }
+            return events
+        }
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "first"))
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "second"))
+
+        let events = try await waitForEvents(from: drain)
+        let usageEvents = events.compactMap { event -> (prompt: Int, completion: Int)? in
+            if case let .tokenUsageRecorded(_, promptTokens, completionTokens) = event {
+                return (promptTokens, completionTokens)
+            }
+            return nil
+        }
+
+        XCTAssertEqual(usageEvents.map { $0.prompt }, [11, 22],
+                       "Each turn emits its own prompt-token usage")
+        XCTAssertEqual(usageEvents.map { $0.completion }, [1, 2],
+                       "Each turn emits its own completion-token usage")
+
+        let assistants = store.messages.values
+            .filter { $0.role == .assistant }
+            .sorted { $0.timestamp < $1.timestamp }
+        XCTAssertEqual(assistants.map(\.content), ["one", "two"])
+        XCTAssertEqual(assistants.compactMap(\.promptTokens), [11, 22],
+                       "Persisted assistant usage is pinned per turn, not overwritten by the next send")
+        XCTAssertEqual(assistants.compactMap(\.completionTokens), [1, 2])
+    }
+
+    func test_send_tokenUsageSurvivesPartialStreamError() async throws {
+        let backend = RuntimeUsageBackend(turns: [
+            .init(
+                tokens: ["partial"],
+                usage: (promptTokens: 31, completionTokens: 4),
+                streamErrorMessage: "usage after partial"
+            )
+        ])
+        let inference = InferenceService(backend: backend, name: "Usage")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail with usage"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertTrue(events.contains {
+            if case .tokenUsageRecorded(_, 31, 4) = $0 { return true }
+            return false
+        }, "Usage is observable even when the stream later errors")
+        XCTAssertTrue(events.contains {
+            if case let .errorRaised(error) = $0, case .inference = error { return true }
+            return false
+        }, "The inference error is still surfaced")
+
+        let assistant = store.messages.values.first { $0.role == .assistant }
+        XCTAssertEqual(assistant?.content, "partial")
+        XCTAssertEqual(assistant?.promptTokens, 31)
+        XCTAssertEqual(assistant?.completionTokens, 4)
     }
 
     // MARK: - Cancellation
@@ -505,6 +1019,33 @@ final class ConversationRuntimeTests: XCTestCase {
                                     "Session updatedAt is touched at least once per send")
     }
 
+    func test_send_touchSessionFailureEmitsEventButDoesNotFailTurn() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        let sessions = RuntimeSessionStore()
+        let original = ChatSessionRecord(title: "Test")
+        try await sessions.insertSession(original)
+        sessions.updateError = ChatPersistenceError.sessionNotFound(original.id)
+
+        let (runtime, store, _, _) = makeRuntime(mock: mock, sessionStore: sessions)
+
+        _ = try await runtime.send(SendInput(sessionID: original.id, userText: "hi"))
+        let events = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        XCTAssertTrue(events.contains {
+            if case let .sessionTouchFailed(id) = $0 { return id == original.id }
+            return false
+        }, "touchSession failure is observable without becoming a user-turn error")
+        XCTAssertFalse(events.contains {
+            if case let .errorRaised(error) = $0, case .persistence = error { return true }
+            return false
+        }, "Sidebar timestamp failures must not surface as turn-failing persistence errors")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["ok"])
+    }
+
     // MARK: - Helpers
 
     private func eventKind(_ event: ConversationEvent) -> String {
@@ -517,6 +1058,8 @@ final class ConversationRuntimeTests: XCTestCase {
             return "messageUpdated-\(record.role.rawValue)"
         case .streamStarted: return "streamStarted"
         case let .tokenEmitted(_, delta): return "tokenEmitted(\(delta))"
+        case let .tokenUsageRecorded(_, promptTokens, completionTokens):
+            return "tokenUsageRecorded(\(promptTokens),\(completionTokens))"
         case let .streamFinished(_, reason):
             switch reason {
             case .stop: return "streamFinished-stop"
@@ -525,6 +1068,7 @@ final class ConversationRuntimeTests: XCTestCase {
             case .length: return "streamFinished-length"
             }
         case .errorRaised: return "errorRaised"
+        case .sessionTouchFailed: return "sessionTouchFailed"
         case .beforeContextAssembly: return "beforeContextAssembly"
         case .contextAssembled: return "contextAssembled"
         case .afterGeneration: return "afterGeneration"

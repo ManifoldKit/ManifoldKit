@@ -52,33 +52,38 @@ BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for 
 
 ## Architecture
 
-BaseChatKit is split into six primary targets plus optional bridge modules:
+BaseChatKit is split into primary targets plus optional bridge modules:
 
 ```
-BaseChatUI  ──────>  BaseChatPersistenceSwiftData  ──────>  BaseChatRuntime  ──────>  BaseChatInference
-(Views,              (SwiftData schema, @Model            (Ports, use cases,         (Protocols, Models,
- ViewModels)          types, container, adapters,          session-list               Services, Inference
-                      BaseChatBootstrap)                   orchestration)             orchestration)
-                                                                                              ↑
-                                              BaseChatMCP ─────────────────────────────────────┤
-                                              (MCP descriptors, client,                        │
-                                               tool bridge)                                    │
-                                                                                               │
-                                              BaseChatBackends ────────────────────────────────┘
-                                              (MLX, llama.cpp,
-                                               Foundation, Cloud)
+BaseChatUI ───────────────────────┐
+(Views, ViewModels)               │
+                                  ├──> BaseChatRuntime ──────> BaseChatInference
+BaseChatUIModelManagement ────────┘    (Ports, use cases,       (Protocols, Models,
+(model + endpoint UI; also             session-list,            Services, Inference
+ depends on BaseChatUI)                 runtime events)          orchestration)
+                                            ▲                          ▲
+                                            │                          │
+BaseChatPersistenceSwiftData ───────────────┘                          │
+(SwiftData schema, @Model types,                                        │
+ container, adapters, BaseChatBootstrap)                                │
+                                                                       │
+BaseChatMCP ───────────────────────────────────────────────────────────┤
+(MCP descriptors, client, tool bridge)                                  │
+                                                                       │
+BaseChatBackends ──────────────────────────────────────────────────────┘
+(MLX, llama.cpp, Foundation, Cloud)
 ```
 
 - **BaseChatInference** — Inference orchestration. Protocols, models, and services for model loading, generation, context windows, prompt assembly, compression, tokenizers, and capability detection. No SwiftData. No ML dependencies. This is the integration point for custom backends and the minimum target for apps that bring their own persistence and UI.
 - **BaseChatMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`.
-- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), and session-list orchestration. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
+- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), session-list orchestration, and `ConversationEvent` observability for turn state, token usage, and best-effort session-touch failures. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
 - **BaseChatPersistenceSwiftData** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, adapter implementations of the runtime ports, and the full-stack `BaseChatBootstrap` entry point.
 - **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatRuntime` or `BaseChatPersistenceSwiftData`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
-- **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatRuntime`, `BaseChatPersistenceSwiftData`, and `BaseChatInference`.
+- **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatRuntime` and `BaseChatInference`; cloud endpoint state crosses the UI boundary as SwiftData-free `APIEndpointRecord` values supplied by an `EndpointStore`.
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
 - **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
-- **BaseChatServer** *(trait: `Server`, default-off)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. Server targets are trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands when working with `BaseChatServer`.
+- **BaseChatServer** *(trait: `Server`, default-off)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. It validates unsupported request capabilities before dispatch and returns clear `invalid_request_error` responses with `unsupported_capability` codes. Server targets are trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands when working with `BaseChatServer`.
 - **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — Synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The macro plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
 
 ## Quick Start
@@ -260,7 +265,8 @@ inject a custom transcriber or audio-session coordinator.
 
 ```swift
 import SwiftData
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatBackends
 import BaseChatUI
@@ -268,13 +274,13 @@ import BaseChatUIModelManagement
 
 @main
 struct MyApp: App {
-    private let runtime: BaseChatRuntime
+    private let runtime: BaseChatBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
 
     init() {
-        let runtime = try! BaseChatRuntime(
+        let runtime = try! BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "My Chat App",
                 bundleIdentifier: "com.example.mychatapp"
@@ -349,40 +355,32 @@ struct ContentView: View {
 
 ### Migrating from `configure(persistence:)`
 
-Pre-runtime BaseChatKit apps wired persistence by reading
-`@Environment(\.modelContext)` from a root view's `.task` or `.onAppear` and
-calling `chatViewModel.configure(persistence: SwiftDataPersistenceProvider(...))`
-once the SwiftData container was attached. The runtime collapses that into a
-single bootstrap call.
+Pre-runtime BaseChatKit apps often wired persistence from a root view's `.task`
+or `.onAppear` and called `chatViewModel.configure(persistence:)` once stores
+were available. A runtime bootstrap collapses that into one value created in
+`App.init()` while keeping BaseChatUI behind runtime ports.
 
 **Before** — late-binding from a view lifecycle:
 
 ```swift
 import SwiftUI
-import SwiftData
-import BaseChatCore
 import BaseChatInference
+import BaseChatRuntime
 import BaseChatUI
 
 @main
 struct LegacyApp: App {
     @State private var chatViewModel = ChatViewModel()
-    let modelContainer: ModelContainer
-
-    init() {
-        modelContainer = try! ModelContainer(for: ChatSessionRecord.self, ChatMessageRecord.self)
-    }
+    private let stores = AppStores.open()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(chatViewModel)
                 .task {
-                    let provider = SwiftDataPersistenceProvider(modelContext: modelContainer.mainContext)
-                    chatViewModel.configure(persistence: provider)
+                    chatViewModel.configure(persistence: stores)
                 }
         }
-        .modelContainer(modelContainer)
     }
 }
 ```
@@ -392,18 +390,19 @@ struct LegacyApp: App {
 ```swift
 import SwiftUI
 import SwiftData
-import BaseChatCore
+import BaseChatRuntime
+import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatUI
 
 @main
 struct ModernApp: App {
-    private let runtime: BaseChatRuntime
+    private let runtime: BaseChatBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
 
     init() {
-        let runtime = try! BaseChatRuntime(
+        let runtime = try! BaseChatBootstrap(
             configuration: BaseChatConfiguration(
                 appName: "My App",
                 bundleIdentifier: "com.example.myapp"
@@ -431,7 +430,7 @@ struct ModernApp: App {
 }
 ```
 
-Both view models must be configured from the runtime. `ChatViewModel.configure(runtime:)` wires the persistence provider used by chat sessions; `SessionManagerViewModel.configure(runtime:)` wires both persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. See the MinimalExample app for the canonical wiring.
+Both view models must be configured from the runtime. `ChatViewModel.configure(runtime:)` wires chat persistence, endpoint loading, and the shared `ConversationRuntime`; `SessionManagerViewModel.configure(runtime:)` wires persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. See the MinimalExample app for the canonical wiring.
 
 #### What still works unchanged
 
@@ -472,11 +471,12 @@ The runtime owns only the chat schema; non-chat schemas stay yours.
 
 #### When to keep `configure(persistence:)`
 
-Keep `configure(persistence:)` for adopters that provide a custom
-``ChatPersistenceProvider`` (e.g. an in-memory test fixture, or a non-SwiftData
-backing store). Construct ``ChatViewModel`` and ``SessionManagerViewModel``
-directly and call `configure(persistence:)` — `BaseChatRuntime` is the
-SwiftData-backed bootstrap and does not yet support custom providers.
+Keep `configure(persistence:)` for adopters that provide custom
+`SessionStore` / `MessageStore` implementations (e.g. an in-memory test fixture
+or a non-SwiftData backing store). Construct `ChatViewModel` and
+`SessionManagerViewModel` directly and call `configure(persistence:)`, or wrap
+the stores in your own `ChatRuntimeBootstrap` when you also want runtime
+endpoint and diagnostics wiring.
 
 ## Supported Model Types
 
@@ -505,7 +505,8 @@ SwiftData-backed bootstrap and does not yet support custom providers.
 | Type | Purpose |
 |------|---------|
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend |
-| `BaseChatRuntime` | Preferred bootstrap surface — installs configuration, builds SwiftData persistence, and holds shared services |
+| `BaseChatBootstrap` | SwiftData-backed bootstrap — installs configuration, builds persistence adapters, and holds shared services |
+| `ConversationRuntime` | Single turn loop for send/regenerate/edit/cancel/branch, with `ConversationEvent` hooks for token usage and recoverable session-touch failures |
 | `BackgroundDownloadManager` | Background model downloads with progress and validation (`BaseChatHuggingFace`) |
 | `ModelStorageService` | Local model file discovery and storage paths |
 | `DeviceCapabilityService` | RAM/chipset queries for model size recommendations |
@@ -531,6 +532,7 @@ SwiftData-backed bootstrap and does not yet support custom providers.
 | `SSEPayloadHandler` | Interprets SSE JSON payloads for cloud API streaming |
 | `ConversationHistoryReceiver` | Passes multi-turn history to cloud backends |
 | `TokenUsageProvider` | Reports token usage from cloud API responses |
+| `EndpointStore` | Storage-neutral CRUD for cloud endpoint `APIEndpointRecord` values |
 | `HuggingFaceServiceProtocol` | Abstraction for HuggingFace Hub operations |
 
 ## Tool Calling
@@ -614,17 +616,21 @@ Recommendations are filtered by `DeviceCapabilityService.recommendedModelSize()`
 
 ## Cloud API Configuration
 
-Cloud endpoints are persisted via SwiftData. Users configure them through `APIConfigurationView`, or you can create them programmatically:
+Cloud endpoints flow through storage-neutral `APIEndpointRecord` values.
+`APIConfigurationView` persists records through the runtime's `EndpointStore`;
+the shipped SwiftData bootstrap converts those records to `APIEndpoint` rows in
+its adapter. You can create records programmatically through the same port:
 
 ```swift
-let endpoint = APIEndpoint(
+let endpoint = APIEndpointRecord(
     name: "My OpenAI",
     provider: .openAI,
     baseURL: "https://api.openai.com",
     modelName: "gpt-4o-mini"
 )
 do {
-    try endpoint.setAPIKey("sk-...")  // Stored in Keychain
+    try KeychainService.store(key: "sk-...", account: endpoint.keychainAccount)
+    try await runtime.endpointStore.insertEndpoint(endpoint)
 } catch {
     // Surface `error.localizedDescription` in your settings UI — it already
     // maps known Keychain statuses (locked device, missing entitlement, etc.)
@@ -634,9 +640,10 @@ do {
 
 ### Migrating from `Bool`-returning Keychain APIs
 
-`KeychainService.store` / `.delete` and `APIEndpoint.setAPIKey` / `.deleteAPIKey`
-used to return `Bool` and virtually no caller checked the result. They now
-throw a typed `KeychainError` so failures can't be silently discarded.
+`KeychainService.store` / `.delete` and the SwiftData `APIEndpoint.setAPIKey` /
+`.deleteAPIKey` helpers used to return `Bool` and virtually no caller checked
+the result. They now throw a typed `KeychainError` so failures can't be silently
+discarded.
 
 ```swift
 // Before

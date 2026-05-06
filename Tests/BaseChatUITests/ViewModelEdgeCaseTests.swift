@@ -271,7 +271,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let vm = await makeViewModel()
         vm.selectedModel = ModelInfo.builtInFoundation
 
-        let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
+        let endpoint = APIEndpointRecord(name: "OpenAI", provider: .openAI)
         vm.selectedEndpoint = endpoint
 
         XCTAssertNil(vm.selectedModel, "Selecting an endpoint should clear selectedModel")
@@ -280,7 +280,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_selectionMutualExclusion_selectingModel_clearsEndpoint() async {
         let vm = await makeViewModel()
-        let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
+        let endpoint = APIEndpointRecord(name: "OpenAI", provider: .openAI)
         vm.selectedEndpoint = endpoint
 
         vm.selectedModel = ModelInfo.builtInFoundation
@@ -291,7 +291,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_switchToSession_restoresSelectedEndpoint_whenEndpointExists() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
-        let endpoint = APIEndpoint(name: "OpenAI", provider: .openAI)
+        let endpoint = APIEndpointRecord(name: "OpenAI", provider: .openAI)
         vm.setAvailableEndpoints([endpoint])
         vm.selectedModel = ModelInfo.builtInFoundation
 
@@ -307,7 +307,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_switchToSession_clearsSelectedEndpoint_whenEndpointMissing() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
-        let oldEndpoint = APIEndpoint(name: "Old", provider: .openAI)
+        let oldEndpoint = APIEndpointRecord(name: "Old", provider: .openAI)
         vm.setAvailableEndpoints([oldEndpoint])
         vm.selectedEndpoint = oldEndpoint
 
@@ -319,10 +319,33 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         XCTAssertNil(vm.selectedEndpoint, "Missing endpoint should clear selectedEndpoint")
     }
 
+    func test_switchToSession_clearsSelectedEndpoint_whenSessionHasNoEndpointID() async throws {
+        let (vm, _, _) = try makeViewModelWithPersistence()
+        let oldEndpoint = APIEndpointRecord(name: "Old", provider: .openAI)
+        vm.setAvailableEndpoints([oldEndpoint])
+        vm.selectedEndpoint = oldEndpoint
+
+        let session = ChatSessionRecord(title: "Local Model Session")
+
+        await vm.switchToSession(session)
+
+        XCTAssertNil(vm.selectedEndpoint, "A session without selectedEndpointID should not keep the prior endpoint")
+    }
+
+    func test_setAvailableEndpoints_filtersDisabledEndpoints() async {
+        let vm = await makeViewModel()
+        let enabled = APIEndpointRecord(name: "Enabled", provider: .openAI, isEnabled: true)
+        let disabled = APIEndpointRecord(name: "Disabled", provider: .claude, isEnabled: false)
+
+        vm.setAvailableEndpoints([enabled, disabled])
+
+        XCTAssertEqual(vm.availableEndpoints.map(\.id), [enabled.id])
+    }
+
     func test_switchToSession_doesNotPersistNilSelectionWhenEndpointUnavailable() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
-        let endpoint = APIEndpoint(name: "Delayed Endpoint", provider: .openAI)
+        let endpoint = APIEndpointRecord(name: "Delayed Endpoint", provider: .openAI)
         var session = ChatSessionRecord(title: "Deferred Endpoint Session")
         session.selectedEndpointID = endpoint.id
         try await persistence.insertSession(session)
@@ -340,7 +363,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_saveSettingsToSession_persistsSelectedEndpointID() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
-        let endpoint = APIEndpoint(name: "Claude", provider: .claude)
+        let endpoint = APIEndpointRecord(name: "Claude", provider: .claude)
         vm.setAvailableEndpoints([endpoint])
 
         let session = ChatSessionRecord(title: "Persist Endpoint Session")

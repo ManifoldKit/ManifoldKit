@@ -125,4 +125,50 @@ final class RuntimeConfigurationTests: XCTestCase {
         let persistedIDs = try await runtime.persistence.fetchSessions().map(\.id)
         XCTAssertEqual(persistedIDs, [initialSession.id])
     }
+
+    func test_configureRuntime_loadsEndpointsAndSwitchUsesFreshEndpointRecords() async throws {
+        let originalConfiguration = BaseChatConfiguration.shared
+        defer { BaseChatConfiguration.shared = originalConfiguration }
+
+        let runtime = try BaseChatBootstrap(
+            configuration: BaseChatConfiguration(
+                appName: "Endpoint Bootstrap Tests",
+                bundleIdentifier: "com.basechatkit.runtime-ui-tests.endpoints"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        let endpointID = UUID()
+        let originalEndpoint = APIEndpointRecord(
+            id: endpointID,
+            name: "Original Endpoint",
+            provider: .openAI,
+            baseURL: "https://api.openai.com/v1",
+            modelName: "old-model"
+        )
+        try await runtime.endpointStore.insertEndpoint(originalEndpoint)
+
+        var session = ChatSessionRecord(title: "Endpoint Session")
+        session.selectedEndpointID = endpointID
+        try await runtime.persistence.insertSession(session)
+
+        let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
+        chatViewModel.configure(runtime: runtime)
+        await chatViewModel.endpointRefreshTask?.value
+
+        XCTAssertEqual(chatViewModel.availableEndpoints.map(\.id), [endpointID],
+            "configure(runtime:) should load selectable endpoints through the runtime endpoint store")
+
+        var freshEndpoint = originalEndpoint
+        freshEndpoint.name = "Fresh Endpoint"
+        freshEndpoint.modelName = "fresh-model"
+        try await runtime.endpointStore.updateEndpoint(freshEndpoint)
+
+        await chatViewModel.switchToSession(session)
+
+        XCTAssertEqual(chatViewModel.selectedEndpoint?.id, endpointID)
+        XCTAssertEqual(chatViewModel.selectedEndpoint?.name, "Fresh Endpoint",
+            "switchToSession should resolve selectedEndpointID from freshly fetched endpoint records")
+        XCTAssertEqual(chatViewModel.selectedEndpoint?.modelName, "fresh-model")
+    }
 }
