@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.17.2](https://github.com/roryford/BaseChatKit/compare/v0.17.1...v0.17.2) (2026-05-06)
+
+### Highlights
+
+#### Decouple `BaseChatUI` from `BaseChatPersistenceSwiftData`
+
+`BaseChatUI` no longer imports `BaseChatPersistenceSwiftData`. A new `ChatRuntimeBootstrap` protocol replaces the concrete `BaseChatBootstrap` dependency in view-model wiring, and endpoint state now flows through `APIEndpointRecord` (a value type) plus `EndpointStore` instead of SwiftData `@Model` objects. Host apps that inject a bootstrap via `configure(_:)` get the same behaviour; apps that reference `APIEndpoint` directly in their chat UI layer need to switch to `APIEndpointRecord`.
+
+```swift
+// Before
+func configure(_ bootstrap: BaseChatBootstrap) { ... }
+
+// After — accepts any ChatRuntimeBootstrap conformer
+func configure(_ bootstrap: any ChatRuntimeBootstrap) { ... }
+```
+
+See [#1060](https://github.com/roryford/BaseChatKit/pull/1060).
+
+#### Observe turn outcomes and token usage via `ConversationEvent`
+
+`ConversationRuntime` now emits `ConversationEvent.tokenUsageRecorded(messageID:promptTokens:completionTokens:)` after each assistant turn and `sessionTouchFailed(sessionID:)` when a session-list update fails without aborting the turn. Subscribe to `runtime.events` to wire usage data into analytics or surface non-fatal persistence warnings.
+
+```swift
+for await event in runtime.events {
+    if case .tokenUsageRecorded(let id, let prompt, let completion) = event {
+        analytics.record(messageID: id, tokens: prompt + completion)
+    }
+}
+```
+
+See [#1060](https://github.com/roryford/BaseChatKit/pull/1060).
+
+#### Llama XTC and Mirostat V2 samplers
+
+`LlamaGenerationDriver` now wires XTC and Mirostat V2 sampling from `GenerationConfig.llamaXTC` / `llamaMirostat` through to the llama.cpp sampler chain. Both samplers are opt-in per request; existing generation behaviour is unchanged when neither option is set.
+
+```swift
+let config = GenerationConfig(
+    llamaXTC: LlamaXTCSamplerOptions(probability: 0.5, threshold: 0.1),
+    llamaMirostat: LlamaMirostatV2SamplerOptions(tau: 5.0, eta: 0.1)
+)
+```
+
+See [#1061](https://github.com/roryford/BaseChatKit/pull/1061).
+
+### Features
+
+* **Backend capability honesty** — `BackendVisionCapability` centralizes image-input gating across all backends; `BackendCapabilities` gains `supportsGuidedStructuredOutput` and `preferredStructuredOutputSupport`; server validates unsupported tools and response formats before dispatch, returning OpenAI-compatible `invalid_request_error` envelopes ([#1060](https://github.com/roryford/BaseChatKit/issues/1060))
+* **Runtime observability** — finish-state coverage for success, cancellation, stream errors, empty output, and thinking-only turns; `GenerationQueue` warns when thinking hints target non-thinking backends ([#1060](https://github.com/roryford/BaseChatKit/issues/1060))
+
+### Fixes
+
+* **FoundationBackend cancellation race** — `stopGeneration()` now clears `isGenerating` synchronously and guards stale-defer cleanup from clobbering a newer generation ([#1060](https://github.com/roryford/BaseChatKit/issues/1060))
+
 ## [0.17.1](https://github.com/roryford/BaseChatKit/compare/v0.17.0...v0.17.1) (2026-05-05)
 
 ### Highlights
