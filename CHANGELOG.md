@@ -86,22 +86,19 @@ Diffusers-style Hugging Face packages now write a narrow readiness manifest and 
 
 ### Features
 
-* **ui:** show image loading placeholders with legacy-compatible `MessagePart.image` persistence and crossfade rendering ([#1047](https://github.com/roryford/BaseChatKit/pull/1047))
-* **inference:** add `StructuredOutputStrategy`, `StructuredOutputTarget`, and `StructuredOutputRouter` for capability-aware structured output routing ([#1054](https://github.com/roryford/BaseChatKit/pull/1054))
-* **backends:** flip default backend load options to `kvCacheQuantization = .q8` and off-simulator `flashAttention = true` ([#1046](https://github.com/roryford/BaseChatKit/pull/1046))
-* **huggingface:** support multi-component packages with aggregate progress and atomic finalization ([#1053](https://github.com/roryford/BaseChatKit/pull/1053))
+* **Image loading placeholders** — `MessagePart.image` carries an optional `ImagePlaceholderHash`; chat bubbles render a blurred color grid immediately and crossfade once the full asset loads, with no migration needed for legacy stored images ([#1047](https://github.com/roryford/BaseChatKit/pull/1047))
+* **Structured output routing** — `StructuredOutputStrategy`, `StructuredOutputTarget`, and `StructuredOutputRouter` let callers describe the output shape once and pick the strongest enforcement mechanism a backend supports ([#1054](https://github.com/roryford/BaseChatKit/pull/1054))
+* **Default load options** — `kvCacheQuantization` defaults to `.q8` and `flashAttention` enables on non-simulator hardware; existing `BackendLoadOptions` overrides are respected ([#1046](https://github.com/roryford/BaseChatKit/pull/1046))
+* **HuggingFace multi-component packages** — diffusers-style image model packages surface in the model browser only when every required component is present; downloads report aggregate progress and finalize atomically ([#1053](https://github.com/roryford/BaseChatKit/pull/1053))
+* **CI build cache** — experimental SwiftPM `.build/debug` cache path with mtime normalization improves incremental reuse on CI cache hits ([#1045](https://github.com/roryford/BaseChatKit/pull/1045))
 
 ### Fixes
 
-* **foundation:** keep multimodal support explicitly gated off until the public FoundationModels SDK can accept image input, and surface a backend-agnostic attachment error when vision is unavailable ([#1050](https://github.com/roryford/BaseChatKit/pull/1050))
-* **mlx:** convert Gemma4 MoE `fatalError` crashes into thrown `InferenceError.inferenceFailure` errors callers can surface gracefully ([#1055](https://github.com/roryford/BaseChatKit/pull/1055)), closes [#802](https://github.com/roryford/BaseChatKit/issues/802)
-* **tests:** prefer the smallest GGUF fixture so backend test runs stay leaner and less brittle ([#1044](https://github.com/roryford/BaseChatKit/issues/1044))
-* **demo:** repair scripted demo scenario tool flows and the UI/E2E assertions around completed tool calls and approval flows ([#1057](https://github.com/roryford/BaseChatKit/pull/1057))
-* **tests:** tighten the system-prompt-change KV reuse assertion so it permits shared template tokens while still catching body reuse ([#1048](https://github.com/roryford/BaseChatKit/pull/1048))
-
-### Performance
-
-* **ci:** add an experimental SwiftPM `.build/debug` cache path plus mtime normalization to improve incremental reuse on CI cache hits ([#1045](https://github.com/roryford/BaseChatKit/pull/1045))
+* **Foundation multimodal gate** — vision attachment attempts on `FoundationBackend` now surface a clear backend-agnostic error rather than silently dropping the image, pending the public FoundationModels SDK gaining image input support ([#1050](https://github.com/roryford/BaseChatKit/pull/1050))
+* **MLX Gemma4 MoE crash** — `fatalError` on mixture-of-experts weight mismatch converted to a thrown `InferenceError.inferenceFailure` callers can surface gracefully ([#1055](https://github.com/roryford/BaseChatKit/pull/1055))
+* **Demo scenario tool flows** — scripted demo scenarios and their UI/E2E assertions around completed tool calls and approval flows repaired ([#1057](https://github.com/roryford/BaseChatKit/pull/1057))
+* **KV reuse test assertion** — system-prompt-change test now permits shared template tokens while still catching body reuse, eliminating a false-positive flake ([#1048](https://github.com/roryford/BaseChatKit/pull/1048))
+* **GGUF test fixture** — backend tests prefer the smallest available GGUF to keep runs leaner ([#1044](https://github.com/roryford/BaseChatKit/issues/1044))
 
 ## [0.17.0](https://github.com/roryford/BaseChatKit/compare/v0.16.4...v0.17.0) (2026-05-05)
 
