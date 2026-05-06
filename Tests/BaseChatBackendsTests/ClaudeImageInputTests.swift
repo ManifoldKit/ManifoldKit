@@ -287,27 +287,8 @@ final class ClaudeImageInputTests: XCTestCase {
             "Claude Instant predates vision support — must not advertise it")
     }
 
-    // MARK: - 7. isVisionCapableModel — direct unit coverage
-
-    func test_isVisionCapableModel_classifierAcceptsKnownFamilies() {
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("claude-3-haiku-20240307"))
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("claude-3-5-sonnet-20241022"))
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("claude-3-7-sonnet-20250219"))
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("claude-sonnet-4-20250514"))
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("claude-opus-4-1-20250805"))
-        // Vendor-prefixed aliases (Bedrock-style) should still match.
-        XCTAssertTrue(ClaudeBackend.isVisionCapableModel("anthropic.claude-sonnet-4"))
-    }
-
-    func test_isVisionCapableModel_classifierRejectsLegacyFamilies() {
-        XCTAssertFalse(ClaudeBackend.isVisionCapableModel("claude-2"))
-        XCTAssertFalse(ClaudeBackend.isVisionCapableModel("claude-2.1"))
-        XCTAssertFalse(ClaudeBackend.isVisionCapableModel("claude-instant-1"))
-        XCTAssertFalse(ClaudeBackend.isVisionCapableModel("claude-instant-1.2"))
-        // Unknown / future family that doesn't match any allowlisted token
-        // defaults to false — better to surface a clear error than to assume
-        // vision support and 400.
-        XCTAssertFalse(ClaudeBackend.isVisionCapableModel("some-other-model"))
-    }
+    // Direct classifier coverage moved to BackendVisionCapabilityTests
+    // (test_claudeVisionGate_rejectsLegacyTextOnlyFamilies) when the helper
+    // was lifted out of ClaudeBackend into BackendVisionCapability.
 }
 #endif

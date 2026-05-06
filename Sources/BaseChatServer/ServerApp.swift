@@ -272,7 +272,7 @@ internal struct ServerApp: Sendable {
     }
 
     private func httpStatus(for error: Error) -> HTTPResponse.Status {
-        if case .invalidRequest = error as? ServerError {
+        if let serverError = error as? ServerError, case .invalidRequest = serverError {
             return .badRequest
         }
         return .internalServerError

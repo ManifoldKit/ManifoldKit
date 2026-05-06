@@ -299,39 +299,9 @@ final class OpenAIBackendImageInputTests: XCTestCase {
             "o1 reasoning family must advertise vision support")
     }
 
-    // MARK: - 7. isVisionCapableModel — direct unit coverage
-
-    func test_isVisionCapableModel_classifierAcceptsKnownFamilies() {
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4o"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4o-mini"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4o-2024-08-06"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4-turbo"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4-turbo-2024-04-09"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4.1"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("gpt-4.1-mini"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("o1"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("o1-preview"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("o1-mini"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("o3"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("o3-mini"))
-        // Vendor-prefixed aliases (proxy/router-style) should still match.
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("openai/gpt-4o"))
-        XCTAssertTrue(OpenAIBackend.isVisionCapableModel("openai/o3-mini"))
-    }
-
-    func test_isVisionCapableModel_classifierRejectsLegacyAndUnrelated() {
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("gpt-3.5-turbo"))
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("gpt-4"),
-            "Bare gpt-4 (no -turbo, no -o, no -.1 suffix) is not vision-capable")
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("text-davinci-003"))
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("some-other-model"))
-        // The anchored-prefix matcher must NOT light up on substring
-        // collisions: `o1` appears mid-name here and must not match.
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("foo1bar"),
-            "Bare o1 substring inside another name must not match")
-        XCTAssertFalse(OpenAIBackend.isVisionCapableModel("legacy-o1-thing-noprefix"),
-            "o1 surrounded by hyphens but not at a name boundary must not match")
-    }
+    // Direct classifier coverage moved to BackendVisionCapabilityTests
+    // (test_openAIChatCompletionsVisionGate_allowsOnlyImplementedVisionFamilies)
+    // when the helper was lifted out of OpenAIBackend into BackendVisionCapability.
 
     // MARK: - 8. Structured-text-only doesn't promote to array
 
