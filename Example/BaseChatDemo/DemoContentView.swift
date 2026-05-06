@@ -248,7 +248,15 @@ struct DemoContentView: View {
                     isModelManagementPresented = true
                 } label: {
                     HStack {
-                        Text(viewModel.selectedModel?.name ?? "No Model Selected")
+                        // When the Apple Foundation Models backend is active there is
+                        // no user-selected local model, so selectedModel is nil — but
+                        // the engine is running and "No Model Selected" would be wrong.
+                        let modelLabel: String = {
+                            if let name = viewModel.selectedModel?.name { return name }
+                            if viewModel.activeBackendName == "Apple" { return "Apple Intelligence" }
+                            return "No Model Selected"
+                        }()
+                        Text(modelLabel)
                             .lineLimit(1)
                         Spacer()
                         Image(systemName: "chevron.right")
