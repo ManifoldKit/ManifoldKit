@@ -409,6 +409,15 @@ BaseChatUIModelManagement/Views/Models/ModelManagementSheet.swift:try? modelRegi
 BaseChatInference/Models/ModelInfo.swift:let candidates = (try? FileManager.default.contentsOfDirectory(
 
 # ---------------------------------------------------------------------------
+# BaseChatInference — waitUntilModelReady timeout sleep
+# ---------------------------------------------------------------------------
+
+# Timeout arm of the withTaskGroup race in waitUntilModelReady: group.cancelAll()
+# cancels this Task.sleep when the readiness stream wins first; swallowing
+# the CancellationError here is the intended "timer task exits cleanly" path.
+BaseChatInference/Services/InferenceService.swift:try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+
+# ---------------------------------------------------------------------------
 # BaseChatServer
 # ---------------------------------------------------------------------------
 

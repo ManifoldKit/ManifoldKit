@@ -153,6 +153,81 @@ final class InferenceServiceObservationTests: XCTestCase {
         XCTAssertNil(service.modelLoadProgress)
     }
 
+    // MARK: - Model Load Readiness
+
+    func test_modelLoadReadinessUpdates_yieldsCurrentReadyState() async {
+        let service = InferenceService(backend: MockInferenceBackend(), name: "Mock")
+
+        var iterator = service.modelLoadReadinessUpdates().makeAsyncIterator()
+        let state = await iterator.next()
+
+        XCTAssertEqual(state, .ready)
+    }
+
+    func test_modelLoadReadinessUpdates_emitsLoadingAndReadyTransitions() async throws {
+        let service = InferenceService()
+        let backend = GatedLoadBackend()
+        service.registerBackendFactory { type in type == .gguf ? backend : nil }
+
+        var iterator = service.modelLoadReadinessUpdates().makeAsyncIterator()
+        // XCTAssertEqual takes non-async autoclosures; extract awaited values first.
+        let initialState = await iterator.next()
+        XCTAssertEqual(initialState, .idle)
+
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        await backend.waitUntilLoadStarted()
+
+        let loadingState = await iterator.next()
+        XCTAssertEqual(loadingState, .loading(progress: 0.0))
+
+        await backend.releaseLoad()
+        try await loadTask.value
+
+        let readyState = await iterator.next()
+        XCTAssertEqual(readyState, .ready)
+    }
+
+    func test_waitUntilModelReady_returnsFalseWhenIdle() async {
+        let service = InferenceService()
+
+        let ready = await service.waitUntilModelReady(maxPollCount: 5, pollIntervalNanoseconds: 0)
+
+        XCTAssertFalse(ready)
+    }
+
+    func test_waitUntilModelReady_awaitsInFlightLoad() async throws {
+        let service = InferenceService()
+        let backend = GatedLoadBackend()
+        service.registerBackendFactory { type in type == .gguf ? backend : nil }
+
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        await backend.waitUntilLoadStarted()
+
+        let waitTask = Task { await service.waitUntilModelReady(maxPollCount: 50, pollIntervalNanoseconds: 50_000_000) }
+        await backend.releaseLoad()
+
+        let ready = await waitTask.value
+        try await loadTask.value
+
+        XCTAssertTrue(ready)
+    }
+
+    func test_waitUntilModelReady_timesOutWhenLoadNeverCompletes() async {
+        let service = InferenceService()
+        let backend = GatedLoadBackend()
+        service.registerBackendFactory { type in type == .gguf ? backend : nil }
+
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        await backend.waitUntilLoadStarted()
+
+        let ready = await service.waitUntilModelReady(maxPollCount: 1, pollIntervalNanoseconds: 1_000_000)
+
+        XCTAssertFalse(ready)
+        loadTask.cancel()
+        await backend.releaseLoad()
+        _ = try? await loadTask.value
+    }
+
     // MARK: - Helpers
 
     private func makeModelInfo() -> ModelInfo {

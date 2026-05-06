@@ -103,13 +103,14 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
 
     func test_init_throwingRuntime_restoresConfigurationAndCleansUp() throws {
         let originalConfiguration = BaseChatConfiguration.shared
-        let tmp = FileManager.default.temporaryDirectory
 
-        // Snapshot any existing harness tmp dirs so we can prove this run
-        // didn't leak one.
-        let prefix = "consumer-runtime-harness-"
-        let before = (try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? []
-        let beforeHarnessDirs = Set(before.filter { $0.hasPrefix(prefix) })
+        // Use a private temp root so the assertion is scoped to exactly this
+        // test run and cannot be polluted by sibling ConsumerRuntimeHarness
+        // instances created concurrently under --parallel execution.
+        let isolatedRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ConsumerRuntimeHarnessTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: isolatedRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: isolatedRoot) }
 
         let backend = MockInferenceBackend()
         var makeModelContainerInvoked = false
@@ -117,6 +118,7 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
         XCTAssertThrowsError(
             try ConsumerRuntimeHarness(
                 inferenceService: InferenceService(backend: backend, name: "RuntimeMock"),
+                temporaryDirectory: isolatedRoot,
                 makeModelContainer: {
                     makeModelContainerInvoked = true
                     throw URLError(.cannotOpenFile)
@@ -135,10 +137,11 @@ final class ConsumerRuntimeHarnessTests: XCTestCase {
             "Failed harness construction must roll BaseChatConfiguration.shared back to the value held before init"
         )
 
-        let after = (try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? []
-        let afterHarnessDirs = Set(after.filter { $0.hasPrefix(prefix) })
+        // All harness dirs inside our isolated root must have been removed on
+        // failure — nothing else writes here, so any survivor is a leak.
+        let remaining = (try? FileManager.default.contentsOfDirectory(atPath: isolatedRoot.path)) ?? []
         XCTAssertEqual(
-            afterHarnessDirs.subtracting(beforeHarnessDirs),
+            remaining,
             [],
             "Failed harness construction must remove the temp models directory it created"
         )
