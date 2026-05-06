@@ -36,10 +36,17 @@ final class ConsumerRuntimeHarness {
     /// Test-only initializer that lets a caller inject a throwing
     /// `makeModelContainer` closure, which exercises the rollback/cleanup
     /// path when bootstrap fails partway through.
+    ///
+    /// `temporaryDirectory` defaults to `FileManager.default.temporaryDirectory`.
+    /// Tests that inspect the cleanup path should pass a private directory so
+    /// their assertions are not polluted by sibling tests running in parallel
+    /// under `--parallel` execution — each harness dir is a child of this root,
+    /// so an isolated root keeps assertions narrow.
     init(
         inferenceService: InferenceService,
         toolApprovalGate: UIToolApprovalGate? = nil,
         foundationModelProvider: (@MainActor () -> Bool)? = nil,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory,
         makeModelContainer: @MainActor () throws -> ModelContainer
     ) throws {
         // Capture the live configuration before any mutation so the catch path
@@ -51,7 +58,7 @@ final class ConsumerRuntimeHarness {
             throw Error.userDefaultsSuiteAllocationFailed(suiteName)
         }
 
-        let directory = FileManager.default.temporaryDirectory
+        let directory = temporaryDirectory
             .appendingPathComponent("consumer-runtime-harness-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
