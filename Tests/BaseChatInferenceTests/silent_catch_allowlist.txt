@@ -431,3 +431,34 @@ BaseChatBackends/MLXDiffusionBackend.swift:return (try? FileManager.default.attr
 # BCK's slug-based download path to Hub's expected directory convention;
 # removal is pure cleanup and its result is never actionable.
 BaseChatBackends/MLXDiffusionBackend.swift:return (tmpBase, { try? FileManager.default.removeItem(at: tmpBase) })
+
+# ---------------------------------------------------------------------------
+# BaseChatUI — ChatInputBar (audio recording)
+# ---------------------------------------------------------------------------
+
+# AVAudioSession deactivation in cleanup paths (error handler + normal stop).
+# setActive(false) can throw on iOS when another audio client blocks
+# deactivation, but there is no recovery action: the session is already
+# stopped and error propagation would just bubble an unactionable throw.
+BaseChatUI/Views/Chat/ChatInputBar.swift:try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+
+# Stub audio file removal when a recording is too short to keep.
+# The file may or may not exist yet (recorder may not have flushed);
+# failure means there is nothing to clean up, which is the desired result.
+BaseChatUI/Views/Chat/ChatInputBar.swift:try? FileManager.default.removeItem(at: url)
+
+# ---------------------------------------------------------------------------
+# BaseChatUI — AudioMessageView
+# ---------------------------------------------------------------------------
+
+# Polling sleep in a `task(id:)` modifier. `Task.sleep` throws
+# `CancellationError` when the task is cancelled (e.g., view disappears or
+# `isPlaying` flips); the while-loop guard on `Task.isCancelled` handles
+# exit cleanly without needing to propagate the cancellation throw.
+BaseChatUI/Views/Chat/AudioMessageView.swift:try? await Task.sleep(for: .milliseconds(150))
+
+# File-existence probe before constructing AVAudioPlayer. The guard uses
+# `resourceValues` purely as a Bool gate; a throw means the file is
+# inaccessible, which is correctly surfaced by the `else { loadError = ... }`
+# branch — no further error payload is needed.
+BaseChatUI/Views/Chat/AudioMessageView.swift:(try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
