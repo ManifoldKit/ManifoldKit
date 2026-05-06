@@ -265,6 +265,10 @@ struct BaseChatDemoApp: App {
                 guard let pendingPayload = pendingPayload(from: staged) else { return }
                 await chatViewModel.ingestPendingPayload(pendingPayload, intent: .newSession(preset: nil))
             }
+            // Wire the persisted appearance preference to SwiftUI's color-scheme
+            // environment. SettingsService is @Observable so this re-evaluates
+            // whenever appearanceMode changes — returning nil follows the OS setting.
+            .preferredColorScheme(SettingsService.shared.appearanceMode.colorScheme)
         }
         #if os(macOS)
         .defaultSize(width: 900, height: 700)

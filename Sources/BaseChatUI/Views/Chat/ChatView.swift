@@ -225,6 +225,10 @@ public struct ChatView<APIConfig: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            // Status indicators (cloud badge, context, memory) are informational
+            // and can move to the overflow menu when space is tight. The action
+            // buttons (export, device info, settings, clear) carry explicit
+            // `.defaultHigh` priority so they survive sidebar-hidden collapse.
             ToolbarItemGroup(placement: .automatic) {
                 if let backend = viewModel.activeBackendName,
                    ["OpenAI", "Claude", "Ollama", "LM Studio"].contains(backend) {
@@ -246,13 +250,21 @@ public struct ChatView<APIConfig: View>: View {
                         appMemoryBytes: viewModel.appMemoryUsageBytes
                     )
                 }
+            }
+            ToolbarItem(placement: .automatic) {
                 if features.showChatExport {
                     exportButton
                 }
+            }
+            ToolbarItem(placement: .automatic) {
                 deviceInfoButton
+            }
+            ToolbarItem(placement: .automatic) {
                 if features.showGenerationSettings {
                     settingsButton
                 }
+            }
+            ToolbarItem(placement: .automatic) {
                 clearChatButton
             }
         }
