@@ -33,6 +33,8 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 
 ## Test conventions
 
+For trait conventions, suite layout, classification (Unit / Integration / E2E), and the per-backend conformance walkthrough, see [`Tests/README.md`](Tests/README.md). It is the canonical entry point for "how do I add a backend / test / suite?".
+
 - Use `XCTestCase` for new tests; match `@Suite`/`@Test` in files that already use Swift Testing.
 - A test that hits SwiftData is an integration test — name and place it accordingly.
 - Do not mock the persistence layer. Use in-memory SwiftData stores.
