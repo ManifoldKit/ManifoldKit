@@ -6,12 +6,8 @@ import BaseChatTestSupport
 
 /// OpenAIResponsesBackend conformance against the universal BCK backend contract.
 ///
-/// Grammar fail-closed is skipped: `supportsGrammarConstrainedSampling` is
-/// `false` for OpenAIResponsesBackend but the backend does not validate grammar
-/// before forwarding the request to OpenAI — a real behavioral gap, not guarded
-/// via `withKnownIssue`. Capability claims are bootstrapped via
-/// `claimWithoutBehaviouralAssertion`; Phase C work will replace each with a
-/// real assertion family.
+/// Grammar fail-closed is asserted because OpenAIResponsesBackend currently
+/// reports `supportsGrammarConstrainedSampling = false`.
 ///
 /// Default model name is `gpt-5`.
 /// `supportsVision` evaluates to `false` for this backend regardless of model
@@ -22,7 +18,7 @@ final class OpenAIResponsesBackendConformanceTests: XCTestCase {
 
     private let backendName = "OpenAIResponsesBackend"
 
-    override func setUp() {
+    override class func setUp() {
         super.setUp()
         BackendContractChecks.resetCapabilityClaims()
     }
@@ -35,9 +31,21 @@ final class OpenAIResponsesBackendConformanceTests: XCTestCase {
     }
 
     // MARK: - Grammar fail-closed
-    // Skipped: OpenAIResponsesBackend.supportsGrammarConstrainedSampling = false but the
-    // backend does not validate grammar before forwarding the request to OpenAI.
-    // This is a cloud-backend gap — no fail-closed throw is implemented.
+
+    func test_contract_grammarFailClosed() async throws {
+        try await BackendContractChecks.assertGrammarFailClosedContract(
+            backendName: backendName,
+            makingBackend: {
+                let backend = OpenAIResponsesBackend()
+                backend.configure(
+                    baseURL: URL(string: "https://api.openai.com")!,
+                    apiKey: "sk-test",
+                    modelName: "gpt-5"
+                )
+                return backend
+            }
+        )
+    }
 
     // MARK: - Per-capability claims (bootstrap)
 

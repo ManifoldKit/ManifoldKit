@@ -353,6 +353,10 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             throw CloudBackendError.invalidURL("Backend not configured. Call loadModel first.")
         }
 
+        if config.grammar != nil, !capabilities.supportsGrammarConstrainedSampling {
+            throw InferenceError.unsupportedGrammar(reason: "\(backendName) does not support grammar-constrained sampling")
+        }
+
         let request = try buildRequest(
             prompt: prompt,
             systemPrompt: systemPrompt,
@@ -656,4 +660,3 @@ private final class WeakBox<T: AnyObject>: @unchecked Sendable {
     init(_ value: T?) { self.value = value }
 }
 #endif
-

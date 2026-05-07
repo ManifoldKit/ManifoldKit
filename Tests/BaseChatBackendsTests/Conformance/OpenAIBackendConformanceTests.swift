@@ -6,12 +6,8 @@ import BaseChatTestSupport
 
 /// OpenAIBackend conformance against the universal BCK backend contract.
 ///
-/// Grammar fail-closed is skipped: `supportsGrammarConstrainedSampling` is
-/// `false` for OpenAIBackend but the backend does not validate grammar before
-/// forwarding the request to OpenAI — a real behavioral gap, not guarded via
-/// `withKnownIssue`. Capability claims are bootstrapped via
-/// `claimWithoutBehaviouralAssertion`; Phase C work will replace each with a
-/// real assertion family.
+/// Grammar fail-closed is asserted because OpenAIBackend currently reports
+/// `supportsGrammarConstrainedSampling = false`.
 ///
 /// Default model name is `gpt-4o-mini`, which matches the `gpt-4o`
 /// substring token and therefore sets `supportsVision = true`.
@@ -20,7 +16,7 @@ final class OpenAIBackendConformanceTests: XCTestCase {
 
     private let backendName = "OpenAIBackend"
 
-    override func setUp() {
+    override class func setUp() {
         super.setUp()
         BackendContractChecks.resetCapabilityClaims()
     }
@@ -33,9 +29,21 @@ final class OpenAIBackendConformanceTests: XCTestCase {
     }
 
     // MARK: - Grammar fail-closed
-    // Skipped: OpenAIBackend.supportsGrammarConstrainedSampling = false but the
-    // backend does not validate grammar before forwarding the request to OpenAI.
-    // This is a cloud-backend gap — no fail-closed throw is implemented.
+
+    func test_contract_grammarFailClosed() async throws {
+        try await BackendContractChecks.assertGrammarFailClosedContract(
+            backendName: backendName,
+            makingBackend: {
+                let backend = OpenAIBackend()
+                backend.configure(
+                    baseURL: URL(string: "https://api.openai.com")!,
+                    apiKey: "sk-test",
+                    modelName: "gpt-4o-mini"
+                )
+                return backend
+            }
+        )
+    }
 
     // MARK: - Per-capability claims (bootstrap)
 

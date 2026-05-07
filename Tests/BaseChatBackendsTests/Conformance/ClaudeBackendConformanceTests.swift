@@ -6,12 +6,8 @@ import BaseChatTestSupport
 
 /// ClaudeBackend conformance against the universal BCK backend contract.
 ///
-/// Grammar fail-closed is skipped: `supportsGrammarConstrainedSampling` is
-/// `false` for ClaudeBackend but the backend does not validate grammar before
-/// forwarding the request to Anthropic — a real behavioral gap, not guarded via
-/// `withKnownIssue`. Capability claims are bootstrapped via
-/// `claimWithoutBehaviouralAssertion`; Phase C work will replace each with a
-/// real assertion family.
+/// Grammar fail-closed is asserted because ClaudeBackend currently reports
+/// `supportsGrammarConstrainedSampling = false`.
 ///
 /// Default model name is `claude-sonnet-4-20250514`, which contains
 /// `claude-sonnet-4` and therefore sets `supportsVision = true` via
@@ -21,7 +17,7 @@ final class ClaudeBackendConformanceTests: XCTestCase {
 
     private let backendName = "ClaudeBackend"
 
-    override func setUp() {
+    override class func setUp() {
         super.setUp()
         BackendContractChecks.resetCapabilityClaims()
     }
@@ -34,9 +30,21 @@ final class ClaudeBackendConformanceTests: XCTestCase {
     }
 
     // MARK: - Grammar fail-closed
-    // Skipped: ClaudeBackend.supportsGrammarConstrainedSampling = false but the
-    // backend does not validate grammar before forwarding the request to Anthropic.
-    // This is a cloud-backend gap — no fail-closed throw is implemented.
+
+    func test_contract_grammarFailClosed() async throws {
+        try await BackendContractChecks.assertGrammarFailClosedContract(
+            backendName: backendName,
+            makingBackend: {
+                let backend = ClaudeBackend()
+                backend.configure(
+                    baseURL: URL(string: "https://api.anthropic.com")!,
+                    apiKey: "sk-ant-test",
+                    modelName: "claude-sonnet-4-20250514"
+                )
+                return backend
+            }
+        )
+    }
 
     // MARK: - Per-capability claims (bootstrap)
 
