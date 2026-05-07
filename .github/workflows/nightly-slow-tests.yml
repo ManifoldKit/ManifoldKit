@@ -79,7 +79,7 @@ jobs:
         env:
           RUN_MCP_E2E: "1"
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-e2e-smoke.log
-        run: scripts/test.sh --filter "BaseChatMCPE2ESmokeTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "BaseChatMCPE2ESmokeTests" --disable-default-traits --traits MCP --skip-update --min-passed 1
 
       - name: Test — Operational tier (soak + migration)
         id: test-operational
