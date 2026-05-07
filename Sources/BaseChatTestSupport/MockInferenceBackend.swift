@@ -171,6 +171,14 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         if let error = shouldThrowOnGenerate { throw error }
         guard isModelLoaded else { throw InferenceError.inferenceFailure("No model loaded") }
 
+        // Honor the documented BackendCapabilities contract: a backend that
+        // disclaims supportsGrammarConstrainedSampling MUST throw
+        // unsupportedGrammar when given a non-nil grammar. The mock matched
+        // that contract once tests began asserting it (T1.1 meta-contract).
+        if !capabilities.supportsGrammarConstrainedSampling, config.grammar != nil {
+            throw InferenceError.unsupportedGrammar(reason: "MockInferenceBackend does not support grammar-constrained sampling")
+        }
+
         isGenerating = true
         // Per-turn scripting takes precedence when configured. Pop from the
         // front so successive generate() calls drive different turns.
