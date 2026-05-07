@@ -81,6 +81,17 @@ jobs:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-e2e-smoke.log
         run: scripts/test.sh --filter "BaseChatMCPE2ESmokeTests" --disable-default-traits --skip-update --min-passed 1
 
+      - name: Test — Operational tier (soak + migration)
+        id: test-operational
+        env:
+          RUN_OPERATIONAL_TESTS: "1"
+          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-operational.log
+        run: |
+          scripts/test.sh --filter "BaseChatPersistenceSwiftDataTests.SchemaV3MigrationTests" \
+            --disable-default-traits --skip-update --min-passed 1
+          scripts/test.sh --filter "BaseChatRuntimeTests.SoakRunnerTests" \
+            --disable-default-traits --skip-update --min-passed 1
+
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so
         # diagnostics from earlier failures are preserved.
@@ -90,6 +101,7 @@ jobs:
           INTEGRATED_STREAMING_FAILED: ${{ steps.test-integrated-streaming.outcome == 'failure' }}
           TRAFFIC_BOUNDARY_AUDIT_FAILED: ${{ steps.test-traffic-boundary-audit.outcome == 'failure' }}
           MCP_E2E_SMOKE_FAILED: ${{ steps.test-mcp-e2e-smoke.outcome == 'failure' }}
+          OPERATIONAL_FAILED: ${{ steps.test-operational.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
           {
@@ -100,6 +112,7 @@ jobs:
             echo "integrated-streaming-failed=${INTEGRATED_STREAMING_FAILED}"
             echo "traffic-boundary-audit-failed=${TRAFFIC_BOUNDARY_AUDIT_FAILED}"
             echo "mcp-e2e-smoke-failed=${MCP_E2E_SMOKE_FAILED}"
+            echo "operational-failed=${OPERATIONAL_FAILED}"
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
