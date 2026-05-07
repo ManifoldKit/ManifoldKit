@@ -160,6 +160,61 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(backend.generateCallCount, 1)
     }
 
+    func testUsageEventDoesNotMapToStreamingChunkByDefaultOrWhenFalse() async throws {
+        let requests = [
+            ChatCompletionRequest(
+                model: "m",
+                messages: [ChatCompletionMessage(role: .user, content: "hi")],
+                stream: true
+            ),
+            ChatCompletionRequest(
+                model: "m",
+                messages: [ChatCompletionMessage(role: .user, content: "hi")],
+                stream: true,
+                streamOptions: ChatCompletionStreamOptions(includeUsage: false)
+            )
+        ]
+
+        for request in requests {
+            let backend = EventSequenceBackend(events: [.token("ok"), .usage(prompt: 3, completion: 2)])
+            let chunks = try await collect(try DefaultChatCompletionsAdapter().chunks(for: request, using: backend))
+
+            XCTAssertTrue(chunks.allSatisfy { $0.usage == nil })
+            XCTAssertEqual(chunks.last?.choices.first?.finishReason, .stop)
+        }
+    }
+
+    func testDefaultStreamingAdapterEmitsUsageOnlyWhenRequested() async throws {
+        let response = ChatCompletionResponse(
+            id: "chatcmpl-response-only",
+            created: 42,
+            model: "m",
+            choices: [ChatCompletionChoice(index: 0, message: ChatCompletionMessage(role: .assistant, content: "ok"), finishReason: .stop)],
+            usage: ChatCompletionUsage(promptTokens: 4, completionTokens: 2)
+        )
+        let adapter = ResponseOnlyUsageAdapter(response: response)
+        let backend = EventSequenceBackend(events: [])
+        let defaultRequest = ChatCompletionRequest(
+            model: "m",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")],
+            stream: true
+        )
+        let usageRequest = ChatCompletionRequest(
+            model: "m",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")],
+            stream: true,
+            streamOptions: ChatCompletionStreamOptions(includeUsage: true)
+        )
+
+        let defaultChunks = try await collect(try adapter.chunks(for: defaultRequest, using: backend))
+        let usageChunks = try await collect(try adapter.chunks(for: usageRequest, using: backend))
+
+        XCTAssertEqual(defaultChunks.count, 1)
+        XCTAssertNil(defaultChunks.last?.usage)
+        XCTAssertEqual(usageChunks.last?.choices, [])
+        XCTAssertEqual(usageChunks.last?.usage, ChatCompletionUsage(promptTokens: 4, completionTokens: 2))
+    }
+
     func testNonStreamResponseAssemblesContentReasoningToolCallsAndUsage() async throws {
         let backend = EventSequenceBackend(events: [
             .thinkingToken("think "),
@@ -306,6 +361,21 @@ private final class EventSequenceBackend: InferenceBackend, @unchecked Sendable 
 
     func stopGeneration() {}
     func unloadModel() { isModelLoaded = false }
+}
+
+private struct ResponseOnlyUsageAdapter: ChatCompletionsAdapter {
+    let response: ChatCompletionResponse
+
+    func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+        GenerationConfig()
+    }
+
+    func response(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) async throws -> ChatCompletionResponse {
+        response
+    }
 }
 
 private final class CapturingBackend: InferenceBackend, @unchecked Sendable {
