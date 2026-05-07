@@ -126,6 +126,40 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(chunks.last?.usage, ChatCompletionUsage(promptTokens: 3, completionTokens: 2))
     }
 
+    func testCancellingStreamingChunksStopsBackendGeneration() async throws {
+        let gate = TokenEmissionGate()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["one", "two"]
+        backend.tokenEmissionGate = gate
+        let request = ChatCompletionRequest(
+            model: "m",
+            messages: [ChatCompletionMessage(role: .user, content: "hi")],
+            stream: true
+        )
+
+        let stream = try DefaultChatCompletionsAdapter().chunks(for: request, using: backend)
+        let firstToken = expectation(description: "first token streamed")
+        let consumer = Task {
+            for try await chunk in stream {
+                if chunk.choices.first?.delta.content == "one" {
+                    firstToken.fulfill()
+                }
+            }
+        }
+
+        await gate.advance()
+        await fulfillment(of: [firstToken], timeout: 1)
+        consumer.cancel()
+        await waitUntil {
+            backend.stopCallCount == 1 && backend.isGenerating == false
+        }
+        await gate.release()
+        _ = await consumer.result
+
+        XCTAssertEqual(backend.generateCallCount, 1)
+    }
+
     func testNonStreamResponseAssemblesContentReasoningToolCallsAndUsage() async throws {
         let backend = EventSequenceBackend(events: [
             .thinkingToken("think "),
@@ -219,6 +253,23 @@ final class ChatCompletionsAdapterTests: XCTestCase {
             chunks.append(chunk)
         }
         return chunks
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @escaping () -> Bool
+    ) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while clock.now < deadline {
+            if condition() {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(condition(), file: file, line: line)
     }
 }
 

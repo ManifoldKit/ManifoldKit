@@ -11,27 +11,15 @@ import XCTest
 /// SSE streaming response structure and cancellation-path tests for
 /// ``BaseChatServer``'s `/v1/chat/completions` endpoint.
 ///
-/// ## Cancellation gap note
+/// ## Cancellation coverage note
 ///
-/// The server's `ChatCompletionsAdapter` wires `continuation.onTermination`
-/// to cancel the inner `Task`, propagating structured cancellation into the
-/// generation loop. However, neither ``DefaultChatCompletionsAdapter`` nor the
-/// production `ServerApp` calls `backend.stopGeneration()` explicitly when
-/// the client disconnects. In the Hummingbird in-process test client the
-/// connection is fully consumed before `execute` returns, so there is no
-/// mid-stream disconnect to observe in the test harness.
+/// ``ChatCompletionsAdapterTests/testCancellingStreamingChunksStopsBackendGeneration()``
+/// asserts that terminating the adapter stream calls
+/// ``InferenceBackend/stopGeneration()``. In the Hummingbird in-process test
+/// client the connection is fully consumed before `execute` returns, so these
+/// endpoint-level tests continue to assert the SSE framing delivered to clients.
 ///
-/// A stronger assertion (``isGenerating`` becomes `false` within 500 ms of
-/// client disconnect) requires either:
-///   - A real TCP socket test where the client drops the connection while
-///     chunks are still in-flight, or
-///   - The server routing backend-disconnect notification through
-///     ``InferenceBackend/stopGeneration()`` and the adapter honouring it.
-///
-/// Until that gap is closed (see issue tracker) the tests in this file assert
-/// on the SSE *structure* delivered to the client — headers, chunk decodability,
-/// multi-token delivery, and the final `[DONE]` sentinel. These assertions are
-/// load-bearing: they fail if the SSE framing regresses.
+/// These assertions are load-bearing: they fail if the SSE framing regresses.
 ///
 /// Sabotage-evidence:
 ///   M1: Remove `text/event-stream` header assertion → test passes even when
@@ -196,17 +184,9 @@ final class SSECancellationTests: XCTestCase {
         }
     }
 
-    // MARK: - Cancellation gap documentation
+    // MARK: - Completion sanity
 
-    /// Documents the current cancellation behaviour: the generation task is
-    /// cancelled via structured concurrency when the response continuation
-    /// terminates, but ``InferenceBackend/stopGeneration()`` is not called by
-    /// the server. `isGenerating` may therefore remain true briefly after the
-    /// stream ends.
-    ///
-    /// This test verifies the stream completes (is fully consumed) without
-    /// hanging — the stronger assertion about `isGenerating` is deferred until
-    /// the server calls `stopGeneration()` on disconnect.
+    /// Verifies a fully consumed stream completes without hanging.
     func testStreamingCompletesWithoutHanging() async throws {
         // Use many tokens to ensure the stream is non-trivial.
         let tokenCount = 20
