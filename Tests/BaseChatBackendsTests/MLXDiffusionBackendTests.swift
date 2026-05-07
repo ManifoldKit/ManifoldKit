@@ -84,36 +84,23 @@ final class MLXDiffusionBackendTests: XCTestCase {
 
     // MARK: - Layout detection (SD 2.1 vs SDXL)
 
-    func test_detectPreset_unetOnly_selectsSD21() async throws {
+    func test_detectPreset_unetOnly_selectsSD21() throws {
         let dir = makeModelDir(withXLEncoder: false)
         defer { try? FileManager.default.removeItem(at: dir) }
-        // We can't complete loadModel without real weights, but
-        // unsupportedModelLayout would fire before the preset selection.
-        // Detecting the preset internally we confirm by observing that the
-        // error is NOT unsupportedModelLayout when unet/ is present.
-        let backend = MLXDiffusionBackend()
-        do {
-            // Will fail further along (Hub resolution / missing weights) but NOT
-            // with unsupportedModelLayout.
-            try await backend.loadModel(from: dir)
-        } catch MLXDiffusionError.unsupportedModelLayout {
-            XCTFail("unet/ is present; should not throw unsupportedModelLayout")
-        } catch {
-            // Any other error is acceptable — weights are fake.
-        }
+        // Test the layout-detection logic directly without going through
+        // loadModel → textToImageGenerator, which triggers Metal/MLX
+        // initialisation and fatally crashes if the metallib isn't compiled.
+        let preset = try MLXDiffusionBackend.detectPreset(at: dir)
+        XCTAssertTrue(preset.id.contains("stable-diffusion-2-1"),
+                      "unet/ without text_encoder_2/ must select the SD 2.1 preset")
     }
 
-    func test_detectPreset_textEncoder2_selectsSDXL() async throws {
+    func test_detectPreset_textEncoder2_selectsSDXL() throws {
         let dir = makeModelDir(withXLEncoder: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let backend = MLXDiffusionBackend()
-        do {
-            try await backend.loadModel(from: dir)
-        } catch MLXDiffusionError.unsupportedModelLayout {
-            XCTFail("text_encoder_2/ is present; should select SDXL preset, not throw unsupportedModelLayout")
-        } catch {
-            // Any other error (weights missing, Hub offline) is fine.
-        }
+        let preset = try MLXDiffusionBackend.detectPreset(at: dir)
+        XCTAssertTrue(preset.id.contains("sdxl"),
+                      "text_encoder_2/ present must select the SDXL preset")
     }
 
     // MARK: - Sabotage check (documented in CLAUDE.md test conventions)
