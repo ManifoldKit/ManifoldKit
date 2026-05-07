@@ -35,6 +35,51 @@ public final class MockURLProtocol: URLProtocol {
         case asyncSSE(chunks: [Data], chunkDelay: TimeInterval = 0.005, statusCode: Int)
         /// Return a URL error (e.g. connection lost).
         case error(Error)
+
+        /// Return chunks asynchronously, but replace the chunk at index
+        /// `corruptIndex` with `corruptedReplacement`. Exercises downstream
+        /// JSON-frame parser robustness — the consumer should report a
+        /// structured parse error, not crash or silently swallow the bad chunk.
+        ///
+        /// All other chunks are delivered verbatim.
+        case corruptedJSONChunk(
+            chunks: [Data],
+            corruptIndex: Int,
+            corruptedReplacement: Data,
+            chunkDelay: TimeInterval = 0.005,
+            statusCode: Int
+        )
+
+        /// Deliver every Nth chunk and skip the rest. With `every: 2`, chunks
+        /// at indices 0, 2, 4 ... are delivered; chunks at 1, 3, 5 ... are
+        /// dropped. Models lossy SSE delivery where the wire occasionally
+        /// drops a `data:` frame.
+        case droppedChunks(
+            chunks: [Data],
+            every: Int,
+            chunkDelay: TimeInterval = 0.005,
+            statusCode: Int
+        )
+
+        /// Concatenate `chunks`, deliver bytes up to `byteOffset`, then close
+        /// the connection without finishing. Models a server that closes the
+        /// socket mid-byte (e.g. proxy timeout). The consumer must surface a
+        /// structured error rather than treat the truncated bytes as success.
+        case truncatedMidByte(
+            chunks: [Data],
+            byteOffset: Int,
+            statusCode: Int
+        )
+
+        /// Wait `firstByteDelay` (no bytes received), then deliver `data` in
+        /// one shot. Models cold-start latency / queued-request head-of-line
+        /// blocking. Useful for asserting `withIdleTimeout` does NOT fire
+        /// before the first byte (the timer should reset on first byte).
+        case delayedFirstByte(
+            data: Data,
+            firstByteDelay: TimeInterval,
+            statusCode: Int
+        )
     }
 
     /// Thread-safe storage for stubs keyed by absolute URL string.
@@ -173,6 +218,27 @@ public final class MockURLProtocol: URLProtocol {
 
         case .error(let error):
             client?.urlProtocol(self, didFailWithError: error)
+
+        case .corruptedJSONChunk(let chunks, let corruptIndex, let corruptedReplacement, let chunkDelay, let statusCode):
+            var rewritten = chunks
+            if rewritten.indices.contains(corruptIndex) {
+                rewritten[corruptIndex] = corruptedReplacement
+            }
+            deliverAsyncSSEResponse(statusCode: statusCode, chunks: rewritten, chunkDelay: chunkDelay)
+
+        case .droppedChunks(let chunks, let every, let chunkDelay, let statusCode):
+            // Keep chunks at multiples of `every` (0, every, 2*every, ...).
+            // Guard `every` against zero/negative — nothing kept in that case.
+            let kept: [Data] = every > 0
+                ? chunks.enumerated().compactMap { $0.offset.isMultiple(of: every) ? $0.element : nil }
+                : []
+            deliverAsyncSSEResponse(statusCode: statusCode, chunks: kept, chunkDelay: chunkDelay)
+
+        case .truncatedMidByte(let chunks, let byteOffset, let statusCode):
+            deliverTruncatedResponse(statusCode: statusCode, chunks: chunks, byteOffset: byteOffset)
+
+        case .delayedFirstByte(let data, let firstByteDelay, let statusCode):
+            deliverDelayedFirstByteResponse(statusCode: statusCode, data: data, firstByteDelay: firstByteDelay)
         }
     }
 
@@ -212,6 +278,53 @@ public final class MockURLProtocol: URLProtocol {
             client?.urlProtocol(self, didLoad: chunk)
         }
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    /// Delivers `chunks` concatenated up to `byteOffset` bytes total, then
+    /// closes the connection without finishing. Models a server that closes
+    /// the socket mid-byte (e.g. proxy timeout). The consumer must observe
+    /// a transport error rather than success.
+    private func deliverTruncatedResponse(statusCode: Int, chunks: [Data], byteOffset: Int) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "text/event-stream"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+
+        let concatenated = chunks.reduce(Data()) { $0 + $1 }
+        let cap = max(0, min(byteOffset, concatenated.count))
+        if cap > 0 {
+            client?.urlProtocol(self, didLoad: concatenated.prefix(cap))
+        }
+        // Close the connection abruptly via a URL error rather than calling
+        // `urlProtocolDidFinishLoading`. This is what a real mid-byte socket
+        // close looks like to URLSession's client.
+        client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+    }
+
+    /// Waits `firstByteDelay`, then delivers `data` in one shot. Useful for
+    /// asserting `withIdleTimeout`-style policies do NOT fire before any
+    /// bytes arrive (timer should reset on first byte).
+    private func deliverDelayedFirstByteResponse(statusCode: Int, data: Data, firstByteDelay: TimeInterval) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "text/event-stream"]
+        )!
+        let client = self.client
+        var workItem: DispatchWorkItem!
+        workItem = DispatchWorkItem {
+            Thread.sleep(forTimeInterval: firstByteDelay)
+            if workItem.isCancelled { return }
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        }
+        asyncDeliveryItem = workItem
+        DispatchQueue.global(qos: .default).async(execute: workItem)
     }
 
     /// Delivers chunks on a background thread with a small delay between each,

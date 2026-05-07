@@ -248,6 +248,7 @@ BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: ttf
 BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: delay)
 BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: delay)
 BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: stallDuration)
+BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: silenceFor)
 # HardwareRequirements model-discovery walkers (MLX + GGUF). All directory
 # enumerations are best-effort: an unreadable container/search dir is skipped
 # and discovery continues with the remaining candidates. Mirrors the same

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import BaseChatInference
 
 /// A test double that deterministically injects streaming failures.
@@ -44,6 +45,29 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
         /// Yields `afterTokens` tokens, then throws an `InferenceError` into
         /// the stream. Simulates a transport error mid-generation.
         case networkError(afterTokens: Int)
+
+        /// Yields `afterTokens` tokens, then goes silent for `silenceFor`
+        /// without finishing or erroring. The stream stays open. Exercises
+        /// the consumer's idle-timeout policy: idle-timeout wrappers like
+        /// `withIdleTimeout` should fire; consumers without a timeout should
+        /// hang.
+        ///
+        /// Use a short `silenceFor` (≤ 200ms) in tests so the stream
+        /// continues to a natural finish after the timeout expires.
+        case idleTimeout(afterTokens: Int, silenceFor: Duration)
+
+        /// Yields `tokensBefore` text tokens, then a single
+        /// ``GenerationEvent/toolCall(_:)`` whose arguments string is
+        /// `invalidJSON` (intentionally not parseable JSON). Exercises
+        /// downstream parser robustness — a tool dispatcher must reject
+        /// the call with a structured error rather than crash.
+        case malformedToolCall(tokensBefore: Int, callId: String, toolName: String, invalidJSON: String)
+
+        /// Yields `count` parallel ``GenerationEvent/toolCall(_:)`` events
+        /// back-to-back, each with id `<idPrefix><index>` and arguments
+        /// `{"index": <N>}`. Exercises parallel-tool-call dispatch — the
+        /// consumer must invoke all `count` tools, not just the first.
+        case parallelToolCalls(count: Int, idPrefix: String, toolName: String)
     }
 
     private let stateLock = NSLock()
@@ -52,6 +76,21 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
     private let lifecycle = MockBackendLifecycle()
     private var _mode: FailureMode
     private var _tokensToYield: [String]
+
+    /// Monotonic count of `.token` events yielded across the lifetime of this
+    /// backend. Useful for behaviour assertions that need to confirm a path
+    /// was exercised without depending on the exact token sequence.
+    public let tokensEmittedCount = Atomic<UInt64>(0)
+
+    /// Monotonic count of `.toolCall` events yielded across the lifetime of
+    /// this backend. Distinguishes "model called the tool" from "model talked
+    /// about the tool" in test assertions.
+    public let toolCallsEmittedCount = Atomic<UInt64>(0)
+
+    /// Monotonic count of mid-stream errors injected across the lifetime of
+    /// this backend. Includes `.networkError`. Idle-timeouts do not count
+    /// (they don't surface as errors at this layer).
+    public let errorsThrownCount = Atomic<UInt64>(0)
 
     public var isModelLoaded: Bool { withStateLock { _isModelLoaded } }
     public var isGenerating: Bool { withStateLock { _isGenerating } }
@@ -114,11 +153,12 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
             onFinish: { [weak self] in
                 self?.withStateLock { self?._isGenerating = false }
             },
-            body: { continuation in
+            body: { [weak self] continuation in
                 await Self.runFailureMode(
                     mode: mode,
                     tokens: tokens,
-                    continuation: continuation
+                    continuation: continuation,
+                    counters: self
                 )
             }
         )
@@ -137,7 +177,8 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
     private static func runFailureMode(
         mode: FailureMode,
         tokens: [String],
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
+        counters: ChaosBackend?
     ) async {
         // The lifecycle helper calls `continuation.finish()` after this body
         // returns, so we never need to finish manually except to deliver an
@@ -148,6 +189,7 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
             for token in tokens {
                 if Task.isCancelled { return }
                 continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
             }
 
         case .dropMidStream(let afterTokens):
@@ -155,6 +197,7 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
                 if Task.isCancelled { return }
                 if index >= afterTokens { return }
                 continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
             }
 
         case .slowFirstToken(let delay):
@@ -163,6 +206,7 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
             for token in tokens {
                 if Task.isCancelled { return }
                 continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
             }
 
         case .burstThenStall(let burstSize, let stallDuration):
@@ -173,6 +217,7 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
                     if Task.isCancelled { return }
                 }
                 continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
             }
 
         case .networkError(let afterTokens):
@@ -180,10 +225,50 @@ public final class ChaosBackend: InferenceBackend, @unchecked Sendable {
                 if Task.isCancelled { return }
                 if index >= afterTokens { break }
                 continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
             }
+            counters?.errorsThrownCount.wrappingAdd(1, ordering: .relaxed)
             continuation.finish(
                 throwing: InferenceError.inferenceFailure("Chaos: injected network error")
             )
+
+        case .idleTimeout(let afterTokens, let silenceFor):
+            for (index, token) in tokens.enumerated() {
+                if Task.isCancelled { return }
+                if index >= afterTokens { break }
+                continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
+            }
+            // Sleep without yielding or finishing — the consumer's idle-timeout
+            // policy is what we exercise here. After the silence elapses the
+            // body returns and the lifecycle helper finishes the stream.
+            try? await Task.sleep(for: silenceFor)
+
+        case .malformedToolCall(let tokensBefore, let callId, let toolName, let invalidJSON):
+            for (index, token) in tokens.enumerated() {
+                if Task.isCancelled { return }
+                if index >= tokensBefore { break }
+                continuation.yield(.token(token))
+                counters?.tokensEmittedCount.wrappingAdd(1, ordering: .relaxed)
+            }
+            if Task.isCancelled { return }
+            continuation.yield(.toolCall(ToolCall(
+                id: callId,
+                toolName: toolName,
+                arguments: invalidJSON
+            )))
+            counters?.toolCallsEmittedCount.wrappingAdd(1, ordering: .relaxed)
+
+        case .parallelToolCalls(let count, let idPrefix, let toolName):
+            for index in 0..<count {
+                if Task.isCancelled { return }
+                continuation.yield(.toolCall(ToolCall(
+                    id: "\(idPrefix)\(index)",
+                    toolName: toolName,
+                    arguments: "{\"index\": \(index)}"
+                )))
+                counters?.toolCallsEmittedCount.wrappingAdd(1, ordering: .relaxed)
+            }
         }
     }
 
