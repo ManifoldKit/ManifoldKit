@@ -563,6 +563,10 @@ public struct GenerationConfig: Sendable, Codable {
 /// Sendable` and use either `NSLock` (`LlamaBackend`, `SSECloudBackend`)
 /// or actor isolation (`MLXModelContainer`) to protect mutable state.
 /// Custom conformers should follow the same pattern.
+///
+/// New backends adopt this protocol; conformance is verified by the
+/// contract harness in ``BackendContractChecks`` and the per-capability
+/// meta-contract. See `Tests/README.md` for the conformance walkthrough.
 public protocol InferenceBackend: AnyObject, Sendable {
     var isModelLoaded: Bool { get }
     var isGenerating: Bool { get }

@@ -688,6 +688,20 @@ let package = Package(
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
+        // T1.5: public-API surface freeze. The Fixture file consumes every
+        // public BCK type and method we want to lock against accidental
+        // signature change. CI fails if any consumed surface is removed,
+        // renamed, or its signature drifts. The test method itself is a
+        // single XCTAssertTrue(true) — compilation is the assertion.
+        .testTarget(
+            name: "APIFreezeTests",
+            dependencies: [
+                "BaseChatInference",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
+                "BaseChatTestSupport",
+            ]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
