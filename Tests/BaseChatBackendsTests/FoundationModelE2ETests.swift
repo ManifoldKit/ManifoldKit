@@ -32,6 +32,10 @@ final class FoundationModelE2ETests: XCTestCase {
 
         try XCTSkipUnless(HardwareRequirements.hasFoundationModels, "Requires macOS 26+ / iOS 26+")
         try XCTSkipUnless(FoundationBackend.isAvailable, "Apple Intelligence not available on this device")
+        // availability can read .available while the model hasn't finished downloading;
+        // probe before setup so tests skip cleanly instead of failing mid-test.
+        let ready = await FoundationBackend.probeIsReady()
+        try XCTSkipUnless(ready, "Apple Intelligence not ready — ensure it is enabled and downloaded in System Settings > Apple Intelligence & Siri")
 
         container = try makeInMemoryContainer()
         context = container.mainContext

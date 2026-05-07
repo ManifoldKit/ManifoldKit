@@ -192,19 +192,24 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
     }
 
     public func unloadModel() {
-        withLock {
+        let wasLoaded = withLock {
+            let had = _generator != nil
             _generator = nil
             _preset = nil
             _stopRequested = false
+            return had
         }
-        // Release MLX GPU cache. Safe to call here because we only reach
-        // this path after a successful loadModel (Metal was available).
-        MLX.GPU.set(cacheLimit: 0)
+        // Only touch the GPU cache if Metal was actually used — calling
+        // MLX.GPU.set(cacheLimit:) before any MLX work triggers Metal
+        // initialisation and crashes in test environments.
+        if wasLoaded {
+            MLX.GPU.set(cacheLimit: 0)
+        }
     }
 
     // MARK: - Private helpers
 
-    private static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
+    static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
         let fm = FileManager.default
         // SDXL has a second text encoder; SD 2.1 does not.
         if fm.fileExists(atPath: url.appending(component: "text_encoder_2").path) {

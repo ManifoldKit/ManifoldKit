@@ -227,6 +227,23 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         SystemLanguageModel.default.availability == .available
     }
 
+    /// Probes the model with a minimal request to confirm it can serve inference.
+    ///
+    /// `isAvailable` can return `true` while the model isn't fully downloaded or
+    /// Apple Intelligence isn't configured in System Settings. Use this in async
+    /// test setUp methods to produce a clear XCTSkip rather than a cryptic runtime
+    /// failure.
+    public static func probeIsReady() async -> Bool {
+        guard isAvailable else { return false }
+        let probe = LanguageModelSession()
+        do {
+            _ = try await probe.respond(to: "Hi")
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Model Lifecycle
 
     public func loadModel(from url: URL, plan: ModelLoadPlan) async throws {

@@ -290,6 +290,8 @@ final class FoundationBackendToolCallingTests: XCTestCase {
             FoundationBackend.isAvailable,
             "Apple Intelligence not available — cannot exercise the live tool-calling path"
         )
+        let ready = await FoundationBackend.probeIsReady()
+        try XCTSkipUnless(ready, "Apple Intelligence not ready — ensure it is enabled and downloaded in System Settings > Apple Intelligence & Siri")
 
         let backend = FoundationBackend()
         let url = URL(fileURLWithPath: "/dev/null")
