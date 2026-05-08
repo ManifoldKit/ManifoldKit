@@ -67,7 +67,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// ``URLSessionProvider/networkDisabled`` is set, the underlying property
     /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
     /// that surfaces the kill-switch as a recoverable error.
-    @available(*, deprecated, message: "Ollama remains in default traits this minor; in the next major it moves to opt-in. Add the `Ollama` trait to your .package(...) entry, or register via DefaultBackends.register(_:). See README 'Build modes' and #714.")
+    @available(*, deprecated, message: "OllamaBackend remains available; this is a build-mode migration notice. Before the next major, add the `Ollama` trait to package dependencies or register via DefaultBackends.register(_:); see README 'Build modes' and #714.")
     public init(urlSession: URLSession? = nil) {
         super.init(
             defaultModelName: "llama3.2",
@@ -78,7 +78,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
-    @available(*, deprecated, message: "Ollama remains in default traits this minor; in the next major it moves to opt-in. Add the `Ollama` trait to your .package(...) entry, or register via DefaultBackends.register(_:). See README 'Build modes' and #714.")
+    @available(*, deprecated, message: "OllamaBackend remains available; this is a build-mode migration notice. Before the next major, add the `Ollama` trait to package dependencies or register via DefaultBackends.register(_:); see README 'Build modes' and #714.")
     public static func makeChecked(urlSession: URLSession? = nil) throws -> OllamaBackend {
         let session: URLSession
         if let urlSession {

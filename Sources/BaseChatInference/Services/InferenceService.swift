@@ -419,7 +419,7 @@ public final class InferenceService {
         return generation.hasQueuedRequests
     }
 
-    @available(*, deprecated, message: "The queue auto-drains when the stream terminates. This method is a no-op and will be removed in a future release.")
+    @available(*, deprecated, message: "Remove calls to generationDidFinish(); the queue auto-drains when the returned stream terminates, and this method is a no-op.")
     public func generationDidFinish() {}
 
     public func resetConversation() {

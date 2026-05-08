@@ -19,7 +19,7 @@ public struct MCPOAuthTokens: Sendable, Codable, Equatable {
 
     /// String form of the access token. Kept for Codable compatibility and callers
     /// that need the raw string (e.g. logging with redaction).
-    @available(*, deprecated, message: "Use accessTokenData")
+    @available(*, deprecated, message: "Use accessTokenData (Data) instead of accessToken (String); convert with String(data:encoding:) only at UI or protocol boundaries.")
     public var accessToken: String {
         String(data: accessTokenData, encoding: .utf8) ?? ""
     }
