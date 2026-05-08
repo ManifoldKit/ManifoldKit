@@ -60,6 +60,21 @@ final class MLXBackendGenerationTests: XCTestCase {
         return tokens
     }
 
+    private final class YieldCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _count = 0
+
+        func increment() {
+            lock.lock(); defer { lock.unlock() }
+            _count += 1
+        }
+
+        var count: Int {
+            lock.lock(); defer { lock.unlock() }
+            return _count
+        }
+    }
+
     // MARK: - test_generate_yieldsInjectedTokens
 
     func test_generate_yieldsInjectedTokens() async throws {
@@ -860,20 +875,6 @@ final class MLXBackendGenerationTests: XCTestCase {
     /// in CI without Metal — the production code path is identical, the test
     /// just substitutes the sleep with a counter.
     func test_yieldEveryNTokens_firesAtConfiguredCadence() async throws {
-        // Atomically counted from the @Sendable hook to satisfy strict-concurrency.
-        final class YieldCounter: @unchecked Sendable {
-            private let lock = NSLock()
-            private var _count = 0
-            func increment() {
-                lock.lock(); defer { lock.unlock() }
-                _count += 1
-            }
-            var count: Int {
-                lock.lock(); defer { lock.unlock() }
-                return _count
-            }
-        }
-
         let counter = YieldCounter()
         MLXBackend._yieldHookForTesting = { counter.increment() }
         defer { MLXBackend._yieldHookForTesting = nil }
@@ -928,6 +929,34 @@ final class MLXBackendGenerationTests: XCTestCase {
         // Sabotage check: changing the modulo condition to `% (yieldEvery + 1)`
         // in MLXBackend would yield 2 times for 12 chunks at cadence 4 (at 5, 10),
         // failing the count == 3 assertion.
+    }
+
+    func test_yieldEveryNTokens_defaultCadenceIsEight() async throws {
+        let counter = YieldCounter()
+        MLXBackend._yieldHookForTesting = { counter.increment() }
+        defer { MLXBackend._yieldHookForTesting = nil }
+
+        let mock = MockMLXModelContainer()
+        mock.tokensToYield = Array(repeating: "x", count: 16)
+
+        let backend = MLXBackend()
+        backend._inject(mock)
+
+        var config = GenerationConfig()
+        config.maxOutputTokens = 100
+
+        let stream = try backend.generate(
+            prompt: "hi",
+            systemPrompt: nil,
+            config: config
+        )
+        _ = try await collectTokens(from: stream)
+
+        XCTAssertEqual(counter.count, 2,
+            "Default MLX yield cadence should fire every 8 emitted chunks")
+
+        // Sabotage check: changing GenerationConfig's default yieldEveryNTokens
+        // away from 8 changes the number of hook invocations for 16 chunks.
     }
 
     /// Cancellation during the cooperative yield must not crash, must not leak
