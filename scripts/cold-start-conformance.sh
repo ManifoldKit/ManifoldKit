@@ -40,7 +40,12 @@ let package = Package(
         .executable(name: "ColdStart", targets: ["ColdStart"]),
     ],
     dependencies: [
-        .package(path: "$REPO_ROOT"),
+        // Pin package identity explicitly. SwiftPM derives \`.package(path:)\`
+        // identity from the last path component, not the manifest \`name:\`. On
+        // a normal checkout the dir is \`BaseChatKit\` so \`.product(... package:
+        // "BaseChatKit")\` resolves; in a worktree (e.g. \`agent-<id>\`) it would
+        // not. Pinning \`name:\` keeps this script worktree-portable.
+        .package(name: "BaseChatKit", path: "$REPO_ROOT"),
     ],
     targets: [
         .executableTarget(
