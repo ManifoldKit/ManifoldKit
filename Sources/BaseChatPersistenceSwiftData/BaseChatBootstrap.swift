@@ -70,6 +70,16 @@ public final class BaseChatBootstrap {
 
     public var modelContext: ModelContext { modelContainer.mainContext }
 
+    /// Builds the full BaseChatKit stack synchronously.
+    ///
+    /// - Parameter makeModelContainer: Closure producing the SwiftData
+    ///   `ModelContainer`. The default derives a per-app on-disk store at
+    ///   `<Application Support>/<bundleIdentifier>/store.sqlite` from the
+    ///   `configuration` parameter (see
+    ///   ``ModelContainerFactory/defaultModelConfiguration()``). Pass an
+    ///   explicit closure to use an in-memory store, a custom directory, or to
+    ///   migrate an existing app away from the legacy
+    ///   `<Application Support>/default.store` path.
     public init(
         configuration: BaseChatConfiguration,
         inferenceService: InferenceService? = nil,
