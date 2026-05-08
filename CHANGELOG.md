@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.17.5](https://github.com/roryford/BaseChatKit/compare/v0.17.4...v0.17.5) (2026-05-08)
+
+### Fixes
+
+* **Grammar fail-closed for cloud backends** — `InferenceService` now throws `InferenceError.unsupportedGrammar(reason:)` synchronously when `GenerationConfig.grammar` is set on a backend that does not support grammar-constrained sampling; Claude, OpenAI, and Ollama backends are now covered ([5afd8fc](https://github.com/roryford/BaseChatKit/commit/5afd8fc46c62c9288e1e18a3c2a11b16a3be61b5))
+* **Backend generation halts on SSE disconnect** — Cancelling an SSE connection now triggers `stopGeneration()`, preventing the backend from continuing to emit tokens after the client disconnects ([08880b2](https://github.com/roryford/BaseChatKit/commit/08880b234fd374a040fdf97fd108af7d86343476))
+* **Streaming usage chunk gating corrected** — The final content chunk no longer carries a `usage` payload; a trailing usage-only chunk is appended only when `stream_options.include_usage: true`, matching the OpenAI spec ([4443f40](https://github.com/roryford/BaseChatKit/commit/4443f40383bade65bac7a40f62fb609201f07098))
+* **llama.swift pin reverted** — The 2.9050.0 pin caused CI tree-read failures and has been rolled back to the previous stable version ([27027f8](https://github.com/roryford/BaseChatKit/commit/27027f8a1b3ced6a5fdc9e6efcd8b16f05f0cb9e))
+* **Package.resolved regenerated** — Synced `originHash` and default-trait dependencies after the T1.5 test-uplift round ([0b14ef2](https://github.com/roryford/BaseChatKit/commit/0b14ef2c3792c5ecd64cdfc6eee3e56e79ad558b))
+
 ## [0.17.4](https://github.com/roryford/BaseChatKit/compare/v0.17.3...v0.17.4) (2026-05-06)
 
 
