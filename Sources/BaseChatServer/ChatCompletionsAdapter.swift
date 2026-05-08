@@ -517,7 +517,12 @@ extension ChatCompletionsAdapter {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            continuation.onTermination = { @Sendable termination in
+                task.cancel()
+                if case .cancelled = termination {
+                    backend.stopGeneration()
+                }
+            }
         }
     }
 }
