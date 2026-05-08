@@ -186,7 +186,7 @@ final class InferenceServiceNonisolatedTests: XCTestCase {
             url: URL(fileURLWithPath: "/Test.bin"),
             fileSize: 0,
             modelType: .gguf
-        ))
+        ), plan: .testStub())
         return service
     }
 }

@@ -38,7 +38,7 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 
 ## Requirements
 
-- Swift 5.9+
+- **Swift 6.2** (`swift-tools-version: 6.2` in your `Package.swift`) — required for `.macOS(.v26)` / `.iOS(.v26)` platform entries. Using an older tools version produces `'v26' is unavailable` errors from `PackageDescription`.
 - iOS 18+ / macOS 15+
 - Apple Foundation Models require iOS 26+ / macOS 26+
 
@@ -179,6 +179,31 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 ```
 
 `CloudSaaS` and `Ollama` are opt-in. `HuggingFace` is default-on for backwards compatibility; drop it from `traits:` (or start from `--disable-default-traits`) to remove the stock Hub browser/downloader from the build graph. `AnyLanguageModel` is also opt-in and only needed when you want the bridge target.
+
+> **Note on `--disable-default-traits`:** this flag applies to the package where it is passed. If your consumer package declares no traits of its own, SwiftPM will error with `"Disabled default traits by command-line trait configuration on package 'X' that declares no traits"`. Use the flag when building BCK directly or when your package declares its own traits; otherwise control the BCK trait set via the `traits:` array in your `Package.swift` dependency declaration.
+
+**Apple Foundation Models only (no llama.cpp / MLX download)**
+
+If your app targets Apple's built-in Foundation model exclusively, you can drop the 200 MB+ llama.cpp xcframework and 16+ transitive packages by disabling the default traits:
+
+```swift
+.package(
+    url: "https://github.com/roryford/BaseChatKit.git",
+    from: "1.0.0",
+    traits: []   // disables MLX, Llama, HuggingFace defaults
+)
+```
+
+Then at app launch:
+
+```swift
+if #available(macOS 26, iOS 26, *) {
+    vm.foundationModelProvider = { FoundationBackend.isAvailable }
+    vm.loadFoundationModelIfAvailable()
+}
+```
+
+No `--disable-default-traits` flag is needed in your `swift build` command — the empty `traits:` array already communicates your intent to SPM.
 
 For example, a cloud-only consumer can keep the chat UI and local-model loaders out of the download path:
 
@@ -776,6 +801,28 @@ primitives BCK invokes and where the validation boundary actually sits.
 - **mlx-swift** — Apple's MLX framework ships as a pre-built xcframework from [ml-explore/mlx-swift](https://github.com/ml-explore/mlx-swift). Source builds are supported via that upstream repo.
 
 Both dependencies are pinned to specific tagged releases in `Package.swift`. Review `Package.resolved` to verify the exact versions in use.
+
+## Troubleshooting
+
+### "XCFramework Info.plist not found" or "workspace-state.json desync"
+
+This typically happens after changing the active trait set (e.g. switching from the default MLX/Llama traits to traits-disabled, or vice versa). SwiftPM caches binary-target paths in `.build/workspace-state.json` and does not automatically re-resolve stale paths on subsequent builds. A partial cleanup like `rm -rf .build/artifacts/` is insufficient.
+
+Run the recovery script:
+
+```bash
+scripts/clean-build.sh
+```
+
+This removes the entire `.build` directory and runs `swift package resolve` before your next build.
+
+### Stale "No such module 'BaseChatPersistenceSwiftData'" in the editor
+
+SourceKit can retain stale module-not-found diagnostics from a previous trait-set build even while `swift build` succeeds cleanly. The editor's index does not flush automatically when the trait set changes.
+
+**Workaround:** restart the SourceKit language server. In Xcode: *Product → Clean Build Folder*, then reopen the file. In VS Code with Swift extension: run "Swift: Restart SourceKit-LSP" from the command palette (⇧⌘P). The false diagnostic disappears after the language server re-indexes with the current trait set.
+
+If restarting the language server is insufficient, run `scripts/clean-build.sh` and reopen the project.
 
 ## Example App
 

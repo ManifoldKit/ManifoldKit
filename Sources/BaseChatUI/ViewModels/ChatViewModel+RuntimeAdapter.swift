@@ -150,7 +150,7 @@ extension ChatViewModel {
                !showUpgradeHint,
                let completed = messages.first(where: { $0.id == messageID }),
                completed.hasVisibleContent,
-               activeBackendName == "Apple",
+               activeBackendName == BackendName.foundation,
                messages.filter({ $0.role == .assistant }).count == 1 {
                 showUpgradeHint = true
                 onUpgradeHintTriggered?()

@@ -361,12 +361,12 @@ final class InferenceServiceTests: XCTestCase {
         }
 
         let firstTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf))
+            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf), plan: .testStub())
         }
         await firstBackend.waitUntilLoadStarted()
 
         let secondTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation))
+            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation), plan: .testStub())
         }
         await secondBackend.waitUntilLoadStarted()
 
@@ -444,12 +444,12 @@ final class InferenceServiceTests: XCTestCase {
         }
 
         let firstTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf))
+            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf), plan: .testStub())
         }
         await firstBackend.waitUntilLoadStarted()
 
         let secondTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation))
+            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation), plan: .testStub())
         }
         await secondBackend.waitUntilLoadStarted()
 
@@ -476,7 +476,7 @@ final class InferenceServiceTests: XCTestCase {
         }
 
         let loadTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "InFlight", modelType: .gguf))
+            try await service.loadModel(from: makeModelInfo(name: "InFlight", modelType: .gguf), plan: .testStub())
         }
         await backend.waitUntilLoadStarted()
 
@@ -618,7 +618,7 @@ final class InferenceServiceTests: XCTestCase {
             fileSize: 0,
             modelType: .foundation
         )
-        try await service.loadModel(from: modelInfo)
+        try await service.loadModel(from: modelInfo, plan: .testStub())
 
         XCTAssertEqual(firstCallCount, 1, "First factory should be called once")
         XCTAssertEqual(secondCallCount, 0, "Second factory should never be called when first wins")
@@ -650,7 +650,7 @@ final class InferenceServiceTests: XCTestCase {
             fileSize: 0,
             modelType: .gguf
         )
-        try await service.loadModel(from: modelInfo)
+        try await service.loadModel(from: modelInfo, plan: .testStub())
 
         XCTAssertEqual(firstCallCount, 1, "First factory should be called once")
         XCTAssertEqual(secondCallCount, 1, "Second factory should be called after first rejects")
@@ -673,7 +673,7 @@ final class InferenceServiceTests: XCTestCase {
         )
 
         do {
-            try await service.loadModel(from: modelInfo)
+            try await service.loadModel(from: modelInfo, plan: .testStub())
             XCTFail("Expected InferenceError.inferenceFailure to be thrown")
         } catch InferenceError.inferenceFailure {
             // expected
@@ -763,7 +763,7 @@ final class InferenceServiceTests: XCTestCase {
             fileSize: 0,
             modelType: .gguf
         )
-        try await service.loadModel(from: modelInfo)
+        try await service.loadModel(from: modelInfo, plan: .testStub())
 
         XCTAssertEqual(firstMock.unloadCallCount, 1, "First backend's unloadModel() should be called exactly once")
         XCTAssertEqual(secondMock.loadModelCallCount, 1, "Second backend should be loaded")
@@ -778,7 +778,7 @@ final class InferenceServiceTests: XCTestCase {
         service.registerBackendFactory { _ in mock }
 
         let modelInfo = makeModelInfo(name: "TestModel", modelType: .gguf)
-        try await service.loadModel(from: modelInfo)
+        try await service.loadModel(from: modelInfo, plan: .testStub())
 
         XCTAssertEqual(mock.loadModelCallCount, 1)
         XCTAssertEqual(mock.loadModelCalledOnMainThread, false,
@@ -831,7 +831,8 @@ final class InferenceServiceTests: XCTestCase {
             let modelType: ModelType = (i % 2 == 0) ? .gguf : .gguf
             let task = Task {
                 try await service.loadModel(
-                    from: self.makeModelInfo(name: "Model\(i)", modelType: modelType)
+                    from: self.makeModelInfo(name: "Model\(i)", modelType: modelType),
+                    plan: .testStub()
                 )
             }
             loadTasks.append(task)

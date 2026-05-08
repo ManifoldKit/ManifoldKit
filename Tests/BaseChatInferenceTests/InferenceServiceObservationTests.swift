@@ -26,7 +26,7 @@ final class InferenceServiceObservationTests: XCTestCase {
             changed.fulfill()
         }
 
-        try await service.loadModel(from: makeModelInfo())
+        try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         await fulfillment(of: [changed], timeout: 2)
         XCTAssertTrue(service.isModelLoaded)
     }
@@ -80,7 +80,7 @@ final class InferenceServiceObservationTests: XCTestCase {
             changed.fulfill()
         }
 
-        try await service.loadModel(from: makeModelInfo())
+        try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         await fulfillment(of: [changed], timeout: 2)
         XCTAssertNotNil(service.activeBackendName)
     }
@@ -99,7 +99,7 @@ final class InferenceServiceObservationTests: XCTestCase {
             changed.fulfill()
         }
 
-        try await service.loadModel(from: makeModelInfo())
+        try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         await fulfillment(of: [changed], timeout: 2)
         XCTAssertEqual(service.activeModelName, "Test")
     }
@@ -118,7 +118,7 @@ final class InferenceServiceObservationTests: XCTestCase {
             changed.fulfill()
         }
 
-        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         await fulfillment(of: [changed], timeout: 2)
@@ -133,7 +133,7 @@ final class InferenceServiceObservationTests: XCTestCase {
         let backend = GatedLoadBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         // Now modelLoadProgress is 0.0 — observe the transition to nil on completion.
@@ -174,7 +174,7 @@ final class InferenceServiceObservationTests: XCTestCase {
         let initialState = await iterator.next()
         XCTAssertEqual(initialState, .idle)
 
-        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         let loadingState = await iterator.next()
@@ -200,7 +200,7 @@ final class InferenceServiceObservationTests: XCTestCase {
         let backend = GatedLoadBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         let waitTask = Task { await service.waitUntilModelReady(maxPollCount: 50, pollIntervalNanoseconds: 50_000_000) }
@@ -217,7 +217,7 @@ final class InferenceServiceObservationTests: XCTestCase {
         let backend = GatedLoadBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let loadTask = Task { try await service.loadModel(from: makeModelInfo()) }
+        let loadTask = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         let ready = await service.waitUntilModelReady(maxPollCount: 1, pollIntervalNanoseconds: 1_000_000)

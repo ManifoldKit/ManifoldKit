@@ -30,6 +30,7 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 - MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter BaseChatMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
 - Llama: use `scripts/test-llama-isolated.sh` when in-process runs accumulate Metal global state
+- `BaseChatE2ETests`: bare form `swift test --filter BaseChatE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'BaseChatE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
 
 ## Test conventions
 
@@ -41,6 +42,7 @@ For trait conventions, suite layout, classification (Unit / Integration / E2E), 
 - Async tests: use real `async/await`. Use `XCTestExpectation`/`XCTWaiter` with tight deadlines for callback-based code only.
 - After asserting an expected outcome, add a sabotage check to confirm the test fails when the code path breaks. Remove before committing.
 - `withKnownIssue` is test debt. Every use requires `// FIXME: <issue URL>` above it. Never in critical E2E paths.
+- Never call `MockURLProtocol.reset()` across suites — `canInit(with:)` returns true whenever any stubs are registered (global state). Use UUID-based hostnames per suite (`http://ollama-\(UUID()).test`) to isolate stubs instead.
 
 ## Service sharing
 
@@ -64,10 +66,13 @@ These patterns either produce `#SendingRisksDataRace` in strict Swift 6 builds o
 3. **`@preconcurrency import` is narrow.** It can suppress missing `Sendable` annotations from older libraries, but it does not suppress region-based isolation errors such as the non-isolated closure-sending pattern above. Do not use it as a blanket Swift 6 escape hatch.
 4. **`AsyncStream<T>` inherits `T`'s sendability.** `AsyncStream<Generation>` is `Sendable` only while `Generation` is. If an upstream library adds a non-`Sendable` field, errors often appear at call sites; keep explicit stream annotations like `let stream: AsyncStream<Generation> = ...` so failures point at the declaration.
 5. **Never use `Task.detached` inside `@MainActor` classes.** `Task { }` inherits the current actor; `Task.detached { }` does not, and the compiler may not warn when it captures mutable `@MainActor` properties. Use `Task { }` and let the callee hop off-actor for expensive non-UI work.
+6. **Never block in `deinit` under `@MainActor` ownership.** `DispatchSemaphore.wait()` in `deinit` either freezes the UI or deadlocks the actor. For async C cleanup, mirror `LlamaBackend`'s retain/detach/release pattern: capture the resource strongly into a `Task.detached`, hop off-actor, then release.
 
 - **Persistence**: SwiftData only. No CoreData.
 - **Error handling**: validate at system boundaries only. Don't guard internal invariants the type system already enforces.
 - **Comments**: explain *why*, not *what*.
+- **Inject `UserDefaults`.** Production code must accept `userDefaults: UserDefaults = .standard` rather than touching `UserDefaults.standard` directly. `swift test --parallel` (default in CI as of v0.16.1) makes shared-instance access flaky. Bitten twice: #734, #761.
+- **Trait gating: gate consumer→library edges, not library→library.** Wrap `M-Tests → M` and `cli-using-M → M` package edges in `.when(traits: ["M"])`. Do NOT gate `M → L` while `M`'s sources still import `L` unconditionally. `PackageTraitGateAuditTest` is a tripwire but doesn't catch every shape — sweep with the trait-combo build below when adding a trait.
 
 ## Platform policy
 
@@ -80,12 +85,15 @@ BaseChatKit targets **n-1**: the current Apple OS release and the one immediatel
 
 When Apple ships a new major OS each September, bump both minimums and remove `#available` guards added for the previous floor. Do not use `Atomic`, `OSAllocatedUnfairLock`, or other APIs that post-date the minimum without checking their availability.
 
+**`swift-tools-version` ceiling = installed Xcode toolchain.** Xcode 26.x ships Swift 6.2.x, not 6.3 — bumping the tools version above what CI runners have breaks `resolve-check` and `fuzz`.
+
 ## Hardware constraints (simulator / CI)
 
 - `LlamaBackend` uses a global `llama_backend_init` — only one instance per process. Tests must share a single instance or use `MockInferenceBackend`.
 - Metal is unavailable in the simulator. Gate any `MLXBackend`/`LlamaBackend` test with `XCTSkipIf`.
 - `FoundationBackend` requires iOS 26 / macOS 26. Gate accordingly.
 - Context window capped at 512 tokens in the simulator to avoid OOM.
+- `MLX.Memory.cacheLimit` / `clearCache()` require the metallib. Calling them without a successful `loadModelContainer` triggers "Failed to load default metallib" and aborts the test process. Guard on container presence as the proxy.
 
 ## Tooling
 
@@ -94,8 +102,11 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 | `scripts/test.sh` | Runs configured Swift test suites and prints an honest summary. |
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
+| `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found" or other `workspace-state.json` desync errors after changing the trait set. |
 | `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). |
 | `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
+
+**SwiftPM local-package consumers need explicit `name:`.** When adding `.package(path: ...)` references (worktrees, cold-start gates, scratch consumers), pass `name: "BaseChatKit"` explicitly — `.package(path:)` derives identity from the last path component, which breaks under non-default checkout paths.
 
 ## Pre-push checklist
 
@@ -118,10 +129,11 @@ scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
 
 **Spike gate** (bounded changes only): `swift build --build-tests --disable-default-traits` then run only the affected suite. Valid only when the diff touches one module and you've run the full suite once already on this branch. Full two-invocation gate is mandatory before the final push and after any rebase.
 
-**Trait-combo sweep** (only when a PR adds/modifies a switched enum in a trait-gated file):
+**Trait-combo sweep** (whenever modifying a switched enum, a `GenerationEvent` / `GenerationConfig` / `BackendCapabilities`-shaped type, or any trait-gated source file):
 ```bash
-swift build --build-tests --traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace
+swift build --build-tests --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz
 ```
+Default-trait builds won't catch CloudSaaS- or Ollama-gated switch exhaustiveness. The all-traits-on `--build-tests` is the cheapest single check.
 
 CI runs on macOS (10× billing). Each failed push wastes ~25 billed minutes. Test locally first.
 
@@ -130,6 +142,8 @@ When changing behavior of any function or type, grep for ALL test references acr
 ## Error handling
 
 Never use `assertionFailure`/`fatalError` for conditions that have fallback logic — they trap in `swift test`. Use `Log.*` warnings. Reserve `assertionFailure` for true programmer errors with no recovery path.
+
+`try?` is banned in production code. `SilentCatchAuditTest` (in `BaseChatInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
 
 ## Commit style
 

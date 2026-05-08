@@ -151,29 +151,11 @@ public final class InferenceService {
 
     // MARK: - Model Lifecycle
 
-    /// Loads a model using the appropriate backend for its format.
-    ///
-    /// If another load request starts before this call completes, this request is
-    /// treated as stale and its completion is suppressed.
-    @available(*, deprecated, message: "Use loadModel(from:plan:); build the plan with ModelLoadPlan.compute(for:requestedContextSize:strategy:)")
-    public func loadModel(
-        from modelInfo: ModelInfo,
-        contextSize: Int32 = 2048
-    ) async throws {
-        ensureProviderWired()
-        generation.stopGeneration()
-        // Delegation without a plan: the coordinator picks the backend first and
-        // then builds a plan using the backend's declared memory strategy. This
-        // preserves the legacy behaviour where `MemoryStrategy` was sourced from
-        // `backend.capabilities.memoryStrategy`.
-        try await lifecycle.loadModel(from: modelInfo, contextSize: contextSize)
-    }
-
     /// Loads a model using a precomputed ``ModelLoadPlan``.
     ///
-    /// Prefer this over ``loadModel(from:contextSize:)`` when the caller has already
-    /// produced a plan (for example via the UI load flow). The plan carries the
-    /// authoritative effective context size and memory verdict.
+    /// Build the plan with ``ModelLoadPlan/compute(for:requestedContextSize:strategy:)``
+    /// or the ``ModelLoadPlan/compute(for:requestedContextSize:)`` overload that accepts
+    /// a ``ModelInfo`` value and picks the strategy automatically.
     public func loadModel(
         from modelInfo: ModelInfo,
         plan: ModelLoadPlan
