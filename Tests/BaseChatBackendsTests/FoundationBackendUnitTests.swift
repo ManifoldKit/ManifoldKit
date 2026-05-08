@@ -683,4 +683,5 @@ final class FoundationBackendUnitTests: XCTestCase {
         XCTAssertTrue(collectedDeltas.allSatisfy { $0 == "a" })
     }
 }
+
 #endif
