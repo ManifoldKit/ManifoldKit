@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.17.6](https://github.com/roryford/BaseChatKit/compare/v0.17.5...v0.17.6) (2026-05-08)
+
+### Fixes
+
+* **Full-trait test suite: 5 failures resolved** — Fixes `MLXDiffusionBackend.unloadModel()` crashing before any model is loaded, `detectPreset` tests hitting a Metal fatal-error path under `swift test`, `FoundationBackend` tests failing instead of skipping when Apple Intelligence isn't ready, the `APIConfigurationView` snapshot assertion matching the wrong string, and `test_z_contract_metaContract` seeing an empty claims registry due to `class setUp()` ordering ([bfbcf66](https://github.com/roryford/BaseChatKit/commit/bfbcf660a4405cb29cc46b6993c70a458d8aa73a))
+
 ## [0.17.5](https://github.com/roryford/BaseChatKit/compare/v0.17.4...v0.17.5) (2026-05-08)
 
 ### Fixes
