@@ -101,6 +101,7 @@ struct CLI {
         USAGE
           bck-tools [--scenario <id|all>] [--backend ollama|mock] [--model A,B]
                     [--output path.jsonl] [--real-network] [--list]
+          bck-tools test-uplift status|pause|resume|stop
 
         FLAGS
           --scenario <id>       Scenario id (matches JSON 'id') or 'all'. Default: all.
@@ -112,6 +113,9 @@ struct CLI {
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
           --list                Print available scenarios and exit.
           --help                Show this text.
+
+        SUBCOMMANDS
+          test-uplift           Inspect or control ~/.claude/state/bck-test-uplift/.
 
         EXIT
           0 — all scenarios passed.
@@ -126,9 +130,166 @@ struct CLI {
     }
 }
 
+enum TestUpliftCLI {
+    private static let stateDirectory = ".claude/state/bck-test-uplift"
+
+    static func run(_ argv: [String]) -> Int32 {
+        guard let command = argv.first else {
+            printUsage()
+            return 0
+        }
+        guard command != "--help", command != "-h" else {
+            printUsage()
+            return 0
+        }
+        guard argv.count == 1 else {
+            return fail("expected one of status, pause, resume, stop", code: 2)
+        }
+
+        switch command {
+        case "status": return printStatus()
+        case "pause": return writeControl("PAUSE")
+        case "resume": return writeControl("RUN")
+        case "stop": return writeControl("STOP")
+        default: return fail("expected one of status, pause, resume, stop", code: 2)
+        }
+    }
+
+    private static func printUsage() {
+        let text = """
+        bck-tools test-uplift — inspect and control the overnight test-uplift orchestrator
+
+        USAGE
+          bck-tools test-uplift status
+          bck-tools test-uplift pause|resume|stop
+
+        STATE
+          ~/.claude/state/bck-test-uplift/status.json
+          ~/.claude/state/bck-test-uplift/control
+        """
+        print(text)
+    }
+
+    private static func printStatus() -> Int32 {
+        let statusURL = stateURL().appendingPathComponent("status.json")
+        guard FileManager.default.fileExists(atPath: statusURL.path) else {
+            return fail("status file not found at \(statusURL.path)")
+        }
+
+        do {
+            let data = try Data(contentsOf: statusURL)
+            let json = try JSONSerialization.jsonObject(with: data)
+            guard let status = json as? [String: Any] else {
+                return fail("status file must contain a JSON object: \(statusURL.path)")
+            }
+
+            print("Test uplift status")
+            print("State: \(stateURL().path)")
+            print("Phase: \(stringValue(status, keys: ["current_phase", "currentPhase", "phase"]) ?? "unknown")")
+            printSection("In-flight workers", value(status, keys: ["in_flight_workers", "inFlightWorkers", "in_flight", "inFlight", "workers"]))
+            printSection("Queue", value(status, keys: ["queue", "queued", "pending"]))
+            printSection("Blockers", value(status, keys: ["blockers", "blocked"]) ?? blockersTSV())
+            return 0
+        } catch {
+            return fail("failed to read status: \(error)")
+        }
+    }
+
+    private static func writeControl(_ value: String) -> Int32 {
+        let directory = stateURL()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return fail("state directory not found at \(directory.path)")
+        }
+
+        let controlURL = directory.appendingPathComponent("control")
+        do {
+            try "\(value)\n".write(to: controlURL, atomically: true, encoding: .utf8)
+            print("Wrote \(value) to \(controlURL.path)")
+            return 0
+        } catch {
+            return fail("failed to write control file: \(error)")
+        }
+    }
+
+    private static func stateURL() -> URL {
+        if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
+            return URL(fileURLWithPath: home).appendingPathComponent(stateDirectory)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(stateDirectory)
+    }
+
+    private static func fail(_ message: String, code: Int32 = 1) -> Int32 {
+        FileHandle.standardError.write(Data("bck-tools test-uplift: \(message)\n".utf8))
+        return code
+    }
+
+    private static func value(_ status: [String: Any], keys: [String]) -> Any? {
+        for key in keys where status[key] != nil { return status[key] }
+        return nil
+    }
+
+    private static func stringValue(_ status: [String: Any], keys: [String]) -> String? {
+        guard let raw = value(status, keys: keys) else { return nil }
+        if let string = raw as? String { return string }
+        if let number = raw as? NSNumber { return number.stringValue }
+        return nil
+    }
+
+    private static func blockersTSV() -> [String]? {
+        let blockersURL = stateURL().appendingPathComponent("blockers.tsv")
+        guard FileManager.default.fileExists(atPath: blockersURL.path) else { return nil }
+        do {
+            let text = try String(contentsOf: blockersURL, encoding: .utf8)
+            return text.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
+        } catch {
+            return ["failed to read \(blockersURL.path): \(error)"]
+        }
+    }
+
+    private static func printSection(_ title: String, _ value: Any?) {
+        print("\(title):")
+        let rows = lines(value)
+        if rows.isEmpty {
+            print("  none")
+        } else {
+            for row in rows { print("  - \(row)") }
+        }
+    }
+
+    private static func lines(_ value: Any?) -> [String] {
+        guard let value else { return [] }
+        if let array = value as? [Any] { return array.flatMap(lines) }
+        if let dictionary = value as? [String: Any] {
+            guard !dictionary.isEmpty else { return [] }
+            let preferred = ["worker", "id", "branch", "pr", "status", "phase", "reason"]
+            let keys = preferred.filter { dictionary[$0] != nil } + dictionary.keys.sorted().filter { !preferred.contains($0) }
+            return [keys.map { "\($0)=\(describe(dictionary[$0] ?? ""))" }.joined(separator: " ")]
+        }
+        let text = describe(value)
+        return text.isEmpty ? [] : [text]
+    }
+
+    private static func describe(_ value: Any) -> String {
+        if let string = value as? String { return string }
+        if value is NSNull { return "null" }
+        if let number = value as? NSNumber { return number.stringValue }
+        guard JSONSerialization.isValidJSONObject(value) else { return String(describing: value) }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+            return String(data: data, encoding: .utf8) ?? String(describing: value)
+        } catch {
+            return String(describing: value)
+        }
+    }
+}
+
 @MainActor
 func runCLI() async -> Int32 {
     let argv = Array(CommandLine.arguments.dropFirst())
+    if argv.first == "test-uplift" {
+        return TestUpliftCLI.run(Array(argv.dropFirst()))
+    }
     let cli = CLI.parse(argv)
 
     let scenarios: [Scenario]
