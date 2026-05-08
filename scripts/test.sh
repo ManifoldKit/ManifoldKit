@@ -38,6 +38,9 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MIN_PASSED=0
 PARALLEL_MODE=0
 SWIFT_ARGS=()
+MCP_FILTER_REQUESTED=0
+MCP_TRAIT_REQUESTED=0
+TRAITS_ARG_INDEX=-1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --min-passed)
@@ -53,12 +56,56 @@ while [[ $# -gt 0 ]]; do
             SWIFT_ARGS+=("$1")
             shift
             ;;
+        --filter)
+            filter="${2:?'--filter requires a test filter argument'}"
+            if [[ "$filter" == *BaseChatMCPTests* || "$filter" == *BaseChatMCPE2ETests* || "$filter" == *BaseChatMCPE2ESmokeTests* ]]; then
+                MCP_FILTER_REQUESTED=1
+            fi
+            SWIFT_ARGS+=("$1" "$filter")
+            shift 2
+            ;;
+        --filter=*)
+            filter="${1#--filter=}"
+            if [[ "$filter" == *BaseChatMCPTests* || "$filter" == *BaseChatMCPE2ETests* || "$filter" == *BaseChatMCPE2ESmokeTests* ]]; then
+                MCP_FILTER_REQUESTED=1
+            fi
+            SWIFT_ARGS+=("$1")
+            shift
+            ;;
+        --traits)
+            traits="${2:?'--traits requires a comma-separated trait list'}"
+            if [[ ",$traits," == *",MCP,"* ]]; then
+                MCP_TRAIT_REQUESTED=1
+            fi
+            TRAITS_ARG_INDEX=$((${#SWIFT_ARGS[@]} + 1))
+            SWIFT_ARGS+=("$1" "$traits")
+            shift 2
+            ;;
+        --traits=*)
+            traits="${1#--traits=}"
+            if [[ ",$traits," == *",MCP,"* ]]; then
+                MCP_TRAIT_REQUESTED=1
+            fi
+            TRAITS_ARG_INDEX=${#SWIFT_ARGS[@]}
+            SWIFT_ARGS+=("$1")
+            shift
+            ;;
         *)
             SWIFT_ARGS+=("$1")
             shift
             ;;
     esac
 done
+
+if [[ $MCP_FILTER_REQUESTED -eq 1 && $MCP_TRAIT_REQUESTED -eq 0 ]]; then
+    # BaseChatMCP test sources are #if MCP-gated; without the trait SwiftPM
+    # builds an empty target and reports a false-green 0-test run.
+    if [[ $TRAITS_ARG_INDEX -ge 0 ]]; then
+        SWIFT_ARGS[$TRAITS_ARG_INDEX]="${SWIFT_ARGS[$TRAITS_ARG_INDEX]},MCP"
+    else
+        SWIFT_ARGS+=("--traits" "MCP")
+    fi
+fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────
 echo "Running swift test in: $PACKAGE_DIR"
