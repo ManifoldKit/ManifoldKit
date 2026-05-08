@@ -30,12 +30,30 @@ public enum ModelContainerFactory {
 
     /// Returns an on-disk `ModelContainer` configured with the current schema.
     ///
+    /// When `configurations` is omitted, the factory derives a per-app default
+    /// store URL from ``BaseChatConfiguration/bundleIdentifier``:
+    /// `<Application Support>/<bundleIdentifier>/store.sqlite`. This prevents
+    /// two BaseChatKit-based apps installed on the same machine from clobbering
+    /// each other's SwiftData store at
+    /// `<Application Support>/default.store` — a collision that previously
+    /// crashed the second app to launch with a schema-mismatch trap because
+    /// `BaseChatBootstrap`'s default container is built via `try!`.
+    ///
+    /// If the host has not customised ``BaseChatConfiguration/bundleIdentifier``
+    /// (still the framework default, `com.basechatkit`), the factory logs a
+    /// loud warning and falls back to SwiftData's default URL — the legacy
+    /// `default.store` path. Failures stay loud, never silent.
+    ///
+    /// To override entirely, pass an explicit `ModelConfiguration` with the
+    /// store URL of your choice (or call ``makeInMemoryContainer()`` for tests).
+    ///
     /// - Parameter configurations: Additional `ModelConfiguration` values to
-    ///   pass to `ModelContainer`. Defaults to a single default (on-disk) config.
+    ///   pass to `ModelContainer`. When omitted, defaults to a single
+    ///   per-app on-disk configuration as described above.
     /// - Returns: A `ModelContainer` using the current schema.
     /// - Throws: If `ModelContainer` initialisation fails.
     public static func makeContainer(
-        configurations: [ModelConfiguration] = [ModelConfiguration()]
+        configurations: [ModelConfiguration] = [defaultModelConfiguration()]
     ) throws -> ModelContainer {
         let container = try ModelContainer(
             for: Schema(versionedSchema: currentSchema),
@@ -44,6 +62,70 @@ public enum ModelContainerFactory {
         )
         applyFileProtection(to: configurations)
         return container
+    }
+
+    /// Returns the default on-disk `ModelConfiguration` used by
+    /// ``makeContainer(configurations:)`` when no explicit configurations are
+    /// supplied.
+    ///
+    /// The returned configuration points at
+    /// `<Application Support>/<bundleIdentifier>/store.sqlite`. The
+    /// per-bundle directory is created if missing. If
+    /// ``BaseChatConfiguration/bundleIdentifier`` is still the framework
+    /// default `com.basechatkit`, or Application Support cannot be located, the
+    /// fallback is the SwiftData default URL (the legacy `default.store`
+    /// path) — the failure mode is loud (logged warning), not silent.
+    public static func defaultModelConfiguration() -> ModelConfiguration {
+        guard let storeURL = defaultStoreURL() else {
+            return ModelConfiguration()
+        }
+        return ModelConfiguration(url: storeURL)
+    }
+
+    /// The default per-app store URL, or `nil` when the host has not configured
+    /// a non-default ``BaseChatConfiguration/bundleIdentifier`` or Application
+    /// Support cannot be resolved. Callers fall back to SwiftData's
+    /// `ModelConfiguration()` default in either case.
+    static func defaultStoreURL() -> URL? {
+        let bundleIdentifier = BaseChatConfiguration.shared.bundleIdentifier
+        if bundleIdentifier == BaseChatConfiguration.frameworkDefaultBundleIdentifier {
+            // We won't silently invent a path for hosts that forgot to set
+            // their own bundle identifier — two such apps would still collide.
+            // Fall back to SwiftData's default and shout about it: this is a
+            // host-configuration bug, not a recoverable runtime condition,
+            // but per BaseChatKit's error-handling policy it must not trap.
+            Log.persistence.warning(
+                "BaseChatConfiguration.shared.bundleIdentifier is still the framework default (\(bundleIdentifier, privacy: .public)). Two apps using this default will collide on a shared SwiftData store. Set BaseChatConfiguration.shared = BaseChatConfiguration(bundleIdentifier: \"com.your-app\") at app launch."
+            )
+            return nil
+        }
+
+        let fileManager = FileManager.default
+        let appSupport: URL
+        do {
+            appSupport = try fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+        } catch {
+            Log.persistence.warning(
+                "Failed to resolve Application Support directory: \(error.localizedDescription). Falling back to SwiftData default store URL."
+            )
+            return nil
+        }
+
+        let storeDirectory = appSupport.appendingPathComponent(bundleIdentifier, isDirectory: true)
+        do {
+            try fileManager.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
+        } catch {
+            Log.persistence.warning(
+                "Failed to create per-app SwiftData store directory at \(storeDirectory.path, privacy: .private): \(error.localizedDescription). Falling back to SwiftData default store URL."
+            )
+            return nil
+        }
+        return storeDirectory.appendingPathComponent("store.sqlite")
     }
 
     /// Returns an ephemeral in-memory `ModelContainer` configured with the

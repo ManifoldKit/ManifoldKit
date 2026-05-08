@@ -107,9 +107,15 @@ public struct BaseChatConfiguration: Sendable {
     /// fail-closed regardless of this setting.
     public var customHostTrustPolicy: CustomHostTrustPolicy
 
+    /// The framework's fallback ``bundleIdentifier``. Host apps that surface
+    /// this value back to the user (e.g. as part of a default-path
+    /// derivation) can compare against it to detect when the host forgot to
+    /// install a real configuration.
+    public static let frameworkDefaultBundleIdentifier = "com.basechatkit"
+
     public init(
         appName: String = "BaseChatKit",
-        bundleIdentifier: String = "com.basechatkit",
+        bundleIdentifier: String = BaseChatConfiguration.frameworkDefaultBundleIdentifier,
         modelsDirectoryName: String = "Models",
         features: Features = Features(),
         fileProtectionClass: FileProtectionType? = .completeUntilFirstUserAuthentication,
