@@ -214,6 +214,7 @@ enum BackendContractChecks {
     static func assertGrammarFailClosedContract<B: InferenceBackend>(
         backendName: String,
         makingBackend makeBackend: () -> B,
+        forbiddenRequestURL: URL? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws {
@@ -237,6 +238,7 @@ enum BackendContractChecks {
 
         var cfg = GenerationConfig()
         cfg.grammar = "root ::= \"hello\""
+        let capturedRequestsBefore = capturedRequestCount(for: forbiddenRequestURL)
 
         XCTAssertThrowsError(
             try backend.generate(prompt: "x", systemPrompt: nil, config: cfg),
@@ -251,6 +253,19 @@ enum BackendContractChecks {
                 return
             }
         }
+
+        XCTAssertEqual(
+            capturedRequestCount(for: forbiddenRequestURL),
+            capturedRequestsBefore,
+            "Backend must reject unsupported grammar before opening a network request",
+            file: file,
+            line: line
+        )
+    }
+
+    private static func capturedRequestCount(for url: URL?) -> Int {
+        guard let url else { return 0 }
+        return MockURLProtocol.capturedRequests.filter { $0.url == url }.count
     }
 
     // MARK: - True-claim convenience: claim-and-skip helper
