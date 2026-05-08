@@ -52,39 +52,82 @@ BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for 
 
 ## Architecture
 
-BaseChatKit is split into primary targets plus optional bridge modules:
+BaseChatKit ships **14 libraries**, **2 executables**, and **1 macro plugin**. The
+core runtime stack is six libraries; the rest are optional sibling modules and
+test-only targets gated behind SwiftPM traits.
+
+The diagram below shows the dependency graph for the targets a typical adopter
+cares about. Arrows point from a consumer toward its dependency:
 
 ```
-BaseChatUI ───────────────────────┐
-(Views, ViewModels)               │
-                                  ├──> BaseChatRuntime ──────> BaseChatInference
-BaseChatUIModelManagement ────────┘    (Ports, use cases,       (Protocols, Models,
-(model + endpoint UI; also             session-list,            Services, Inference
- depends on BaseChatUI)                 runtime events)          orchestration)
-                                            ▲                          ▲
-                                            │                          │
-BaseChatPersistenceSwiftData ───────────────┘                          │
-(SwiftData schema, @Model types,                                        │
- container, adapters, BaseChatBootstrap)                                │
-                                                                       │
-BaseChatMCP ───────────────────────────────────────────────────────────┤
-(MCP descriptors, client, tool bridge)                                  │
-                                                                       │
-BaseChatBackends ──────────────────────────────────────────────────────┘
-(MLX, llama.cpp, Foundation, Cloud)
+BaseChatVoice              BaseChatUIModelManagement
+(Voice trait)              (model browser + endpoint UI)
+        │                          │
+        └────────► BaseChatUI ◄────┘
+                       │
+                       ▼
+            BaseChatPersistenceSwiftData
+            (SwiftData schema, BaseChatBootstrap)
+                       │
+                       ▼
+                 BaseChatRuntime
+                 (Ports, use cases, ConversationRuntime)
+                       │
+                       ▼
+                BaseChatInference  ◄─── BaseChatBackends
+                (Protocols, services)   (MLX, llama.cpp,
+                       ▲                 Foundation, Cloud)
+                       │
+                BaseChatMCP
+                (MCP descriptors, client, tool bridge)
 ```
+
+`BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference` **directly**,
+not via `BaseChatRuntime` — that keeps both modules free of SwiftData so
+host apps can wire backends or MCP into a non-SwiftData runtime.
+
+### Core runtime targets
 
 - **BaseChatInference** — Inference orchestration. Protocols, models, and services for model loading, generation, context windows, prompt assembly, compression, tokenizers, and capability detection. No SwiftData. No ML dependencies. This is the integration point for custom backends and the minimum target for apps that bring their own persistence and UI.
-- **BaseChatMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`.
-- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), session-list orchestration, and `ConversationEvent` observability for turn state, token usage, and best-effort session-touch failures. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
+- **BaseChatMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`. Depends on `BaseChatInference` directly.
+- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), session-list orchestration, `ConversationEvent` observability, and the shared turn loop `ConversationRuntime`. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
 - **BaseChatPersistenceSwiftData** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, adapter implementations of the runtime ports, and the full-stack `BaseChatBootstrap` entry point.
 - **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatRuntime` or `BaseChatPersistenceSwiftData`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
-- **BaseChatUI** — SwiftUI views and view models. Depends on `BaseChatRuntime` and `BaseChatInference`; cloud endpoint state crosses the UI boundary as SwiftData-free `APIEndpointRecord` values supplied by an `EndpointStore`.
+- **BaseChatUI** — SwiftUI chat views and view models. Depends on `BaseChatRuntime` and `BaseChatInference`. Stays a chat-only consumer surface — never imports `BaseChatBackends` or `BaseChatUIModelManagement`. Cloud endpoint state crosses the UI boundary as SwiftData-free `APIEndpointRecord` values supplied by an `EndpointStore`.
+
+### Optional sibling modules
+
+- **BaseChatUIModelManagement** — Model browser, download UI, storage management, and cloud-endpoint editors (`APIConfigurationView`). Depends on `BaseChatUI`. The reverse edge is broken by closure-injecting `APIConfigurationView` via a `@ViewBuilder apiConfiguration:` parameter on `ChatView` — see [Building a Chat UI](Sources/BaseChatUI/BaseChatUI.docc/Articles/BuildingAChatUI.md) for the canonical wiring.
 - **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
 - **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
-- **BaseChatVoice** — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
-- **BaseChatServer** *(trait: `Server`, default-off)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. It validates unsupported request capabilities before dispatch and returns clear `invalid_request_error` responses with `unsupported_capability` codes. Server targets are trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands when working with `BaseChatServer`.
-- **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — Synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The macro plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
+- **BaseChatVoice** *(trait: `Voice`, default-off)* — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
+- **BaseChatServer** *(trait: `Server`, default-off, executable)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. Validates unsupported request capabilities before dispatch and returns clear `invalid_request_error` responses with `unsupported_capability` codes. Trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands.
+- **BaseChatTools** *(trait: `Tools`, default-off)* + **`bck-tools`** executable — End-to-end tool-calling validation harness and CLI for exercising `ToolRegistry` against real backends.
+- **BaseChatAppIntents** *(trait: `AppIntents`, default-off)* — Bridge between Apple `AppIntent` types and BaseChatKit's `ToolDefinition`, so iOS/macOS app intents can be exposed as tools to the inference layer.
+- **BaseChatFuzz** *(trait: `Fuzz`, default-off)* + **`fuzz-chat`** executable — Fuzzing harness that drives real backends with adversarial inputs. Run via `scripts/fuzz.sh`.
+- **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — `BaseChatMacrosPlugin` synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
+
+### Test-only targets
+
+`BaseChatTestSupport` ships shared mocks and fakes (`MockInferenceBackend`,
+`CharTokenizer`, `makeInMemoryContainer`, etc.) for app-level testing.
+`BaseChatMLXIntegrationTests` runs real MLX model E2E tests under Xcode (Metal
+shaders unavailable to `swift test`); see `scripts/test-mlx-integration.sh`.
+
+### Turn-loop orchestration
+
+`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`)
+is the **single turn loop** for chat. It owns `send`, `regenerate`, `edit`,
+`cancel`, and `branch` — there is no alternative path. Host apps get a
+configured `ConversationRuntime` from `BaseChatBootstrap` (exposed as
+`bootstrap.conversationRuntime`) and forward user actions to it via
+`ChatViewModel.configure(runtime:)` or `ChatViewModel.configure(conversationRuntime:)`.
+Custom adopters wiring their own runtime stack should still route every user
+turn through `ConversationRuntime` rather than calling `InferenceService`
+directly — anything else regresses cancellation, regenerate semantics, and
+session-touch observability. See
+[CONTRIBUTING.md → Architecture invariants](CONTRIBUTING.md#architecture-invariants)
+for the full list of dependency rules the lint enforces.
 
 ## Quick Start
 
@@ -260,6 +303,32 @@ audio-session coordinator activates `.playAndRecord` / `.spokenAudio` with
 `.defaultToSpeaker` and `.duckOthers` while capture is active, then deactivates
 the session when recording stops. Apps with their own audio-session policy can
 inject a custom transcriber or audio-session coordinator.
+
+### 2.4 Trait reference
+
+The full list of SwiftPM traits, derived from `Package.swift`. Defaults
+(`MLX`, `Llama`, `HuggingFace`) are enabled when callers don't pass
+`--disable-default-traits` or a custom `traits:` array.
+
+| Trait | Default? | Gates / pulls in |
+|-------|----------|-------------------|
+| `MLX` | Yes | `MLXBackend` (Apple Silicon, mlx-swift xcframework). |
+| `Llama` | Yes | `LlamaBackend` (GGUF via mattt/llama.swift xcframework). |
+| `HuggingFace` | Yes | `BaseChatHuggingFace` Hub search, browse, and background download/validation. |
+| `Ollama` | No | `OllamaBackend` (self-hosted HTTP at `localhost:11434` or custom host). |
+| `CloudSaaS` | No | `OpenAIBackend`, `ClaudeBackend`, and any third-party SaaS code paths. |
+| `MCP` | No | `BaseChatMCP` opt-in marker for consumer manifests. |
+| `MCPBuiltinCatalog` | No | Built-in `MCPCatalog` descriptors (`notion`, `linear`, `github`). |
+| `AnyLanguageModel` | No | `BaseChatAnyLanguageModelBridge` adapter over HuggingFace's `AnyLanguageModel`. |
+| `Voice` | No | `BaseChatVoice` speech I/O adapters and voice composer accessory. |
+| `Tools` | No | `BaseChatTools` tool-calling validation harness and `bck-tools` CLI. |
+| `AppIntents` | No | `BaseChatAppIntents` AppIntent ↔ ToolDefinition bridge. |
+| `Server` | No | `BaseChatServer` executable + Hummingbird HTTP dependency. |
+| `Macros` | No | `BaseChatMacrosPlugin` (`@ToolSchema`) + swift-syntax (~647 source files). |
+| `Fuzz` | No | Real backends in `fuzz-chat` for `scripts/fuzz.sh`. Not needed for `swift test`. |
+
+`Package.swift` is the authoritative source — add `--list-traits` to a
+`swift package` invocation if you suspect this table has drifted.
 
 ### 3. Create the runtime at app startup
 
@@ -681,7 +750,7 @@ Templates auto-detect from GGUF metadata when available. User content is sanitis
 
 ## Security
 
-See the [Security Model](Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md) DocC article for the full threat model, what BCK protects against, what remains your responsibility, and how to tune for stricter environments. A quick summary:
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model, what BCK protects against, what remains your responsibility, and how to tune for stricter environments. A quick summary:
 
 - API keys stored in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
 - Keys read just-in-time from Keychain rather than cached as long-lived properties; during an in-flight `URLSession` request the key bytes do exist in process memory as a Swift `String` and are not zeroized after use (see [docs/FIPS.md](docs/FIPS.md) §non-mitigations)

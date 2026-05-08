@@ -619,7 +619,7 @@ Ask these questions in order:
 import XCTest
 import SwiftData
 @testable import BaseChatUI
-import BaseChatCore
+import BaseChatInference
 import BaseChatTestSupport
 
 @MainActor

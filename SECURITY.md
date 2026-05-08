@@ -12,8 +12,7 @@ interfaces on Apple platforms. This document describes:
 - [Pending mitigations](#pending-mitigations) — known gaps with linked tracking issues.
 
 For the full threat model (assets, trust boundaries, mitigations, and known
-non-mitigations), see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The DocC article
-[Security Model](Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md)
+non-mitigations), see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). It also
 covers the in-source mitigations (transport pinning, SSRF gating, error sanitisation,
 SSE bounds, download path validation) at API granularity.
 
@@ -126,9 +125,9 @@ Same `offline` guarantees, plus:
 ```
 
 `saas` adds Claude and OpenAI backends. Pinning is **on by default** for both
-hosts — the framework fails closed if no pin matches. See the
-[Security Model](Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md#transport-security)
-DocC article for the SPKI pin set.
+hosts — the framework fails closed if no pin matches. See
+[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the SPKI pin set and the full
+transport-security boundary.
 
 #### `full` — every backend
 
@@ -264,10 +263,9 @@ checklist — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 ## Cross-references
 
-- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) — full threat model.
-- [Security Model](Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md) —
-  in-source DocC article on transport, SSRF, Keychain, error sanitisation, SSE bounds,
-  download validation.
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) — full threat model, including the
+  in-source mitigations (transport pinning, SSRF gating, Keychain, error sanitisation,
+  SSE bounds, download path validation) at API granularity.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contributor guide indexed by change type.
   Each change-type section lists the security-relevant gates.
 - [README.md](README.md) — quick-start, build-mode decision table, and feature
