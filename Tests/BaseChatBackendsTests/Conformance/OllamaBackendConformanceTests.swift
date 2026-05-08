@@ -6,18 +6,14 @@ import BaseChatTestSupport
 
 /// OllamaBackend conformance against the universal BCK backend contract.
 ///
-/// Grammar fail-closed is skipped: `supportsGrammarConstrainedSampling` is
-/// `false` for OllamaBackend but the backend does not check grammar before
-/// forwarding to Ollama — a real behavioral gap, not guarded via
-/// `withKnownIssue`. Capability claims are bootstrapped via
-/// `claimWithoutBehaviouralAssertion`; Phase C work will replace each with a
-/// real assertion family.
+/// Grammar fail-closed is asserted because OllamaBackend currently reports
+/// `supportsGrammarConstrainedSampling = false`.
 @MainActor
 final class OllamaBackendConformanceTests: XCTestCase {
 
     private let backendName = "OllamaBackend"
 
-    override func setUp() {
+    override class func setUp() {
         super.setUp()
         BackendContractChecks.resetCapabilityClaims()
     }
@@ -30,9 +26,30 @@ final class OllamaBackendConformanceTests: XCTestCase {
     }
 
     // MARK: - Grammar fail-closed
-    // Skipped: OllamaBackend.supportsGrammarConstrainedSampling = false but the
-    // backend does not validate grammar before forwarding the request to Ollama.
-    // This is a cloud-backend gap — no fail-closed throw is implemented.
+
+    func test_contract_grammarFailClosed() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [MockURLProtocol.self]
+        let baseURL = URL(string: "http://localhost/ollama-\(UUID().uuidString)")!
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: Data(#"{"capabilities":[]}"#.utf8),
+                statusCode: 200
+            )
+        )
+        defer { MockURLProtocol.unstub(url: showURL) }
+
+        try await BackendContractChecks.assertGrammarFailClosedContract(
+            backendName: backendName,
+            makingBackend: {
+                let backend = OllamaBackend(urlSession: URLSession(configuration: sessionConfig))
+                backend.configure(baseURL: baseURL, modelName: "llama3.2")
+                return backend
+            }
+        )
+    }
 
     // MARK: - Per-capability claims (bootstrap)
 

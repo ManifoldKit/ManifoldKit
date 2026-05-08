@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import BaseChatRuntime
 import BaseChatInference
@@ -352,3 +353,4 @@ public enum ConversationRuntimeScenarioRunner {
         return (true, nil)
     }
 }
+#endif

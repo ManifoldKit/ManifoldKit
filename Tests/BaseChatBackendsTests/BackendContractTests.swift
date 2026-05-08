@@ -210,6 +210,7 @@ enum BackendContractChecks {
     /// the flag's value. When the flag is `true` this method is a no-op
     /// (the true side will be claimed by a separate "grammar produces valid
     /// output" family in a future patch).
+    @MainActor
     static func assertGrammarFailClosedContract<B: InferenceBackend>(
         backendName: String,
         makingBackend makeBackend: () -> B,
@@ -230,7 +231,7 @@ enum BackendContractChecks {
         }
 
         try await backend.loadModel(
-            from: URL(fileURLWithPath: "/tmp/contract-grammar"),
+            from: URL(string: "unused:")!,
             plan: .testStub(effectiveContextSize: 512)
         )
 
