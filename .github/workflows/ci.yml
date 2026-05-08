@@ -12,6 +12,7 @@ on:
       - "scripts/test.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
+      - "scripts/cold-start*.sh"
   pull_request:
     branches: [main]
     paths:
@@ -23,6 +24,7 @@ on:
       - "scripts/test.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
+      - "scripts/cold-start*.sh"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
