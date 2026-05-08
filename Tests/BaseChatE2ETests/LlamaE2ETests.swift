@@ -92,9 +92,15 @@ final class LlamaE2ETests: XCTestCase {
         systemPrompt: String? = nil,
         maxTokens: Int = 64
     ) async throws -> String {
+        // `maxThinkingTokens: 0` so thinking-capable GGUFs (Qwen3 etc.) emit
+        // visible content immediately instead of consuming the budget on a
+        // `<think>` block. This suite asserts visible content is non-empty;
+        // the dedicated `LlamaThinkingE2ETests` suite covers the thinking
+        // pathway. See #1135.
         let config = GenerationConfig(
             temperature: 0.3,
-            maxOutputTokens: maxTokens
+            maxOutputTokens: maxTokens,
+            maxThinkingTokens: 0
         )
         // LlamaBackend does not apply chat templates — callers must format
         // prompts in the template the model was trained on. PromptTemplate
@@ -145,9 +151,11 @@ final class LlamaE2ETests: XCTestCase {
         // Shared backend is loaded at contextSize: 2048; maxOutputTokens must
         // leave room for the formatted prompt (≈47 tokens) or the new
         // context-exhaustion preflight will reject the request.
+        // See `generate(...)` for the `maxThinkingTokens: 0` rationale (#1135).
         let config = GenerationConfig(
             temperature: 0.7,
-            maxOutputTokens: 1024
+            maxOutputTokens: 1024,
+            maxThinkingTokens: 0
         )
 
         let formattedPrompt = PromptTemplate.chatML.format(
@@ -216,7 +224,8 @@ final class LlamaE2ETests: XCTestCase {
             messages: [(role: "user", content: longInput)],
             systemPrompt: nil
         )
-        let config = GenerationConfig(temperature: 0.3, maxOutputTokens: 32)
+        // See `generate(...)` for the `maxThinkingTokens: 0` rationale (#1135).
+        let config = GenerationConfig(temperature: 0.3, maxOutputTokens: 32, maxThinkingTokens: 0)
         let stream = try dedicatedBackend.generate(
             prompt: formattedPrompt,
             systemPrompt: nil,
