@@ -315,8 +315,7 @@ import BaseChatVoice
 
 ChatView(
     showModelManagement: $isModelManagementPresented,
-    composerAccessory: { VoiceComposerAccessory(controller: voice) },
-    apiConfiguration: { APIConfigurationView() }
+    composerAccessory: { VoiceComposerAccessory(controller: voice) }
 )
 ```
 
@@ -357,6 +356,115 @@ The full list of SwiftPM traits, derived from `Package.swift`. Defaults
 
 `Package.swift` is the authoritative source — add `--list-traits` to a
 `swift package` invocation if you suspect this table has drifted.
+
+### 2.5 Bring your own UI
+
+If you want host-owned SwiftUI views instead of `ChatView`, depend only on
+`BaseChatInference` plus the backends you want. This keeps SwiftData,
+`BaseChatRuntime`, `BaseChatUI`, and model-management UI out of your app graph.
+
+```swift
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+    name: "MyChatApp",
+    platforms: [.iOS(.v18), .macOS(.v15)],
+    dependencies: [
+        .package(
+            url: "https://github.com/roryford/BaseChatKit.git",
+            from: "1.0.0",
+            traits: [
+                .trait(name: "MLX"),
+                .trait(name: "Llama"),
+                // Add CloudSaaS or Ollama only if your UI exposes those providers.
+            ]
+        )
+    ],
+    targets: [
+        .target(
+            name: "MyChatApp",
+            dependencies: [
+                .product(name: "BaseChatInference", package: "BaseChatKit"),
+                .product(name: "BaseChatBackends", package: "BaseChatKit"),
+            ]
+        )
+    ]
+)
+```
+
+Own the observable state in your app, register the compiled backends once, load a
+`ModelInfo`, and stream `GenerationEvent.token` values into your transcript:
+
+```swift
+import Observation
+import SwiftUI
+import BaseChatInference
+import BaseChatBackends
+
+@MainActor
+@Observable
+final class HostChatStore {
+    var transcript: [(role: String, content: String)] = []
+    var draft = ""
+    var errorMessage: String?
+
+    private let inference = InferenceService()
+
+    init() {
+        DefaultBackends.register(with: inference)
+    }
+
+    func loadFoundationIfAvailable() async {
+        guard #available(iOS 26, macOS 26, *), FoundationBackend.isAvailable else { return }
+
+        do {
+            try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func send() async {
+        let prompt = draft
+        draft = ""
+        transcript.append(("user", prompt))
+        transcript.append(("assistant", ""))
+
+        do {
+            let stream = try inference.generate(messages: transcript)
+            for try await event in stream {
+                if case .token(let text) = event {
+                    transcript[transcript.count - 1].content += text
+                }
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct HostChatView: View {
+    @State private var store = HostChatStore()
+
+    var body: some View {
+        VStack {
+            List(store.transcript, id: \.content) { message in
+                Text("\(message.role): \(message.content)")
+            }
+            TextField("Message", text: $store.draft)
+                .onSubmit { Task { await store.send() } }
+        }
+        .task { await store.loadFoundationIfAvailable() }
+    }
+}
+```
+
+BaseChatKit's view models and services use Swift Observation (`@Observable`),
+not Combine `ObservableObject`. In SwiftUI, store them in `@State` and inject
+them with `.environment(value)`, then read them with `@Environment(Type.self)`.
+Use `ObservableObject` only in a host-owned adapter when you must bridge to
+legacy Combine-based views.
 
 ### 3. Create the runtime at app startup
 
@@ -581,7 +689,7 @@ endpoint and diagnostics wiring.
 |------|---------|--------|--------|-------------|
 | GGUF | `LlamaBackend` (llama.cpp) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/roryford/BaseChatKit/issues/416) |
 | MLX | `MLXBackend` (mlx-swift) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
-| Foundation | `FoundationBackend` | Built-in (no download) | Apple Intelligence | No public FoundationModels image-input API yet |
+| Foundation | `FoundationBackend` | `ModelInfo.builtInFoundation` (built-in, no download) | Apple Intelligence | No public FoundationModels image-input API yet |
 | OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | Vision-capable models |
 | Claude | `ClaudeBackend` | Cloud API | api.anthropic.com | Vision-capable models |
 | Ollama | `OpenAIBackend` | Local API | localhost:11434 | Vision-capable OpenAI-compatible models |

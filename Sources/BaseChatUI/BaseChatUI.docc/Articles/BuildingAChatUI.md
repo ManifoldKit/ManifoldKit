@@ -82,10 +82,7 @@ struct RootView: View {
         NavigationSplitView {
             SessionListView()
         } detail: {
-            ChatView(
-                showModelManagement: .constant(false),
-                apiConfiguration: { EmptyView() }
-            )
+            ChatView(showModelManagement: .constant(false))
         }
         .onChange(of: sessionVM.activeSession) { _, newSession in
             guard let newSession, chatVM.activeSession?.id != newSession.id else { return }
@@ -248,7 +245,7 @@ struct RootView: View {
 }
 ```
 
-Hosts that don't use `BaseChatUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) pass `apiConfiguration: { EmptyView() }` to satisfy the parameter.
+Hosts that don't use `BaseChatUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) can use `ChatView(showModelManagement:)`; the `APIConfig == EmptyView` convenience initializer supplies the empty API sheet for them.
 
 The closure is invoked at sheet/popover presentation time, not at `ChatView` init, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction.
 

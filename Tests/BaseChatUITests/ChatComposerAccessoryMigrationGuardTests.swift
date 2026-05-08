@@ -12,12 +12,20 @@ import SwiftUI
 final class ChatComposerAccessoryMigrationGuardTests: XCTestCase {
 
     @MainActor
+    func test_chatView_isInstantiableWithoutAPIConfigurationView() {
+        let view: AnyView = AnyView(
+            ChatView(showModelManagement: .constant(false))
+        )
+
+        XCTAssertNotNil(view)
+    }
+
+    @MainActor
     func test_chatView_isInstantiableWithComposerAccessoryUnderDisabledTraits() {
         let view: AnyView = AnyView(
             ChatView(
                 showModelManagement: .constant(false),
-                composerAccessory: { Text("Voice spike") },
-                apiConfiguration: { EmptyView() }
+                composerAccessory: { Text("Voice spike") }
             )
         )
 
