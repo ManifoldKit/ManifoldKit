@@ -220,6 +220,19 @@ jobs:
 
           echo "✓ All ${#hits[@]} withKnownIssue usage(s) have a tracking // FIXME link."
 
+      # ── readme-lint ───────────────────────────────────────────────────────
+      # Tripwire for stale README API references. Ensures the install pin
+      # matches version.txt and that no deleted public API names re-appear in
+      # the README. See scripts/check-readme.sh for the full rationale.
+      #
+      # The script's path is in this workflow's trigger so an edit to the
+      # script revalidates against the current README. README edits also
+      # re-run this job because the workflow has no `paths:` filter; running
+      # on every PR keeps the cost negligible (a single grep pass).
+      - name: readme-lint — verify README install pin and API references
+        if: always()
+        run: scripts/check-readme.sh
+
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets
         if: always()
