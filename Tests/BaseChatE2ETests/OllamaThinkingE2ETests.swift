@@ -3,7 +3,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// End-to-end tests for thinking/reasoning model behaviour on a real Ollama server.

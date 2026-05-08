@@ -2,7 +2,7 @@
 import Foundation
 @testable import BaseChatRuntime
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Perf-audit ground-truth: cost of `ConversationRuntime.branch(...)` when the
 /// source session carries image attachments. The audit estimated branch on a

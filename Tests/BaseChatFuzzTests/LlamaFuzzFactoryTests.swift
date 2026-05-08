@@ -3,7 +3,7 @@
 import XCTest
 import BaseChatFuzz
 import BaseChatFuzzBackends
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 final class LlamaFuzzFactoryTests: XCTestCase {
 

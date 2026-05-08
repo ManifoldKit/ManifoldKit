@@ -4,7 +4,7 @@ import SwiftData
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Integration tests for ``ChatViewModel/ingest(_:)``.
 ///

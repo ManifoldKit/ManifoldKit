@@ -1,7 +1,7 @@
 #if Ollama
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// End-to-end tool-calling test against a real local Ollama server.

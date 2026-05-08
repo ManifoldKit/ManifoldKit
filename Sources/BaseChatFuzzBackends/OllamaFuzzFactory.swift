@@ -3,13 +3,12 @@ import Foundation
 import BaseChatBackends
 import BaseChatFuzz
 import BaseChatInference
-import BaseChatTestSupport
 
 /// `FuzzBackendFactory` conformance that instantiates a fresh `OllamaBackend`
 /// configured against a local Ollama server.
 ///
 /// When used directly, the factory honours the existing
-/// `HardwareRequirements.findOllamaModel` selection rules, including the
+/// `FuzzModelDiscovery.selectModel` selection rules, including the
 /// `OLLAMA_TEST_MODEL` environment override. `makeCampaignFactory(modelHint:)`
 /// preserves the CLI's rotate-all default when no explicit model hint is given.
 public struct OllamaFuzzFactory: FuzzBackendFactory {
@@ -30,9 +29,9 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
     public func makeHandle() async throws -> FuzzRunner.BackendHandle {
         // Single `/api/tags` round-trip per iteration: select from the
         // already-fetched list rather than re-querying via
-        // `HardwareRequirements.findOllamaModel`, which would hit the endpoint
+        // `FuzzModelDiscovery.selectModel`, which would hit the endpoint
         // again. In rotation mode this halves the per-iteration request count.
-        guard let models = HardwareRequirements.listOllamaModels() else {
+        guard let models = FuzzModelDiscovery.listOllamaModels(baseURL: baseURL) else {
             throw FuzzBackendFactoryError(
                 "No Ollama server reachable at \(baseURL.absoluteString). Start with: ollama serve"
             )
@@ -73,7 +72,7 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> any FuzzBackendFactory {
         guard let normalizedHint = normalizedModelHint(modelHint) else {
-            guard let models = HardwareRequirements.listOllamaModels() else {
+            guard let models = FuzzModelDiscovery.listOllamaModels(baseURL: baseURL) else {
                 throw FuzzBackendFactoryError(
                     "No Ollama server reachable at \(baseURL.absoluteString). Start with: ollama serve"
                 )
@@ -101,7 +100,7 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
     }
 
     /// Selects an Ollama model from a pre-fetched name list, applying the same
-    /// precedence as the per-call helpers in `HardwareRequirements`:
+    /// precedence as the per-call helpers in `FuzzModelDiscovery`:
     /// 1. explicit `modelHint` (substring match, case-insensitive)
     /// 2. `OLLAMA_TEST_MODEL` env override (substring match)
     /// 3. first model in the list (rotation deterministically pins one model

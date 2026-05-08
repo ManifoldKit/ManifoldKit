@@ -1,5 +1,5 @@
 import XCTest
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Tests for the ``withTimeout`` helper in `BaseChatTestSupport`.
 ///

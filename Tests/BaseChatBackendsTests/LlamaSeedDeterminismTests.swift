@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Verifies that ``GenerationConfig/seed`` makes ``LlamaBackend`` token streams

@@ -3,7 +3,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// True end-to-end tests using a real MLX model on Apple Silicon.

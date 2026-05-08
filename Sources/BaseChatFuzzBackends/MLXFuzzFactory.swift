@@ -3,7 +3,6 @@ import Foundation
 import BaseChatBackends
 import BaseChatFuzz
 import BaseChatInference
-import BaseChatTestSupport
 
 /// `FuzzBackendFactory` conformance that instantiates `MLXBackend` from a local
 /// safetensors directory.
@@ -27,7 +26,7 @@ public struct MLXFuzzFactory: FuzzBackendFactory {
 
     @MainActor
     public func makeHandle() async throws -> FuzzRunner.BackendHandle {
-        guard let modelURL = HardwareRequirements.findMLXModelDirectory(
+        guard let modelURL = FuzzModelDiscovery.findMLXModelDirectory(
             nameContains: modelHint,
             environment: environment
         ) else {
@@ -39,7 +38,7 @@ public struct MLXFuzzFactory: FuzzBackendFactory {
         let backend = MLXBackend()
         try await backend.loadModel(
             from: modelURL,
-            plan: .testStub(effectiveContextSize: 4096)
+            plan: .fuzzStub(effectiveContextSize: 4096)
         )
         return FuzzRunner.BackendHandle(
             backend: backend,

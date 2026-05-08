@@ -3,7 +3,6 @@ import Foundation
 import BaseChatBackends
 import BaseChatFuzz
 import BaseChatInference
-import BaseChatTestSupport
 
 /// `FuzzBackendFactory` conformance that instantiates `LlamaBackend` against a
 /// single GGUF model selected from the local model directories.
@@ -28,7 +27,7 @@ public final class LlamaFuzzFactory: FuzzBackendFactory, @unchecked Sendable {
     public var supportsDeterministicReplay: Bool { true }
 
     public func makeHandle() async throws -> FuzzRunner.BackendHandle {
-        guard let modelURL = HardwareRequirements.findGGUFModel(
+        guard let modelURL = FuzzModelDiscovery.findGGUFModel(
             nameContains: modelHint,
             environment: environment
         ) else {
@@ -40,7 +39,7 @@ public final class LlamaFuzzFactory: FuzzBackendFactory, @unchecked Sendable {
         let backend = LlamaBackend()
         try await backend.loadModel(
             from: modelURL,
-            plan: .testStub(effectiveContextSize: 4096)
+            plan: .fuzzStub(effectiveContextSize: 4096)
         )
         self.backend = backend
         return FuzzRunner.BackendHandle(

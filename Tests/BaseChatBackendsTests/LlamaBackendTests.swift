@@ -3,7 +3,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Tests for LlamaBackend state, capabilities, and error handling.

@@ -3,7 +3,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Isolated unit tests for `FoundationBackend` state management and guard paths.

@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Real-hardware conformance suite for ``LlamaEmbeddingBackend`` against

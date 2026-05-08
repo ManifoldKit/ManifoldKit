@@ -2,7 +2,7 @@
 import XCTest
 import BaseChatInference
 import BaseChatTools
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// True end-to-end coverage of the four P1 demo scenarios against a real

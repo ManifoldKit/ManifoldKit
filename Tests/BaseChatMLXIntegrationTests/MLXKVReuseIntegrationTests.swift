@@ -1,7 +1,7 @@
 #if MLX
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Real-MLX measurement of KV-cache prefix reuse across two consecutive turns.

@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Integration determinism coverage for the XTC and Mirostat v2 sampler additions.

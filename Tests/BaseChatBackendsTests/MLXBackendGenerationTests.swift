@@ -4,7 +4,7 @@ import MLXLMCommon
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 // Conform MockMLXModelContainer to the internal protocol in this test target,

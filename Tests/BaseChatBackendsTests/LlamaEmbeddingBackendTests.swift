@@ -2,7 +2,7 @@
 import XCTest
 @testable import BaseChatInference
 @testable import BaseChatBackends
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Locates a GGUF embedding model on disk for `LlamaEmbeddingBackend` tests.
 ///

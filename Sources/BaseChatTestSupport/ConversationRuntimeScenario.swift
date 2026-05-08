@@ -35,12 +35,12 @@ import BaseChatInference
 ///     backend: MockInferenceBackend()
 /// )
 /// ```
-public struct ConversationRuntimeScenario: Sendable, Codable {
+struct ConversationRuntimeScenario: Sendable, Codable {
 
-    public struct Step: Sendable, Codable {
+    struct Step: Sendable, Codable {
 
         /// User-facing action driven against the runtime turn-loop.
-        public enum Action: Sendable, Codable, Equatable {
+        enum Action: Sendable, Codable, Equatable {
             case send(text: String)
             case regenerate
             /// Send a message but cancel the stream after observing
@@ -49,31 +49,31 @@ public struct ConversationRuntimeScenario: Sendable, Codable {
             case cancelMidStream(text: String, cancelAfterTokens: Int)
         }
 
-        public let action: Action
+        let action: Action
 
         /// Tokens the backend should yield for this step's stream. Nil leaves
         /// the backend's existing `tokensToYield` in place.
-        public let scriptedTokens: [String]?
+        let scriptedTokens: [String]?
 
-        public init(action: Action, scriptedTokens: [String]? = nil) {
+        init(action: Action, scriptedTokens: [String]? = nil) {
             self.action = action
             self.scriptedTokens = scriptedTokens
         }
     }
 
-    public let steps: [Step]
+    let steps: [Step]
 
     /// If non-nil, the final assistant message's text content must contain
     /// this substring. OOD nonces are encouraged so a passing scenario
     /// can't be reproduced by a mock that silently swallows the script.
-    public let expectedFinalAssistantContains: String?
+    let expectedFinalAssistantContains: String?
 
     /// If non-nil, the number of assistant messages persisted after all
     /// steps complete must equal this value. Discriminates send (appends)
     /// from regenerate (replaces).
-    public let expectedAssistantMessageCount: Int?
+    let expectedAssistantMessageCount: Int?
 
-    public init(
+    init(
         steps: [Step],
         expectedFinalAssistantContains: String? = nil,
         expectedAssistantMessageCount: Int? = nil
@@ -86,31 +86,31 @@ public struct ConversationRuntimeScenario: Sendable, Codable {
 
 /// Result of running a ``ConversationRuntimeScenario`` through the
 /// composition harness. Per-step outcomes plus a final aggregate.
-public struct ConversationRuntimeScenarioResult: Sendable {
+struct ConversationRuntimeScenarioResult: Sendable {
 
-    public struct StepResult: Sendable {
-        public let action: ConversationRuntimeScenario.Step.Action
-        public let tokensObserved: [String]
+    struct StepResult: Sendable {
+        let action: ConversationRuntimeScenario.Step.Action
+        let tokensObserved: [String]
         /// `true` when the step completed normally; `false` when it ended
         /// in error (e.g. cancelled streams) — note that `cancelMidStream`
         /// is *expected* to end in error, so `success=false` is fine there.
-        public let endedNormally: Bool
-        public let error: Error?
+        let endedNormally: Bool
+        let error: Error?
     }
 
-    public let stepResults: [StepResult]
+    let stepResults: [StepResult]
 
     /// Concatenation of all `tokensObserved` across all steps, in order.
-    public let allTokensObserved: [String]
+    let allTokensObserved: [String]
 
     /// All assistant message contents persisted at the end, in order.
-    public let finalAssistantContents: [String]
+    let finalAssistantContents: [String]
 
     /// `true` when both expected predicates (if non-nil) hold.
-    public let assertionsPassed: Bool
+    let assertionsPassed: Bool
 
     /// Human-readable diagnostic when ``assertionsPassed`` is `false`.
-    public let assertionFailureReason: String?
+    let assertionFailureReason: String?
 }
 
 /// Drives a ``ConversationRuntimeScenario`` against a fresh in-memory
@@ -120,13 +120,13 @@ public struct ConversationRuntimeScenarioResult: Sendable {
 /// runs every step, and returns the result. Tests should NOT cache a runner
 /// instance across scenarios; each `run(...)` call gets its own state.
 @MainActor
-public enum ConversationRuntimeScenarioRunner {
+enum ConversationRuntimeScenarioRunner {
 
     /// Runs the scenario and returns the aggregated result. Throws only on
     /// infrastructure failures (e.g. failure to construct the SwiftData
     /// container). Step-level errors are recorded in `stepResults` and do
     /// not throw.
-    public static func run(
+    static func run(
         scenario: ConversationRuntimeScenario,
         backend: MockInferenceBackend
     ) async throws -> ConversationRuntimeScenarioResult {

@@ -168,7 +168,7 @@ final class MemoryPressureCallbackAPITests: XCTestCase {
 
 #if Llama
 @testable import BaseChatBackends
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 // MARK: - Hardware-gated tests
 

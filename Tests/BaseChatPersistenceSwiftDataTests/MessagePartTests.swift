@@ -2,7 +2,7 @@ import XCTest
 import SwiftData
 @testable import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 final class MessagePartTests: XCTestCase {
 

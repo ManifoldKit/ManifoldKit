@@ -1,5 +1,5 @@
 import XCTest
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatInference
 
 final class RetryPolicyTests: XCTestCase {
