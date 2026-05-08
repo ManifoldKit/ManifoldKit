@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.8](https://github.com/roryford/BaseChatKit/compare/v0.17.7...v0.17.8) (2026-05-08)
+
+
+### Features
+
+* **Scripted-driver ergonomics and per-app model storage** — `ChatViewModel` gains `sendMessage(_ text: String) async throws -> ChatMessageRecord` (drives one turn without set-then-observe boilerplate) and `lastTurnState: TurnState` (`.idle / .generating / .completed(record) / .failed(error)`). `ModelStorageService.modelsDirectory` now defaults to `<Application Support>/<bundleIdentifier>/Models` so multiple BCK-based apps on the same device each see only their own models; pass `baseDirectory:` at init to opt into a shared pool ([#1111](https://github.com/roryford/BaseChatKit/issues/1111))
+
 ## [0.17.7](https://github.com/roryford/BaseChatKit/compare/v0.17.6...v0.17.7) (2026-05-08)
 
 ### Features
