@@ -1,7 +1,7 @@
 import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Contract tests that lock down capability fields on every concrete backend.

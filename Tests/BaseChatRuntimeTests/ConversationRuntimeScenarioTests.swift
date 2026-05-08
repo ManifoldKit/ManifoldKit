@@ -2,7 +2,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Demonstrates the ``ConversationRuntimeScenario`` harness against
 /// `MockInferenceBackend`. Exists primarily to lock the harness contract:

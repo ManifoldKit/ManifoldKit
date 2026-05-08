@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Perf-audit α-1 ground-truth: real-Llama KV-cache-reuse coverage.

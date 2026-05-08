@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Regression tests for the `parse_special: true` fix in `LlamaTokenization.tokenize`

@@ -2,7 +2,7 @@
 import XCTest
 @testable import BaseChatBackends
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Characterization (not specification) tests for `LlamaBackend`'s load-serialization
 /// machinery. Pins the current observable behavior of:

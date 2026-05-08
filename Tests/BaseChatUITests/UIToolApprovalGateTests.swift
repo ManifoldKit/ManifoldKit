@@ -1,6 +1,6 @@
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatUI
 
 /// Behavioural tests for ``UIToolApprovalGate``. These exercise the policy

@@ -2,7 +2,7 @@
 import XCTest
 @testable import BaseChatInference
 @testable import BaseChatBackends
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Auto-discovery tests for `LlamaBackend`'s thinking-marker plumbing.
 ///

@@ -552,7 +552,6 @@ let package = Package(
             dependencies: [
                 "BaseChatFuzz",
                 "BaseChatInference",
-                "BaseChatTestSupport",
                 "BaseChatBackends",
             ],
             path: "Sources/BaseChatFuzzBackends",

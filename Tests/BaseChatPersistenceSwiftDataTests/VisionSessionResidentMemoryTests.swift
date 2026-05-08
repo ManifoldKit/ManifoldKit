@@ -2,7 +2,7 @@ import XCTest
 import SwiftData
 @testable import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Perf-audit ground-truth: measures the resident-memory delta between a
 /// vision session (50 messages, every other one carrying an image attachment)

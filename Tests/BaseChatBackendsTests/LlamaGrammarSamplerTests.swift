@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Tests for GBNF grammar-constrained sampling in LlamaBackend/LlamaGenerationDriver.

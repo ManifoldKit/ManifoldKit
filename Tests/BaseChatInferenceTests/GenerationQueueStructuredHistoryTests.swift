@@ -1,6 +1,6 @@
 import XCTest
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Tests for #482: ``GenerationQueue`` must thread
 /// ``StructuredMessage`` (carrying ``MessagePart`` content including

@@ -5,7 +5,7 @@ import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 @testable import BaseChatUI
 

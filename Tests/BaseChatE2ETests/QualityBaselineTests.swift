@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Quality baseline: compares deterministic token-id output against stored fixtures.

@@ -2,7 +2,7 @@ import XCTest
 import SwiftData
 @testable import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Perf-audit ground-truth: confirms that persisting `MessagePart.image(data:)`
 /// through the SwiftData JSON column inflates on-disk bytes by ~1.33×, the

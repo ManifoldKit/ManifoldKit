@@ -122,10 +122,10 @@ public func currentResidentBytes() -> UInt64 {
 
 /// Error thrown by ``withTimeout(_:file:line:_:)`` when the wrapped operation
 /// exceeds its deadline.
-public enum TimeoutError: Error, CustomStringConvertible, Equatable {
+enum TimeoutError: Error, CustomStringConvertible, Equatable {
     case timedOut(Duration)
 
-    public var description: String {
+    var description: String {
         switch self {
         case .timedOut(let duration):
             return "Operation timed out after \(duration)"

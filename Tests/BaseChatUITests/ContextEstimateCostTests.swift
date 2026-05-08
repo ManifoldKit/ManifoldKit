@@ -4,7 +4,7 @@ import SwiftData
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Perf-audit β-1: ChatViewModel hot-path measurements for `updateContextEstimate`.
 ///

@@ -3,7 +3,7 @@
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 
 /// Tests for the logic that drives ChatInputBar's enabled/disabled states.
 ///

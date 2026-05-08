@@ -3,7 +3,7 @@ import XCTest
 import BaseChatRuntime
 import BaseChatPersistenceSwiftData
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 import BaseChatBackends
 
 /// True end-to-end tests hitting a real local GGUF model through `LlamaBackend`.

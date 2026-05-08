@@ -1,7 +1,7 @@
 #if MLX
 import XCTest
 import BaseChatInference
-import BaseChatTestSupport
+@testable import BaseChatTestSupport
 @testable import BaseChatBackends
 
 /// Real-inference smoke test for `mlx-community/gemma-4-26b-a4b-it-4bit`,
