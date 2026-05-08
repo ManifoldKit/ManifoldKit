@@ -319,6 +319,58 @@ public struct ModelLoadPlan: Sendable {
         return compute(inputs: inputs)
     }
 
+    /// Ergonomic factory that infers the right `MemoryStrategy` from `model.modelType`.
+    ///
+    /// Callers that have a `ModelInfo` but no live backend instance can build a plan
+    /// without first looking up which `MemoryStrategy` each model format requires. The
+    /// mapping mirrors the default backend roster registered by `DefaultBackends`:
+    ///
+    /// | `ModelType`   | Strategy     | Why                                              |
+    /// |---------------|--------------|--------------------------------------------------|
+    /// | `.foundation` | `.external`  | OS owns memory; delegates to `systemManaged`.    |
+    /// | `.mlx`        | `.resident`  | Weights must be fully resident (unified memory). |
+    /// | `.gguf`       | `.mappable`  | llama.cpp mmap; only active pages need RAM.      |
+    ///
+    /// Prefer this overload over `compute(for:requestedContextSize:strategy:)` when
+    /// you do *not* need to override the strategy — pre-load UI badges, recommendation
+    /// paths, and the standard load flow all want the canonical strategy for the
+    /// model's format. The strategy-explicit overload is still available for advanced
+    /// callers that register a non-default backend (e.g. an MLX backend with a
+    /// hypothetical mmap mode) and want to model that explicitly.
+    ///
+    /// For `.foundation`, the result is identical to ``systemManaged(requestedContextSize:)``
+    /// — the OS owns memory and there is nothing to estimate.
+    public static func compute(
+        for model: ModelInfo,
+        requestedContextSize: Int,
+        environment: Environment = .current,
+        absoluteContextCeiling: Int = 128_000,
+        headroomFraction: Double = 0.40
+    ) -> ModelLoadPlan {
+        switch model.modelType {
+        case .foundation:
+            return systemManaged(requestedContextSize: requestedContextSize)
+        case .mlx:
+            return compute(
+                for: model,
+                requestedContextSize: requestedContextSize,
+                strategy: .resident,
+                environment: environment,
+                absoluteContextCeiling: absoluteContextCeiling,
+                headroomFraction: headroomFraction
+            )
+        case .gguf:
+            return compute(
+                for: model,
+                requestedContextSize: requestedContextSize,
+                strategy: .mappable,
+                environment: environment,
+                absoluteContextCeiling: absoluteContextCeiling,
+                headroomFraction: headroomFraction
+            )
+        }
+    }
+
     /// For system-managed backends (Apple Foundation Models) where memory is owned
     /// by the OS and there's nothing to estimate. Always allows with stub fields.
     public static func systemManaged(requestedContextSize: Int) -> ModelLoadPlan {

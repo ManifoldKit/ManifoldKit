@@ -917,6 +917,98 @@ final class ModelLoadPlanTests: XCTestCase {
         // here, because a 140 GB file cannot fit with only 4 GB resident.
         XCTAssertEqual(plan.verdict, .deny)
     }
+
+    // MARK: - ModelType-driven overload
+
+    /// `.foundation` ModelInfo must produce a plan identical to `systemManaged(...)`.
+    /// The OS owns memory; the plan is a stub-allow regardless of `environment`.
+    func test_computeForModelInfo_foundation_matchesSystemManaged() {
+        let model = ModelInfo(
+            name: "AppleFoundation",
+            fileName: "",
+            url: URL(fileURLWithPath: "/dev/null"),
+            fileSize: 0,
+            modelType: .foundation,
+            detectedContextLength: nil,
+            estimatedKVBytesPerToken: nil
+        )
+        let inferred = ModelLoadPlan.compute(for: model, requestedContextSize: 4096)
+        let expected = ModelLoadPlan.systemManaged(requestedContextSize: 4096)
+
+        XCTAssertEqual(inferred.verdict, expected.verdict)
+        XCTAssertEqual(inferred.effectiveContextSize, expected.effectiveContextSize)
+        XCTAssertEqual(inferred.outcome, expected.outcome)
+        XCTAssertEqual(inferred.inputs, expected.inputs)
+    }
+
+    /// `.gguf` ModelInfo must produce a plan equivalent to the explicit overload
+    /// with `.mappable` — the strategy llama.cpp actually declares in production.
+    /// (LlamaBackend.capabilities.memoryStrategy == .mappable).
+    func test_computeForModelInfo_gguf_matchesMappableExplicit() {
+        let model = ModelInfo(
+            name: "test",
+            fileName: "test.gguf",
+            url: URL(fileURLWithPath: "/tmp/test.gguf"),
+            fileSize: 4 * oneGB,
+            modelType: .gguf,
+            detectedContextLength: 8192,
+            estimatedKVBytesPerToken: 65_536
+        )
+        let twoGBLocal = 2 * oneGB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { twoGBLocal },
+            physicalMemoryBytes: 16 * oneGB
+        )
+        let inferred = ModelLoadPlan.compute(
+            for: model,
+            requestedContextSize: 4096,
+            environment: env
+        )
+        let explicit = ModelLoadPlan.compute(
+            for: model,
+            requestedContextSize: 4096,
+            strategy: .mappable,
+            environment: env
+        )
+
+        XCTAssertEqual(inferred.outcome, explicit.outcome)
+        XCTAssertEqual(inferred.inputs, explicit.inputs)
+        XCTAssertEqual(inferred.inputs.memoryStrategy, .mappable)
+    }
+
+    /// `.mlx` ModelInfo must produce a plan equivalent to the explicit overload
+    /// with `.resident` — MLXBackend.capabilities.memoryStrategy == .resident.
+    func test_computeForModelInfo_mlx_matchesResidentExplicit() {
+        let model = ModelInfo(
+            name: "test-mlx",
+            fileName: "model.safetensors",
+            url: URL(fileURLWithPath: "/tmp/mlx-model"),
+            fileSize: 4 * oneGB,
+            modelType: .mlx,
+            detectedContextLength: 8192,
+            estimatedKVBytesPerToken: 65_536
+        )
+        let eightGBLocal = 8 * oneGB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { eightGBLocal },
+            physicalMemoryBytes: 16 * oneGB
+        )
+        let inferred = ModelLoadPlan.compute(
+            for: model,
+            requestedContextSize: 4096,
+            environment: env
+        )
+        let explicit = ModelLoadPlan.compute(
+            for: model,
+            requestedContextSize: 4096,
+            strategy: .resident,
+            environment: env
+        )
+
+        XCTAssertEqual(inferred.outcome, explicit.outcome)
+        XCTAssertEqual(inferred.inputs, explicit.inputs)
+        XCTAssertEqual(inferred.inputs.memoryStrategy, .resident)
+    }
 }
 
 // MARK: - Convenience accessor (test-scoped, avoids repeating `plan.outcome.totalEstimatedBytes`)
