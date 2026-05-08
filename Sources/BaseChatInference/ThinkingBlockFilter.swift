@@ -80,5 +80,5 @@ public struct ThinkingParser {
 }
 
 @available(*, deprecated, renamed: "ThinkingParser",
-    message: "Return type changed from String to [GenerationEvent]. Use ThinkingParser directly.")
+    message: "Use ThinkingParser; process(_:) returns [GenerationEvent] instead of a filtered String.")
 public typealias ThinkingBlockFilter = ThinkingParser

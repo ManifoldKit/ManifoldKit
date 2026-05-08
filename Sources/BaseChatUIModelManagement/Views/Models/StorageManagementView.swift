@@ -27,8 +27,8 @@ public struct StorageManagementView: View {
 
     /// Deprecated environment-based init. Reads ``ChatViewModel`` from the
     /// SwiftUI environment and forwards to the registry-driven path.
-    /// Will be removed in a future minor — pass `modelRegistry` explicitly.
-    @available(*, deprecated, message: "Pass modelRegistry explicitly. The Environment-based init reads from ChatViewModel and will be removed in a future minor.")
+    /// Pass `modelRegistry` explicitly instead.
+    @available(*, deprecated, message: "Use StorageManagementView(modelRegistry:) and pass chatViewModel.modelRegistry explicitly.")
     public init() {
         self.registrySource = .environment
     }

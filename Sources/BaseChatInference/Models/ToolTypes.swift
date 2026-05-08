@@ -306,7 +306,7 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     /// Maps `isError == true` to ``ErrorKind/permanent`` and `isError == false`
     /// to `nil`. New code should pass an explicit ``ErrorKind`` via the primary
     /// initializer so the failure class is preserved on the wire.
-    @available(*, deprecated, renamed: "init(callId:content:errorKind:)")
+    @available(*, deprecated, renamed: "init(callId:content:errorKind:)", message: "Use init(callId:content:errorKind:) and pass .permanent for legacy isError == true, or nil for success.")
     public init(callId: String, content: String, isError: Bool) {
         self.callId = callId
         self.content = content

@@ -92,7 +92,7 @@ public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
     public var topP: Float
     public var repeatPenalty: Float
-    @available(*, deprecated, renamed: "maxOutputTokens", message: "Use maxOutputTokens instead.")
+    @available(*, deprecated, renamed: "maxOutputTokens", message: "Use maxOutputTokens (Int?) for the generation cap; maxTokens is legacy Int32 Codable compatibility only.")
     public var maxTokens: Int32 {
         get { _legacyMaxTokens }
         set { _legacyMaxTokens = newValue }
@@ -320,7 +320,7 @@ public struct GenerationConfig: Sendable, Codable {
     /// per-request payloads; this is a per-request *contract*.
     public var requiredCapabilities: Set<GenerationCapabilityRequirement> = []
 
-    @available(*, deprecated, message: "Use init(temperature:topP:repeatPenalty:topK:typicalP:minP:repetitionPenalty:seed:maxOutputTokens:tools:toolChoice:maxThinkingTokens:jsonMode:streamPrefillProgress:thinkingMarkers:maxToolIterations:grammar:yieldEveryNTokens:requiredCapabilities:) instead.")
+    @available(*, deprecated, message: "Drop the maxTokens argument and use the primary GenerationConfig init with maxOutputTokens; this overload only preserves legacy maxTokens storage.")
     public init(
         temperature: Float = 0.7,
         topP: Float = 0.9,
