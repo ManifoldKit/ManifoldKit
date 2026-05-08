@@ -2,6 +2,7 @@
 @testable import BaseChatServer
 import BaseChatInference
 import BaseChatTestSupport
+import Foundation
 import Hummingbird
 import HummingbirdTesting
 import HTTPTypes
@@ -13,10 +14,10 @@ import XCTest
 ///
 /// ## Cancellation coverage note
 ///
-/// ``ChatCompletionsAdapterTests/testCancellingStreamingChunksStopsBackendGeneration()``
-/// asserts that terminating the adapter stream calls
+/// ``testCancellingDefaultAdapterStreamStopsBackendWithin500Milliseconds()``
+/// asserts the default adapter stream termination path calls
 /// ``InferenceBackend/stopGeneration()``. In the Hummingbird in-process test
-/// client the connection is fully consumed before `execute` returns, so these
+/// client the connection is fully consumed before `execute` returns, so the
 /// endpoint-level tests continue to assert the SSE framing delivered to clients.
 ///
 /// These assertions are load-bearing: they fail if the SSE framing regresses.
@@ -215,6 +216,38 @@ final class SSECancellationTests: XCTestCase {
             }
         }
     }
+
+    func testCancellingDefaultAdapterStreamStopsBackendWithin500Milliseconds() async throws {
+        let backend = DisconnectTrackingBackend()
+        let adapter = BlockingResponseAdapter()
+        let request = ChatCompletionRequest(
+            model: "stream-model",
+            messages: [.init(role: "user", content: "stream this")],
+            stream: true
+        )
+        let stream = try adapter.chunks(for: request, using: backend)
+        let consumer = Task {
+            for try await _ in stream {}
+        }
+
+        await waitUntil(timeout: .seconds(1)) {
+            backend.isGenerating
+        }
+        XCTAssertTrue(backend.isGenerating, "Backend should be generating before simulating disconnect")
+
+        consumer.cancel()
+
+        await waitUntil(timeout: .milliseconds(500)) {
+            !backend.isGenerating
+        }
+        backend.stopGeneration()
+        _ = await consumer.result
+
+        XCTAssertFalse(
+            backend.isGenerating,
+            "Client disconnect must call stopGeneration() so backend.isGenerating becomes false within 500 ms"
+        )
+    }
 }
 
 // MARK: - Helpers
@@ -236,6 +269,23 @@ private func sseDataLines(in text: String) -> [String] {
         .map { String($0.dropFirst("data: ".count)) }
 }
 
+private func waitUntil(
+    timeout: Duration,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ condition: @escaping () -> Bool
+) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while clock.now < deadline {
+        if condition() {
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertTrue(condition(), file: file, line: line)
+}
+
 // MARK: - Test doubles
 
 /// Minimal ``ServerBackendProvider`` that always returns a fixed backend.
@@ -243,6 +293,77 @@ private struct FixedStreamableProvider: ServerBackendProvider {
     func listModels() async throws -> [String] { ["stream-model"] }
     func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend {
         MockInferenceBackend()
+    }
+}
+
+private final class DisconnectTrackingBackend: InferenceBackend, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _isGenerating = false
+    private var continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
+
+    var isModelLoaded: Bool { true }
+    var isGenerating: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isGenerating
+    }
+    var capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: false,
+        supportsStructuredOutput: false,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false
+    )
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        lock.lock()
+        _isGenerating = true
+        lock.unlock()
+
+        let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            lock.lock()
+            self.continuation = continuation
+            lock.unlock()
+        }
+        return GenerationStream(stream)
+    }
+
+    func stopGeneration() {
+        let continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
+        lock.lock()
+        _isGenerating = false
+        continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.finish()
+    }
+
+    func unloadModel() {
+        stopGeneration()
+    }
+}
+
+private struct BlockingResponseAdapter: ChatCompletionsAdapter {
+    func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+        GenerationConfig()
+    }
+
+    func response(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) async throws -> ChatCompletionResponse {
+        let stream = try backend.generate(
+            prompt: "user: stream this",
+            systemPrompt: nil,
+            config: generationConfig(for: request)
+        )
+        for try await _ in stream.events {}
+        return ChatCompletionResponse(id: "chatcmpl-blocking", model: request.model, content: "")
     }
 }
 
