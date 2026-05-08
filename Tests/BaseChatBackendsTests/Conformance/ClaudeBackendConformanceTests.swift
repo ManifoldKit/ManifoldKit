@@ -32,17 +32,25 @@ final class ClaudeBackendConformanceTests: XCTestCase {
     // MARK: - Grammar fail-closed
 
     func test_contract_grammarFailClosed() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [MockURLProtocol.self]
+        let baseURL = URL(string: "http://claude-\(UUID().uuidString).test")!
+        let messagesURL = baseURL.appendingPathComponent("v1/messages")
+        MockURLProtocol.stub(url: messagesURL, response: .error(URLError(.cannotConnectToHost)))
+        defer { MockURLProtocol.unstub(url: messagesURL) }
+
         try await BackendContractChecks.assertGrammarFailClosedContract(
             backendName: backendName,
             makingBackend: {
-                let backend = ClaudeBackend()
+                let backend = ClaudeBackend(urlSession: URLSession(configuration: sessionConfig))
                 backend.configure(
-                    baseURL: URL(string: "https://api.anthropic.com")!,
+                    baseURL: baseURL,
                     apiKey: "sk-ant-test",
                     modelName: "claude-sonnet-4-20250514"
                 )
                 return backend
-            }
+            },
+            forbiddenRequestURL: messagesURL
         )
     }
 

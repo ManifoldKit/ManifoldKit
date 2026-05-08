@@ -33,17 +33,25 @@ final class OpenAIResponsesBackendConformanceTests: XCTestCase {
     // MARK: - Grammar fail-closed
 
     func test_contract_grammarFailClosed() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [MockURLProtocol.self]
+        let baseURL = URL(string: "http://openai-responses-\(UUID().uuidString).test")!
+        let responsesURL = baseURL.appendingPathComponent("v1/responses")
+        MockURLProtocol.stub(url: responsesURL, response: .error(URLError(.cannotConnectToHost)))
+        defer { MockURLProtocol.unstub(url: responsesURL) }
+
         try await BackendContractChecks.assertGrammarFailClosedContract(
             backendName: backendName,
             makingBackend: {
-                let backend = OpenAIResponsesBackend()
+                let backend = OpenAIResponsesBackend(urlSession: URLSession(configuration: sessionConfig))
                 backend.configure(
-                    baseURL: URL(string: "https://api.openai.com")!,
+                    baseURL: baseURL,
                     apiKey: "sk-test",
                     modelName: "gpt-5"
                 )
                 return backend
-            }
+            },
+            forbiddenRequestURL: responsesURL
         )
     }
 

@@ -353,9 +353,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             throw CloudBackendError.invalidURL("Backend not configured. Call loadModel first.")
         }
 
-        if config.grammar != nil, !capabilities.supportsGrammarConstrainedSampling {
-            throw InferenceError.unsupportedGrammar(reason: "\(backendName) does not support grammar-constrained sampling")
-        }
+        try validateGenerationConfig(config)
 
         let request = try buildRequest(
             prompt: prompt,
@@ -470,6 +468,14 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         let generationStream = GenerationStream(stream, idleTimeout: capturedTimeout)
         streamBox.value = generationStream
         return generationStream
+    }
+
+    private func validateGenerationConfig(_ config: GenerationConfig) throws {
+        if config.grammar != nil, !capabilities.supportsGrammarConstrainedSampling {
+            throw InferenceError.unsupportedGrammar(
+                reason: "\(backendName) does not support grammar-constrained sampling"
+            )
+        }
     }
 
     // MARK: - Stream Parsing

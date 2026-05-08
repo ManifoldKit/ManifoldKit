@@ -31,17 +31,25 @@ final class OpenAIBackendConformanceTests: XCTestCase {
     // MARK: - Grammar fail-closed
 
     func test_contract_grammarFailClosed() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [MockURLProtocol.self]
+        let baseURL = URL(string: "http://openai-\(UUID().uuidString).test")!
+        let completionsURL = baseURL.appendingPathComponent("v1/chat/completions")
+        MockURLProtocol.stub(url: completionsURL, response: .error(URLError(.cannotConnectToHost)))
+        defer { MockURLProtocol.unstub(url: completionsURL) }
+
         try await BackendContractChecks.assertGrammarFailClosedContract(
             backendName: backendName,
             makingBackend: {
-                let backend = OpenAIBackend()
+                let backend = OpenAIBackend(urlSession: URLSession(configuration: sessionConfig))
                 backend.configure(
-                    baseURL: URL(string: "https://api.openai.com")!,
+                    baseURL: baseURL,
                     apiKey: "sk-test",
                     modelName: "gpt-4o-mini"
                 )
                 return backend
-            }
+            },
+            forbiddenRequestURL: completionsURL
         )
     }
 

@@ -32,6 +32,7 @@ final class OllamaBackendConformanceTests: XCTestCase {
         sessionConfig.protocolClasses = [MockURLProtocol.self]
         let baseURL = URL(string: "http://localhost/ollama-\(UUID().uuidString)")!
         let showURL = baseURL.appendingPathComponent("api/show")
+        let chatURL = baseURL.appendingPathComponent("api/chat")
         MockURLProtocol.stub(
             url: showURL,
             response: .immediate(
@@ -39,7 +40,9 @@ final class OllamaBackendConformanceTests: XCTestCase {
                 statusCode: 200
             )
         )
+        MockURLProtocol.stub(url: chatURL, response: .error(URLError(.cannotConnectToHost)))
         defer { MockURLProtocol.unstub(url: showURL) }
+        defer { MockURLProtocol.unstub(url: chatURL) }
 
         try await BackendContractChecks.assertGrammarFailClosedContract(
             backendName: backendName,
@@ -47,7 +50,8 @@ final class OllamaBackendConformanceTests: XCTestCase {
                 let backend = OllamaBackend(urlSession: URLSession(configuration: sessionConfig))
                 backend.configure(baseURL: baseURL, modelName: "llama3.2")
                 return backend
-            }
+            },
+            forbiddenRequestURL: chatURL
         )
     }
 
