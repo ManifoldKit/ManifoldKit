@@ -372,11 +372,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
             ("BaseChatUI/",
              ["BaseChatBackends", "BaseChatPersistenceSwiftData"],
              "BaseChatUI must not depend on BaseChatBackends or BaseChatPersistenceSwiftData. UI is consumer-facing; backend code carries cloud-SDK weight and persistence adapters belong behind BaseChatRuntime ports."),
-            ("BaseChatCore/",
+            ("BaseChatRuntime/",
+             ["BaseChatBackends", "BaseChatPersistenceSwiftData"],
+             "BaseChatRuntime carries persistence-agnostic ports and use cases. Concrete backends and SwiftData adapters live above it."),
+            ("BaseChatPersistenceSwiftData/",
              ["BaseChatBackends"],
-             "BaseChatCore is the persistence layer; backend code belongs above it."),
+             "BaseChatPersistenceSwiftData is the SwiftData persistence layer; backend code belongs above it."),
             ("BaseChatInference/",
-             ["BaseChatBackends", "BaseChatCore"],
+             ["BaseChatBackends", "BaseChatRuntime", "BaseChatPersistenceSwiftData"],
              "BaseChatInference is the lowest production layer (apart from BaseChatTestSupport) and must not depend upward."),
         ]
 

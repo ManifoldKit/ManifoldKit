@@ -11,13 +11,20 @@ events and streams, context window management, prompt templates and assembly,
 macro expansion, repetition detection, tokenizers, and the
 capability/compatibility API.
 
-It does **not** depend on SwiftData. Apps that need inference orchestration but
-implement their own persistence and chat UI can depend on this target alone and
-leave `BaseChatCore` (which contains the SwiftData schema and persistence
-provider) out of their build graph.
+`BaseChatInference` is the lowest production layer in BaseChatKit (apart from
+`BaseChatTestSupport`). It carries no SwiftData schema, no SwiftUI views, no
+ML dependencies, and no concrete inference backends — those live in higher
+layers:
 
-For apps that want the full chat experience, `BaseChatCore` re-exports
-`BaseChatInference` so a single `import BaseChatCore` brings in everything.
+- `BaseChatRuntime` adds persistence-agnostic ports and use cases.
+- `BaseChatPersistenceSwiftData` adds the shipped SwiftData schema and
+  ``BaseChatBootstrap`` entry point.
+- `BaseChatBackends` adds the concrete MLX, llama.cpp, Foundation, and cloud
+  backends, depending on `BaseChatInference` directly so it stays free of
+  SwiftData.
+
+Apps that bring their own persistence and UI can depend on this target alone
+to integrate a custom backend or drive a custom chat surface.
 
 For the source-backed operational contract around loading, streaming, memory handling, cancellation, and pinning, see [`docs/RELIABILITY.md`](../../../docs/RELIABILITY.md).
 

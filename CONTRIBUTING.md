@@ -9,6 +9,8 @@ you're making and follow the gates listed there. Cross-references point at
 ## Table of contents
 
 - [Getting started](#getting-started)
+- [Architecture invariants](#architecture-invariants) — read **before** moving
+  imports between modules
 - [Pre-push checklist](#pre-push-checklist) — run **every** time, regardless of
   change type
 - [Adding a new backend](#adding-a-new-backend)
@@ -43,6 +45,44 @@ four blessed configurations and what each one guarantees.
 
 For repo-developer build-mode workflow (Xcode trait limitations, common mistakes,
 the `#warning` stub mechanism), see [CLAUDE.md](CLAUDE.md).
+
+## Architecture invariants
+
+BaseChatKit's module graph is enforced by lint, not just convention. Four hard
+rules must hold for every PR; the
+[`TrafficBoundaryAuditTest`](Tests/BaseChatInferenceTests/TrafficBoundaryAuditTest.swift)
+suite fails CI if any of them is violated.
+
+1. **`BaseChatUI` never imports `BaseChatBackends`.** UI is a consumer-facing
+   chat surface. Backend code carries cloud-SDK weight, MLX/llama.cpp binary
+   xcframeworks, and SwiftData adapters (transitively) that have no business
+   in the view layer. Inference reaches UI through `BaseChatInference`'s
+   service protocols and `BaseChatRuntime`'s ports.
+
+2. **`BaseChatUI` never imports `BaseChatUIModelManagement`.** The dependency
+   is one-way: model-management views depend on chat views, not the other way
+   around. The cycle is dissolved by closure-injecting `APIConfigurationView`
+   via a `@ViewBuilder apiConfiguration:` parameter on `ChatView` — see
+   [Building a Chat UI](Sources/BaseChatUI/BaseChatUI.docc/Articles/BuildingAChatUI.md)
+   for the canonical wiring.
+
+3. **`BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference`
+   directly, not on `BaseChatRuntime`.** That keeps both modules free of
+   SwiftData and free of runtime-port adapters, so host apps can wire backends
+   or MCP into a non-SwiftData runtime without dragging the persistence layer
+   in transitively.
+
+4. **`ConversationRuntime` is the single turn loop.** Every user-facing chat
+   action — `send`, `regenerate`, `edit`, `cancel`, `branch` — routes through
+   `ConversationRuntime`. There is no alternative path. New features that
+   touch turn flow extend `ConversationRuntime`; they must not call
+   `InferenceService` directly from the UI layer.
+
+If a PR genuinely needs to cross one of these boundaries, the fix is almost
+always to promote a protocol downward (into `BaseChatInference`) or extract a
+new port (into `BaseChatRuntime`) — never to add the reverse import. Reviewers
+will push back on `// swiftlint:disable` style escape hatches in the audit
+allowlists; the cap on each allowlist is intentionally low.
 
 ## Pre-push checklist
 

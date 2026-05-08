@@ -228,6 +228,30 @@ Attach any persistence-specific scene modifiers from the app or persistence targ
 
 Keep `configure(persistence:)` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. The shipped SwiftData bootstrap and custom stores both satisfy the same runtime-port boundary.
 
+### Wiring `APIConfigurationView` from `BaseChatUIModelManagement`
+
+`ChatView` accepts a `@ViewBuilder apiConfiguration:` closure that returns the host's API-key recovery sheet. The closure-injection pattern is **the canonical way** to mount `BaseChatUIModelManagement.APIConfigurationView` from a host that depends on both chat surfaces — and it is structural, not stylistic. Without it, `BaseChatUI` would have to import `BaseChatUIModelManagement` to reference the view directly, which would close a forbidden import cycle (the dependency edge runs UIModelManagement → UI, never the reverse). Closure injection lets the host module sit above both and pass the value down by name.
+
+```swift
+import BaseChatUI
+import BaseChatUIModelManagement
+
+struct RootView: View {
+    @State private var showModelManagement = false
+
+    var body: some View {
+        ChatView(
+            showModelManagement: $showModelManagement,
+            apiConfiguration: { APIConfigurationView() }
+        )
+    }
+}
+```
+
+Hosts that don't use `BaseChatUIModelManagement` (e.g. cloud-only builds or apps with their own settings UI) pass `apiConfiguration: { EmptyView() }` to satisfy the parameter.
+
+The closure is invoked at sheet/popover presentation time, not at `ChatView` init, so any `@Environment` or `@Bindable` lookups inside `APIConfigurationView` resolve against the live view tree rather than the value captured at construction.
+
 ## Next Steps
 
 - See ``GenerationSettingsView`` to give users control over temperature and prompt templates
