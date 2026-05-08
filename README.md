@@ -38,7 +38,7 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 
 ## Requirements
 
-- **Swift 6.2** (`swift-tools-version: 6.2` in your `Package.swift`) — required for `.macOS(.v26)` / `.iOS(.v26)` platform entries. Using an older tools version produces `'v26' is unavailable` errors from `PackageDescription`.
+- **Swift 6.1+** (`swift-tools-version: 6.1` in your `Package.swift`) — required for `.macOS(.v26)` / `.iOS(.v26)` platform entries. Using an older tools version produces `'v26' is unavailable` errors from `PackageDescription`.
 - iOS 18+ / macOS 15+
 - Apple Foundation Models require iOS 26+ / macOS 26+
 

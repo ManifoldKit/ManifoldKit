@@ -1,5 +1,3 @@
-import Foundation
-
 /// Typed constants for the backend-name strings returned by
 /// ``InferenceService/activeBackendName``.
 ///
@@ -21,6 +19,6 @@ public enum BackendName {
     public static let openAI = "OpenAI"
     /// The MLX backend (`"MLX"`).
     public static let mlx = "MLX"
-    /// The llama.cpp backend (`"Llama"`).
-    public static let llama = "Llama"
+    /// The llama.cpp backend (`"llama.cpp"`).
+    public static let llama = "llama.cpp"
 }
