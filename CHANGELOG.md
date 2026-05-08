@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.18.0](https://github.com/roryford/BaseChatKit/compare/v0.17.8...v0.18.0) (2026-05-08)
+
+### Highlights
+
+#### `ChatView` without `apiConfiguration` (BYO-UI path) ([#1128](https://github.com/roryford/BaseChatKit/issues/1128))
+
+Apps that don't ship `BaseChatUIModelManagement` — or that surface API settings elsewhere — can now construct `ChatView` without an `apiConfiguration` closure. New convenience initializers are gated on `APIConfig == EmptyView`, so the empty configuration surface is statically erased rather than rendered as an empty container. The README and `BaseChatUI` DocC also document the BYO-UI path using `BaseChatInference` + `BaseChatBackends` directly, with a copy-paste `Package.swift` and minimal SwiftUI wiring.
+
+```swift
+import BaseChatUI
+
+struct ContentView: View {
+    @Binding var showModelManagement: Bool
+    var body: some View {
+        // No apiConfiguration: { ... } closure required.
+        ChatView(showModelManagement: $showModelManagement)
+    }
+}
+```
+
+#### Typed `BackendName` constants and `loadFoundationModelIfAvailable()` ergonomics ([#1114](https://github.com/roryford/BaseChatKit/issues/1114))
+
+`BaseChatInference` now exposes a `BackendName` namespace with typed constants (`.foundation`, `.ollama`, `.claude`, `.openAI`, `.mlx`, `.llama`) for the strings returned by `InferenceService.activeBackendName`, replacing magic-string comparisons in host code. `ChatViewModel.loadFoundationModelIfAvailable()` refreshes the registry, selects the Foundation model, and dispatches a load in one call — without the first-launch gate that `autoSelectFirstRunModel()` enforces. The pre-1.0 deprecated `InferenceService.loadModel(from:contextSize:)` overload is removed; callers should migrate to `loadModel(from:plan:)` paired with `ModelLoadPlan.compute(for:)`.
+
+```swift
+if vm.activeBackendName == BackendName.foundation {
+    // Foundation-specific UX
+}
+
+vm.loadFoundationModelIfAvailable()
+```
+
+### Features
+
+* **`bck-tools test-uplift` control CLI** — The Tools-trait `bck-tools` executable gains a `test-uplift` subcommand with `status` / `pause` / `resume` / `stop` operations against the overnight orchestrator state at `~/.claude/state/bck-test-uplift/`. `status` pretty-prints phase, in-flight workers, queue, and blockers (with a `blockers.tsv` fallback) ([#1127](https://github.com/roryford/BaseChatKit/issues/1127))
+
+### Fixes
+
+* **Cloud backends fail closed on unsupported grammar** — `SSECloudBackend` now runs the grammar preflight before opening any network request, so Claude / OpenAI / Ollama throw `InferenceError.unsupportedGrammar(reason:)` synchronously instead of silently dropping the constraint mid-stream ([#1122](https://github.com/roryford/BaseChatKit/issues/1122))
+* **Server stops generation on client disconnect** — The default `ChatCompletionsAdapter` now calls `backend.stopGeneration()` when the SSE stream is cancelled, clearing `isGenerating` within ~500 ms instead of letting the backend run until the next request ([#1123](https://github.com/roryford/BaseChatKit/issues/1123))
+* **`ModelStorageService` default scope is per-app** — Two BCK-based apps on the same device no longer see each other's locally-discovered GGUFs by default; pass `baseDirectory:` at init to opt into a shared model pool ([#1126](https://github.com/roryford/BaseChatKit/issues/1126))
+* **`BaseChatFuzzBackends` no longer imports `BaseChatTestSupport`** — A library product reaching for test-only utilities was an architectural violation. The small surface `BaseChatFuzzBackends` actually used has been inlined as `FuzzModelDiscovery` / `FuzzModelLoadPlan`, and over-public test scaffolding types in `BaseChatTestSupport` (`CharTokenizer`, `ImageFixtures`, `TimeoutError`, `ConversationRuntimeScenario`, `HardwareRequirements`) are now `internal` ([#1116](https://github.com/roryford/BaseChatKit/issues/1116), [#1117](https://github.com/roryford/BaseChatKit/issues/1117))
+* **Deflaked `ConversationRuntime` back-to-back token-usage assertion** — `test_send_tokenUsageEventPinsPerStreamUsageAcrossBackToBackSends` ordered the persisted assistants by `timestamp`, but two back-to-back `runtime.send` calls produce `ChatMessageRecord`s built with the default `Date()` argument within the same microsecond on a fast runner, falling back to non-deterministic dictionary-iteration order. The test now resolves the assistants via the `tokenUsageRecorded` event's `messageID`, which arrives in deterministic turn order ([#1130](https://github.com/roryford/BaseChatKit/issues/1130))
+* **Deprecation messages name their replacement APIs** — `@available(*, deprecated, message:)` strings across `BaseChatBackends`, `BaseChatInference`, `BaseChatMCP`, and `BaseChatUIModelManagement` now identify the replacement API (and any type changes — e.g. `MCPOAuth.accessToken: String` → `accessTokenData: Data`) so callers can migrate without chasing tracking issues ([#1118](https://github.com/roryford/BaseChatKit/issues/1118))
+
 ## [0.17.8](https://github.com/roryford/BaseChatKit/compare/v0.17.7...v0.17.8) (2026-05-08)
 
 
