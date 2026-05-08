@@ -2,6 +2,14 @@ import Foundation
 import BaseChatRuntime
 import BaseChatInference
 
+// MARK: - LoopDetectedError
+
+private struct LoopDetectedError: LocalizedError {
+    var errorDescription: String? {
+        "Generation stopped: the model appeared to repeat itself."
+    }
+}
+
 // MARK: - ChatViewModel + RuntimeAdapter
 //
 // Maps ConversationEvent values from the optional ConversationRuntime drain
@@ -67,6 +75,7 @@ extension ChatViewModel {
             // only persists (and re-emits via `.messageInserted`) the
             // assistant record after the stream ends, so without this the
             // first tokens would be dropped on the floor.
+            lastTurnState = .generating
             transitionPhase(to: .waitingForFirstToken)
             activeConversationMessageID = messageID
             if let activeSessionID, !messages.contains(where: { $0.id == messageID }) {
@@ -125,7 +134,10 @@ extension ChatViewModel {
                let completed = messages.first(where: { $0.id == messageID }),
                completed.hasVisibleContent,
                let session = activeSession {
+                lastTurnState = .completed(completed)
                 runPostGenerationTasks(message: completed, session: session)
+            } else {
+                lastTurnState = .idle
             }
 
             // After the first assistant response on Foundation, nudge the
@@ -159,6 +171,11 @@ extension ChatViewModel {
                 surfaceError(underlying, kind: .generation)
             case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured:
                 errorMessage = error.localizedDescription
+            }
+            if case .cancelled = error {
+                lastTurnState = .idle
+            } else {
+                lastTurnState = .failed(error)
             }
             activeConversationStreamHandle = nil
             activeConversationMessageID = nil
@@ -211,6 +228,7 @@ extension ChatViewModel {
             // the substring "repeating" continue to pin the user-visible
             // message.
             errorMessage = "Generation stopped: the model appears to be repeating itself."
+            lastTurnState = .failed(LoopDetectedError())
             transitionPhase(to: .idle)
 
         // MARK: Session branching

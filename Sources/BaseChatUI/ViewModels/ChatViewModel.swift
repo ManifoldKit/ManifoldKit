@@ -27,6 +27,16 @@ import BaseChatInference
 @MainActor
 public final class ChatViewModel {
 
+    // MARK: - TurnState
+
+    /// Outcome of the most recent chat turn.
+    public enum TurnState {
+        case idle
+        case generating
+        case completed(ChatMessageRecord)
+        case failed(any Error)
+    }
+
     // MARK: - Services
 
     /// Internal-only handle to the inference service. View code in sibling
@@ -226,6 +236,18 @@ public final class ChatViewModel {
             onActivityPhaseChanged?(activityPhase)
         }
     }
+
+    /// The outcome of the most recent turn, updated atomically at stream boundaries.
+    ///
+    /// Useful for scripted drivers and integration tests that `await sendMessage(_:)`
+    /// and want the result without polling `messages` and `isGenerating` separately.
+    ///
+    /// - `.idle` — no turn has completed yet, or the last turn was cancelled/empty.
+    /// - `.generating` — a turn is in progress.
+    /// - `.completed(record)` — the last turn finished successfully; `record` is
+    ///   the assistant message persisted by the runtime.
+    /// - `.failed(error)` — the last turn raised an error or was loop-stopped.
+    public internal(set) var lastTurnState: TurnState = .idle
 
     /// Single source of truth for legal phase transitions. The view model
     /// never mutates `activityPhase` directly — every production code path

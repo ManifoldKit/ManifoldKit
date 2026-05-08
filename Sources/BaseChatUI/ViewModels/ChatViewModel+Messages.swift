@@ -2,9 +2,41 @@ import Foundation
 import BaseChatRuntime
 import BaseChatInference
 
+// MARK: - NoResponseError
+
+/// Thrown by `sendMessage(_:)` when a turn completes without producing a
+/// visible assistant message (e.g. empty output or a precondition failure).
+public struct NoResponseError: LocalizedError {
+    public var errorDescription: String? { "Turn ended without producing a response" }
+    public init() {}
+}
+
 // MARK: - ChatViewModel + Messages
 
 extension ChatViewModel {
+
+    /// Sends `text` as a user message and returns the completed assistant response.
+    ///
+    /// Convenience for scripted drivers and integration tests that want to drive
+    /// one turn without setting `inputText` and polling observation surfaces.
+    ///
+    /// - Throws: The underlying `ConversationError` on inference/persistence
+    ///   failure, or a `ChatError` when the preconditions aren't met (no session,
+    ///   no model loaded). Throws if the turn ends without producing a response
+    ///   (e.g. empty output or an unhandled stop reason).
+    @discardableResult
+    public func sendMessage(_ text: String) async throws -> ChatMessageRecord {
+        inputText = text
+        await sendMessage()
+        switch lastTurnState {
+        case .completed(let record):
+            return record
+        case .failed(let error):
+            throw error
+        case .idle, .generating:
+            throw NoResponseError()
+        }
+    }
 
     /// Sends the current text and any staged attachments as a user message and generates an assistant response.
     public func sendMessage() async {

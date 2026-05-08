@@ -7,34 +7,62 @@ import Foundation
 public final class ModelStorageService {
 
     private let fileManager: FileManager
-    /// Overrides the default Documents-relative directory. Used in tests.
+    /// Overrides the default Application-Support-relative directory. Used in tests.
     private let customDirectory: URL?
+    /// Overrides the bundle identifier used in the default path. Used in tests.
+    private let customBundleIdentifier: String?
 
+    /// Creates a `ModelStorageService`.
+    ///
+    /// - Parameter baseDirectory: Explicit directory for model storage. Pass a
+    ///   non-nil URL to share a single models directory across multiple BCK
+    ///   apps (e.g. a multi-product setup that intentionally pools models).
+    ///   When `nil`, the service derives a per-app path from
+    ///   `BaseChatConfiguration.shared.bundleIdentifier`:
+    ///   `<Application Support>/<bundleIdentifier>/<modelsDirectoryName>`.
     public init(fileManager: FileManager = .default, baseDirectory: URL? = nil) {
         self.fileManager = fileManager
         self.customDirectory = baseDirectory
+        self.customBundleIdentifier = nil
+    }
+
+    /// Internal init for test isolation — lets tests supply a specific bundle
+    /// identifier without touching the global `BaseChatConfiguration`.
+    init(fileManager: FileManager = .default, baseDirectory: URL? = nil, bundleIdentifier: String? = nil) {
+        self.fileManager = fileManager
+        self.customDirectory = baseDirectory
+        self.customBundleIdentifier = bundleIdentifier
     }
 
     // MARK: - Directory
 
     /// The directory where model files are stored.
     ///
-    /// Defaults to `<Documents>/<modelsDirectoryName>` on both iOS and macOS,
-    /// where the directory name comes from `BaseChatConfiguration.shared.modelsDirectoryName`.
-    /// Can be overridden via `baseDirectory` at init time (used in tests).
+    /// Defaults to `<Application Support>/<bundleIdentifier>/<modelsDirectoryName>`,
+    /// scoped to the host app's bundle identifier so multiple BCK-based apps
+    /// on the same device each see only their own models.
+    ///
+    /// Override at init time via `baseDirectory:` when you intentionally want
+    /// to share a models directory across apps (e.g. a multi-product suite).
     public var modelsDirectory: URL {
         if let custom = customDirectory { return custom }
+        let config = BaseChatConfiguration.shared
+        let bundleID = customBundleIdentifier ?? config.bundleIdentifier
+        if bundleID == BaseChatConfiguration.frameworkDefaultBundleIdentifier {
+            Log.inference.fault(
+                "ModelStorageService is using the framework default bundle identifier (\(bundleID, privacy: .public)). Multiple apps sharing this default will collide on the same models directory. Set BaseChatConfiguration.shared = BaseChatConfiguration(bundleIdentifier: \"com.your-app\") at app launch."
+            )
+        }
         let base: URL
-        if let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
-            base = documents
+        if let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            base = appSupport
         } else {
-            Log.inference.fault("Documents directory unavailable — falling back to temp directory")
+            Log.inference.fault("Application Support directory unavailable — falling back to temp directory")
             base = fileManager.temporaryDirectory
         }
-        return base.appendingPathComponent(
-            BaseChatConfiguration.shared.modelsDirectoryName,
-            isDirectory: true
-        )
+        return base
+            .appendingPathComponent(bundleID, isDirectory: true)
+            .appendingPathComponent(config.modelsDirectoryName, isDirectory: true)
     }
 
     /// Creates the models directory if it does not already exist.
