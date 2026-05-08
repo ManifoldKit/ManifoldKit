@@ -560,3 +560,37 @@ jobs:
       - name: Run cold-start conformance
         timeout-minutes: 6
         run: scripts/cold-start-conformance.sh
+
+  # Cold-start conformance (tier 2) — extends the tier-1 pattern to the
+  # high-level orchestration surface real chat apps use: BaseChatBootstrap →
+  # ChatViewModel → vm.sendMessage(). Catches breaks in BaseChatBootstrap link
+  # shape (Inference + Runtime + PersistenceSwiftData + UI products), the
+  # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
+  # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
+  cold-start-tier2:
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start tier-2 conformance
+        timeout-minutes: 6
+        run: scripts/cold-start-tier2-bootstrap.sh
