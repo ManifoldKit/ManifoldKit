@@ -45,6 +45,11 @@ four blessed configurations and what each one guarantees.
 
 For repo-developer build-mode workflow (Xcode trait limitations, common mistakes,
 the `#warning` stub mechanism), see [CLAUDE.md](CLAUDE.md).
+Swift 6 concurrency pitfalls that can compile while racing or deadlocking are
+covered in
+[CLAUDE.md § Swift 6 concurrency gotchas](CLAUDE.md#swift-6-concurrency-gotchas);
+review that section before adding actor-isolated state, async helper closures,
+mutable `Sendable` wrappers, streams, detached tasks, or async cleanup.
 
 ## Architecture invariants
 
