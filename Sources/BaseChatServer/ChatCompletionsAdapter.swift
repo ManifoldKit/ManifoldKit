@@ -546,7 +546,11 @@ internal struct DefaultChatCompletionsAdapter: ChatCompletionsAdapter {
         let (prompt, systemPrompt) = promptParts(for: request)
         let stream = try backend.generate(prompt: prompt, systemPrompt: systemPrompt, config: generationConfig(for: request))
         let mapper = ChatCompletionEventMapper(id: completionID(), created: currentTimestamp(), model: request.model)
-        return mapper.chunks(from: stream.events, includeUsage: request.includesStreamUsage)
+        return mapper.chunks(
+            from: stream.events,
+            includeUsage: request.includesStreamUsage,
+            onCancel: { backend.stopGeneration() }
+        )
     }
 
     private func promptParts(for request: ChatCompletionRequest) -> (prompt: String, systemPrompt: String?) {
@@ -604,7 +608,8 @@ internal struct ChatCompletionEventMapper: Sendable {
 
     internal func chunks<S: AsyncSequence & Sendable>(
         from events: S,
-        includeUsage: Bool
+        includeUsage: Bool,
+        onCancel: @escaping @Sendable () -> Void = {}
     ) -> AsyncThrowingStream<ChatCompletionChunk, Error> where S.Element == GenerationEvent {
         AsyncThrowingStream { continuation in
             let id = self.id
@@ -677,7 +682,12 @@ internal struct ChatCompletionEventMapper: Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { @Sendable _ in task.cancel() }
+            continuation.onTermination = { @Sendable termination in
+                task.cancel()
+                if case .cancelled = termination {
+                    onCancel()
+                }
+            }
         }
     }
 
