@@ -137,7 +137,7 @@ for the full list of dependency rules the lint enforces.
 ### 1. Add the package
 
 ```swift
-.package(url: "https://github.com/roryford/BaseChatKit.git", from: "1.0.0")
+.package(url: "https://github.com/roryford/BaseChatKit.git", from: "0.18.0")
 ```
 
 Add the targets you need:
@@ -168,7 +168,7 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 ```swift
 .package(
     url: "https://github.com/roryford/BaseChatKit.git",
-    from: "0.11.0",
+    from: "0.18.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -189,7 +189,7 @@ If your app targets Apple's built-in Foundation model exclusively, you can drop 
 ```swift
 .package(
     url: "https://github.com/roryford/BaseChatKit.git",
-    from: "1.0.0",
+    from: "0.18.0",
     traits: []   // disables MLX, Llama, HuggingFace defaults
 )
 ```
@@ -210,7 +210,7 @@ For example, a cloud-only consumer can keep the chat UI and local-model loaders 
 ```swift
 .package(
     url: "https://github.com/roryford/BaseChatKit.git",
-    from: "1.0.0",
+    from: "0.18.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -258,7 +258,7 @@ If you already depend on `BaseChatBackends`, the same data is also available via
 ```swift
 .package(
     url: "https://github.com/roryford/BaseChatKit.git",
-    from: "1.0.0",
+    from: "0.18.0",
     traits: [
         .trait(name: "MCP"),
         .trait(name: "MCPBuiltinCatalog"), // optional: only if you use MCPCatalog
@@ -298,7 +298,7 @@ stock `ChatInputBar`.
 ```swift
  .package(
      url: "https://github.com/roryford/BaseChatKit.git",
-     from: "1.0.0",
+     from: "0.18.0",
      traits: [
          .trait(name: "Voice"),
      ]
@@ -373,7 +373,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/BaseChatKit.git",
-            from: "1.0.0",
+            from: "0.18.0",
             traits: [
                 .trait(name: "MLX"),
                 .trait(name: "Llama"),
@@ -751,6 +751,14 @@ pool can opt in by passing an explicit directory, for example
 
 ## Tool Calling
 
+> [!WARNING]
+> The `@ToolSchema` macro is gated behind the `Macros` SwiftPM trait (default-off,
+> see `Package.swift`). Default builds skip swift-syntax (~647 source files) and
+> `@ToolSchema` is invisible. To use the macro, opt in with `--traits Macros` (or
+> add `.trait(name: "Macros")` to the `traits:` array on your `.package(...)`
+> entry). Without the trait, declare `JSONSchemaValue` by hand on
+> `ToolDefinition.parameters`.
+
 Register tools with `ToolRegistry` and pass `toolRegistry.definitions` as `GenerationConfig.tools` when enqueueing a request:
 
 ```swift
@@ -781,7 +789,9 @@ For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), 
 
 ## Custom Backends
 
-Implement `InferenceBackend` and register it:
+Implement `InferenceBackend` and register it. The protocol takes a precomputed
+`ModelLoadPlan` so the caller's memory-admission verdict and effective context
+size flow through to the backend instead of being recomputed:
 
 ```swift
 class MyBackend: InferenceBackend, @unchecked Sendable {
@@ -789,9 +799,9 @@ class MyBackend: InferenceBackend, @unchecked Sendable {
     var isGenerating = false
     var capabilities: BackendCapabilities { /* ... */ }
 
-    func loadModel(from url: URL, contextSize: Int32) async throws { /* ... */ }
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws { /* ... */ }
     func generate(prompt: String, systemPrompt: String?, config: GenerationConfig)
-        throws -> AsyncThrowingStream<GenerationEvent, Error> { /* ... */ }
+        throws -> GenerationStream { /* ... */ }
     func stopGeneration() { /* ... */ }
     func unloadModel() { /* ... */ }
 }
@@ -804,6 +814,10 @@ inferenceService.registerBackendFactory { modelType in
     }
 }
 ```
+
+`plan.effectiveContextSize` carries the resolved context window and `plan.verdict`
+is one of `.allow` / `.warn` / `.deny`. Callers must check the verdict before
+invoking `loadModel`; conformers may rely on that precondition.
 
 ## Curated Model Recommendations
 
