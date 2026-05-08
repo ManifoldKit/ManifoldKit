@@ -487,6 +487,49 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         XCTAssertTrue(markdown.contains("The answer"), "Export should include assistant message")
     }
 
+    // MARK: - sendMessage(_ text:) overload + lastTurnState
+
+    func test_sendMessage_text_returnsAssistantRecord() async throws {
+        await createAndActivateSession()
+
+        mock.tokensToYield = ["Hello", " world"]
+        let record = try await vm.sendMessage("hi")
+
+        XCTAssertEqual(record.role, .assistant)
+        XCTAssertTrue(record.content.contains("Hello world"), "Returned record should contain streamed text, got: \(record.content)")
+    }
+
+    func test_sendMessage_text_lastTurnStateIsCompleted() async throws {
+        await createAndActivateSession()
+
+        mock.tokensToYield = ["Reply"]
+        _ = try await vm.sendMessage("ping")
+
+        if case .completed(let record) = vm.lastTurnState {
+            XCTAssertEqual(record.role, .assistant)
+        } else {
+            XCTFail("Expected .completed but got \(vm.lastTurnState)")
+        }
+    }
+
+    func test_sendMessage_text_lastTurnStateIsGeneratingDuringStream() async throws {
+        await createAndActivateSession()
+
+        // Observe at least one .generating transition via the isGenerating proxy
+        // (lastTurnState = .generating fires during streamStarted, before awaitStreamCompletion returns).
+        var seenGenerating = false
+        let originalOnGeneratingChanged = vm.onGeneratingChanged
+        vm.onGeneratingChanged = { isGenerating in
+            if isGenerating { seenGenerating = true }
+            originalOnGeneratingChanged?(isGenerating)
+        }
+
+        mock.tokensToYield = ["token"]
+        _ = try await vm.sendMessage("test")
+
+        XCTAssertTrue(seenGenerating, "lastTurnState should transition through .generating during the turn")
+    }
+
     // MARK: - Save State Persists Pending Changes
 
     func test_saveState_flushesPendingChanges() async {

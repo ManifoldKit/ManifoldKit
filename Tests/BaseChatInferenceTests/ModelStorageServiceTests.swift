@@ -470,6 +470,41 @@ final class ModelStorageServiceTests: XCTestCase {
         XCTAssertEqual(finalData.count, 2048, "Overwritten file should have the new size")
     }
 
+    // MARK: - Per-app scoping
+
+    func test_modelsDirectory_differsByBundleIdentifier() {
+        let serviceA = ModelStorageService(bundleIdentifier: "com.test.app-a")
+        let serviceB = ModelStorageService(bundleIdentifier: "com.test.app-b")
+
+        XCTAssertNotEqual(
+            serviceA.modelsDirectory.path,
+            serviceB.modelsDirectory.path,
+            "Different bundle identifiers must produce different models directories"
+        )
+    }
+
+    func test_modelsDirectory_containsBundleIdentifier() {
+        let bundleID = "com.test.myapp-\(UUID().uuidString)"
+        let scoped = ModelStorageService(bundleIdentifier: bundleID)
+
+        XCTAssertTrue(
+            scoped.modelsDirectory.path.contains(bundleID),
+            "Default models directory path should contain the bundle identifier"
+        )
+    }
+
+    func test_modelsDirectory_customBaseDirectory_ignoresBundleIdentifier() {
+        let fixed = FileManager.default.temporaryDirectory.appendingPathComponent("shared-models")
+        let service1 = ModelStorageService(baseDirectory: fixed)
+        let service2 = ModelStorageService(baseDirectory: fixed, bundleIdentifier: "com.other.app")
+
+        XCTAssertEqual(
+            service1.modelsDirectory.path,
+            service2.modelsDirectory.path,
+            "Explicit baseDirectory should bypass bundle-scoped path"
+        )
+    }
+
     // MARK: - availableDiskSpace
 
     func test_availableDiskSpace_returnsNonZero() {
