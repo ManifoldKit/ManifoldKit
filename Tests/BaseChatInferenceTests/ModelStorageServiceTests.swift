@@ -472,15 +472,40 @@ final class ModelStorageServiceTests: XCTestCase {
 
     // MARK: - Per-app scoping
 
-    func test_modelsDirectory_differsByBundleIdentifier() {
-        let serviceA = ModelStorageService(bundleIdentifier: "com.test.app-a")
-        let serviceB = ModelStorageService(bundleIdentifier: "com.test.app-b")
+    func test_discoverModels_scopesDefaultDirectoriesByBundleIdentifier() throws {
+        let suffix = UUID().uuidString
+        let bundleA = "com.basechatkit.tests.model-storage-a.\(suffix)"
+        let bundleB = "com.basechatkit.tests.model-storage-b.\(suffix)"
+        let serviceA = ModelStorageService(bundleIdentifier: bundleA)
+        let serviceB = ModelStorageService(bundleIdentifier: bundleB)
 
         XCTAssertNotEqual(
             serviceA.modelsDirectory.path,
             serviceB.modelsDirectory.path,
             "Different bundle identifiers must produce different models directories"
         )
+
+        defer {
+            try? FileManager.default.removeItem(at: serviceA.modelsDirectory.deletingLastPathComponent())
+            try? FileManager.default.removeItem(at: serviceB.modelsDirectory.deletingLastPathComponent())
+        }
+
+        try serviceA.ensureModelsDirectory()
+        try serviceB.ensureModelsDirectory()
+
+        let modelAName = "only-app-a-\(suffix).gguf"
+        let modelBName = "only-app-b-\(suffix).gguf"
+        let ggufData = Data([0x47, 0x47, 0x55, 0x46])
+        try ggufData.write(to: serviceA.modelsDirectory.appendingPathComponent(modelAName))
+        try ggufData.write(to: serviceB.modelsDirectory.appendingPathComponent(modelBName))
+
+        let modelsA = serviceA.discoverModels().map(\.fileName)
+        let modelsB = serviceB.discoverModels().map(\.fileName)
+
+        XCTAssertTrue(modelsA.contains(modelAName), "App A should discover its own model")
+        XCTAssertFalse(modelsA.contains(modelBName), "App A must not discover App B's model")
+        XCTAssertTrue(modelsB.contains(modelBName), "App B should discover its own model")
+        XCTAssertFalse(modelsB.contains(modelAName), "App B must not discover App A's model")
     }
 
     func test_modelsDirectory_containsBundleIdentifier() {

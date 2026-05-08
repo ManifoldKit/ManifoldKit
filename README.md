@@ -587,6 +587,15 @@ endpoint and diagnostics wiring.
 | Ollama | `OpenAIBackend` | Local API | localhost:11434 | Vision-capable OpenAI-compatible models |
 | LM Studio | `OpenAIBackend` | Local API | localhost:1234 | Vision-capable OpenAI-compatible models |
 
+### Model storage scoping
+
+`ModelStorageService()` stores and discovers local models under
+`<Application Support>/<BaseChatConfiguration.shared.bundleIdentifier>/<modelsDirectoryName>`
+by default. This keeps multiple BaseChatKit-based apps on the same machine from
+seeing each other's downloaded models. Hosts that intentionally share a model
+pool can opt in by passing an explicit directory, for example
+`ModelStorageService(baseDirectory: sharedModelsDirectory)`.
+
 ## Key Types
 
 ### View Models
