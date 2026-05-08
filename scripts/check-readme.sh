@@ -63,7 +63,11 @@ echo
 echo "── Check: README install pins match version.txt ─────────────────────"
 
 # Grep with -n for line numbers; awk to extract the version literal.
-mapfile -t pin_lines < <(grep -nE '^\s*from:\s*"[0-9]+\.[0-9]+\.[0-9]+' "${README_PATH}" || true)
+# `mapfile` is bash 4+; macOS ships bash 3.2, so use a portable read loop.
+pin_lines=()
+while IFS= read -r line; do
+    pin_lines+=("$line")
+done < <(grep -nE '^\s*from:\s*"[0-9]+\.[0-9]+\.[0-9]+' "${README_PATH}" || true)
 
 if [[ ${#pin_lines[@]} -eq 0 ]]; then
     echo "::warning::README contains no \`from: \"X.Y.Z\"\` install pins. Did the install snippet move?"
