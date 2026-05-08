@@ -822,9 +822,9 @@ final class ConversationRuntimeTests: XCTestCase {
         _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "second"))
 
         let events = try await waitForEvents(from: drain)
-        let usageEvents = events.compactMap { event -> (prompt: Int, completion: Int)? in
-            if case let .tokenUsageRecorded(_, promptTokens, completionTokens) = event {
-                return (promptTokens, completionTokens)
+        let usageEvents = events.compactMap { event -> (messageID: UUID, prompt: Int, completion: Int)? in
+            if case let .tokenUsageRecorded(messageID, promptTokens, completionTokens) = event {
+                return (messageID, promptTokens, completionTokens)
             }
             return nil
         }
@@ -834,9 +834,14 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(usageEvents.map { $0.completion }, [1, 2],
                        "Each turn emits its own completion-token usage")
 
-        let assistants = store.messages.values
-            .filter { $0.role == .assistant }
-            .sorted { $0.timestamp < $1.timestamp }
+        // Look assistants up by the per-turn `tokenUsageRecorded` message id
+        // rather than sorting by `timestamp`. Two back-to-back sends on a fast
+        // runner can produce assistant records with identical `Date()` values,
+        // making a timestamp sort non-deterministic. Event order, by contrast,
+        // is the order the runtime emits — that's the contract under test.
+        let assistants = usageEvents.compactMap { store.messages[$0.messageID] }
+        XCTAssertEqual(assistants.count, 2, "Both assistant turns are persisted")
+        XCTAssertTrue(assistants.allSatisfy { $0.role == .assistant })
         XCTAssertEqual(assistants.map(\.content), ["one", "two"])
         XCTAssertEqual(assistants.compactMap(\.promptTokens), [11, 22],
                        "Persisted assistant usage is pinned per turn, not overwritten by the next send")
