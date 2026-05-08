@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.7](https://github.com/roryford/BaseChatKit/compare/v0.17.6...v0.17.7) (2026-05-08)
+
+### Features
+
+* **`ModelLoadPlan.compute(for:)` strategy overload** — `ModelLoadPlan` gains a `compute(for:requestedContextSize:)` overload that accepts a `ModelInfo` value and selects the appropriate loading strategy automatically. Consumers no longer need to map `ModelInfo` properties to strategy parameters by hand ([#1099](https://github.com/roryford/BaseChatKit/issues/1099))
+
+### Fixes
+
+* **SwiftData store path scoped per bundle identifier** — The default SwiftData store path is now derived from the host app's bundle identifier, preventing two apps that both embed BaseChatKit from colliding on the same store file ([#1100](https://github.com/roryford/BaseChatKit/issues/1100))
+* **Cold-start CI gate is self-validating** — CI now triggers on changes to `scripts/cold-start*.sh`, so edits to the gate scripts themselves are validated in the same run ([#1103](https://github.com/roryford/BaseChatKit/issues/1103))
+* **Tier-1 cold-start script is worktree-portable** — `.package(name:)` is now pinned in the tier-1 cold-start script, fixing resolution failures when the script runs from inside a Git worktree ([#1102](https://github.com/roryford/BaseChatKit/issues/1102))
+
 ## [0.17.6](https://github.com/roryford/BaseChatKit/compare/v0.17.5...v0.17.6) (2026-05-08)
 
 ### Fixes
