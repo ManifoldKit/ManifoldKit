@@ -1,4 +1,7 @@
 import Foundation
+#if Ollama
+import BaseChatBackends
+#endif
 
 /// Fuzz-local model discovery utilities.
 ///
@@ -8,22 +11,19 @@ enum FuzzModelDiscovery {
 
     // MARK: - Ollama
 
+#if Ollama
     static func listOllamaModels(baseURL: URL) -> [String]? {
         guard let models = fetchOllamaModels(baseURL: baseURL) else { return nil }
-        return models.compactMap { $0["name"] as? String }
+        return models.map(\.name)
     }
 
-    private static func fetchOllamaModels(baseURL: URL) -> [[String: Any]]? {
-        let url = baseURL.appendingPathComponent("api/tags")
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 3
-
+    private static func fetchOllamaModels(baseURL: URL) -> [RemoteModelInfo]? {
         let semaphore = DispatchSemaphore(value: 0)
         final class Box: @unchecked Sendable {
             private let lock = NSLock()
-            private var storedValue: [[String: Any]]?
+            private var storedValue: [RemoteModelInfo]?
 
-            var value: [[String: Any]]? {
+            var value: [RemoteModelInfo]? {
                 get {
                     lock.lock()
                     defer { lock.unlock() }
@@ -38,22 +38,18 @@ enum FuzzModelDiscovery {
         }
         let box = Box()
 
-        URLSession.shared.dataTask(with: request) { data, response, _ in
+        Task {
             defer { semaphore.signal() }
-            guard let data,
-                  let http = response as? HTTPURLResponse,
-                  http.statusCode == 200 else { return }
             do {
-                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let models = json["models"] as? [[String: Any]] else { return }
-                box.value = models
+                box.value = try await OllamaModelListService().fetchModels(from: baseURL)
             } catch {
                 return
             }
-        }.resume()
+        }
         let result = semaphore.wait(timeout: .now() + 5)
         return result == .success ? box.value : nil
     }
+#endif
 
     // MARK: - MLX Models
 
