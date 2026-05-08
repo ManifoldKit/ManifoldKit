@@ -51,13 +51,13 @@ BaseChatHuggingFace/BackgroundDownloadManager.swift:try? FileManager.default.rem
 BaseChatHuggingFace/BackgroundDownloadManager+URLSessionDelegate.swift:try? FileManager.default.removeItem(at: tempURL)
 
 # File-based persistence helpers: reading optional data whose absence is expected
-# (no pending downloads or no resume data), decoding optional JSON (corrupt file
-# falls back to empty dict), and best-effort cleanup of stale/consumed files.
-BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let data = try? Data(contentsOf: url) else { return nil }
-BaseChatHuggingFace/BackgroundDownloadManager.swift:try? FileManager.default.removeItem(at: url)
+# (no pending downloads), decoding optional JSON (corrupt file falls back to
+# empty dict), and best-effort directory enumeration. Resume-blob reads now
+# go through `consumeResumeData(for:)`, which uses do/catch + Log.warn rather
+# than `try?` so HMAC mismatches and read errors leave a diagnostic trail
+# (#I1 network seam closure).
 BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let data = try? Data(contentsOf: pendingMetadataFileURL) else { return nil }
 BaseChatHuggingFace/BackgroundDownloadManager.swift:return try? JSONDecoder().decode([String: [String: String]].self, from: data)
-BaseChatHuggingFace/BackgroundDownloadManager.swift:try? FileManager.default.removeItem(at: resumeDataFileURL(for: id))
 BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let contents = try? FileManager.default.contentsOfDirectory(
 
 BaseChatHuggingFace/DownloadFileValidator.swift:guard let handle = try? FileHandle(forReadingFrom: fileURL) else {

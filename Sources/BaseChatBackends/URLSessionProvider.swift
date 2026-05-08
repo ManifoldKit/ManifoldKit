@@ -16,6 +16,10 @@ import BaseChatInference
 /// - ``unpinned`` / ``unpinned()`` are available whenever `Ollama` or
 ///   `CloudSaaS` is enabled — used by Ollama (LAN) and as the LM-Studio /
 ///   `.custom` provider session under `CloudSaaS`.
+/// - ``background(identifier:hopCap:additionalDownloadDelegate:)`` is
+///   always available; it is the seam used by `BackgroundDownloadManager`
+///   (under the `HuggingFace` trait) and any other long-running
+///   OS-managed download path.
 ///
 /// The ``networkDisabled`` runtime kill-switch is always available so
 /// embedders can lock the network even in a `full`-trait build.
@@ -32,6 +36,17 @@ import BaseChatInference
 ///   ``CloudBackendError/networkDisabled`` error. Use this from embedders
 ///   that flip the kill-switch dynamically and from tests that exercise the
 ///   failure path.
+///
+/// ## Redirect policy
+///
+/// Every session built here has a ``RedirectGuardDelegate`` installed, which:
+/// - Caps redirect chains at the configured hop count (default 3).
+/// - Rejects scheme downgrades (`https → http`).
+/// - Strips `Authorization`, `Cookie`, `Proxy-Authorization`, and any
+///   `X-API-*` header on cross-origin redirects.
+/// - Rejects redirect targets that classify as private/link-local IP ranges
+///   per ``PrivateIPClassifier`` (cloud IMDS, RFC1918, IPv4-mapped, etc.)
+///   or as mDNS `.local` names.
 public enum URLSessionProvider {
 
     /// Belt-and-suspenders runtime kill-switch. When `true`, the throwing
@@ -51,15 +66,30 @@ public enum URLSessionProvider {
     /// concurrent reader can observe it.
     public nonisolated(unsafe) static var networkDisabled: Bool = false
 
+    /// Default redirect hop cap for sessions built by this provider. Used
+    /// by ``pinned``, ``unpinned``, and ``background(identifier:hopCap:additionalDownloadDelegate:)``
+    /// when the caller does not supply an explicit cap. Three hops covers
+    /// CDN redirects without leaving room for an extended SSRF chain.
+    public static let defaultHopCap: Int = 3
+
     #if CloudSaaS
     /// Cached session shared by all SaaS backends — created once on first call.
+    ///
+    /// Wires both the certificate-pinning delegate and the redirect guard
+    /// onto a single `CompositeURLSessionDelegate` so both policies fire on
+    /// every request without one delegate displacing the other.
     private static let _pinned: URLSession = {
         PinnedSessionDelegate.loadDefaultPins()
-        let delegate = PinnedSessionDelegate()
+        let composite = CompositeURLSessionDelegate(
+            redirectGuard: RedirectGuardDelegate(hopCap: defaultHopCap),
+            serverTrustHandler: PinnedSessionDelegate(),
+            downloadDelegate: nil,
+            dataDelegate: nil
+        )
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }()
 
     /// Session with ``PinnedSessionDelegate`` for production API hosts.
@@ -90,11 +120,21 @@ public enum URLSessionProvider {
 
     #if Ollama || CloudSaaS
     /// Cached session shared by LAN / unpinned callers.
+    ///
+    /// No pinning, but the redirect guard still fires. LAN endpoints can
+    /// safely chase same-origin redirects; cross-origin redirects to public
+    /// IPs or away from `localhost` would have credentials stripped.
     private static let _unpinned: URLSession = {
+        let composite = CompositeURLSessionDelegate(
+            redirectGuard: RedirectGuardDelegate(hopCap: defaultHopCap),
+            serverTrustHandler: nil,
+            downloadDelegate: nil,
+            dataDelegate: nil
+        )
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }()
 
     /// Session without certificate pinning for LAN servers (Ollama, local endpoints).
@@ -121,4 +161,30 @@ public enum URLSessionProvider {
         return _unpinned
     }
     #endif
+
+    /// Builds a background `URLSession` with the redirect guard installed.
+    ///
+    /// Forwards to ``URLSessionFactory/background(identifier:hopCap:additionalDownloadDelegate:)``.
+    /// `BackgroundDownloadManager` calls this rather than constructing a
+    /// `URLSession` directly so the redirect guard sees every download
+    /// request — including the auto-reissue of partial transfers that the
+    /// system download service initiates after a process restart.
+    ///
+    /// - Parameters:
+    ///   - identifier: Unique session identifier. Tests must inject a
+    ///     unique value per instance to avoid OS-level collision.
+    ///   - hopCap: Maximum redirects allowed per task. Defaults to ``defaultHopCap``.
+    ///   - additionalDownloadDelegate: The caller's download delegate;
+    ///     forwarded for `didFinishDownloadingTo` etc.
+    public static func background(
+        identifier: String,
+        hopCap: Int = defaultHopCap,
+        additionalDownloadDelegate: URLSessionDownloadDelegate? = nil
+    ) -> URLSession {
+        URLSessionFactory.background(
+            identifier: identifier,
+            hopCap: hopCap,
+            additionalDownloadDelegate: additionalDownloadDelegate
+        )
+    }
 }

@@ -90,7 +90,11 @@ public extension HuggingFaceService {
         urlSession: URLSession? = nil,
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
-        let session = urlSession ?? URLSession(configuration: .ephemeral)
+        // Route through the centralised factory so the redirect guard is
+        // installed on every fallback session. HuggingFace ↔ CDN redirects
+        // are common and benign; an attacker-controlled redirect into IMDS
+        // or a LAN IP would otherwise be followed silently.
+        let session = urlSession ?? URLSessionFactory.ephemeral()
         let resolvedDisplayName = displayName ?? repoID.split(separator: "/").last.map(String.init) ?? repoID
 
         let parentDirectory = destinationDirectory.deletingLastPathComponent()
