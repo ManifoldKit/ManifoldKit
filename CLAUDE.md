@@ -94,6 +94,7 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 | `scripts/test.sh` | Runs configured Swift test suites and prints an honest summary. |
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
+| `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found" or other `workspace-state.json` desync errors after changing the trait set. |
 | `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). |
 | `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
 

@@ -16,7 +16,7 @@ final class InferenceServiceFacadeTests: XCTestCase {
         let service = InferenceService()
         service.registerBackendFactory { type in type == .gguf ? mock : nil }
 
-        try await service.loadModel(from: makeModelInfo())
+        try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         XCTAssertTrue(service.isModelLoaded)
 
         let (_, stream) = try service.enqueue(messages: [("user", "hi")])
@@ -64,7 +64,7 @@ final class InferenceServiceFacadeTests: XCTestCase {
             loadObserved.fulfill()
         }
 
-        try await service.loadModel(from: makeModelInfo())
+        try await service.loadModel(from: makeModelInfo(), plan: .testStub())
         await fulfillment(of: [loadObserved], timeout: 2)
         XCTAssertTrue(service.isModelLoaded)
 

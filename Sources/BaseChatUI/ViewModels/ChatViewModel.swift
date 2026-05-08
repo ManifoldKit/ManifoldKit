@@ -121,12 +121,21 @@ public final class ChatViewModel {
     /// double-load race condition.
     public var onFirstLaunch: (@MainActor () -> Void)?
 
-    /// Returns `true` if the Foundation model backend is available on this device.
-    /// Apps should set this to enable Foundation model auto-discovery.
-    /// Example: `chatViewModel.foundationModelProvider = { FoundationBackend.isAvailable }`
+    /// Returns `true` when the Foundation model backend is available on this device.
     ///
-    /// Forwarded to ``modelRegistry`` so both the registry-driven refresh
-    /// path and the legacy ``refreshModels()`` see the same provider.
+    /// Set this closure and call ``loadFoundationModelIfAvailable()`` to enable
+    /// Foundation discovery without the first-launch gate that
+    /// ``autoSelectFirstRunModel()`` imposes:
+    ///
+    /// ```swift
+    /// if #available(macOS 26, iOS 26, *) {
+    ///     vm.foundationModelProvider = { FoundationBackend.isAvailable }
+    ///     vm.loadFoundationModelIfAvailable()
+    /// }
+    /// ```
+    ///
+    /// Forwarded to ``modelRegistry`` so both the registry-driven refresh path
+    /// and ``refreshModels()`` see the same provider.
     public var foundationModelProvider: (@MainActor () -> Bool)? {
         get { modelRegistry.foundationModelProvider }
         set { modelRegistry.foundationModelProvider = newValue }

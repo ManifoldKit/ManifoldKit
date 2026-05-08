@@ -92,6 +92,30 @@ extension ChatViewModel {
 
     // MARK: - Model Discovery
 
+    /// Refreshes the model registry and, if a Foundation model is discovered,
+    /// selects and begins loading it immediately.
+    ///
+    /// Call this after setting `foundationModelProvider` — typically once at
+    /// app launch on OS versions where Foundation is available:
+    ///
+    /// ```swift
+    /// if #available(macOS 26, iOS 26, *) {
+    ///     vm.foundationModelProvider = { FoundationBackend.isAvailable }
+    ///     vm.loadFoundationModelIfAvailable()
+    /// }
+    /// ```
+    ///
+    /// If no Foundation model is discovered (either because `foundationModelProvider`
+    /// is not set, returns `false`, or the OS is unsupported) this method is a no-op.
+    /// Unlike ``autoSelectFirstRunModel()``, this method is not gated on a first-launch
+    /// flag — call it whenever you want to (re-)enable Foundation as the active backend.
+    public func loadFoundationModelIfAvailable() {
+        refreshModels()
+        guard let foundation = availableModels.first(where: { $0.modelType == .foundation }) else { return }
+        selectedModel = foundation
+        dispatchSelectedLoad()
+    }
+
     /// Re-scans the models directory and rebuilds `availableModels`.
     ///
     /// Includes the built-in Foundation model when `foundationModelProvider` returns `true`.

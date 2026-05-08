@@ -1,5 +1,6 @@
 import XCTest
 @testable import BaseChatInference
+import BaseChatTestSupport
 
 /// Tests for `InferenceService.modelLoadProgress` and the `LoadProgressReporting`
 /// opt-in protocol.
@@ -24,7 +25,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         XCTAssertEqual(service.modelLoadProgress, 0.0,
@@ -39,7 +40,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         await backend.fireProgress(0.25)
@@ -57,7 +58,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
         await backend.fireProgress(0.5)
         try await waitForProgress(0.5, on: service)
@@ -75,7 +76,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
         await backend.fireProgress(0.4)
         try await waitForProgress(0.4, on: service)
@@ -110,7 +111,7 @@ final class InferenceServiceProgressTests: XCTestCase {
 
         // Start first load and let it report some progress.
         let firstTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf))
+            try await service.loadModel(from: makeModelInfo(name: "First", modelType: .gguf), plan: .testStub())
         }
         await firstBackend.waitUntilLoadStarted()
         await firstBackend.fireProgress(0.3)
@@ -118,7 +119,7 @@ final class InferenceServiceProgressTests: XCTestCase {
 
         // Start a second load that supersedes the first.
         let secondTask = Task {
-            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation))
+            try await service.loadModel(from: makeModelInfo(name: "Second", modelType: .foundation), plan: .testStub())
         }
         await secondBackend.waitUntilLoadStarted()
 
@@ -157,7 +158,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
 
         await backend.fireProgress(-0.5)
@@ -180,7 +181,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
         XCTAssertEqual(backend.handlerInstallCount, 1, "Service should install a handler at load start")
         XCTAssertFalse(backend.hasNilHandler, "Handler should be non-nil during load")
@@ -197,7 +198,7 @@ final class InferenceServiceProgressTests: XCTestCase {
         let backend = ProgressReportingBackend()
         service.registerBackendFactory { type in type == .gguf ? backend : nil }
 
-        let task = Task { try await service.loadModel(from: makeModelInfo()) }
+        let task = Task { try await service.loadModel(from: makeModelInfo(), plan: .testStub()) }
         await backend.waitUntilLoadStarted()
         await backend.releaseLoadFailure(ProgressTestError.plannedFailure)
         _ = try? await task.value
