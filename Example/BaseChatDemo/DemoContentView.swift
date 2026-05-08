@@ -125,7 +125,7 @@ struct DemoContentView: View {
                 preferredCompactColumn = .detail
             }
 
-            viewModel.setAvailableEndpoints(cloudEndpoints)
+            viewModel.setAvailableEndpoints(cloudEndpoints.map(\.record))
 
             // Seed an empty session and/or drain any buffered payload.
             //
@@ -183,7 +183,7 @@ struct DemoContentView: View {
             viewModel.dispatchSelectedLoad()
         }
         .onChange(of: cloudEndpoints) {
-            viewModel.setAvailableEndpoints(cloudEndpoints)
+            viewModel.setAvailableEndpoints(cloudEndpoints.map(\.record))
         }
         .onChange(of: sessionManager.activeSession) { _, newSession in
             if let session = newSession {

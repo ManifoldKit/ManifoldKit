@@ -18,7 +18,10 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 ## Demo
 
 
-![BaseChatKit demo — chat conversation with streaming, session sidebar, and model browser](Example/Screenshots/demo.png)
+<p align="center">
+  <img src="Example/Screenshots/demo-macos.png" alt="BaseChatKit on macOS — chat with streaming response and session sidebar" width="58%">
+  <img src="Example/Screenshots/demo-ios.png" alt="BaseChatKit on iOS — chat conversation on iPhone" width="36%">
+</p>
 
 ## Features
 
