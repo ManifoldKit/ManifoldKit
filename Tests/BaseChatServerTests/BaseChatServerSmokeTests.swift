@@ -290,6 +290,67 @@ final class BaseChatServerSmokeTests: XCTestCase {
         }
     }
 
+    func testSSEUsageChunkIsOnlyIncludedWhenRequested() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: ResponseOnlyUsageChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let body = try requestBody(ChatCompletionRequest(
+                model: "tiny",
+                messages: [],
+                stream: true,
+                streamOptions: ChatCompletionStreamOptions(includeUsage: true)
+            ))
+            try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                XCTAssertEqual(response.status, .ok)
+                let text = String(buffer: response.body)
+                let events = try decodeSSEChunks(from: text)
+
+                XCTAssertTrue(text.hasSuffix("data: [DONE]\n\n"))
+                XCTAssertGreaterThanOrEqual(events.count, 2)
+                XCTAssertEqual(events[events.count - 2].choices.first?.finishReason, .stop)
+                XCTAssertNil(events[events.count - 2].usage)
+                XCTAssertEqual(events.last?.choices, [])
+                XCTAssertEqual(events.last?.usage, ChatCompletionUsage(promptTokens: 8, completionTokens: 5))
+            }
+        }
+    }
+
+    func testSSEUsageChunkIsOmittedByDefaultAndWhenFalse() async throws {
+        let server = ServerApp(
+            backendProvider: FakeBackendProvider(models: ["tiny"]),
+            adapter: ResponseOnlyUsageChatAdapter()
+        )
+        let app = server.makeApplication()
+
+        try await app.test(.router) { client in
+            let requests = [
+                ChatCompletionRequest(model: "tiny", messages: [], stream: true),
+                ChatCompletionRequest(
+                    model: "tiny",
+                    messages: [],
+                    stream: true,
+                    streamOptions: ChatCompletionStreamOptions(includeUsage: false)
+                )
+            ]
+
+            for request in requests {
+                let body = try requestBody(request)
+                try await client.execute(uri: "/v1/chat/completions", method: .post, body: body) { response in
+                    XCTAssertEqual(response.status, .ok)
+                    let events = try decodeSSEChunks(from: String(buffer: response.body))
+
+                    XCTAssertEqual(events.count, 1)
+                    XCTAssertEqual(events.last?.choices.first?.finishReason, .stop)
+                    XCTAssertNil(events.last?.usage)
+                }
+            }
+        }
+    }
+
     func testBackendFailureReturns500WithErrorEnvelope() async throws {
         let server = ServerApp(
             backendProvider: FakeBackendProvider(models: ["tiny"]),
@@ -445,6 +506,17 @@ private func requestBody(_ request: ChatCompletionRequest) throws -> ByteBuffer 
     ByteBuffer(bytes: try JSONEncoder().encode(request))
 }
 
+private func decodeSSEChunks(from text: String) throws -> [ChatCompletionChunk] {
+    let decoder = JSONDecoder()
+    return try text.components(separatedBy: "\n\n")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { $0.hasPrefix("data: ") && $0 != "data: [DONE]" }
+        .map { line in
+            let payload = line.dropFirst("data: ".count)
+            return try decoder.decode(ChatCompletionChunk.self, from: Data(payload.utf8))
+        }
+}
+
 private struct FakeBackendProvider: ServerBackendProvider {
     let models: [String]
     let backend: any InferenceBackend
@@ -526,6 +598,29 @@ private struct FixedStreamingChatAdapter: ChatCompletionsAdapter {
             ))
             continuation.finish()
         }
+    }
+}
+
+private struct ResponseOnlyUsageChatAdapter: ChatCompletionsAdapter {
+    func generationConfig(for request: ChatCompletionRequest) throws -> GenerationConfig {
+        GenerationConfig()
+    }
+
+    func response(
+        for request: ChatCompletionRequest,
+        using backend: any InferenceBackend
+    ) async throws -> ChatCompletionResponse {
+        ChatCompletionResponse(
+            id: "chatcmpl-usage",
+            created: 0,
+            model: request.model,
+            choices: [ChatCompletionChoice(
+                index: 0,
+                message: ChatCompletionMessage(role: .assistant, content: "done"),
+                finishReason: .stop
+            )],
+            usage: ChatCompletionUsage(promptTokens: 8, completionTokens: 5)
+        )
     }
 }
 

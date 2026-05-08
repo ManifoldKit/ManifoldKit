@@ -500,9 +500,18 @@ extension ChatCompletionsAdapter {
                         created: response.created,
                         model: response.model,
                         choices: [ChatCompletionChunkChoice(index: 0, delta: ChatCompletionDelta(content: response.contentText), finishReason: .stop)],
-                        usage: response.usage
+                        usage: nil
                     )
                     continuation.yield(chunk)
+                    if request.includesStreamUsage, let usage = response.usage {
+                        continuation.yield(ChatCompletionChunk(
+                            id: response.id,
+                            created: response.created,
+                            model: response.model,
+                            choices: [],
+                            usage: usage
+                        ))
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
