@@ -189,6 +189,126 @@ public struct ChatView<APIConfig: View>: View {
         self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
     }
 
+    /// Creates a ``ChatView`` without an API-configuration surface.
+    ///
+    /// Use this overload when the host app does not ship
+    /// `BaseChatUIModelManagement` or provides API settings elsewhere.
+    public init(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    public init<ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            composerAccessory: composerAccessory,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    /// Creates a ``ChatView`` with a custom empty state and no
+    /// API-configuration surface.
+    public init<EmptyContent: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            emptyState: emptyState,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    public init<EmptyContent: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            emptyState: emptyState,
+            composerAccessory: composerAccessory,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    /// Creates a ``ChatView`` with host-supplied context-menu items and no
+    /// API-configuration surface.
+    public init<ExtraItems: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            contextMenuItems: contextMenuItems,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    public init<ExtraItems: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            contextMenuItems: contextMenuItems,
+            composerAccessory: composerAccessory,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    public init<EmptyContent: View, ExtraItems: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            emptyState: emptyState,
+            contextMenuItems: contextMenuItems,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
+    public init<EmptyContent: View, ExtraItems: View, ComposerAccessory: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder emptyState: () -> EmptyContent,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
+    ) where APIConfig == EmptyView {
+        self.init(
+            showModelManagement: showModelManagement,
+            linkPreviewProvider: linkPreviewProvider,
+            emptyState: emptyState,
+            contextMenuItems: contextMenuItems,
+            composerAccessory: composerAccessory,
+            apiConfiguration: { EmptyView() }
+        )
+    }
+
     // MARK: - Body
 
     public var body: some View {

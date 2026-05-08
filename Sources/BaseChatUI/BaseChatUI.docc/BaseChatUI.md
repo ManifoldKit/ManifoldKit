@@ -65,10 +65,7 @@ struct ContentView: View {
     @Environment(ChatViewModel.self) var chatVM
 
     var body: some View {
-        ChatView(
-            showModelManagement: .constant(false),
-            apiConfiguration: { EmptyView() }
-        )
+        ChatView(showModelManagement: .constant(false))
     }
 }
 ```
