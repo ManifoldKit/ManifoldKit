@@ -103,7 +103,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
     func test_ollama_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "ollama_tool_call.json")
 
-        let parsed = try XCTUnwrap(OllamaBackend.parseLine(json), "parseLine returned nil for valid fixture")
+        let parsed = try XCTUnwrap(OllamaPayloadParser.parseLine(json), "parseLine returned nil for valid fixture")
 
         let toolCalls = try XCTUnwrap(parsed.toolCalls, "expected non-nil toolCalls in parsed line")
         XCTAssertEqual(toolCalls.count, 1, "expected exactly one tool call in Ollama fixture")
@@ -141,7 +141,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
 
         // Ollama
         let ollamaJson = try loadFixture(named: "ollama_tool_call.json")
-        let ollamaParsed = try XCTUnwrap(OllamaBackend.parseLine(ollamaJson))
+        let ollamaParsed = try XCTUnwrap(OllamaPayloadParser.parseLine(ollamaJson))
         let ollamaCall = try XCTUnwrap(ollamaParsed.toolCalls?.first)
         let ollamaArgs = try parseArgs(ollamaCall.arguments)
 

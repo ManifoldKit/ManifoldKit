@@ -96,6 +96,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldCloud/OpenAIBackend.swift",
         "ManifoldCloud/OpenAIResponsesBackend.swift",
         "ManifoldCloud/OllamaBackend.swift",
+        // Extracted from OllamaBackend in #1163 (issue #1113 decomposition):
+        // OllamaModelProbe owns the `/api/show` capability probe;
+        // OllamaStreamProcessor owns the NDJSON byte-stream reader
+        // (`URLSession.AsyncBytes`). Both inherit OllamaBackend's
+        // network-boundary status by extraction — no new network surface.
+        "ManifoldCloud/OllamaModelProbe.swift",
+        "ManifoldCloud/OllamaStreamProcessor.swift",
         "ManifoldCloud/OllamaModelListService.swift",
         "ManifoldCloudCore/SSECloudBackend.swift",
         "ManifoldCloudCore/URLSessionProvider.swift",
@@ -247,7 +254,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 26,
+            Self.networkIOAllowlist.count, 28,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
