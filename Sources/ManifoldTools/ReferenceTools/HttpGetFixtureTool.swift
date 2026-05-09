@@ -20,18 +20,18 @@ public enum HttpGetFixtureTool {
     /// you need the model to exercise the HTTP path without leaving the
     /// process.
     public static let fixtures: [String: String] = [
-        "https://fixture.bck/weather": #"{"city":"Dublin","sky":"clear","celsius":14}"#,
-        "https://fixture.bck/echo": #"{"ok":true,"message":"fixture echo"}"#
+        "https://fixture.manifold/weather": #"{"city":"Dublin","sky":"clear","celsius":14}"#,
+        "https://fixture.manifold/echo": #"{"ok":true,"message":"fixture echo"}"#
     ]
 
     /// - Parameter allowRealNetwork: When `true`, unknown URLs fall through to
     ///   a real `URLSession.shared.data(for:)` call — but only if the
-    ///   `BCK_TOOLS_ALLOW_NETWORK` env var is also set to `1`. Double gating
+    ///   `MANIFOLD_TOOLS_ALLOW_NETWORK` env var is also set to `1`. Double gating
     ///   prevents accidental network activity in CI.
     public static func makeExecutor(allowRealNetwork: Bool = false) -> any ToolExecutor {
         let definition = ToolDefinition(
             name: "http_get_fixture",
-            description: "Fetches a canned JSON fixture for a well-known https://fixture.bck/* URL. Never hits the real internet in CI.",
+            description: "Fetches a canned JSON fixture for a well-known https://fixture.manifold/* URL. Never hits the real internet in CI.",
             parameters: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -58,11 +58,11 @@ public enum HttpGetFixtureTool {
                 return encode(Result(url: args.url, status: 200, body: body))
             }
 
-            let envAllowed = ProcessInfo.processInfo.environment["BCK_TOOLS_ALLOW_NETWORK"] == "1"
+            let envAllowed = ProcessInfo.processInfo.environment["MANIFOLD_TOOLS_ALLOW_NETWORK"] == "1"
             guard allowRealNetwork, envAllowed else {
                 return ToolResult(
                     callId: "",
-                    content: "URL '\(args.url)' is not a known fixture and real network access is disabled (pass --real-network and set BCK_TOOLS_ALLOW_NETWORK=1).",
+                    content: "URL '\(args.url)' is not a known fixture and real network access is disabled (pass --real-network and set MANIFOLD_TOOLS_ALLOW_NETWORK=1).",
                     errorKind: .permissionDenied
                 )
             }

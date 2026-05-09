@@ -59,11 +59,11 @@ To add a scenario, drop a JSON file in `Scenarios/built-in/`. No Swift recompile
 
 | Name | Args | Behaviour |
 |------|------|-----------|
-| `now` | `{}` | Returns a fixture ISO-8601 timestamp (`2099-01-01T00:00:00Z`) deliberately outside any model's training distribution so scenario assertions can distinguish a real tool call from hallucination. Override via `BCK_TOOLS_NOW_FIXTURE`. |
+| `now` | `{}` | Returns a fixture ISO-8601 timestamp (`2099-01-01T00:00:00Z`) deliberately outside any model's training distribution so scenario assertions can distinguish a real tool call from hallucination. Override via `MANIFOLD_TOOLS_NOW_FIXTURE`. |
 | `calc` | `{a, op, b}` | Pure arithmetic. Returns `.invalidArguments` on division by zero or unknown operators. |
 | `read_file` | `{path}` | Reads from `Tests/Fixtures/manifold-tools/` only. Path escapes (symlink or `..`) return `.permissionDenied`; missing files return `.notFound`. |
 | `list_dir` | `{dir}` | Lists non-hidden filenames inside the same sandbox. |
-| `http_get_fixture` | `{url}` | Returns canned JSON for well-known `https://fixture.bck/…` URLs. Real network access is double-gated: pass `--real-network` *and* set `BCK_TOOLS_ALLOW_NETWORK=1`. Default CI mode cannot touch the public internet. |
+| `http_get_fixture` | `{url}` | Returns canned JSON for well-known `https://fixture.manifold/…` URLs. Real network access is double-gated: pass `--real-network` *and* set `MANIFOLD_TOOLS_ALLOW_NETWORK=1`. Default CI mode cannot touch the public internet. |
 
 ## CI
 
