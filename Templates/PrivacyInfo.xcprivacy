@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  BaseChatKit — App Store privacy manifest template.
+
+  Copy this file into your app target's resources as `PrivacyInfo.xcprivacy`.
+  Adjust or remove `NSPrivacyAccessedAPIType` entries if you compile out the
+  BCK features that triggered them (see `docs/AppStoreSubmission.md`).
+
+  BCK ships zero tracking and zero data collection by default. The required-
+  reason API entries below cover only the on-device system APIs BCK touches
+  to manage models and user preferences — they do not send anything off-device.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSPrivacyTracking</key>
+    <false/>
+
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array/>
+
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+        <!--
+          User defaults — CA92.1: "Declare this reason to access user defaults
+          to read and write information that is only accessible to the app
+          itself."
+          BCK reads/writes user settings (sampler presets, UI state, last-used
+          model id) via injected UserDefaults; nothing is shared with other
+          apps or off-device.
+          Remove this entry only if you compile out every BCK target that
+          reads user defaults (effectively impossible — BaseChatRuntime
+          uses it for sampler presets and benchmark caches).
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!--
+          File timestamp — C617.1: "Declare this reason to access the
+          timestamps, size, or other metadata of files inside the app
+          container, app group container, or the app's CloudKit container."
+          BCK reads file modification dates for model-cache invalidation
+          (e.g. `ModelInfo` GGUF metadata cache, `ToolSpillReaper` tmpdir
+          reaper) and download integrity checks.
+          Remove this entry only if you ship without local model storage
+          (i.e. cloud-only consumer with no `BaseChatHuggingFace` traits).
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+
+        <!--
+          Disk space — E174.1: "Declare this reason to display disk space
+          information to the person using the device."
+          BCK queries free disk space before downloading model files
+          (see `ModelStorageService.availableDiskSpaceBytes`) so the UI can
+          warn about insufficient storage. The reading is local and not
+          transmitted off-device.
+          Remove this entry only if you ship FoundationOnly with no model-
+          download surface (no HuggingFace, no local model UI).
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>E174.1</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

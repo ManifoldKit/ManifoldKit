@@ -182,9 +182,31 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 
 > **Note on `--disable-default-traits`:** this flag applies to the package where it is passed. If your consumer package declares no traits of its own, SwiftPM will error with `"Disabled default traits by command-line trait configuration on package 'X' that declares no traits"`. Use the flag when building BCK directly or when your package declares its own traits; otherwise control the BCK trait set via the `traits:` array in your `Package.swift` dependency declaration.
 
-**Apple Foundation Models only (no llama.cpp / MLX download)**
+**Foundation Models only (App Store-lean build)**
 
-If your app targets Apple's built-in Foundation model exclusively, you can drop the 200 MB+ llama.cpp xcframework and 16+ transitive packages by disabling the default traits:
+If your app targets Apple's built-in Foundation model exclusively (iOS 26+ /
+macOS 26+), use the `FoundationOnly` trait. This excludes MLX (~100 MB
+checkout) and LlamaSwift (~563 MB xcframework), keeping the BCK overhead
+under 5 MB — enforced by the `foundation-only-build` CI gate. Recommended
+for indie iOS / macOS apps that ship through the App Store and only need
+Apple Foundation Models.
+
+```swift
+.package(
+    url: "https://github.com/roryford/BaseChatKit.git",
+    from: "0.18.0",
+    traits: ["FoundationOnly"]   // overrides the MLX/Llama/HuggingFace defaults
+)
+```
+
+The `FoundationOnly` trait is mutually exclusive with `MLX`, `Llama`, and
+`HuggingFace` — when you pass `traits: ["FoundationOnly"]`, SwiftPM treats
+that as the full enabled-trait set and the heavy defaults drop out. See
+[`docs/AppStoreSubmission.md`](docs/AppStoreSubmission.md) for the full
+submission checklist (encryption export, privacy manifest, ATS, bundle
+sizes per profile).
+
+Equivalent legacy form (still supported, before the named trait existed):
 
 ```swift
 .package(
@@ -203,7 +225,7 @@ if #available(macOS 26, iOS 26, *) {
 }
 ```
 
-No `--disable-default-traits` flag is needed in your `swift build` command — the empty `traits:` array already communicates your intent to SPM.
+No `--disable-default-traits` flag is needed in your `swift build` command — the trait array already communicates your intent to SPM.
 
 For example, a cloud-only consumer can keep the chat UI and local-model loaders out of the download path:
 
@@ -353,6 +375,7 @@ The full list of SwiftPM traits, derived from `Package.swift`. Defaults
 | `Server` | No | `BaseChatServer` executable + Hummingbird HTTP dependency. |
 | `Macros` | No | `BaseChatMacrosPlugin` (`@ToolSchema`) + swift-syntax (~647 source files). |
 | `Fuzz` | No | Real backends in `fuzz-chat` for `scripts/fuzz.sh`. Not needed for `swift test`. |
+| `FoundationOnly` | No | App Store-lean marker. Overrides `MLX`/`Llama`/`HuggingFace` defaults; pulls no heavy dependencies. See [`docs/AppStoreSubmission.md`](docs/AppStoreSubmission.md). |
 
 `Package.swift` is the authoritative source — add `--list-traits` to a
 `swift package` invocation if you suspect this table has drifted.

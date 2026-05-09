@@ -1,5 +1,22 @@
 // swift-tools-version: 6.1
 
+// Trait reference (full table in README §2.4):
+//   - Defaults: MLX, Llama, HuggingFace.
+//   - Opt-in heavy/network traits: Ollama, CloudSaaS, MCP, MCPBuiltinCatalog,
+//     Voice, Tools, AppIntents, Server, Macros, Fuzz, AnyLanguageModel,
+//     HuggingFace.
+//   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
+//     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
+//     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
+//     treats that as the full enabled-trait set, so the MLX/Llama/HuggingFace
+//     defaults drop out and BaseChatBackends compiles to FoundationBackend +
+//     cloud-stub bodies only (no MLX checkout, no LlamaSwift xcframework, no
+//     swift-huggingface). Mutual exclusion with MLX/Llama/HuggingFace is
+//     enforced by the consumer override semantics, not by the package itself.
+//   - The CI gate `foundation-only-build` (`.github/workflows/ci.yml`)
+//     enforces a ≤ 5 MB BaseChatBackends artifact and zero MLX/Llama symbol
+//     leaks under the FoundationOnly trait.
+
 import PackageDescription
 import CompilerPluginSupport
 
@@ -47,6 +64,14 @@ let package = Package(
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
         // scripts/fuzz.sh, which passes --traits Fuzz,MLX,Llama explicitly.
         .trait(name: "Fuzz", description: "Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test."),
+        // FoundationOnly is an explicit App Store-lean marker. Consumers that
+        // pass `traits: ["FoundationOnly"]` override the default trait set
+        // (which is MLX + Llama + HuggingFace), so BaseChatBackends compiles
+        // without MLX, llama.cpp, or swift-huggingface — keeping the BCK
+        // overhead under 5 MB and dropping ~700 MB of binary dependencies
+        // from the resolved graph. Apple Foundation Models still work via
+        // FoundationBackend (iOS 26 / macOS 26+). See docs/AppStoreSubmission.md.
+        .trait(name: "FoundationOnly", description: "App Store-lean: Apple Foundation Models only. Pass `traits: [\"FoundationOnly\"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set."),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.31.3"),
@@ -130,6 +155,7 @@ let package = Package(
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Macros", .when(traits: ["Macros"])),
+                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
         // MCP: Model Context Protocol client surface and tool bridge.
@@ -208,6 +234,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
@@ -399,6 +426,7 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
         .testTarget(
