@@ -12,7 +12,14 @@ internal struct ServerBackendRequest: Equatable, Sendable {
 
 internal protocol ServerBackendProvider: Sendable {
     func listModels() async throws -> [String]
+    func listModelRecords() async throws -> [ModelsListResponse.Model]
     func backend(for request: ServerBackendRequest) async throws -> any InferenceBackend
+}
+
+extension ServerBackendProvider {
+    internal func listModelRecords() async throws -> [ModelsListResponse.Model] {
+        try await listModels().map { ModelsListResponse.Model(id: $0, status: "available") }
+    }
 }
 
 internal struct UnavailableServerBackendProvider: ServerBackendProvider {

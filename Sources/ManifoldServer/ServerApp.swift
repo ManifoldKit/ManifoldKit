@@ -60,9 +60,9 @@ internal struct ServerApp: Sendable {
             }
             metrics.recordRequestStarted()
             do {
-                let models = try await backendProvider.listModels()
+                let models = try await backendProvider.listModelRecords()
                 metrics.recordRequestCompleted()
-                return jsonResponse(ModelsListResponse(models: models))
+                return jsonResponse(ModelsListResponse(modelRecords: models))
             } catch {
                 metrics.recordFailure()
                 metrics.recordRequestCompleted()
