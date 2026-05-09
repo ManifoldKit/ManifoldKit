@@ -18,21 +18,27 @@ BCK is a Swift package. Install via SwiftPM:
 
 ## Imports
 
-There is **no `BaseChatKit` umbrella module** — every dependency is imported by
-its product name. (An umbrella product is planned for 0.19.) The eight products
-a typical consumer wires up:
+App code should `import BaseChatKit` — the umbrella product re-exports the
+five most-imported modules in one line:
+
+```swift
+import BaseChatKit   // covers Inference, Runtime, PersistenceSwiftData, Backends, UI
+```
+
+Specialised modules stay opt-in and are imported by name when you need them:
 
 | Product | Import when you need… |
 |---------|------------------------|
-| `BaseChatInference` | Backend protocols, `InferenceService`, `ModelInfo`, `GenerationEvent`, tool types. |
-| `BaseChatRuntime` | Storage-neutral ports (`EndpointStore`, `SamplerPresetStore`), use cases, `ConversationRuntime`. |
-| `BaseChatPersistenceSwiftData` | The shipped SwiftData stack: `BaseChatBootstrap`, `@Model` types, container factory. |
-| `BaseChatBackends` | Concrete backends (MLX, llama.cpp, Foundation, OpenAI, Claude, Ollama). `DefaultBackends.register(with:)`. |
-| `BaseChatUI` | `ChatView`, `SessionListView`, `ChatViewModel`, `SessionManagerViewModel`. |
-| `BaseChatUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. |
+| **`BaseChatKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `BaseChatBootstrap`, `DefaultBackends`, `InferenceService`, `BackendName` — the 80%-case surface. |
+| `BaseChatUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
 | `BaseChatHuggingFace` *(optional, `HuggingFace` trait, default-on)* | Hub search, browse, background downloads. |
 | `BaseChatVoice` *(optional, `Voice` trait)* | Speech I/O composer accessory. |
 | `BaseChatMCP` *(optional, `MCP` trait)* | Model Context Protocol client + tool bridge. |
+| `BaseChatAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
+
+Contributors changing BCK internals can still import the individual products
+(`BaseChatInference`, `BaseChatRuntime`, `BaseChatPersistenceSwiftData`,
+`BaseChatBackends`, `BaseChatUI`); the umbrella is the consumer-facing surface.
 
 The dependency graph is one-way: UI depends on Runtime depends on Inference;
 backends depend on Inference directly. Never import `BaseChatBackends` from a
@@ -47,11 +53,8 @@ runtime, and the model container in the right order. Drop this in
 ```swift
 import SwiftUI
 import SwiftData
-import BaseChatPersistenceSwiftData
-import BaseChatInference
-import BaseChatUI
-import BaseChatUIModelManagement
-import BaseChatBackends
+import BaseChatKit
+import BaseChatUIModelManagement   // model browser/download UI is opt-in
 
 @main
 struct MyChatApp: App {
@@ -108,7 +111,7 @@ The corresponding `ContentView` is small:
 
 ```swift
 import SwiftUI
-import BaseChatUI
+import BaseChatKit
 import BaseChatUIModelManagement
 
 struct ContentView: View {
@@ -163,31 +166,37 @@ method enforces both preconditions.
 
 ## Backend identity
 
-Use the typed constants in `BackendName`. Do not compare against raw strings:
+`BackendName` is a Swift `enum: String` with six cases. Compare via the typed
+accessor — never against raw string literals:
 
 ```swift
-import BaseChatInference
+import BaseChatKit   // re-exports BaseChatInference
 
-if vm.activeBackendName == BackendName.foundation {
+if vm.activeBackendName == BackendName.foundation.rawValue {
     // Foundation-specific copy
 }
 ```
 
-Available constants today (raw values shown for reference, but **don't compare
-against them directly** — write `BackendName.foundation`, not `"Apple"`):
+Available cases (canonical raw values shown):
 
-| Constant | Raw value |
-|----------|-----------|
-| `.foundation` | `"Apple"` |
-| `.ollama` | `"Ollama"` |
-| `.claude` | `"Claude"` |
-| `.openAI` | `"OpenAI"` |
-| `.mlx` | `"MLX"` |
-| `.llama` | `"llama.cpp"` |
+| Case | Raw value (0.19+) | Legacy (0.18.x) |
+|------|-------------------|-----------------|
+| `.foundation` | `"foundation"` | `"Apple"` |
+| `.ollama` | `"ollama"` | `"Ollama"` |
+| `.claude` | `"claude"` | `"Claude"` |
+| `.openAI` | `"openAI"` | `"OpenAI"` |
+| `.mlx` | `"mlx"` | `"MLX"` |
+| `.llama` | `"llama"` | `"llama.cpp"` |
 
-The 0.19 release converts `BackendName` to a true Swift `enum` (raw values
-become lowercase: `.foundation == "foundation"`). The typed accessor pattern
-above is forward-compatible — code that hardcodes `"Apple"` will break.
+`BackendName.parse(_:)` accepts both the canonical 0.19+ form and the legacy
+0.18 strings, so apps reading already-persisted backend names off disk migrate
+in place:
+
+```swift
+if let backend = BackendName.parse(persisted) {
+    // 0.18 "Apple" and 0.19 "foundation" both map to .foundation here.
+}
+```
 
 ## Message types
 
@@ -323,16 +332,20 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 These are the four mistakes most assistants make against BCK. Don't write any
 of them:
 
-1. **There is NO `BaseChatKit` umbrella module.** `import BaseChatKit` does not
-   compile. Import the specific products you need
-   (`BaseChatPersistenceSwiftData`, `BaseChatUI`, `BaseChatBackends`, …). An
-   umbrella product is on the 0.19 roadmap.
+1. **The umbrella module is `BaseChatKit`** (added in 0.19). Reach for
+   `import BaseChatKit` first — it covers Inference, Runtime,
+   PersistenceSwiftData, Backends, and UI. Specialised modules
+   (`BaseChatUIModelManagement`, `BaseChatMCP`, `BaseChatVoice`, …) stay
+   explicit imports.
 2. **The send method is `vm.sendMessage(_:)`, NOT `vm.send(_:)`.**
    `ChatViewModel.send` does not exist. Use `try await vm.sendMessage("hi")`
    for scripted use, or set `vm.inputText` and call `await vm.sendMessage()`.
-3. **Backend identity is `BackendName.foundation` (typed), NOT a raw string
-   `"foundation"` or `"Apple"`.** The raw values are an implementation detail
-   that 0.19 will change.
+3. **Backend identity comparisons go through `BackendName.<case>.rawValue`**
+   (e.g. `vm.activeBackendName == BackendName.foundation.rawValue`). The raw
+   values flipped from `"Apple"`/`"Ollama"`/`"llama.cpp"` to lowercase
+   canonical (`"foundation"`/`"ollama"`/`"llama"`) in 0.19 — code that
+   hardcoded the legacy strings breaks. Use `BackendName.parse(_:)` when
+   reading already-persisted strings off disk.
 4. **Local model loading goes through
    `ModelManagementViewModel.dispatchSelectedLoad()`** — there is no shortcut
    like `vm.loadModel(url:)` or `vm.loadModel(from:)`. Foundation Models are

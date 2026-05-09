@@ -14,7 +14,7 @@
 #      blacklist:
 #        - `loadModel(from:contextSize:)`     (replaced by `loadModel(from:plan:)`)
 #        - `vm.send(_:)` / `viewModel.send(_:)` (replaced by `sendMessage(_:)`)
-#        - `import BaseChatKit`               (no umbrella module exists)
+#        (`import BaseChatKit` was forbidden pre-0.19; the umbrella now exists.)
 #
 # Why not full Swift snippet typecheck:
 #   The README's Package.swift fragments and `.target(dependencies:)` snippets
@@ -104,7 +104,6 @@ echo "── Check: README does not reference deleted public API ─────
 
 declare -a forbidden=(
     'loadModel(from:contextSize:)|deleted in 0.18; use \`loadModel(from:plan:)\` taking a \`ModelLoadPlan\`'
-    'import BaseChatKit$|no umbrella module — import the specific product (e.g. \`BaseChatUI\`)'
 )
 
 # Looking up `vm.send(` is too noisy because `vm.send` could legitimately

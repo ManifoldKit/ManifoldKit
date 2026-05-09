@@ -77,8 +77,11 @@ final class ModelLifecycleCoordinator {
     ///
     /// - Parameters:
     ///   - backend: the pre-configured backend to install as current.
-    ///   - name: the backend engine label (e.g. "llama.cpp", "MLX"). Stored in
-    ///     ``activeBackendName`` and in request metadata as the `backend` field.
+    ///   - name: the backend engine label. Use ``BackendName/rawValue`` for the
+    ///     six first-class backends (e.g. `BackendName.llama.rawValue` →
+    ///     `"llama"`) so the value matches what the production load path emits.
+    ///     Stored in ``activeBackendName`` and in request metadata as the
+    ///     `backend` field.
     ///   - modelName: the human-readable model name (e.g. from `ModelInfo.name`).
     ///     Stored in ``activeModelName``. Defaults to `nil` when the test did not
     ///     load through the real pipeline and therefore has no model-level name.
@@ -284,10 +287,11 @@ final class ModelLifecycleCoordinator {
             urlModelConfigurable.configure(baseURL: url, modelName: endpoint.modelName)
         }
 
+        let cloudBackendName = backendDisplayName(for: endpoint.provider)
         let request = beginLoadRequest(
             source: "cloud",
             target: endpoint.provider.rawValue,
-            backend: endpoint.provider.rawValue
+            backend: cloudBackendName
         )
         installProgressHandler(on: newBackend, for: request)
         do {
@@ -310,7 +314,7 @@ final class ModelLifecycleCoordinator {
         guard commitLoadIfCurrent(
             request: request,
             backend: newBackend,
-            backendName: endpoint.provider.rawValue,
+            backendName: cloudBackendName,
             modelName: endpoint.modelName
         ) else {
             newBackend.unloadModel()
@@ -412,9 +416,23 @@ final class ModelLifecycleCoordinator {
 
     private func backendDisplayName(for modelType: ModelType) -> String {
         switch modelType {
-        case .mlx: "MLX"
-        case .gguf: "llama.cpp"
-        case .foundation: "Apple"
+        case .mlx: BackendName.mlx.rawValue
+        case .gguf: BackendName.llama.rawValue
+        case .foundation: BackendName.foundation.rawValue
+        }
+    }
+
+    /// Maps an `APIProvider` to a canonical backend-name string so cloud
+    /// loads emit the same `BackendName.<case>.rawValue` shape as local
+    /// loads where possible. Falls back to the raw display name for
+    /// providers that do not have a `BackendName` case (e.g. `lmStudio`,
+    /// `custom`, `openAIResponses`).
+    private func backendDisplayName(for provider: APIProvider) -> String {
+        switch provider {
+        case .openAI: BackendName.openAI.rawValue
+        case .claude: BackendName.claude.rawValue
+        case .ollama: BackendName.ollama.rawValue
+        case .openAIResponses, .lmStudio, .custom: provider.rawValue
         }
     }
 

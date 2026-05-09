@@ -93,7 +93,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
         await secondBackend.releaseLoadSuccess()
         await waitUntil {
             vm.isModelLoaded
-            && vm.activeBackendName == "Apple"
+            && vm.activeBackendName == BackendName.foundation.rawValue
             && vm.activityPhase == .idle
         }
 
@@ -102,7 +102,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
 
         XCTAssertEqual(vm.selectedModel?.id, secondModel.id)
         XCTAssertTrue(vm.isModelLoaded)
-        XCTAssertEqual(vm.activeBackendName, "Apple")
+        XCTAssertEqual(vm.activeBackendName, BackendName.foundation.rawValue)
         XCTAssertNil(vm.errorMessage)
         XCTAssertEqual(vm.activityPhase, .idle)
         XCTAssertEqual(secondBackend.unloadCallCount, 0)
@@ -181,7 +181,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
         await secondBackend.waitUntilLoadStarted()
 
         await secondBackend.releaseLoadSuccess()
-        await waitUntil { vm.isModelLoaded && vm.activeBackendName == "Apple" }
+        await waitUntil { vm.isModelLoaded && vm.activeBackendName == BackendName.foundation.rawValue }
 
         await firstBackend.releaseLoadFailure(ControlledLoadTestError.plannedFailure)
         // Wait for the stale failure's cleanup task to run — the losing backend must
@@ -189,7 +189,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
         await waitUntil { firstBackend.unloadCallCount == 1 }
 
         XCTAssertTrue(vm.isModelLoaded, "Stale failure must not unload the newer successful backend")
-        XCTAssertEqual(vm.activeBackendName, "Apple")
+        XCTAssertEqual(vm.activeBackendName, BackendName.foundation.rawValue)
         XCTAssertEqual(vm.activityPhase, .idle)
         XCTAssertNil(vm.errorMessage, "Stale failure must not surface an error")
         XCTAssertEqual(firstBackend.unloadCallCount, 1)

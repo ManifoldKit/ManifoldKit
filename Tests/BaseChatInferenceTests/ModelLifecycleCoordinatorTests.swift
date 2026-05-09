@@ -71,7 +71,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
         try await task.value
 
         XCTAssertTrue(coordinator.isModelLoaded, "isModelLoaded must flip to true after successful commit")
-        XCTAssertEqual(coordinator.activeBackendName, "llama.cpp",
+        XCTAssertEqual(coordinator.activeBackendName, BackendName.llama.rawValue,
                        "activeBackendName must reflect the backend that committed the load")
         XCTAssertEqual(coordinator.activeModelName, "Test",
                        "activeModelName must be set from ModelInfo.name at commit time")
@@ -101,7 +101,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(coordinator.isModelLoaded,
                       "Plan-taking overload must flip isModelLoaded on successful commit")
-        XCTAssertEqual(coordinator.activeBackendName, "llama.cpp")
+        XCTAssertEqual(coordinator.activeBackendName, BackendName.llama.rawValue)
         XCTAssertEqual(coordinator.activeModelName, "Test")
     }
 
@@ -186,7 +186,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
 
         XCTAssertTrue(coordinator.isModelLoaded,
                       "Request B must commit successfully after A was suppressed")
-        XCTAssertEqual(coordinator.activeBackendName, "Apple",
+        XCTAssertEqual(coordinator.activeBackendName, BackendName.foundation.rawValue,
                        "activeBackendName must reflect B's backend, not A's")
     }
 
@@ -448,7 +448,7 @@ final class ModelLifecycleCoordinatorTests: XCTestCase {
         try await taskB.value
 
         XCTAssertTrue(coordinator.isModelLoaded, "B must commit as the latest-wins request")
-        XCTAssertEqual(coordinator.activeBackendName, "Apple",
+        XCTAssertEqual(coordinator.activeBackendName, BackendName.foundation.rawValue,
                        "activeBackendName must reflect B's backend")
     }
 }

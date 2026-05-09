@@ -126,8 +126,8 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        // Backend name must be "Apple" to trigger the hint.
-        let vm = await makeVM(backend: mock, name: "Apple")
+        // Backend name must be the Foundation canonical to trigger the hint.
+        let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
 
         var hintCallbackCalled = false
         vm.onUpgradeHintTriggered = { hintCallbackCalled = true }
@@ -147,7 +147,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        let vm = await makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -163,7 +163,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Hello"]
-        let vm = await makeVM(backend: mock, name: "MLX")
+        let vm = await makeVM(backend: mock, name: BackendName.mlx.rawValue)
 
         vm.inputText = "Hi"
         await vm.sendMessage()
@@ -179,7 +179,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["First"]
-        let vm = await makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
 
         // First message triggers the hint.
         vm.inputText = "Hi"
@@ -209,7 +209,7 @@ final class GenerationExtensionTests: XCTestCase {
 
         let mock = MockInferenceBackend()
         mock.tokensToYield = []  // Empty response
-        let vm = await makeVM(backend: mock, name: "Apple")
+        let vm = await makeVM(backend: mock, name: BackendName.foundation.rawValue)
 
         vm.inputText = "Hi"
         await vm.sendMessage()
