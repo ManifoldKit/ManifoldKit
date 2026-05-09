@@ -64,7 +64,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = ClaudeBackend.encodeMessageContent(for: message)
+        let encoded = ClaudeMessageEncoder.encodeMessageContent(for: message)
 
         // The user turn carries an input image, so content must be a
         // structured array — that's the path that loops over parts.
@@ -97,7 +97,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = ClaudeBackend.encodeMessageContent(for: message)
+        let encoded = ClaudeMessageEncoder.encodeMessageContent(for: message)
 
         XCTAssertEqual(encoded["content"] as? String, "hello",
             "Image-less user turn (input-image-wise) must collapse to plain string content")

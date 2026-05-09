@@ -5,7 +5,7 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 @testable import ManifoldInference
 
-/// Asserts that ``ClaudeBackend/ClaudePayloadHandler/extractEvents(from:)``
+/// Asserts that ``ClaudePayloadHandler/extractEvents(from:)``
 /// preserves the `thinking_delta` and `text_delta` event surface that the
 /// migration from individual `parseToken` / `parseThinkingDelta` calls is
 /// supposed to keep intact.
@@ -13,7 +13,7 @@ import ManifoldTestSupport
 /// Closes the per-handler half of #604 (Claude reasoning event preservation).
 final class ClaudePayloadHandlerTests: XCTestCase {
 
-    private let handler = ClaudeBackend.payloadHandler
+    private let handler = ClaudePayloadHandler()
 
     // MARK: - thinking_delta classification
 
