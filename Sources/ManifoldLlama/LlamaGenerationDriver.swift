@@ -68,8 +68,13 @@ struct LlamaGenerationDriver {
 
     /// Executes the generation loop: clears the KV cache, builds the sampler
     /// chain, decodes the prompt in `n_batch`-sized chunks, and runs the
-    /// token-generation loop until `maxTokens` are produced, an EOG token is
-    /// sampled, or `isCancelled()` returns `true`.
+    /// token-generation loop until `maxTokens` visible output tokens are produced,
+    /// an EOG token is sampled, or `isCancelled()` returns `true`.
+    ///
+    /// Thinking tokens (`.thinkingToken` events) do **not** count toward `maxTokens`.
+    /// They are governed separately by `config.maxThinkingTokens`. The total loop
+    /// iteration count is `maxTokens + effectiveThinkingBudget`, capped to the
+    /// remaining KV context space.
     ///
     /// Yields `.token` events into `continuation` and drives `generationStream`
     /// phase transitions (`.streaming`, `.done`, `.failed`). On any error the
@@ -231,51 +236,61 @@ struct LlamaGenerationDriver {
             llama_sampler_chain_add(sampler, drySampler)
         }
 
-        // Surface `config.topK` to the sampler chain. Historical default of 40 is
-        // preserved when the caller leaves it nil, so existing behaviour is unchanged
-        // for callers that never set the field (which previously had no effect).
-        let effectiveTopK = config.topK.map { Int32($0) } ?? 40
-        llama_sampler_chain_add(sampler, llama_sampler_init_top_k(effectiveTopK))
-        if config.topP < 1.0 {
-            llama_sampler_chain_add(sampler, llama_sampler_init_top_p(config.topP, 1))
-        }
-        // Honour `config.minP` when supplied; default to 0.05 for parity with prior behaviour.
-        let effectiveMinP = config.minP ?? 0.05
-        llama_sampler_chain_add(sampler, llama_sampler_init_min_p(effectiveMinP, 1))
-
-        // Use the caller-supplied seed when available so consecutive runs with the same
-        // prompt + config produce identical token streams. `llama_sampler_init_dist`
-        // takes `uint32_t`, so we truncate the GenerationConfig's `UInt64` seed —
-        // collisions across the truncation boundary are not a correctness issue, only
-        // a slight loss of seed-space entropy. Falls back to a fresh random seed when
-        // the caller didn't request determinism.
-        let samplerSeed: UInt32
-        if let seed = config.seed {
-            samplerSeed = UInt32(truncatingIfNeeded: seed)
+        // temperature == 0.0 means true greedy decoding: always pick the argmax token.
+        // The stochastic `dist` sampler introduces seed-dependent tie-breaking that can
+        // produce non-deterministic output when two logits are numerically equal (a
+        // realistic occurrence when the KV cache re-decode path uses a different Metal
+        // accumulation order than the original full-batch decode). Using the dedicated
+        // greedy sampler eliminates that randomness entirely.
+        if config.temperature <= 0.0 {
+            llama_sampler_chain_add(sampler, llama_sampler_init_greedy())
         } else {
-            samplerSeed = UInt32.random(in: 0...UInt32.max)
-        }
-
-        // Mirostat v2 owns both the temperature step and the final token selection
-        // (it samples internally), so when it is active we skip temp/xtc/dist
-        // entirely. When inactive we keep the historical chain tail.
-        if let mirostat = MirostatV2SamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
-            llama_sampler_chain_add(sampler, llama_sampler_init_mirostat_v2(
-                mirostat.resolvedSeed,
-                mirostat.options.tau,
-                mirostat.options.eta
-            ))
-        } else {
-            llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
-            if let xtc = XTCSamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
-                llama_sampler_chain_add(sampler, llama_sampler_init_xtc(
-                    xtc.options.probability,
-                    xtc.options.threshold,
-                    xtc.options.minKeep,
-                    xtc.resolvedSeed
-                ))
+            // Surface `config.topK` to the sampler chain. Historical default of 40 is
+            // preserved when the caller leaves it nil, so existing behaviour is unchanged
+            // for callers that never set the field (which previously had no effect).
+            let effectiveTopK = config.topK.map { Int32($0) } ?? 40
+            llama_sampler_chain_add(sampler, llama_sampler_init_top_k(effectiveTopK))
+            if config.topP < 1.0 {
+                llama_sampler_chain_add(sampler, llama_sampler_init_top_p(config.topP, 1))
             }
-            llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
+            // Honour `config.minP` when supplied; default to 0.05 for parity with prior behaviour.
+            let effectiveMinP = config.minP ?? 0.05
+            llama_sampler_chain_add(sampler, llama_sampler_init_min_p(effectiveMinP, 1))
+
+            // Use the caller-supplied seed when available so consecutive runs with the same
+            // prompt + config produce identical token streams. `llama_sampler_init_dist`
+            // takes `uint32_t`, so we truncate the GenerationConfig's `UInt64` seed —
+            // collisions across the truncation boundary are not a correctness issue, only
+            // a slight loss of seed-space entropy. Falls back to a fresh random seed when
+            // the caller didn't request determinism.
+            let samplerSeed: UInt32
+            if let seed = config.seed {
+                samplerSeed = UInt32(truncatingIfNeeded: seed)
+            } else {
+                samplerSeed = UInt32.random(in: 0...UInt32.max)
+            }
+
+            // Mirostat v2 owns both the temperature step and the final token selection
+            // (it samples internally), so when it is active we skip temp/xtc/dist
+            // entirely. When inactive we keep the historical chain tail.
+            if let mirostat = MirostatV2SamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+                llama_sampler_chain_add(sampler, llama_sampler_init_mirostat_v2(
+                    mirostat.resolvedSeed,
+                    mirostat.options.tau,
+                    mirostat.options.eta
+                ))
+            } else {
+                llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
+                if let xtc = XTCSamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+                    llama_sampler_chain_add(sampler, llama_sampler_init_xtc(
+                        xtc.options.probability,
+                        xtc.options.threshold,
+                        xtc.options.minKeep,
+                        xtc.resolvedSeed
+                    ))
+                }
+                llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
+            }
         }
 
         // MARK: Chunked prompt decode
@@ -376,6 +391,27 @@ struct LlamaGenerationDriver {
         var thinkingTokenCount = 0
         // Flag set when maxThinkingTokens is reached so we can break the outer loop cleanly.
         var thinkingLimitReached = false
+        // Visible-output token counter. Thinking tokens do NOT count toward maxTokens —
+        // maxOutputTokens governs visible output budget, and maxThinkingTokens governs the
+        // reasoning budget separately. Without this split, a reasoning model that thinks for
+        // N tokens before answering consumes the entire maxOutputTokens budget in the thinking
+        // phase and never emits any visible output (see issue #519 regression: Qwen3-0.6B
+        // exhausted a 256-token budget in <think>…</think> and never reached EOG).
+        var visibleTokenCount = 0
+        // Total loop iterations = visible budget + thinking budget. When thinking is
+        // disabled (useParser == false) the thinking budget is 0, so the loop cap equals
+        // maxTokens exactly — identical to the previous behaviour for non-thinking models.
+        //
+        // The thinking budget is capped to the remaining context slots so the driver
+        // never runs llama_decode past the context window even when maxThinkingTokens
+        // is nil (defaulting to maxTokens). With a small context (e.g. 512 tokens in
+        // tests) and a large prompt, the effective budget shrinks accordingly.
+        let contextCapacity = Int(llama_n_ctx(context))
+        let usedSlots = tokens.count  // prompt occupies this many KV slots already
+        let remainingSlots = max(0, contextCapacity - usedSlots)
+        let rawThinkingBudget = useParser ? (config.maxThinkingTokens ?? maxTokens) : 0
+        let effectiveThinkingBudget = min(rawThinkingBudget, max(0, remainingSlots - maxTokens))
+        let totalLoopBudget = maxTokens + effectiveThinkingBudget
 
         // Tool-call parser: active when the config carries at least one tool definition.
         // Processes `.token` events from the thinking layer (or raw decoded text) and
@@ -398,7 +434,7 @@ struct LlamaGenerationDriver {
         var phraseWindow: [String] = []
         phraseWindow.reserveCapacity(Self.phraseWindowCap + 1)
 
-        generationLoop: for iteration in 0..<maxTokens {
+        generationLoop: for iteration in 0..<totalLoopBudget {
             if isCancelled() { break }
 
             // First iteration samples from the final prompt chunk's logits,
@@ -467,6 +503,7 @@ struct LlamaGenerationDriver {
                     events = thinkingEvents
                 }
 
+                var visibleBudgetExceeded = false
                 for event in events {
                     if isFirstToken {
                         switch event {
@@ -479,15 +516,22 @@ struct LlamaGenerationDriver {
                         }
                     }
                     continuation.yield(event)
-                    if case .thinkingToken = event {
+                    switch event {
+                    case .thinkingToken:
                         thinkingTokenCount += 1
                         if let limit = config.maxThinkingTokens, thinkingTokenCount >= limit {
                             thinkingLimitReached = true
-                            break
                         }
+                    case .token:
+                        visibleTokenCount += 1
+                        if visibleTokenCount >= maxTokens {
+                            visibleBudgetExceeded = true
+                        }
+                    default: break
                     }
+                    if thinkingLimitReached || visibleBudgetExceeded { break }
                 }
-                if thinkingLimitReached { break generationLoop }
+                if thinkingLimitReached || visibleBudgetExceeded { break generationLoop }
             }
 
             // Prepare next batch
