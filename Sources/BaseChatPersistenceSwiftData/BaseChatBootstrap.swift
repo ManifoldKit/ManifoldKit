@@ -3,6 +3,47 @@ import SwiftData
 import BaseChatRuntime
 import BaseChatInference
 
+// MARK: - RAGConfiguration
+
+/// Configuration for the RAG knowledge base.
+///
+/// Pass to ``BaseChatBootstrap/init(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:makeModelContainer:)``
+/// to enable on-device RAG. When `nil`, the runtime runs without retrieval.
+///
+/// ```swift
+/// let rag = RAGConfiguration(embeddingBackend: myLlamaEmbeddingBackend)
+/// let bootstrap = try BaseChatBootstrap(configuration: config, ragConfiguration: rag)
+/// bootstrap.ragService?.ingest(url: myDocumentURL)
+/// ```
+public struct RAGConfiguration: Sendable {
+    /// Optional embedding backend for semantic search. When `nil`, retrieval
+    /// falls back to case-insensitive keyword search.
+    public var embeddingBackend: (any EmbeddingBackend)?
+    /// Character count per chunk. Default: 1800.
+    public var chunkSize: Int
+    /// Character overlap between consecutive chunks. Default: 200.
+    public var chunkOverlap: Int
+    /// Number of chunks to retrieve per turn. Default: 5.
+    public var topK: Int
+    /// URL for the flat-file vector index. Defaults to
+    /// `<Application Support>/<bundleIdentifier>/ragvectors.bin`.
+    public var vectorStoreURL: URL?
+
+    public init(
+        embeddingBackend: (any EmbeddingBackend)? = nil,
+        chunkSize: Int = 1800,
+        chunkOverlap: Int = 200,
+        topK: Int = 5,
+        vectorStoreURL: URL? = nil
+    ) {
+        self.embeddingBackend = embeddingBackend
+        self.chunkSize = chunkSize
+        self.chunkOverlap = chunkOverlap
+        self.topK = topK
+        self.vectorStoreURL = vectorStoreURL
+    }
+}
+
 /// Preferred bootstrap surface for host apps that use BaseChatKit's shipped
 /// SwiftData persistence.
 ///
@@ -68,6 +109,15 @@ public final class BaseChatBootstrap {
     /// `nil` when ``imageGenerationService`` is `nil`.
     public let imageRuntime: ImageGenerationRuntime?
 
+    /// The RAG knowledge-base service, when the host opted in via
+    /// ``RAGConfiguration``. `nil` when bootstrapped without RAG.
+    ///
+    /// Call ``RAGService/ingest(url:)`` to add documents and
+    /// ``RAGService/deleteDocument(id:)`` to remove them. The service is
+    /// automatically queried before each generation turn via
+    /// ``ConversationRuntime``.
+    public let ragService: RAGService?
+
     public var modelContext: ModelContext { modelContainer.mainContext }
 
     /// Builds the full BaseChatKit stack synchronously.
@@ -82,6 +132,7 @@ public final class BaseChatBootstrap {
     ///   `<Application Support>/default.store` path.
     public init(
         configuration: BaseChatConfiguration,
+        ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
@@ -108,10 +159,37 @@ public final class BaseChatBootstrap {
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+
+            let resolvedRAGService: RAGService?
+            if let ragConfig = ragConfiguration {
+                let vectorURL = ragConfig.vectorStoreURL
+                    ?? ModelContainerFactory.defaultStoreURL()?
+                        .deletingLastPathComponent()
+                        .appendingPathComponent("ragvectors.bin")
+                    ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+                        .first!.appendingPathComponent("ragvectors.bin")
+                let vectorStore = FlatFileVectorStore(storageURL: vectorURL)
+                let documentStore = SwiftDataDocumentStore(modelContext: mainContext)
+                let chunker = DocumentChunker(
+                    chunkSize: ragConfig.chunkSize,
+                    overlap: ragConfig.chunkOverlap
+                )
+                resolvedRAGService = RAGService(
+                    documentStore: documentStore,
+                    vectorStore: vectorStore,
+                    embeddingBackend: ragConfig.embeddingBackend,
+                    chunker: chunker
+                )
+            } else {
+                resolvedRAGService = nil
+            }
+            self.ragService = resolvedRAGService
+
             self.conversationRuntime = ConversationRuntime(
                 messageStore: resolvedPersistence,
                 sessionStore: resolvedPersistence,
-                inferenceService: resolvedInferenceService
+                inferenceService: resolvedInferenceService,
+                ragService: resolvedRAGService
             )
             self.imageGenerationService = imageGenerationService
             if let imageGenerationService {
@@ -136,7 +214,8 @@ public final class BaseChatBootstrap {
         samplerPresetStore: SwiftDataSamplerPresetStore,
         benchmarkCache: SwiftDataBenchmarkCache,
         endpointStore: SwiftDataEndpointStore,
-        imageGenerationService: ImageGenerationService? = nil
+        imageGenerationService: ImageGenerationService? = nil,
+        ragService: RAGService? = nil
     ) {
         self.inferenceService = inferenceService
         self.diagnostics = diagnostics
@@ -145,10 +224,12 @@ public final class BaseChatBootstrap {
         self.samplerPresetStore = samplerPresetStore
         self.benchmarkCache = benchmarkCache
         self.endpointStore = endpointStore
+        self.ragService = ragService
         self.conversationRuntime = ConversationRuntime(
             messageStore: persistence,
             sessionStore: persistence,
-            inferenceService: inferenceService
+            inferenceService: inferenceService,
+            ragService: ragService
         )
         self.imageGenerationService = imageGenerationService
         if let imageGenerationService {

@@ -5,12 +5,14 @@ public enum BaseChatMigrationPlan: SchemaMigrationPlan {
         [
             BaseChatSchemaV3.self,
             BaseChatSchemaV4.self,
+            BaseChatSchemaV5.self,
         ]
     }
 
     public static var stages: [MigrationStage] {
         [
             .lightweight(fromVersion: BaseChatSchemaV3.self, toVersion: BaseChatSchemaV4.self),
+            .lightweight(fromVersion: BaseChatSchemaV4.self, toVersion: BaseChatSchemaV5.self),
         ]
     }
 }
