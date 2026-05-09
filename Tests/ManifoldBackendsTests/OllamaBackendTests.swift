@@ -528,7 +528,7 @@ struct OllamaBackendTests {
     /// Sabotage check (verified locally): reverting `extractUsage` to return
     /// `nil` fails both assertions.
     @Test func payloadHandler_extractUsage_parsesDoneLineCounts() {
-        let handler = OllamaBackend.OllamaPayloadHandler()
+        let handler = OllamaPayloadHandler()
         let json = #"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":42,"eval_count":17,"eval_duration":1500000000,"total_duration":2200000000}"#
         let usage = try? #require(handler.extractUsage(from: json))
         #expect(usage?.promptTokens == 42)
@@ -540,7 +540,7 @@ struct OllamaBackendTests {
     /// tuple (which would overwrite a prior prompt count with 0 on Claude's
     /// split-usage path). Pins the "missing fields → nil" contract.
     @Test func payloadHandler_extractUsage_nonUsageLine_returnsNil() {
-        let handler = OllamaBackend.OllamaPayloadHandler()
+        let handler = OllamaPayloadHandler()
         let midLine = #"{"model":"llama3.2","message":{"role":"assistant","content":"hi"},"done":false}"#
         #expect(handler.extractUsage(from: midLine) == nil)
 
@@ -596,14 +596,14 @@ struct OllamaBackendTests {
     @Test func extractToken_generateEndpointShape_surfacesResponse() {
         // Streaming intermediate chunks — `response` surfaces as a token.
         let midLine = #"{"model":"llama3.2","response":"Hello","done":false}"#
-        #expect(OllamaBackend.extractToken(from: midLine) == "Hello")
+        #expect(OllamaPayloadParser.extractToken(from: midLine) == "Hello")
 
         let midLine2 = #"{"model":"llama3.2","response":" world","done":false}"#
-        #expect(OllamaBackend.extractToken(from: midLine2) == " world")
+        #expect(OllamaPayloadParser.extractToken(from: midLine2) == " world")
 
         // Final chunk — `done:true` suppresses token emission regardless of shape.
         let doneLine = #"{"model":"llama3.2","response":"","done":true,"done_reason":"stop"}"#
-        #expect(OllamaBackend.extractToken(from: doneLine) == nil)
+        #expect(OllamaPayloadParser.extractToken(from: doneLine) == nil)
     }
 
     // MARK: - SSE Stream Limits (NDJSON path)
@@ -832,21 +832,21 @@ struct OllamaBackendTests {
 
     @Test func extractToken_parsesContent() {
         let json = #"{"model":"llama3.2","message":{"role":"assistant","content":"Hello"},"done":false}"#
-        #expect(OllamaBackend.extractToken(from: json) == "Hello")
+        #expect(OllamaPayloadParser.extractToken(from: json) == "Hello")
     }
 
     @Test func extractToken_skipsEmptyContent() {
         let json = #"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":false}"#
-        #expect(OllamaBackend.extractToken(from: json) == nil)
+        #expect(OllamaPayloadParser.extractToken(from: json) == nil)
     }
 
     @Test func extractToken_skipsDoneChunk() {
         let json = #"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}"#
-        #expect(OllamaBackend.extractToken(from: json) == nil)
+        #expect(OllamaPayloadParser.extractToken(from: json) == nil)
     }
 
     @Test func extractToken_malformedJSON_returnsNil() {
-        #expect(OllamaBackend.extractToken(from: "not json") == nil)
+        #expect(OllamaPayloadParser.extractToken(from: "not json") == nil)
     }
 
     // MARK: - Thinking field (issue #487)
@@ -1005,7 +1005,7 @@ struct OllamaBackendTests {
 
     @Test func parseLine_chatThinking() {
         let json = #"{"message":{"role":"assistant","thinking":"reasoning","content":"hi"},"done":false}"#
-        let parsed = try? #require(OllamaBackend.parseLine(json))
+        let parsed = try? #require(OllamaPayloadParser.parseLine(json))
         #expect(parsed?.thinking == "reasoning")
         #expect(parsed?.content == "hi")
         #expect(parsed?.done == false)
@@ -1013,7 +1013,7 @@ struct OllamaBackendTests {
 
     @Test func parseLine_generateTopLevelThinking() {
         let json = #"{"response":"answer","thinking":"reasoning","done":true}"#
-        let parsed = try? #require(OllamaBackend.parseLine(json))
+        let parsed = try? #require(OllamaPayloadParser.parseLine(json))
         #expect(parsed?.thinking == "reasoning")
         #expect(parsed?.content == "answer")
         #expect(parsed?.done == true)
@@ -1021,17 +1021,17 @@ struct OllamaBackendTests {
 
     @Test func extractThinking_returnsThinkingField() {
         let json = #"{"response":"","thinking":"reasoning","done":false}"#
-        #expect(OllamaBackend.extractThinking(from: json) == "reasoning")
+        #expect(OllamaPayloadParser.extractThinking(from: json) == "reasoning")
     }
 
     @Test func extractThinking_emptyThinking_returnsNil() {
         let json = #"{"response":"hi","thinking":"","done":false}"#
-        #expect(OllamaBackend.extractThinking(from: json) == nil)
+        #expect(OllamaPayloadParser.extractThinking(from: json) == nil)
     }
 
     @Test func extractThinking_noThinkingField_returnsNil() {
         let json = #"{"message":{"role":"assistant","content":"hi"},"done":false}"#
-        #expect(OllamaBackend.extractThinking(from: json) == nil)
+        #expect(OllamaPayloadParser.extractThinking(from: json) == nil)
     }
 
     // MARK: - num_predict Budget (thinking + visible)

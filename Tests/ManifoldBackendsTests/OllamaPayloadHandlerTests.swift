@@ -5,7 +5,7 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 @testable import ManifoldInference
 
-/// Asserts that ``OllamaBackend/OllamaPayloadHandler/extractEvents(from:)``
+/// Asserts that ``OllamaPayloadHandler/extractEvents(from:)``
 /// classifies the per-line NDJSON `thinking` and `content` fields into the
 /// matching ``GenerationEvent`` cases. The byte-loop in
 /// ``OllamaBackend/parseResponseStream(bytes:config:continuation:)`` keeps
@@ -15,7 +15,7 @@ import ManifoldTestSupport
 /// Closes the per-handler half of #606 (Ollama thinking event preservation).
 final class OllamaPayloadHandlerTests: XCTestCase {
 
-    private let handler = OllamaBackend.OllamaPayloadHandler()
+    private let handler = OllamaPayloadHandler()
 
     // MARK: - Single-field classification
 
