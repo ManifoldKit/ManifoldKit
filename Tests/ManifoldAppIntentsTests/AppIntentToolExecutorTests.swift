@@ -92,7 +92,7 @@ struct UnauthorizedIntent: AppIntent, Decodable {
 
     func perform() async throws -> some IntentResult {
         let error = NSError(
-            domain: "com.basechat.test.AuthorizationDomain",
+            domain: "com.manifold.test.AuthorizationDomain",
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Authorization required for \(resource)"]
         )

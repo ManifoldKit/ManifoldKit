@@ -1,9 +1,9 @@
-# BaseChatKit CODEOWNERS
+# ManifoldKit CODEOWNERS
 #
 # This file declares ownership for security-sensitive paths so that PRs
 # touching them automatically request review from the listed owners.
 #
-# Tracking: https://github.com/roryford/BaseChatKit/issues/729 (Phase 5 of #714).
+# Tracking: https://github.com/roryford/ManifoldKit/issues/729 (Phase 5 of #714).
 #
 # NOTE: With a single human maintainer (@roryford), required-Code-Owner-review
 # is decorative — the sole owner authoring a PR cannot self-approve a Code
@@ -16,14 +16,14 @@
 *                                                  @roryford
 
 # Cloud backends and SSE transport — credential handling, TLS, request integrity.
-/Sources/BaseChatBackends/Claude*                  @roryford
-/Sources/BaseChatBackends/OpenAI*                  @roryford
-/Sources/BaseChatBackends/SSECloud*                @roryford
-/Sources/BaseChatBackends/PinnedSession*           @roryford
-/Sources/BaseChatBackends/DNSRebindingGuard*       @roryford
+/Sources/ManifoldCloud/Claude*                     @roryford
+/Sources/ManifoldCloud/OpenAI*                     @roryford
+/Sources/ManifoldCloudCore/SSECloud*               @roryford
+/Sources/ManifoldCloudCore/PinnedSession*          @roryford
+/Sources/ManifoldCloudCore/DNSRebindingGuard*      @roryford
 
 # Macros plugin — executes at compile time in any consumer's build.
-/Sources/BaseChatMacrosPlugin/**                   @roryford
+/Sources/ManifoldMacrosPlugin/**                   @roryford
 
 # Build manifest — trait/dependency surface review.
 /Package.swift                                     @roryford

@@ -9,7 +9,7 @@ import ManifoldInference
 /// evidence the model actually invoked the tool (and quoted its result) rather
 /// than inventing a plausible timestamp.
 ///
-/// Override the fixture via the `BCK_TOOLS_NOW_FIXTURE` environment variable
+/// Override the fixture via the `MANIFOLD_TOOLS_NOW_FIXTURE` environment variable
 /// for test variation — useful when a scenario wants to probe a second, distinct
 /// nonce to rule out caching artefacts.
 public enum NowTool {
@@ -23,10 +23,10 @@ public enum NowTool {
         public let timestamp: String
     }
 
-    /// Resolves the fixture to emit. Reads `BCK_TOOLS_NOW_FIXTURE` once per
+    /// Resolves the fixture to emit. Reads `MANIFOLD_TOOLS_NOW_FIXTURE` once per
     /// call so tests can mutate the env between invocations.
     public static func fixture() -> String {
-        ProcessInfo.processInfo.environment["BCK_TOOLS_NOW_FIXTURE"] ?? defaultFixture
+        ProcessInfo.processInfo.environment["MANIFOLD_TOOLS_NOW_FIXTURE"] ?? defaultFixture
     }
 
     /// Factory — the empty-args shape is expressed as a decoder that accepts

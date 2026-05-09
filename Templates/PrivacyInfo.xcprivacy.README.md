@@ -9,7 +9,7 @@ covers the on-device system APIs ManifoldKit touches by default.
    In Xcode: drag the file into your project navigator, then ensure it is
    listed under **Build Phases → Copy Bundle Resources** for the app target.
 2. Review the three `NSPrivacyAccessedAPIType` entries — each is annotated
-   with the BCK feature that triggers it.
+   with the ManifoldKit feature that triggers it.
 3. Remove entries for features you compile out:
    - `FoundationOnly` build with no model storage UI → drop the
      `NSPrivacyAccessedAPICategoryDiskSpace` and
@@ -18,16 +18,16 @@ covers the on-device system APIs ManifoldKit touches by default.
      `NSPrivacyAccessedAPICategoryUserDefaults`.
 4. If your app collects telemetry, sends usage analytics, or links to any
    tracking SDK, populate `NSPrivacyTracking` and `NSPrivacyCollectedDataTypes`
-   accordingly. BCK itself sets both to "no tracking" / "no collection" — the
-   defaults in this template reflect BCK's posture, not yours.
+   accordingly. ManifoldKit itself sets both to "no tracking" / "no collection"
+   — the defaults in this template reflect ManifoldKit's posture, not yours.
 
-## What BCK does *not* do
+## What ManifoldKit does *not* do
 
-- No `NSPrivacyAccessedAPICategoryUserIdInfo` — BCK never reads identity APIs.
-- No `NSPrivacyAccessedAPICategoryActiveKeyboards` — BCK doesn't enumerate
+- No `NSPrivacyAccessedAPICategoryUserIdInfo` — ManifoldKit never reads identity APIs.
+- No `NSPrivacyAccessedAPICategoryActiveKeyboards` — ManifoldKit doesn't enumerate
   keyboards.
-- No `NSPrivacyAccessedAPICategorySystemBootTime` — BCK doesn't read boot time.
-- No tracking domains. BCK has zero outbound network by default; cloud
+- No `NSPrivacyAccessedAPICategorySystemBootTime` — ManifoldKit doesn't read boot time.
+- No tracking domains. ManifoldKit has zero outbound network by default; cloud
   backends only fire when you wire `OpenAIBackend`/`ClaudeBackend`/`OllamaBackend`
   with explicit credentials. Foundation Models run entirely on-device.
 

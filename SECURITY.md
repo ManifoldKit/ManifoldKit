@@ -1,6 +1,6 @@
 # Security Policy
 
-ManifoldKit (BCK) is a Swift package for building local-first and cloud-optional chat
+ManifoldKit is a Swift package for building local-first and cloud-optional chat
 interfaces on Apple platforms. This document describes:
 
 - [Supported versions](#supported-versions) — what gets security fixes.
@@ -18,7 +18,7 @@ SSE bounds, download path validation) at API granularity.
 
 ## Supported Versions
 
-BCK is pre-1.0. Only the most recent minor release receives security fixes. Earlier
+ManifoldKit is pre-1.0. Only the most recent minor release receives security fixes. Earlier
 minors are end-of-life on the day a new minor ships.
 
 | Version       | Status                          |
@@ -27,11 +27,11 @@ minors are end-of-life on the day a new minor ships.
 | `0.11.x`      | Supported until `0.13.0`        |
 | `< 0.11`      | End-of-life                     |
 
-When BCK reaches `1.0.0`, this table will switch to a longer support window.
+When ManifoldKit reaches `1.0.0`, this table will switch to a longer support window.
 
 ## Supported Build Modes
 
-BCK ships four pre-blessed build modes, gated by Swift package traits. Each row of
+ManifoldKit ships four pre-blessed build modes, gated by Swift package traits. Each row of
 the table below names exactly what is guaranteed for that mode and what enforces the
 guarantee. Consumers in regulated verticals can compile the package in `offline` or
 `ollama` mode and have a mechanically-checked guarantee that no SaaS-cloud code is
@@ -42,7 +42,7 @@ linked into the binary.
 | `offline` | **Yes**  | `MLX`, `Llama`                | MLX, llama.cpp, Foundation      |
 | `ollama`  | No       | `MLX`, `Llama`, `Ollama`      | + Ollama HTTP client            |
 | `saas`    | No       | `MLX`, `Llama`, `CloudSaaS`   | + Claude, OpenAI                |
-| `full`    | No       | all of the above              | every backend BCK ships         |
+| `full`    | No       | all of the above              | every backend ManifoldKit ships         |
 
 The default trait set today is `MLX, Llama` (per `Package.swift`), which corresponds
 to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
@@ -75,7 +75,7 @@ and the import-graph rule in the same audit):
 - A compromised toolchain or `Package.resolved` swap could swap source files; the audit
   only inspects what's checked in.
 - `MLX` and `Llama` may still resolve **DNS** at startup if a host app calls
-  HuggingFace search; the BCK API only resolves DNS via `URLSessionProvider`, which is
+  HuggingFace search; the ManifoldKit API only resolves DNS via `URLSessionProvider`, which is
   not invoked from offline backends.
 - A jailbroken device, rooted simulator, or hostile consumer-app code can bypass the
   framework's process-internal checks.
@@ -103,10 +103,10 @@ Same `offline` guarantees, plus:
 
 **Not guaranteed:**
 
-- BCK does not pin Ollama server certificates by default. If your deployment requires
+- ManifoldKit does not pin Ollama server certificates by default. If your deployment requires
   pinning, set `PinnedSessionDelegate.pinnedHosts["your.ollama.host"] = [...]` at
   startup.
-- BCK does not validate the *content* the Ollama server returns — prompt-injection
+- ManifoldKit does not validate the *content* the Ollama server returns — prompt-injection
   via tool output, retrieved documents, or model-card metadata is the host app's
   responsibility.
 
@@ -166,9 +166,9 @@ The following are **not** in scope for any build mode. Treat them as host-app
 responsibility:
 
 - **Compromised toolchain** — a malicious Swift compiler or build plugin can re-add
-  network code regardless of BCK's source-level audit.
+  network code regardless of ManifoldKit's source-level audit.
 - **Rooted / jailbroken device** — code injected into the host process can do anything.
-- **Malicious consumer-app code** — BCK protects its own boundaries, not the host
+- **Malicious consumer-app code** — ManifoldKit protects its own boundaries, not the host
   app's.
 - **Side-channel timing attacks** — token-by-token streaming inherently leaks
   generation pace.
@@ -176,7 +176,7 @@ responsibility:
   Console UI, not a hardware boundary; sysdiagnose or `log collect --private` recover
   redacted strings if invoked with elevated entitlements.
 - **GGUF / safetensors weight tampering** — model-file integrity is the user's
-  responsibility (typically via HuggingFace's signed manifest, which BCK does not
+  responsibility (typically via HuggingFace's signed manifest, which ManifoldKit does not
   yet verify; see [#367](https://github.com/roryford/ManifoldKit/issues/367)).
 
 ## Reporting a Vulnerability
@@ -223,8 +223,8 @@ There is no bug bounty programme today.
 | Model weights                      | Plain files under `modelsDirectory`. Path-traversal validation runs at filename ingest (`DownloadableModel.validate(fileName:)`). No content-integrity check today. |
 | In-flight TLS                      | SPKI-pinned for `api.openai.com` and `api.anthropic.com`; pluggable via `PinnedSessionDelegate.pinnedHosts` for custom hosts.            |
 
-BCK is **not** FIPS-validated. The Apple Keychain and Apple's `Security.framework` use
-CoreCrypto, which has FIPS-140-3 validations on supported OS versions, but BCK does
+ManifoldKit is **not** FIPS-validated. The Apple Keychain and Apple's `Security.framework` use
+CoreCrypto, which has FIPS-140-3 validations on supported OS versions, but ManifoldKit does
 not pin to or verify those validations at runtime.
 
 For deployments that need stricter at-rest sealing, set

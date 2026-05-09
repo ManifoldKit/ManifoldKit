@@ -42,11 +42,11 @@ phase.
 
 ## Stance
 
-BCK is a **library with a reference runtime, not a runtime with ports.**
+ManifoldKit is a **library with a reference runtime, not a runtime with ports.**
 This stance is load-bearing for everything below; if it changes the
 whole plan changes.
 
-- BCK ships ports (`MessageStore`, `SessionStore`, `PromptContextProvider`,
+- ManifoldKit ships ports (`MessageStore`, `SessionStore`, `PromptContextProvider`,
   etc.) and a reference use case (`ConversationRuntime`) that composes
   them into a turn loop.
 - `ConversationRuntime` is **optional**. Demo and ChatbotUI-iOS adopt
@@ -57,14 +57,14 @@ whole plan changes.
   *users*, not a universal event surface. Direct `InferenceService`
   consumers (Fireside) get a different, narrower contract.
 - `ContextContribution` as an aggregate value type lives in the
-  consumer (Fireside has `[PromptSlot] + realCost`). BCK ships
+  consumer (Fireside has `[PromptSlot] + realCost`). ManifoldKit ships
   `PromptSlot` (already does), the new `PromptContextProvider` port,
   and `PromptContextPipeline` as a passive merge over `[PromptSlot]`.
-  No competing aggregate type in BCK.
+  No competing aggregate type in ManifoldKit.
 
 Implications captured throughout the doc; the most consequential are
 that the "Fireside-gated" framing of sub-steps 1/2 changes shape (no
-adoption flip blocks BCK; design constraints from FS shape what BCK
+adoption flip blocks ManifoldKit; design constraints from FS shape what ManifoldKit
 ships) and that `MessageStorePostWriteHook` is a low-level primitive,
 not the canonical attachment point for Fireside's `GraphExtractionService`.
 
@@ -98,7 +98,7 @@ passive-merge use case (1.2.2 — no new value type ships). Then
 
 **No Fireside-adoption precondition.** The earlier draft of this plan
 gated 1.2.1 on Fireside flipping to the post-#883 surface. Fireside's
-2026-04-29 reply confirmed they consume BCK via a local SPM path
+2026-04-29 reply confirmed they consume ManifoldKit via a local SPM path
 reference and have zero custom `ChatPersistenceProvider` impls, zero
 `onFirstMessage` consumers, and no `SessionManagerViewModel` call sites
 at all. The flip was a no-op; the precondition is dropped.
@@ -337,7 +337,7 @@ the underlying `GenerationStream` already provides:
 `.streamFinished`, and `.errorRaised`. These three are load-bearing
 for direct-inference consumers — they're how Fireside drives narrative
 streaming UI today. `.compressionTriggered` is also pinned for direct
-consumers when (and only when) the consumer asks BCK to manage
+consumers when (and only when) the consumer asks ManifoldKit to manage
 compression; today Fireside drives its own compression and the case
 is informational.
 
@@ -442,7 +442,7 @@ review.
    that asks each registered provider for slots, concatenates, sorts by
    `PromptSlotPosition.sortIndex(messageCount:)`, and returns the
    assembled `[PromptSlot]`. **No new value type** — `[PromptSlot]` is
-   the boundary primitive (already in BCK). The new protocol is
+   the boundary primitive (already in ManifoldKit). The new protocol is
    deliberately named to avoid colliding with the existing internal
    `GenerationContextProvider` (`@MainActor`-bound, `AnyObject`-constrained
    model-state provider used by `GenerationCoordinator`); they have
@@ -526,11 +526,11 @@ Before tagging 1.0:
   custom `MessageStore` / `SessionStore` impls.
 - `PromptContextProvider` port shape is locked at the end of Phase
   1.2 and treated as a stable contract for the remainder of the pre-1.0
-  window. The boundary primitive is `[PromptSlot]` (already in BCK).
+  window. The boundary primitive is `[PromptSlot]` (already in ManifoldKit).
   Fireside's `GraphSlotFormatter` outputs continue to be wrapped in
-  Fireside's own `ContextContribution` aggregate; BCK does not ship a
+  Fireside's own `ContextContribution` aggregate; ManifoldKit does not ship a
   competing aggregate type. Any change to `PromptSlot` itself after
-  Phase 1.2 ships requires a coordinated PR pair across BCK and
+  Phase 1.2 ships requires a coordinated PR pair across ManifoldKit and
   Fireside.
 - `MessageStorePostWriteHook` ships in Phase 1.2 as a low-level
   primitive. The load-bearing `ConversationEvent` cases for
@@ -563,19 +563,19 @@ Before tagging 1.0:
 | SwiftData entity-name drift after module move | Entity names are simple class names, unaffected by module rename. Read-back test against pre-refactor fixture confirms. |
 | `InferenceService` already overlaps with the proposed runtime | Runtime is a thin layer *over* `InferenceService` + ports. Use cases compose existing services; they don't absorb them. |
 | Phase 1.2 PR sizes balloon (especially `ConversationRuntime`) | Per-use-case PRs with explicit LOC budget; if `ConversationRuntime` > 1500 LOC moved in one PR, split by sub-flow (send vs. regenerate vs. edit). |
-| BCK and Fireside invent parallel abstractions for the same problem | Fireside-migration checklist appendix below pins what changes in each repo per phase. Port-shape PRs require Fireside review before merge. |
+| ManifoldKit and Fireside invent parallel abstractions for the same problem | Fireside-migration checklist appendix below pins what changes in each repo per phase. Port-shape PRs require Fireside review before merge. |
 
 ## Appendix — Fireside migration checklist
 
 Explicit coordination contract with Fireside (which has its own
 `docs/architecture/runtime-decoupling-migration.md` RFC pushing the
-same direction). This appendix is canonical: if BCK ships a phase that
+same direction). This appendix is canonical: if ManifoldKit ships a phase that
 requires a Fireside change not listed here, the plan is wrong, not
 Fireside. Conversely, if Fireside lands a change that depends on a
 port shape not pinned here, that PR blocks until the appendix catches
 up.
 
-#### Phase 1.0 — async migration ✅ shipped (BCK #883, #885)
+#### Phase 1.0 — async migration ✅ shipped (ManifoldKit #883, #885)
 
 Fireside's matching adoption: confirm `AppEnvironmentFactory.swift:168`
 flipped to `configure(persistence:autoLoad:)`, custom
@@ -586,7 +586,7 @@ doc.
 
 ### Phase 1.2 — port extraction
 
-BCK changes:
+ManifoldKit changes:
 - `ChatPersistenceProvider` splits into `SessionStore` + `MessageStore`.
 - `MessageStorePostWriteHook` protocol introduced as a low-level
   primitive.
@@ -594,7 +594,7 @@ BCK changes:
   `ManifoldInference`; `PromptContextPipeline` passive-merge use case
   introduced over `[PromptSlot]` in `ManifoldCore` (will move to
   `ManifoldRuntime` in Phase 2). **No competing `ContextContribution`
-  aggregate ships from BCK** — Fireside's existing aggregate in
+  aggregate ships from ManifoldKit** — Fireside's existing aggregate in
   `FiresideMemory` remains the source of truth on the consumer side.
 - `ConversationRuntime` ships as the **optional reference** use case,
   with the `ConversationEvent` surface enumerated above.
@@ -614,7 +614,7 @@ than the earlier draft of this plan implied.
   Fireside wants it later for some other concern (audit, indexing);
   graph extraction has the wrong unit of work for it.
 - **Not migrating**: `GraphSlotFormatter` outputs stay in Fireside's
-  `ContextContribution` aggregate. Fireside conforms to BCK's
+  `ContextContribution` aggregate. Fireside conforms to ManifoldKit's
   `PromptContextProvider` port returning `[PromptSlot]`; the
   surrounding budget accounting and `realCost` tracking remain in
   `FiresideMemory`. No retrofit required.
@@ -623,7 +623,7 @@ than the earlier draft of this plan implied.
   (`.tokenEmitted`, `.streamFinished`, `.errorRaised`). It does not
   consume `ConversationEvent` via `ConversationRuntime`.
 - Optional later, on Fireside's timeline: if Fireside ever wants to
-  collapse `StoryStore`'s orchestration into BCK's `ConversationRuntime`,
+  collapse `StoryStore`'s orchestration into ManifoldKit's `ConversationRuntime`,
   the four load-bearing runtime events
   (`.beforeContextAssembly`, `.contextAssembled`, `.afterGeneration`,
   `.compressionTriggered`) are the integration points to hook against.
@@ -631,7 +631,7 @@ than the earlier draft of this plan implied.
 
 ### Phase 2 — physical target split
 
-BCK changes:
+ManifoldKit changes:
 - `ManifoldCore` deleted.
 - `ManifoldRuntime` and `ManifoldPersistenceSwiftData` targets created.
 - `ManifoldBootstrap` (renamed) provides the host bootstrap.
@@ -651,12 +651,12 @@ Fireside changes (same window):
 
 ### Coordination protocol
 
-- Each BCK PR in Phases 1.2 names the Fireside PR that consumes it
+- Each ManifoldKit PR in Phases 1.2 names the Fireside PR that consumes it
   (and vice versa). Both PRs land in the same review window; merging
-  the BCK PR before the matching Fireside PR is ready breaks Fireside's
+  the ManifoldKit PR before the matching Fireside PR is ready breaks Fireside's
   `main`.
 - Port-shape changes (signatures, event cases, hook protocols,
-  `PromptSlot` shape) require a Fireside reviewer on the BCK PR before
+  `PromptSlot` shape) require a Fireside reviewer on the ManifoldKit PR before
   merge.
 - The two pinned event sets — runtime-using
   (`.beforeContextAssembly`, `.contextAssembled`, `.afterGeneration`,
@@ -670,7 +670,7 @@ Fireside changes (same window):
   `SamplerPresetStore`, `BenchmarkCache`, and `EndpointStore` close
   `@Query` / public `ModelContext` leaks that Fireside does not
   consume; these PRs do not need a Fireside reviewer or a matching
-  Fireside PR. They still go through normal BCK review, but the
+  Fireside PR. They still go through normal ManifoldKit review, but the
   cross-repo coordination protocol does not gate them.
 
 ## Why this is worth doing now
@@ -693,9 +693,9 @@ If it succeeds:
 
 - **demo app** remains the reference implementation.
 - **ChatbotUI-iOS** gets a cleaner customization surface without
-  forking BCK.
-- **Fireside** uses BCK runtime/inference as a subsystem without
-  inheriting BCK's UI and persistence assumptions.
+  forking ManifoldKit.
+- **Fireside** uses ManifoldKit runtime/inference as a subsystem without
+  inheriting ManifoldKit's UI and persistence assumptions.
 
 One runtime center, multiple host shapes, and no further pressure to
 push app logic into UI modules just because those modules currently

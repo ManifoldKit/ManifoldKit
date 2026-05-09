@@ -109,7 +109,7 @@ struct CLI {
           --model <list>        Comma-separated model overrides; each scenario runs once per model.
           --output <path>       Transcript JSONL destination. Default: tmp/manifold-tools/<iso>.jsonl.
           --real-network        Allow HttpGetFixtureTool to hit the real internet (requires
-                                BCK_TOOLS_ALLOW_NETWORK=1). Default: off.
+                                MANIFOLD_TOOLS_ALLOW_NETWORK=1). Default: off.
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
           --list                Print available scenarios and exit.
           --help                Show this text.

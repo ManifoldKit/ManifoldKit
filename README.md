@@ -4,16 +4,16 @@ A modular SwiftUI framework for building chat interfaces powered by local and cl
 
 ManifoldKit provides a complete, production-ready chat UI with pluggable inference backends, model management, and SwiftData persistence. Drop it into your app, register backends, and you have a working chat interface.
 
-**Built for production failure modes.** BCK is designed around the things that go wrong between a working demo and an App Store release:
+**Built for production failure modes.** ManifoldKit is designed around the things that go wrong between a working demo and an App Store release:
 
 - **Streaming resilience** — cloud backends retry the initial connection with backoff on retryable errors and preserve already-yielded output if a later failure occurs.
 - **Latest-wins model handoff** — racing model loads can't corrupt active state. If the user taps model A, then model B before A finishes, A is discarded and B wins deterministically.
 - **Memory admission and pressure handling** — `ModelLoadPlan` estimates resident + KV memory before a load commits and returns an `allow`/`warn`/`deny` verdict; `InferenceService.denyPolicy` decides whether to fail fast, warn and proceed, or hand off to a custom hook. The drop-in `ChatViewModel` stops generation and unloads the model on critical memory pressure.
-- **Mock backend for app-level testing** — `MockInferenceBackend` implements the full streaming contract so your app's tests can exercise BCK without loading a real model.
+- **Mock backend for app-level testing** — `MockInferenceBackend` implements the full streaming contract so your app's tests can exercise ManifoldKit without loading a real model.
 - **Certificate pinning with fail-closed defaults** — `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing or empty; custom hosts use platform trust by default or can be hardened to fail-closed via `ManifoldConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`.
 
 For the exact source-backed contract, see [docs/RELIABILITY.md](docs/RELIABILITY.md).
-See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale behind BCK 0.6.0.
+See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale behind the 0.6.0 release.
 
 ## Demo
 
@@ -47,11 +47,11 @@ and the one immediately before it. When Apple ships a new major OS each
 September, both minimums are bumped by one. See
 [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy) for the rationale.
 
-## How BCK compares to AnyLanguageModel
+## How ManifoldKit compares to AnyLanguageModel
 
 AnyLanguageModel is HuggingFace's Swift package. It mirrors Apple's `FoundationModels` API and exposes many providers behind a single protocol, so code written against Apple's built-in model API can target cloud and open-source models with minimal changes.
 
-BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for provider coverage and API familiarity — if you need "any LLM behind one protocol that looks like `FoundationModels`," it's the simpler choice. BCK optimizes for production reliability and drop-in chat UI — if you need "a chat framework that survives real failures and ships a working `ChatView` + `SessionListView` + `ModelManagementSheet` on day one," BCK is designed for that. The two aren't competing on the same axis; pick the one whose axis matches the problem you're solving.
+ManifoldKit and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for provider coverage and API familiarity — if you need "any LLM behind one protocol that looks like `FoundationModels`," it's the simpler choice. ManifoldKit optimizes for production reliability and drop-in chat UI — if you need "a chat framework that survives real failures and ships a working `ChatView` + `SessionListView` + `ModelManagementSheet` on day one," ManifoldKit is designed for that. The two aren't competing on the same axis; pick the one whose axis matches the problem you're solving.
 
 ## Architecture
 
@@ -185,13 +185,13 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 
 `CloudSaaS` and `Ollama` are opt-in. `HuggingFace` is default-on for backwards compatibility; drop it from `traits:` (or start from `--disable-default-traits`) to remove the stock Hub browser/downloader from the build graph. `AnyLanguageModel` is also opt-in and only needed when you want the bridge target.
 
-> **Note on `--disable-default-traits`:** this flag applies to the package where it is passed. If your consumer package declares no traits of its own, SwiftPM will error with `"Disabled default traits by command-line trait configuration on package 'X' that declares no traits"`. Use the flag when building BCK directly or when your package declares its own traits; otherwise control the BCK trait set via the `traits:` array in your `Package.swift` dependency declaration.
+> **Note on `--disable-default-traits`:** this flag applies to the package where it is passed. If your consumer package declares no traits of its own, SwiftPM will error with `"Disabled default traits by command-line trait configuration on package 'X' that declares no traits"`. Use the flag when building ManifoldKit directly or when your package declares its own traits; otherwise control the ManifoldKit trait set via the `traits:` array in your `Package.swift` dependency declaration.
 
 **Foundation Models only (App Store-lean build)**
 
 If your app targets Apple's built-in Foundation model exclusively (iOS 26+ /
 macOS 26+), use the `FoundationOnly` trait. This excludes MLX (~100 MB
-checkout) and LlamaSwift (~563 MB xcframework), keeping the BCK overhead
+checkout) and LlamaSwift (~563 MB xcframework), keeping the ManifoldKit overhead
 under 5 MB — enforced by the `foundation-only-build` CI gate. Recommended
 for indie iOS / macOS apps that ship through the App Store and only need
 Apple Foundation Models.
@@ -943,7 +943,7 @@ Templates auto-detect from GGUF metadata when available. User content is sanitis
 
 ## Security
 
-See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model, what BCK protects against, what remains your responsibility, and how to tune for stricter environments. A quick summary:
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model, what ManifoldKit protects against, what remains your responsibility, and how to tune for stricter environments. A quick summary:
 
 - API keys stored in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
 - Keys read just-in-time from Keychain rather than cached as long-lived properties; during an in-flight `URLSession` request the key bytes do exist in process memory as a Swift `String` and are not zeroized after use (see [docs/FIPS.md](docs/FIPS.md) §non-mitigations)
@@ -956,7 +956,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model, what
 For regulated-deployment evaluation (healthcare, federal-adjacent, finance),
 see [docs/FIPS.md](docs/FIPS.md) — the honest answer to "are your cryptographic
 primitives FIPS 140-3 validated?", with a complete inventory of the crypto
-primitives BCK invokes and where the validation boundary actually sits.
+primitives ManifoldKit invokes and where the validation boundary actually sits.
 
 ## Binary Dependencies
 

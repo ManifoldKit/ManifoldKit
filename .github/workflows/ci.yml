@@ -532,8 +532,8 @@ jobs:
           path: test-diagnostics/
 
   # Cold-start conformance — scaffolds a fresh SwiftPM consumer in a tmpdir,
-  # links BCK by local path, and runs one chat turn through a tiny inline fake
-  # backend. Catches breaks in the public consumer surface that BCK's own
+  # links ManifoldKit by local path, and runs one chat turn through a tiny inline fake
+  # backend. Catches breaks in the public consumer surface that ManifoldKit's own
   # in-tree tests miss (Package.swift link shape, public registration / load /
   # generate APIs, GenerationStream consumption pattern, swift-tools-version
   # floor). See scripts/cold-start-conformance.sh for the full rationale.
@@ -600,7 +600,7 @@ jobs:
         run: scripts/cold-start-tier2-bootstrap.sh
 
   # FoundationOnly bundle audit — proves the App Store-lean trait set keeps
-  # BCK overhead under 5 MB and never leaks MLX/Llama framework symbols. One
+  # ManifoldKit overhead under 5 MB and never leaks MLX/Llama framework symbols. One
   # `swift build --traits FoundationOnly` invocation, no `swift test`, so the
   # job is cheap. See scripts/check-foundation-only-bundle.sh for the gate
   # logic and docs/AppStoreSubmission.md for the rationale.

@@ -8,7 +8,7 @@ final class ReferenceToolsTests: XCTestCase {
     // MARK: - NowTool
 
     func test_nowTool_returnsOutOfDistributionFixture() async throws {
-        unsetenv("BCK_TOOLS_NOW_FIXTURE")
+        unsetenv("MANIFOLD_TOOLS_NOW_FIXTURE")
         let executor = NowTool.makeExecutor()
         let result = try await executor.execute(arguments: .object([:]))
         XCTAssertNil(result.errorKind)
@@ -17,8 +17,8 @@ final class ReferenceToolsTests: XCTestCase {
     }
 
     func test_nowTool_honoursEnvOverride() async throws {
-        setenv("BCK_TOOLS_NOW_FIXTURE", "2030-02-02T00:00:00Z", 1)
-        defer { unsetenv("BCK_TOOLS_NOW_FIXTURE") }
+        setenv("MANIFOLD_TOOLS_NOW_FIXTURE", "2030-02-02T00:00:00Z", 1)
+        defer { unsetenv("MANIFOLD_TOOLS_NOW_FIXTURE") }
         let executor = NowTool.makeExecutor()
         let result = try await executor.execute(arguments: .object([:]))
         XCTAssertTrue(result.content.contains("2030-02-02T00:00:00Z"),
@@ -107,7 +107,7 @@ final class ReferenceToolsTests: XCTestCase {
 
     func test_httpGetFixtureTool_returnsCannedResponse() async throws {
         let executor = HttpGetFixtureTool.makeExecutor()
-        let result = try await executor.execute(arguments: parseJSON(#"{"url":"https://fixture.bck/weather"}"#))
+        let result = try await executor.execute(arguments: parseJSON(#"{"url":"https://fixture.manifold/weather"}"#))
         XCTAssertNil(result.errorKind)
         XCTAssertTrue(result.content.contains("Dublin"), "got \(result.content)")
     }

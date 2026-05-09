@@ -12,7 +12,7 @@ of the items below collapse to a single answer.
 ## 1. Encryption export classification
 
 Every app submitted to the App Store must answer the encryption-export
-question. BCK does not ship its own crypto, but it uses HTTPS for cloud
+question. ManifoldKit does not ship its own crypto, but it uses HTTPS for cloud
 backends. That counts as encryption under U.S. export law.
 
 - **FoundationOnly / offline build** (`traits: ["FoundationOnly"]` or no
@@ -34,20 +34,20 @@ backends. That counts as encryption under U.S. export law.
 ## 2. Privacy manifest
 
 Apple requires `PrivacyInfo.xcprivacy` for any app that uses
-required-reason APIs (which BCK does — `UserDefaults`, file timestamps,
+required-reason APIs (which ManifoldKit does — `UserDefaults`, file timestamps,
 disk-space queries).
 
 - Copy `Templates/PrivacyInfo.xcprivacy` from this repo into your app
   target's resources.
 - Review each `NSPrivacyAccessedAPIType` entry; remove ones for features
-  you compile out (the file is annotated with the triggering BCK feature).
+  you compile out (the file is annotated with the triggering ManifoldKit feature).
 - See `Templates/PrivacyInfo.xcprivacy.README.md` for the full reference.
 
-BCK's privacy posture is **zero tracking, zero data collection, zero
+ManifoldKit's privacy posture is **zero tracking, zero data collection, zero
 tracking domains** by default. The template's `NSPrivacyTracking=false`
 and empty `NSPrivacyTrackingDomains`/`NSPrivacyCollectedDataTypes` arrays
 reflect that. If your app adds analytics or tracking, populate those
-arrays accordingly — your additions are layered on top of BCK's posture,
+arrays accordingly — your additions are layered on top of ManifoldKit's posture,
 not in place of it.
 
 ## 3. App Transport Security
@@ -129,15 +129,15 @@ defensible claim shape, when accurate for your build:
 > https://github.com/roryford/ManifoldKit and the bundled
 > `PrivacyInfo.xcprivacy` for the audited surface.
 
-Pointing reviewers at BCK's `Templates/PrivacyInfo.xcprivacy`, the public
+Pointing reviewers at ManifoldKit's `Templates/PrivacyInfo.xcprivacy`, the public
 source, and the [SECURITY.md](../SECURITY.md) threat-model doc usually
 clears review questions in the first round.
 
 ## 7. Bundle size estimate
 
-BCK's overhead in your final IPA varies by build profile:
+ManifoldKit's overhead in your final IPA varies by build profile:
 
-| Profile | BCK overhead | Notes |
+| Profile | ManifoldKit overhead | Notes |
 |---------|--------------|-------|
 | `traits: ["FoundationOnly"]` | < 5 MB | Foundation Models only. Enforced by CI. |
 | Cloud-only (`CloudSaaS`, no MLX/Llama) | ~10 MB | Adds OpenAI / Claude SSE clients. |
@@ -163,7 +163,7 @@ path** below to keep your IPA App-Store-thin.
 
 ## 8. SwiftPackageIndex submission (maintainer / out-of-tree)
 
-Submitting BCK to the [Swift Package Index](https://swiftpackageindex.com)
+Submitting ManifoldKit to the [Swift Package Index](https://swiftpackageindex.com)
 is a one-time maintainer task and lives outside this repo. The steps:
 
 1. Fork [`SwiftPackageIndex/PackageList`](https://github.com/SwiftPackageIndex/PackageList).
@@ -177,7 +177,7 @@ is a one-time maintainer task and lives outside this repo. The steps:
    - Enable Discussions for community Q&A.
 
 This checklist covers it from the consumer side — if you're shipping a
-BCK-based app, you don't need to do this; the maintainer handles the
+ManifoldKit-based app, you don't need to do this; the maintainer handles the
 PackageList submission once.
 
 ---
@@ -196,8 +196,8 @@ checklist collapses to:
 4. **ATS**: defaults are fine.
 5. **Microphone / speech**: not needed (no `Voice` trait).
 6. **Deployment target**: iOS 26 / macOS 26 minimum.
-7. **Bundle size**: < 5 MB BCK overhead, enforced by CI
+7. **Bundle size**: < 5 MB ManifoldKit overhead, enforced by CI
    (`.github/workflows/ci.yml::foundation-only-build`).
 
-That's the full submission surface. BCK does not add tracking, analytics,
+That's the full submission surface. ManifoldKit does not add tracking, analytics,
 identity-API access, or cross-app data sharing in this configuration.

@@ -1,19 +1,21 @@
-This project uses BaseChatKit (BCK), a Swift framework for building chat
+This project uses ManifoldKit, a Swift framework for building chat
 interfaces backed by local and cloud LLMs on Apple platforms.
 
 Read AGENTS.md at the repo root for the canonical API surface, common LLM
 hallucinations to avoid, and recipe code that compiles against the current
 release. CLAUDE.md is for contributors; AGENTS.md is for consumers.
 
-Key facts when generating code that uses BCK:
+Key facts when generating code that uses ManifoldKit:
 
 - The send method is `vm.sendMessage(_:)`, not `.send(_:)`.
 - Backend identity is the typed `BackendName.foundation`, not a raw string.
 - The `@ToolSchema` macro requires `--traits Macros` (default-off). Without
   the trait, declare `JSONSchemaValue` by hand.
-- There is no `BaseChatKit` umbrella module yet — import the product you
-  need (e.g. `BaseChatUI`, `BaseChatPersistenceSwiftData`, `BaseChatBackends`).
-- The current release is 0.18.0. BCK is pre-1.0; minor versions can break.
+- The `ManifoldKit` umbrella product re-exports the most-imported modules
+  (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
+  `ManifoldUI`, plus the backend umbrellas). Specialised modules
+  (`ManifoldUIModelManagement`, `ManifoldHuggingFace`, …) stay opt-in.
+- The current release is 0.20.0. ManifoldKit is pre-1.0; minor versions can break.
 - View models are Swift `@Observable` + `@MainActor`. Never `ObservableObject`,
   never `Task.detached` from a `@MainActor` class.
 

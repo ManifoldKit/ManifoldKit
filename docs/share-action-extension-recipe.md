@@ -24,7 +24,7 @@ The key isolation boundary is `PendingSharePayload` — a pure Foundation `Codab
 
 ```
 Example/ManifoldDemo/Extensions/
-├── PendingSharePayload.swift          # Shared Codable (no BCK deps)
+├── PendingSharePayload.swift          # Shared Codable (no ManifoldKit deps)
 ├── ShareExtension/
 │   ├── ShareViewController.swift      # UIViewController principal class
 │   ├── ShareExtension.entitlements    # App Group entitlement
@@ -54,7 +54,7 @@ All three targets — the host app and both extensions — must share the same A
 ## PendingSharePayload
 
 ```swift
-// Extensions/PendingSharePayload.swift — pure Foundation, no BCK deps.
+// Extensions/PendingSharePayload.swift — pure Foundation, no ManifoldKit deps.
 // Compiled into: ManifoldDemo, ManifoldDemoShareExtension, ManifoldDemoActionExtension.
 struct PendingSharePayload: Codable, Sendable {
     enum Kind: String, Codable { case text, url, image }

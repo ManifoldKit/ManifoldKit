@@ -46,19 +46,19 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$(mktemp -d -t bck-cold-start-tier2.XXXXXX)"
+WORK="$(mktemp -d -t manifoldkit-cold-start-tier2.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "==> Cold-start conformance (tier 2 — Bootstrap + ChatViewModel)"
-echo "    BCK:  $REPO_ROOT"
-echo "    work: $WORK"
+echo "    ManifoldKit:  $REPO_ROOT"
+echo "    work:         $WORK"
 
 cd "$WORK"
 
 # 1. Scaffold consumer Package.swift.
 #
 # tools-version 6.2 matches tier 1 (the platforms floor pin to v15 keeps the
-# consumer buildable on every macOS BCK supports). Tier 2 needs four
+# consumer buildable on every macOS ManifoldKit supports). Tier 2 needs four
 # products linked in concert:
 #
 #   - ManifoldInference            — InferenceService, InferenceBackend, BackendCapabilities, ModelLoadPlan, ModelInfo

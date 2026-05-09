@@ -7,28 +7,28 @@
 # fake backend, and asserts the round trip works.
 #
 # This is the missing test that would have caught most of the friction
-# documented in agent cold-start runs (BCK-test-01, BCK-test-02): it exercises
-# Package.swift wiring, BCK linking, the public registration / load / generate
-# API, and the GenerationStream consumption pattern from the *outside in*.
+# documented in agent cold-start runs (cold-start-01, cold-start-02): it exercises
+# Package.swift wiring, ManifoldKit linking, the public registration / load /
+# generate API, and the GenerationStream consumption pattern from the *outside in*.
 #
 # Runs in CI on every PR. ~30s on a warm cache.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$(mktemp -d -t bck-cold-start.XXXXXX)"
+WORK="$(mktemp -d -t manifoldkit-cold-start.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "==> Cold-start conformance"
-echo "    BCK:  $REPO_ROOT"
-echo "    work: $WORK"
+echo "    ManifoldKit:  $REPO_ROOT"
+echo "    work:         $WORK"
 
 cd "$WORK"
 
 # 1. Scaffold consumer Package.swift.
 #
-# tools-version 6.2 is required for `.macOS(.v26)`; we pin to v15 (BCK's floor)
-# so the test runs on every macOS BCK supports, not just the latest.
+# tools-version 6.2 is required for `.macOS(.v26)`; we pin to v15 (ManifoldKit's
+# floor) so the test runs on every macOS ManifoldKit supports, not just the latest.
 cat > Package.swift <<EOF
 // swift-tools-version: 6.2
 import PackageDescription
@@ -74,8 +74,8 @@ import Foundation
 // A real downstream consumer would register MLX / Llama / Foundation. For the
 // conformance test we want zero external dependencies (no model files, no OS
 // availability) so we roll a minimal fake here. This is deliberately the
-// *consumer-facing* shape — anything required to conform from outside the BCK
-// monorepo must be public on `InferenceBackend`.
+// *consumer-facing* shape — anything required to conform from outside the
+// ManifoldKit monorepo must be public on `InferenceBackend`.
 
 final class FakeBackend: InferenceBackend, @unchecked Sendable {
     nonisolated(unsafe) var isModelLoaded = false
