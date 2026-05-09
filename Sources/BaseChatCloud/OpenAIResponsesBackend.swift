@@ -2,6 +2,7 @@
 import Foundation
 import os
 import BaseChatInference
+import BaseChatCloudCore
 
 /// Cloud inference backend targeting OpenAI's Responses API
 /// (`POST /v1/responses`).

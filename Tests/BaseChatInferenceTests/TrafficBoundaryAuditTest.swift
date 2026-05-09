@@ -89,16 +89,18 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// `URLSessionProvider` (which is itself in this allowlist).
     private static let networkIOAllowlist: Set<String> = [
         // Cloud / Ollama backends — every backend that talks to a remote
-        // endpoint goes through URLSessionProvider and lives here.
-        "BaseChatBackends/ClaudeBackend.swift",
-        "BaseChatBackends/OpenAIBackend.swift",
-        "BaseChatBackends/OpenAIResponsesBackend.swift",
-        "BaseChatBackends/OllamaBackend.swift",
-        "BaseChatBackends/OllamaModelListService.swift",
-        "BaseChatBackends/SSECloudBackend.swift",
-        "BaseChatBackends/URLSessionProvider.swift",
-        "BaseChatBackends/PinnedSessionDelegate.swift",
-        "BaseChatBackends/DNSRebindingGuard.swift",
+        // endpoint goes through URLSessionProvider and lives here. Paths
+        // updated in initiative I7 when BaseChatBackends split into
+        // BaseChatCloudCore + BaseChatCloud.
+        "BaseChatCloud/ClaudeBackend.swift",
+        "BaseChatCloud/OpenAIBackend.swift",
+        "BaseChatCloud/OpenAIResponsesBackend.swift",
+        "BaseChatCloud/OllamaBackend.swift",
+        "BaseChatCloud/OllamaModelListService.swift",
+        "BaseChatCloudCore/SSECloudBackend.swift",
+        "BaseChatCloudCore/URLSessionProvider.swift",
+        "BaseChatCloudCore/PinnedSessionDelegate.swift",
+        "BaseChatCloudCore/DNSRebindingGuard.swift",
 
         // I1 network seam closure (#1140) — centralised redirect-guard
         // delegate, composite delegate, and seam factory live in
@@ -149,7 +151,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     ///
     /// **Cap: 12 entries.**
     private static let hostnameAllowlist: Set<String> = [
-        "BaseChatBackends/OpenAIBackend.swift",
+        "BaseChatCloud/OpenAIBackend.swift",
         "BaseChatHuggingFace/HuggingFaceService.swift",
         "BaseChatHuggingFace/BackgroundDownloadManager.swift",
         "BaseChatTestSupport/MockHuggingFaceService.swift",
@@ -376,18 +378,29 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         var offenders: [Offender] = []
 
         // (file-path-prefix, forbidden-imports, why)
+        // I7 split: every backend-family module must also be on each
+        // forbidden list — `import BaseChatMLX` from BaseChatUI is just as
+        // bad as `import BaseChatBackends` was pre-split.
+        let backendFamilyModules = [
+            "BaseChatBackends",
+            "BaseChatCloudCore",
+            "BaseChatMLX",
+            "BaseChatLlama",
+            "BaseChatFoundation",
+            "BaseChatCloud",
+        ]
         let rules: [(prefix: String, forbidden: [String], why: String)] = [
             ("BaseChatUI/",
-             ["BaseChatBackends", "BaseChatPersistenceSwiftData"],
-             "BaseChatUI must not depend on BaseChatBackends or BaseChatPersistenceSwiftData. UI is consumer-facing; backend code carries cloud-SDK weight and persistence adapters belong behind BaseChatRuntime ports."),
+             backendFamilyModules + ["BaseChatPersistenceSwiftData"],
+             "BaseChatUI must not depend on any backend-family module or BaseChatPersistenceSwiftData. UI is consumer-facing; backend code carries cloud-SDK weight and persistence adapters belong behind BaseChatRuntime ports."),
             ("BaseChatRuntime/",
-             ["BaseChatBackends", "BaseChatPersistenceSwiftData"],
+             backendFamilyModules + ["BaseChatPersistenceSwiftData"],
              "BaseChatRuntime carries persistence-agnostic ports and use cases. Concrete backends and SwiftData adapters live above it."),
             ("BaseChatPersistenceSwiftData/",
-             ["BaseChatBackends"],
+             backendFamilyModules,
              "BaseChatPersistenceSwiftData is the SwiftData persistence layer; backend code belongs above it."),
             ("BaseChatInference/",
-             ["BaseChatBackends", "BaseChatRuntime", "BaseChatPersistenceSwiftData"],
+             backendFamilyModules + ["BaseChatRuntime", "BaseChatPersistenceSwiftData"],
              "BaseChatInference is the lowest production layer (apart from BaseChatTestSupport) and must not depend upward."),
         ]
 
@@ -425,8 +438,12 @@ final class TrafficBoundaryAuditTest: XCTestCase {
 
         let rules: [(target: String, forbidden: [String], why: String)] = [
             ("BaseChatUI",
-             ["BaseChatBackends", "BaseChatPersistenceSwiftData", "BaseChatUIModelManagement"],
-             "BaseChatUI must stay a chat-only consumer surface. Backends, SwiftData adapters, and model-management UI belong behind lower-layer ports or sibling modules."),
+             [
+                "BaseChatBackends", "BaseChatCloudCore", "BaseChatMLX",
+                "BaseChatLlama", "BaseChatFoundation", "BaseChatCloud",
+                "BaseChatPersistenceSwiftData", "BaseChatUIModelManagement",
+             ],
+             "BaseChatUI must stay a chat-only consumer surface. Backends (any family), SwiftData adapters, and model-management UI belong behind lower-layer ports or sibling modules."),
             ("BaseChatUIModelManagement",
              ["BaseChatPersistenceSwiftData"],
              "BaseChatUIModelManagement must use BaseChatRuntime endpoint-store ports instead of depending on concrete SwiftData adapters.")

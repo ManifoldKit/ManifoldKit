@@ -2,6 +2,7 @@
 import XCTest
 @testable import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 @testable import BaseChatTestSupport
 
 /// Preflight-check tests for `LlamaModelLoader` — unsupported GGUF architectures

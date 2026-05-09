@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Tests for #20 (part): image content blocks on the Anthropic Messages API.
 ///

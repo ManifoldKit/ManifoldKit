@@ -1,6 +1,7 @@
 #if MLX
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Unit tests for ``MLXResourceArbiter`` — the per-instance cache-claim
 /// accounting that prevents multi-MLX hosts from trampling each other's

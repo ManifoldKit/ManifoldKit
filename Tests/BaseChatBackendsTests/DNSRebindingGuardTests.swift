@@ -1,6 +1,7 @@
 #if Ollama || CloudSaaS
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 import BaseChatInference
 
 /// Tests for the DNS-rebinding mitigation implemented in ``DNSRebindingGuard``.

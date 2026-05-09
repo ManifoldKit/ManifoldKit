@@ -2,6 +2,7 @@
 import XCTest
 @testable import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Unit tests for ``LlamaToolCallParser``.
 ///

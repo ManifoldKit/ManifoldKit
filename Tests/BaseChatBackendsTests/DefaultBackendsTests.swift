@@ -4,6 +4,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 
 // MARK: - Pure Routing Tests (no hardware required)
 

@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Tests for #604: structured multi-turn replay against the Anthropic
 /// Messages API. ``ClaudeBackend`` must:

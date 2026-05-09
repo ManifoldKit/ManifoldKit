@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 @testable import BaseChatInference
 
 /// Proves that captured real-vendor JSON fixtures each decode through their

@@ -2,6 +2,7 @@
 import XCTest
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 
 /// Tests for the runtime kill-switch ``URLSessionProvider/networkDisabled``.
 ///

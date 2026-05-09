@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatFoundation
 
 /// Isolated unit tests for `FoundationBackend` state management and guard paths.
 ///

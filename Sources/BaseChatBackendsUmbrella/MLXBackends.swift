@@ -1,4 +1,7 @@
 import BaseChatInference
+#if MLX
+import BaseChatMLX
+#endif
 
 public enum MLXBackends: BackendRegistrar {
     @MainActor

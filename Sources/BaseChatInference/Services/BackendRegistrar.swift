@@ -1,5 +1,3 @@
-import BaseChatInference
-
 /// A unit of backend registration that can be folded over to bootstrap an
 /// `InferenceService`. Conforming types own a single backend family
 /// (MLX, Llama, Foundation, Cloud) and register their factories and

@@ -2,6 +2,7 @@
 import Foundation
 import os
 import BaseChatInference
+import BaseChatCloudCore
 
 /// Inference backend for Ollama servers using the native `/api/chat` endpoint.
 ///

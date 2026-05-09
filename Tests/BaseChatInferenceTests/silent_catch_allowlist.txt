@@ -63,6 +63,6 @@ BaseChatServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleV
 
 # Stream cancellation cleanup paths — already-cancelled errors are the
 # only failure mode and would be redundant to log.
-BaseChatBackends/ClaudeBackend.swift:} catch {
+BaseChatCloud/ClaudeBackend.swift:} catch {
 BaseChatTools/TranscriptLogger.swift:} catch {
 BaseChatTools/ReferenceTools/NowTool.swift:} catch {

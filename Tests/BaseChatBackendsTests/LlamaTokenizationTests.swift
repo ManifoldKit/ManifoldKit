@@ -3,6 +3,7 @@ import XCTest
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Regression tests for the `parse_special: true` fix in `LlamaTokenization.tokenize`
 /// and `LlamaBackend.countTokens`.

@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Tests for #943 (part of #20): `image_url` content parts on the OpenAI
 /// Chat Completions API.

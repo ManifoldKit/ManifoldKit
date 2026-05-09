@@ -4,6 +4,7 @@ import MLXLMCommon
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 // Conform MockMLXModelContainer to the internal protocol in this test target,
 // where both the internal protocol and the public mock type are visible.

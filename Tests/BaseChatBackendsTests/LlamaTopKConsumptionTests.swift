@@ -3,6 +3,7 @@ import XCTest
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Regression coverage for the `top_k` consumption fix.
 ///

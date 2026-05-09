@@ -2,6 +2,7 @@
 import XCTest
 import Foundation
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 @testable import BaseChatInference
 import BaseChatTestSupport
 

@@ -3,6 +3,7 @@ import XCTest
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Verifies that ``GenerationConfig/seed`` makes ``LlamaBackend`` token streams
 /// reproducible across runs. The driver feeds the seed into

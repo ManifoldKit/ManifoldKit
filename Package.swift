@@ -31,7 +31,19 @@ let package = Package(
         .library(name: "BaseChatMCP", targets: ["BaseChatMCP"]),
         .library(name: "BaseChatRuntime", targets: ["BaseChatRuntime"]),
         .library(name: "BaseChatPersistenceSwiftData", targets: ["BaseChatPersistenceSwiftData"]),
+        // Initiative I7 split BaseChatBackends into 5 trait-gated source
+        // targets. The legacy `BaseChatBackends` target/module is preserved
+        // (renamed only on disk to `Sources/BaseChatBackendsUmbrella` to make
+        // its role visible) so existing `import BaseChatBackends` consumers
+        // keep compiling — the target body is now a thin re-export shim plus
+        // the cross-family registration glue (DefaultBackends and the
+        // BackendRegistrar conformances).
         .library(name: "BaseChatBackends", targets: ["BaseChatBackends"]),
+        .library(name: "BaseChatCloudCore", targets: ["BaseChatCloudCore"]),
+        .library(name: "BaseChatMLX", targets: ["BaseChatMLX"]),
+        .library(name: "BaseChatLlama", targets: ["BaseChatLlama"]),
+        .library(name: "BaseChatFoundation", targets: ["BaseChatFoundation"]),
+        .library(name: "BaseChatCloud", targets: ["BaseChatCloud"]),
         .library(name: "BaseChatUI", targets: ["BaseChatUI"]),
         .library(name: "BaseChatUIModelManagement", targets: ["BaseChatUIModelManagement"]),
         .library(name: "BaseChatHuggingFace", targets: ["BaseChatHuggingFace"]),
@@ -205,9 +217,51 @@ let package = Package(
             exclude: ["LICENSE"],
             swiftSettings: [.define("MLX", .when(traits: ["MLX"]))]
         ),
-        // Backends: MLX, llama.cpp, Foundation, cloud
+        // ─────────────────────────────────────────────────────────────────
+        // Backends — initiative I7 split.
+        //
+        // The original 11.7k-LOC `BaseChatBackends` target hosted four
+        // unrelated runtimes (MLX / llama.cpp / Foundation / Cloud). Any
+        // single-line change recompiled all 11.7k LOC; cross-runtime symbol
+        // visibility forced 28 `@unchecked Sendable` conformances and three
+        // dummy `*Stub.swift` files to keep the link alive when traits flipped
+        // families off. Splitting per family eliminates the stubs and lets
+        // SwiftPM trait-gate at the consumer→library edge instead of file-by-
+        // file `#if`s smeared across the body.
+        //
+        // Trait-gating rule (per CLAUDE.md): gate the consumer→family edge,
+        // not the family→library edge. `BaseChatCloud → BaseChatCloudCore` is
+        // unconditional (always linked together); `Consumer → BaseChatCloud`
+        // is gated by `CloudSaaS || Ollama` so a `FoundationOnly` build never
+        // pulls Cloud sources at all.
+        //
+        // The legacy `BaseChatBackends` target/module is preserved as a thin
+        // re-export shim (sources moved to `Sources/BaseChatBackendsUmbrella/`
+        // to make the role obvious in directory listings) that hosts
+        // cross-family glue (`DefaultBackends`, the per-family
+        // `BackendRegistrar` conformances) and `@_exported import`s the four
+        // family targets so existing `import BaseChatBackends` consumers keep
+        // compiling without edits.
+        // ─────────────────────────────────────────────────────────────────
+
+        // BaseChatCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
+        // infrastructure. Always linked — the file bodies are themselves
+        // gated by `#if Ollama || CloudSaaS` so a FoundationOnly build still
+        // compiles this target to empty objects (cheap) and links them.
         .target(
-            name: "BaseChatBackends",
+            name: "BaseChatCloudCore",
+            dependencies: ["BaseChatInference"],
+            path: "Sources/BaseChatCloudCore",
+            swiftSettings: [
+                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("Ollama", .when(traits: ["Ollama"])),
+            ]
+        ),
+
+        // BaseChatMLX: MLX inference backend, resource arbiter, capability
+        // probe, MLX-specific tool dialect.
+        .target(
+            name: "BaseChatMLX",
             dependencies: [
                 "BaseChatInference",
                 .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
@@ -223,11 +277,76 @@ let package = Package(
                 .product(name: "MLXHuggingFace", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
                 // Vendored StableDiffusion (Sources/StableDiffusion), used by MLXDiffusionBackend.
-                // Replaces the mlx-swift-examples package dep which had a platform conflict (iOS 16 vs iOS 17).
                 .target(name: "StableDiffusion", condition: .when(traits: ["MLX"])),
+            ],
+            path: "Sources/BaseChatMLX",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+            ]
+        ),
+
+        // BaseChatLlama: llama.cpp (GGUF) inference, generation driver,
+        // process-lifecycle refcount, embedding backend, GGUF-specific tool
+        // call parser, tokenizer adapters.
+        .target(
+            name: "BaseChatLlama",
+            dependencies: [
+                "BaseChatInference",
                 .product(name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
             ],
-            path: "Sources/BaseChatBackends",
+            path: "Sources/BaseChatLlama",
+            swiftSettings: [
+                .define("Llama", .when(traits: ["Llama"])),
+            ]
+        ),
+
+        // BaseChatFoundation: Apple Foundation Models bridge. No trait —
+        // gated by OS availability via `#if canImport(FoundationModels)` and
+        // `@available(iOS 26, macOS 26, *)`.
+        .target(
+            name: "BaseChatFoundation",
+            dependencies: ["BaseChatInference"],
+            path: "Sources/BaseChatFoundation"
+        ),
+
+        // BaseChatCloud: SaaS + LAN cloud backends (OpenAI Chat Completions,
+        // OpenAI Responses, Anthropic Claude, Ollama). Inherits the shared
+        // SSE / TLS / DNS-rebind plumbing from BaseChatCloudCore.
+        .target(
+            name: "BaseChatCloud",
+            dependencies: [
+                "BaseChatInference",
+                "BaseChatCloudCore",
+            ],
+            path: "Sources/BaseChatCloud",
+            swiftSettings: [
+                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
+                .define("Ollama", .when(traits: ["Ollama"])),
+            ]
+        ),
+
+        // BaseChatBackends: the legacy umbrella module, now a thin re-export
+        // shim. Hosts cross-family registration glue (`DefaultBackends`, the
+        // per-family `BackendRegistrar` conformances `MLXBackends` /
+        // `LlamaBackends` / `FoundationBackends` / `CloudBackends`) and
+        // `@_exported import`s the four family targets so existing
+        // `import BaseChatBackends` consumers keep compiling without edits.
+        // The target name stays `BaseChatBackends` (module name follows the
+        // target) so `@testable import BaseChatBackends` is preserved; the
+        // sources live under `Sources/BaseChatBackendsUmbrella/` to make the
+        // role obvious from the directory listing.
+        .target(
+            name: "BaseChatBackends",
+            dependencies: [
+                "BaseChatInference",
+                "BaseChatCloudCore",
+                "BaseChatFoundation",
+                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+            ],
+            path: "Sources/BaseChatBackendsUmbrella",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
@@ -409,10 +528,22 @@ let package = Package(
                 .define("MCP", .when(traits: ["MCP"])),
             ]
         ),
+        // Umbrella test target — covers every family target via per-trait
+        // conditional deps so `@testable import BaseChatMLX`,
+        // `@testable import BaseChatLlama`, etc. resolve from the same
+        // suite. The `BaseChatBackends` dep also keeps
+        // `@testable import BaseChatBackends` working for tests that exercise
+        // the umbrella's cross-family glue (DefaultBackends, BackendRegistrar
+        // conformances).
         .testTarget(
             name: "BaseChatBackendsTests",
             dependencies: [
                 "BaseChatBackends",
+                "BaseChatCloudCore",
+                "BaseChatFoundation",
+                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
                 "BaseChatUI",
                 "BaseChatRuntime",
                 "BaseChatPersistenceSwiftData",
@@ -539,6 +670,11 @@ let package = Package(
             name: "BaseChatE2ETests",
             dependencies: [
                 "BaseChatBackends",
+                "BaseChatCloudCore",
+                "BaseChatFoundation",
+                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
                 "BaseChatUI",
                 "BaseChatRuntime",
                 "BaseChatPersistenceSwiftData",
@@ -714,6 +850,7 @@ let package = Package(
             name: "BaseChatMLXIntegrationTests",
             dependencies: [
                 "BaseChatBackends",
+                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
                 "BaseChatRuntime",
                 "BaseChatPersistenceSwiftData",
                 "BaseChatInference",

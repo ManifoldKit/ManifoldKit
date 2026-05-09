@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Tests for ClaudeBackend configuration, state, and capabilities.
 final class ClaudeBackendTests: XCTestCase {

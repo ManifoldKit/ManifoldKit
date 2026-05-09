@@ -1,6 +1,7 @@
 #if CloudSaaS
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 @testable import BaseChatInference
 
 /// Focused tests for the helper types extracted during the

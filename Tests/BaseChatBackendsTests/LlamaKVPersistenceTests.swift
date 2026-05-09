@@ -3,6 +3,7 @@ import XCTest
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Tests for KV-cache prefix reuse across consecutive turns in `LlamaBackend`.
 ///

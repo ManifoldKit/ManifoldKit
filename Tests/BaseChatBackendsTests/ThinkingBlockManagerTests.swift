@@ -1,6 +1,7 @@
 import XCTest
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 
 /// Unit tests for `ThinkingBlockManager` — the open/flush primitive that the
 /// SSE backends share to guarantee `.thinkingComplete` is emitted exactly

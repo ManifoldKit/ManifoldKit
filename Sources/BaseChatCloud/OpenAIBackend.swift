@@ -2,6 +2,7 @@
 import Foundation
 import os
 import BaseChatInference
+import BaseChatCloudCore
 
 /// Cloud inference backend using the OpenAI Chat Completions API.
 ///

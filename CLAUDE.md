@@ -8,14 +8,19 @@
 | `BaseChatMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
 | `BaseChatRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |
 | `BaseChatPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `BaseChatBootstrap` | None |
-| `BaseChatBackends` | MLX, llama.cpp, Foundation, cloud backends (depends on `BaseChatInference`) | MLX, LlamaSwift |
+| `BaseChatCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) | None |
+| `BaseChatMLX` | MLX inference backend, resource arbiter, capability probe, MLX tool dialect (depends on `BaseChatInference`) | MLX |
+| `BaseChatLlama` | llama.cpp (GGUF) inference, generation driver, embedding backend, GGUF tool-call parser (depends on `BaseChatInference`) | LlamaSwift |
+| `BaseChatFoundation` | Apple Foundation Models bridge — gated by OS availability (iOS 26 / macOS 26+), no trait | None |
+| `BaseChatCloud` | SaaS + LAN cloud backends: OpenAI Chat Completions, OpenAI Responses, Anthropic Claude, Ollama (depends on `BaseChatCloudCore`) | None |
+| `BaseChatBackends` | Umbrella re-export module backed by `Sources/BaseChatBackendsUmbrella/`. Hosts cross-family glue (`DefaultBackends`, per-family `BackendRegistrar` conformances) and `@_exported import`s the four family targets so existing `import BaseChatBackends` consumers keep compiling. | MLX, LlamaSwift |
 | `BaseChatUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here) | None |
 | `BaseChatUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors | None |
 | `BaseChatVoice` | Optional speech I/O adapters and voice composer accessory (depends on `BaseChatUI`) | None |
 | `BaseChatTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.) | None |
 | `BaseChatMLXIntegrationTests` | Xcode-only real MLX model E2E tests | MLX |
 
-**Dependency rules:** Never import `BaseChatBackends` from UI; never import `BaseChatUIModelManagement` from `BaseChatUI` (CI lint enforces this). `BaseChatUIModelManagement` depends on `BaseChatUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. `BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference` directly (not `BaseChatRuntime`), keeping them free of SwiftData. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
+**Dependency rules:** Never import any backend family target (or the `BaseChatBackends` umbrella) from UI; never import `BaseChatUIModelManagement` from `BaseChatUI` (CI lint enforces this). `BaseChatUIModelManagement` depends on `BaseChatUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. The four family targets (`BaseChatMLX`, `BaseChatLlama`, `BaseChatFoundation`, `BaseChatCloud`) and `BaseChatMCP` depend on `BaseChatInference` directly (not `BaseChatRuntime`), keeping them free of SwiftData. `BaseChatCloud → BaseChatCloudCore` is unconditional (always linked together); the consumer→family edge is trait-gated (`MLX` for `BaseChatMLX`, `Llama` for `BaseChatLlama`, `CloudSaaS || Ollama` for `BaseChatCloud`; `BaseChatCloudCore` and `BaseChatFoundation` are always linked). The umbrella `BaseChatBackends` re-exports each family conditionally so `import BaseChatBackends` keeps working in any trait combination. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
 
 ## Running tests
 

@@ -1,5 +1,6 @@
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 import BaseChatInference
 
 // Tests for LlamaBackend.secureWipe().

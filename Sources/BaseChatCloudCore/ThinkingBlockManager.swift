@@ -25,19 +25,21 @@ import BaseChatInference
 /// // ... stream ended or threw ...
 /// thinking.flushIfOpen(into: continuation)
 /// ```
-struct ThinkingBlockManager {
-    private(set) var isOpen = false
+public struct ThinkingBlockManager {
+    public private(set) var isOpen = false
+
+    public init() {}
 
     /// Marks the thinking block as open. Idempotent: repeated calls without
     /// an intervening flush are a no-op (state stays open).
-    mutating func open() {
+    public mutating func open() {
         isOpen = true
     }
 
     /// If a thinking block is currently open, yields a single
     /// `.thinkingComplete` and resets to closed. Otherwise a no-op.
     /// Idempotent — calling twice in a row yields at most one event.
-    mutating func flushIfOpen(into continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation) {
+    public mutating func flushIfOpen(into continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation) {
         guard isOpen else { return }
         continuation.yield(.thinkingComplete)
         isOpen = false

@@ -2,6 +2,7 @@
 import XCTest
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Unit tests for the pure helpers extracted from `MLXBackend.generate` (#964).
 ///

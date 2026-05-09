@@ -4,6 +4,7 @@ import CommonCrypto
 import Security
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 
 final class PinnedSessionDelegateTests: XCTestCase {
 

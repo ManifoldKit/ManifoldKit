@@ -2,6 +2,7 @@
 import XCTest
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Pins the contract that cloud encoders skip ``MessagePart/generatedImage(_:)``
 /// when serialising request bodies.

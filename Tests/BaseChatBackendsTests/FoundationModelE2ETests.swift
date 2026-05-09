@@ -7,6 +7,7 @@ import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatFoundation
 @testable import BaseChatUI
 
 /// True end-to-end tests using Apple's Foundation Models backend.
