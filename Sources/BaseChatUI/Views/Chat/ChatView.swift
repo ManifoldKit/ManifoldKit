@@ -351,7 +351,12 @@ public struct ChatView<APIConfig: View>: View {
             // `.defaultHigh` priority so they survive sidebar-hidden collapse.
             ToolbarItemGroup(placement: .automatic) {
                 if let backend = viewModel.activeBackendName,
-                   ["OpenAI", "Claude", "Ollama", "LM Studio"].contains(backend) {
+                   [
+                       BackendName.openAI.rawValue,
+                       BackendName.claude.rawValue,
+                       BackendName.ollama.rawValue,
+                       APIProvider.lmStudio.rawValue,
+                   ].contains(backend) {
                     Label("Cloud", systemImage: "cloud.fill")
                         .font(.caption2)
                         .foregroundStyle(.blue)

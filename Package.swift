@@ -27,6 +27,12 @@ let package = Package(
         .macOS(.v15),
     ],
     products: [
+        // Umbrella product. Re-exports BaseChatInference + BaseChatRuntime +
+        // BaseChatPersistenceSwiftData + BaseChatBackends + BaseChatUI so a
+        // typical app can `import BaseChatKit` and skip the 4–6 import dance.
+        // Specialised modules (MCP, Voice, ModelManagement, AppIntents, …) stay
+        // explicit imports because not every host wants them in the build graph.
+        .library(name: "BaseChatKit", targets: ["BaseChatKit"]),
         .library(name: "BaseChatInference", targets: ["BaseChatInference"]),
         .library(name: "BaseChatMCP", targets: ["BaseChatMCP"]),
         .library(name: "BaseChatRuntime", targets: ["BaseChatRuntime"]),
@@ -291,6 +297,23 @@ let package = Package(
             swiftSettings: [
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
+        ),
+        // BaseChatKit: umbrella library. Single-file `Exports.swift`
+        // re-exports the four most-imported modules so app code can write
+        // `import BaseChatKit` and reach `ChatView`, `ChatViewModel`,
+        // `BaseChatBootstrap`, `DefaultBackends`, and the public Inference
+        // surface from one import. Specialised modules stay opt-in (see
+        // `Exports.swift` for the rationale).
+        .target(
+            name: "BaseChatKit",
+            dependencies: [
+                "BaseChatInference",
+                "BaseChatRuntime",
+                "BaseChatPersistenceSwiftData",
+                "BaseChatBackends",
+                "BaseChatUI",
+            ],
+            path: "Sources/BaseChatKit"
         ),
         // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
         .target(

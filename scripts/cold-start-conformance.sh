@@ -51,7 +51,11 @@ let package = Package(
         .executableTarget(
             name: "ColdStart",
             dependencies: [
-                .product(name: "BaseChatInference", package: "BaseChatKit"),
+                // BaseChatKit umbrella — the same import a typical consumer
+                // uses, re-exporting BaseChatInference (and the other 80%-case
+                // modules) so this conformance check fails fast if the
+                // umbrella stops covering its documented contract.
+                .product(name: "BaseChatKit", package: "BaseChatKit"),
             ],
             path: "Sources/ColdStart"
         ),
@@ -62,7 +66,7 @@ EOF
 # 2. Scaffold consumer source.
 mkdir -p Sources/ColdStart
 cat > Sources/ColdStart/main.swift <<'SWIFT'
-import BaseChatInference
+import BaseChatKit
 import Foundation
 
 // MARK: - Inline fake backend

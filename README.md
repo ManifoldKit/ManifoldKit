@@ -140,16 +140,21 @@ for the full list of dependency rules the lint enforces.
 .package(url: "https://github.com/roryford/BaseChatKit.git", from: "0.18.0")
 ```
 
-Add the targets you need:
+Most apps add a single product — the `BaseChatKit` umbrella, which re-exports
+the runtime, persistence, backends, UI, and inference surface in one import:
 
 ```swift
 .target(name: "MyApp", dependencies: [
-    .product(name: "BaseChatRuntime", package: "BaseChatKit"),
-    .product(name: "BaseChatPersistenceSwiftData", package: "BaseChatKit"),
-    .product(name: "BaseChatBackends", package: "BaseChatKit"),
-    .product(name: "BaseChatUI", package: "BaseChatKit"),
+    .product(name: "BaseChatKit", package: "BaseChatKit"),
 ])
 ```
+
+Use the individual products (`BaseChatRuntime`, `BaseChatPersistenceSwiftData`,
+`BaseChatBackends`, `BaseChatUI`, …) when you need finer-grained dependency
+control — for example, a UI-only target that doesn't link `BaseChatBackends`.
+Specialised modules (`BaseChatUIModelManagement`, `BaseChatMCP`, `BaseChatVoice`,
+`BaseChatHuggingFace`, `BaseChatAppIntents`) stay opt-in: add them explicitly
+when you need that surface, since they're not in the umbrella.
 
 ### 2. Build modes
 
@@ -491,14 +496,15 @@ legacy Combine-based views.
 
 ### 3. Create the runtime at app startup
 
+With the `BaseChatKit` umbrella, `import BaseChatKit` covers
+`BaseChatRuntime`, `BaseChatPersistenceSwiftData`, `BaseChatBackends`,
+`BaseChatUI`, and `BaseChatInference` in one line:
+
 ```swift
+import SwiftUI
 import SwiftData
-import BaseChatRuntime
-import BaseChatPersistenceSwiftData
-import BaseChatInference
-import BaseChatBackends
-import BaseChatUI
-import BaseChatUIModelManagement
+import BaseChatKit
+import BaseChatUIModelManagement   // model browser/download UI is opt-in
 
 @main
 struct MyApp: App {
@@ -555,6 +561,11 @@ struct MyApp: App {
     }
 }
 ```
+
+Apps that need finer-grained dependency control can swap the umbrella for the
+individual product imports (`import BaseChatRuntime`, `import BaseChatPersistenceSwiftData`,
+`import BaseChatInference`, `import BaseChatBackends`, `import BaseChatUI`).
+The umbrella exists so most consumers don't need to.
 
 ### 4. Wire up the UI
 

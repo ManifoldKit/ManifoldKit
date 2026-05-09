@@ -4,6 +4,7 @@
 
 | Target | Role | ML deps |
 |--------|------|---------|
+| `BaseChatKit` | Umbrella library that re-exports `BaseChatInference` + `BaseChatRuntime` + `BaseChatPersistenceSwiftData` + `BaseChatBackends` + `BaseChatUI` so app code can `import BaseChatKit` instead of stitching together 4–6 imports. Specialised modules (UIModelManagement, MCP, Voice, …) stay explicit imports. | None |
 | `BaseChatInference` | Inference orchestration — backend protocols, generation events, prompt assembly, conversation records (no persistence ports) | None |
 | `BaseChatMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
 | `BaseChatRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |

@@ -281,7 +281,7 @@ final class InferenceServiceTests: XCTestCase {
         try await service.loadCloudBackend(from: endpoint)
 
         XCTAssertTrue(service.isModelLoaded)
-        XCTAssertEqual(service.activeBackendName, APIProvider.ollama.rawValue)
+        XCTAssertEqual(service.activeBackendName, BackendName.ollama.rawValue)
         XCTAssertEqual(service.activeModelName, endpoint.modelName)
         XCTAssertEqual(mock.loadModelCallCount, 1)
         XCTAssertEqual(mock.configuredBaseURL?.absoluteString, endpoint.baseURL)
@@ -303,7 +303,7 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertEqual(firstMock.unloadCallCount, 1, "Old backend should be unloaded")
         // New backend is active.
         XCTAssertTrue(service.isModelLoaded)
-        XCTAssertEqual(service.activeBackendName, APIProvider.ollama.rawValue)
+        XCTAssertEqual(service.activeBackendName, BackendName.ollama.rawValue)
     }
 
     func test_loadCloudBackend_configuresKeychainBackend_beforeLoad() async throws {
@@ -374,14 +374,14 @@ final class InferenceServiceTests: XCTestCase {
         try await secondTask.value
 
         XCTAssertTrue(service.isModelLoaded)
-        XCTAssertEqual(service.activeBackendName, "Apple")
+        XCTAssertEqual(service.activeBackendName, BackendName.foundation.rawValue)
 
         await firstBackend.releaseLoadSuccess()
         try await firstTask.value
 
         XCTAssertEqual(firstBackend.unloadCallCount, 1, "Stale backend should be unloaded when completion is discarded")
         XCTAssertEqual(secondBackend.unloadCallCount, 0)
-        XCTAssertEqual(service.activeBackendName, "Apple")
+        XCTAssertEqual(service.activeBackendName, BackendName.foundation.rawValue)
     }
 
     func test_loadCloudBackend_rapidEndpointSwitch_latestRequestWins_staleCompletionSuppressed() async throws {
@@ -457,13 +457,13 @@ final class InferenceServiceTests: XCTestCase {
         try await secondTask.value
 
         XCTAssertTrue(service.isModelLoaded)
-        XCTAssertEqual(service.activeBackendName, "Apple")
+        XCTAssertEqual(service.activeBackendName, BackendName.foundation.rawValue)
 
         await firstBackend.releaseLoadFailure(ControlledLoadTestError.plannedFailure)
         _ = try? await firstTask.value
 
         XCTAssertTrue(service.isModelLoaded, "Newer successful load should remain active after stale failure")
-        XCTAssertEqual(service.activeBackendName, "Apple")
+        XCTAssertEqual(service.activeBackendName, BackendName.foundation.rawValue)
         XCTAssertEqual(secondBackend.unloadCallCount, 0)
     }
 
@@ -706,7 +706,7 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertEqual(secondCallCount, 1, "Second cloud factory should be called after first rejects")
         XCTAssertEqual(secondMock.loadModelCallCount, 1, "Second cloud factory's backend should be loaded")
         XCTAssertTrue(service.isModelLoaded)
-        XCTAssertEqual(service.activeBackendName, APIProvider.ollama.rawValue)
+        XCTAssertEqual(service.activeBackendName, BackendName.ollama.rawValue)
     }
 
     // MARK: - TokenizerVendor
