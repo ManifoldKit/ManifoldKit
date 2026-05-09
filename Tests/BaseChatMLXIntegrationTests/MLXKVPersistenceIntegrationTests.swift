@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Real-model validation for MLX KV-cache prefix reuse.
 ///

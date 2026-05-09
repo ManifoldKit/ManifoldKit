@@ -1,6 +1,7 @@
 #if Ollama || CloudSaaS
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatCloudCore
 import BaseChatInference
 
 final class URLSessionProviderTests: XCTestCase {

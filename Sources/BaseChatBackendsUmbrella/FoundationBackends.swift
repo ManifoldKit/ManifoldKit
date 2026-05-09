@@ -1,4 +1,5 @@
 import BaseChatInference
+import BaseChatFoundation
 
 public enum FoundationBackends: BackendRegistrar {
     @MainActor

@@ -2,6 +2,7 @@
 import XCTest
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 @testable import BaseChatInference
 
 /// Asserts that ``OpenAIResponsesBackend/OpenAIResponsesPayloadHandler`` and the

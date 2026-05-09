@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Real-inference smoke test for `mlx-community/gemma-4-26b-a4b-it-4bit`,
 /// the 26B Mixture-of-Experts Gemma 4 variant. Validates the VLM-factory

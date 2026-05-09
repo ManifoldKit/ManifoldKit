@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Grounds audit claim #4 ("raw image bytes live in `MessagePart.image`,
 /// re-encoded every turn") with a measurement.

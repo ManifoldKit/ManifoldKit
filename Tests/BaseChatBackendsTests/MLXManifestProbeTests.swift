@@ -1,6 +1,7 @@
 #if MLX
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 @testable import BaseChatInference
 
 /// Unit tests for ``MLXBackend/produceManifest(at:detectedThinkingMarkers:supportsVision:)``.

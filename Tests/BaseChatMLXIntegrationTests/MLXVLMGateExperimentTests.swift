@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Confirms the VLM-side KV-reuse gate is currently on.
 ///

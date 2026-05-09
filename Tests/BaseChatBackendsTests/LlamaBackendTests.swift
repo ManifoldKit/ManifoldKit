@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Tests for LlamaBackend state, capabilities, and error handling.
 ///

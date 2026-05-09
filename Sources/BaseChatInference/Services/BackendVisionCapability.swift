@@ -1,19 +1,20 @@
-import BaseChatInference
-
 /// Centralized, testable capability gates for image-input support.
 ///
-/// The helpers live outside trait-gated backend files so CI can exercise the
-/// declarations with default traits disabled. Returning `true` means the
-/// backend has both a model family known to accept images and an implemented
-/// request/generation path that preserves ``MessagePart/image`` payloads.
-enum BackendVisionCapability {
-    static var llamaSupportsImageInput: Bool { false }
+/// The helpers live in `BaseChatInference` (not in any trait-gated backend
+/// target) so CI can exercise the declarations with default traits disabled
+/// and so all four backend families (`BaseChatMLX`, `BaseChatLlama`,
+/// `BaseChatFoundation`, `BaseChatCloud`) share a single source of truth.
+/// Returning `true` means the backend has both a model family known to
+/// accept images and an implemented request/generation path that preserves
+/// ``MessagePart/image`` payloads.
+public enum BackendVisionCapability {
+    public static var llamaSupportsImageInput: Bool { false }
 
-    static func mlxSupportsImageInput(probedCapabilities: ModelCapabilities?) -> Bool {
+    public static func mlxSupportsImageInput(probedCapabilities: ModelCapabilities?) -> Bool {
         probedCapabilities?.supportsVision ?? false
     }
 
-    static func openAIChatCompletionsSupportsImageInput(modelName: String) -> Bool {
+    public static func openAIChatCompletionsSupportsImageInput(modelName: String) -> Bool {
         let lowered = modelName.lowercased()
         if OpenAIChatCompletionsVisionModels.substringTokens.contains(where: lowered.contains) {
             return true
@@ -26,11 +27,11 @@ enum BackendVisionCapability {
         return false
     }
 
-    static func openAIResponsesSupportsImageInput(modelName _: String) -> Bool {
+    public static func openAIResponsesSupportsImageInput(modelName _: String) -> Bool {
         false
     }
 
-    static func claudeMessagesSupportsImageInput(modelName: String) -> Bool {
+    public static func claudeMessagesSupportsImageInput(modelName: String) -> Bool {
         let lowered = modelName.lowercased()
         if lowered.contains("claude-2") || lowered.contains("claude-instant") {
             return false

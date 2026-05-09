@@ -2,6 +2,7 @@
 
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 import BaseChatInference
 
 /// Unit tests for ``MLXDiffusionBackend``.

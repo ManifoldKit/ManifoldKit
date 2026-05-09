@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 
 /// Tests for OpenAIBackend configuration, state, and capabilities.
 final class OpenAIBackendTests: XCTestCase {

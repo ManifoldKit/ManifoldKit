@@ -3,6 +3,7 @@ import XCTest
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Real-MLX measurement of KV-cache prefix reuse across two consecutive turns.
 ///

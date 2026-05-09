@@ -27,7 +27,7 @@ import XCTest
 /// by relative path (within `Sources/`):
 ///
 /// - `BaseChatInference/Networking/URLSessionFactory.swift` — the seam.
-/// - `BaseChatBackends/URLSessionProvider.swift` — the trait-gated wrapper.
+/// - `BaseChatCloudCore/URLSessionProvider.swift` — the trait-gated wrapper.
 /// - `BaseChatTestSupport/**` — test fakes (e.g. `DenyAllURLProtocol`).
 /// - `BaseChatMCP/MCPURLSessionFactory.swift` — MCP has its own redirect-
 ///   cap delegate (`MCPRedirectCapDelegate`) that every MCP request
@@ -47,7 +47,8 @@ final class DirectURLSessionConstructionAuditTest: XCTestCase {
         // caller threads through.
         "BaseChatInference/Networking/URLSessionFactory.swift",
         // Trait-gated wrapper around the seam (pinned + unpinned accessors).
-        "BaseChatBackends/URLSessionProvider.swift",
+        // Moved from BaseChatBackends to BaseChatCloudCore in initiative I7.
+        "BaseChatCloudCore/URLSessionProvider.swift",
         // MCP's pre-existing factory; every caller installs MCPRedirectCapDelegate
         // via the per-call `delegate:` parameter on data(for:delegate:).
         "BaseChatMCP/MCPURLSessionFactory.swift",

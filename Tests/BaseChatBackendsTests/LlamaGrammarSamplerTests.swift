@@ -3,6 +3,7 @@ import XCTest
 @testable import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Tests for GBNF grammar-constrained sampling in LlamaBackend/LlamaGenerationDriver.
 ///

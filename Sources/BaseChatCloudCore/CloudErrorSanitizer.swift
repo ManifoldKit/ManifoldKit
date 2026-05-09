@@ -38,11 +38,11 @@ import Foundation
 /// constructing every `serverError`. Sibling backend subclasses inside this
 /// SPM package can still reach it when they need to match that behaviour for
 /// their own status-code paths.
-enum CloudErrorSanitizer {
+public enum CloudErrorSanitizer {
 
     /// Maximum length of the sanitised message in characters, including the
     /// trailing ellipsis when truncation applies.
-    static let maxLength = 256
+    public static let maxLength = 256
 
     /// Sanitises a raw upstream error string for UI surfacing.
     ///
@@ -53,7 +53,7 @@ enum CloudErrorSanitizer {
     ///     unknown.
     /// - Returns: A safe, bounded string suitable for use as a
     ///   ``CloudBackendError/serverError(statusCode:message:)`` message.
-    static func sanitize(_ raw: String?, host: String? = nil) -> String {
+    public static func sanitize(_ raw: String?, host: String? = nil) -> String {
         guard let raw, !raw.isEmpty else {
             return genericServerError(host: host)
         }

@@ -15,7 +15,7 @@ import BaseChatInference
 ///
 /// Pin rotation: when a provider rotates certificates, update the pin sets below.
 /// Include at least one backup pin per host to avoid lockout during rotation.
-final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
+public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
 
     // MARK: - Pin Sets
 
@@ -78,7 +78,7 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
     /// 1. Run the `openssl` pipeline from the doc comment above for each host.
     /// 2. Add the *new* intermediate/root pins to the set **before** removing old ones.
     /// 3. Ship the update. Once no connections use the old chain, remove stale pins.
-    static func loadDefaultPins() {
+    public static func loadDefaultPins() {
         _pinnedHostsLock.lock()
         defer { _pinnedHostsLock.unlock() }
         guard !_defaultPinsLoaded else { return }
@@ -120,7 +120,7 @@ final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
 
     // MARK: - URLSessionDelegate
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void

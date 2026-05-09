@@ -1,4 +1,8 @@
 import BaseChatInference
+#if CloudSaaS || Ollama
+import BaseChatCloudCore
+import BaseChatCloud
+#endif
 
 public enum CloudBackends: BackendRegistrar {
     @MainActor

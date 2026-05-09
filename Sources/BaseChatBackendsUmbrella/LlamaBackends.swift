@@ -1,4 +1,7 @@
 import BaseChatInference
+#if Llama
+import BaseChatLlama
+#endif
 
 public enum LlamaBackends: BackendRegistrar {
     @MainActor

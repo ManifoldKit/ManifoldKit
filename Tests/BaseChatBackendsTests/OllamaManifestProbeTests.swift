@@ -1,6 +1,7 @@
 #if Ollama
 import XCTest
 @testable import BaseChatBackends
+@testable import BaseChatCloud
 @testable import BaseChatInference
 import BaseChatTestSupport
 

@@ -3,6 +3,7 @@ import XCTest
 import FoundationModels
 import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatFoundation
 
 /// Coverage for the GuidedGeneration-backed tool-calling path on
 /// `FoundationBackend` (issue #434).

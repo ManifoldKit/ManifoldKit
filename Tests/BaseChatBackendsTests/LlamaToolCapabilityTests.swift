@@ -2,6 +2,7 @@
 import XCTest
 @testable import BaseChatInference
 @testable import BaseChatBackends
+@testable import BaseChatLlama
 
 /// Tests for `LlamaBackend.capabilities.supportsToolCalling` and
 /// the Gemma 4 tool-aware prompt template format.

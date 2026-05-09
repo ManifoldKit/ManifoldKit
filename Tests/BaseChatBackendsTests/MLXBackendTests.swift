@@ -5,6 +5,7 @@ import BaseChatPersistenceSwiftData
 import BaseChatInference
 @testable import BaseChatTestSupport
 @testable import BaseChatBackends
+@testable import BaseChatMLX
 
 /// Tests for MLXBackend state, capabilities, and lifecycle.
 ///
