@@ -1,21 +1,21 @@
 import SwiftUI
 import SwiftData
-import BaseChatPersistenceSwiftData
-import BaseChatInference
-import BaseChatUI
-import BaseChatUIModelManagement
-import BaseChatBackends
-#if canImport(BaseChatHuggingFace)
-import BaseChatHuggingFace
+import ManifoldPersistenceSwiftData
+import ManifoldInference
+import ManifoldUI
+import ManifoldUIModelManagement
+import ManifoldBackends
+#if canImport(ManifoldHuggingFace)
+import ManifoldHuggingFace
 #endif
 
-/// The simplest possible BaseChatKit app with runtime-first bootstrap.
+/// The simplest possible ManifoldKit app with runtime-first bootstrap.
 ///
-/// This assembles a ``BaseChatBootstrap``, registers the built-in backends,
+/// This assembles a ``ManifoldBootstrap``, registers the built-in backends,
 /// and presents the standard chat + model-management surfaces.
 @main
 struct MinimalExampleApp: App {
-    private let runtime: BaseChatBootstrap
+    private let runtime: ManifoldBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
@@ -24,13 +24,13 @@ struct MinimalExampleApp: App {
         // Building the runtime — and therefore the SwiftData container — in
         // App.init() is fine here because the Minimal example uses a small
         // schema. For larger schemas, prefer building the container in a
-        // detached `.task` (see BaseChatDemoApp): SwiftData container setup
+        // detached `.task` (see ManifoldDemoApp): SwiftData container setup
         // (schema compilation + SQLite open) can stall the first frame for
         // several seconds when done on the main thread.
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
+        let runtime = try! ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
                 appName: "Minimal Chat",
-                bundleIdentifier: "com.basechatkit.minimal-example"
+                bundleIdentifier: "com.manifoldkit.minimal-example"
             )
         )
         self.runtime = runtime
@@ -53,7 +53,7 @@ struct MinimalExampleApp: App {
 
         _chatViewModel = State(initialValue: vm)
         _sessionManager = State(initialValue: sessionManager)
-        #if canImport(BaseChatHuggingFace)
+        #if canImport(ManifoldHuggingFace)
         let downloadManager = BackgroundDownloadManager()
         let huggingFaceService = HuggingFaceService()
         let modelManagement = ModelManagementViewModel(

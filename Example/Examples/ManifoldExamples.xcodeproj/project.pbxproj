@@ -9,23 +9,23 @@
 /* Begin PBXBuildFile section */
 		09C86A21537F0ED2862D66ED /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
 		34606F73E74AAFC63E24F59A /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
-		40C7626D4A44DD1D18F0A1BF /* BaseChatPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = 35D03E318932E0724E391E54 /* BaseChatPersistenceSwiftData */; };
-		5B0A9E6C1A2B3C4D5E6F7081 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */; };
-		6F9A1CA5CA7FF16DB36A5861 /* BaseChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4C28E08B212DBDD057CE27CF /* BaseChatUI */; };
+		40C7626D4A44DD1D18F0A1BF /* ManifoldPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = 35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */; };
+		5B0A9E6C1A2B3C4D5E6F7081 /* ManifoldUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */; };
+		6F9A1CA5CA7FF16DB36A5861 /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4C28E08B212DBDD057CE27CF /* ManifoldUI */; };
 		79E6928B6CE7E3461758C5D9 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
 		958FF9C8DBB5C5C151DFF5D7 /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
-		9784B251D853FA597B206D29 /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 56CCAAB5544541CD79EE64CD /* BaseChatBackends */; };
-		9B8A7C6D5E4F302918273645 /* BaseChatUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 6D5E4F302918273645564738 /* BaseChatUIModelManagement */; };
+		9784B251D853FA597B206D29 /* ManifoldBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 56CCAAB5544541CD79EE64CD /* ManifoldBackends */; };
+		9B8A7C6D5E4F302918273645 /* ManifoldUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 6D5E4F302918273645564738 /* ManifoldUIModelManagement */; };
 		A19A3DAEB85A136F8D62D31D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 365ABBF494EF2955A53C327F /* README.md */; };
-		A336FC431FF118C880002B21 /* BaseChatPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = DE250A4FF8082BF6714FE36C /* BaseChatPersistenceSwiftData */; };
-		A9BB32CEAF191F5FF101B54C /* BaseChatBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 7A5841AF39A6AB3B5022006D /* BaseChatBackends */; };
+		A336FC431FF118C880002B21 /* ManifoldPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */; };
+		A9BB32CEAF191F5FF101B54C /* ManifoldBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 7A5841AF39A6AB3B5022006D /* ManifoldBackends */; };
 		D2930E9046EADB459A40EA45 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 365ABBF494EF2955A53C327F /* README.md */; };
-		EFA072F50C91195B4A338E8C /* BaseChatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D2764E94034C1EB5E482F75 /* BaseChatUI */; };
+		EFA072F50C91195B4A338E8C /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D2764E94034C1EB5E482F75 /* ManifoldUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0B803E317BA994107EA819AE /* MinimalExample.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0F5292FF1CF8CD14B8E07E9D /* BaseChatKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BaseChatKit; path = ../..; sourceTree = SOURCE_ROOT; };
+		0F5292FF1CF8CD14B8E07E9D /* ManifoldKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ManifoldKit; path = ../..; sourceTree = SOURCE_ROOT; };
 		365ABBF494EF2955A53C327F /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		92BE324A993DAA5220792683 /* MinimalExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalContentView.swift; sourceTree = "<group>"; };
@@ -37,10 +37,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				40C7626D4A44DD1D18F0A1BF /* BaseChatPersistenceSwiftData in Frameworks */,
-				EFA072F50C91195B4A338E8C /* BaseChatUI in Frameworks */,
-				9784B251D853FA597B206D29 /* BaseChatBackends in Frameworks */,
-				5B0A9E6C1A2B3C4D5E6F7081 /* BaseChatUIModelManagement in Frameworks */,
+				40C7626D4A44DD1D18F0A1BF /* ManifoldPersistenceSwiftData in Frameworks */,
+				EFA072F50C91195B4A338E8C /* ManifoldUI in Frameworks */,
+				9784B251D853FA597B206D29 /* ManifoldBackends in Frameworks */,
+				5B0A9E6C1A2B3C4D5E6F7081 /* ManifoldUIModelManagement in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -48,10 +48,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A336FC431FF118C880002B21 /* BaseChatPersistenceSwiftData in Frameworks */,
-				6F9A1CA5CA7FF16DB36A5861 /* BaseChatUI in Frameworks */,
-				A9BB32CEAF191F5FF101B54C /* BaseChatBackends in Frameworks */,
-				9B8A7C6D5E4F302918273645 /* BaseChatUIModelManagement in Frameworks */,
+				A336FC431FF118C880002B21 /* ManifoldPersistenceSwiftData in Frameworks */,
+				6F9A1CA5CA7FF16DB36A5861 /* ManifoldUI in Frameworks */,
+				A9BB32CEAF191F5FF101B54C /* ManifoldBackends in Frameworks */,
+				9B8A7C6D5E4F302918273645 /* ManifoldUIModelManagement in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,7 +89,7 @@
 		E03E0C62E216829522D5D8B5 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				0F5292FF1CF8CD14B8E07E9D /* BaseChatKit */,
+				0F5292FF1CF8CD14B8E07E9D /* ManifoldKit */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -111,10 +111,10 @@
 			);
 			name = MinimalExample_iOS;
 			packageProductDependencies = (
-				DE250A4FF8082BF6714FE36C /* BaseChatPersistenceSwiftData */,
-				4C28E08B212DBDD057CE27CF /* BaseChatUI */,
-				7A5841AF39A6AB3B5022006D /* BaseChatBackends */,
-				6D5E4F302918273645564738 /* BaseChatUIModelManagement */,
+				DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */,
+				4C28E08B212DBDD057CE27CF /* ManifoldUI */,
+				7A5841AF39A6AB3B5022006D /* ManifoldBackends */,
+				6D5E4F302918273645564738 /* ManifoldUIModelManagement */,
 			);
 			productName = MinimalExample_iOS;
 			productReference = 0B803E317BA994107EA819AE /* MinimalExample.app */;
@@ -134,10 +134,10 @@
 			);
 			name = MinimalExample_macOS;
 			packageProductDependencies = (
-				35D03E318932E0724E391E54 /* BaseChatPersistenceSwiftData */,
-				5D2764E94034C1EB5E482F75 /* BaseChatUI */,
-				56CCAAB5544541CD79EE64CD /* BaseChatBackends */,
-				1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */,
+				35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */,
+				5D2764E94034C1EB5E482F75 /* ManifoldUI */,
+				56CCAAB5544541CD79EE64CD /* ManifoldBackends */,
+				1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */,
 			);
 			productName = MinimalExample_macOS;
 			productReference = 92BE324A993DAA5220792683 /* MinimalExample.app */;
@@ -154,7 +154,7 @@
 				TargetAttributes = {
 				};
 			};
-			buildConfigurationList = 507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "BaseChatExamples" */;
+			buildConfigurationList = 507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "ManifoldExamples" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -232,7 +232,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.basechatkit.minimal-example";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
 				PRODUCT_NAME = MinimalExample;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
@@ -254,7 +254,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.basechatkit.minimal-example";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
 				PRODUCT_NAME = MinimalExample;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
@@ -394,7 +394,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.basechatkit.minimal-example";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
 				PRODUCT_NAME = MinimalExample;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
@@ -415,7 +415,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.basechatkit.minimal-example";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
 				PRODUCT_NAME = MinimalExample;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
@@ -444,7 +444,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "BaseChatExamples" */ = {
+		507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "ManifoldExamples" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				9F6A5672C2DE1BEA2BE47927 /* Debug */,
@@ -463,37 +463,37 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		35D03E318932E0724E391E54 /* BaseChatPersistenceSwiftData */ = {
+		35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatPersistenceSwiftData;
+			productName = ManifoldPersistenceSwiftData;
 		};
-		1A2B3C4D5E6F708192A3B4C5 /* BaseChatUIModelManagement */ = {
+		1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatUIModelManagement;
+			productName = ManifoldUIModelManagement;
 		};
-		4C28E08B212DBDD057CE27CF /* BaseChatUI */ = {
+		4C28E08B212DBDD057CE27CF /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatUI;
+			productName = ManifoldUI;
 		};
-		56CCAAB5544541CD79EE64CD /* BaseChatBackends */ = {
+		56CCAAB5544541CD79EE64CD /* ManifoldBackends */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatBackends;
+			productName = ManifoldBackends;
 		};
-		5D2764E94034C1EB5E482F75 /* BaseChatUI */ = {
+		5D2764E94034C1EB5E482F75 /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatUI;
+			productName = ManifoldUI;
 		};
-		6D5E4F302918273645564738 /* BaseChatUIModelManagement */ = {
+		6D5E4F302918273645564738 /* ManifoldUIModelManagement */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatUIModelManagement;
+			productName = ManifoldUIModelManagement;
 		};
-		7A5841AF39A6AB3B5022006D /* BaseChatBackends */ = {
+		7A5841AF39A6AB3B5022006D /* ManifoldBackends */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatBackends;
+			productName = ManifoldBackends;
 		};
-		DE250A4FF8082BF6714FE36C /* BaseChatPersistenceSwiftData */ = {
+		DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = BaseChatPersistenceSwiftData;
+			productName = ManifoldPersistenceSwiftData;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

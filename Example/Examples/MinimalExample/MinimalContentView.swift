@@ -1,6 +1,6 @@
 import SwiftUI
-import BaseChatUI
-import BaseChatUIModelManagement
+import ManifoldUI
+import ManifoldUIModelManagement
 
 struct MinimalContentView: View {
     @Environment(ChatViewModel.self) private var viewModel

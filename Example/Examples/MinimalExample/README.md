@@ -1,15 +1,15 @@
 # Minimal Example
 
-The simplest possible BaseChatKit app. Demonstrates the bare minimum setup:
+The simplest possible ManifoldKit app. Demonstrates the bare minimum setup:
 
-- Create a `BaseChatBootstrap` at startup
+- Create a `ManifoldBootstrap` at startup
 - Register backends with `DefaultBackends.register(with:)`
 - Configure a `ChatViewModel` and `SessionManagerViewModel` from the runtime
 - Present `ChatView` with environment wiring
 
 ## Running
 
-1. Open `BaseChatExamples.xcodeproj` in Xcode
+1. Open `ManifoldExamples.xcodeproj` in Xcode
 2. Select the **MinimalExample** scheme
 3. Build and run on iOS Simulator or Mac
 
