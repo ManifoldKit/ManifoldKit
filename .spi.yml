@@ -3,15 +3,15 @@ builder:
   configs:
     # Document the public-facing target set on the macOS SPM builder. SPI
     # generates DocC archives for each target listed here.
-    # BaseChatBackends is excluded because it requires Apple Silicon
+    # ManifoldBackends is excluded because it requires Apple Silicon
     # xcframeworks (MLX, llama.cpp) that do not link on Intel CI runners.
-    # BaseChatCore was renamed to BaseChatInference + BaseChatRuntime +
-    # BaseChatPersistenceSwiftData in v2.0.
+    # ManifoldCore was renamed to ManifoldInference + ManifoldRuntime +
+    # ManifoldPersistenceSwiftData in v2.0.
     - documentation_targets:
-        - BaseChatInference
-        - BaseChatRuntime
-        - BaseChatPersistenceSwiftData
-        - BaseChatUI
-        - BaseChatUIModelManagement
-        - BaseChatMCP
+        - ManifoldInference
+        - ManifoldRuntime
+        - ManifoldPersistenceSwiftData
+        - ManifoldUI
+        - ManifoldUIModelManagement
+        - ManifoldMCP
       platform: macosSpm

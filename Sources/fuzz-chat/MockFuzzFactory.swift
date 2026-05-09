@@ -1,8 +1,8 @@
 #if Fuzz
 import Foundation
-import BaseChatFuzz
-import BaseChatInference
-import BaseChatTestSupport
+import ManifoldFuzz
+import ManifoldInference
+import ManifoldTestSupport
 
 /// `FuzzBackendFactory` conformance that produces a fresh `MockInferenceBackend`
 /// per iteration. Used by the PR-tier CI fuzz job where no model or network is

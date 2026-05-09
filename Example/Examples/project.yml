@@ -1,6 +1,6 @@
-name: BaseChatExamples
+name: ManifoldExamples
 options:
-  bundleIdPrefix: com.basechatkit
+  bundleIdPrefix: com.manifoldkit
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"
@@ -8,7 +8,7 @@ options:
   generateEmptyDirectories: true
 
 packages:
-  BaseChatKit:
+  ManifoldKit:
     path: ../..
 
 targets:
@@ -18,15 +18,15 @@ targets:
     sources:
       - MinimalExample
     dependencies:
-      - package: BaseChatKit
-        product: BaseChatPersistenceSwiftData
-      - package: BaseChatKit
-        product: BaseChatUI
-      - package: BaseChatKit
-        product: BaseChatBackends
+      - package: ManifoldKit
+        product: ManifoldPersistenceSwiftData
+      - package: ManifoldKit
+        product: ManifoldUI
+      - package: ManifoldKit
+        product: ManifoldBackends
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.basechatkit.minimal-example
+        PRODUCT_BUNDLE_IDENTIFIER: com.manifoldkit.minimal-example
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

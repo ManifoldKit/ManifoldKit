@@ -22,7 +22,7 @@ further configuration.
 The file contains a long allowlist of pre-approved shell commands. Some are
 benign (e.g. `swift test --filter ...`), but it also accumulates destructive
 or machine-specific entries over time — `git push` to specific remotes,
-`pkill -f BaseChatDemo`, `rm -rf ~/Library/Containers/...`, paths under your
+`pkill -f ManifoldDemo`, `rm -rf ~/Library/Containers/...`, paths under your
 home directory, etc. None of that is appropriate to share, and the set you
 need depends on your machine and habits. Keep it local.
 

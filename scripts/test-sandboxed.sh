@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/test-sandboxed.sh — Run BaseChatKit's local-only test suites under
+# scripts/test-sandboxed.sh — Run ManifoldKit's local-only test suites under
 # `sandbox-exec` with a net-deny profile.
 #
 # Phase 5 of #714. `DenyAllURLProtocol` (Phase 1, PR #715) intercepts
@@ -46,11 +46,11 @@
 #   scripts/test-sandboxed.sh --filter <XCTest path>
 #       Forwards `-XCTest <path>` to the underlying `xctest` invocation.
 #       Path is the XCTest selector, e.g.:
-#           BaseChatTestSupportTests.DenyAllURLProtocolTests
-#           BaseChatInferenceTests.SomeSuite/testCase
+#           ManifoldTestSupportTests.DenyAllURLProtocolTests
+#           ManifoldInferenceTests.SomeSuite/testCase
 #
 #   scripts/test-sandboxed.sh --bundle <path-to-.xctest>
-#       Override the bundle path (default: the BaseChatKitPackageTests
+#       Override the bundle path (default: the ManifoldKitPackageTests
 #       bundle under `.build/<arch>-apple-macosx/debug/`).
 
 set -euo pipefail
@@ -127,7 +127,7 @@ if [[ -n "$BUNDLE_OVERRIDE" ]]; then
     BUNDLE="$BUNDLE_OVERRIDE"
 else
     ARCH="$(uname -m)"
-    BUNDLE=".build/${ARCH}-apple-macosx/debug/BaseChatKitPackageTests.xctest"
+    BUNDLE=".build/${ARCH}-apple-macosx/debug/ManifoldKitPackageTests.xctest"
 fi
 
 if [[ ! -d "$BUNDLE" ]]; then
@@ -144,7 +144,7 @@ fi
 # via `--filter`.
 
 if [[ -z "$FILTER" ]]; then
-    FILTER="BaseChatTestSupportTests.SandboxExecNetDenyTests"
+    FILTER="ManifoldTestSupportTests.SandboxExecNetDenyTests"
 fi
 
 echo "==> sandbox-exec profile: $PROFILE_FILE"

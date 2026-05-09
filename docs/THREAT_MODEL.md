@@ -1,4 +1,4 @@
-# BaseChatKit Threat Model
+# ManifoldKit Threat Model
 
 This document is the engineering-honest companion to [SECURITY.md](../SECURITY.md). Where
 SECURITY.md is the customer-facing summary ("what BCK guarantees, who it's for, what to
@@ -11,7 +11,7 @@ workflow. Every "X is not mitigated" row names the tracking issue (or explains w
 item is permanently out of scope).
 
 For a higher-level narrative — and the corresponding DocC API surface — see the
-[Security Model](../Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md)
+[Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md)
 article.
 
 ## Audience and scope
@@ -91,7 +91,7 @@ considered hostile on the far side and what BCK validates as data crosses.
     `NSFileProtection.completeUntilFirstUserAuthentication` (default; opt-in
     `.complete`).
   - Keychain items use the no-iCloud-sync access class.
-  - `BaseChatBootstrap.reapOrphanedKeychainItems(in:)` sweeps orphaned Keychain
+  - `ManifoldBootstrap.reapOrphanedKeychainItems(in:)` sweeps orphaned Keychain
     entries on startup.
   - Filename validation (`DownloadableModel.validate(fileName:)`) rejects path
     traversal at ingest; `modelsDirectory` placement enforces a
@@ -119,9 +119,9 @@ considered hostile on the far side and what BCK validates as data crosses.
     `NSClassFromString`, `Process(`, `posix_spawn`, etc. are banned across
     `Sources/` (with one narrow `Process(` allowlist for the Fuzz CLI).
 - **Not mitigated:** xcframework checksum pinning (binary deps pulled by revision,
-  not SHA-256); macro plugin sandbox (`Sources/BaseChatMacrosPlugin/` has full
+  not SHA-256); macro plugin sandbox (`Sources/ManifoldMacrosPlugin/` has full
   filesystem + network access at build time); SLSA-style build provenance; SBOM.
-  All tracked under [#714](https://github.com/roryford/BaseChatKit/issues/714)
+  All tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714)
   Phase 5.
 
 ### B4. User content ↔ model
@@ -133,10 +133,10 @@ considered hostile on the far side and what BCK validates as data crosses.
 - **Mitigations enforced today:**
   - `PromptTemplate` strips structural special tokens (`<|im_start|>`, `[INST]`,
     `<|eot_id|>`, etc.) from user content per template family.
-- **Not mitigated:** semantic prompt injection. **BaseChatKit does not solve
+- **Not mitigated:** semantic prompt injection. **ManifoldKit does not solve
   prompt injection.** System prompts are not a security boundary; tool calls and
   retrieved content are untrusted from the model's perspective. See the
-  [Security Model](../Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md#prompt-injection-explicit-disclaimer)
+  [Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md#prompt-injection-explicit-disclaimer)
   article for guidance.
 
 ### B5. UI / framework ↔ host application
@@ -145,7 +145,7 @@ considered hostile on the far side and what BCK validates as data crosses.
   invariants (Keychain access patterns, kill-switch honour, audit allowlists), not
   the host app's.
 - **What crosses:** dependency-injection points (`InferenceService`,
-  `ChatViewModel.inferenceService`, `BaseChatConfiguration.shared`); SwiftData
+  `ChatViewModel.inferenceService`, `ManifoldConfiguration.shared`); SwiftData
   schemas; closure injection points (`apiConfiguration` view-builder on
   `ChatView`).
 - **Mitigations enforced today:** import-graph audit (Rule 6) ensures BCK's own
@@ -164,10 +164,10 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
 - **Threat:** A SaaS-cloud backend, a misconfigured HTTP client, or a future code
   change quietly exfiltrates conversation content to an unintended host.
 - **Mitigations:** All HTTP traffic must route through `URLSessionProvider`
-  ([`Sources/BaseChatBackends/URLSessionProvider.swift`](../Sources/BaseChatBackends/URLSessionProvider.swift)).
+  ([`Sources/ManifoldBackends/URLSessionProvider.swift`](../Sources/ManifoldBackends/URLSessionProvider.swift)).
   The audit's hostname-literal rule (Rule 3) keeps endpoint URLs out of UI/Inference
   source files. The runtime `DenyAllURLProtocol`
-  ([`Sources/BaseChatTestSupport/DenyAllURLProtocol.swift`](../Sources/BaseChatTestSupport/DenyAllURLProtocol.swift))
+  ([`Sources/ManifoldTestSupport/DenyAllURLProtocol.swift`](../Sources/ManifoldTestSupport/DenyAllURLProtocol.swift))
   is registered on default + ephemeral configurations in tests, exercising every
   backend in the offline build mode.
 - **Gaps:** None outstanding for in-tree code. Out-of-tree consumer code is the
@@ -210,9 +210,9 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
   through.
 - **Gaps:** xcframework checksum pinning, macro plugin sandbox, build-provenance
   attestation, SBOM. All tracked under
-  [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5. Model
+  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5. Model
   weight signature verification:
-  [#367](https://github.com/roryford/BaseChatKit/issues/367).
+  [#367](https://github.com/roryford/ManifoldKit/issues/367).
 
 ### Unintended local network leaks
 
@@ -228,13 +228,13 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
 
 ### Build-time exfiltration via macros
 
-- **Threat:** A macro plugin under `Sources/BaseChatMacrosPlugin/` reads developer
+- **Threat:** A macro plugin under `Sources/ManifoldMacrosPlugin/` reads developer
   secrets at build time and exfiltrates them.
 - **Mitigations:** Audit Rule 2 bans `Foundation.URLSession`, `Process()`,
   `posix_spawn` from macro source until a sandbox is in place.
 - **Gaps:** The audit is a static check; a sufficiently motivated attacker can
   obfuscate. Macro plugin sandbox is on the Phase 5 roadmap
-  ([#714](https://github.com/roryford/BaseChatKit/issues/714)).
+  ([#714](https://github.com/roryford/ManifoldKit/issues/714)).
 
 ### `os_log` content escape via sysdiagnose
 
@@ -253,7 +253,7 @@ The procurement view: which mitigation, which mechanism, where it lives.
 
 | Mitigation                                          | Enforced by                                                                                              | Run when?                       |
 |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------|---------------------------------|
-| Network I/O imports allowlist                       | `TrafficBoundaryAuditTest` Rule 1                                                                        | Every PR (CI: `BaseChatInferenceTests`) |
+| Network I/O imports allowlist                       | `TrafficBoundaryAuditTest` Rule 1                                                                        | Every PR (CI: `ManifoldInferenceTests`) |
 | C interop / dynamic dispatch ban                    | `TrafficBoundaryAuditTest` Rule 2                                                                        | Every PR                         |
 | Hostname literal allowlist                          | `TrafficBoundaryAuditTest` Rule 3                                                                        | Every PR                         |
 | Privacy-sensitive Apple API allowlist               | `TrafficBoundaryAuditTest` Rule 4                                                                        | Every PR                         |
@@ -267,8 +267,8 @@ The procurement view: which mitigation, which mechanism, where it lives.
 | Cloud error sanitisation                            | `CloudErrorSanitizer.sanitize(_:host:)`                                                                  | Every cloud error path           |
 | Path-traversal validation at filename ingest        | `DownloadableModel.validate(fileName:)` + `modelsDirectory` `.standardized.path` prefix check            | Manifest parse + download start  |
 | Stale temp sweep                                    | `BackgroundDownloadManager.cleanupStaleTempFiles()`                                                      | App launch                       |
-| Keychain orphan reaper                              | `BaseChatBootstrap.reapOrphanedKeychainItems(in:)` (gated by `keychainReaperEnabled`)                    | App launch                       |
-| At-rest sealing (iOS / iPadOS / tvOS / watchOS)     | `ModelContainerFactory.makeContainer(...)` applies `BaseChatConfiguration.fileProtectionClass`           | Container creation               |
+| Keychain orphan reaper                              | `ManifoldBootstrap.reapOrphanedKeychainItems(in:)` (gated by `keychainReaperEnabled`)                    | App launch                       |
+| At-rest sealing (iOS / iPadOS / tvOS / watchOS)     | `ModelContainerFactory.makeContainer(...)` applies `ManifoldConfiguration.fileProtectionClass`           | Container creation               |
 | Prompt structural sanitisation                      | `PromptTemplate` (per-format special-token strip)                                                        | Every user message interpolation |
 
 ## Known non-mitigations
@@ -276,9 +276,9 @@ The procurement view: which mitigation, which mechanism, where it lives.
 The honest list. Each item is either deferred to a tracked issue or explicitly out of
 scope.
 
-### Deferred (tracked under [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5 unless noted)
+### Deferred (tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5 unless noted)
 
-- **Macro plugin sandbox.** `Sources/BaseChatMacrosPlugin/` runs at build time with
+- **Macro plugin sandbox.** `Sources/ManifoldMacrosPlugin/` runs at build time with
   full filesystem + network access. Audit Rule 2 currently bans network primitives
   by static grep; a sandbox is the long-term fix.
 - **xcframework checksum pinning.** `llama.swift` and `mlx-swift` xcframeworks are
@@ -289,20 +289,20 @@ scope.
   Keychain read path now wraps secrets in ``SecureBytes`` (`memset_s` zeroing on
   deallocation) rather than a plain Swift `String`.
   ``SecureEnclaveKeyManager`` provides a hardware-backed P-256 SE keypair for
-  wrap/unwrap on capable devices (opt-in via `BaseChatConfiguration.useSecureEnclave`).
+  wrap/unwrap on capable devices (opt-in via `ManifoldConfiguration.useSecureEnclave`).
   ``LlamaBackend.secureWipe()`` calls `llama_memory_clear(mem, true)` to zero KV
   tensor data. **Remaining gap:** MLX Metal buffers cannot be explicitly zeroed via
   the current MLX Swift API; `Memory.clearCache()` evicts pooled allocations but
   does not guarantee zero-filling.
 - **SBOM.** No published Software Bill of Materials.
 - **GGUF signed-manifest verification.** Tracked separately at
-  [#367](https://github.com/roryford/BaseChatKit/issues/367).
+  [#367](https://github.com/roryford/ManifoldKit/issues/367).
 - **Reproducible builds.** Not validated.
 
 ### Explicitly out of scope
 
 - **MDM / managed-app-config.** BCK does not parse managed-app-config plists; host
-  apps that need MDM-driven configuration must wrap `BaseChatConfiguration`
+  apps that need MDM-driven configuration must wrap `ManifoldConfiguration`
   themselves.
 - **Model-bundling recipes.** Shipping a model bundled inside the app binary is
   technically possible but not documented or supported.
@@ -320,11 +320,11 @@ scope.
 
 - [SECURITY.md](../SECURITY.md) — disclosure policy, supported versions, build-mode
   guarantees.
-- [Security Model](../Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md)
+- [Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md)
   — DocC article covering in-source mitigations at API granularity.
-- [`TrafficBoundaryAuditTest`](../Tests/BaseChatInferenceTests/TrafficBoundaryAuditTest.swift)
+- [`TrafficBoundaryAuditTest`](../Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
   — the source-grep audit referenced throughout.
-- [`DenyAllURLProtocol`](../Sources/BaseChatTestSupport/DenyAllURLProtocol.swift)
+- [`DenyAllURLProtocol`](../Sources/ManifoldTestSupport/DenyAllURLProtocol.swift)
   — the runtime network-isolation canary.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — contributor change-type index. Every
   change-type section names the security gates that apply.

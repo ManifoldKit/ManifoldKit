@@ -31,7 +31,7 @@
 
 set -euo pipefail
 
-OUTPUT_FILE="${BASECHAT_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
+OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Arguments ────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --filter)
             filter="${2:?'--filter requires a test filter argument'}"
-            if [[ "$filter" == *BaseChatMCPTests* || "$filter" == *BaseChatMCPE2ETests* || "$filter" == *BaseChatMCPE2ESmokeTests* ]]; then
+            if [[ "$filter" == *ManifoldMCPTests* || "$filter" == *ManifoldMCPE2ETests* || "$filter" == *ManifoldMCPE2ESmokeTests* ]]; then
                 MCP_FILTER_REQUESTED=1
             fi
             SWIFT_ARGS+=("$1" "$filter")
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --filter=*)
             filter="${1#--filter=}"
-            if [[ "$filter" == *BaseChatMCPTests* || "$filter" == *BaseChatMCPE2ETests* || "$filter" == *BaseChatMCPE2ESmokeTests* ]]; then
+            if [[ "$filter" == *ManifoldMCPTests* || "$filter" == *ManifoldMCPE2ETests* || "$filter" == *ManifoldMCPE2ESmokeTests* ]]; then
                 MCP_FILTER_REQUESTED=1
             fi
             SWIFT_ARGS+=("$1")
@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $MCP_FILTER_REQUESTED -eq 1 && $MCP_TRAIT_REQUESTED -eq 0 ]]; then
-    # BaseChatMCP test sources are #if MCP-gated; without the trait SwiftPM
+    # ManifoldMCP test sources are #if MCP-gated; without the trait SwiftPM
     # builds an empty target and reports a false-green 0-test run.
     if [[ $TRAITS_ARG_INDEX -ge 0 ]]; then
         SWIFT_ARGS[$TRAITS_ARG_INDEX]="${SWIFT_ARGS[$TRAITS_ARG_INDEX]},MCP"

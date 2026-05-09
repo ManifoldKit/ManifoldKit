@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Verifies that a FoundationOnly build of BaseChatKit produces an App
-# Store-lean BaseChatBackends artifact:
+# Verifies that a FoundationOnly build of ManifoldKit produces an App
+# Store-lean ManifoldBackends artifact:
 #
-#   1. Symbol audit — `nm -gU` on `BaseChatBackends/*.o` asserts zero MLX
+#   1. Symbol audit — `nm -gU` on `ManifoldBackends/*.o` asserts zero MLX
 #      framework or llama.cpp C-API symbols leaked into the compiled
 #      objects. Stub `MLXBackends` / `LlamaBackends` enum entries are
 #      tolerated because they are no-op registrar namespaces (the bodies
 #      compile out under `#if MLX` / `#if Llama`).
-#   2. Bundle-size cap — `BaseChatBackends.build` ≤ 5 MB.
+#   2. Bundle-size cap — `ManifoldBackends.build` ≤ 5 MB.
 #
 # Together these two checks are the load-bearing guarantee for App Store
 # submitters: regardless of what SwiftPM resolves into `.build/checkouts`
 # during package resolution, what the linker actually pulls into your IPA
-# is bounded by what the compiled BaseChatBackends objects reference.
+# is bounded by what the compiled ManifoldBackends objects reference.
 # `.build/checkouts` size is NOT what consumers ship; the linker drops
 # unreferenced packages entirely.
 #
@@ -30,7 +30,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# 5 MB ceiling for the BaseChatBackends per-target build directory. Bump
+# 5 MB ceiling for the ManifoldBackends per-target build directory. Bump
 # only with documented justification — the FoundationOnly trait exists
 # precisely to keep this lean.
 BUDGET_KB=5120
@@ -38,18 +38,18 @@ BUDGET_KB=5120
 echo "==> swift build --traits FoundationOnly"
 swift build --traits FoundationOnly
 
-BACKENDS_BUILD_DIR=".build/debug/BaseChatBackends.build"
+BACKENDS_BUILD_DIR=".build/debug/ManifoldBackends.build"
 if [[ ! -d "$BACKENDS_BUILD_DIR" ]]; then
     echo "::error::Expected $BACKENDS_BUILD_DIR after FoundationOnly build but it is missing."
     exit 1
 fi
 
-echo "==> Symbol audit: nm -gU on BaseChatBackends/*.o"
+echo "==> Symbol audit: nm -gU on ManifoldBackends/*.o"
 SYMBOL_COUNT=$(find "$BACKENDS_BUILD_DIR" -name '*.o' -exec nm -gU {} + 2>/dev/null \
     | grep -ciE 'MLXLLM|MLXLMCommon|LlamaSwift|llama_(?:backend|model|context|tokenize|decode|sample)' \
     || true)
 if [[ "$SYMBOL_COUNT" -ne 0 ]]; then
-    echo "::error::FoundationOnly build leaked $SYMBOL_COUNT MLX/Llama framework symbols into BaseChatBackends. The trait should compile those backends out via #if MLX / #if Llama."
+    echo "::error::FoundationOnly build leaked $SYMBOL_COUNT MLX/Llama framework symbols into ManifoldBackends. The trait should compile those backends out via #if MLX / #if Llama."
     find "$BACKENDS_BUILD_DIR" -name '*.o' -exec nm -gU {} + 2>/dev/null \
         | grep -iE 'MLXLLM|MLXLMCommon|LlamaSwift|llama_(?:backend|model|context|tokenize|decode|sample)' \
         | head -20
@@ -57,11 +57,11 @@ if [[ "$SYMBOL_COUNT" -ne 0 ]]; then
 fi
 echo "    OK — zero MLX/Llama framework symbols leaked."
 
-echo "==> Bundle size: BaseChatBackends.build directory"
+echo "==> Bundle size: ManifoldBackends.build directory"
 SIZE_KB=$(du -sk "$BACKENDS_BUILD_DIR" | awk '{print $1}')
-echo "    BaseChatBackends.build = ${SIZE_KB} KB (budget: ${BUDGET_KB} KB)"
+echo "    ManifoldBackends.build = ${SIZE_KB} KB (budget: ${BUDGET_KB} KB)"
 if [[ "$SIZE_KB" -gt "$BUDGET_KB" ]]; then
-    echo "::error::FoundationOnly BaseChatBackends.build size ${SIZE_KB} KB exceeds budget ${BUDGET_KB} KB."
+    echo "::error::FoundationOnly ManifoldBackends.build size ${SIZE_KB} KB exceeds budget ${BUDGET_KB} KB."
     exit 1
 fi
 

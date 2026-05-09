@@ -1,7 +1,7 @@
 # LlamaSwift xcframework — llama.cpp C API Contract
 
 This document describes every `llama_*` C symbol called by
-`Sources/BaseChatBackends/LlamaBackend.swift`, covering threading
+`Sources/ManifoldBackends/LlamaBackend.swift`, covering threading
 constraints, ordering invariants, capacity limits, ownership semantics, and
 known failure modes. It is generated from a careful read of both
 `LlamaBackend.swift` and the vendored `docs/vendor/llama.h` (llama.cpp build
@@ -502,7 +502,7 @@ the CVE proof-of-concept to trigger the overflow:
 4. Re-audit the rejection rules in `GBNFSchemaPreValidator.validate(_:path:)` —
    rules that were solely motivated by the overflow (rather than GBNF expressiveness
    limits) may be relaxed or removed.
-5. Run `swift test --filter BaseChatBackendsTests --traits Llama` on Apple Silicon.
+5. Run `swift test --filter ManifoldBackendsTests --traits Llama` on Apple Silicon.
 
 ---
 
@@ -512,7 +512,7 @@ the CVE proof-of-concept to trigger the overflow:
 
 `LlamaSwift` is consumed as a **pre-built xcframework binary** — specifically
 `llama-b8772-xcframework.zip` distributed from the `ggml-org/llama.cpp` GitHub
-releases and wrapped by `mattt/llama.swift`. BaseChatKit does **not** compile
+releases and wrapped by `mattt/llama.swift`. ManifoldKit does **not** compile
 llama.cpp from source.
 
 ### Tradeoffs
@@ -532,7 +532,7 @@ The Metal shader pre-compilation is the decisive factor. Compiling llama.cpp
 Metal shaders from source requires Xcode and the Metal shader compiler, which
 is unavailable in headless CI environments and on non-Apple machines.
 The pre-built xcframework ensures `swift test --disable-default-traits` (the
-CI path) does not require Xcode, while Xcode integration tests (`BaseChatMLXIntegrationTests`)
+CI path) does not require Xcode, while Xcode integration tests (`ManifoldMLXIntegrationTests`)
 continue to use the same pre-built binary.
 
 The opacity of binary diffs is mitigated by two practices:
@@ -548,7 +548,7 @@ The opacity of binary diffs is mitigated by two practices:
 2. Run `swift package resolve` to update `Package.resolved`.
 3. Copy the new `llama.h` from the resolved xcframework:
    ```
-   find ~/Library/Developer/Xcode/DerivedData -path "*/BaseChatKit*/llama.xcframework/macos-arm64_x86_64*" -name "llama.h" | head -1
+   find ~/Library/Developer/Xcode/DerivedData -path "*/ManifoldKit*/llama.xcframework/macos-arm64_x86_64*" -name "llama.h" | head -1
    ```
    Then prepend the read-only header comment (see `docs/vendor/llama.h`) and commit.
 4. Diff `docs/vendor/llama.h` against the previous version and review every
@@ -560,5 +560,5 @@ The opacity of binary diffs is mitigated by two practices:
 7. Update every section in this document (`LLAMA_CONTRACT.md`) that references
    the version number or whose contract has changed according to the `llama.h`
    diff from step 4. Commit `LLAMA_CONTRACT.md` in the same PR as the pin bump.
-8. Run `swift test --filter BaseChatBackendsTests --traits Llama` locally on
+8. Run `swift test --filter ManifoldBackendsTests --traits Llama` locally on
    Apple Silicon before opening the PR.

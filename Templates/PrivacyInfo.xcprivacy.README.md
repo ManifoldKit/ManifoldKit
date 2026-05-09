@@ -1,7 +1,7 @@
 # PrivacyInfo.xcprivacy template
 
 Apple requires a privacy manifest for App Store submission. This template
-covers the on-device system APIs BaseChatKit touches by default.
+covers the on-device system APIs ManifoldKit touches by default.
 
 ## How to use it
 

@@ -1,7 +1,7 @@
 import SwiftUI
-import BaseChatCore
-import BaseChatUI
-import BaseChatUIModelManagement
+import ManifoldCore
+import ManifoldUI
+import ManifoldUIModelManagement
 
 struct ContentView: View {
     var body: some View {

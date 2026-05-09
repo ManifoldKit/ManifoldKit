@@ -1,4 +1,4 @@
-# Contributing to BaseChatKit
+# Contributing to ManifoldKit
 
 Thank you for your interest in contributing.
 
@@ -29,13 +29,13 @@ you're making and follow the gates listed there. Cross-references point at
 ## Getting started
 
 ```bash
-git clone https://github.com/roryford/BaseChatKit.git
-cd BaseChatKit
+git clone https://github.com/roryford/ManifoldKit.git
+cd ManifoldKit
 swift build
 swift test
 ```
 
-`swift build` resolves package dependencies on first run. `BaseChatBackends` pulls in
+`swift build` resolves package dependencies on first run. `ManifoldBackends` pulls in
 MLX and llama.cpp xcframeworks under default traits, so the initial fetch may take a
 moment.
 
@@ -53,26 +53,26 @@ mutable `Sendable` wrappers, streams, detached tasks, or async cleanup.
 
 ## Architecture invariants
 
-BaseChatKit's module graph is enforced by lint, not just convention. Four hard
+ManifoldKit's module graph is enforced by lint, not just convention. Four hard
 rules must hold for every PR; the
-[`TrafficBoundaryAuditTest`](Tests/BaseChatInferenceTests/TrafficBoundaryAuditTest.swift)
+[`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
 suite fails CI if any of them is violated.
 
-1. **`BaseChatUI` never imports `BaseChatBackends`.** UI is a consumer-facing
+1. **`ManifoldUI` never imports `ManifoldBackends`.** UI is a consumer-facing
    chat surface. Backend code carries cloud-SDK weight, MLX/llama.cpp binary
    xcframeworks, and SwiftData adapters (transitively) that have no business
-   in the view layer. Inference reaches UI through `BaseChatInference`'s
-   service protocols and `BaseChatRuntime`'s ports.
+   in the view layer. Inference reaches UI through `ManifoldInference`'s
+   service protocols and `ManifoldRuntime`'s ports.
 
-2. **`BaseChatUI` never imports `BaseChatUIModelManagement`.** The dependency
+2. **`ManifoldUI` never imports `ManifoldUIModelManagement`.** The dependency
    is one-way: model-management views depend on chat views, not the other way
    around. The cycle is dissolved by closure-injecting `APIConfigurationView`
    via a `@ViewBuilder apiConfiguration:` parameter on `ChatView` — see
-   [Building a Chat UI](Sources/BaseChatUI/BaseChatUI.docc/Articles/BuildingAChatUI.md)
+   [Building a Chat UI](Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md)
    for the canonical wiring.
 
-3. **`BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference`
-   directly, not on `BaseChatRuntime`.** That keeps both modules free of
+3. **`ManifoldBackends` and `ManifoldMCP` depend on `ManifoldInference`
+   directly, not on `ManifoldRuntime`.** That keeps both modules free of
    SwiftData and free of runtime-port adapters, so host apps can wire backends
    or MCP into a non-SwiftData runtime without dragging the persistence layer
    in transitively.
@@ -84,8 +84,8 @@ suite fails CI if any of them is violated.
    `InferenceService` directly from the UI layer.
 
 If a PR genuinely needs to cross one of these boundaries, the fix is almost
-always to promote a protocol downward (into `BaseChatInference`) or extract a
-new port (into `BaseChatRuntime`) — never to add the reverse import. Reviewers
+always to promote a protocol downward (into `ManifoldInference`) or extract a
+new port (into `ManifoldRuntime`) — never to add the reverse import. Reviewers
 will push back on `// swiftlint:disable` style escape hatches in the audit
 allowlists; the cap on each allowlist is intentionally low.
 
@@ -95,15 +95,15 @@ allowlists; the cap on each allowlist is intentionally low.
 failed push wastes ~25 billed minutes.
 
 ```bash
-swift test --filter BaseChatCoreTests --disable-default-traits \
-  && swift test --filter BaseChatInferenceTests --disable-default-traits \
-  && swift test --filter BaseChatInferenceSwiftTestingTests --disable-default-traits \
-  && swift test --filter BaseChatUITests --disable-default-traits \
-  && swift test --filter BaseChatUIModelManagementTests --disable-default-traits \
-  && swift test --filter BaseChatMCPTests --disable-default-traits \
-  && swift test --filter BaseChatBackendsTests --disable-default-traits \
-  && swift test --filter BaseChatTestSupportTests --disable-default-traits \
-  && swift test --filter BaseChatAppIntentsTests --disable-default-traits
+swift test --filter ManifoldCoreTests --disable-default-traits \
+  && swift test --filter ManifoldInferenceTests --disable-default-traits \
+  && swift test --filter ManifoldInferenceSwiftTestingTests --disable-default-traits \
+  && swift test --filter ManifoldUITests --disable-default-traits \
+  && swift test --filter ManifoldUIModelManagementTests --disable-default-traits \
+  && swift test --filter ManifoldMCPTests --disable-default-traits \
+  && swift test --filter ManifoldBackendsTests --disable-default-traits \
+  && swift test --filter ManifoldTestSupportTests --disable-default-traits \
+  && swift test --filter ManifoldAppIntentsTests --disable-default-traits
 ```
 
 Never push based on a subset passing. After rebasing, always re-run the full suite —
@@ -141,7 +141,7 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
 3. **Update `APIProvider.availableInBuild`** so the UI provider picker doesn't
    list a backend whose code isn't linked. Match the existing `#if` gating.
 
-4. **Add tests in `BaseChatBackendsTests`** with the matching `#if <Trait>` so
+4. **Add tests in `ManifoldBackendsTests`** with the matching `#if <Trait>` so
    they don't run in trait sets that exclude the backend.
 
 5. **HTTP I/O goes through `URLSessionProvider`.** Direct `URLSession.shared` use
@@ -156,8 +156,8 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
 
 7. **Run before pushing:**
    ```bash
-   swift test --filter BaseChatBackendsTests --disable-default-traits
-   swift test --filter BaseChatInferenceTests --disable-default-traits   # for the audit
+   swift test --filter ManifoldBackendsTests --disable-default-traits
+   swift test --filter ManifoldInferenceTests --disable-default-traits   # for the audit
    ```
    On Apple Silicon, also run `--traits MLX,Llama` so the actual hardware-bound
    tests execute.
@@ -168,12 +168,12 @@ for the security context.
 
 ## Adding a UI view
 
-UI lives in `BaseChatUI` and (for model-management surfaces) `BaseChatUIModelManagement`.
+UI lives in `ManifoldUI` and (for model-management surfaces) `ManifoldUIModelManagement`.
 
-1. **Don't `import BaseChatBackends` from UI.** This is enforced by
+1. **Don't `import ManifoldBackends` from UI.** This is enforced by
    `TrafficBoundaryAuditTest` Rule 6 (import-graph layering) — the back-edge
    would close a dependency cycle. UI consumes inference via
-   `BaseChatInference`'s service protocols.
+   `ManifoldInference`'s service protocols.
 
 2. **Cloud-config UI** (anything that talks to `APIEndpoint`, lists API providers,
    or reads/writes Keychain entries) goes behind `#if Ollama || CloudSaaS`. In
@@ -186,8 +186,8 @@ UI lives in `BaseChatUI` and (for model-management surfaces) `BaseChatUIModelMan
 
 4. **Run before pushing:**
    ```bash
-   swift test --filter BaseChatUITests --disable-default-traits
-   swift test --filter BaseChatUIModelManagementTests --disable-default-traits
+   swift test --filter ManifoldUITests --disable-default-traits
+   swift test --filter ManifoldUIModelManagementTests --disable-default-traits
    ```
 
 For the UI / framework / host-app trust boundary, see
@@ -208,7 +208,7 @@ dependency.
 
 3. **Binary dependencies** (xcframeworks): note that there is no SHA-256 checksum
    pin today, only revision pinning. Tracked under
-   [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5 — flag the
+   [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5 — flag the
    PR for security review.
 
 4. **SwiftPM plugins** (`.buildToolPlugin`, `.commandPlugin`) are **banned** by
@@ -221,7 +221,7 @@ dependency.
 
 6. **Run before pushing:**
    ```bash
-   swift test --filter BaseChatInferenceTests --disable-default-traits
+   swift test --filter ManifoldInferenceTests --disable-default-traits
    ```
 
 See [docs/THREAT_MODEL.md § B3 Build time ↔ run time](docs/THREAT_MODEL.md#b3-build-time--run-time).
@@ -250,9 +250,9 @@ network boundary.
 
 6. **Run before pushing:**
    ```bash
-   swift test --filter BaseChatBackendsTests --disable-default-traits
-   swift test --filter BaseChatInferenceTests --disable-default-traits
-   swift test --filter BaseChatTestSupportTests --disable-default-traits
+   swift test --filter ManifoldBackendsTests --disable-default-traits
+   swift test --filter ManifoldInferenceTests --disable-default-traits
+   swift test --filter ManifoldTestSupportTests --disable-default-traits
    ```
 
 See [SECURITY.md § Supported Build Modes](SECURITY.md#supported-build-modes) for
@@ -261,7 +261,7 @@ trait-mode behaviour and
 
 ## Adding a macro
 
-Macros live in `Sources/BaseChatMacrosPlugin/`. They run at build time with full
+Macros live in `Sources/ManifoldMacrosPlugin/`. They run at build time with full
 shell privileges, so the rules are tighter:
 
 1. **Banned in macro source:** `Foundation.URLSession`, `Process()`, `posix_spawn`.
@@ -271,7 +271,7 @@ shell privileges, so the rules are tighter:
    macro doesn't silently rewrite generated source.
 
 3. The macro plugin sandbox is on the Phase 5 roadmap
-   ([#714](https://github.com/roryford/BaseChatKit/issues/714)). Until then, every
+   ([#714](https://github.com/roryford/ManifoldKit/issues/714)). Until then, every
    macro change gets a manual security review.
 
 4. **Run before pushing:**
@@ -283,10 +283,10 @@ See [docs/THREAT_MODEL.md § Build-time exfiltration via macros](docs/THREAT_MOD
 
 ## Adding a setting / configuration flag
 
-A new `BaseChatConfiguration` field, a new `@Environment` injection point, or a new
+A new `ManifoldConfiguration` field, a new `@Environment` injection point, or a new
 trait.
 
-1. **Runtime configuration → `BaseChatConfiguration`.** Document the default in
+1. **Runtime configuration → `ManifoldConfiguration`.** Document the default in
    the field's doc comment.
 
 2. **Build-time configuration → a new trait.** Add it to the `traits:` list in
@@ -303,8 +303,8 @@ trait.
 
 5. **Run before pushing:**
    ```bash
-   swift test --filter BaseChatCoreTests --disable-default-traits
-   swift test --filter BaseChatInferenceTests --disable-default-traits
+   swift test --filter ManifoldCoreTests --disable-default-traits
+   swift test --filter ManifoldInferenceTests --disable-default-traits
    ```
 
 ## Commit style
@@ -386,7 +386,7 @@ Don't open public issues for security-impacting bugs — see the next section.
 
 ## Reporting security vulnerabilities
 
-Use [GitHub Security Advisories](https://github.com/roryford/BaseChatKit/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new)
 for private disclosure. Full policy in [SECURITY.md](SECURITY.md#reporting-a-vulnerability).
 
 ## License

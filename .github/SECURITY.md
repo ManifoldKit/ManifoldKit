@@ -1,6 +1,6 @@
 # Security Policy
 
-The canonical security policy for BaseChatKit lives at the repository root:
+The canonical security policy for ManifoldKit lives at the repository root:
 
 - [`SECURITY.md`](../SECURITY.md) — supported versions, supported build modes,
   reporting a vulnerability, cryptography at rest, and pending mitigations.
@@ -15,7 +15,7 @@ root.
 
 ## Reporting
 
-Use [GitHub Security Advisories](https://github.com/roryford/BaseChatKit/security/advisories/new)
+Use [GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new)
 for private disclosure. **Do not** open public issues for security-impacting bugs.
 
 Full policy: [`SECURITY.md` § Reporting a vulnerability](../SECURITY.md#reporting-a-vulnerability).

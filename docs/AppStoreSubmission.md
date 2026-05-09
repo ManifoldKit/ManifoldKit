@@ -1,6 +1,6 @@
 # App Store submission checklist
 
-This is the indie-developer checklist for shipping a BaseChatKit-backed app
+This is the indie-developer checklist for shipping a ManifoldKit-backed app
 to the App Store. It assumes you have already chosen a build profile (see
 README §2 "Build modes"). Every item here is something Apple's review
 automation either checks directly or flags for human review.
@@ -103,7 +103,7 @@ and fall back to a different backend (or surface a "Foundation Models
 require iOS 26" placeholder) on iOS 18 devices.
 
 ```swift
-import BaseChatBackends
+import ManifoldBackends
 
 if FoundationBackend.isAvailable {
     vm.loadFoundationModelIfAvailable()
@@ -124,9 +124,9 @@ or similar privacy claims, App Review may ask for substantiation. The
 defensible claim shape, when accurate for your build:
 
 > Inference runs on-device via Apple Foundation Models / MLX / llama.cpp.
-> The chat framework (BaseChatKit, MIT-licensed) ships with zero analytics
+> The chat framework (ManifoldKit, MIT-licensed) ships with zero analytics
 > and zero outbound network by default; see
-> https://github.com/roryford/BaseChatKit and the bundled
+> https://github.com/roryford/ManifoldKit and the bundled
 > `PrivacyInfo.xcprivacy` for the audited surface.
 
 Pointing reviewers at BCK's `Templates/PrivacyInfo.xcprivacy`, the public
@@ -152,9 +152,9 @@ path** below to keep your IPA App-Store-thin.
 > What the FoundationOnly CI gate actually enforces: the
 > [`foundation-only-build`](../.github/workflows/ci.yml) job runs
 > [`scripts/check-foundation-only-bundle.sh`](../scripts/check-foundation-only-bundle.sh),
-> which (1) runs `nm -gU` against the compiled `BaseChatBackends/*.o`
+> which (1) runs `nm -gU` against the compiled `ManifoldBackends/*.o`
 > objects to assert zero MLX/llama.cpp framework symbols, and (2) caps
-> the compiled `BaseChatBackends.build` directory at 5 MB. SwiftPM's
+> the compiled `ManifoldBackends.build` directory at 5 MB. SwiftPM's
 > `traits` system gates *compilation* but not *resolution* —
 > `.build/checkouts` still contains every declared `.package(url:)`
 > regardless of trait set, but the linker only pulls in what the
@@ -167,7 +167,7 @@ Submitting BCK to the [Swift Package Index](https://swiftpackageindex.com)
 is a one-time maintainer task and lives outside this repo. The steps:
 
 1. Fork [`SwiftPackageIndex/PackageList`](https://github.com/SwiftPackageIndex/PackageList).
-2. Add `https://github.com/roryford/BaseChatKit.git` to `packages.json`,
+2. Add `https://github.com/roryford/ManifoldKit.git` to `packages.json`,
    keeping the file alphabetically sorted.
 3. Open a PR against `SwiftPackageIndex/PackageList`.
 4. After merge, update GitHub repo metadata:

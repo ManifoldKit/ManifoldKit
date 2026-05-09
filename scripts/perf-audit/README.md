@@ -1,6 +1,6 @@
 # Perf Audit Harness
 
-Runs BaseChatFuzz scenarios from the perf-audit plan and aggregates
+Runs ManifoldFuzz scenarios from the perf-audit plan and aggregates
 their RunRecord JSON into a single Markdown table.
 
 ## Usage

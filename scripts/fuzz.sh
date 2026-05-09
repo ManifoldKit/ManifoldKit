@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/fuzz.sh — Run the BaseChatFuzz harness with a friendly preflight.
+# scripts/fuzz.sh — Run the ManifoldFuzz harness with a friendly preflight.
 #
 # Default behaviour (no args): runs `swift run --traits Fuzz,MLX,Llama,Ollama
 # fuzz-chat --minutes 5` against Ollama. Discovers which backends are usable and
@@ -8,7 +8,7 @@
 # Local extensions:
 #   --with-mlx    Also run the MLX XCTest fuzz suite via xcodebuild after the
 #                 swift-run path completes. Shared campaign knobs are forwarded
-#                 into xcodebuild via BASECHAT_FUZZ_* / MLX_TEST_MODEL env vars.
+#                 into xcodebuild via MANIFOLD_FUZZ_* / MLX_TEST_MODEL env vars.
 #   --backend mlx Skip the swift-run path entirely and run only the MLX XCTest
 #                 host (same env forwarding as --with-mlx). Replay/shrink remain
 #                 swift-run-only and are rejected for this path.
@@ -117,7 +117,7 @@ if [[ "$PRODUCT_MAJOR" =~ ^[0-9]+$ ]] && (( PRODUCT_MAJOR >= 26 )); then
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  BaseChatFuzz preflight"
+echo "  ManifoldFuzz preflight"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 printf "  Discovered: Llama=%s, MLX=%s, Ollama=%s, Foundation=%s\n" \
     "$LLAMA_HIT" "$MLX_HIT" "$OLLAMA_HIT" "$FOUNDATION_HIT"
@@ -153,20 +153,20 @@ build_mlx_env() {
         case "$arg" in
             --minutes)
                 ((i++))
-                if (( i < ${#args[@]} )); then env+=("BASECHAT_FUZZ_MINUTES=${args[$i]}"); fi
+                if (( i < ${#args[@]} )); then env+=("MANIFOLD_FUZZ_MINUTES=${args[$i]}"); fi
                 ;;
-            --minutes=*) env+=("BASECHAT_FUZZ_MINUTES=${arg#*=}") ;;
+            --minutes=*) env+=("MANIFOLD_FUZZ_MINUTES=${arg#*=}") ;;
             --iterations)
                 ((i++))
-                if (( i < ${#args[@]} )); then env+=("BASECHAT_FUZZ_ITERATIONS=${args[$i]}"); fi
+                if (( i < ${#args[@]} )); then env+=("MANIFOLD_FUZZ_ITERATIONS=${args[$i]}"); fi
                 ;;
-            --iterations=*) env+=("BASECHAT_FUZZ_ITERATIONS=${arg#*=}") ;;
-            --single) env+=("BASECHAT_FUZZ_ITERATIONS=1") ;;
+            --iterations=*) env+=("MANIFOLD_FUZZ_ITERATIONS=${arg#*=}") ;;
+            --single) env+=("MANIFOLD_FUZZ_ITERATIONS=1") ;;
             --seed)
                 ((i++))
-                if (( i < ${#args[@]} )); then env+=("BASECHAT_FUZZ_SEED=${args[$i]}"); fi
+                if (( i < ${#args[@]} )); then env+=("MANIFOLD_FUZZ_SEED=${args[$i]}"); fi
                 ;;
-            --seed=*) env+=("BASECHAT_FUZZ_SEED=${arg#*=}") ;;
+            --seed=*) env+=("MANIFOLD_FUZZ_SEED=${arg#*=}") ;;
             --model)
                 ((i++))
                 if (( i < ${#args[@]} )); then env+=("MLX_TEST_MODEL=${args[$i]}"); fi
@@ -174,17 +174,17 @@ build_mlx_env() {
             --model=*) env+=("MLX_TEST_MODEL=${arg#*=}") ;;
             --detector)
                 ((i++))
-                if (( i < ${#args[@]} )); then env+=("BASECHAT_FUZZ_DETECTOR=${args[$i]}"); fi
+                if (( i < ${#args[@]} )); then env+=("MANIFOLD_FUZZ_DETECTOR=${args[$i]}"); fi
                 ;;
-            --detector=*) env+=("BASECHAT_FUZZ_DETECTOR=${arg#*=}") ;;
-            --quiet) env+=("BASECHAT_FUZZ_QUIET=1") ;;
-            --session-scripts) env+=("BASECHAT_FUZZ_SESSION_SCRIPTS=1") ;;
-            --tools) env+=("BASECHAT_FUZZ_TOOLS=1") ;;
+            --detector=*) env+=("MANIFOLD_FUZZ_DETECTOR=${arg#*=}") ;;
+            --quiet) env+=("MANIFOLD_FUZZ_QUIET=1") ;;
+            --session-scripts) env+=("MANIFOLD_FUZZ_SESSION_SCRIPTS=1") ;;
+            --tools) env+=("MANIFOLD_FUZZ_TOOLS=1") ;;
             --corpus-subset)
                 ((i++))
-                if (( i < ${#args[@]} )); then env+=("BASECHAT_FUZZ_CORPUS_SUBSET=${args[$i]}"); fi
+                if (( i < ${#args[@]} )); then env+=("MANIFOLD_FUZZ_CORPUS_SUBSET=${args[$i]}"); fi
                 ;;
-            --corpus-subset=*) env+=("BASECHAT_FUZZ_CORPUS_SUBSET=${arg#*=}") ;;
+            --corpus-subset=*) env+=("MANIFOLD_FUZZ_CORPUS_SUBSET=${arg#*=}") ;;
         esac
         ((i++))
     done
@@ -223,8 +223,8 @@ if [[ $WITH_MLX -eq 1 ]]; then
     done < <(build_mlx_env "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}")
     set +e
     env "${MLX_ENV[@]}" xcodebuild test \
-        -scheme BaseChatKit-Package \
-        -only-testing BaseChatFuzzTests/MLXFuzzTests \
+        -scheme ManifoldKit-Package \
+        -only-testing ManifoldFuzzTests/MLXFuzzTests \
         -destination 'platform=macOS'
     MLX_EXIT=$?
     set -e

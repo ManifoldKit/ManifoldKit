@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Cold-start conformance test.
 #
-# Scaffolds a fresh SwiftPM consumer in a tmpdir, links BaseChatKit by local
-# path, builds against the public consumer surface (BaseChatInference only —
+# Scaffolds a fresh SwiftPM consumer in a tmpdir, links ManifoldKit by local
+# path, builds against the public consumer surface (ManifoldInference only —
 # no internal test-support targets), runs one chat turn through a tiny inline
 # fake backend, and asserts the round trip works.
 #
@@ -42,20 +42,20 @@ let package = Package(
     dependencies: [
         // Pin package identity explicitly. SwiftPM derives \`.package(path:)\`
         // identity from the last path component, not the manifest \`name:\`. On
-        // a normal checkout the dir is \`BaseChatKit\` so \`.product(... package:
-        // "BaseChatKit")\` resolves; in a worktree (e.g. \`agent-<id>\`) it would
+        // a normal checkout the dir is \`ManifoldKit\` so \`.product(... package:
+        // "ManifoldKit")\` resolves; in a worktree (e.g. \`agent-<id>\`) it would
         // not. Pinning \`name:\` keeps this script worktree-portable.
-        .package(name: "BaseChatKit", path: "$REPO_ROOT"),
+        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
     ],
     targets: [
         .executableTarget(
             name: "ColdStart",
             dependencies: [
-                // BaseChatKit umbrella — the same import a typical consumer
-                // uses, re-exporting BaseChatInference (and the other 80%-case
+                // ManifoldKit umbrella — the same import a typical consumer
+                // uses, re-exporting ManifoldInference (and the other 80%-case
                 // modules) so this conformance check fails fast if the
                 // umbrella stops covering its documented contract.
-                .product(name: "BaseChatKit", package: "BaseChatKit"),
+                .product(name: "ManifoldKit", package: "ManifoldKit"),
             ],
             path: "Sources/ColdStart"
         ),
@@ -66,7 +66,7 @@ EOF
 # 2. Scaffold consumer source.
 mkdir -p Sources/ColdStart
 cat > Sources/ColdStart/main.swift <<'SWIFT'
-import BaseChatKit
+import ManifoldKit
 import Foundation
 
 // MARK: - Inline fake backend

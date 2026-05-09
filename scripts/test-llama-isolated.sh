@@ -34,14 +34,14 @@
 # Usage
 # -----
 #   # Run with whichever GGUF you already have set up:
-#   RUN_LLAMA_TESTS=1 BASECHAT_DISCOVER_LOCAL_MODELS=1 \
+#   RUN_LLAMA_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
 #     LLAMA_TEST_MODEL=$HOME/Documents/Models/<model>.gguf \
 #     scripts/test-llama-isolated.sh
 #
 #   # Pass extra args through to swift test (after `--`):
 #   scripts/test-llama-isolated.sh -- --skip-update --skip-build
 #
-# This is intentionally NOT wired into CI. CI runs `BaseChatBackendsTests`
+# This is intentionally NOT wired into CI. CI runs `ManifoldBackendsTests`
 # without hardware traits, so the Llama tests are excluded by `#if Llama`
 # conditional compilation. Use this script when running on Apple Silicon
 # locally with `RUN_LLAMA_TESTS=1` and a real GGUF.
@@ -91,7 +91,7 @@ LLAMA_TEST_CLASSES=(
 # Sanity-check that every class above corresponds to a real test file. Catches
 # typos and renames before we waste minutes invoking xctest with a dead filter.
 for class in "${LLAMA_TEST_CLASSES[@]}"; do
-    file="Tests/BaseChatBackendsTests/${class}.swift"
+    file="Tests/ManifoldBackendsTests/${class}.swift"
     if [[ ! -f "$file" ]]; then
         echo "test-llama-isolated.sh: expected test file '$file' not found." >&2
         echo "Update LLAMA_TEST_CLASSES in $0 if the class was renamed or removed." >&2
@@ -120,7 +120,7 @@ for class in "${LLAMA_TEST_CLASSES[@]}"; do
     LOG="${TMPDIR:-/tmp}/llama-iso-${class}.log"
     set +e
     swift test \
-        --filter "BaseChatBackendsTests\.${class}/" \
+        --filter "ManifoldBackendsTests\.${class}/" \
         --traits MLX,Llama \
         --skip-build \
         "${EXTRA_ARGS[@]}" \

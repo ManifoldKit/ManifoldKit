@@ -2,28 +2,28 @@
 # Cold-start conformance — tier 2: Bootstrap + ChatViewModel orchestration path.
 #
 # Tier 1 (`scripts/cold-start-conformance.sh`) covers the lowest-level surface:
-# `BaseChatInference` only, a fake backend, and raw
+# `ManifoldInference` only, a fake backend, and raw
 # `service.generate(messages:)`. It catches breaks in `Package.swift` link
 # shape, public registration, the load API, and `GenerationStream`
 # consumption.
 #
 # Tier 2 covers the *high-level orchestration* surface that real chat apps
-# use: `BaseChatBootstrap` builds the SwiftData container, persistence
+# use: `ManifoldBootstrap` builds the SwiftData container, persistence
 # provider, conversation runtime, endpoint store, and inference service in
 # one shot; `ChatViewModel` is then constructed against that bootstrap and
 # driven through one user → assistant turn via `vm.inputText` and
 # `await vm.sendMessage()`. This is the path that recent agent cold-start
 # audits found buggiest:
 #
-#   - `BaseChatBootstrap` → `ChatViewModel` link shape (BaseChatInference,
-#     BaseChatRuntime, BaseChatPersistenceSwiftData, BaseChatUI products
+#   - `ManifoldBootstrap` → `ChatViewModel` link shape (ManifoldInference,
+#     ManifoldRuntime, ManifoldPersistenceSwiftData, ManifoldUI products
 #     must all be reachable from a single downstream consumer).
 #   - `ChatViewModel.configure(runtime:)` ergonomics — wires persistence
 #     and endpoint stores from the bootstrap in one call.
 #   - The ambient `vm.inputText = "..."; await vm.sendMessage()` pattern
 #     that all production hosts use, including the fact that `sendMessage`
 #     consumes `inputText` rather than taking it as an argument.
-#   - The `BaseChatBootstrap` default `makeModelContainer:` path resolves
+#   - The `ManifoldBootstrap` default `makeModelContainer:` path resolves
 #     to `ModelContainerFactory.makeContainer()`, which in turn writes a
 #     `default.store` SQLite file under `Application Support`. Two
 #     bootstraps in the same process collide on that path — every
@@ -36,7 +36,7 @@
 #     over the collision.
 #
 # Like tier 1, this rolls a minimal fake `InferenceBackend` inline because
-# `BaseChatTestSupport` is intentionally not a public product (the kit's
+# `ManifoldTestSupport` is intentionally not a public product (the kit's
 # `MockInferenceBackend` lives inside that target). The fake registers
 # under `.foundation` so the existing `ModelInfo.builtInFoundation` entry
 # point exercises the same code path real consumers hit.
@@ -61,10 +61,10 @@ cd "$WORK"
 # consumer buildable on every macOS BCK supports). Tier 2 needs four
 # products linked in concert:
 #
-#   - BaseChatInference            — InferenceService, InferenceBackend, BackendCapabilities, ModelLoadPlan, ModelInfo
-#   - BaseChatRuntime              — SendInput, ConversationRuntime (transitively via BaseChatPersistenceSwiftData)
-#   - BaseChatPersistenceSwiftData — BaseChatBootstrap, ModelContainerFactory, SwiftDataPersistenceProvider
-#   - BaseChatUI                   — ChatViewModel, ChatViewModel.configure(runtime:)
+#   - ManifoldInference            — InferenceService, InferenceBackend, BackendCapabilities, ModelLoadPlan, ModelInfo
+#   - ManifoldRuntime              — SendInput, ConversationRuntime (transitively via ManifoldPersistenceSwiftData)
+#   - ManifoldPersistenceSwiftData — ManifoldBootstrap, ModelContainerFactory, SwiftDataPersistenceProvider
+#   - ManifoldUI                   — ChatViewModel, ChatViewModel.configure(runtime:)
 cat > Package.swift <<EOF
 // swift-tools-version: 6.2
 import PackageDescription
@@ -76,22 +76,22 @@ let package = Package(
         .executable(name: "ColdStartTier2", targets: ["ColdStartTier2"]),
     ],
     dependencies: [
-        // Pin the dependency identity to "BaseChatKit" instead of letting
+        // Pin the dependency identity to "ManifoldKit" instead of letting
         // SwiftPM derive it from the last path component. CI checks out to
-        // a directory named BaseChatKit so the inferred identity matches,
+        // a directory named ManifoldKit so the inferred identity matches,
         // but local runs from a git worktree (\`.claude/worktrees/agent-*\`)
         // would otherwise resolve the identity to the worktree dir name
-        // and fail \`.product(package: "BaseChatKit")\`.
-        .package(name: "BaseChatKit", path: "$REPO_ROOT"),
+        // and fail \`.product(package: "ManifoldKit")\`.
+        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
     ],
     targets: [
         .executableTarget(
             name: "ColdStartTier2",
             dependencies: [
-                .product(name: "BaseChatInference", package: "BaseChatKit"),
-                .product(name: "BaseChatRuntime", package: "BaseChatKit"),
-                .product(name: "BaseChatPersistenceSwiftData", package: "BaseChatKit"),
-                .product(name: "BaseChatUI", package: "BaseChatKit"),
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldRuntime", package: "ManifoldKit"),
+                .product(name: "ManifoldPersistenceSwiftData", package: "ManifoldKit"),
+                .product(name: "ManifoldUI", package: "ManifoldKit"),
             ],
             path: "Sources/ColdStartTier2"
         ),
@@ -105,10 +105,10 @@ STORE_DIR="$WORK/swiftdata"
 mkdir -p "$STORE_DIR"
 
 cat > Sources/ColdStartTier2/main.swift <<SWIFT
-import BaseChatInference
-import BaseChatRuntime
-import BaseChatPersistenceSwiftData
-import BaseChatUI
+import ManifoldInference
+import ManifoldRuntime
+import ManifoldPersistenceSwiftData
+import ManifoldUI
 import Foundation
 import SwiftData
 
@@ -161,7 +161,7 @@ final class FakeBackend: InferenceBackend, @unchecked Sendable {
 
 @MainActor
 func run() async throws -> Int32 {
-    // Per-test SwiftData store. \`BaseChatBootstrap\`'s default
+    // Per-test SwiftData store. \`ManifoldBootstrap\`'s default
     // \`makeModelContainer:\` calls \`ModelContainerFactory.makeContainer()\`,
     // which writes \`default.store\` under Application Support. Two
     // bootstraps in the same process collide there, so every non-trivial
@@ -169,12 +169,12 @@ func run() async throws -> Int32 {
     let storeURL = URL(fileURLWithPath: "$STORE_DIR/cold-start-tier2.store")
     let storeConfig = ModelConfiguration(url: storeURL)
 
-    let configuration = BaseChatConfiguration(
+    let configuration = ManifoldConfiguration(
         appName: "ColdStartTier2",
-        bundleIdentifier: "com.basechatkit.coldstart.tier2"
+        bundleIdentifier: "com.manifoldkit.coldstart.tier2"
     )
 
-    let bootstrap = try BaseChatBootstrap(
+    let bootstrap = try ManifoldBootstrap(
         configuration: configuration,
         makeModelContainer: {
             try ModelContainerFactory.makeContainer(configurations: [storeConfig])

@@ -1,6 +1,6 @@
 # FIPS 140-3 Posture
 
-> **Audience:** procurement, compliance, and security teams evaluating BaseChatKit
+> **Audience:** procurement, compliance, and security teams evaluating ManifoldKit
 > (BCK) for use in regulated environments (healthcare, federal-adjacent, finance,
 > defense). This document is the honest answer to the question
 > "are your cryptographic primitives FIPS 140-3 validated?"
@@ -51,7 +51,7 @@ in the source tree.
 
 ### 1. Certificate pinning (`PinnedSessionDelegate`)
 
-- **File:** `Sources/BaseChatBackends/PinnedSessionDelegate.swift`
+- **File:** `Sources/ManifoldBackends/PinnedSessionDelegate.swift`
 - **Primitive:** `CC_SHA256` (CommonCrypto) over the server leaf certificate's
   SPKI (Subject Public Key Info).
 - **Purpose:** TLS pinning. Each new connection's leaf-cert SPKI is hashed and
@@ -65,7 +65,7 @@ in the source tree.
 
 ### 2. Keychain (`KeychainService`)
 
-- **File:** `Sources/BaseChatInference/Services/KeychainService.swift`
+- **File:** `Sources/ManifoldInference/Services/KeychainService.swift`
 - **Primitive:** `SecItemAdd`, `SecItemUpdate`, `SecItemCopyMatching`,
   `SecItemDelete` (Security.framework) with class
   `kSecClassGenericPassword` and accessibility
@@ -78,7 +78,7 @@ in the source tree.
 
 ### 3. UUID v5 generation (`UUID+v5`)
 
-- **File:** `Sources/BaseChatInference/Utilities/UUID+v5.swift`
+- **File:** `Sources/ManifoldInference/Utilities/UUID+v5.swift`
 - **Primitive:** `Insecure.SHA1` (CryptoKit).
 - **Purpose:** Deterministic name-based UUIDs per RFC 4122 §4.3 (used to derive
   stable identifiers from string names — for fixtures, deduplication, etc.).
@@ -89,7 +89,7 @@ in the source tree.
 
 ### 4. MCP OAuth PKCE + token-prefix logging (`MCPOAuth`)
 
-- **File:** `Sources/BaseChatMCP/MCPOAuth.swift`
+- **File:** `Sources/ManifoldMCP/MCPOAuth.swift`
 - **Primitives:**
   - `SHA256.hash` (CryptoKit) over the PKCE code verifier — required by RFC 7636.
   - `SecRandomCopyBytes` (Security.framework) for PKCE verifier and state nonce.
@@ -99,16 +99,16 @@ in the source tree.
   CoreCrypto on validated OS versions. The PKCE flow itself follows
   RFC 7636 — BCK does not implement custom crypto here.
 
-### 5. Fuzz harness fingerprinting (`BaseChatFuzz`)
+### 5. Fuzz harness fingerprinting (`ManifoldFuzz`)
 
 - **Files:**
-  - `Sources/BaseChatFuzz/Finding.swift` (`SHA256.hash` for finding-key digests)
-  - `Sources/BaseChatFuzz/HarnessMetadata.swift` (`SHA256` streaming digest of
+  - `Sources/ManifoldFuzz/Finding.swift` (`SHA256.hash` for finding-key digests)
+  - `Sources/ManifoldFuzz/HarnessMetadata.swift` (`SHA256` streaming digest of
     GGUF model files for run reproducibility)
 - **Primitive:** `SHA256` (CryptoKit).
 - **Purpose:** Deterministic fingerprints for fuzz-finding deduplication and
   model-file identity. **Not security-relevant** — no key material, no signing.
-- **Validation boundary:** Same as above. The `BaseChatFuzz` module is not
+- **Validation boundary:** Same as above. The `ManifoldFuzz` module is not
   shipped to production apps; it is a developer-only test harness.
 
 ### 6. Future Secure Enclave usage
@@ -298,10 +298,10 @@ Use this when responding to a procurement security review:
 
 ---
 
-*This document is part of Phase 5 of [#714](https://github.com/roryford/BaseChatKit/issues/714)
+*This document is part of Phase 5 of [#714](https://github.com/roryford/ManifoldKit/issues/714)
 ("local-only build modes + privacy validation infra"). It is reviewed on each
 release that touches `Sources/**/*.swift` files importing `CryptoKit`,
 `CommonCrypto`, or `Security`.*
 
 [cmvp]: https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search
-[secmodel]: ../Sources/BaseChatCore/BaseChatCore.docc/Articles/SecurityModel.md
+[secmodel]: ../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md

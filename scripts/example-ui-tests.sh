@@ -4,9 +4,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLE_DIR="$REPO_ROOT/Example"
-PROJECT="BaseChatDemo.xcodeproj"
-SCHEME="BaseChatDemo"
-DERIVED_DATA_PATH="$REPO_ROOT/DerivedData/BaseChatDemoUITests"
+PROJECT="ManifoldDemo.xcodeproj"
+SCHEME="ManifoldDemo"
+DERIVED_DATA_PATH="$REPO_ROOT/DerivedData/ManifoldDemoUITests"
 
 usage() {
     cat <<'EOF'
@@ -24,10 +24,10 @@ Options:
 
 Examples:
   scripts/example-ui-tests.sh build-for-testing
-  scripts/example-ui-tests.sh test-without-building -only-testing:BaseChatDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
-  scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:BaseChatDemoUITests/SettingsUITests
+  scripts/example-ui-tests.sh test-without-building -only-testing:ManifoldDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+  scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:ManifoldDemoUITests/SettingsUITests
   scripts/example-ui-tests.sh build-for-testing --macos
-  scripts/example-ui-tests.sh test-without-building --macos -only-testing:BaseChatDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+  scripts/example-ui-tests.sh test-without-building --macos -only-testing:ManifoldDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
 
 The default destination is the first booted iPhone simulator. If none are booted,
 the script falls back to the first available iPhone simulator, then the first

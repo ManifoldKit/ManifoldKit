@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FIXTURE_ROOT="$ROOT/Tests/BaseChatMCPTests/Fixtures/Providers"
+FIXTURE_ROOT="$ROOT/Tests/ManifoldMCPTests/Fixtures/Providers"
 
 mode="check"
 providers=(github linear notion)
@@ -12,7 +12,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/regenerate-mcp-fixtures.sh [--check|--write] [--provider <name> ...]
 
-Generates deterministic, offline MCP provider fixtures used by BaseChatMCPTests.
+Generates deterministic, offline MCP provider fixtures used by ManifoldMCPTests.
 Default mode is --check (non-destructive).
 USAGE
 }

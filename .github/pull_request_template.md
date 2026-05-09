@@ -9,7 +9,7 @@
 ## Release Note
 
 <!-- For feat: and fix: PRs, draft the release-note fragment here in the
-     Prisma-style format used by BaseChatKit since v0.11.2. This gets copied
+     Prisma-style format used by ManifoldKit since v0.11.2. This gets copied
      into CHANGELOG.md at release time, so write it like a reader sees it.
 
      For a HEADLINE feature (new subsystem, cross-cutting change, API
@@ -35,7 +35,7 @@
 ## Testing
 
 <!-- How was this tested? Which test targets cover it? -->
-<!-- Note: BaseChatCoreTests and BaseChatUITests run in CI. Hardware-dependent tests (BaseChatBackendsTests, BaseChatE2ETests) run locally. -->
+<!-- Note: ManifoldCoreTests and ManifoldUITests run in CI. Hardware-dependent tests (ManifoldBackendsTests, ManifoldE2ETests) run locally. -->
 
 ## Sabotage evidence (regression-test PRs only)
 

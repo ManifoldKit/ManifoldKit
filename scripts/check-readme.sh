@@ -14,7 +14,7 @@
 #      blacklist:
 #        - `loadModel(from:contextSize:)`     (replaced by `loadModel(from:plan:)`)
 #        - `vm.send(_:)` / `viewModel.send(_:)` (replaced by `sendMessage(_:)`)
-#        (`import BaseChatKit` was forbidden pre-0.19; the umbrella now exists.)
+#        (`import ManifoldKit` was forbidden pre-0.19; the umbrella now exists.)
 #
 # Why not full Swift snippet typecheck:
 #   The README's Package.swift fragments and `.target(dependencies:)` snippets

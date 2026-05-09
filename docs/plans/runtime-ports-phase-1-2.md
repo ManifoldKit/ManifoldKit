@@ -1,4 +1,4 @@
-# Plan — `BaseChatRuntime` / ports refactor (Phase 1.2 onward)
+# Plan — `ManifoldRuntime` / ports refactor (Phase 1.2 onward)
 
 This is a **plan document**, not implementation. It records the intended
 shape, migration order, and review constraints for the remainder of the
@@ -36,7 +36,7 @@ phase.
   split.
 - Window: pre-1.0; one breaking changelog entry per phase, no shims.
 - Downstream consumers in view:
-  - BaseChatKit demo app
+  - ManifoldKit demo app
   - ChatbotUI-iOS
   - Fireside
 
@@ -78,8 +78,8 @@ Live artifacts in priority order:
   shape.
 - In-flight branches for this refactor: #890 (sub-step 3) and #893
   (sub-step 4). **v0.14.0** is the baseline (current `main`).
-- Repo: `roryford/BaseChatKit` (private). If picking up outside the
-  working tree: `gh repo clone roryford/BaseChatKit && gh pr checkout <this-PR>`.
+- Repo: `roryford/ManifoldKit` (private). If picking up outside the
+  working tree: `gh repo clone roryford/ManifoldKit && gh pr checkout <this-PR>`.
 
 **Next concrete action: Phase 1.2 sub-step 1 — `MessageStore` +
 `MessageStorePostWriteHook` + `SessionStore` split.** The hook signature
@@ -93,8 +93,8 @@ passive-merge use case (1.2.2 — no new value type ships). Then
 `ConversationRuntime` extraction as the optional reference use case at
 1.2.5. Phase 1.2 sub-steps 3 (internal port cleanups) and 4
 (`InferenceService` nonisolated wrappers) are already in review (#890,
-#893). Phase 2 is the physical target split: `BaseChatRuntime` and
-`BaseChatPersistenceSwiftData` targets created, `BaseChatCore` deleted.
+#893). Phase 2 is the physical target split: `ManifoldRuntime` and
+`ManifoldPersistenceSwiftData` targets created, `ManifoldCore` deleted.
 
 **No Fireside-adoption precondition.** The earlier draft of this plan
 gated 1.2.1 on Fireside flipping to the post-#883 surface. Fireside's
@@ -105,8 +105,8 @@ at all. The flip was a no-op; the precondition is dropped.
 
 ## Background
 
-BaseChatKit already has a strong inference boundary: `BaseChatInference`
-is storage-free and backend-agnostic; `BaseChatBackends` and `BaseChatMCP`
+ManifoldKit already has a strong inference boundary: `ManifoldInference`
+is storage-free and backend-agnostic; `ManifoldBackends` and `ManifoldMCP`
 depend on Inference directly; `ChatPersistenceProvider` decouples
 session/message persistence from SwiftData via storage-neutral records
 (`ChatSessionRecord`, `ChatMessageRecord`, `APIEndpointRecord` — all
@@ -115,8 +115,8 @@ async surface across the persistence and command boundary; Phase 1.1
 (#886) extracted session-list orchestration into a service with an
 event stream. What remains is the broader port extraction
 (`MessageStore`, `PromptContextProvider`, `ConversationRuntime`,
-etc.) and the physical target split (`BaseChatRuntime` /
-`BaseChatPersistenceSwiftData` / delete `BaseChatCore`).
+etc.) and the physical target split (`ManifoldRuntime` /
+`ManifoldPersistenceSwiftData` / delete `ManifoldCore`).
 
 The concrete leaks Phase 1.2 closes:
 
@@ -136,15 +136,15 @@ A runtime-centered package split. **Pre-1.0**, so this is a hard cut,
 not a deprecation cycle.
 
 ```text
-                    BaseChatInference
+                    ManifoldInference
                           ▲
             ┌─────────────┼──────────────────┐
             │             │                  │
-   BaseChatBackends  BaseChatMCP      BaseChatRuntime
+   ManifoldBackends  ManifoldMCP      ManifoldRuntime
                                             ▲
                           ┌─────────────────┼──────────────────┐
                           │                 │                  │
-                BaseChatPersistence-   BaseChatUI    BaseChatUIModelManagement
+                ManifoldPersistence-   ManifoldUI    ManifoldUIModelManagement
                    SwiftData               ▲                   │
                                            └───────────────────┘
                                                 (one-way edge,
@@ -153,20 +153,20 @@ not a deprecation cycle.
 
 The center of gravity moves from
 `ChatViewModel + SessionManagerViewModel + ModelContext-aware UI`
-to `BaseChatRuntime` use cases + ports, with UI as a presentation layer
+to `ManifoldRuntime` use cases + ports, with UI as a presentation layer
 rather than the application layer.
 
 ### Target naming
 
-- The existing `public final class BaseChatRuntime` in
-  `Sources/BaseChatCore/BaseChatRuntime.swift` is renamed to
-  `BaseChatBootstrap` (a file by that name already exists in the same
+- The existing `public final class ManifoldRuntime` in
+  `Sources/ManifoldCore/ManifoldRuntime.swift` is renamed to
+  `ManifoldBootstrap` (a file by that name already exists in the same
   directory — it absorbs the rename).
-- The new target is `BaseChatRuntime`.
-- `BaseChatCore` is **deleted**, not deprecated. Its current contents
-  redistribute: persistence implementation → `BaseChatPersistenceSwiftData`,
-  storage-neutral helpers → `BaseChatRuntime`, intent protocols →
-  `BaseChatRuntime`. Host apps update their imports in one PR.
+- The new target is `ManifoldRuntime`.
+- `ManifoldCore` is **deleted**, not deprecated. Its current contents
+  redistribute: persistence implementation → `ManifoldPersistenceSwiftData`,
+  storage-neutral helpers → `ManifoldRuntime`, intent protocols →
+  `ManifoldRuntime`. Host apps update their imports in one PR.
 
 These renames happen in Phase 2 and are not partly done yet — both the
 class rename and the new target arrive together.
@@ -175,26 +175,26 @@ class rename and the new target arrive together.
 
 | Today | Lands in |
 |-------|----------|
-| `BaseChatCore` SwiftData `@Model` types + schema | `BaseChatPersistenceSwiftData` |
-| `SwiftDataPersistenceProvider` | `BaseChatPersistenceSwiftData` |
-| `ChatPersistenceProvider` protocol | `BaseChatRuntime` |
-| `BaseChatRuntime` (bootstrap class) | `BaseChatRuntime` (renamed `BaseChatBootstrap`) |
-| `ChatExportService` / `ConversationExporter` | `BaseChatRuntime` |
-| `ChatIntentAction` / `ChatSessionIntentHandler` | `BaseChatRuntime` |
-| `ChatViewModel` + extensions | `BaseChatUI` (thinned to ≤300 LOC) |
-| `SessionManagerViewModel` | `BaseChatUI` (thin adapter) |
-| `SessionListService` | `BaseChatRuntime` (moves with this PR) |
-| `ModelLoadCoordinator` / `GenerationCoordinator` (UI-side) | `BaseChatRuntime` (renamed to avoid collision with Inference's `GenerationCoordinator`) |
-| `ModelManagementViewModel` | `BaseChatUIModelManagement` (thin adapter) |
-| `BaseChatBackends`, `BaseChatMCP`, `BaseChatTools`, `BaseChatAppIntents`, `BaseChatFuzz` | unchanged (still depend on Inference only) |
-| `BaseChatTestSupport` | split: Inference-only fakes stay; SwiftData harnesses move to a new `BaseChatPersistenceSwiftDataTestSupport` |
+| `ManifoldCore` SwiftData `@Model` types + schema | `ManifoldPersistenceSwiftData` |
+| `SwiftDataPersistenceProvider` | `ManifoldPersistenceSwiftData` |
+| `ChatPersistenceProvider` protocol | `ManifoldRuntime` |
+| `ManifoldRuntime` (bootstrap class) | `ManifoldRuntime` (renamed `ManifoldBootstrap`) |
+| `ChatExportService` / `ConversationExporter` | `ManifoldRuntime` |
+| `ChatIntentAction` / `ChatSessionIntentHandler` | `ManifoldRuntime` |
+| `ChatViewModel` + extensions | `ManifoldUI` (thinned to ≤300 LOC) |
+| `SessionManagerViewModel` | `ManifoldUI` (thin adapter) |
+| `SessionListService` | `ManifoldRuntime` (moves with this PR) |
+| `ModelLoadCoordinator` / `GenerationCoordinator` (UI-side) | `ManifoldRuntime` (renamed to avoid collision with Inference's `GenerationCoordinator`) |
+| `ModelManagementViewModel` | `ManifoldUIModelManagement` (thin adapter) |
+| `ManifoldBackends`, `ManifoldMCP`, `ManifoldTools`, `ManifoldAppIntents`, `ManifoldFuzz` | unchanged (still depend on Inference only) |
+| `ManifoldTestSupport` | split: Inference-only fakes stay; SwiftData harnesses move to a new `ManifoldPersistenceSwiftDataTestSupport` |
 
 ## Non-goals
 
-- No SwiftData schema redesign. `BaseChatSchemaV3` moves modules but
+- No SwiftData schema redesign. `ManifoldSchemaV3` moves modules but
   entity names (the persistence keys) stay identical.
 - No expansion of `InferenceService` public API as a shortcut.
-- No new "misc runtime" bucket — every type added to `BaseChatRuntime`
+- No new "misc runtime" bucket — every type added to `ManifoldRuntime`
   must be either a port, a use case, or a value type.
 - No deprecation cycle, no compat shims, no `@available(deprecated)`
   re-exports. Pre-1.0 means clean cuts.
@@ -204,7 +204,7 @@ class rename and the new target arrive together.
 | # | Principle | Why |
 |---|-----------|-----|
 | 1 | **Runtime owns use cases, not view state.** | Transcript/session/model orchestration must be reusable by any host. Focus state, scroll, sheets, draft text are UI concerns. |
-| 2 | **SwiftData stays behind adapters.** | `BaseChatRuntime` must not expose `ModelContext`, `@Model`, `@Query`, or migration internals. |
+| 2 | **SwiftData stays behind adapters.** | `ManifoldRuntime` must not expose `ModelContext`, `@Model`, `@Query`, or migration internals. |
 | 3 | **Records at the boundary.** | `ChatSessionRecord`, `ChatMessageRecord`, `APIEndpointRecord` already live in Inference. Every port traffics in records, not `@Model` types. |
 | 4 | **Events out, commands in.** | Use cases expose `AsyncSequence<Event>` for state changes and `async throws` commands for actions. UI adapters subscribe and republish — no closure-bag wiring across boundaries. |
 | 5 | **Secrets and network policy stay out of runtime.** | Keychain, `URLSession`, trust delegates, OAuth live in Inference (where they already are) or in adapters. |
@@ -224,7 +224,7 @@ class rename and the new target arrive together.
 | `BenchmarkCache` | `ModelManagementViewModel.modelContext: ModelContext?` |
 | `ModelCatalog` | `ModelManagementViewModel`'s direct disk inspection |
 | `TitleGenerator` | `SessionManagerViewModel.generateTitle` calling `InferenceService` directly |
-| `PromptContextProvider` | new — the slot-contributor port for context assembly. (Distinct from the internal `GenerationContextProvider` in `BaseChatInference`, which is a `@MainActor`-bound model-state provider used by `GenerationCoordinator` — that protocol stays internal and unchanged.) |
+| `PromptContextProvider` | new — the slot-contributor port for context assembly. (Distinct from the internal `GenerationContextProvider` in `ManifoldInference`, which is a `@MainActor`-bound model-state provider used by `GenerationCoordinator` — that protocol stays internal and unchanged.) |
 | `ToolSource` | generalises today's `MCPToolSource` pattern |
 
 `ChatPersistenceProvider` is split into `SessionStore` + `MessageStore`.
@@ -285,10 +285,10 @@ Use cases compose ports into a turn loop or other workflow. They are
 
 | Use case | Status | Absorbs | Surface |
 |----------|--------|---------|---------|
-| `SessionListService` | ✅ shipped (#886, `Sources/BaseChatUI/ViewModels/SessionListService.swift`) | `SessionManagerViewModel`'s CRUD/search/pagination/title generation | `AsyncStream<SessionListEvent>` + commands |
+| `SessionListService` | ✅ shipped (#886, `Sources/ManifoldUI/ViewModels/SessionListService.swift`) | `SessionManagerViewModel`'s CRUD/search/pagination/title generation | `AsyncStream<SessionListEvent>` + commands |
 | `ConversationRuntime` | forward-looking, **optional reference** | `ChatViewModel`'s send/cancel/regenerate/edit/branch logic, `GenerationCoordinator` (UI-side), `ModelLoadCoordinator` | `AsyncSequence<ConversationEvent>` + commands |
 | `ModelManagementService` | forward-looking | `ModelManagementViewModel`'s discovery/download/delete/benchmark | `AsyncSequence<ModelCatalogEvent>` + commands |
-| `PromptContextPipeline` | ✅ shipped (#TBD, sub-step 2; `Sources/BaseChatCore/Services/PromptContextPipeline.swift`) | new — passive merge over `[PromptSlot]` from registered `PromptContextProvider`s | `[PromptSlot]` |
+| `PromptContextPipeline` | ✅ shipped (#TBD, sub-step 2; `Sources/ManifoldCore/Services/PromptContextPipeline.swift`) | new — passive merge over `[PromptSlot]` from registered `PromptContextProvider`s | `[PromptSlot]` |
 
 #### `ConversationEvent` cases
 
@@ -380,7 +380,7 @@ optional wrapping where a value is always present.
 
 ### Constraints
 
-- `BaseChatRuntime` is SwiftUI-free, Observation-free, SwiftData-free.
+- `ManifoldRuntime` is SwiftUI-free, Observation-free, SwiftData-free.
 - Use cases are plain classes, not `@Observable`. Internal state is private.
   External state changes are emitted as events.
 - Use cases are not `@MainActor`-pinned at the type level. Methods that
@@ -391,24 +391,24 @@ optional wrapping where a value is always present.
 
 ## Trait propagation
 
-`BaseChatRuntime` declares the same trait gates as `BaseChatUI` does today
+`ManifoldRuntime` declares the same trait gates as `ManifoldUI` does today
 (`Ollama`, `CloudSaaS`). `EndpointStore` and `ModelManagementService` use
-`#if Ollama` / `#if CloudSaaS` where appropriate. `BaseChatPersistenceSwiftData`
+`#if Ollama` / `#if CloudSaaS` where appropriate. `ManifoldPersistenceSwiftData`
 is untraited (schema is the same regardless of which backends are enabled).
 
 ## Test-support partitioning
 
-`BaseChatTestSupport` today depends on `BaseChatCore`. After the split:
+`ManifoldTestSupport` today depends on `ManifoldCore`. After the split:
 
 - Inference-only fakes (`MockInferenceBackend`, `CharTokenizer`,
-  `ChaosBackend`, etc.) — stay in `BaseChatTestSupport`, depend only on
-  `BaseChatInference`.
+  `ChaosBackend`, etc.) — stay in `ManifoldTestSupport`, depend only on
+  `ManifoldInference`.
 - SwiftData-backed harnesses (`InMemoryPersistenceHarness`,
   `ErrorInjectingPersistenceProvider`, `MockBackgroundTaskScheduler`)
-  → new `BaseChatPersistenceSwiftDataTestSupport` target.
+  → new `ManifoldPersistenceSwiftDataTestSupport` target.
 - Runtime-port fakes (in-memory `SessionStore`, `MessageStore`, etc.)
-  → also in `BaseChatPersistenceSwiftDataTestSupport`, or a separate
-  `BaseChatRuntimeTestSupport` if it grows beyond ~5 fakes.
+  → also in `ManifoldPersistenceSwiftDataTestSupport`, or a separate
+  `ManifoldRuntimeTestSupport` if it grows beyond ~5 fakes.
 
 This split happens in the same PR cycle as the production split — test
 infrastructure can't lag.
@@ -436,9 +436,9 @@ review.
 
 2. **`PromptContextProvider` port + `PromptContextPipeline` passive-merge
    use case.** Introduces `PromptContextProvider` as a new public
-   protocol in `BaseChatInference` (`Sendable`, no `@MainActor` pin,
+   protocol in `ManifoldInference` (`Sendable`, no `@MainActor` pin,
    bare `messageCount: Int` argument; throws propagate). Pairs it with
-   `PromptContextPipeline` in `BaseChatCore` — a passive merge use case
+   `PromptContextPipeline` in `ManifoldCore` — a passive merge use case
    that asks each registered provider for slots, concatenates, sorts by
    `PromptSlotPosition.sortIndex(messageCount:)`, and returns the
    assembled `[PromptSlot]`. **No new value type** — `[PromptSlot]` is
@@ -473,14 +473,14 @@ state. Every state change in UI flows through an event stream.
 
 ### Phase 2 — physical target split
 
-One PR — large, mostly mechanical. Creates `BaseChatRuntime` and
-`BaseChatPersistenceSwiftData` targets, redistributes
-`BaseChatCore`'s contents, deletes `BaseChatCore`. Updates host apps
+One PR — large, mostly mechanical. Creates `ManifoldRuntime` and
+`ManifoldPersistenceSwiftData` targets, redistributes
+`ManifoldCore`'s contents, deletes `ManifoldCore`. Updates host apps
 (demo, ChatbotUI-iOS, Fireside) in the same PR.
 
 `SessionListService` moves with this PR — it currently lives in
-`BaseChatUI` (extracted there by #886 to keep the diff small) but is a
-use case, so the Phase 2 split puts it in `BaseChatRuntime` alongside
+`ManifoldUI` (extracted there by #886 to keep the diff small) but is a
+use case, so the Phase 2 split puts it in `ManifoldRuntime` alongside
 the other use cases. The move is a `git mv` plus an import rewrite in
 the `SessionManagerViewModel` adapter.
 
@@ -489,17 +489,17 @@ this PR is just `git mv`, import rewrites, and CI lint updates.
 
 CI lint additions:
 
-- No `SwiftData` / `@Observable` / SwiftUI import in `BaseChatRuntime`.
-- No `URLSession` / Keychain in `BaseChatRuntime`.
-- `BaseChatUI` does not import `BaseChatPersistenceSwiftData`.
+- No `SwiftData` / `@Observable` / SwiftUI import in `ManifoldRuntime`.
+- No `URLSession` / Keychain in `ManifoldRuntime`.
+- `ManifoldUI` does not import `ManifoldPersistenceSwiftData`.
 
 SwiftData entity-name migration: `@Model` types stay nested inside
-`BaseChatSchemaV3` enum, so SwiftData entity names (`ChatMessage`,
+`ManifoldSchemaV3` enum, so SwiftData entity names (`ChatMessage`,
 `ChatSession`, etc.) are unaffected by the module move. A read-back
 test opens a v0.13.x-era store fixture and asserts data integrity.
 
 **Exit criterion**: package graph matches the target diagram.
-`BaseChatCore` no longer exists in `Package.swift`.
+`ManifoldCore` no longer exists in `Package.swift`.
 
 ## Acceptance criteria
 
@@ -522,7 +522,7 @@ Before tagging 1.0:
 
 - Demo app passes its smoke coverage.
 - ChatbotUI-iOS builds against the new graph without local patching.
-- Fireside replaces its custom bootstrap with `BaseChatRuntime` +
+- Fireside replaces its custom bootstrap with `ManifoldRuntime` +
   custom `MessageStore` / `SessionStore` impls.
 - `PromptContextProvider` port shape is locked at the end of Phase
   1.2 and treated as a stable contract for the remainder of the pre-1.0
@@ -546,9 +546,9 @@ Before tagging 1.0:
 
 ## Hard no-gos
 
-- No `SwiftData` or `ModelContext` in `BaseChatRuntime`.
-- No SwiftUI or `@Observable` in `BaseChatRuntime`.
-- No `URLSession` or Keychain in `BaseChatRuntime` (live in Inference
+- No `SwiftData` or `ModelContext` in `ManifoldRuntime`.
+- No SwiftUI or `@Observable` in `ManifoldRuntime`.
+- No `URLSession` or Keychain in `ManifoldRuntime` (live in Inference
   or backend adapters where they already are).
 - No public runtime APIs exposing raw secret material.
 - No closure-bag wiring across the runtime/UI boundary. Events out,
@@ -591,9 +591,9 @@ BCK changes:
 - `MessageStorePostWriteHook` protocol introduced as a low-level
   primitive.
 - `PromptContextProvider` introduced as a new public port in
-  `BaseChatInference`; `PromptContextPipeline` passive-merge use case
-  introduced over `[PromptSlot]` in `BaseChatCore` (will move to
-  `BaseChatRuntime` in Phase 2). **No competing `ContextContribution`
+  `ManifoldInference`; `PromptContextPipeline` passive-merge use case
+  introduced over `[PromptSlot]` in `ManifoldCore` (will move to
+  `ManifoldRuntime` in Phase 2). **No competing `ContextContribution`
   aggregate ships from BCK** — Fireside's existing aggregate in
   `FiresideMemory` remains the source of truth on the consumer side.
 - `ConversationRuntime` ships as the **optional reference** use case,
@@ -632,19 +632,19 @@ than the earlier draft of this plan implied.
 ### Phase 2 — physical target split
 
 BCK changes:
-- `BaseChatCore` deleted.
-- `BaseChatRuntime` and `BaseChatPersistenceSwiftData` targets created.
-- `BaseChatBootstrap` (renamed) provides the host bootstrap.
+- `ManifoldCore` deleted.
+- `ManifoldRuntime` and `ManifoldPersistenceSwiftData` targets created.
+- `ManifoldBootstrap` (renamed) provides the host bootstrap.
 
 Fireside changes (same window):
 - Import rewrites:
-  - `import BaseChatCore` → `import BaseChatRuntime` for orchestration
+  - `import ManifoldCore` → `import ManifoldRuntime` for orchestration
     types and ports.
-  - `import BaseChatCore` → `import BaseChatPersistenceSwiftData` only
+  - `import ManifoldCore` → `import ManifoldPersistenceSwiftData` only
     if Fireside still uses the SwiftData persistence impl. If Fireside
     has fully replaced persistence with custom stores, the dependency
-    on `BaseChatPersistenceSwiftData` can be dropped entirely.
-- Replace Fireside's custom bootstrap with `BaseChatBootstrap` configured
+    on `ManifoldPersistenceSwiftData` can be dropped entirely.
+- Replace Fireside's custom bootstrap with `ManifoldBootstrap` configured
   with custom `MessageStore` / `SessionStore` instances.
 - Drop any inherited `@Model` type imports — they are no longer
   reachable through the public surface.
@@ -679,12 +679,12 @@ Pre-1.0 is the only window where this refactor is cheap. After 1.0:
 
 - `ChatPersistenceProvider`'s split into per-port protocols is locked.
 - `ModelManagementViewModel.modelContext` public surface is locked.
-- `BaseChatCore` as a target is locked.
+- `ManifoldCore` as a target is locked.
 - Each future host integration calcifies the current shape.
 
 The codebase has evolved over 500 PRs and the shape has been trending
 toward this design through repeated decompositions (`InferenceService`
-split, `ChatViewModel` extractions, `BaseChatUIModelManagement` peel,
+split, `ChatViewModel` extractions, `ManifoldUIModelManagement` peel,
 storage-neutral records hoisted into Inference, `ChatPersistenceProvider`
 port, the Phase 1.0/1.1 work above). This refactor is the formalisation
 and completion of work already underway.

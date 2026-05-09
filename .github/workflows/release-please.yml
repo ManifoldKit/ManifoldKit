@@ -11,6 +11,12 @@ permissions:
 
 jobs:
   release-please:
+    # Skip release-please during the BaseChatKit → ManifoldKit GitHub-repo rename window.
+    # Without this guard, merging the rename PR fires release-please against the
+    # not-yet-renamed repo and `feat!:` would otherwise bump us to 1.0.0. The lead
+    # reverts this guard in a small follow-up PR after the GitHub repo is renamed,
+    # so release-please then opens the v0.20.0 PR against the renamed repo.
+    if: ${{ !contains(github.event.head_commit.message, 'rename BaseChatKit') }}
     runs-on: ubuntu-latest
     # Cancelling in-progress runs is safe here — only the latest matters.
     concurrency:

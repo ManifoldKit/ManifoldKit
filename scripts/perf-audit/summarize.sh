@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/perf-audit/summarize.sh — Aggregate BaseChatFuzz RunRecord JSON
+# scripts/perf-audit/summarize.sh — Aggregate ManifoldFuzz RunRecord JSON
 # files into a Markdown report. Reads from the default fuzz output dir
 # (`tmp/fuzz/`) and produces one section per detector/scenario id.
 #
