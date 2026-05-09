@@ -34,7 +34,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["age": intProp()])
         let args: JSONSchemaValue = .object(["age": .string("42")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["age": .number(42)]))
     }
@@ -43,7 +43,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["pi": numProp()])
         let args: JSONSchemaValue = .object(["pi": .string("3.14")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["pi": .number(3.14)]))
     }
@@ -55,7 +55,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "y": .string("-7")
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
             "x": .number(-2500),
@@ -67,7 +67,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["age": intProp()])
         let args: JSONSchemaValue = .object(["age": .string("not-a-number")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["age": .string("not-a-number")]))
     }
@@ -81,7 +81,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["age": intProp()])
         let args: JSONSchemaValue = .object(["age": .string("3.14")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["age": .string("3.14")]))
     }
@@ -92,7 +92,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["pi": numProp()])
         let args: JSONSchemaValue = .object(["pi": .string("3.14")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["pi": .number(3.14)]))
     }
@@ -106,7 +106,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "b": .string("false")
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
             "a": .bool(true),
@@ -122,7 +122,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "c": .string("False")
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
             "a": .bool(true),
@@ -138,7 +138,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "other": .string("abc")
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
             "flag": .string("yes"),
@@ -156,7 +156,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "pi": .number(3.14)
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, args)
     }
@@ -165,7 +165,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["name": stringProp()])
         let args: JSONSchemaValue = .object(["name": .string("42")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object(["name": .string("42")]))
     }
@@ -174,7 +174,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s: JSONSchemaValue = .object(["type": .string("object")])
         let args: JSONSchemaValue = .object(["age": .string("42")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, args)
     }
@@ -183,7 +183,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s: JSONSchemaValue = .object([:])
         let args: JSONSchemaValue = .object(["age": .string("42")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, args)
     }
@@ -195,7 +195,7 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "extra": .string("hello")
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
             "age": .number(42),
@@ -207,17 +207,17 @@ final class ToolArgumentCoercerTests: XCTestCase {
         let s = schema(["age": intProp()])
         let args: JSONSchemaValue = .array([.string("42")])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try! ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, args)
     }
 
-    // MARK: - top-level only
+    // MARK: - nested recursion (I3)
 
-    func test_doesNotRecurseIntoNestedObjects() {
-        // `nested.age` is a string and the nested object's schema says
-        // integer, but coercion is top-level only — nested values pass
-        // through unchanged. This matches Goose's scope.
+    /// As of I3, the coercer recurses into nested object properties so
+    /// small open-weight models that mistype nested fields (more common
+    /// than mistyping top-level fields) don't fail the validator.
+    func test_recursesIntoNestedObjects() throws {
         let nestedSchema: JSONSchemaValue = .object([
             "type": .string("object"),
             "properties": .object(["age": intProp()])
@@ -227,10 +227,10 @@ final class ToolArgumentCoercerTests: XCTestCase {
             "nested": .object(["age": .string("42")])
         ])
 
-        let result = ToolArgumentCoercer.coerce(args, against: s)
+        let result = try ToolArgumentCoercer.coerce(args, against: s)
 
         XCTAssertEqual(result, .object([
-            "nested": .object(["age": .string("42")])
+            "nested": .object(["age": .number(42)])
         ]))
     }
 
