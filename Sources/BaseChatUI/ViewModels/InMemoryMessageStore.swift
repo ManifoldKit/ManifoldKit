@@ -1,5 +1,6 @@
 import Foundation
 import BaseChatInference
+import BaseChatRuntime
 
 /// Process-local message store used as the default backing for
 /// ``ChatViewModel/conversationRuntime`` when the host did not pass a runtime

@@ -4,9 +4,9 @@
 
 | Target | Role | ML deps |
 |--------|------|---------|
-| `BaseChatInference` | Inference orchestration — protocols, models, services (no persistence) | None |
+| `BaseChatInference` | Inference orchestration — backend protocols, generation events, prompt assembly, conversation records (no persistence ports) | None |
 | `BaseChatMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
-| `BaseChatRuntime` | Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), and session-list orchestration | None |
+| `BaseChatRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |
 | `BaseChatPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `BaseChatBootstrap` | None |
 | `BaseChatBackends` | MLX, llama.cpp, Foundation, cloud backends (depends on `BaseChatInference`) | MLX, LlamaSwift |
 | `BaseChatUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here) | None |

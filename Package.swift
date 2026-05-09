@@ -102,7 +102,15 @@ let package = Package(
                 .define("Macros", .when(traits: ["Macros"])),
             ]
         ),
-        // Inference: models, protocols, services — no SwiftData, no heavy ML deps.
+        // Inference: models, protocols, services — no SwiftData, no heavy ML
+        // deps, no persistence ports. The persistence-port protocols
+        // (MessageStore, SessionStore, ChatPersistenceError, MessageSearchHit,
+        // and the post-write hooks) live in BaseChatRuntime alongside the
+        // ConversationRuntime use case that consumes them. The records they
+        // traffic in (ChatMessageRecord, ChatSessionRecord, MessagePart,
+        // MessageRole) stay here because inference services (PromptAssembler,
+        // ContextWindowManager, TranscriptHealer) also consume them and the
+        // dep DAG points BaseChatRuntime → BaseChatInference, not the other way.
         // Hosts the @ToolSchema attribute declaration so callers get the macro
         // for free wherever JSONSchemaValue is in scope. The macro plugin and
         // its swift-syntax dependency are trait-gated (`Macros`, off by
@@ -133,9 +141,13 @@ let package = Package(
                 .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
             ]
         ),
-        // Runtime: ports (EndpointStore, SamplerPresetStore, BenchmarkCache),
-        // use cases (PromptContextPipeline, ChatExportService, SessionListService),
-        // and session-list orchestration. No SwiftData, no SwiftUI, no Observation.
+        // Runtime: ports (MessageStore, SessionStore, EndpointStore,
+        // SamplerPresetStore, BenchmarkCache), use cases (PromptContextPipeline,
+        // ChatExportService, SessionListService, ConversationRuntime), and
+        // session-list orchestration. No SwiftData, no SwiftUI, no Observation.
+        // MessageStore and SessionStore moved here from BaseChatInference in
+        // initiative I4 so persistence ports live alongside the use cases that
+        // consume them.
         .target(
             name: "BaseChatRuntime",
             dependencies: [
