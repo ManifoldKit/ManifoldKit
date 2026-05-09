@@ -1,6 +1,5 @@
 #if HuggingFace
 import ManifoldInference
-import CryptoKit
 import Foundation
 import os
 
@@ -90,12 +89,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         let expectedChecksum: ModelFileChecksum?
     }
 
-    private struct SnapshotFileMetadata: Codable, Sendable {
-        let relativePath: String
-        let sizeBytes: UInt64
-        let expectedChecksum: ModelFileChecksum?
-    }
-
     private struct SnapshotProgress: Sendable {
         var bytesDownloaded: Int64
         var expectedBytes: Int64
@@ -161,75 +154,16 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         return session
     }
 
-    // MARK: - File-based Persistence
+    // MARK: - Persistence / Cleanup Collaborators
 
-    /// Directory where the pending-downloads JSON and per-download resume-data files live.
-    ///
-    /// Defaults to `Caches/<bundleID>.downloads` so the OS can reclaim space under
-    /// pressure — a missing resume file causes a fresh download, not a crash.
-    /// Tests inject a per-test temporary directory to prevent parallel suites from
-    /// sharing the same JSON file.
     @ObservationIgnored
-    private let persistenceDirectory: URL
+    private let pendingStore: PendingDownloadStore
 
-    /// Directory scanned by ``cleanupStaleTempFiles()`` for orphaned temp files.
-    ///
-    /// Defaults to `FileManager.default.temporaryDirectory`. Tests inject a unique
-    /// subdirectory so parallel cleanup calls from different manager instances cannot
-    /// race on each other's files.
     @ObservationIgnored
     private let tempScanDirectory: URL
 
-    /// `UserDefaults` instance used for the one-time legacy migration.
-    ///
-    /// Defaults to `.standard` so production behaviour is unchanged. Tests inject a
-    /// unique-per-instance suite (`UserDefaults(suiteName:)`) so that two managers
-    /// running in `swift test --parallel` cannot race on the same key — the legacy
-    /// pending-downloads key is a single global string that previously caused a
-    /// flake in `test_migrateFromUserDefaults_keepsUserDefaultsKeyOnWriteFailure`
-    /// when one suite's `set` interleaved with another's `removeObject`.
-    @ObservationIgnored
-    private let userDefaults: UserDefaults
-
-    /// URL of the single JSON file that stores all pending-download metadata.
-    private var pendingMetadataFileURL: URL {
-        persistenceDirectory.appendingPathComponent("pending-downloads.json")
-    }
-
-    /// URL of the resume-data binary file for a given download ID.
-    private func resumeDataFileURL(for id: String) -> URL {
-        // URL-encode the ID so that slash-separated repo paths (e.g. "user/repo/file.gguf")
-        // don't create subdirectories inside the persistence directory.
-        let safeID = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id
-        return persistenceDirectory.appendingPathComponent("resume-\(safeID).bin")
-    }
-
-    /// Ensures the persistence directory exists, creating it if necessary.
-    private func ensurePersistenceDirectory() throws {
-        try FileManager.default.createDirectory(
-            at: persistenceDirectory,
-            withIntermediateDirectories: true
-        )
-    }
-
     // MARK: - Init
 
-    /// Creates a new download manager.
-    ///
-    /// - Parameters:
-    ///   - storageService: Provides the models directory path. Defaults to a standard service.
-    ///   - sessionIdentifier: Background `URLSession` identifier. Defaults to the framework's
-    ///     canonical identifier derived from `ManifoldConfiguration`. Pass a unique value in
-    ///     tests to prevent OS-level session collisions between manager instances — reusing the
-    ///     same identifier while a previous instance is still being torn down causes the OS to
-    ///     deliver callbacks to a deallocated delegate, resulting in a double-free crash.
-    ///   - persistenceDirectory: Directory for the pending-downloads JSON and resume-data
-    ///     binary files. Tests inject a per-instance temporary directory.
-    ///   - tempScanDirectory: Directory scanned by the launch-time stale-temp sweep. Tests
-    ///     inject a per-instance temporary directory.
-    ///   - userDefaults: `UserDefaults` instance used for the one-time legacy migration.
-    ///     Defaults to `.standard`. Tests inject a per-instance suite so that parallel test
-    ///     runs cannot race on the shared `pendingDownloadsKey`.
     public init(
         storageService: ModelStorageService = ModelStorageService(),
         sessionIdentifier: String? = nil,
@@ -241,13 +175,16 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         self._sessionIdentifier = sessionIdentifier ?? Self.sessionIdentifier
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        self.persistenceDirectory = persistenceDirectory
+        let resolvedPersistenceDirectory = persistenceDirectory
             ?? caches.appendingPathComponent(
                 "\(ManifoldConfiguration.shared.bundleIdentifier).downloads",
                 isDirectory: true
             )
+        self.pendingStore = PendingDownloadStore(
+            persistenceDirectory: resolvedPersistenceDirectory,
+            userDefaults: userDefaults
+        )
         self.tempScanDirectory = tempScanDirectory ?? FileManager.default.temporaryDirectory
-        self.userDefaults = userDefaults
         super.init()
     }
 
@@ -283,7 +220,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // path-traversal writes, but validating the filename at the boundary
         // catches malformed input before any disk operation runs.
         if model.packageKind == .diffusion {
-            try validatePackageName(model.fileName)
+            try DiffusionPackageValidator.validatePackageName(model.fileName)
         } else {
             try DownloadableModel.validate(fileName: model.fileName)
         }
@@ -344,7 +281,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         let packageKind = info["packageKind"].flatMap(ModelPackageKind.init(rawValue:))
         do {
             if packageKind == .diffusion {
-                try validatePackageName(fileName)
+                try DiffusionPackageValidator.validatePackageName(fileName)
             } else {
                 try DownloadableModel.validate(fileName: fileName)
             }
@@ -815,7 +752,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
         try FileManager.default.moveItem(at: tempURL, to: resolvedDestination)
         if activeDownloads[modelID]?.model.packageKind == .diffusion {
-            try validateDiffusionComponent(at: resolvedDestination, relativePath: relativePath)
+            try DiffusionPackageValidator.validateComponent(at: resolvedDestination, relativePath: relativePath)
         } else {
             try DownloadFileValidator().validateChecksum(
                 at: resolvedDestination,
@@ -844,7 +781,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         let packageModel = activeDownloads[modelID]?.model
         if packageModel?.packageKind == .diffusion {
-            try validateDiffusionPackage(at: snapshot.stagingDirectory, files: Array(snapshot.files.keys))
+            try DiffusionPackageValidator.validatePackage(at: snapshot.stagingDirectory, files: Array(snapshot.files.keys))
         } else {
             try validateDownloadedFile(at: snapshot.stagingDirectory, modelType: .mlx)
         }
@@ -863,94 +800,12 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             try FileManager.default.removeItem(at: finalURL)
         }
         if packageModel?.packageKind == .diffusion, let packageModel {
-            try writePackageManifest(for: packageModel, files: Array(snapshot.files.keys), in: snapshot.stagingDirectory)
+            try DiffusionPackageValidator.writePackageManifest(for: packageModel, files: Array(snapshot.files.keys), in: snapshot.stagingDirectory)
         }
         try FileManager.default.moveItem(at: snapshot.stagingDirectory, to: finalURL)
         activeDownloads[modelID]?.markCompleted(localURL: finalURL)
         removePendingDownload(id: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
-    }
-
-    private func validatePackageName(_ packageName: String) throws {
-        guard !packageName.isEmpty,
-              packageName.count < 255,
-              !packageName.contains("/"),
-              !packageName.contains("\\"),
-              packageName != ".",
-              packageName != "..",
-              !packageName.hasPrefix(".") else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Invalid package directory name: \(packageName)")
-        }
-        guard packageName.unicodeScalars.allSatisfy({ scalar in
-            let v = scalar.value
-            return v >= 0x20 && v != 0x7F && !(0x80...0x9F).contains(v)
-        }) else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Package directory name contains control characters")
-        }
-    }
-
-    private func validateDiffusionComponent(at url: URL, relativePath: String) throws {
-        guard let role = diffusionRole(for: relativePath) else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Unsupported diffusion package component: \(relativePath)")
-        }
-        try DownloadFileValidator.validate(url, diffusionRole: role)
-    }
-
-    private func validateDiffusionPackage(at directory: URL, files: [String]) throws {
-        let fileSet = Set(files)
-        for required in [
-            "model_index.json",
-            "vae/config.json",
-            "vae/diffusion_pytorch_model.safetensors",
-        ] where !fileSet.contains(required) {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Diffusion package is missing required component: \(required)")
-        }
-        let hasDenoiser = fileSet.contains("unet/diffusion_pytorch_model.safetensors")
-            || fileSet.contains("transformer/diffusion_pytorch_model.safetensors")
-            || fileSet.contains("transformer/model.safetensors")
-        guard hasDenoiser else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Diffusion package is missing transformer/UNet weights")
-        }
-        for relativePath in files {
-            try validateDiffusionComponent(at: directory.appendingPathComponent(relativePath), relativePath: relativePath)
-        }
-    }
-
-    private func diffusionRole(for relativePath: String) -> DownloadFileValidator.DiffusionFileRole? {
-        switch relativePath {
-        case "model_index.json":
-            return .manifest
-        case let path where path.hasSuffix("/config.json") || path.hasSuffix("/scheduler_config.json"):
-            return .submoduleConfig
-        case let path where path.hasSuffix(".safetensors"):
-            return .weights
-        case let path where path.hasSuffix("/vocab.json"):
-            return .tokenizerVocab
-        case let path where path.hasSuffix("/merges.txt"):
-            return .tokenizerMerges
-        default:
-            return nil
-        }
-    }
-
-    private func writePackageManifest(
-        for model: DownloadableModel,
-        files: [String],
-        in directory: URL
-    ) throws {
-        let manifest = DownloadedModelPackageManifest(
-            packageKind: .diffusion,
-            id: model.repoID,
-            displayName: model.displayName,
-            format: .mlxDiffusion,
-            huggingFaceRepoID: model.repoID,
-            files: files.sorted()
-        )
-        let data = try JSONEncoder().encode(manifest)
-        try data.write(
-            to: directory.appendingPathComponent(DownloadedModelPackageManifest.fileName),
-            options: .atomic
-        )
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
@@ -986,299 +841,6 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
     }
 
-    // MARK: - Persistence (Resume Data)
-
-    /// URL of the HMAC tag file paired with a resume-data blob.
-    ///
-    /// The tag is stored next to the blob (rather than inside it) so the
-    /// existing `URLSession.downloadTask(withResumeData:)` API receives the
-    /// untouched bytes — the system rejects a tampered or wrapped resume
-    /// blob outright.
-    private func resumeDataTagURL(for id: String) -> URL {
-        resumeDataFileURL(for: id).appendingPathExtension("tag")
-    }
-
-    /// Persists resume data to a binary file in the caches directory so it survives app restarts.
-    ///
-    /// Large partial-download blobs are kept out of UserDefaults to avoid bloating
-    /// the app's plist and delaying app launch.
-    ///
-    /// ## Integrity
-    ///
-    /// The blob is paired with an HMAC-SHA256 tag so a later read can detect
-    /// tampering. The HMAC key lives in the Keychain under account
-    /// `BackgroundDownloadManager.resumeHMACKeychainAccount` and is generated
-    /// per install on first use. A flipped byte in the blob (or a missing
-    /// tag) causes ``consumeResumeData(for:)`` to fail closed and fall back
-    /// to a fresh download — the alternative would be feeding corrupted
-    /// resume bytes into `URLSession.downloadTask(withResumeData:)`, which
-    /// has historically been a source of crashes on certain `.cfd` shapes.
-    ///
-    /// Called by the delegate when a non-cancelled single-file download fails.
-    internal func persistResumeData(_ data: Data, for id: String) {
-        do {
-            try ensurePersistenceDirectory()
-            try data.write(to: resumeDataFileURL(for: id), options: .atomic)
-            // HMAC-tag failures are non-fatal — log and remove a stale tag
-            // (so a subsequent read fails closed rather than verifying against
-            // an old tag for a previous blob).
-            do {
-                let tag = try Self.computeResumeHMACTag(for: data)
-                try tag.write(to: resumeDataTagURL(for: id), options: .atomic)
-                Log.download.info("Persisted \(data.count) bytes of resume data for \(id) (HMAC \(tag.count)-byte tag)")
-            } catch {
-                Log.download.error("Failed to write resume HMAC tag for \(id): \(error.localizedDescription)")
-                // Remove any stale tag so subsequent reads fail closed.
-                do {
-                    try FileManager.default.removeItem(at: resumeDataTagURL(for: id))
-                } catch CocoaError.fileNoSuchFile {
-                    // No prior tag — nothing to remove.
-                } catch {
-                    Log.download.warning("Failed to remove stale resume HMAC tag for \(id): \(error.localizedDescription)")
-                }
-            }
-        } catch {
-            Log.download.error("Failed to persist resume data for \(id): \(error.localizedDescription)")
-        }
-    }
-
-    /// Reads and removes the resume-data file (one-shot consumption).
-    ///
-    /// Verifies the paired HMAC tag before returning. On mismatch, missing
-    /// tag, or any other read error, the blob and its tag are deleted and
-    /// `nil` is returned — the caller falls back to a fresh download. This
-    /// fail-closed behaviour matches the brief's threat model: a tampered
-    /// resume blob shouldn't crash `URLSession.downloadTask(withResumeData:)`.
-    ///
-    /// Removing immediately prevents stale data from being used on a subsequent failure.
-    @MainActor internal func consumeResumeData(for id: String) -> Data? {
-        let dataURL = resumeDataFileURL(for: id)
-        let tagURL = resumeDataTagURL(for: id)
-
-        let data: Data
-        do {
-            data = try Data(contentsOf: dataURL)
-        } catch CocoaError.fileNoSuchFile, CocoaError.fileReadNoSuchFile {
-            // No persisted blob — normal case for a first attempt.
-            return nil
-        } catch {
-            Log.download.warning("Failed to read resume data for \(id): \(error.localizedDescription); falling back to fresh download")
-            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
-            return nil
-        }
-
-        let tag: Data
-        do {
-            tag = try Data(contentsOf: tagURL)
-        } catch {
-            Log.download.warning("Resume data for \(id) is missing its HMAC tag; rejecting and falling back to fresh download")
-            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
-            return nil
-        }
-
-        let expected: Data
-        do {
-            expected = try Self.computeResumeHMACTag(for: data)
-        } catch {
-            Log.download.error("Failed to compute resume HMAC for \(id): \(error.localizedDescription); rejecting and falling back to fresh download")
-            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
-            return nil
-        }
-
-        // Constant-time compare on the tag bytes.
-        guard Self.constantTimeEqual(expected, tag) else {
-            Log.network.error("Resume data HMAC mismatch for \(id) — rejecting blob and falling back to fresh download")
-            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
-            return nil
-        }
-
-        removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
-        return data
-    }
-
-    /// Removes the resume blob and its tag file. Errors are logged but do
-    /// not propagate — the calling path is already in fall-back mode.
-    private func removeResumeDataFiles(dataURL: URL, tagURL: URL) {
-        for url in [dataURL, tagURL] {
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch CocoaError.fileNoSuchFile {
-                continue
-            } catch {
-                Log.download.warning("Failed to remove resume artefact at \(url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-    }
-
-    // MARK: - HMAC Resume Integrity
-
-    /// Keychain account that stores the per-install HMAC key for resume blobs.
-    ///
-    /// Exposed `internal` so tests can clear / inject a deterministic key.
-    internal static let resumeHMACKeychainAccount: String = "com.basechat.resumedata.hmac"
-
-    /// Lock guarding the per-process key cache. The key is generated lazily on
-    /// first use and then cached so subsequent reads/writes don't pay a
-    /// Keychain round-trip per blob.
-    private static let resumeHMACLock = NSLock()
-    private nonisolated(unsafe) static var _cachedResumeHMACKey: SymmetricKey?
-
-    /// Computes the HMAC-SHA256 tag for `data` using the installed key.
-    /// Generates and persists the key on first use.
-    static func computeResumeHMACTag(for data: Data) throws -> Data {
-        let key = try resumeHMACKey()
-        let mac = HMAC<SHA256>.authenticationCode(for: data, using: key)
-        return Data(mac)
-    }
-
-    /// Returns the per-install HMAC key, fetching it from the Keychain or
-    /// generating + storing it on first use.
-    ///
-    /// In sandboxed CI runners where the Keychain is not available the
-    /// generate-and-store path throws `KeychainError`. We then fall back to
-    /// a process-local random key so tests can still exercise the
-    /// roundtrip — the consequence is the tag is only valid within the
-    /// current process, which is fine for an opportunistic integrity check.
-    /// Production binaries running under the real Keychain always succeed
-    /// on first call and cache the result.
-    private static func resumeHMACKey() throws -> SymmetricKey {
-        resumeHMACLock.lock()
-        if let cached = _cachedResumeHMACKey {
-            resumeHMACLock.unlock()
-            return cached
-        }
-        resumeHMACLock.unlock()
-
-        // Try to read first.
-        if let stored = KeychainService.retrieve(account: resumeHMACKeychainAccount),
-           let bytes = Data(base64Encoded: stored), bytes.count >= 32 {
-            let key = SymmetricKey(data: bytes)
-            resumeHMACLock.lock()
-            _cachedResumeHMACKey = key
-            resumeHMACLock.unlock()
-            return key
-        }
-
-        // Generate a fresh key and store it. If the Keychain rejects the
-        // store (sandbox / missing entitlement), keep the fresh key
-        // process-local — better than throwing and dropping integrity checks
-        // entirely.
-        let fresh = SymmetricKey(size: .bits256)
-        let encoded = fresh.withUnsafeBytes { Data($0) }.base64EncodedString()
-        do {
-            try KeychainService.store(key: encoded, account: resumeHMACKeychainAccount)
-        } catch {
-            Log.security.warning(
-                "BackgroundDownloadManager: Keychain write for resume HMAC key failed (\(error.localizedDescription, privacy: .public)); using process-local key"
-            )
-        }
-        resumeHMACLock.lock()
-        _cachedResumeHMACKey = fresh
-        resumeHMACLock.unlock()
-        return fresh
-    }
-
-    /// Constant-time `Data` equality. Required for HMAC comparisons so the
-    /// timing of a mismatch doesn't leak prefix-correctness information.
-    static func constantTimeEqual(_ lhs: Data, _ rhs: Data) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        var diff: UInt8 = 0
-        for i in 0..<lhs.count {
-            diff |= lhs[lhs.startIndex.advanced(by: i)] ^ rhs[rhs.startIndex.advanced(by: i)]
-        }
-        return diff == 0
-    }
-
-    /// Test-only: clears the cached HMAC key so the next read pulls fresh
-    /// from the Keychain. Use after rotating a Keychain mock between tests.
-    internal static func _resetResumeHMACKeyCacheForTesting() {
-        resumeHMACLock.lock()
-        _cachedResumeHMACKey = nil
-        resumeHMACLock.unlock()
-    }
-
-    // MARK: - Persistence (Pending Downloads)
-
-    /// Loads the pending-downloads JSON from disk, returning nil if the file is absent or unreadable.
-    private func loadPendingMetadata() -> [String: [String: String]]? {
-        guard let data = try? Data(contentsOf: pendingMetadataFileURL) else { return nil }
-        return try? JSONDecoder().decode([String: [String: String]].self, from: data)
-    }
-
-    /// Writes the pending-downloads dictionary atomically (write to temp file, then atomic swap).
-    ///
-    /// Uses `replaceItemAt(_:withItemAt:backupItemName:options:)` which does the swap in a single
-    /// kernel operation — there is never a moment where the destination file is absent.
-    private func writePendingMetadata(_ pending: [String: [String: String]]) throws {
-        try ensurePersistenceDirectory()
-        let data = try JSONEncoder().encode(pending)
-        let tempURL = pendingMetadataFileURL.deletingLastPathComponent()
-            .appendingPathComponent("pending-downloads-\(UUID().uuidString).tmp")
-        try data.write(to: tempURL, options: .atomic)
-        if FileManager.default.fileExists(atPath: pendingMetadataFileURL.path) {
-            // replaceItemAt atomically swaps tempURL into the destination, removing tempURL.
-            // The returned URL is the final destination (always pendingMetadataFileURL here);
-            // we discard it because we already know the path.
-            _ = try FileManager.default.replaceItemAt(
-                pendingMetadataFileURL,
-                withItemAt: tempURL,
-                backupItemName: nil,
-                options: []
-            )
-        } else {
-            // Destination doesn't exist yet; a plain move is sufficient.
-            try FileManager.default.moveItem(at: tempURL, to: pendingMetadataFileURL)
-        }
-    }
-
-    private func savePendingDownload(
-        model: DownloadableModel,
-        snapshotFiles: [SnapshotFileMetadata] = [],
-        stagingDirectoryName: String? = nil
-    ) throws {
-        var pending = loadPendingMetadata() ?? [:]
-        var entry = [
-            "repoID": model.repoID,
-            "fileName": model.fileName,
-            "displayName": model.displayName,
-            "modelType": model.modelType == .gguf ? "gguf" : "mlx",
-            "sizeBytes": String(model.sizeBytes),
-        ]
-        if let packageKind = model.packageKind {
-            entry["packageKind"] = packageKind.rawValue
-        }
-        if !snapshotFiles.isEmpty {
-            let data = try JSONEncoder().encode(snapshotFiles)
-            guard let json = String(data: data, encoding: .utf8) else {
-                throw HuggingFaceError.invalidDownloadedFile(reason: "Failed to encode pending snapshot metadata")
-            }
-            entry["snapshotFiles"] = json
-        }
-        if let stagingDirectoryName {
-            entry["stagingDirectoryName"] = stagingDirectoryName
-        }
-        pending[model.id] = entry
-        try writePendingMetadata(pending)
-    }
-
-    // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
-    internal func removePendingDownload(id: String) {
-        var pending = loadPendingMetadata() ?? [:]
-        pending.removeValue(forKey: id)
-        do {
-            try writePendingMetadata(pending)
-        } catch {
-            Log.download.error("Failed to remove pending download for \(id): \(error.localizedDescription)")
-        }
-        // Remove the resume-data file (and its HMAC tag) for this ID now that
-        // the download is done. A leftover tag is harmless on its own but
-        // prevents the orphan sweep from flagging the directory as clean.
-        removeResumeDataFiles(
-            dataURL: resumeDataFileURL(for: id),
-            tagURL: resumeDataTagURL(for: id)
-        )
-    }
-
     @MainActor private func restorePendingDownloads() {
         migrateFromUserDefaults()
 
@@ -1303,7 +865,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             // stale entry is also pruned from the pending-downloads JSON.
             do {
                 if info["packageKind"] == ModelPackageKind.diffusion.rawValue {
-                    try validatePackageName(fileName)
+                    try DiffusionPackageValidator.validatePackageName(fileName)
                 } else {
                     try DownloadableModel.validate(fileName: fileName)
                 }
@@ -1359,208 +921,79 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     /// Removes temp-download files left behind by a previous process that crashed
     /// or was force-killed between receiving the download and moving it into the
     /// models directory.
-    ///
-    /// ### What the sweep deletes
-    /// A file in `FileManager.default.temporaryDirectory` is removed iff **all** of:
-    /// 1. Filename starts with ``tempFilePrefix`` (`"manifoldkit-dl-"`).
-    /// 2. Extension equals ``tempFileExtension`` (`"download"`).
-    /// 3. It is a regular file (not a directory, symlink, or special file).
-    /// 4. Its modification date is older than ``staleTempFileAge`` (24 hours).
-    ///
-    /// ### What the sweep preserves
-    /// Any file missing even one of the four properties above. Notably:
-    /// - Temp files written by other subsystems (wrong prefix or extension).
-    /// - Files currently being processed by the delegate in this process
-    ///   (tracked in ``activeTempPaths`` — registered/unregistered around
-    ///   the temp→final move in `didFinishDownloadingTo`).
-    /// - Files newer than 24 hours — secondary guard for files handed off from
-    ///   the system's background transfer service before the delegate registers them.
-    /// - Files whose attributes cannot be read (logged and skipped).
-    ///
-    /// Runs on launch from ``reconnectBackgroundSession()``.
     @MainActor public func cleanupStaleTempFiles() {
         cleanupStaleTempFiles(now: Date(), excluding: activeTempPaths)
     }
 
     /// Time-injectable companion to ``cleanupStaleTempFiles()`` used by tests.
-    ///
-    /// Kept `internal` so the time-injection seam does not appear in the public
-    /// API surface of the framework. Production callers should use the no-arg
-    /// overload above.
-    ///
-    /// - Parameters:
-    ///   - now: The reference time for the age-threshold comparison.
-    ///   - excluded: Temp-file paths to skip regardless of age — typically the set
-    ///     of files currently being processed by the delegate in this process.
     @discardableResult
     internal func cleanupStaleTempFiles(
         now: Date,
         excluding excluded: Set<URL> = []
     ) -> (removed: Int, bytesReclaimed: Int64) {
-        let tempDir = tempScanDirectory
-        let contents: [URL]
-        do {
-            contents = try FileManager.default.contentsOfDirectory(
-                at: tempDir,
-                includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            )
-        } catch {
-            Log.download.warning("Temp-file sweep skipped: could not list \(tempDir.path): \(error.localizedDescription)")
-            return (0, 0)
-        }
-
-        let threshold = now.addingTimeInterval(-Self.staleTempFileAge)
-        var removed = 0
-        var bytesReclaimed: Int64 = 0
-        for fileURL in contents {
-            // Filename signature check — only files we could have written.
-            let name = fileURL.lastPathComponent
-            guard name.hasPrefix(Self.tempFilePrefix), fileURL.pathExtension == Self.tempFileExtension else {
-                continue
-            }
-            // Skip any path that is actively being processed by the delegate so the
-            // sweep never races with an in-flight move in the same process.
-            // Resolve symlinks before the set lookup — `contentsOfDirectory` resolves
-            // them (e.g. /var/folders → /private/var/folders on macOS) and the
-            // registered paths are stored resolved, so both sides must match.
-            guard !excluded.contains(fileURL.resolvingSymlinksInPath()) else { continue }
-            let resourceKeys: Set<URLResourceKey> = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
-            let values: URLResourceValues
-            do {
-                values = try fileURL.resourceValues(forKeys: resourceKeys)
-            } catch {
-                Log.download.warning("Temp-file sweep: failed to read attributes of \(name): \(error.localizedDescription)")
-                continue
-            }
-            guard values.isRegularFile == true,
-                  let modified = values.contentModificationDate else {
-                continue
-            }
-            guard modified < threshold else { continue }
-            let size = Int64(values.fileSize ?? 0)
-            do {
-                try FileManager.default.removeItem(at: fileURL)
-                removed += 1
-                bytesReclaimed += size
-            } catch {
-                Log.download.warning("Failed to remove stale temp file \(name): \(error.localizedDescription)")
-            }
-        }
-        // Always log the outcome — a silent zero-count result is indistinguishable
-        // from a sweep that never ran when a user reports "my download vanished".
-        // The log line gives that trail without leaking sensitive paths.
-        Log.download.info("Temp-file sweep: reclaimed \(removed) file(s), \(bytesReclaimed) byte(s)")
-        return (removed, bytesReclaimed)
+        DownloadHygieneJanitor(
+            tempScanDirectory: tempScanDirectory,
+            tempFilePrefix: Self.tempFilePrefix,
+            tempFileExtension: Self.tempFileExtension,
+            staleTempFileAge: Self.staleTempFileAge
+        ).cleanupStaleTempFiles(now: now, excluding: excluded)
     }
 
-    /// Deletes resume-data files for download IDs not present in the current pending-metadata
-    /// list. These orphans accumulate when a download crashes without the normal teardown path.
-    /// HMAC tag files (`resume-<id>.bin.tag`) are removed alongside the blob.
-    // internal (not private) so unit tests can call it directly with @testable import.
+    /// Deletes resume-data files for download IDs not present in the current pending-metadata list.
     internal func deleteOrphanedResumeDataFiles(knownIDs: Set<String>) {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: persistenceDirectory,
-            includingPropertiesForKeys: nil,
-            options: .skipsHiddenFiles
-        ) else { return }
-
-        // Pass 1: remove orphaned blobs and their tags atomically.
-        for fileURL in contents where fileURL.lastPathComponent.hasPrefix("resume-") && fileURL.pathExtension == "bin" {
-            let filename = fileURL.deletingPathExtension().lastPathComponent   // "resume-<encoded-id>"
-            let encodedID = String(filename.dropFirst("resume-".count))
-            let decodedID = encodedID.removingPercentEncoding ?? encodedID
-            if !knownIDs.contains(decodedID) {
-                do {
-                    try FileManager.default.removeItem(at: fileURL)
-                    Log.download.info("Removed orphaned resume-data file: \(fileURL.lastPathComponent)")
-                } catch {
-                    Log.download.error("Failed to remove orphaned resume-data file \(fileURL.lastPathComponent): \(error.localizedDescription)")
-                }
-                // Best-effort tag cleanup; the tag without a blob is unusable
-                // anyway, but leaving it would be misleading.
-                let tagURL = fileURL.appendingPathExtension("tag")
-                do {
-                    try FileManager.default.removeItem(at: tagURL)
-                } catch CocoaError.fileNoSuchFile {
-                    continue
-                } catch {
-                    Log.download.warning("Failed to remove orphaned resume tag file \(tagURL.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-        }
-        // Pass 2: remove tag files that have no matching `.bin` (e.g. a
-        // half-finished write where the blob was deleted but the tag survived).
-        for fileURL in contents where fileURL.lastPathComponent.hasPrefix("resume-") && fileURL.pathExtension == "tag" {
-            // Strip ".tag", check whether the corresponding ".bin" exists.
-            let blobURL = fileURL.deletingPathExtension()
-            if !FileManager.default.fileExists(atPath: blobURL.path) {
-                do {
-                    try FileManager.default.removeItem(at: fileURL)
-                    Log.download.info("Removed dangling resume HMAC tag: \(fileURL.lastPathComponent)")
-                } catch {
-                    Log.download.warning("Failed to remove dangling resume HMAC tag \(fileURL.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
-        }
+        DownloadHygieneJanitor.deleteOrphanedResumeDataFiles(
+            in: pendingStore.persistenceDirectory,
+            knownIDs: knownIDs
+        )
     }
 
-    // MARK: - One-time UserDefaults Migration
+    // MARK: - Persistence Facade
 
-    /// Migrates resume data and pending-download metadata from the legacy UserDefaults
-    /// storage to the new file-based persistence, then deletes the old keys.
-    ///
-    /// Runs once on first launch after the upgrade. Subsequent launches skip it because
-    /// the old keys are no longer present.
-    ///
-    /// UserDefaults keys are only removed after the corresponding file write succeeds, so
-    /// a failed write leaves the data intact for the next launch to retry.
-    // internal (not private) so unit tests can call it directly with @testable import.
+    private func loadPendingMetadata() -> [String: [String: String]]? {
+        pendingStore.loadPendingMetadata()
+    }
+
+    private func savePendingDownload(
+        model: DownloadableModel,
+        snapshotFiles: [SnapshotFileMetadata] = [],
+        stagingDirectoryName: String? = nil
+    ) throws {
+        try pendingStore.savePendingDownload(
+            model: model,
+            snapshotFiles: snapshotFiles,
+            stagingDirectoryName: stagingDirectoryName
+        )
+    }
+
+    internal func removePendingDownload(id: String) {
+        pendingStore.removePendingDownload(id: id)
+    }
+
+    internal func persistResumeData(_ data: Data, for id: String) {
+        pendingStore.persistResumeData(data, for: id)
+    }
+
+    @MainActor internal func consumeResumeData(for id: String) -> Data? {
+        pendingStore.consumeResumeData(for: id)
+    }
+
     internal func migrateFromUserDefaults() {
-        let defaults = self.userDefaults
-        let pendingKey = ManifoldConfiguration.shared.pendingDownloadsKey
-
-        // Migrate pending metadata — only when the new file doesn't already exist.
-        if !FileManager.default.fileExists(atPath: pendingMetadataFileURL.path),
-           let legacy = defaults.dictionary(forKey: pendingKey) as? [String: [String: String]],
-           !legacy.isEmpty {
-            do {
-                try writePendingMetadata(legacy)
-                // Only clear the key once the file write has confirmed success.
-                defaults.removeObject(forKey: pendingKey)
-                Log.download.info("Migrated \(legacy.count) pending-download(s) from UserDefaults to file")
-            } catch {
-                Log.download.error("Failed to migrate pending downloads from UserDefaults: \(error.localizedDescription)")
-                // Leave the UserDefaults key intact so the next launch can retry.
-            }
-        } else {
-            // No legacy data to migrate — remove the (now-empty or absent) key.
-            defaults.removeObject(forKey: pendingKey)
-        }
-
-        // Migrate any resume-data blobs stored under the legacy "resumeData.<id>" keys.
-        // Migrated blobs go through `persistResumeData` so the HMAC tag is
-        // generated alongside — without it the next read would fail closed.
-        let allKeys = defaults.dictionaryRepresentation().keys
-        for key in allKeys where key.hasPrefix("resumeData.") {
-            let id = String(key.dropFirst("resumeData.".count))
-            if let data = defaults.data(forKey: key) {
-                persistResumeData(data, for: id)
-                // Verify the migration produced a readable blob+tag pair before
-                // dropping the UserDefaults key; if persistResumeData logged an
-                // error, we leave the key intact for the next launch to retry.
-                if FileManager.default.fileExists(atPath: resumeDataFileURL(for: id).path),
-                   FileManager.default.fileExists(atPath: resumeDataTagURL(for: id).path) {
-                    defaults.removeObject(forKey: key)
-                    Log.download.info("Migrated resume data for \(id) from UserDefaults to file")
-                } else {
-                    Log.download.warning("Resume-data migration for \(id) did not produce a tagged pair; leaving UserDefaults key intact")
-                }
-            } else {
-                // No data blob — remove the dangling key.
-                defaults.removeObject(forKey: key)
-            }
-        }
+        pendingStore.migrateFromUserDefaults()
     }
+
+    internal static let resumeHMACKeychainAccount: String = PendingDownloadStore.resumeHMACKeychainAccount
+
+    static func computeResumeHMACTag(for data: Data) throws -> Data {
+        try PendingDownloadStore.computeResumeHMACTag(for: data)
+    }
+
+    static func constantTimeEqual(_ lhs: Data, _ rhs: Data) -> Bool {
+        PendingDownloadStore.constantTimeEqual(lhs, rhs)
+    }
+
+    internal static func _resetResumeHMACKeyCacheForTesting() {
+        PendingDownloadStore._resetResumeHMACKeyCacheForTesting()
+    }
+
 }
 #endif
