@@ -168,6 +168,15 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         fatalError("\(type(of: self)) must override `capabilities`")
     }
 
+    /// Optional ``ModelManifest`` describing the loaded model.
+    ///
+    /// Cloud subclasses derive this from a vendored prefix table
+    /// (``CloudModelManifestTable``); LAN subclasses populate it from a
+    /// runtime introspection probe (Ollama's `/api/show`). The base
+    /// implementation returns `nil` — backends that haven't adopted the
+    /// manifest source-of-truth pattern compile against this default.
+    open var manifest: ModelManifest? { nil }
+
     /// Builds the URLRequest for a generation call.
     ///
     /// Called by ``generate(prompt:systemPrompt:config:)`` after validating state.

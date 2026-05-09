@@ -1,4 +1,4 @@
-public struct ThinkingMarkers: Sendable, Equatable {
+public struct ThinkingMarkers: Sendable, Equatable, Codable {
     public let open: String
     public let close: String
 

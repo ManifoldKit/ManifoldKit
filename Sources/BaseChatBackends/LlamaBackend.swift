@@ -41,6 +41,15 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     private var _effectiveContextSize: Int32 = 4096
 
+    /// Manifest captured at the most recent successful load. Mirrors
+    /// ``_effectiveContextSize`` and ``_autoDetectedThinkingMarkers`` in a
+    /// single structured value so consumers (``ContextWindowManager``, the
+    /// conformance harness) can introspect the loaded model uniformly.
+    /// Guarded by `stateLock`.
+    private var _manifest: ModelManifest?
+
+    public var manifest: ModelManifest? { withStateLock { _manifest } }
+
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
@@ -246,6 +255,19 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             self.isModelLoaded = true
             self._effectiveContextSize = loadedResources.effectiveContextSize
             self._autoDetectedThinkingMarkers = loadedResources.autoDetectedThinkingMarkers
+            self._manifest = ModelManifest(
+                contextWindow: Int(loadedResources.effectiveContextSize),
+                supportsTools: true,
+                supportsThinking: loadedResources.autoDetectedThinkingMarkers != nil,
+                thinkingMarkers: loadedResources.autoDetectedThinkingMarkers,
+                supportsSeed: true,
+                supportedSamplingParameters: [
+                    .temperature, .topP, .topK, .repeatPenalty,
+                    .presencePenalty, .frequencyPenalty,
+                ],
+                modelIdentifier: url.lastPathComponent,
+                producerKind: .local
+            )
             return true
         }
 
@@ -547,6 +569,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         isGenerating = false
         sessionKVState = nil
         _autoDetectedThinkingMarkers = nil
+        _manifest = nil
         _mmprojURL = nil
         _structuredHistory = []
         stateLock.unlock()

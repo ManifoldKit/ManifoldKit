@@ -91,6 +91,20 @@ final class ClaudeBackendConformanceTests: XCTestCase {
         )
     }
 
+    /// `ClaudeBackend.capabilities.supportsThinking` is now derived from
+    /// ``ModelManifest`` via ``CloudModelManifestTable/claude(modelName:)``.
+    /// Default model `claude-sonnet-4-20250514` is a 4-class extended-thinking
+    /// model, so the backend declares the flag `true`. The behavioural
+    /// assertion that proves Claude actually emits `.thinkingToken` events
+    /// lives in `ClaudeThinkingErrorPathTests` / `CloudThinkingTokenTests`;
+    /// this claim records the meta-contract obligation.
+    func test_contract_supportsThinking_claim() {
+        BackendContractChecks.claimWithoutBehaviouralAssertion(
+            backendName: backendName,
+            flag: "supportsThinking"
+        )
+    }
+
     // MARK: - Meta-contract (MUST be last)
 
     func test_z_contract_metaContract() {
