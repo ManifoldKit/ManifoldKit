@@ -82,7 +82,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
     func test_anthropic_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "anthropic_tool_use.json")
 
-        let blocks = try XCTUnwrap(ClaudeBackend.parseWholeMessageToolUseBlocks(from: json))
+        let blocks = try XCTUnwrap(ClaudePayloadParser.parseWholeMessageToolUseBlocks(from: json))
 
         XCTAssertEqual(blocks.count, 1, "expected exactly one tool_use block in Anthropic fixture")
         let block = try XCTUnwrap(blocks.first)
@@ -136,7 +136,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
 
         // Anthropic
         let anthropicJson = try loadFixture(named: "anthropic_tool_use.json")
-        let anthropicBlocks = try XCTUnwrap(ClaudeBackend.parseWholeMessageToolUseBlocks(from: anthropicJson))
+        let anthropicBlocks = try XCTUnwrap(ClaudePayloadParser.parseWholeMessageToolUseBlocks(from: anthropicJson))
         let anthropicArgs = try parseArgs(try XCTUnwrap(anthropicBlocks.first).serializedInput)
 
         // Ollama

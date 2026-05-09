@@ -191,21 +191,21 @@ final class ClaudeStructuredReplayTests: XCTestCase {
 
     func test_parseSignatureDelta_extractsSignatureFromDelta() {
         let payload = #"{"type":"content_block_delta","delta":{"type":"signature_delta","signature":"sig_xyz"}}"#
-        XCTAssertEqual(ClaudeBackend.parseSignatureDelta(from: payload), "sig_xyz")
+        XCTAssertEqual(ClaudePayloadParser.parseSignatureDelta(from: payload), "sig_xyz")
 
         // Sabotage check: removing the type==signature_delta guard would
         // make this return non-nil for thinking_delta payloads.
         let thinkingPayload = #"{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"...","signature":"oops"}}"#
-        XCTAssertNil(ClaudeBackend.parseSignatureDelta(from: thinkingPayload),
+        XCTAssertNil(ClaudePayloadParser.parseSignatureDelta(from: thinkingPayload),
             "thinking_delta is not a signature_delta — must not match")
     }
 
     func test_parseThinkingBlockStartSignature_extractsFromStart() {
         let payload = #"{"type":"content_block_start","content_block":{"type":"thinking","signature":"sig_start"}}"#
-        XCTAssertEqual(ClaudeBackend.parseThinkingBlockStartSignature(from: payload), "sig_start")
+        XCTAssertEqual(ClaudePayloadParser.parseThinkingBlockStartSignature(from: payload), "sig_start")
 
         let textStart = #"{"type":"content_block_start","content_block":{"type":"text"}}"#
-        XCTAssertNil(ClaudeBackend.parseThinkingBlockStartSignature(from: textStart))
+        XCTAssertNil(ClaudePayloadParser.parseThinkingBlockStartSignature(from: textStart))
     }
 
     // MARK: - 6. End-to-end: signature flows from SSE → emit ordering

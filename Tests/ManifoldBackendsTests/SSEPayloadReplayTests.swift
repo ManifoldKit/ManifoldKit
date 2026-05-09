@@ -66,7 +66,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         let payloads = try await collectPayloads(from: sseText)
 
         // Extract tokens using the Claude payload handler
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
         XCTAssertEqual(tokens, ["Hello", " world"])
 
@@ -110,7 +110,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         let payloads = try await collectPayloads(from: sseText)
         XCTAssertEqual(payloads.count, 1)
 
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let error = handler.extractStreamError(from: payloads[0])
         XCTAssertNotNil(error)
 
@@ -138,7 +138,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
 
         // Accumulate usage across events the way the backend does
         var promptTokens: Int?
@@ -258,7 +258,7 @@ final class SSEPayloadReplayTests: XCTestCase {
 
         // Claude's extractToken should return nil for malformed/irrelevant JSON and
         // a valid token for the content_block_delta
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
         XCTAssertEqual(tokens, ["ok"])
 
@@ -286,7 +286,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
         XCTAssertEqual(tokens, ["A", "B", "C"])
     }
@@ -316,7 +316,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
 
         // Contract-pinning: today only the text_delta survives; the thinking_delta
@@ -358,7 +358,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
 
         // Every payload should return nil from extractToken — no token leakage.
         for payload in payloads {
@@ -396,7 +396,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
 
         // Today: citation delta drops cleanly, text_deltas flow through in order.
@@ -429,7 +429,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
 
         // No tokens produced from any of the three message_delta events.
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
@@ -481,7 +481,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
 
         // Two text_deltas survive, the tool_use input_json_delta is dropped.
@@ -502,7 +502,7 @@ final class SSEPayloadReplayTests: XCTestCase {
         """
 
         let payloads = try await collectPayloads(from: sseText)
-        let handler = ClaudeBackend.payloadHandler
+        let handler = ClaudePayloadHandler()
         let tokens = payloads.compactMap { handler.extractToken(from: $0) }
 
         XCTAssertEqual(tokens.count, 3)
