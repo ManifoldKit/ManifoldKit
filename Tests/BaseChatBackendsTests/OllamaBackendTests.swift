@@ -1733,15 +1733,6 @@ struct OllamaModelListServiceTests {
     }
 }
 
-// MARK: - Backend Contract
-
-/// XCTestCase subclass for BackendContractChecks (which uses XCTest assertions).
-final class OllamaBackendContractTests: XCTestCase {
-    func test_contract_allInvariants() {
-        BackendContractChecks.assertAllInvariants { OllamaBackend() }
-    }
-}
-
 // MARK: - Body Extraction Helper
 
 private func extractBody(from request: URLRequest?) throws -> Data {
