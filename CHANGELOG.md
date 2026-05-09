@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.20.0] — 2026-05-09
+
+### Highlights
+
+#### Renamed BaseChatKit → ManifoldKit
+
+The package, all 28 targets, all `BaseChat`-prefixed public types, the `bck-tools` CLI, and the GitHub repository have been renamed. The new name captures the architecture: one runtime surface over many backends.
+
+- Update SPM dependencies: `roryford/BaseChatKit` → `roryford/ManifoldKit` (GitHub redirects the old URL, but explicit is better)
+- Update imports: `import BaseChatKit` → `import ManifoldKit` (and `BaseChatInference` → `ManifoldInference`, etc. for sub-modules)
+- Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/V4/V5` → `ManifoldSchemaV3/V4/V5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`
+- The CLI binary `bck-tools` is now `manifold-tools`
+
+```swift
+// Before
+import BaseChatKit
+let bootstrap = try BaseChatBootstrap(...)
+
+// After
+import ManifoldKit
+let bootstrap = try ManifoldBootstrap(...)
+```
+
+Internal env vars also rename (`BASECHAT_FUZZ_*` / `BASECHAT_DISCOVER_LOCAL_MODELS` / `BASECHAT_DEMO_SANDBOX_ROOT` → `MANIFOLD_*`). CI and developer scripts pick up the new names automatically; no external consumers exist for these.
+
+#### BREAKING — local stores and cache directories reset
+
+- SwiftData stores under the old `BaseChatSchemaV*` namespace are orphaned (clean break, pre-1.0)
+- `~/Library/Caches/BaseChatKit/` and `~/Library/Application Support/BaseChatKit/` are orphaned
+- `BGTaskSchedulerPermittedIdentifiers` whitelist must update from `com.basechatkit.background.*` → `com.manifoldkit.background.*`
+- SBOM `purl` re-keyed to `pkg:swift/ManifoldKit@*`
+- HTTP relay header `X-BaseChat-Prefill-Progress` → `X-Manifold-Prefill-Progress`
+- Log subsystem flipped from `com.basechatkit` to `com.manifoldkit` (Console.app + os_log filters need re-anchoring)
+- E2E test sentinel `~/.basechatkit_real_e2e` → `~/.manifoldkit_real_e2e` (developers: `mv` your existing sentinel)
+
+#### Preserved identifiers (intentionally NOT renamed)
+
+Several `basechat`/`com.basechat.*` identifiers are kept for backward compatibility with installed apps and registered third-party state. Renaming these would silently break user data:
+
+- **OAuth callback scheme `basechat://`** — registered with GitHub / Linear / Notion as the redirect URL for MCP server OAuth flows. Flipping it would break every existing user's MCP authorization.
+- **Keychain account `com.basechat.resumedata.hmac`** — HMAC key for HuggingFace background-download resume blobs. Renaming orphans every existing resumable download.
+- **Prometheus metric prefix `basechat_*`** — exported by `ManifoldServer`. Metric-name change would break customer dashboards / alerting rules.
+- **CLI command name `basechat-server`** — user-facing binary invocation in `ManifoldServer`. Stays for muscle memory.
+- **OAuth dynamic-client-registration softwareID `basechat-client`** — identifier sent to upstream IdPs during DCR.
+- **SQLite migration filename prefix `basechat-v3-…`** — referenced in test fixtures that exercise V3-era persisted file shapes; renaming buys nothing.
+
+### Other changes
+
+_(any non-rename work that ships in this cut goes here)_
+
+
+
 ## [0.19.0](https://github.com/roryford/BaseChatKit/compare/v0.18.0...v0.19.0) (2026-05-09)
 
 This release closes a driver-first improvement plan that dissolved seven structural drivers in BCK's surface. The headline shifts: `import BaseChatKit` is the canonical app-level import; `BackendName` is a real Swift enum; `BaseChatBackends` splits into five trait-gated products; backend capabilities now derive from a `ModelManifest` rather than hardcoded constants; the four `*Input` structs in `ConversationRuntime` collapse into one `TurnInput`; and `RAG` ships as a first-class knowledge-base module.
