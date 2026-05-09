@@ -10,73 +10,68 @@ import XCTest
 /// `swift test` process triggers a libmalloc double-free SIGABRT. The CI
 /// workflow (`.github/workflows/ci.yml`) therefore keeps `BaseChatInferenceTests`
 /// (XCTest-only) and `BaseChatInferenceSwiftTestingTests` (Swift Testing-only)
-/// in separate process invocations. That split is expensive — it adds a full
-/// compile-and-link step to every CI run.
+/// in separate process invocations.
 ///
-/// The "Core + UI + Backends" step merges three targets into one invocation:
+/// The default `Test — XCTest suites` step in CI invokes `swift test` once
+/// across `BaseChatCoreTests`, `BaseChatUITests`, `BaseChatBackendsTests`, and
+/// the other XCTest targets. Existing Swift Testing files in
+/// `BaseChatBackendsTests` predate the discovery of #681 and are committed
+/// as an approved baseline. They are CI-safe because the crash only manifests
+/// when an XCTestCase subclass coexists in the same process with `@Suite`/`@Test`,
+/// and these files use Swift Testing exclusively at file level. Adding more
+/// `@Test` functions to a file already on the allowlist does not change that
+/// safety property.
 ///
-///     scripts/test.sh --filter BaseChatCoreTests \
-///                     --filter BaseChatUITests \
-///                     --filter BaseChatBackendsTests \
-///                     --disable-default-traits
+/// ## What this audit asserts
 ///
-/// `BaseChatCoreTests` and `BaseChatUITests` are XCTest-only. The small set of
-/// Swift Testing files in `BaseChatBackendsTests` was migrated before the crash
-/// was understood and are committed as an approved baseline. No further growth
-/// is allowed unless the CI step is explicitly split.
+/// For every `.swift` file under the audited target directories:
 ///
-/// ## Allowlist format
+/// 1. **No mixed-harness files.** A file must not contain both an
+///    `XCTestCase` subclass declaration and a `@Suite`/`@Test` annotation.
+///    A single such file would trip the libmalloc bug regardless of which
+///    other files are linked into the same `swift test` invocation.
 ///
-/// ``allowedAnnotationCountPerFile`` maps
-/// `"<TargetDir>/<Filename.swift>"` → maximum number of `@Suite` + `@Test`
-/// occurrences (excluding comment lines) the file is permitted to contain.
+/// 2. **No new Swift Testing files in merged-filter targets.** A file using
+///    `@Suite`/`@Test` must appear in `swiftTestingFilesAllowlist`. Adding
+///    a new entry requires reviewer sign-off and one of:
+///     - splitting the CI step so the new file runs in its own `swift test`
+///       process (mirrors the `BaseChatInferenceSwiftTestingTests` pattern), or
+///     - proof that the SIGABRT is fixed in the toolchain.
 ///
-/// Raising a limit or adding a new entry requires human review and a matching
-/// CI-step split (or proof that the SIGABRT is fixed in the Swift toolchain).
+/// What this audit deliberately does **not** check is the count of
+/// `@Suite`/`@Test` annotations per file. The earlier per-file count
+/// baseline imposed PR friction (every new `@Test` required bumping a
+/// hardcoded number) without strengthening the safety surface — see
+/// the PR that introduced this design. Annotation count is irrelevant
+/// to the crash mode; harness mixing in one process is what matters.
 ///
 /// ## Updating the allowlist
 ///
-/// If you add Swift Testing annotations to an already-allowlisted file and the
-/// count exceeds its threshold, bump the threshold here after verifying:
+/// To add a Swift Testing file to a merged-filter target, either split the
+/// CI step or remove the target from `auditedTargetDirectories` (with a
+/// matching CI change). Then add the path to `swiftTestingFilesAllowlist`.
 ///
-/// 1. The new tests don't mix XCTest and Swift Testing in the same file.
-/// 2. The CI step for that target is still process-isolated.
-/// 3. A reviewer has sign-off on the bump.
-///
-/// DO NOT add entries or raise limits solely to make this test pass without
-/// completing those verification steps.
+/// DO NOT add entries solely to make this test pass without completing
+/// those verification steps.
 final class SwiftTestingAuditTest: XCTestCase {
 
-    /// Per-file upper bound on `@Suite` + `@Test` annotation count.
+    /// Files in the audited targets that are known to use Swift Testing
+    /// exclusively (no XCTest subclass in the same file). Captured at the
+    /// time issue #681 was addressed; growth past this baseline requires
+    /// a CI-step split or a toolchain fix for the SIGABRT.
     ///
-    /// Files not listed here must contain zero such annotations.
-    /// Counts were captured at the time issue #681 was addressed and represent
-    /// the approved baseline for the "Core + UI + Backends" CI merge step.
-    private static let allowedAnnotationCountPerFile: [String: Int] = [
-        // BaseChatCoreTests — this file itself contains the annotation keywords
-        // in string literals and code paths (error messages, the countAnnotations
-        // implementation), not as real Swift Testing entry points. The count is
-        // capped at the exact number of occurrences at the time of writing so
-        // that adding new message copy here triggers the same reviewer gate.
-        "BaseChatCoreTests/SwiftTestingAuditTest.swift": 10,
-
-        // BaseChatBackendsTests — existing Swift Testing files committed before
-        // the libmalloc SIGABRT was understood. These files are CI-safe because
-        // they use Swift Testing exclusively (no XCTest in the same file) and
-        // the target binary as a whole is still mixed; the crash only manifests
-        // when a single XCTestCase subclass co-exists in the same process with
-        // a @Suite — which is the risk we're guarding against here.
-        "BaseChatBackendsTests/CloudBackendSSETests.swift": 22,
-        "BaseChatBackendsTests/CloudErrorSanitizerTests.swift": 23,
-        "BaseChatBackendsTests/CloudThinkingTokenTests.swift": 8,
-        "BaseChatBackendsTests/OllamaBackendTests.swift": 68,
-        "BaseChatBackendsTests/OpenAICompatEndpointTests.swift": 20,
-        "BaseChatBackendsTests/SecureBytesTests.swift": 11,
-        "BaseChatBackendsTests/SSEExtractEventsTests.swift": 5,
+    /// Entries are file paths relative to `Tests/`.
+    private static let swiftTestingFilesAllowlist: Set<String> = [
+        "BaseChatBackendsTests/CloudBackendSSETests.swift",
+        "BaseChatBackendsTests/CloudErrorSanitizerTests.swift",
+        "BaseChatBackendsTests/CloudThinkingTokenTests.swift",
+        "BaseChatBackendsTests/OllamaBackendTests.swift",
+        "BaseChatBackendsTests/OpenAICompatEndpointTests.swift",
+        "BaseChatBackendsTests/SecureBytesTests.swift",
+        "BaseChatBackendsTests/SSEExtractEventsTests.swift",
     ]
 
-    /// Targets whose `.swift` files must not exceed their allowlisted
-    /// annotation counts (and must contain zero if not allowlisted).
+    /// Targets whose `.swift` files must obey the rules above.
     private static let auditedTargetDirectories: [String] = [
         "BaseChatCoreTests",
         "BaseChatUITests",
@@ -85,27 +80,43 @@ final class SwiftTestingAuditTest: XCTestCase {
 
     func test_noUnapprovedSwiftTestingGrowthInMergedFilterTargets() throws {
         let testsURL = try Self.locateTestsDirectory()
+
+        // The audit file mentions `XCTestCase` and `@Suite`/`@Test` in code
+        // paths and error message strings, not as real declarations. Skip it
+        // the same way `UserDefaultsStandardAuditTest` skips itself.
+        let auditFileName = (#filePath as NSString).lastPathComponent
+
         var violations: [String] = []
+        var observedSwiftTestingFiles: Set<String> = []
 
         for targetName in Self.auditedTargetDirectories {
             let targetURL = testsURL.appendingPathComponent(targetName)
             let swiftFiles = (try? Self.enumerateSwiftFiles(under: targetURL)) ?? []
 
             for fileURL in swiftFiles {
+                if fileURL.lastPathComponent == auditFileName { continue }
+
                 let relativePath = "\(targetName)/\(fileURL.lastPathComponent)"
                 let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-                let count = Self.countAnnotations(in: content)
 
-                let limit = Self.allowedAnnotationCountPerFile[relativePath] ?? 0
+                let usesSwiftTesting = Self.containsSwiftTestingAnnotation(in: content)
+                let usesXCTestCase = Self.containsXCTestCaseSubclass(in: content)
 
-                if count > limit {
-                    if limit == 0 {
+                if usesSwiftTesting && usesXCTestCase {
+                    violations.append("""
+                        \(relativePath): file declares an XCTestCase subclass AND uses @Suite/@Test — \
+                        this file alone trips the libmalloc SIGABRT (#681). Split the file so each \
+                        harness lives in its own source file.
+                        """.trimmingCharacters(in: .whitespacesAndNewlines))
+                    continue
+                }
+
+                if usesSwiftTesting {
+                    observedSwiftTestingFiles.insert(relativePath)
+                    if !Self.swiftTestingFilesAllowlist.contains(relativePath) {
                         violations.append("""
-                            \(relativePath): found \(count) @Suite/@Test annotation(s) — file is not allowlisted (limit 0).
-                            """.trimmingCharacters(in: .whitespacesAndNewlines))
-                    } else {
-                        violations.append("""
-                            \(relativePath): found \(count) @Suite/@Test annotation(s) — exceeds allowlisted limit of \(limit).
+                            \(relativePath): introduces @Suite/@Test in a merged-filter CI target without \
+                            being allowlisted in SwiftTestingAuditTest.swiftTestingFilesAllowlist.
                             """.trimmingCharacters(in: .whitespacesAndNewlines))
                     }
                 }
@@ -117,11 +128,11 @@ final class SwiftTestingAuditTest: XCTestCase {
                 .map { "  \($0)" }
                 .joined(separator: "\n")
             XCTFail("""
-                Swift Testing (@Suite/@Test) growth detected in merged-filter CI targets.
+                Swift Testing harness violations detected in merged-filter CI targets.
 
-                Adding Swift Testing annotations to BaseChatCoreTests, BaseChatUITests, or
-                BaseChatBackendsTests beyond the committed baseline risks a libmalloc double-free
-                SIGABRT when the three targets share a single swift test process invocation.
+                The default `Test — XCTest suites` CI step links BaseChatCoreTests, BaseChatUITests,
+                and BaseChatBackendsTests into a single `swift test` process. Mixing XCTestCase with
+                @Suite/@Test inside that process triggers a libmalloc double-free SIGABRT (#681).
 
                 See issue #681 and .github/workflows/ci.yml for context.
 
@@ -129,63 +140,67 @@ final class SwiftTestingAuditTest: XCTestCase {
                 \(formatted)
 
                 To resolve:
-                  1. Confirm the new tests do not mix XCTest and Swift Testing in one file.
-                  2. Split the CI merge step so the new Swift Testing target runs in its own
-                     process invocation (mirrors the BaseChatInferenceSwiftTestingTests pattern).
-                  3. Raise the per-file limit (or add a new entry) in
-                     SwiftTestingAuditTest.allowedAnnotationCountPerFile with reviewer sign-off.
+                  1. Split the file so each harness is in its own source file (for mixed-harness
+                     violations), or
+                  2. Move the new Swift Testing file to a target that runs in its own `swift test`
+                     process (mirrors BaseChatInferenceSwiftTestingTests), then add it to
+                     swiftTestingFilesAllowlist with reviewer sign-off.
                 """)
         }
 
-        // Stale-allowlist check: every allowlisted file must still exist and
-        // actually contain annotations, or the list has drifted.
-        for (relativePath, limit) in Self.allowedAnnotationCountPerFile {
-            let parts = relativePath.split(separator: "/", maxSplits: 1)
-            guard parts.count == 2 else { continue }
-            let targetName = String(parts[0])
-            let fileName = String(parts[1])
-            let fileURL = testsURL
-                .appendingPathComponent(targetName)
-                .appendingPathComponent(fileName)
+        // Stale-allowlist check: every allowlisted path must still exist
+        // and still use Swift Testing, or the list has drifted.
+        let stale = Self.swiftTestingFilesAllowlist.subtracting(observedSwiftTestingFiles)
+        if !stale.isEmpty {
+            let formatted = stale.sorted().joined(separator: "\n  ")
+            XCTFail("""
+                swiftTestingFilesAllowlist has stale entries — files that no longer exist or no
+                longer use @Suite/@Test. Remove them:
 
-            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
-                XCTFail("""
-                    SwiftTestingAuditTest.allowedAnnotationCountPerFile has a stale entry: \
-                    "\(relativePath)" no longer exists. Remove it.
-                    """)
-                continue
-            }
-
-            let actual = Self.countAnnotations(in: content)
-            if actual == 0 && limit > 0 {
-                XCTFail("""
-                    SwiftTestingAuditTest.allowedAnnotationCountPerFile has a stale entry: \
-                    "\(relativePath)" has limit \(limit) but contains 0 @Suite/@Test annotations. \
-                    Remove the entry or reduce the limit to 0.
-                    """)
-            }
+                  \(formatted)
+                """)
         }
     }
 
     // MARK: - Helpers
 
-    /// Counts the number of `@Suite` and `@Test` annotation occurrences in
-    /// `content`, excluding lines that are comments.
-    private static func countAnnotations(in content: String) -> Int {
-        let lines = content.components(separatedBy: "\n")
-        var count = 0
-        for rawLine in lines {
+    /// `true` when `content` contains at least one `@Suite` or `@Test`
+    /// occurrence outside of a `//`, `///`, or `*`-prefixed comment line.
+    private static func containsSwiftTestingAnnotation(in content: String) -> Bool {
+        for rawLine in content.components(separatedBy: "\n") {
             let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-            // Skip comment lines.
-            guard !trimmed.hasPrefix("//"), !trimmed.hasPrefix("///"), !trimmed.hasPrefix("*") else {
+            if trimmed.hasPrefix("//") || trimmed.hasPrefix("///") || trimmed.hasPrefix("*") {
                 continue
             }
-            // Count each annotation keyword separately so a line with both
-            // (unusual, but possible in generated code) is not double-counted.
-            if trimmed.contains("@Suite") { count += 1 }
-            if trimmed.contains("@Test") { count += 1 }
+            if trimmed.contains("@Suite") || trimmed.contains("@Test") {
+                return true
+            }
         }
-        return count
+        return false
+    }
+
+    /// `true` when `content` contains a class declaration whose inheritance
+    /// list names `XCTestCase`. Single-line declarations only — Swift permits
+    /// declarations split across lines but the codebase uses the single-line
+    /// form throughout.
+    ///
+    /// The pattern matches both direct subclasses and protocol-composition
+    /// shapes such as `class FooTests: XCTestCase, MyProtocol`. It does not
+    /// catch indirect subclasses (`class FooTests: MyBaseTestCase` where
+    /// `MyBaseTestCase: XCTestCase`); we accept that as a reviewable
+    /// false negative since BCK does not currently use such intermediates.
+    private static func containsXCTestCaseSubclass(in content: String) -> Bool {
+        let pattern = #"^\s*(?:final\s+|public\s+|internal\s+|private\s+|fileprivate\s+|open\s+)*class\s+\w+(?:<[^>]+>)?\s*:[^{]*\bXCTestCase\b"#
+        for rawLine in content.components(separatedBy: "\n") {
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("//") || trimmed.hasPrefix("///") || trimmed.hasPrefix("*") {
+                continue
+            }
+            if rawLine.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Walks upward from the test file to find the repo root, then returns
