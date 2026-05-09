@@ -147,6 +147,16 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(MLXBackend().capabilities.supportsThinking,
                       "MLXBackend emits thinking events via ThinkingParser — supportsThinking must be true")
     }
+
+    /// MLXBackend uses MLX's process-global GPU buffer cache and Metal
+    /// device — it must coordinate with `MLXResourceArbiter` for safe
+    /// multi-backend hosting. See `MLXResourceArbiter.swift` for details.
+    func test_mlxBackend_sharesMLXProcessResources() throws {
+        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
+                          "MLXBackend requires Apple Silicon")
+        XCTAssertTrue(MLXBackend().capabilities.sharesMLXProcessResources,
+                      "MLXBackend uses MLX.Memory.cacheLimit — sharesMLXProcessResources must be true")
+    }
 #endif
 
 #if canImport(FoundationModels)

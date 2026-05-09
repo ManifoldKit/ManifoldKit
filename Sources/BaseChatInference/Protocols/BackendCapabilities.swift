@@ -138,6 +138,22 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// Whether the backend supports Foundation-style guided structured output.
     public let supportsGuidedStructuredOutput: Bool
 
+    /// `true` when the backend uses MLX's process-global resources — the GPU
+    /// buffer cache (`MLX.Memory.cacheLimit`), the Metal device, and the MLX
+    /// runtime singleton — and must coordinate with `MLXResourceArbiter` for
+    /// safe multi-backend hosting in the same process.
+    ///
+    /// Hosts loading multiple MLX-family backends concurrently (e.g. a chat
+    /// LLM plus an MLX embedding model) read this flag to decide whether to
+    /// serialize lifecycle hooks or assume the backends are independent.
+    /// For single-MLX setups the flag is informational; for multi-MLX it
+    /// signals that direct `MLX.Memory.*` calls from sibling code would
+    /// trample the arbiter's per-instance accounting.
+    ///
+    /// Defaults to `false` — only the MLX backend (and any future backends
+    /// sharing the MLX runtime) sets this to `true`.
+    public let sharesMLXProcessResources: Bool
+
     /// Preferred structured-output mechanism implied by this capability set.
     public var preferredStructuredOutputSupport: StructuredOutputSupport {
         if supportsGrammarConstrainedSampling {
@@ -177,7 +193,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsVision: Bool = false,
         streamsToolCallArguments: Bool = false,
         supportsParallelToolCalls: Bool = false,
-        supportsGuidedStructuredOutput: Bool = false
+        supportsGuidedStructuredOutput: Bool = false,
+        sharesMLXProcessResources: Bool = false
     ) {
         self.supportedParameters = supportedParameters
         self.maxContextTokens = maxContextTokens
@@ -199,6 +216,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.streamsToolCallArguments = streamsToolCallArguments
         self.supportsParallelToolCalls = supportsParallelToolCalls
         self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
+        self.sharesMLXProcessResources = sharesMLXProcessResources
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -222,6 +240,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case streamsToolCallArguments
         case supportsParallelToolCalls
         case supportsGuidedStructuredOutput
+        case sharesMLXProcessResources
     }
 
     public init(from decoder: Decoder) throws {
@@ -246,6 +265,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         streamsToolCallArguments = (try c.decodeIfPresent(Bool.self, forKey: .streamsToolCallArguments)) ?? false
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
         supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
+        sharesMLXProcessResources = (try c.decodeIfPresent(Bool.self, forKey: .sharesMLXProcessResources)) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -270,5 +290,6 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(streamsToolCallArguments, forKey: .streamsToolCallArguments)
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
         try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)
+        try c.encode(sharesMLXProcessResources, forKey: .sharesMLXProcessResources)
     }
 }

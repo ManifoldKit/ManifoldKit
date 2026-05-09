@@ -1,6 +1,10 @@
 #if MLX
 import CoreImage
 import Foundation
+// Direct `MLX.Memory.cacheLimit` / `MLX.Memory.clearCache()` calls from this
+// file are forbidden — the cache is process-global and must be coordinated
+// across multiple MLX backends via `MLXResourceArbiter.shared`. See
+// `MLX/MLXResourceArbiter.swift` for the rationale.
 import MLX
 import MLXLLM
 import MLXLMCommon
@@ -94,7 +98,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 isRemote: false,
                 supportsKVCachePersistence: enableKVCacheReuse,
                 supportsThinking: true,
-                supportsVision: _supportsVision
+                supportsVision: _supportsVision,
+                sharesMLXProcessResources: true
             )
         }
     }
@@ -140,6 +145,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Tracks whether a real MLX model load initialized the runtime in this process.
     /// Access only under `stateLock`.
     private var _hasInitializedRuntime = false
+    /// Stable per-instance identity used by `MLXResourceArbiter` to track
+    /// which backend holds which slice of the process-global cache budget.
+    /// Generated once at init; never changes.
+    private let backendID: MLXResourceArbiter.BackendID = UUID()
     /// Whether the currently loaded MLX model accepts image inputs.
     /// Access only under `stateLock`.
     private var _supportsVision = false
@@ -949,9 +958,17 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             // (e.g. `swift test`). The cost is that the load itself runs
             // under whatever cacheLimit was previously in effect — usually
             // mlx-swift's own default on a fresh process, which is fine.
+            //
+            // The cache is process-global; route through `MLXResourceArbiter`
+            // so multi-backend hosts (chat + embeddings, A/B comparisons)
+            // accumulate per-instance claims rather than overwriting each
+            // other's `cacheLimit`.
             let cacheBytes = cachePolicy.resolvedBytes()
-            Memory.cacheLimit = cacheBytes
-            Self.logger.info("MLX cache limit set to \(cacheBytes / (1024 * 1024)) MB (policy: \(String(describing: self.cachePolicy)))")
+            await MLXResourceArbiter.shared.claim(
+                backendID: backendID,
+                requestedCacheBytes: cacheBytes
+            )
+            Self.logger.info("MLX cache claim registered: \(cacheBytes / (1024 * 1024)) MB (policy: \(String(describing: self.cachePolicy)))")
             isModelLoaded = true
             // Signal load complete before returning so InferenceService sees 1.0
             // before it clears the handler and flips isModelLoaded.
@@ -1237,8 +1254,9 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         stopGeneration()
         // Only touch MLX's Memory namespace after a real model load has
         // initialized the runtime in this process. Injected test doubles do not
-        // compile the metallib, so clearing the cache after `_inject(...)`
-        // would trip the same failure this guard exists to avoid.
+        // compile the metallib, so releasing the arbiter claim after
+        // `_inject(...)` would trip the same failure this guard exists to
+        // avoid (the arbiter calls `Memory.clearCache()` on the last release).
         let hadInitializedRuntime: Bool = withStateLock {
             let had = _hasInitializedRuntime
             _modelContainer = nil
@@ -1257,7 +1275,14 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             return had
         }
         if hadInitializedRuntime {
-            Memory.clearCache()
+            // Fire-and-forget: the protocol contract for `unloadModel()` is
+            // synchronous, but cache eviction does not need to block teardown.
+            // The arbiter clears `MLX.Memory` only on the last release; while
+            // sibling MLX backends are still loaded, this preserves their
+            // pooled buffers — that's the whole point of routing through the
+            // arbiter rather than calling `Memory.clearCache()` directly.
+            let id = backendID
+            Task { await MLXResourceArbiter.shared.release(backendID: id) }
         }
         Self.logger.info("MLX backend unloaded")
     }
@@ -1291,10 +1316,10 @@ extension MLXBackend {
     ///
     /// MLX does not expose an API to explicitly zero Metal `MTLBuffer` contents
     /// after the fact; the best available measure is to evict all pooled buffers
-    /// via `Memory.clearCache()` so they are returned to the OS rather than
-    /// reused by the next request. This is the same call made by
-    /// ``unloadModel()``. The prompt-cache state is also invalidated so the next
-    /// ``generate(_:config:)`` call starts fresh.
+    /// (`MLX.Memory.clearCache()` under the hood, routed through
+    /// ``MLXResourceArbiter/clearAll()``) so they are returned to the OS rather
+    /// than reused by the next request. The prompt-cache state is also
+    /// invalidated so the next ``generate(_:config:)`` call starts fresh.
     ///
     /// **Note**: this provides an eviction guarantee, NOT a zero guarantee. Any
     /// residue in currently-active Metal allocations (e.g. mid-stream) is
@@ -1306,7 +1331,13 @@ extension MLXBackend {
         }
         #if MLX
         if hasRuntime {
-            Memory.clearCache()
+            // `secureWipe` is an explicit eviction request — the docstring
+            // promises the pooled buffers are returned to the OS. Because the
+            // pool is process-global, partial scrubbing isn't possible: route
+            // through `clearAll` so the arbiter drops accounting state too,
+            // and surviving sibling backends will re-claim on their next
+            // load.
+            Task { await MLXResourceArbiter.shared.clearAll() }
         }
         #endif
     }

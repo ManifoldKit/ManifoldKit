@@ -367,9 +367,15 @@ public protocol JSONSchemaValidating: Sendable {
         // that small models emit `"42"` and the tool wants `42`, so the
         // executor must see the coerced form. Tools that need the raw
         // string can opt out by clearing ``coercesArguments``.
+        //
+        // `coerceBestEffort` swallows ``ToolArgumentError/schemaTooDeep``:
+        // a pathologically deep schema falls through to the validator with
+        // un-coerced args, which then surfaces whatever real error the
+        // schema produces. We don't want a depth cap to short-circuit
+        // dispatch on a schema the validator might still accept.
         let dispatchArguments: JSONSchemaValue
         if coercesArguments {
-            dispatchArguments = ToolArgumentCoercer.coerce(parsedArguments, against: executor.definition.parameters)
+            dispatchArguments = ToolArgumentCoercer.coerceBestEffort(parsedArguments, against: executor.definition.parameters)
         } else {
             dispatchArguments = parsedArguments
         }
