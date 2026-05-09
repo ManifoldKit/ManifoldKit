@@ -326,7 +326,7 @@ final class GenerationQueue {
         systemPrompt: String?,
         config: GenerationConfig
     ) throws -> GenerationStream {
-        if Self.containsImages(messages), !backend.capabilities.supportsVision {
+        if GenerationHistoryInstaller.containsImages(messages), !backend.capabilities.supportsVision {
             throw InferenceError.inferenceFailure(
                 "Image attachments require a backend whose capabilities.supportsVision is true. Select a vision-capable backend before sending image parts."
             )
@@ -339,14 +339,16 @@ final class GenerationQueue {
         // trim-and-retry loop is the definitive gate that prevents KV overflow.
         if let counter = backend as? TokenCountingBackend,
            backend.capabilities.requiresPromptTemplate {
-            let result = try exactPreflightAndTrim(
+            let result = try GenerationPreflightTrimmer(
+                promptTemplate: provider?.selectedPromptTemplate ?? .chatML
+            ).exactPreflightAndTrim(
                 counter: counter,
                 backend: backend,
                 messages: messages,
                 systemPrompt: systemPrompt,
                 config: config
             )
-            installHistory(on: backend, structuredMessages: result.trimmedMessages)
+            GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
             return try backend.generate(
                 prompt: result.prompt,
                 systemPrompt: nil,
@@ -358,7 +360,7 @@ final class GenerationQueue {
         // For backends that require a prompt template, messages are formatted
         // into a single string. Otherwise the most recent user message is
         // passed directly and the system prompt goes through a separate channel.
-        let flattened = flatten(messages)
+        let flattened = GenerationHistoryInstaller.flatten(messages)
         let assembledPrompt: String
         let effectiveSystemPrompt: String?
 
@@ -375,149 +377,13 @@ final class GenerationQueue {
             effectiveSystemPrompt = systemPrompt
         }
 
-        installHistory(on: backend, structuredMessages: messages)
+        GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: messages)
 
         return try backend.generate(
             prompt: assembledPrompt,
             systemPrompt: effectiveSystemPrompt,
             config: config
         )
-    }
-
-    /// Flattens ``StructuredMessage`` to the legacy `(role, content)` shape
-    /// for backends and helpers that operate on plain strings (prompt
-    /// templates, ``ConversationHistoryReceiver``).
-    ///
-    /// Thinking parts are dropped because they would either bloat the prompt
-    /// with provider-internal reasoning or fail validation on the
-    /// non-Anthropic providers that don't accept replayed thinking.
-    /// ``StructuredHistoryReceiver`` adopters read the unflattened form
-    /// directly to preserve thinking signatures.
-    private static func flatten(_ messages: [StructuredMessage]) -> [(role: String, content: String)] {
-        messages.map { (role: $0.role, content: $0.textContent) }
-    }
-
-    /// Instance-level wrapper around the static flatten so call sites stay readable.
-    private func flatten(_ messages: [StructuredMessage]) -> [(role: String, content: String)] {
-        Self.flatten(messages)
-    }
-
-    private static func containsImages(_ messages: [StructuredMessage]) -> Bool {
-        messages.contains { message in
-            message.parts.contains { part in
-                if case .image = part { return true }
-                return false
-            }
-        }
-    }
-
-    /// Hands history to whichever receiver protocol the backend conforms to.
-    ///
-    /// A backend may conform to both — ``StructuredHistoryReceiver`` is set
-    /// first so a backend that needs structured access (Anthropic) gets the
-    /// authoritative shape, and the flattened ``ConversationHistoryReceiver``
-    /// fallback is set afterwards for backends that only inspect strings.
-    private func installHistory(on backend: InferenceBackend, structuredMessages: [StructuredMessage]) {
-        if let structuredReceiver = backend as? StructuredHistoryReceiver {
-            structuredReceiver.setStructuredHistory(structuredMessages)
-        }
-        if let historyReceiver = backend as? ConversationHistoryReceiver {
-            historyReceiver.setConversationHistory(flatten(structuredMessages))
-        }
-    }
-
-    // MARK: - Exact Pre-flight (Private)
-
-    private struct ExactPreflightResult {
-        let prompt: String
-        let trimmedMessages: [StructuredMessage]
-    }
-
-    /// Counts tokens on the assembled prompt and trims the oldest non-system
-    /// messages until the prompt fits inside the context window.
-    ///
-    /// Up to `maxTrimAttempts` trimming rounds are performed. Each round drops
-    /// one non-system message from the front of the history. If the budget is
-    /// still exceeded after all attempts, throws
-    /// ``InferenceError/contextExhausted(promptTokens:maxOutputTokens:contextSize:)``.
-    private func exactPreflightAndTrim(
-        counter: TokenCountingBackend,
-        backend: InferenceBackend,
-        messages: [StructuredMessage],
-        systemPrompt: String?,
-        config: GenerationConfig,
-        maxTrimAttempts: Int = 20
-    ) throws -> ExactPreflightResult {
-        let contextSize = Int(backend.capabilities.maxContextTokens)
-        // Reserve context for both visible output and (optionally) thinking output.
-        //
-        // Rationale for `?? 0` on the thinking side (not `?? 2048`): the public
-        // semantics of `maxThinkingTokens` today are "cap reasoning output; nil
-        // means no client-side cap." Reserving a fixed slice of the context
-        // window for thinking by default would silently eat that many tokens
-        // from every prompt — including on non-thinking models where it has no
-        // effect on runtime behaviour. Principle of least surprise: only
-        // reserve what the caller explicitly asked for. Callers who know they
-        // are driving a reasoning model can opt in by setting
-        // `maxThinkingTokens: N`, which then becomes the trim reservation.
-        let visibleReserve = config.maxOutputTokens ?? 2048
-        let thinkingReserve = config.maxThinkingTokens ?? 0
-        let maxOutput = visibleReserve + thinkingReserve
-        let template = provider?.selectedPromptTemplate ?? .chatML
-
-        var workingMessages = messages
-        var attempt = 0
-
-        while true {
-            let prompt = template.format(messages: Self.flatten(workingMessages), systemPrompt: systemPrompt)
-            let promptTokens = try counter.countTokens(prompt)
-
-            if promptTokens + maxOutput <= contextSize {
-                // Fits — return the (possibly trimmed) result.
-                return ExactPreflightResult(prompt: prompt, trimmedMessages: workingMessages)
-            }
-
-            // Over budget. If we've used all trim rounds, surface the error before
-            // anything reaches the C layer.
-            guard attempt < maxTrimAttempts else {
-                throw InferenceError.contextExhausted(
-                    promptTokens: promptTokens,
-                    maxOutputTokens: maxOutput,
-                    contextSize: contextSize
-                )
-            }
-
-            // Find the oldest non-system message to drop. System messages are
-            // passed in the `systemPrompt` parameter, not as tuples, so any
-            // "system"-role tuple here is a slot injected by PromptAssembler.
-            // We trim those too — keeping only the final user turn is better
-            // than overflowing the KV cache.
-            guard let dropIndex = workingMessages.firstIndex(where: { $0.role != "system" }) else {
-                // Only system messages remain — nothing left to trim.
-                throw InferenceError.contextExhausted(
-                    promptTokens: promptTokens,
-                    maxOutputTokens: maxOutput,
-                    contextSize: contextSize
-                )
-            }
-
-            // Always protect the last user message: if dropping it would leave
-            // no user turn, stop trimming and surface the error.
-            let userCount = workingMessages.filter { $0.role == "user" }.count
-            if userCount <= 1 && workingMessages[dropIndex].role == "user" {
-                throw InferenceError.contextExhausted(
-                    promptTokens: promptTokens,
-                    maxOutputTokens: maxOutput,
-                    contextSize: contextSize
-                )
-            }
-
-            Log.inference.warning(
-                "GenerationQueue: prompt over budget — trimming oldest non-system message (attempt \(attempt + 1)/\(maxTrimAttempts))"
-            )
-            workingMessages.remove(at: dropIndex)
-            attempt += 1
-        }
     }
 
     // MARK: - Generation Queue
@@ -765,299 +631,39 @@ final class GenerationQueue {
 
     // MARK: - Tool Dispatch Loop
 
-    /// Upper bound on cumulative bytes of tool-result content that can be
-    /// fed back into a single generation request.
-    ///
-    /// Tool results flow directly into the next-turn prompt, so a runaway
-    /// tool (imagine one that mirrors an entire wiki article) can exhaust
-    /// the KV cache on the server side just as surely as a misbehaving
-    /// prompt. 512 KiB is deliberately generous for typical tool output
-    /// (seconds-of-weather JSON, search snippets) but still well under the
-    /// memory floor that would put an Ollama / local-llama deployment at
-    /// risk. Overflow short-circuits the loop with a `.permanent`
-    /// synthetic result rather than running another turn.
-    private static let toolResultByteBudget: Int = 512 * 1024
-
-    /// Drives the backend through an entire tool-dispatch loop for one
-    /// queued request.
-    ///
-    /// On each iteration the backend is invoked with the current message
-    /// history (original + any tool-call / tool-result entries accumulated
-    /// from prior iterations). Events flow through to the request's
-    /// continuation untouched *except* for `.toolCall(_:)` events, which
-    /// are intercepted when a registry is present:
-    ///
-    /// 1. The finalized ``ToolCall`` is passed to ``toolApprovalGate``. On
-    ///    ``ToolApprovalDecision/approved`` the call is dispatched via
-    ///    `toolRegistry.dispatch(_:)`; on ``ToolApprovalDecision/denied(reason:)``
-    ///    a synthetic ``ToolResult`` with
-    ///    ``ToolResult/ErrorKind/permissionDenied`` is produced in place of
-    ///    a real dispatch, and the loop continues to the next turn so the
-    ///    model can acknowledge the refusal.
-    /// 2. A `.toolResult(_:)` event is emitted so UIs can render the
-    ///    outcome alongside the call.
-    /// 3. The `(call, result)` pair is appended to the tool-aware history
-    ///    for the next iteration.
-    ///
-    /// Termination conditions:
-    /// - The backend's stream finishes without emitting any new tool call
-    ///   → normal completion.
-    /// - `config.maxToolIterations` reached → emit `.toolLoopLimitReached`
-    ///   and stop.
-    /// - Cumulative tool-result bytes exceed ``toolResultByteBudget`` →
-    ///   synthesise a `.permanent` error result and stop.
-    /// - Backend emits an identical `(toolName, arguments)` pair twice in
-    ///   a row → short-circuit the executor and feed a synthetic
-    ///   "already-called-with-identical-args" result back so the model
-    ///   can recover without another identical round trip.
+    /// Drives the backend through an entire tool-dispatch loop for one queued request.
     private func runToolDispatchLoop(request: QueuedRequest) async throws {
-        // First-time-only wiring: make sure the registry has a schema
-        // validator installed so tools with non-trivial parameter schemas
-        // get argument validation without requiring the host to know about
-        // the `JSONSchemaValidating` protocol.
-        if let registry = toolRegistry, registry.validator == nil {
-            registry.validator = JSONSchemaValidator()
-        }
-
-        let currentMessages = request.messages
-        // `toolAwareHistory` is maintained in parallel for tool-call turns.
-        // Seeded lazily on the first tool dispatch so plain-text turns keep
-        // using the classic `setConversationHistory` path and existing
-        // backends that don't know about tool-aware history see no change.
-        var toolAwareHistory: [ToolAwareHistoryEntry]?
-        var lastCallSignature: (toolName: String, arguments: String)?
-        var toolResultByteTotal = 0
-        var iterations = 0
-        let limit = max(1, request.config.maxToolIterations)
-
-        while true {
-            iterations += 1
-            if iterations > limit {
-                // Cap reached — loop terminated before invoking the backend
-                // with the next turn's request.
-                Log.inference.warning(
-                    "GenerationQueue: tool-dispatch loop hit maxToolIterations=\(limit, privacy: .public); terminating."
+        let loop = GenerationToolDispatchLoop(
+            toolRegistry: toolRegistry,
+            toolApprovalGate: toolApprovalGate,
+            currentBackend: { [weak self] in self?.provider?.currentBackend },
+            generateWithConfig: { [weak self] messages, systemPrompt, config in
+                guard let self else {
+                    throw InferenceError.inferenceFailure("Generation queue deallocated")
+                }
+                return try self.generateWithConfig(
+                    structuredMessages: messages,
+                    systemPrompt: systemPrompt,
+                    config: config
                 )
-                self.continuations[request.token]?.yield(
-                    .toolLoopLimitReached(iterations: limit)
-                )
-                return
-            }
-
-            // Feed the tool-aware history to the backend when one is
-            // available. Non-tool backends ignore the cast and fall back to
-            // the plain conversation history via `generateWithConfig`.
-            if let toolAwareHistory,
-               let receiver = provider?.currentBackend as? ToolCallingHistoryReceiver {
-                receiver.setToolAwareHistory(toolAwareHistory)
-            }
-
-            let stream = try self.generateWithConfig(
-                structuredMessages: currentMessages,
-                systemPrompt: request.systemPrompt,
-                config: request.config
-            )
-
-            var dispatchedInThisTurn: [(ToolCall, ToolResult)] = []
-
-            for try await event in stream.events {
-                guard !Task.isCancelled else { return }
-
-                // Thermal gate (cooperative): if the device is in `.critical`
-                // thermal state, pause between tokens until pressure drops to
-                // `.serious` or below, or until the surrounding task is
-                // cancelled. This is a no-op on the hot path — one provider
-                // read per event when temperature is fine.
-                await pauseWhileThermalCritical(token: request.token)
-                guard !Task.isCancelled else { return }
-
+            },
+            yieldEvent: { [weak self] event in
+                self?.continuations[request.token]?.yield(event)
                 if case .token = event, request.stream.phase != .streaming {
                     request.stream.setPhase(.streaming)
                 }
-
-                switch event {
-                case .toolCall(let call) where toolRegistry != nil:
-                    // Forward the call event so UI surfaces can render it
-                    // alongside the pending result.
-                    self.continuations[request.token]?.yield(.toolCall(call))
-
-                    // Lifecycle: announce dispatch start so UI surfaces can
-                    // start a per-call timer / spinner without scraping the
-                    // log. `attempt` is reserved for future retry semantics
-                    // and pinned to 1 today (no per-call retry path exists).
-                    let dispatchAttempt = 1
-                    // Monotonic clock so `durationMs` reflects actual elapsed
-                    // time even when wall-clock jumps (NTP / user time-zone
-                    // change) happen mid-dispatch.
-                    let dispatchStart = DispatchTime.now()
-                    self.continuations[request.token]?.yield(
-                        .toolDispatchStarted(callId: call.id, name: call.toolName, attempt: dispatchAttempt)
-                    )
-                    Log.inference.info(
-                        "tool_dispatch_started call_id=\(call.id, privacy: .public) name=\(call.toolName, privacy: .public) attempt=\(dispatchAttempt, privacy: .public)"
-                    )
-                    Self.toolDispatchLogHook?(
-                        "tool_dispatch_started",
-                        [
-                            "call_id": call.id,
-                            "name": call.toolName,
-                            "attempt": "\(dispatchAttempt)"
-                        ]
-                    )
-
-                    let result: ToolResult
-                    if let prev = lastCallSignature,
-                       prev.toolName == call.toolName,
-                       prev.arguments == call.arguments {
-                        // Identical repeat — don't re-invoke the executor.
-                        Log.inference.warning(
-                            "GenerationQueue: tool '\(call.toolName, privacy: .public)' called twice in a row with identical arguments; short-circuiting to previous result."
-                        )
-                        let prevContent = dispatchedInThisTurn.last?.1.content ?? ""
-                        result = ToolResult(
-                            callId: call.id,
-                            content: "tool already called this turn with identical arguments — previous result was: \(prevContent)",
-                            errorKind: .permanent
-                        )
-                    } else if toolResultByteTotal >= Self.toolResultByteBudget {
-                        Log.inference.warning(
-                            "GenerationQueue: tool-result byte budget (\(Self.toolResultByteBudget, privacy: .public)) exhausted before dispatching '\(call.toolName, privacy: .public)'; terminating loop."
-                        )
-                        result = ToolResult(
-                            callId: call.id,
-                            content: "tool result budget exhausted",
-                            errorKind: .permanent
-                        )
-                    } else if toolRegistry!.requiresApproval(toolName: call.toolName) == false {
-                        // Read-only / safe tool — skip the gate hop entirely so
-                        // pure-read scenarios don't flash an approval sheet.
-                        // Side-effecting tools opt in via
-                        // ``ToolExecutor/requiresApproval``.
-                        //
-                        // Cancellation contract (issue #622): the registry
-                        // dispatch runs under structured concurrency on the
-                        // orchestrator's `activeTask`, so a `Task.cancel()`
-                        // from `stopGeneration()` flows straight into the
-                        // executor. Cancellation-aware executors observe
-                        // `Task.isCancelled` / throw `CancellationError`;
-                        // ``ToolRegistry/dispatch(_:)`` classifies that as
-                        // ``ToolResult/ErrorKind/cancelled``, which the
-                        // post-dispatch guard below uses to exit the loop
-                        // without running another backend turn.
-                        result = await toolRegistry!.dispatch(call)
-                    } else {
-                        // User-approval gate: invoked on the finalized ToolCall,
-                        // after the repeat / byte-budget guards (which both
-                        // synthesize their own results without touching the
-                        // registry). On `.denied` we emit a `.permissionDenied`
-                        // ToolResult and continue the loop — the backend sees a
-                        // structured refusal and the model usually apologises
-                        // and asks what to do next.
-                        switch await toolApprovalGate.approve(call) {
-                        case .approved:
-                            result = await toolRegistry!.dispatch(call)
-                        case .denied(let reason):
-                            Log.inference.info(
-                                "GenerationQueue: tool '\(call.toolName, privacy: .public)' denied by ToolApprovalGate"
-                            )
-                            result = ToolResult(
-                                callId: call.id,
-                                content: reason ?? "user denied tool execution",
-                                errorKind: .permissionDenied
-                            )
-                        }
-                    }
-
-                    toolResultByteTotal += result.content.utf8.count
-                    lastCallSignature = (toolName: call.toolName, arguments: call.arguments)
-                    dispatchedInThisTurn.append((call, result))
-
-                    // Emit the result so the UI can render it; downstream
-                    // consumers thread `.toolResult` into the current
-                    // assistant bubble before the next turn begins.
-                    self.continuations[request.token]?.yield(.toolResult(result))
-
-                    // Lifecycle: announce dispatch completion. Fires after
-                    // `.toolResult` so consumers that switch on the lifecycle
-                    // pair see exactly one `.toolDispatchStarted` →
-                    // `.toolDispatchCompleted` per call. `errorKind` mirrors
-                    // the result's classification (nil on success).
-                    let dispatchDurationNs = DispatchTime.now().uptimeNanoseconds &- dispatchStart.uptimeNanoseconds
-                    let dispatchDurationMs = Int(dispatchDurationNs / 1_000_000)
-                    self.continuations[request.token]?.yield(
-                        .toolDispatchCompleted(
-                            callId: call.id,
-                            durationMs: dispatchDurationMs,
-                            errorKind: result.errorKind
-                        )
-                    )
-                    Log.inference.info(
-                        "tool_dispatch_completed call_id=\(call.id, privacy: .public) duration_ms=\(dispatchDurationMs, privacy: .public) error_kind=\(result.errorKind?.rawValue ?? "none", privacy: .public)"
-                    )
-                    Self.toolDispatchLogHook?(
-                        "tool_dispatch_completed",
-                        [
-                            "call_id": call.id,
-                            "duration_ms": "\(dispatchDurationMs)",
-                            "error_kind": result.errorKind?.rawValue ?? "none"
-                        ]
-                    )
-
-                    // Cancellation contract (issue #622): when the user hits
-                    // stop while a tool is in flight the dispatch path returns
-                    // a ``ToolResult/ErrorKind/cancelled`` synthesized by
-                    // ``ToolRegistry/dispatch(_:)``. The transcript-side yield
-                    // above records it; here we stop the loop cleanly so no
-                    // further backend turn runs against the now-cancelled
-                    // task.
-                    if result.errorKind == .cancelled {
-                        return
-                    }
-
-                    // Overflow after this dispatch — synthesise a terminal
-                    // marker and exit before running another turn.
-                    if toolResultByteTotal >= Self.toolResultByteBudget {
-                        return
-                    }
-
-                default:
-                    self.continuations[request.token]?.yield(event)
-                }
+            },
+            pauseWhileThermalCritical: { [weak self] token in
+                await self?.pauseWhileThermalCritical(token: token)
             }
+        )
 
-            // If no tool calls were dispatched this turn, generation is
-            // complete.
-            if dispatchedInThisTurn.isEmpty {
-                return
-            }
-
-            // Otherwise augment the tool-aware history with the tool-call +
-            // tool-result pairs the model produced this turn, then loop.
-            var nextHistory = toolAwareHistory ?? currentMessages.map {
-                ToolAwareHistoryEntry(role: $0.role, content: $0.textContent)
-            }
-            nextHistory.append(
-                ToolAwareHistoryEntry(
-                    role: "assistant",
-                    content: "",
-                    toolCalls: dispatchedInThisTurn.map(\.0)
-                )
-            )
-            for (call, result) in dispatchedInThisTurn {
-                nextHistory.append(
-                    ToolAwareHistoryEntry(
-                        role: "tool",
-                        content: result.content,
-                        toolCallId: call.id
-                    )
-                )
-            }
-            toolAwareHistory = nextHistory
-            // Keep `currentMessages` in sync so backends without
-            // tool-aware support at least see the user-side history.
-            // Tool/assistant-tool-call entries are omitted from the plain
-            // path because `(role, content)` can't carry call ids faithfully.
-        }
+        try await loop.run(
+            token: request.token,
+            messages: request.messages,
+            systemPrompt: request.systemPrompt,
+            config: request.config
+        )
     }
 
     private func finishAndDiscard(_ token: GenerationRequestToken, error: Error? = nil) {
