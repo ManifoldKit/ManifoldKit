@@ -102,8 +102,13 @@ done
 # ── Build once, reuse the bundle across invocations ───────────────────────────
 # `swift test --skip-build` reads the existing test bundle from .build, so
 # pre-building here saves the per-invocation compile-time check.
-echo "[test-llama-isolated] Pre-building tests with traits MLX,Llama..."
-swift build --build-tests --traits MLX,Llama
+#
+# Trait set is `Llama` only (not `MLX,Llama`) — every class in
+# LLAMA_TEST_CLASSES is `#if Llama`-gated and references zero ManifoldMLX
+# symbols, so dropping MLX skips an mlx-swift source checkout and a full
+# Metal shader compilation pass for no loss of coverage.
+echo "[test-llama-isolated] Pre-building tests with traits Llama..."
+swift build --build-tests --traits Llama
 echo ""
 
 # ── Run each class in its own invocation ──────────────────────────────────────
@@ -121,7 +126,7 @@ for class in "${LLAMA_TEST_CLASSES[@]}"; do
     set +e
     swift test \
         --filter "ManifoldBackendsTests\.${class}/" \
-        --traits MLX,Llama \
+        --traits Llama \
         --skip-build \
         "${EXTRA_ARGS[@]}" \
         2>&1 | tee "$LOG"
