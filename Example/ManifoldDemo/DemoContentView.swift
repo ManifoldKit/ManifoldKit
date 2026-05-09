@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import ManifoldPersistenceSwiftData
 import ManifoldInference
+import ManifoldRuntime
 import ManifoldUI
 import ManifoldUIModelManagement
 import ManifoldVoice
@@ -20,6 +21,7 @@ struct DemoContentView: View {
     @State private var isModelManagementPresented = false
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
+    @State private var isDocumentLibraryPresented = false
     // ManifoldVoice's AppleSpeechTranscriber drives AVAudioEngine, which raises
     // on iOS Simulator launch (no audio input device). Mount the controller
     // and the composer accessory only on real hardware.
@@ -37,6 +39,11 @@ struct DemoContentView: View {
     /// here (rather than re-resolved per-scenario) so `--uitesting` runs use
     /// a stable temp directory the test harness can inspect.
     let sandboxRoot: URL
+
+    /// The RAG knowledge-base service. Forwarded into ``DocumentLibrarySheet``
+    /// when the user opens the sidebar's "Knowledge Base" entry. `nil` when
+    /// the demo bootstraps without ``RAGConfiguration``.
+    let ragService: RAGService?
 
     /// Buffer holding any ``InboundPayload`` that arrived during the
     /// cold-launch window, before the runtime finished bootstrapping.
@@ -105,6 +112,16 @@ struct DemoContentView: View {
             ConnectedServicesView(
                 toolRegistry: toolRegistry,
                 isFoundationModelsActive: { viewModel.activeBackendName == "Apple" }
+            )
+        }
+        .sheet(isPresented: $isDocumentLibraryPresented) {
+            // The demo wires `RAGConfiguration()` (no embedding backend) so
+            // retrieval falls back to keyword search — `hasEmbeddingBackend`
+            // is `false` and the sheet renders the "Using keyword fallback"
+            // banner.
+            DocumentLibrarySheet(
+                ragService: ragService,
+                hasEmbeddingBackend: false
             )
         }
         .sheet(isPresented: approvalSheetIsPresented) {
@@ -314,6 +331,21 @@ struct DemoContentView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("sidebar-connected-services-button")
+
+                Button {
+                    isDocumentLibraryPresented = true
+                } label: {
+                    HStack {
+                        Label("Knowledge Base", systemImage: "books.vertical")
+                            .font(.caption)
+                        Spacer()
+                        Text("Manage")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar-knowledge-base-button")
             }
             .padding()
         }

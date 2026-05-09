@@ -93,13 +93,34 @@ public actor RAGService {
 
     // MARK: - Retrieval
 
-    /// Returns a ``PromptSlot`` containing the top relevant passages for `query`,
-    /// or an empty array when no passages score above zero.
+    /// The combined output of a single retrieval call: the prompt slot to inject
+    /// into context, plus the per-hit ``Citation`` provenance to surface in the
+    /// UI.
     ///
-    /// Called by ``ConversationRuntime`` before each generation turn.
-    public func retrieveSlots(query: String, limit: Int = 5) async throws -> [PromptSlot] {
+    /// ``slots`` and ``citations`` are produced from the same underlying
+    /// ``VectorSearchHit`` array, so a non-empty `slots` always implies a
+    /// non-empty `citations` (one citation per hit, in the same order).
+    public struct RetrievalResult: Sendable {
+        public let slots: [PromptSlot]
+        public let citations: [Citation]
+
+        public init(slots: [PromptSlot], citations: [Citation]) {
+            self.slots = slots
+            self.citations = citations
+        }
+
+        public static let empty = RetrievalResult(slots: [], citations: [])
+    }
+
+    /// Returns the prompt slot AND citation list for the top `limit` passages
+    /// matching `query`.
+    ///
+    /// Called by ``ConversationRuntime`` before each generation turn. Empty
+    /// results (whitespace-only query, no above-zero scores) round-trip as
+    /// ``RetrievalResult/empty``.
+    public func retrieve(query: String, limit: Int = 5) async throws -> RetrievalResult {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return []
+            return .empty
         }
 
         let hits: [VectorSearchHit]
@@ -115,19 +136,40 @@ public actor RAGService {
             hits = try await vectorStore.keywordSearch(query: query, limit: limit)
         }
 
-        guard !hits.isEmpty else { return [] }
+        guard !hits.isEmpty else { return .empty }
 
         let content = hits.map { hit in
             "[\(hit.documentTitle)]\n\(hit.chunk.text)"
         }.joined(separator: "\n\n---\n\n")
 
-        return [PromptSlot(
+        let slot = PromptSlot(
             id: "rag-retrieval",
             content: content,
             position: .contextSetup,
             role: .retrieval,
             label: "Retrieved Documents"
-        )]
+        )
+
+        let citations = hits.map { hit in
+            Citation(
+                documentID: hit.chunk.documentID,
+                documentTitle: hit.documentTitle,
+                chunkIndex: hit.chunk.chunkIndex,
+                fullText: hit.chunk.text,
+                score: hit.score
+            )
+        }
+
+        return RetrievalResult(slots: [slot], citations: citations)
+    }
+
+    /// Returns a ``PromptSlot`` containing the top relevant passages for `query`,
+    /// or an empty array when no passages score above zero.
+    ///
+    /// Compatibility shim retained for callers that don't need the citation
+    /// metadata — internally just calls ``retrieve(query:limit:)``.
+    public func retrieveSlots(query: String, limit: Int = 5) async throws -> [PromptSlot] {
+        try await retrieve(query: query, limit: limit).slots
     }
 }
 

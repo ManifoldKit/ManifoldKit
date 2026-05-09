@@ -61,6 +61,19 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     public var sessionID: UUID
     public var promptTokens: Int?
     public var completionTokens: Int?
+    /// Provenance of any RAG passages injected into the prompt for this turn.
+    ///
+    /// Populated by ``ConversationRuntime`` from
+    /// ``RAGService/retrieve(query:limit:)`` before generation; consumed by
+    /// ``MessageBubbleView`` to render a collapsed "Sources" disclosure beneath
+    /// the assistant bubble. `nil` when the turn was not RAG-augmented; an
+    /// empty array signals "RAG ran but no passages scored above zero".
+    ///
+    /// > Note: Phase 2 keeps citations transient — they live on the in-memory
+    /// > record but are NOT persisted across app launches. Cross-session
+    /// > persistence is a deliberate Phase-3 follow-up so we don't have to
+    /// > bump the SwiftData schema.
+    public var citations: [Citation]?
 
     /// Concatenated text parts for backward compatibility.
     ///
@@ -84,7 +97,8 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         timestamp: Date = Date(),
         sessionID: UUID,
         promptTokens: Int? = nil,
-        completionTokens: Int? = nil
+        completionTokens: Int? = nil,
+        citations: [Citation]? = nil
     ) {
         self.id = id
         self.role = role
@@ -93,6 +107,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.citations = citations
     }
 
     /// Creates a record from structured content parts.
@@ -103,7 +118,8 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         timestamp: Date = Date(),
         sessionID: UUID,
         promptTokens: Int? = nil,
-        completionTokens: Int? = nil
+        completionTokens: Int? = nil,
+        citations: [Citation]? = nil
     ) {
         self.id = id
         self.role = role
@@ -112,6 +128,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.citations = citations
     }
 }
 

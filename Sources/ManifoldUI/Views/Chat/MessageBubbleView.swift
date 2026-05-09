@@ -107,6 +107,14 @@ public struct MessageBubbleView: View {
                 streamingIndicator
             }
 
+            // Show citations only after streaming finishes so the disclosure
+            // doesn't pop in/out while the bubble is still filling. Empty
+            // citation arrays render an EmptyView via CitationsView.
+            if !isStreaming, let citations = message.citations, !citations.isEmpty {
+                CitationsView(citations: citations)
+                    .padding(.top, 2)
+            }
+
             if !isStreaming || message.hasVisibleContent {
                 HStack(spacing: 6) {
                     timestampLabel

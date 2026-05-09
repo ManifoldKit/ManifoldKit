@@ -163,6 +163,76 @@ final class RAGServiceTests: XCTestCase {
         XCTAssertTrue(slots.isEmpty)
     }
 
+    // MARK: - retrieve(query:) — citations
+
+    func testRetrieveReturnsCitationsForEachHit() async throws {
+        let vectorStore = FakeVectorStore()
+        let docID = UUID()
+        let hits = [
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: docID, text: "First passage about widgets.", chunkIndex: 0),
+                documentTitle: "Widgets.pdf",
+                score: 0.91
+            ),
+            VectorSearchHit(
+                chunk: DocumentChunk(documentID: docID, text: "Second passage about widgets and gadgets.", chunkIndex: 3),
+                documentTitle: "Widgets.pdf",
+                score: 0.78
+            ),
+        ]
+        await vectorStore.setKeywordResults(hits)
+
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: vectorStore)
+        let result = try await sut.retrieve(query: "widgets")
+
+        XCTAssertEqual(result.slots.count, 1)
+        XCTAssertEqual(result.citations.count, 2)
+        XCTAssertEqual(result.citations[0].documentID, docID)
+        XCTAssertEqual(result.citations[0].documentTitle, "Widgets.pdf")
+        XCTAssertEqual(result.citations[0].chunkIndex, 0)
+        XCTAssertEqual(result.citations[0].score, 0.91, accuracy: 0.001)
+        XCTAssertEqual(result.citations[1].chunkIndex, 3)
+        XCTAssertTrue(result.citations[0].snippet.contains("First passage"))
+    }
+
+    func testRetrieveEmptyQueryReturnsEmptyResult() async throws {
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
+        let result = try await sut.retrieve(query: "  ")
+        XCTAssertTrue(result.slots.isEmpty)
+        XCTAssertTrue(result.citations.isEmpty)
+    }
+
+    func testRetrieveNoHitsReturnsEmptyResult() async throws {
+        let sut = RAGService(documentStore: FakeDocumentStore(), vectorStore: FakeVectorStore())
+        let result = try await sut.retrieve(query: "anything")
+        XCTAssertTrue(result.slots.isEmpty)
+        XCTAssertTrue(result.citations.isEmpty)
+    }
+
+    func testCitationSnippetTruncatesLongText() {
+        let longText = String(repeating: "a", count: Citation.snippetCharacterLimit + 50)
+        let citation = Citation(
+            documentID: UUID(),
+            documentTitle: "Doc",
+            chunkIndex: 0,
+            fullText: longText,
+            score: 1.0
+        )
+        XCTAssertTrue(citation.snippet.hasSuffix("…"))
+        XCTAssertEqual(citation.snippet.count, Citation.snippetCharacterLimit + 1)
+    }
+
+    func testCitationSnippetPreservesShortText() {
+        let citation = Citation(
+            documentID: UUID(),
+            documentTitle: "Doc",
+            chunkIndex: 0,
+            fullText: "Short.",
+            score: 1.0
+        )
+        XCTAssertEqual(citation.snippet, "Short.")
+    }
+
     func testDeleteDocumentRemovesFromBothStores() async throws {
         let vectorStore = FakeVectorStore()
         let docStore = FakeDocumentStore()
