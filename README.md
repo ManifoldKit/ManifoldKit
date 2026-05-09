@@ -998,6 +998,17 @@ cd Example
 open ManifoldDemo.xcodeproj
 ```
 
+## Migrating from BaseChatKit
+
+This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL `github.com/roryford/BaseChatKit` redirects to `roryford/ManifoldKit`, but for clarity:
+
+- Update SPM dependencies: `.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.20.0")`
+- Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules — `BaseChatInference` → `ManifoldInference`, etc.)
+- Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`
+- **BREAKING — local SwiftData stores reset.** SwiftData persists fully-qualified `@Model` type names; renaming the schema namespace orphans existing on-disk stores. Apps upgrading from 0.19.x will create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.
+- Cache directories `~/Library/Caches/BaseChatKit/` and `~/Library/Application Support/BaseChatKit/` are also orphaned; users get fresh state.
+- Background-task identifiers `com.basechatkit.background.*` → `com.manifoldkit.background.*` — apps must update `BGTaskSchedulerPermittedIdentifiers` in Info.plist.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
