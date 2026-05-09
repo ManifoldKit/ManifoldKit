@@ -317,9 +317,7 @@ package final class SessionListService: Sendable {
         using inferenceService: InferenceService
     ) async throws -> String? {
         let systemPrompt = "Generate a concise 3-5 word title for a conversation that starts with the following message. Reply with ONLY the title, no punctuation, no quotes."
-        let messages: [(role: String, content: String)] = [
-            (role: "user", content: firstMessage)
-        ]
+        let messages: [Message] = [.user(firstMessage)]
         let (_, stream) = try inferenceService.enqueue(
             messages: messages,
             systemPrompt: systemPrompt,

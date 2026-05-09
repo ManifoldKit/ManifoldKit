@@ -545,8 +545,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     private static let networkIOPattern =
         #"(?<![A-Za-z0-9_])(URLSession|URLRequest|URLSessionConfiguration)(?![A-Za-z0-9_])"#
 
+    /// `system(` is matched only when used as a free function call —
+    /// excluding both member-access (`.system(...)` is a SwiftUI/AppKit
+    /// idiom) and Swift enum case constructors (`case system(...)`).
+    /// The doubled negative lookbehind keeps the C-interop tripwire while
+    /// allowing legitimate Swift idioms.
     private static let cInteropPattern =
-        #"(?<![A-Za-z0-9_])(@_silgen_name|@_cdecl|dlopen\(|dlsym\(|NSClassFromString|objc_getClass|class_createInstance|NSTask|posix_spawn|popen\()|(?<![A-Za-z0-9_.])system\("#
+        #"(?<![A-Za-z0-9_])(@_silgen_name|@_cdecl|dlopen\(|dlsym\(|NSClassFromString|objc_getClass|class_createInstance|NSTask|posix_spawn|popen\()|(?<![A-Za-z0-9_.])(?<!case )system\("#
 
     /// `Process(` as a constructor call — distinguishes from Swift's
     /// `Process` type used as a parameter type. The open-paren is the
@@ -874,6 +879,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         let swiftUIFontCall = "Text(\"Hi\").font(.system(.body))"
         XCTAssertFalse(Self.matches(Self.cInteropPattern, in: swiftUIFontCall),
                        "Rule 2 must not match SwiftUI's .system(...) member call")
+
+        // Negative: Swift enum case constructor `case system(...)` must
+        // not match — the C-interop tripwire targets free `system()` calls,
+        // not enum cases. (See `BaseChatInference.Message.system(_:)`.)
+        let enumCase = "    case system(String)"
+        XCTAssertFalse(Self.matches(Self.cInteropPattern, in: enumCase),
+                       "Rule 2 must not match Swift enum case `case system(...)` constructors")
     }
 
     func test_sabotage_rule3_catchesHostnameLiterals() {

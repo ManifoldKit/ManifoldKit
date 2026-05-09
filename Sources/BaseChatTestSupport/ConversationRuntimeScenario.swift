@@ -193,19 +193,35 @@ enum ConversationRuntimeScenarioRunner {
             return await driveAndAwait(
                 step: step,
                 runtime: runtime,
-                drivingAction: { try await runtime.send(SendInput(sessionID: sessionID, userText: text)) }
+                drivingAction: {
+                    let handle = try await runtime.processTurn(
+                        TurnInput(sessionID: sessionID, kind: .send(text: text))
+                    )
+                    // `.send` always produces a stream handle.
+                    return handle ?? ConversationStreamHandle()
+                }
             )
         case .regenerate:
             return await driveAndAwait(
                 step: step,
                 runtime: runtime,
-                drivingAction: { try await runtime.regenerate(RegenerateInput(sessionID: sessionID)) }
+                drivingAction: {
+                    let handle = try await runtime.processTurn(
+                        TurnInput(sessionID: sessionID, kind: .regenerate)
+                    )
+                    return handle ?? ConversationStreamHandle()
+                }
             )
         case .cancelMidStream(let text, _):
             return await driveAndAwait(
                 step: step,
                 runtime: runtime,
-                drivingAction: { try await runtime.send(SendInput(sessionID: sessionID, userText: text)) }
+                drivingAction: {
+                    let handle = try await runtime.processTurn(
+                        TurnInput(sessionID: sessionID, kind: .send(text: text))
+                    )
+                    return handle ?? ConversationStreamHandle()
+                }
             )
         }
     }
