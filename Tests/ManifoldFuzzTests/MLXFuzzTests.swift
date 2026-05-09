@@ -8,14 +8,14 @@ import ManifoldFuzzBackends
 final class MLXFuzzTests: XCTestCase {
 
     private enum EnvironmentKeys {
-        static let minutes = "BASECHAT_FUZZ_MINUTES"
-        static let iterations = "BASECHAT_FUZZ_ITERATIONS"
-        static let seed = "BASECHAT_FUZZ_SEED"
-        static let detector = "BASECHAT_FUZZ_DETECTOR"
-        static let quiet = "BASECHAT_FUZZ_QUIET"
-        static let sessionScripts = "BASECHAT_FUZZ_SESSION_SCRIPTS"
-        static let corpusSubset = "BASECHAT_FUZZ_CORPUS_SUBSET"
-        static let tools = "BASECHAT_FUZZ_TOOLS"
+        static let minutes = "MANIFOLD_FUZZ_MINUTES"
+        static let iterations = "MANIFOLD_FUZZ_ITERATIONS"
+        static let seed = "MANIFOLD_FUZZ_SEED"
+        static let detector = "MANIFOLD_FUZZ_DETECTOR"
+        static let quiet = "MANIFOLD_FUZZ_QUIET"
+        static let sessionScripts = "MANIFOLD_FUZZ_SESSION_SCRIPTS"
+        static let corpusSubset = "MANIFOLD_FUZZ_CORPUS_SUBSET"
+        static let tools = "MANIFOLD_FUZZ_TOOLS"
         static let model = "MLX_TEST_MODEL"
     }
 

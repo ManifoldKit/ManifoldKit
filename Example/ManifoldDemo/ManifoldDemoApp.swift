@@ -456,13 +456,13 @@ struct ManifoldDemoApp: App {
 
     /// Resolves the demo sandbox root.
     ///
-    /// UI tests may inject a fixed root via `BASECHAT_DEMO_SANDBOX_ROOT` so
+    /// UI tests may inject a fixed root via `MANIFOLD_DEMO_SANDBOX_ROOT` so
     /// they can assert side effects from `write_file`. Otherwise UI-testing
     /// launches use a disposable temp directory and production uses the
     /// long-lived Application Support root.
     private static func resolveSandboxRoot(isTesting: Bool) -> URL {
         let fm = FileManager.default
-        if let override = ProcessInfo.processInfo.environment["BASECHAT_DEMO_SANDBOX_ROOT"],
+        if let override = ProcessInfo.processInfo.environment["MANIFOLD_DEMO_SANDBOX_ROOT"],
            !override.isEmpty {
             let root = URL(fileURLWithPath: override, isDirectory: true)
             do {

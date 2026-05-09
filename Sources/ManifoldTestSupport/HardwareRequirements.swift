@@ -176,7 +176,7 @@ enum HardwareRequirements {
     /// To avoid unbounded walks through user model folders during routine test
     /// runs, common-directory discovery is opt-in. Set `MLX_TEST_MODEL` or pass
     /// `nameContains` to select a specific fixture, or set
-    /// `BASECHAT_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
+    /// `MANIFOLD_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
     /// When `MLX_TEST_MODEL` is set, the first directory whose path contains that
     /// value wins. Otherwise falls back to `nameContains`, then to the first
@@ -264,7 +264,7 @@ enum HardwareRequirements {
     /// To avoid unbounded walks through user model folders during routine test
     /// runs, common-directory discovery is opt-in. Set `LLAMA_TEST_MODEL` or pass
     /// `nameContains` to select a specific fixture, or set
-    /// `BASECHAT_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
+    /// `MANIFOLD_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
     /// When `LLAMA_TEST_MODEL` is set, the first GGUF whose path contains that
     /// value wins. Otherwise falls back to `nameContains`, then to the smallest
@@ -475,7 +475,7 @@ enum HardwareRequirements {
     ) -> Bool {
         if normalizedModelSelector(environment[selectorKey]) != nil { return true }
         if normalizedModelSelector(substring) != nil { return true }
-        return environment["BASECHAT_DISCOVER_LOCAL_MODELS"] == "1"
+        return environment["MANIFOLD_DISCOVER_LOCAL_MODELS"] == "1"
     }
 
     private static func directFilesystemModelOverride(

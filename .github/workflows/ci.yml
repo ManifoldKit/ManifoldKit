@@ -262,7 +262,7 @@ jobs:
         id: test-xctest-suites
         timeout-minutes: 12
         env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
         run: scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
@@ -273,7 +273,7 @@ jobs:
         if: always()
         timeout-minutes: 12
         env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
         run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       - name: Report SwiftPM debug cache state
@@ -291,7 +291,7 @@ jobs:
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
-        # BASECHAT_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
+        # MANIFOLD_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
         # overwrite a previous failing step's diagnostics.
         if: failure()
         env:
@@ -404,7 +404,7 @@ jobs:
         if: steps.server-changed.outputs.server == 'true'
         timeout-minutes: 12
         env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
         run: scripts/test.sh --filter ManifoldServerTests --disable-default-traits --traits Server --skip-update
 
       - name: Stage test diagnostics
@@ -508,7 +508,7 @@ jobs:
         if: steps.macros-changed.outputs.macros == 'true'
         timeout-minutes: 12
         env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-macros.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-macros.log
         run: scripts/test.sh --filter ToolSchemaMacro --disable-default-traits --traits Macros --skip-update
 
       - name: Stage test diagnostics

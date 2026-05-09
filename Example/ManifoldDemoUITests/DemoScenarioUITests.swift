@@ -99,7 +99,7 @@ final class DemoScenarioUITests: XCTestCase {
 
         let app = launchDemoApp(
             scenario: "journal-write",
-            environment: ["BASECHAT_DEMO_SANDBOX_ROOT": sandboxRoot.path]
+            environment: ["MANIFOLD_DEMO_SANDBOX_ROOT": sandboxRoot.path]
         )
         openChatDetailIfNeeded(app: app)
 

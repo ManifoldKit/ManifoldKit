@@ -68,10 +68,10 @@ jobs:
       - name: Test — Traffic boundary + MCP hardening audits (batched)
         env:
           RUN_SLOW_TESTS: "1"
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-and-mcp-hardening.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-and-mcp-hardening.log
         run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --filter "ManifoldMCPTests.MCPHardeningTests" --disable-default-traits --skip-update --min-passed 2
 
       - name: Test — PinnedSessionDelegateTests (CloudSaaS)
         env:
-          BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
         run: scripts/test.sh --filter "ManifoldBackendsTests.PinnedSessionDelegateTests" --disable-default-traits --traits CloudSaaS --skip-update --min-passed 1

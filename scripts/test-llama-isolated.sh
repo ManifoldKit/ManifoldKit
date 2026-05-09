@@ -34,7 +34,7 @@
 # Usage
 # -----
 #   # Run with whichever GGUF you already have set up:
-#   RUN_LLAMA_TESTS=1 BASECHAT_DISCOVER_LOCAL_MODELS=1 \
+#   RUN_LLAMA_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
 #     LLAMA_TEST_MODEL=$HOME/Documents/Models/<model>.gguf \
 #     scripts/test-llama-isolated.sh
 #

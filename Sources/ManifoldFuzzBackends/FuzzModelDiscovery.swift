@@ -346,7 +346,7 @@ enum FuzzModelDiscovery {
     ) -> Bool {
         if normalizedModelSelector(environment[selectorKey]) != nil { return true }
         if normalizedModelSelector(substring) != nil { return true }
-        return environment["BASECHAT_DISCOVER_LOCAL_MODELS"] == "1"
+        return environment["MANIFOLD_DISCOVER_LOCAL_MODELS"] == "1"
     }
 
     private static func directFilesystemModelOverride(

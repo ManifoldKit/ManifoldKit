@@ -11,7 +11,7 @@ import ManifoldInference
 /// simulator and the XCTest runner can't access actual diffusion models. Tests
 /// cover path-safe error surfaces and state-machine behaviour without touching
 /// the MLX inference stack. Real E2E coverage lives in
-/// ``MLXDiffusionIntegrationTests`` (Xcode-only, BASECHAT_DISCOVER_LOCAL_MODELS).
+/// ``MLXDiffusionIntegrationTests`` (Xcode-only, MANIFOLD_DISCOVER_LOCAL_MODELS).
 final class MLXDiffusionBackendTests: XCTestCase {
 
     // MARK: - Initial state

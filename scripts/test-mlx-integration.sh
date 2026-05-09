@@ -8,7 +8,7 @@
 # Silicon + Metal + a HuggingFace-style snapshot dir with config.json,
 # tokenizer.json, and *.safetensors weights). The discovery helper
 # `HardwareRequirements.findMLXModelDirectory()` is opt-out — it returns nil
-# unless `BASECHAT_DISCOVER_LOCAL_MODELS=1` (or `MLX_TEST_MODEL=<name>`) is
+# unless `MANIFOLD_DISCOVER_LOCAL_MODELS=1` (or `MLX_TEST_MODEL=<name>`) is
 # set in the test runner's environment. Without it, every test silently
 # `XCTSkip`s and the suite reports green with zero real-model coverage.
 #
@@ -87,8 +87,8 @@ fi
 # Inject env vars. Use Set (which works whether the key existed before or was
 # added by a prior run of this script).
 ENV_PATH=":TestConfigurations:0:TestTargets:$TARGET_INDEX:EnvironmentVariables"
-/usr/libexec/PlistBuddy -c "Add $ENV_PATH:BASECHAT_DISCOVER_LOCAL_MODELS string 1" "$RUNFILE" 2>/dev/null \
-    || /usr/libexec/PlistBuddy -c "Set $ENV_PATH:BASECHAT_DISCOVER_LOCAL_MODELS 1" "$RUNFILE"
+/usr/libexec/PlistBuddy -c "Add $ENV_PATH:MANIFOLD_DISCOVER_LOCAL_MODELS string 1" "$RUNFILE" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Set $ENV_PATH:MANIFOLD_DISCOVER_LOCAL_MODELS 1" "$RUNFILE"
 
 if [[ -n "$MODEL_HINT" ]]; then
     /usr/libexec/PlistBuddy -c "Add $ENV_PATH:MLX_TEST_MODEL string $MODEL_HINT" "$RUNFILE" 2>/dev/null \

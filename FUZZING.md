@@ -81,7 +81,7 @@ scripts/fuzz.sh --with-mlx --minutes 5 --seed 42 --corpus-subset smoke
 scripts/fuzz.sh --backend mlx --iterations 10 --model gemma
 ```
 
-The xcodebuild host reads `BASECHAT_FUZZ_MINUTES`, `BASECHAT_FUZZ_ITERATIONS`, `BASECHAT_FUZZ_SEED`, `BASECHAT_FUZZ_DETECTOR`, `BASECHAT_FUZZ_CORPUS_SUBSET`, `BASECHAT_FUZZ_SESSION_SCRIPTS`, `BASECHAT_FUZZ_TOOLS`, and `MLX_TEST_MODEL`, then feeds the resulting `FuzzConfig` into `FuzzRunner` / `SessionFuzzRunner` with the shared `MLXFuzzFactory`.
+The xcodebuild host reads `MANIFOLD_FUZZ_MINUTES`, `MANIFOLD_FUZZ_ITERATIONS`, `MANIFOLD_FUZZ_SEED`, `MANIFOLD_FUZZ_DETECTOR`, `MANIFOLD_FUZZ_CORPUS_SUBSET`, `MANIFOLD_FUZZ_SESSION_SCRIPTS`, `MANIFOLD_FUZZ_TOOLS`, and `MLX_TEST_MODEL`, then feeds the resulting `FuzzConfig` into `FuzzRunner` / `SessionFuzzRunner` with the shared `MLXFuzzFactory`.
 
 ---
 

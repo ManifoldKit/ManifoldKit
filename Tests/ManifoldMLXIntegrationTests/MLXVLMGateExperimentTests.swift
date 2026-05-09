@@ -78,9 +78,9 @@ final class MLXVLMGateExperimentTests: XCTestCase {
         }
         // Override discovery so `findMLXModelDirectory` actually scans
         // ~/Documents/Models/ even when neither MLX_TEST_MODEL nor
-        // BASECHAT_DISCOVER_LOCAL_MODELS is set.
+        // MANIFOLD_DISCOVER_LOCAL_MODELS is set.
         var searchEnv = ProcessInfo.processInfo.environment
-        searchEnv["BASECHAT_DISCOVER_LOCAL_MODELS"] = "1"
+        searchEnv["MANIFOLD_DISCOVER_LOCAL_MODELS"] = "1"
         if let url = HardwareRequirements.findMLXModelDirectory(
             nameContains: selector,
             environment: searchEnv
