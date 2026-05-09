@@ -155,8 +155,8 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
             systemPrompt: "Use the `write_file` tool to save the user's content. Path must be relative. Then confirm in one sentence.",
             userPrompt: "Write a one-sentence journal entry to journal/today.md saying I had a productive day.",
             expectedToolNames: ["write_file"]
-        ) { _, _ in
-            let journalPath = sandboxRoot.appendingPathComponent("journal/today.md")
+        ) { [self] _, _ in
+            let journalPath = sandboxRoot!.appendingPathComponent("journal/today.md")
             XCTAssertTrue(
                 FileManager.default.fileExists(atPath: journalPath.path),
                 "Journal-write scenario should create journal/today.md"
