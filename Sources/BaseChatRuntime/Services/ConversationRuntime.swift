@@ -1,14 +1,14 @@
 import Foundation
 import BaseChatInference
 
-// MARK: - Send input
+// MARK: - Legacy Send input
 //
-// PR-A ships the ``send`` sub-flow. Regenerate lands in PR-B; edit lands in
-// PR-C; branch lands in PR-D. PR-E absorbs token batching, thinking-block
-// disclosure, loop detection, and tool dispatch into ``runGenerationTurn``.
-// Each sub-flow has its own input type and command method; all four share
-// the ``runGenerationTurn`` private helper for the generation inner loop
-// (context assembly → enqueue → drain → finalise).
+// I6 collapsed the four near-identical input structs into a single ``TurnInput``
+// + ``TurnConfig`` + ``TurnKind`` triple (see ConversationRuntime+TurnInput.swift).
+// `SendInput` / `RegenerateInput` / `EditInput` / `BranchInput` remain as
+// deprecation shims for one minor so adopters can migrate without a hard break.
+// New callers should construct ``TurnInput`` and call
+// ``ConversationRuntime/processTurn(_:)``.
 
 /// Input for ``ConversationRuntime/send(_:)``.
 ///
@@ -18,6 +18,7 @@ import BaseChatInference
 /// public stance), and turning a no-session call into a "generic" turn
 /// would require a parallel error path consumers shouldn't have to
 /// pattern-match.
+@available(*, deprecated, renamed: "TurnInput", message: "Build a TurnInput with .send(text:attachments:) and call processTurn(_:). SendInput will be removed in a future release.")
 public struct SendInput: Sendable {
     public let sessionID: UUID
     public let userText: String
@@ -74,6 +75,33 @@ public struct SendInput: Sendable {
     }
 }
 
+@available(*, deprecated)
+extension SendInput {
+    /// Translates the legacy struct into the canonical ``TurnInput`` used by
+    /// ``ConversationRuntime/processTurn(_:)``. Used by the deprecated
+    /// ``ConversationRuntime/send(_:)`` overload to forward without
+    /// duplicating the per-field plumbing.
+    var asTurnInput: TurnInput {
+        TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: userText, attachments: attachments),
+            config: TurnConfig(
+                systemPrompt: systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                streamingUpdateInterval: streamingUpdateInterval,
+                streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+                thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+                thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+                loopDetectionEnabled: loopDetectionEnabled
+            )
+        )
+    }
+}
+
 // MARK: - Regenerate input
 
 /// Input for ``ConversationRuntime/regenerate(_:)``.
@@ -81,6 +109,7 @@ public struct SendInput: Sendable {
 /// No `userText` — regenerate re-runs the last user turn with no new input.
 /// The runtime finds the last assistant message, deletes it, and streams a
 /// fresh response into a new assistant record.
+@available(*, deprecated, renamed: "TurnInput", message: "Build a TurnInput with .regenerate and call processTurn(_:). RegenerateInput will be removed in a future release.")
 public struct RegenerateInput: Sendable {
     public let sessionID: UUID
     public let systemPrompt: String?
@@ -124,6 +153,29 @@ public struct RegenerateInput: Sendable {
     }
 }
 
+@available(*, deprecated)
+extension RegenerateInput {
+    var asTurnInput: TurnInput {
+        TurnInput(
+            sessionID: sessionID,
+            kind: .regenerate,
+            config: TurnConfig(
+                systemPrompt: systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                streamingUpdateInterval: streamingUpdateInterval,
+                streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+                thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+                thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+                loopDetectionEnabled: loopDetectionEnabled
+            )
+        )
+    }
+}
+
 // MARK: - Edit input
 
 /// Input for ``ConversationRuntime/edit(_:)``.
@@ -131,6 +183,7 @@ public struct RegenerateInput: Sendable {
 /// Identifies the message to edit by ID, carries the replacement content,
 /// and includes the same generation knobs as ``SendInput`` and
 /// ``RegenerateInput`` for the subsequent generation turn (if any).
+@available(*, deprecated, renamed: "TurnInput", message: "Build a TurnInput with .edit(messageID:text:) and call processTurn(_:). EditInput will be removed in a future release.")
 public struct EditInput: Sendable {
     public let sessionID: UUID
     /// The ID of the message whose content will be replaced.
@@ -182,6 +235,29 @@ public struct EditInput: Sendable {
     }
 }
 
+@available(*, deprecated)
+extension EditInput {
+    var asTurnInput: TurnInput {
+        TurnInput(
+            sessionID: sessionID,
+            kind: .edit(messageID: messageID, text: newContent),
+            config: TurnConfig(
+                systemPrompt: systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                streamingUpdateInterval: streamingUpdateInterval,
+                streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+                thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+                thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+                loopDetectionEnabled: loopDetectionEnabled
+            )
+        )
+    }
+}
+
 // MARK: - Branch input
 
 /// Input for ``ConversationRuntime/branch(_:)``.
@@ -190,6 +266,7 @@ public struct EditInput: Sendable {
 /// `sourceSessionID` up to and including `branchMessageID` into a new session
 /// identified by `newSessionID`, then optionally triggers a generation turn on
 /// the new session if the last copied message is a user message.
+@available(*, deprecated, renamed: "TurnInput", message: "Build a TurnInput with .branch(messageID:newSessionID:newSessionTitle:generateAfter:) and call processTurn(_:). BranchInput will be removed in a future release.")
 public struct BranchInput: Sendable {
     /// The session to fork from.
     public let sourceSessionID: UUID
@@ -238,11 +315,34 @@ public struct BranchInput: Sendable {
     }
 }
 
+@available(*, deprecated)
+extension BranchInput {
+    var asTurnInput: TurnInput {
+        TurnInput(
+            sessionID: sourceSessionID,
+            kind: .branch(
+                messageID: branchMessageID,
+                newSessionID: newSessionID,
+                newSessionTitle: newSessionTitle,
+                generateAfter: generateAfterBranch
+            ),
+            config: TurnConfig(
+                systemPrompt: systemPrompt,
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens
+            )
+        )
+    }
+}
+
 // MARK: - Stream handle
 
 /// Identifier for an in-flight runtime stream.
 ///
-/// Returned from ``ConversationRuntime/send(_:)`` and passed back to
+/// Returned from ``ConversationRuntime/processTurn(_:)`` and passed back to
 /// ``ConversationRuntime/cancel(_:)`` to cancel a specific in-flight turn.
 /// Per-runtime unique; not stable across runtime instances.
 public struct ConversationStreamHandle: Sendable, Hashable {
@@ -320,15 +420,14 @@ actor InFlightStreamRegistry {
 /// (`ChatViewModel`-shaped consumers). The stream is unbounded — adapters
 /// must drain it on a long-lived task or the buffer grows.
 ///
-/// ## Scope (PR-E)
+/// ## Turn entry points
 ///
-/// PR-A ships the scaffolding plus the ``send(_:)`` sub-flow. PR-B adds
-/// ``regenerate(_:)``. PR-C adds ``edit(_:)`` and extracts a shared
-/// ``runGenerationTurn`` helper. PR-D adds ``branch(_:)``. PR-E absorbs
-/// the streaming-token batcher, thinking-block disclosure, loop detection,
-/// and tool-dispatch loop from `GenerationQueue` into
-/// ``runGenerationTurn`` so all four sub-flows share the same rich
-/// streaming behaviour.
+/// ``processTurn(_:)`` is the canonical entry point for every turn flow.
+/// Build a ``TurnInput`` with the appropriate ``TurnKind`` (`.send`,
+/// `.regenerate`, `.edit`, or `.branch`) and a shared ``TurnConfig``.
+/// The legacy per-flow methods (``send(_:)``, ``regenerate(_:)``,
+/// ``edit(_:)``, ``branch(_:)``) and their `*Input` types are kept as
+/// deprecation shims for one minor.
 public final class ConversationRuntime: Sendable {
 
     // MARK: Ports
@@ -427,7 +526,72 @@ public final class ConversationRuntime: Sendable {
         continuation.finish()
     }
 
-    // MARK: Commands
+    // MARK: Canonical entry point
+
+    /// Processes one turn. Routes by ``TurnKind`` to the appropriate
+    /// per-flow setup (synchronous persistence) and dispatches the
+    /// generation portion (when applicable) onto a detached task.
+    ///
+    /// Returns:
+    /// - A ``ConversationStreamHandle`` for any flow that drives generation.
+    /// - `nil` for `.edit` of a non-user message (no regeneration) and for
+    ///   `.branch` when the last copied message is not `.user` or
+    ///   `generateAfter` is `false`.
+    ///
+    /// Cancellation: pass the returned handle to ``cancel(_:)``. The
+    /// in-flight stream terminates with
+    /// ``ConversationEvent/streamFinished(messageID:reason:)`` carrying
+    /// ``FinishReason/cancelled``.
+    @discardableResult
+    public func processTurn(_ input: TurnInput) async throws -> ConversationStreamHandle? {
+        switch input.kind {
+        case let .send(text, attachments):
+            return try await runSendFlow(
+                sessionID: input.sessionID,
+                text: text,
+                attachments: attachments,
+                config: input.config
+            )
+        case .regenerate:
+            return try await runRegenerateFlow(
+                sessionID: input.sessionID,
+                config: input.config
+            )
+        case let .edit(messageID, text):
+            return try await runEditFlow(
+                sessionID: input.sessionID,
+                messageID: messageID,
+                text: text,
+                config: input.config
+            )
+        case let .branch(messageID, newSessionID, newSessionTitle, generateAfter):
+            return try await runBranchFlow(
+                sourceSessionID: input.sessionID,
+                branchMessageID: messageID,
+                newSessionID: newSessionID,
+                newSessionTitle: newSessionTitle,
+                generateAfter: generateAfter,
+                config: input.config
+            )
+        }
+    }
+
+    // MARK: Cancel
+
+    /// Cancels an in-flight stream identified by `handle`.
+    ///
+    /// Idempotent — cancelling an already-cancelled or already-finished
+    /// handle is a no-op. The stream fires its terminal
+    /// ``ConversationEvent/streamFinished(messageID:reason:)`` with
+    /// ``FinishReason/cancelled`` once the cancel propagates through the
+    /// underlying inference layer.
+    public func cancel(_ handle: ConversationStreamHandle) async {
+        let token = await registry.markCancelled(handle)
+        guard let token else { return }
+        await inferenceService.cancelAsync(token)
+    }
+
+    // MARK: Legacy command surface (deprecated)
 
     /// Sends a user message and drives one generation turn.
     ///
@@ -443,71 +607,19 @@ public final class ConversationRuntime: Sendable {
     /// ``ConversationEvent/streamFinished(messageID:reason:)`` carrying
     /// ``FinishReason/cancelled``.
     @discardableResult
+    @available(*, deprecated, renamed: "processTurn(_:)", message: "Build a TurnInput with .send(text:attachments:) and call processTurn(_:).")
     public func send(_ input: SendInput) async throws -> ConversationStreamHandle {
-        let handle = ConversationStreamHandle()
-
-        // Persist the user message synchronously so the caller observes
-        // ordering (`messageInserted(user)` before `send` returns) — the
-        // stream task fires off after this point. Persistence failures
-        // throw out so the caller can surface them; matching ChatViewModel's
-        // current shape where a user-message persistence failure aborts the
-        // turn before any assistant work runs.
-        // Build user contentParts: when attachments are present, splice the
-        // text part (if any) before the attachments so the persisted record
-        // and the structured-history snapshot the runtime hands the backend
-        // both carry `[.text, <attachments>...]`. Empty text + attachments
-        // yields an attachment-only record (e.g. a "describe this image"
-        // turn with no caption).
-        let attachments = input.attachments.map { $0.generatingImagePlaceholderIfNeeded() }
-        let userContentParts: [MessagePart]
-        if attachments.isEmpty {
-            userContentParts = [.text(input.userText)]
-        } else if input.userText.isEmpty {
-            userContentParts = attachments
-        } else {
-            userContentParts = [.text(input.userText)] + attachments
+        // The deprecated overloads forward through processTurn. `.send` always
+        // produces a stream handle, so force-unwrap the optional return — the
+        // underlying flow guarantees non-nil for `.send`.
+        guard let handle = try await processTurn(input.asTurnInput) else {
+            // Unreachable: runSendFlow always returns a non-nil handle.
+            // Prefer Log + a synthetic handle over a trap so a stale flow
+            // change can't take down the app.
+            Log.inference.warning("ConversationRuntime.send: processTurn returned nil for .send — synthesising handle")
+            return ConversationStreamHandle()
         }
-        let userMessage = ChatMessageRecord(
-            role: .user,
-            contentParts: userContentParts,
-            sessionID: input.sessionID
-        )
-        do {
-            try await insertMessage(userMessage)
-        } catch {
-            throw ConversationError.persistence(error)
-        }
-        emit(.messageInserted(userMessage))
-
-        // Touch session updatedAt — best-effort. Persistence errors here
-        // are logged and continue; the runtime should not lose a turn over
-        // a sidebar-ordering failure.
-        if let sessionStore {
-            await touchSession(sessionStore: sessionStore, sessionID: input.sessionID)
-        }
-
-        // Detach the streaming work onto an unstructured task so `send`
-        // returns the handle promptly. The task captures `self` strongly
-        // for the duration of the turn — releases via the registry when
-        // the turn ends.
-        Task.detached { [self] in
-            await runSendTurn(input: input, handle: handle)
-        }
-
         return handle
-    }
-
-    /// Cancels an in-flight stream identified by `handle`.
-    ///
-    /// Idempotent — cancelling an already-cancelled or already-finished
-    /// handle is a no-op. The stream fires its terminal
-    /// ``ConversationEvent/streamFinished(messageID:reason:)`` with
-    /// ``FinishReason/cancelled`` once the cancel propagates through the
-    /// underlying inference layer.
-    public func cancel(_ handle: ConversationStreamHandle) async {
-        let token = await registry.markCancelled(handle)
-        guard let token else { return }
-        await inferenceService.cancelAsync(token)
     }
 
     /// Deletes the last assistant message for `input.sessionID` and drives
@@ -522,17 +634,139 @@ public final class ConversationRuntime: Sendable {
     ///
     /// Cancellation: pass the returned handle to ``cancel(_:)``.
     @discardableResult
+    @available(*, deprecated, renamed: "processTurn(_:)", message: "Build a TurnInput with .regenerate and call processTurn(_:).")
     public func regenerate(_ input: RegenerateInput) async throws -> ConversationStreamHandle {
+        guard let handle = try await processTurn(input.asTurnInput) else {
+            Log.inference.warning("ConversationRuntime.regenerate: processTurn returned nil for .regenerate — synthesising handle")
+            return ConversationStreamHandle()
+        }
+        return handle
+    }
+
+    /// Edits a message's content, deletes all messages after it, then
+    /// regenerates if the edited message was a user message.
+    ///
+    /// Returns a ``ConversationStreamHandle`` if generation was triggered
+    /// (edited message was `.user`); returns `nil` if the edited message was
+    /// `.assistant` and no generation is needed. The call is `async throws`
+    /// for synchronous setup failures (message not found, persistence errors
+    /// before the detached task fires); once the task is running, failures
+    /// route to ``ConversationEvent/errorRaised(_:)``.
+    ///
+    /// Cancellation: pass the returned handle to ``cancel(_:)``.
+    @discardableResult
+    @available(*, deprecated, renamed: "processTurn(_:)", message: "Build a TurnInput with .edit(messageID:text:) and call processTurn(_:).")
+    public func edit(_ input: EditInput) async throws -> ConversationStreamHandle? {
+        try await processTurn(input.asTurnInput)
+    }
+
+    /// Forks a conversation at a chosen message, creating a new session with
+    /// the messages up to and including the branch point copied in.
+    ///
+    /// Returns a ``ConversationStreamHandle`` when `generateAfterBranch` is
+    /// `true` and the last copied message is `.user`; returns `nil` otherwise.
+    /// Setup failures (branch point not found, persistence errors) throw
+    /// synchronously before any task is launched; generation failures after
+    /// the task is launched route to ``ConversationEvent/errorRaised(_:)``.
+    @discardableResult
+    @available(*, deprecated, renamed: "processTurn(_:)", message: "Build a TurnInput with .branch(messageID:...) and call processTurn(_:).")
+    public func branch(_ input: BranchInput) async throws -> ConversationStreamHandle? {
+        try await processTurn(input.asTurnInput)
+    }
+
+    // MARK: Send flow
+
+    private func runSendFlow(
+        sessionID: UUID,
+        text: String,
+        attachments rawAttachments: [MessagePart],
+        config: TurnConfig
+    ) async throws -> ConversationStreamHandle {
+        let handle = ConversationStreamHandle()
+
+        // Persist the user message synchronously so the caller observes
+        // ordering (`messageInserted(user)` before `processTurn` returns) —
+        // the stream task fires off after this point. Persistence failures
+        // throw out so the caller can surface them; matching ChatViewModel's
+        // current shape where a user-message persistence failure aborts the
+        // turn before any assistant work runs.
+        // Build user contentParts: when attachments are present, splice the
+        // text part (if any) before the attachments so the persisted record
+        // and the structured-history snapshot the runtime hands the backend
+        // both carry `[.text, <attachments>...]`. Empty text + attachments
+        // yields an attachment-only record (e.g. a "describe this image"
+        // turn with no caption).
+        let attachments = rawAttachments.map { $0.generatingImagePlaceholderIfNeeded() }
+        let userContentParts: [MessagePart]
+        if attachments.isEmpty {
+            userContentParts = [.text(text)]
+        } else if text.isEmpty {
+            userContentParts = attachments
+        } else {
+            userContentParts = [.text(text)] + attachments
+        }
+        let userMessage = ChatMessageRecord(
+            role: .user,
+            contentParts: userContentParts,
+            sessionID: sessionID
+        )
+        do {
+            try await insertMessage(userMessage)
+        } catch {
+            throw ConversationError.persistence(error)
+        }
+        emit(.messageInserted(userMessage))
+
+        // Touch session updatedAt — best-effort. Persistence errors here
+        // are logged and continue; the runtime should not lose a turn over
+        // a sidebar-ordering failure.
+        if let sessionStore {
+            await touchSession(sessionStore: sessionStore, sessionID: sessionID)
+        }
+
+        // Detach the streaming work onto an unstructured task so the
+        // command returns the handle promptly. The task captures `self`
+        // strongly for the duration of the turn — releases via the
+        // registry when the turn ends.
+        Task.detached { [self] in
+            // Fetch history first — one store fetch covers both the
+            // message count for context assembly and the structured
+            // messages for enqueueAsync. By the time we get here, the
+            // user message we just inserted is in the store
+            // (insertMessage awaited above).
+            let history: [ChatMessageRecord]
+            do {
+                history = try await fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            await runGenerationTurn(
+                sessionID: sessionID,
+                userPrompt: text,
+                history: history,
+                config: config,
+                handle: handle
+            )
+        }
+
+        return handle
+    }
+
+    // MARK: Regenerate flow
+
+    private func runRegenerateFlow(
+        sessionID: UUID,
+        config: TurnConfig
+    ) async throws -> ConversationStreamHandle {
         let handle = ConversationStreamHandle()
 
         // Fetch history synchronously so we can locate and delete the last
         // assistant message before returning the handle. Callers observe
-        // ordering: `.messageRemoved` fires before `regenerate` returns, so
-        // adapters that unsubscribe from the old message slot can do so
-        // before the new stream starts.
+        // ordering: `.messageRemoved` fires before `processTurn` returns.
         let history: [ChatMessageRecord]
         do {
-            history = try await fetchMessages(sessionID: input.sessionID)
+            history = try await fetchMessages(sessionID: sessionID)
         } catch {
             throw ConversationError.persistence(error)
         }
@@ -549,44 +783,54 @@ public final class ConversationRuntime: Sendable {
         emit(.messageRemoved(messageID: lastAssistant.id))
 
         Task.detached { [self] in
-            await runRegenerateTurn(input: input, handle: handle)
+            // Fetch history after deletion — the removed assistant message
+            // is gone, so context assembly starts from the last user turn.
+            let postHistory: [ChatMessageRecord]
+            do {
+                postHistory = try await fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            await runGenerationTurn(
+                sessionID: sessionID,
+                userPrompt: nil,
+                history: postHistory,
+                config: config,
+                handle: handle
+            )
         }
 
         return handle
     }
 
-    /// Edits a message's content, deletes all messages after it, then
-    /// regenerates if the edited message was a user message.
-    ///
-    /// Returns a ``ConversationStreamHandle`` if generation was triggered
-    /// (edited message was `.user`); returns `nil` if the edited message was
-    /// `.assistant` and no generation is needed. The call is `async throws`
-    /// for synchronous setup failures (message not found, persistence errors
-    /// before the detached task fires); once the task is running, failures
-    /// route to ``ConversationEvent/errorRaised(_:)``.
-    ///
-    /// Cancellation: pass the returned handle to ``cancel(_:)``.
-    @discardableResult
-    public func edit(_ input: EditInput) async throws -> ConversationStreamHandle? {
-        // Fetch history synchronously so we can locate the target message and
-        // delete trailing messages before returning. Callers observe ordering:
-        // `.messageUpdated` and `.messageRemoved` events fire before `edit`
-        // returns so adapters can update their view-state before the stream
-        // starts.
+    // MARK: Edit flow
+
+    private func runEditFlow(
+        sessionID: UUID,
+        messageID: UUID,
+        text: String,
+        config: TurnConfig
+    ) async throws -> ConversationStreamHandle? {
+        // Fetch history synchronously so we can locate the target message
+        // and delete trailing messages before returning. Callers observe
+        // ordering: `.messageUpdated` and `.messageRemoved` events fire
+        // before `processTurn` returns so adapters can update their view-
+        // state before the stream starts.
         let history: [ChatMessageRecord]
         do {
-            history = try await fetchMessages(sessionID: input.sessionID)
+            history = try await fetchMessages(sessionID: sessionID)
         } catch {
             throw ConversationError.persistence(error)
         }
 
-        guard let index = history.firstIndex(where: { $0.id == input.messageID }) else {
-            throw ConversationError.messageNotFound(input.messageID)
+        guard let index = history.firstIndex(where: { $0.id == messageID }) else {
+            throw ConversationError.messageNotFound(messageID)
         }
 
         // Update the edited message's content in the store.
         var updatedMessage = history[index]
-        updatedMessage.content = input.newContent
+        updatedMessage.content = text
         do {
             try await updateMessage(updatedMessage)
         } catch {
@@ -595,8 +839,9 @@ public final class ConversationRuntime: Sendable {
         emit(.messageUpdated(updatedMessage))
 
         // Delete all messages after the edited one. On first failure stop
-        // deleting and throw — callers reload from the store on failure; the
-        // partial deletion is acknowledged, matching ChatViewModel's behaviour.
+        // deleting and throw — callers reload from the store on failure;
+        // the partial deletion is acknowledged, matching ChatViewModel's
+        // behaviour.
         let trailing = Array(history[(index + 1)...])
         for msg in trailing {
             do {
@@ -607,51 +852,68 @@ public final class ConversationRuntime: Sendable {
             emit(.messageRemoved(messageID: msg.id))
         }
 
-        // If the edited message was from the user, regenerate.
+        // If the edited message was from the user, regenerate. Assistant
+        // edits persist the change but do not re-run generation.
         guard updatedMessage.role == .user else {
-            // Assistant edit: no generation needed.
             return nil
         }
 
         let handle = ConversationStreamHandle()
         Task.detached { [self] in
-            await runEditGenerationTurn(input: input, handle: handle)
+            // Fetch history fresh after the synchronous edit + deletion —
+            // the updated message and removed trailing messages are
+            // already committed to the store before the detached task
+            // runs.
+            let postHistory: [ChatMessageRecord]
+            do {
+                postHistory = try await fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            await runGenerationTurn(
+                sessionID: sessionID,
+                userPrompt: nil,
+                history: postHistory,
+                config: config,
+                handle: handle
+            )
         }
         return handle
     }
 
-    /// Forks a conversation at a chosen message, creating a new session with
-    /// the messages up to and including the branch point copied in.
-    ///
-    /// Returns a ``ConversationStreamHandle`` when `generateAfterBranch` is
-    /// `true` and the last copied message is `.user`; returns `nil` otherwise.
-    /// Setup failures (branch point not found, persistence errors) throw
-    /// synchronously before any task is launched; generation failures after
-    /// the task is launched route to ``ConversationEvent/errorRaised(_:)``.
-    @discardableResult
-    public func branch(_ input: BranchInput) async throws -> ConversationStreamHandle? {
+    // MARK: Branch flow
+
+    private func runBranchFlow(
+        sourceSessionID: UUID,
+        branchMessageID: UUID,
+        newSessionID: UUID,
+        newSessionTitle: String?,
+        generateAfter: Bool,
+        config: TurnConfig
+    ) async throws -> ConversationStreamHandle? {
         // Fetch source history synchronously so callers observe ordering:
-        // `.sessionBranched` fires before `branch` returns.
+        // `.sessionBranched` fires before `processTurn` returns.
         let sourceHistory: [ChatMessageRecord]
         do {
-            sourceHistory = try await fetchMessages(sessionID: input.sourceSessionID)
+            sourceHistory = try await fetchMessages(sessionID: sourceSessionID)
         } catch {
             throw ConversationError.persistence(error)
         }
 
         // Find the branch point and slice history up to and including it.
-        guard let branchIndex = sourceHistory.firstIndex(where: { $0.id == input.branchMessageID }) else {
-            throw ConversationError.messageNotFound(input.branchMessageID)
+        guard let branchIndex = sourceHistory.firstIndex(where: { $0.id == branchMessageID }) else {
+            throw ConversationError.messageNotFound(branchMessageID)
         }
         let slice = Array(sourceHistory[...branchIndex])
 
         // Derive the new session's title from the source session when the
-        // caller didn't supply one. A title-fetch failure must not abort the
-        // branch — the session insert below still runs with the fallback —
-        // but the failure is logged so it isn't silently lost.
-        let newSessionTitle: String
-        if let supplied = input.newSessionTitle {
-            newSessionTitle = supplied
+        // caller didn't supply one. A title-fetch failure must not abort
+        // the branch — the session insert below still runs with the
+        // fallback — but the failure is logged so it isn't silently lost.
+        let resolvedTitle: String
+        if let supplied = newSessionTitle {
+            resolvedTitle = supplied
         } else if let sessionStore {
             let sessions: [ChatSessionRecord]
             do {
@@ -662,12 +924,12 @@ public final class ConversationRuntime: Sendable {
                 )
                 sessions = []
             }
-            newSessionTitle = sessions.first(where: { $0.id == input.sourceSessionID })?.title ?? "New Chat"
+            resolvedTitle = sessions.first(where: { $0.id == sourceSessionID })?.title ?? "New Chat"
         } else {
-            newSessionTitle = "New Chat"
+            resolvedTitle = "New Chat"
         }
 
-        let newSession = ChatSessionRecord(id: input.newSessionID, title: newSessionTitle)
+        let newSession = ChatSessionRecord(id: newSessionID, title: resolvedTitle)
         if let sessionStore {
             do {
                 try await insertSession(sessionStore: sessionStore, session: newSession)
@@ -676,13 +938,14 @@ public final class ConversationRuntime: Sendable {
             }
         }
 
-        // Copy messages into the new session with fresh IDs and updated sessionID.
+        // Copy messages into the new session with fresh IDs and updated
+        // sessionID.
         for original in slice {
             let copy = ChatMessageRecord(
                 role: original.role,
                 contentParts: original.contentParts,
                 timestamp: original.timestamp,
-                sessionID: input.newSessionID
+                sessionID: newSessionID
             )
             do {
                 try await insertMessage(copy)
@@ -691,172 +954,58 @@ public final class ConversationRuntime: Sendable {
             }
         }
 
-        emit(.sessionBranched(newSessionID: input.newSessionID, copiedCount: slice.count))
+        emit(.sessionBranched(newSessionID: newSessionID, copiedCount: slice.count))
 
         // Optionally trigger generation on the new session.
-        guard input.generateAfterBranch, slice.last?.role == .user else {
+        guard generateAfter, slice.last?.role == .user else {
             return nil
         }
 
         let handle = ConversationStreamHandle()
-        Task.detached { [self] in
-            await runBranchGenerationTurn(input: input, branchedHistory: slice, handle: handle)
-        }
-        return handle
-    }
-
-    // MARK: Send turn
-
-    private func runSendTurn(
-        input: SendInput,
-        handle: ConversationStreamHandle
-    ) async {
-        // 1. Build history first — one store fetch covers both the message
-        //    count for context assembly and the structured messages for
-        //    enqueueAsync. By the time we get here, the user message we
-        //    just inserted is in the store (insertMessage awaited above).
-        //    We do not include the empty assistant slot — it is not yet
-        //    inserted.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.sessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-
-        await runGenerationTurn(
-            sessionID: input.sessionID,
-            userPrompt: input.userText,
-            history: history,
-            systemPrompt: input.systemPrompt,
-            temperature: input.temperature,
-            topP: input.topP,
-            repeatPenalty: input.repeatPenalty,
-            maxOutputTokens: input.maxOutputTokens,
-            maxThinkingTokens: input.maxThinkingTokens,
-            streamingUpdateInterval: input.streamingUpdateInterval,
-            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: input.loopDetectionEnabled,
-            handle: handle
-        )
-    }
-
-    // MARK: Regenerate turn
-
-    private func runRegenerateTurn(
-        input: RegenerateInput,
-        handle: ConversationStreamHandle
-    ) async {
-        // Fetch history after deletion — the removed assistant message is
-        // gone, so context assembly starts from the last user turn.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.sessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-
-        await runGenerationTurn(
-            sessionID: input.sessionID,
-            userPrompt: nil,
-            history: history,
-            systemPrompt: input.systemPrompt,
-            temperature: input.temperature,
-            topP: input.topP,
-            repeatPenalty: input.repeatPenalty,
-            maxOutputTokens: input.maxOutputTokens,
-            maxThinkingTokens: input.maxThinkingTokens,
-            streamingUpdateInterval: input.streamingUpdateInterval,
-            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: input.loopDetectionEnabled,
-            handle: handle
-        )
-    }
-
-    // MARK: Edit generation turn
-
-    private func runEditGenerationTurn(
-        input: EditInput,
-        handle: ConversationStreamHandle
-    ) async {
-        // Fetch history fresh after the synchronous edit + deletion — the
-        // updated message and removed trailing messages are already
-        // committed to the store before the detached task runs.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.sessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-
-        // `prompt: nil` — same as regenerate; no new user-supplied text.
-        await runGenerationTurn(
-            sessionID: input.sessionID,
-            userPrompt: nil,
-            history: history,
-            systemPrompt: input.systemPrompt,
-            temperature: input.temperature,
-            topP: input.topP,
-            repeatPenalty: input.repeatPenalty,
-            maxOutputTokens: input.maxOutputTokens,
-            maxThinkingTokens: input.maxThinkingTokens,
-            streamingUpdateInterval: input.streamingUpdateInterval,
-            streamingBatchCharacterLimit: input.streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: input.thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: input.thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: input.loopDetectionEnabled,
-            handle: handle
-        )
-    }
-
-    // MARK: Branch generation turn
-
-    private func runBranchGenerationTurn(
-        input: BranchInput,
-        branchedHistory: [ChatMessageRecord],
-        handle: ConversationStreamHandle
-    ) async {
-        // Re-fetch from the new session so the history reflects the persisted
-        // copies with their new IDs and sessionID.
-        let history: [ChatMessageRecord]
-        do {
-            history = try await fetchMessages(sessionID: input.newSessionID)
-        } catch {
-            emit(.errorRaised(.persistence(error)))
-            return
-        }
-
-        // BranchInput does not carry streaming/loop knobs; use defaults
-        // matching GenerationQueue's current behaviour.
-        await runGenerationTurn(
-            sessionID: input.newSessionID,
-            userPrompt: nil,
-            history: history,
-            systemPrompt: input.systemPrompt,
-            temperature: input.temperature,
-            topP: input.topP,
-            repeatPenalty: input.repeatPenalty,
-            maxOutputTokens: input.maxOutputTokens,
-            maxThinkingTokens: input.maxThinkingTokens,
+        // BranchInput historically pinned the streaming/loop knobs to
+        // hard-coded defaults regardless of caller config (see legacy
+        // BranchInput, which only carried sampling knobs). Preserve that
+        // by overriding those four fields when running the branch flow,
+        // even though TurnConfig now carries them. If callers want
+        // configurable streaming for branched generation, that's a
+        // follow-up tuning knob.
+        let branchConfig = TurnConfig(
+            systemPrompt: config.systemPrompt,
+            temperature: config.temperature,
+            topP: config.topP,
+            repeatPenalty: config.repeatPenalty,
+            maxOutputTokens: config.maxOutputTokens,
+            maxThinkingTokens: config.maxThinkingTokens,
             streamingUpdateInterval: .milliseconds(33),
             streamingBatchCharacterLimit: 128,
             thinkingStreamingUpdateInterval: .milliseconds(33),
             thinkingStreamingBatchCharacterLimit: 128,
-            loopDetectionEnabled: true,
-            handle: handle
+            loopDetectionEnabled: true
         )
+        Task.detached { [self] in
+            // Re-fetch from the new session so the history reflects the
+            // persisted copies with their new IDs and sessionID.
+            let history: [ChatMessageRecord]
+            do {
+                history = try await fetchMessages(sessionID: newSessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            await runGenerationTurn(
+                sessionID: newSessionID,
+                userPrompt: nil,
+                history: history,
+                config: branchConfig,
+                handle: handle
+            )
+        }
+        return handle
     }
 
     // MARK: Shared generation inner loop
     //
-    // All four turn methods (send, regenerate, edit, branch) converge here
+    // All four turn flows (send, regenerate, edit, branch) converge here
     // after their respective setup steps. The caller is responsible for
     // fetching a clean `history` slice; this method owns context assembly →
     // enqueue → drain → finalise.
@@ -865,17 +1014,7 @@ public final class ConversationRuntime: Sendable {
         sessionID: UUID,
         userPrompt: String?,
         history: [ChatMessageRecord],
-        systemPrompt: String?,
-        temperature: Float,
-        topP: Float,
-        repeatPenalty: Float,
-        maxOutputTokens: Int?,
-        maxThinkingTokens: Int?,
-        streamingUpdateInterval: Duration,
-        streamingBatchCharacterLimit: Int,
-        thinkingStreamingUpdateInterval: Duration,
-        thinkingStreamingBatchCharacterLimit: Int,
-        loopDetectionEnabled: Bool,
+        config: TurnConfig,
         handle: ConversationStreamHandle
     ) async {
         let messageCount = history.count
@@ -914,7 +1053,7 @@ public final class ConversationRuntime: Sendable {
         )
         let assistantID = assistantMessage.id
 
-        let composedSystemPrompt = composeSystemPrompt(systemPrompt, slots: slots)
+        let composedSystemPrompt = composeSystemPrompt(config.systemPrompt, slots: slots)
 
         let structuredHistory: [StructuredMessage] = history.map { record in
             StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
@@ -935,11 +1074,11 @@ public final class ConversationRuntime: Sendable {
             (token, stream) = try await inferenceService.enqueueAsync(
                 structuredMessages: structuredHistory,
                 systemPrompt: composedSystemPrompt,
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens,
+                temperature: config.temperature,
+                topP: config.topP,
+                repeatPenalty: config.repeatPenalty,
+                maxOutputTokens: config.maxOutputTokens,
+                maxThinkingTokens: config.maxThinkingTokens,
                 tools: advertisedTools,
                 priority: .userInitiated,
                 sessionID: sessionID
@@ -974,14 +1113,14 @@ public final class ConversationRuntime: Sendable {
         var streamFailed: ConversationError?
         var tokenUsage: (promptTokens: Int, completionTokens: Int)?
 
-        var consumer = GenerationStreamConsumer(loopDetectionEnabled: loopDetectionEnabled)
+        var consumer = GenerationStreamConsumer(loopDetectionEnabled: config.loopDetectionEnabled)
         var batcher = StreamingTokenBatcher(
-            interval: streamingUpdateInterval,
-            maxBufferedCharacters: streamingBatchCharacterLimit
+            interval: config.streamingUpdateInterval,
+            maxBufferedCharacters: config.streamingBatchCharacterLimit
         )
         var thinkingBatcher = StreamingTokenBatcher(
-            interval: thinkingStreamingUpdateInterval,
-            maxBufferedCharacters: thinkingStreamingBatchCharacterLimit
+            interval: config.thinkingStreamingUpdateInterval,
+            maxBufferedCharacters: config.thinkingStreamingBatchCharacterLimit
         )
         var thinkingAccumulator = ""
         var thinkingDisplayed = ""

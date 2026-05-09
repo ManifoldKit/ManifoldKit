@@ -82,10 +82,10 @@ final class ConsumerRuntimeHarness {
                 conversationRuntime: runtime.conversationRuntime
             )
             chatViewModel.foundationModelProvider = foundationModelProvider
-            chatViewModel.configure(runtime: runtime)
+            chatViewModel.configure(bootstrap: runtime)
 
             let sessionManager = SessionManagerViewModel()
-            sessionManager.configure(runtime: runtime)
+            sessionManager.configure(bootstrap: runtime)
 
             self.originalConfiguration = originalConfiguration
             self.userDefaults = defaults

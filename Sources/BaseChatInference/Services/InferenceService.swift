@@ -310,10 +310,54 @@ public final class InferenceService {
 
     // MARK: - Generation Queue
 
-    /// Enqueues a generation request and returns a token + stream pair.
+    /// Enqueues a generation request from a typed ``Message`` slice and
+    /// returns a token + stream pair.
     ///
     /// The stream starts in `.queued` phase and transitions to `.connecting`
     /// when the request reaches the front of the queue.
+    ///
+    /// Prefer this overload over the tuple-shaped `enqueue(messages: [(role:content:)])`
+    /// — `Message.system(_:)` / `.user(_:)` / `.assistant(_:)` cannot be
+    /// misspelled, while raw `"systme"` typos in the tuple variant pass
+    /// the type checker and surface as silent backend errors.
+    public func enqueue(
+        messages: [Message],
+        systemPrompt: String? = nil,
+        temperature: Float = 0.7,
+        topP: Float = 0.9,
+        repeatPenalty: Float = 1.1,
+        maxOutputTokens: Int? = 2048,
+        maxThinkingTokens: Int? = nil,
+        jsonMode: Bool = false,
+        grammar: String? = nil,
+        tools: [ToolDefinition] = [],
+        toolChoice: ToolChoice = .auto,
+        maxToolIterations: Int = 10,
+        priority: GenerationPriority = .normal,
+        sessionID: UUID? = nil
+    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
+        ensureProviderWired()
+        return try generation.enqueue(
+            messages: messages.asRoleContentTuples,
+            systemPrompt: systemPrompt,
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            maxOutputTokens: maxOutputTokens,
+            maxThinkingTokens: maxThinkingTokens,
+            jsonMode: jsonMode,
+            grammar: grammar,
+            tools: tools,
+            toolChoice: toolChoice,
+            maxToolIterations: maxToolIterations,
+            priority: priority,
+            sessionID: sessionID
+        )
+    }
+
+    /// Tuple-shaped enqueue retained for one minor while consumers migrate
+    /// to the typed ``enqueue(messages:[Message],...)`` overload.
+    @available(*, deprecated, message: "Use [Message] with .system/.user/.assistant — raw role strings are typo-prone.")
     public func enqueue(
         messages: [(role: String, content: String)],
         systemPrompt: String? = nil,

@@ -2,14 +2,70 @@ import Foundation
 import BaseChatRuntime
 import BaseChatInference
 
-// MARK: - NoResponseError
+// MARK: - SendMessageError
 
-/// Thrown by `sendMessage(_:)` when a turn completes without producing a
-/// visible assistant message (e.g. empty output or a precondition failure).
-public struct NoResponseError: LocalizedError {
-    public var errorDescription: String? { "Turn ended without producing a response" }
-    public init() {}
+/// Typed failure modes for ``ChatViewModel/sendMessage(_:)``.
+///
+/// Replaces the old `NoResponseError` opaque struct so callers can
+/// pattern-match the actual upstream failure rather than guess from the
+/// localizedDescription. Each case maps to one observable precondition or
+/// outcome of a single-turn drive:
+///
+/// - ``noActiveSession`` — `activeSessionID` was `nil` at call time.
+/// - ``noModelLoaded`` — `isModelLoaded` was `false` at call time.
+/// - ``empty`` — the turn ended (`lastTurnState == .idle`) with no assistant
+///   record produced and no error surfaced.
+/// - ``runtime(_:)`` — the underlying `ConversationRuntime` produced an
+///   error (persistence / inference / context assembly / cancellation).
+public enum SendMessageError: Error, Sendable {
+    /// `activeSessionID` was `nil`. Create or select a session first.
+    case noActiveSession
+    /// No model is loaded. Select a model from the sidebar first.
+    case noModelLoaded
+    /// The turn ended without producing tokens and without an error.
+    /// Maps to a runtime ``FinishReason/empty`` or a precondition that
+    /// was satisfied at call time but produced no output downstream.
+    case empty
+    /// The runtime surfaced an error. The wrapped value is whatever the
+    /// runtime reported (typically `ConversationError` or `ChatError`).
+    case runtime(any Error)
 }
+
+extension SendMessageError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .noActiveSession:
+            return "No active session. Create or select a session first."
+        case .noModelLoaded:
+            return "No model loaded. Select a model from the sidebar first."
+        case .empty:
+            return "Turn ended without producing a response."
+        case let .runtime(error):
+            return error.localizedDescription
+        }
+    }
+}
+
+// MARK: - ChatErrorBridge
+
+/// Adapts a ``ChatError`` value type into something that conforms to
+/// `Error`. ``ChatError`` deliberately does not conform to `Error` (it's a
+/// presentation-layer struct with `kind`/`recovery`/`message`); when
+/// ``ChatViewModel/sendMessage(_:)`` needs to surface a precondition error
+/// that lives only on `activeError`, this bridge lifts it into the typed
+/// `Error` channel without forcing `ChatError` itself to conform.
+struct ChatErrorBridge: LocalizedError, Sendable {
+    let chatError: ChatError
+    var errorDescription: String? { chatError.message }
+}
+
+// MARK: - NoResponseError (deprecated alias)
+
+/// Deprecated alias retained for one minor while consumers migrate to
+/// ``SendMessageError``. New code should pattern-match on
+/// ``SendMessageError`` directly.
+@available(*, deprecated, renamed: "SendMessageError", message: "Switch on SendMessageError to distinguish noActiveSession / noModelLoaded / empty / runtime(Error). NoResponseError will be removed in a future release.")
+public typealias NoResponseError = SendMessageError
 
 // MARK: - ChatViewModel + Messages
 
@@ -20,21 +76,50 @@ extension ChatViewModel {
     /// Convenience for scripted drivers and integration tests that want to drive
     /// one turn without setting `inputText` and polling observation surfaces.
     ///
-    /// - Throws: The underlying `ConversationError` on inference/persistence
-    ///   failure, or a `ChatError` when the preconditions aren't met (no session,
-    ///   no model loaded). Throws if the turn ends without producing a response
-    ///   (e.g. empty output or an unhandled stop reason).
+    /// - Throws: ``SendMessageError`` — `.noActiveSession` / `.noModelLoaded` for
+    ///   precondition failures, `.empty` when the turn produces no assistant
+    ///   record, or `.runtime(error)` when the underlying runtime surfaces an
+    ///   error.
     @discardableResult
     public func sendMessage(_ text: String) async throws -> ChatMessageRecord {
+        // Check preconditions BEFORE invoking the runtime so callers that
+        // pattern-match on SendMessageError see the precondition case rather
+        // than an opaque runtime error. The inner sendMessage() also performs
+        // these checks (and surfaces them via activeError / errorMessage),
+        // but routing them here gives the typed-error caller a clean shape.
+        guard activeSessionID != nil else {
+            throw SendMessageError.noActiveSession
+        }
+        guard isModelLoaded else {
+            throw SendMessageError.noModelLoaded
+        }
+
         inputText = text
         await sendMessage()
         switch lastTurnState {
         case .completed(let record):
             return record
         case .failed(let error):
-            throw error
+            throw SendMessageError.runtime(error)
         case .idle, .generating:
-            throw NoResponseError()
+            // The inner sendMessage() may have surfaced the failure on
+            // `activeError` (e.g. precondition that flipped between our
+            // check above and the inner check, or a runtime fault that
+            // couldn't be reported through `lastTurnState`). Propagate as
+            // `.runtime(activeError)` so the caller still sees the typed
+            // shape; fall back to `.empty` when no error was recorded.
+            if let active = activeError {
+                // ChatError is a value type without `Error` conformance —
+                // the API freeze pins its shape so we can't retroactively
+                // conform it. Use the wrapped underlying error if it's
+                // available; otherwise wrap the message in an ad-hoc
+                // bridge so the typed shape is preserved.
+                if let underlying = active.underlyingError {
+                    throw SendMessageError.runtime(underlying)
+                }
+                throw SendMessageError.runtime(ChatErrorBridge(chatError: active))
+            }
+            throw SendMessageError.empty
         }
     }
 
@@ -68,29 +153,17 @@ extension ChatViewModel {
             await onFirstMessage?(session, text)
         }
 
-        let resolvedSystemPrompt = effectiveSystemPrompt()
-        let input = SendInput(
+        let input = TurnInput(
             sessionID: activeSessionID,
-            userText: text,
-            attachments: attachments,
-            systemPrompt: resolvedSystemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            streamingUpdateInterval: streamingUpdateInterval,
-            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: loopDetectionEnabled
+            kind: .send(text: text, attachments: attachments),
+            config: makeTurnConfig(systemPrompt: effectiveSystemPrompt())
         )
         do {
-            let handle = try await conversationRuntime.send(input)
+            let handle = try await conversationRuntime.processTurn(input)
             activeConversationStreamHandle = handle
             await awaitStreamCompletion()
         } catch {
-            Log.persistence.error("ConversationRuntime.send failed: \(error)")
+            Log.persistence.error("ConversationRuntime.processTurn(.send) failed: \(error)")
             surfaceError(error, kind: .persistence)
         }
     }
@@ -101,26 +174,17 @@ extension ChatViewModel {
 
         guard let activeSessionID else { return }
 
-        let input = RegenerateInput(
+        let input = TurnInput(
             sessionID: activeSessionID,
-            systemPrompt: effectiveSystemPrompt(),
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            streamingUpdateInterval: streamingUpdateInterval,
-            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: loopDetectionEnabled
+            kind: .regenerate,
+            config: makeTurnConfig(systemPrompt: effectiveSystemPrompt())
         )
         do {
-            let handle = try await conversationRuntime.regenerate(input)
+            let handle = try await conversationRuntime.processTurn(input)
             activeConversationStreamHandle = handle
             await awaitStreamCompletion()
         } catch {
-            Log.ui.error("ConversationRuntime.regenerate failed: \(error)")
+            Log.ui.error("ConversationRuntime.processTurn(.regenerate) failed: \(error)")
             surfaceError(error, kind: .generation)
         }
     }
@@ -132,30 +196,19 @@ extension ChatViewModel {
 
         guard let activeSessionID else { return }
 
-        let input = EditInput(
+        let input = TurnInput(
             sessionID: activeSessionID,
-            messageID: messageID,
-            newContent: newContent,
-            systemPrompt: effectiveSystemPrompt(),
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            streamingUpdateInterval: streamingUpdateInterval,
-            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
-            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
-            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
-            loopDetectionEnabled: loopDetectionEnabled
+            kind: .edit(messageID: messageID, text: newContent),
+            config: makeTurnConfig(systemPrompt: effectiveSystemPrompt())
         )
         // Invalidate the token cache for the edited message — content changed.
         tokenCountCache.removeValue(forKey: messageID)
         do {
-            let handle = try await conversationRuntime.edit(input)
+            let handle = try await conversationRuntime.processTurn(input)
             activeConversationStreamHandle = handle
             await awaitStreamCompletion()
         } catch {
-            Log.ui.error("ConversationRuntime.edit failed: \(error)")
+            Log.ui.error("ConversationRuntime.processTurn(.edit) failed: \(error)")
             surfaceError(error, kind: .generation)
         }
     }
@@ -233,14 +286,14 @@ extension ChatViewModel {
     /// session. No-op when no session is active.
     public func branch(from messageID: UUID) async {
         guard let activeSessionID else { return }
-        let input = BranchInput(
-            sourceSessionID: activeSessionID,
-            branchMessageID: messageID
+        let input = TurnInput(
+            sessionID: activeSessionID,
+            kind: .branch(messageID: messageID)
         )
         do {
-            _ = try await conversationRuntime.branch(input)
+            _ = try await conversationRuntime.processTurn(input)
         } catch {
-            Log.ui.error("ConversationRuntime.branch failed: \(error)")
+            Log.ui.error("ConversationRuntime.processTurn(.branch) failed: \(error)")
             surfaceError(error, kind: .persistence)
         }
     }
@@ -348,6 +401,27 @@ extension ChatViewModel {
     public func consumeScrollToMessageRequest(_ request: ChatScrollToMessageRequest) {
         guard scrollToMessageRequest?.requestID == request.requestID else { return }
         scrollToMessageRequest = nil
+    }
+
+    /// Builds a ``TurnConfig`` from the view model's current sampling/streaming
+    /// state. Centralised so each turn-flow call site reads the same pinned
+    /// snapshot — adding a knob is a one-touch change here, not five edits
+    /// across the call sites that used to construct one of `SendInput`,
+    /// `RegenerateInput`, `EditInput`, or `BranchInput`.
+    func makeTurnConfig(systemPrompt: String?) -> TurnConfig {
+        TurnConfig(
+            systemPrompt: systemPrompt,
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            maxOutputTokens: maxOutputTokens,
+            maxThinkingTokens: maxThinkingTokens,
+            streamingUpdateInterval: streamingUpdateInterval,
+            streamingBatchCharacterLimit: streamingBatchCharacterLimit,
+            thinkingStreamingUpdateInterval: thinkingStreamingUpdateInterval,
+            thinkingStreamingBatchCharacterLimit: thinkingStreamingBatchCharacterLimit,
+            loopDetectionEnabled: loopDetectionEnabled
+        )
     }
 
     func stageDraftAttachment(_ part: MessagePart) {

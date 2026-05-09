@@ -70,7 +70,7 @@ final class SessionQueueIsolationTests: XCTestCase {
 
         // Enqueue a request scoped to session A.
         let (_, stream) = try vm.inferenceService.enqueue(
-            messages: [("user", "hello")],
+            messages: [.user("hello")],
             sessionID: sessionA.id
         )
 
@@ -125,10 +125,10 @@ final class SessionQueueIsolationTests: XCTestCase {
 
         // Enqueue additional requests directly on the service.
         let (_, stream2) = try vm.inferenceService.enqueue(
-            messages: [("user", "second")]
+            messages: [.user("second")]
         )
         let (_, stream3) = try vm.inferenceService.enqueue(
-            messages: [("user", "third")]
+            messages: [.user("third")]
         )
 
         XCTAssertTrue(vm.inferenceService.hasQueuedRequests, "Should have queued requests")
