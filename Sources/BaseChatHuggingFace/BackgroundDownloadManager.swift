@@ -1,5 +1,6 @@
 #if HuggingFace
 import BaseChatInference
+import CryptoKit
 import Foundation
 import os
 
@@ -147,12 +148,15 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     @ObservationIgnored
     private var backgroundSession: URLSession {
         if let existing = _backgroundSession { return existing }
-        let config = URLSessionConfiguration.background(withIdentifier: _sessionIdentifier)
-        config.isDiscretionary = false
-        config.sessionSendsLaunchEvents = true
-        // Allow cellular for user-initiated downloads.
-        config.allowsCellularAccess = true
-        let session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+        // Route through the centralised factory so the redirect guard is
+        // installed alongside `self` (the download delegate). A direct
+        // `URLSession(configuration:delegate:)` would skip the guard, leaving
+        // every download free to chase 30x redirects to IMDS or a LAN IP
+        // with the auth header still attached.
+        let session = URLSessionFactory.background(
+            identifier: _sessionIdentifier,
+            additionalDownloadDelegate: self
+        )
         _backgroundSession = session
         return session
     }
@@ -984,17 +988,55 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
     // MARK: - Persistence (Resume Data)
 
+    /// URL of the HMAC tag file paired with a resume-data blob.
+    ///
+    /// The tag is stored next to the blob (rather than inside it) so the
+    /// existing `URLSession.downloadTask(withResumeData:)` API receives the
+    /// untouched bytes — the system rejects a tampered or wrapped resume
+    /// blob outright.
+    private func resumeDataTagURL(for id: String) -> URL {
+        resumeDataFileURL(for: id).appendingPathExtension("tag")
+    }
+
     /// Persists resume data to a binary file in the caches directory so it survives app restarts.
     ///
     /// Large partial-download blobs are kept out of UserDefaults to avoid bloating
     /// the app's plist and delaying app launch.
+    ///
+    /// ## Integrity
+    ///
+    /// The blob is paired with an HMAC-SHA256 tag so a later read can detect
+    /// tampering. The HMAC key lives in the Keychain under account
+    /// `BackgroundDownloadManager.resumeHMACKeychainAccount` and is generated
+    /// per install on first use. A flipped byte in the blob (or a missing
+    /// tag) causes ``consumeResumeData(for:)`` to fail closed and fall back
+    /// to a fresh download — the alternative would be feeding corrupted
+    /// resume bytes into `URLSession.downloadTask(withResumeData:)`, which
+    /// has historically been a source of crashes on certain `.cfd` shapes.
     ///
     /// Called by the delegate when a non-cancelled single-file download fails.
     internal func persistResumeData(_ data: Data, for id: String) {
         do {
             try ensurePersistenceDirectory()
             try data.write(to: resumeDataFileURL(for: id), options: .atomic)
-            Log.download.info("Persisted \(data.count) bytes of resume data for \(id)")
+            // HMAC-tag failures are non-fatal — log and remove a stale tag
+            // (so a subsequent read fails closed rather than verifying against
+            // an old tag for a previous blob).
+            do {
+                let tag = try Self.computeResumeHMACTag(for: data)
+                try tag.write(to: resumeDataTagURL(for: id), options: .atomic)
+                Log.download.info("Persisted \(data.count) bytes of resume data for \(id) (HMAC \(tag.count)-byte tag)")
+            } catch {
+                Log.download.error("Failed to write resume HMAC tag for \(id): \(error.localizedDescription)")
+                // Remove any stale tag so subsequent reads fail closed.
+                do {
+                    try FileManager.default.removeItem(at: resumeDataTagURL(for: id))
+                } catch CocoaError.fileNoSuchFile {
+                    // No prior tag — nothing to remove.
+                } catch {
+                    Log.download.warning("Failed to remove stale resume HMAC tag for \(id): \(error.localizedDescription)")
+                }
+            }
         } catch {
             Log.download.error("Failed to persist resume data for \(id): \(error.localizedDescription)")
         }
@@ -1002,12 +1044,157 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
     /// Reads and removes the resume-data file (one-shot consumption).
     ///
+    /// Verifies the paired HMAC tag before returning. On mismatch, missing
+    /// tag, or any other read error, the blob and its tag are deleted and
+    /// `nil` is returned — the caller falls back to a fresh download. This
+    /// fail-closed behaviour matches the brief's threat model: a tampered
+    /// resume blob shouldn't crash `URLSession.downloadTask(withResumeData:)`.
+    ///
     /// Removing immediately prevents stale data from being used on a subsequent failure.
     @MainActor internal func consumeResumeData(for id: String) -> Data? {
-        let url = resumeDataFileURL(for: id)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        try? FileManager.default.removeItem(at: url)
+        let dataURL = resumeDataFileURL(for: id)
+        let tagURL = resumeDataTagURL(for: id)
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: dataURL)
+        } catch CocoaError.fileNoSuchFile, CocoaError.fileReadNoSuchFile {
+            // No persisted blob — normal case for a first attempt.
+            return nil
+        } catch {
+            Log.download.warning("Failed to read resume data for \(id): \(error.localizedDescription); falling back to fresh download")
+            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
+            return nil
+        }
+
+        let tag: Data
+        do {
+            tag = try Data(contentsOf: tagURL)
+        } catch {
+            Log.download.warning("Resume data for \(id) is missing its HMAC tag; rejecting and falling back to fresh download")
+            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
+            return nil
+        }
+
+        let expected: Data
+        do {
+            expected = try Self.computeResumeHMACTag(for: data)
+        } catch {
+            Log.download.error("Failed to compute resume HMAC for \(id): \(error.localizedDescription); rejecting and falling back to fresh download")
+            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
+            return nil
+        }
+
+        // Constant-time compare on the tag bytes.
+        guard Self.constantTimeEqual(expected, tag) else {
+            Log.network.error("Resume data HMAC mismatch for \(id) — rejecting blob and falling back to fresh download")
+            removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
+            return nil
+        }
+
+        removeResumeDataFiles(dataURL: dataURL, tagURL: tagURL)
         return data
+    }
+
+    /// Removes the resume blob and its tag file. Errors are logged but do
+    /// not propagate — the calling path is already in fall-back mode.
+    private func removeResumeDataFiles(dataURL: URL, tagURL: URL) {
+        for url in [dataURL, tagURL] {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch CocoaError.fileNoSuchFile {
+                continue
+            } catch {
+                Log.download.warning("Failed to remove resume artefact at \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - HMAC Resume Integrity
+
+    /// Keychain account that stores the per-install HMAC key for resume blobs.
+    ///
+    /// Exposed `internal` so tests can clear / inject a deterministic key.
+    internal static let resumeHMACKeychainAccount: String = "com.basechat.resumedata.hmac"
+
+    /// Lock guarding the per-process key cache. The key is generated lazily on
+    /// first use and then cached so subsequent reads/writes don't pay a
+    /// Keychain round-trip per blob.
+    private static let resumeHMACLock = NSLock()
+    private nonisolated(unsafe) static var _cachedResumeHMACKey: SymmetricKey?
+
+    /// Computes the HMAC-SHA256 tag for `data` using the installed key.
+    /// Generates and persists the key on first use.
+    static func computeResumeHMACTag(for data: Data) throws -> Data {
+        let key = try resumeHMACKey()
+        let mac = HMAC<SHA256>.authenticationCode(for: data, using: key)
+        return Data(mac)
+    }
+
+    /// Returns the per-install HMAC key, fetching it from the Keychain or
+    /// generating + storing it on first use.
+    ///
+    /// In sandboxed CI runners where the Keychain is not available the
+    /// generate-and-store path throws `KeychainError`. We then fall back to
+    /// a process-local random key so tests can still exercise the
+    /// roundtrip — the consequence is the tag is only valid within the
+    /// current process, which is fine for an opportunistic integrity check.
+    /// Production binaries running under the real Keychain always succeed
+    /// on first call and cache the result.
+    private static func resumeHMACKey() throws -> SymmetricKey {
+        resumeHMACLock.lock()
+        if let cached = _cachedResumeHMACKey {
+            resumeHMACLock.unlock()
+            return cached
+        }
+        resumeHMACLock.unlock()
+
+        // Try to read first.
+        if let stored = KeychainService.retrieve(account: resumeHMACKeychainAccount),
+           let bytes = Data(base64Encoded: stored), bytes.count >= 32 {
+            let key = SymmetricKey(data: bytes)
+            resumeHMACLock.lock()
+            _cachedResumeHMACKey = key
+            resumeHMACLock.unlock()
+            return key
+        }
+
+        // Generate a fresh key and store it. If the Keychain rejects the
+        // store (sandbox / missing entitlement), keep the fresh key
+        // process-local — better than throwing and dropping integrity checks
+        // entirely.
+        let fresh = SymmetricKey(size: .bits256)
+        let encoded = fresh.withUnsafeBytes { Data($0) }.base64EncodedString()
+        do {
+            try KeychainService.store(key: encoded, account: resumeHMACKeychainAccount)
+        } catch {
+            Log.security.warning(
+                "BackgroundDownloadManager: Keychain write for resume HMAC key failed (\(error.localizedDescription, privacy: .public)); using process-local key"
+            )
+        }
+        resumeHMACLock.lock()
+        _cachedResumeHMACKey = fresh
+        resumeHMACLock.unlock()
+        return fresh
+    }
+
+    /// Constant-time `Data` equality. Required for HMAC comparisons so the
+    /// timing of a mismatch doesn't leak prefix-correctness information.
+    static func constantTimeEqual(_ lhs: Data, _ rhs: Data) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        var diff: UInt8 = 0
+        for i in 0..<lhs.count {
+            diff |= lhs[lhs.startIndex.advanced(by: i)] ^ rhs[rhs.startIndex.advanced(by: i)]
+        }
+        return diff == 0
+    }
+
+    /// Test-only: clears the cached HMAC key so the next read pulls fresh
+    /// from the Keychain. Use after rotating a Keychain mock between tests.
+    internal static func _resetResumeHMACKeyCacheForTesting() {
+        resumeHMACLock.lock()
+        _cachedResumeHMACKey = nil
+        resumeHMACLock.unlock()
     }
 
     // MARK: - Persistence (Pending Downloads)
@@ -1083,8 +1270,13 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         } catch {
             Log.download.error("Failed to remove pending download for \(id): \(error.localizedDescription)")
         }
-        // Remove the resume-data file for this ID now that the download is done.
-        try? FileManager.default.removeItem(at: resumeDataFileURL(for: id))
+        // Remove the resume-data file (and its HMAC tag) for this ID now that
+        // the download is done. A leftover tag is harmless on its own but
+        // prevents the orphan sweep from flagging the directory as clean.
+        removeResumeDataFiles(
+            dataURL: resumeDataFileURL(for: id),
+            tagURL: resumeDataTagURL(for: id)
+        )
     }
 
     @MainActor private func restorePendingDownloads() {
@@ -1264,6 +1456,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
     /// Deletes resume-data files for download IDs not present in the current pending-metadata
     /// list. These orphans accumulate when a download crashes without the normal teardown path.
+    /// HMAC tag files (`resume-<id>.bin.tag`) are removed alongside the blob.
     // internal (not private) so unit tests can call it directly with @testable import.
     internal func deleteOrphanedResumeDataFiles(knownIDs: Set<String>) {
         guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -1272,6 +1465,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             options: .skipsHiddenFiles
         ) else { return }
 
+        // Pass 1: remove orphaned blobs and their tags atomically.
         for fileURL in contents where fileURL.lastPathComponent.hasPrefix("resume-") && fileURL.pathExtension == "bin" {
             let filename = fileURL.deletingPathExtension().lastPathComponent   // "resume-<encoded-id>"
             let encodedID = String(filename.dropFirst("resume-".count))
@@ -1282,6 +1476,30 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                     Log.download.info("Removed orphaned resume-data file: \(fileURL.lastPathComponent)")
                 } catch {
                     Log.download.error("Failed to remove orphaned resume-data file \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                }
+                // Best-effort tag cleanup; the tag without a blob is unusable
+                // anyway, but leaving it would be misleading.
+                let tagURL = fileURL.appendingPathExtension("tag")
+                do {
+                    try FileManager.default.removeItem(at: tagURL)
+                } catch CocoaError.fileNoSuchFile {
+                    continue
+                } catch {
+                    Log.download.warning("Failed to remove orphaned resume tag file \(tagURL.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+        }
+        // Pass 2: remove tag files that have no matching `.bin` (e.g. a
+        // half-finished write where the blob was deleted but the tag survived).
+        for fileURL in contents where fileURL.lastPathComponent.hasPrefix("resume-") && fileURL.pathExtension == "tag" {
+            // Strip ".tag", check whether the corresponding ".bin" exists.
+            let blobURL = fileURL.deletingPathExtension()
+            if !FileManager.default.fileExists(atPath: blobURL.path) {
+                do {
+                    try FileManager.default.removeItem(at: fileURL)
+                    Log.download.info("Removed dangling resume HMAC tag: \(fileURL.lastPathComponent)")
+                } catch {
+                    Log.download.warning("Failed to remove dangling resume HMAC tag \(fileURL.lastPathComponent): \(error.localizedDescription)")
                 }
             }
         }
@@ -1321,19 +1539,22 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
 
         // Migrate any resume-data blobs stored under the legacy "resumeData.<id>" keys.
+        // Migrated blobs go through `persistResumeData` so the HMAC tag is
+        // generated alongside — without it the next read would fail closed.
         let allKeys = defaults.dictionaryRepresentation().keys
         for key in allKeys where key.hasPrefix("resumeData.") {
             let id = String(key.dropFirst("resumeData.".count))
             if let data = defaults.data(forKey: key) {
-                do {
-                    try ensurePersistenceDirectory()
-                    try data.write(to: resumeDataFileURL(for: id), options: .atomic)
-                    // Only clear the key once the file has been written successfully.
+                persistResumeData(data, for: id)
+                // Verify the migration produced a readable blob+tag pair before
+                // dropping the UserDefaults key; if persistResumeData logged an
+                // error, we leave the key intact for the next launch to retry.
+                if FileManager.default.fileExists(atPath: resumeDataFileURL(for: id).path),
+                   FileManager.default.fileExists(atPath: resumeDataTagURL(for: id).path) {
                     defaults.removeObject(forKey: key)
                     Log.download.info("Migrated resume data for \(id) from UserDefaults to file")
-                } catch {
-                    Log.download.error("Failed to migrate resume data for \(id): \(error.localizedDescription)")
-                    // Leave the UserDefaults key intact so the next launch can retry.
+                } else {
+                    Log.download.warning("Resume-data migration for \(id) did not produce a tagged pair; leaving UserDefaults key intact")
                 }
             } else {
                 // No data blob — remove the dangling key.

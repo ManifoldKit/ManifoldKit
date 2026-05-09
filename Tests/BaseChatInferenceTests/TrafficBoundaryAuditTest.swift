@@ -84,7 +84,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// usage is approved. These do legitimate network I/O — cloud backends,
     /// the model-download manager, test infra.
     ///
-    /// **Cap: 23 entries.** Adding to this list weakens Rule 1; require
+    /// **Cap: 26 entries.** Adding to this list weakens Rule 1; require
     /// reviewer sign-off and prefer to route new network code through
     /// `URLSessionProvider` (which is itself in this allowlist).
     private static let networkIOAllowlist: Set<String> = [
@@ -99,6 +99,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "BaseChatBackends/URLSessionProvider.swift",
         "BaseChatBackends/PinnedSessionDelegate.swift",
         "BaseChatBackends/DNSRebindingGuard.swift",
+
+        // I1 network seam closure (#1140) — centralised redirect-guard
+        // delegate, composite delegate, and seam factory live in
+        // BaseChatInference so BaseChatHuggingFace can hit the same seam
+        // without depending on BaseChatBackends.
+        "BaseChatInference/Networking/RedirectGuardDelegate.swift",
+        "BaseChatInference/Networking/CompositeURLSessionDelegate.swift",
+        "BaseChatInference/Networking/URLSessionFactory.swift",
 
         // Model download path — HuggingFace GGUF/MLX downloads.
         "BaseChatHuggingFace/BackgroundDownloadManager.swift",
@@ -237,7 +245,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 23,
+            Self.networkIOAllowlist.count, 26,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

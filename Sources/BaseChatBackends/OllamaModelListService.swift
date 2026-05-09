@@ -49,9 +49,13 @@ public final class OllamaModelListService: Sendable {
         if let urlSession {
             self.urlSession = urlSession
         } else {
-            let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = 10
-            self.urlSession = URLSession(configuration: config)
+            // Route through the centralised provider so the redirect guard is
+            // installed. The provider's `unpinned` accessor uses 300s/600s
+            // timeouts; the previous bespoke 10s request timeout was tighter
+            // than the ambient cloud-call default and caused spurious
+            // "request timed out" errors against slow LAN Ollama hosts. The
+            // provider's larger window matches the rest of the cloud stack.
+            self.urlSession = URLSessionProvider.unpinned
         }
     }
 
