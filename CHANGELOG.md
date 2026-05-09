@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/roryford/ManifoldKit/compare/v0.20.0...v0.21.0) (2026-05-09)
+
+
+### Features
+
+* **rag:** Phase 2 — document library UI, source citations, demo wiring ([#1157](https://github.com/roryford/ManifoldKit/issues/1157)) ([6769616](https://github.com/roryford/ManifoldKit/commit/67696168183be4fc794f7465ac7def2cdb17b8ee))
+
+
+### Bug Fixes
+
+* **tests:** make DemoScenarioOllamaE2ETests compile so all 4 tests register ([#1154](https://github.com/roryford/ManifoldKit/issues/1154)) ([8ed2384](https://github.com/roryford/ManifoldKit/commit/8ed2384b9251edd8f4aeb8dcaaf2d03a7456b9fb))
+
 ## [0.20.0] — 2026-05-09
 
 ### Highlights
