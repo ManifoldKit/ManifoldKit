@@ -18,20 +18,30 @@ import XCTest
 /// Both categories use the same `"relative/path.swift:<trimmed line>"`
 /// fingerprint format and are checked against the same allowlist.
 ///
-/// ## Allowlist
+/// ## Approval shape
 ///
-/// Approved exceptions live in `silent_catch_allowlist.txt`, sitting next
-/// to this file. The format is one fingerprint per line; `#`-prefixed
-/// lines and blank lines are ignored. Adding a new swallow: if the
-/// `try?` or empty catch is a legitimate optional conversion (e.g.,
-/// `guard let x = try? Decoder.decode(...)`) or an intentional
-/// best-effort cleanup, append its fingerprint to that file with a brief
-/// `#` comment explaining why. If it's an unobserved error that should be
-/// surfaced, route it through ``DiagnosticsService.record(_:)`` instead.
+/// A `try?` call site is approved through one of two mechanisms:
 ///
-/// Externalising the list (PR refactoring out a hard-coded `Set<String>`)
-/// means refactor PRs no longer have to touch this test file to add a
-/// reviewed exception — they edit `silent_catch_allowlist.txt`.
+/// 1. **Idiom rule** — if the line contains a `try?` followed by one of
+///    the patterns in ``approvedTryIdioms`` (e.g. `try? JSONSerialization.`,
+///    `try? FileManager.default.`, `try? await Task.sleep`, `try? container.decode`),
+///    the swallow is treated as a globally-approved category. No per-line
+///    allowlist entry is required, and refactors that move the call do
+///    not invalidate the approval. Idiom rules codify CLAUDE.md's
+///    "optional decoding at trust boundaries" carve-out plus the
+///    best-effort cleanup patterns established across the codebase.
+///
+/// 2. **Path-based allowlist** — anything that doesn't match an idiom
+///    falls through to `silent_catch_allowlist.txt`, sitting next to this
+///    file. Format: one fingerprint (`relative/path.swift:trimmed line`)
+///    per line; `#`-prefixed lines and blank lines are ignored.
+///
+/// Empty `catch { }` blocks always go through the path allowlist —
+/// there are too few of them to warrant idiom rules.
+///
+/// If a `try?` or empty catch is genuinely an unobserved error that
+/// should be surfaced, route it through ``DiagnosticsService.record(_:)``
+/// instead of either approval mechanism.
 ///
 /// Limitation: the empty-catch detector is line-based, not AST-based,
 /// so nested `catch` inside interpolated strings or multi-line
@@ -39,6 +49,63 @@ import XCTest
 /// uses idiomatic `} catch {` layout, and the stale-allowlist check
 /// catches drift immediately.
 final class SilentCatchAuditTest: XCTestCase {
+
+    /// Idiom prefixes that, when present immediately after `try?` on a
+    /// line, mark the swallow as approved without a per-line allowlist
+    /// entry. These collapse what was previously dozens of redundant
+    /// fingerprints into a single, refactor-stable rule.
+    ///
+    /// Each entry is a substring matched against the text following
+    /// `try?` (whitespace-tolerant). The set codifies CLAUDE.md's
+    /// "optional decoding at trust boundaries" exception plus best-effort
+    /// cleanup patterns established across the codebase.
+    ///
+    /// Adding an idiom widens the approved set globally, so requires
+    /// reviewer sign-off. Prefer adding a path entry for one-off cases.
+    private static let approvedTryIdioms: [String] = [
+        // JSON encode/decode at trust boundaries.
+        "JSONSerialization.",
+        "JSONEncoder(",
+        "JSONDecoder(",
+        "container.decode",
+        "decoder.decode",
+
+        // Best-effort filesystem cleanup / enumeration. The local-variable
+        // forms (`fileManager.`, `fm.`) match call sites that bind a local
+        // before invoking the same method.
+        "FileManager.default.",
+        "fileManager.",
+        "fm.",
+
+        // File handles — best-effort open/read/close.
+        "FileHandle(",
+        "handle.read",
+        "handle.close",
+
+        // File reads where the failure mode is "no data", surfaced as
+        // Optional and handled by the caller.
+        "Data(",
+
+        // URL resource property fetch — always best-effort.
+        "url.resourceValues",
+        "fileURL.resourceValues",
+
+        // Task cancellation swallow — the only failure mode is
+        // CancellationError, which is intentional.
+        "await Task.sleep",
+
+        // Best-effort keychain cleanup on delete.
+        "KeychainService.delete",
+
+        // GGUF metadata read at trust boundary.
+        "GGUFMetadataReader.readMetadata",
+
+        // Non-critical model registry refresh.
+        "modelRegistry.refresh",
+
+        // Best-effort link detection — failure means "no detector available".
+        "NSDataDetector",
+    ]
 
     /// Lazily loaded set of approved fingerprints from
     /// `silent_catch_allowlist.txt`. The file lives next to this test
@@ -73,12 +140,19 @@ final class SilentCatchAuditTest: XCTestCase {
             // Pass 1: unbound / unobserved `try?` call sites.
             for (index, rawLine) in lines.enumerated() {
                 let line = rawLine.trimmingCharacters(in: .whitespaces)
-                if Self.lineContainsSilentTry(line) {
-                    let fingerprint = "\(relativePath):\(line)"
-                    found.insert(fingerprint)
-                    if !Self.allowlist.contains(fingerprint) {
-                        offenders.append((file: relativePath, line: index + 1, text: line))
-                    }
+                guard Self.lineContainsSilentTry(line) else { continue }
+                // Idiom rules approve broad call patterns globally — refactor
+                // stable, no per-line fingerprint required. Idiom-matched
+                // lines are intentionally NOT added to `found`, so any
+                // stale path entry that's now idiom-covered surfaces in
+                // the stale-allowlist check below.
+                if Self.lineMatchesApprovedTryIdiom(line) {
+                    continue
+                }
+                let fingerprint = "\(relativePath):\(line)"
+                found.insert(fingerprint)
+                if !Self.allowlist.contains(fingerprint) {
+                    offenders.append((file: relativePath, line: index + 1, text: line))
                 }
             }
 
@@ -159,12 +233,35 @@ final class SilentCatchAuditTest: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Matches a line containing `try?`. Both unbound (`try? foo()`) and
-    /// bound (`let x = try? foo()`) forms are captured; the allowlist
-    /// decides which bound conversions are intentional.
+    /// Matches a line containing a real `try?` call site. Word-boundary
+    /// anchored so that identifiers ending in "try" followed by `?` (most
+    /// notably `Registry?` as a type annotation) are not treated as
+    /// `try?`. Both unbound (`try? foo()`) and bound (`let x = try? foo()`)
+    /// forms are captured; the idiom rules and path allowlist decide
+    /// which call sites are intentional.
     private static func lineContainsSilentTry(_ line: String) -> Bool {
         guard !line.hasPrefix("//"), !line.hasPrefix("*"), !line.hasPrefix("///") else { return false }
-        return line.contains("try?")
+        return line.range(of: #"\btry\?"#, options: .regularExpression) != nil
+    }
+
+    /// `true` when `line` contains `try?` followed (with optional
+    /// whitespace) by one of the approved idiom prefixes. Regex anchors
+    /// on the `try?` token so that an idiom appearing elsewhere on the
+    /// line — e.g. inside a comment or a string literal — does not
+    /// approve an unrelated `try?` call.
+    private static func lineMatchesApprovedTryIdiom(_ line: String) -> Bool {
+        for idiom in Self.approvedTryIdioms {
+            // Escape regex metacharacters that appear in idiom prefixes
+            // (`(`, `.`); the rest are alphanumerics and `_`.
+            let escaped = idiom
+                .replacingOccurrences(of: "(", with: "\\(")
+                .replacingOccurrences(of: ".", with: "\\.")
+            let pattern = #"\btry\?\s*"# + escaped
+            if line.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Scans an array of lines and returns every empty `catch { }` block.

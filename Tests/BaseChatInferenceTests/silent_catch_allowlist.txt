@@ -1,17 +1,26 @@
-# SilentCatchAuditTest — approved exceptions.
+# SilentCatchAuditTest — path-based fallback allowlist.
 #
-# Exact-match allowlist of `try?` call sites and empty `catch { }` blocks
-# that have been reviewed as either (a) benign optional conversions or
-# (b) intentional best-effort cleanup / Task.sleep cancellation swallows.
+# `try?` call sites and empty `catch { }` blocks in Sources/ are approved
+# through one of two mechanisms:
+#
+#   1. Idiom rules — broad call-shape patterns defined in
+#      `SilentCatchAuditTest.approvedTryIdioms` (e.g. `try? JSONSerialization.`,
+#      `try? FileManager.default.`, `try? await Task.sleep`,
+#      `try? container.decode`). These cover the bulk of approved usages
+#      and are refactor-stable. Prefer adding an idiom over a path entry
+#      when the same call shape recurs across the codebase.
+#
+#   2. Path allowlist — this file. Reserved for one-off swallows that
+#      don't fit any idiom, plus the small set of approved empty catches.
 #
 # Format: one fingerprint per line, of the form
 #   <relative path under Sources/>:<trimmed source line>
 #
 # - Empty lines and `#`-prefixed lines are ignored.
 # - Entries must match the audit's fingerprint EXACTLY (the line content
-#   is the trimmed source line, not a regex).
-# - Sort entries roughly by target/file so diffs stay reviewable, but the
-#   audit does not rely on order.
+#   is the trimmed source line, not a regex). Adding context to the line
+#   in a refactor invalidates the fingerprint — re-allowlist or move the
+#   pattern to `approvedTryIdioms` if it now recurs.
 #
 # DO NOT add entries to make a failing test pass without human review.
 # If the `try?` or empty catch is genuinely an unobserved error that
@@ -19,435 +28,41 @@
 # instead of allowlisting it here.
 
 # ---------------------------------------------------------------------------
-# BaseChatInference
+# Approved one-off `try?` swallows
 # ---------------------------------------------------------------------------
 
-# False positive: `ToolRegistry?` as an optional type annotation contains
-# the substring `try?` inside `Regis-try?`. No `try?` call site is present
-# on either line; the audit's substring scan is not AST-aware.
-BaseChatInference/Services/GenerationQueue.swift:let toolRegistry: ToolRegistry?
-BaseChatInference/Services/GenerationQueue.swift:toolRegistry: ToolRegistry? = nil,
-BaseChatInference/Services/InferenceService.swift:public var toolRegistry: ToolRegistry? {
-BaseChatInference/Services/InferenceService.swift:toolRegistry: ToolRegistry? = nil,
-
-# JSONSchemaValue uses the standard "try-each-type-in-order" decoder pattern for
-# heterogeneous JSON. Each `try?` is bound to a named constant and the result is
-# used immediately; there is no silent discard — the next branch handles the miss.
-BaseChatInference/Models/ToolTypes.swift:} else if let b = try? container.decode(Bool.self) {
-BaseChatInference/Models/ToolTypes.swift:} else if let n = try? container.decode(Double.self) {
-BaseChatInference/Models/ToolTypes.swift:} else if let s = try? container.decode(String.self) {
-BaseChatInference/Models/ToolTypes.swift:} else if let arr = try? container.decode([JSONSchemaValue].self) {
-
-BaseChatInference/Models/ModelInfo.swift:guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-BaseChatInference/Models/ModelInfo.swift:if let metadata = try? GGUFMetadataReader.readMetadata(from: url) {
-BaseChatInference/Models/ModelInfo.swift:if let metadata = try? GGUFMetadataReader.readMetadata(from: localURL) {
-BaseChatInference/Models/ModelInfo.swift:guard let contents = try? fileManager.contentsOfDirectory(
-BaseChatInference/Models/ModelInfo.swift:let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-
-BaseChatHuggingFace/BackgroundDownloadManager.swift:try? FileManager.default.removeItem(at: tempURL)
-
-# Best-effort temp-file cleanup before throwing a path-traversal error; the removal
-# failure is irrelevant since the download is already being rejected.
-BaseChatHuggingFace/BackgroundDownloadManager+URLSessionDelegate.swift:try? FileManager.default.removeItem(at: tempURL)
-
-# File-based persistence helpers: reading optional data whose absence is expected
-# (no pending downloads), decoding optional JSON (corrupt file falls back to
-# empty dict), and best-effort directory enumeration. Resume-blob reads now
-# go through `consumeResumeData(for:)`, which uses do/catch + Log.warn rather
-# than `try?` so HMAC mismatches and read errors leave a diagnostic trail
-# (#I1 network seam closure).
-BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let data = try? Data(contentsOf: pendingMetadataFileURL) else { return nil }
-BaseChatHuggingFace/BackgroundDownloadManager.swift:return try? JSONDecoder().decode([String: [String: String]].self, from: data)
-BaseChatHuggingFace/BackgroundDownloadManager.swift:guard let contents = try? FileManager.default.contentsOfDirectory(
-
-BaseChatHuggingFace/DownloadFileValidator.swift:guard let handle = try? FileHandle(forReadingFrom: fileURL) else {
-BaseChatHuggingFace/DownloadFileValidator.swift:guard let headerData = try? handle.read(upToCount: 4), headerData.count == 4 else {
-
-# Diffusion validator — same pattern as the GGUF validator above. Opening
-# the safetensors file or reading the 8-byte header is the actual probe;
-# failure is converted into a HuggingFaceError on the next line. The
-# `defer { try? handle.close() }` is deterministic best-effort cleanup —
-# the close result is never actionable once we've finished reading.
-BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:guard let handle = try? FileHandle(forReadingFrom: url) else {
-BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:defer { try? handle.close() }
-BaseChatHuggingFace/DownloadFileValidator+Diffusion.swift:guard let headerLengthData = try? handle.read(upToCount: 8),
-
-# Diffusion download — same pattern. Best-effort handle close after
-# write, and a `try? attributesOfItem` whose `nil` result is the
-# documented "size unknown" branch of `URL.fileSize`. The
-# `try? removeItem` wipes a possible partial file from a previous
-# attempt before we recreate it — the createFile call below succeeds
-# either way, so a failed remove is non-actionable.
-BaseChatHuggingFace/DiffusionDownload.swift:guard let handle = try? FileHandle(forWritingTo: local) else {
-BaseChatHuggingFace/DiffusionDownload.swift:defer { try? handle.close() }
-BaseChatHuggingFace/DiffusionDownload.swift:let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-BaseChatHuggingFace/DiffusionDownload.swift:try? FileManager.default.removeItem(at: local)
-BaseChatInference/Services/GGUFMetadataReader.swift:guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-BaseChatInference/Services/ModelStorageService.swift:guard let contents = try? fileManager.contentsOfDirectory(
-
-# Same best-effort directory walk one level deeper for HF-namespaced MLX
-# layouts (Models/<org>/<model>/). An unreadable namespace dir is just
-# skipped — we move on to the next entry rather than failing the whole scan.
-BaseChatInference/Services/ModelStorageService.swift:guard let nestedContents = try? fileManager.contentsOfDirectory(
-
-# ---------------------------------------------------------------------------
-# BaseChatPersistenceSwiftData
-# ---------------------------------------------------------------------------
-
-# File-protection hardening: enumerating the store directory to locate
-# SQLite WAL sidecars is best-effort. If the directory read fails
-# (permissions race, parent unmounted), we skip sidecar protection and
-# the main store is still protected — the error is not actionable.
-BaseChatPersistenceSwiftData/ModelContainerFactory.swift:guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else {
-
-# ---------------------------------------------------------------------------
-# BaseChatBackends
-# ---------------------------------------------------------------------------
-
-BaseChatBackends/ClaudeBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-# parseEventType / parseThinkingDelta: SSE payload probes. Malformed
-# JSON is a non-event (ignore the payload) — same pattern as parseToken.
-BaseChatBackends/ClaudeBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-BaseChatBackends/OllamaBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-BaseChatBackends/OllamaBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-
-# /api/show probe was refactored to a do/catch in I2 (ModelManifest source
-# of truth). The two `try?` patterns it previously used were promoted to
-# `do { ... } catch { Log.network.info(...) }` so the catch path now
-# produces visible error output.
-
-BaseChatBackends/OpenAIBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-BaseChatBackends/SSECloudBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-
-# parseDelta / parseUsage / parseErrorMessage: SSE payload probes for the
-# OpenAI Responses-API named-event stream. Malformed JSON on a probe is a
-# non-event — the parser ignores the payload, same pattern as the Chat
-# Completions handlers above.
-# parseFunctionCallItem / parseFunctionCallArgumentsDelta added in the
-# tool-calling rollout (#435) follow the same shape — a malformed payload
-# means we silently skip the event and let the next valid one drive state.
-BaseChatBackends/OpenAIResponsesBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-BaseChatBackends/OpenAIResponsesBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-
-# MLXBackend.validateArchitecture: best-effort read of the MLX model's
-# `config.json`. A missing/unreadable/malformed config is not fatal here
-# — we deliberately fall through so mlx-swift-lm's own load path produces
-# the real diagnostic (missing weights, malformed directory, etc.) rather
-# than masking it with a false architecture error.
-BaseChatBackends/MLXBackend.swift:guard let data = try? Data(contentsOf: configURL),
-BaseChatBackends/MLXBackend.swift:let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-
-# MLXBackend.effectiveSystemPrompt (Qwen tool-block builder): the
-# `tool.parameters` round-trip through Encoder→JSONObject is a
-# shape-conversion probe so the parameters merge into the surrounding
-# [String: Any] tools array. The else-branch falls back to an empty
-# schema, which is the documented Qwen behaviour for parameterless
-# tools — failure here is functionally indistinguishable from a tool
-# declaring no parameters.
-BaseChatBackends/MLXBackend.swift:if let paramsData = try? JSONEncoder().encode(tool.parameters),
-BaseChatBackends/MLXBackend.swift:let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
-
-# Same builder, outer wrap: serialising the assembled tools array into
-# pretty-printed JSON for the <tools> block. On failure we emit "[]",
-# which the Qwen template tolerates (model gets an empty tool list and
-# declines to call). The visible-quality regression is acceptable
-# versus throwing during prompt assembly.
-BaseChatBackends/MLXBackend.swift:if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
-
-# MLXBackend tool-call history encoding: model previously emitted a
-# tool call whose arguments JSON is now being replayed in the chat
-# history. If the original payload no longer parses (corrupted on the
-# way back through the buffer), substitute an empty-args dict — this
-# matches what the model itself would have produced for a no-arg
-# tool, and the audit-trail content already passed validation when
-# first emitted.
-BaseChatBackends/MLXBackend.swift:let parsed = try? JSONSerialization.jsonObject(with: data) {
-
-# Re-serialising the same call object into a <tool_call> block. If
-# the round-trip fails (the parsed dictionary is not JSON-encodable),
-# we drop this single call from the rendered history rather than
-# failing the whole prompt — the if-let `data`/`jsonStr` guard
-# ensures only successfully-encoded calls are appended.
-BaseChatBackends/MLXBackend.swift:if let data = try? JSONSerialization.data(withJSONObject: callObj),
-
-
-# MLXToolCallParser.parseToolCall: defensive JSON parse of the buffered
-# payload between <tool_call>…</tool_call>. Models routinely emit
-# malformed payloads (truncated, partial Unicode, mid-token streaming);
-# returning `nil` here lets the caller silently skip this block —
-# the same way the SSE backends drop unparseable event payloads.
-BaseChatBackends/MLXToolCallParser.swift:let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-
-# Re-serialising parsed `arguments` dict back into a JSON string for
-# ToolCall.arguments. If serialisation fails, we substitute "{}" —
-# a parameterless call is the safest fallback when the wire format
-# is uninterpretable, and the typed-tool executor will surface a
-# schema mismatch if the tool actually requires args.
-BaseChatBackends/MLXToolCallParser.swift:if let serialised = try? JSONSerialization.data(withJSONObject: argsDict),
-
-# MLXToolDialect.detect: best-effort probe of the model dir's
-# `config.json` to classify the tool dialect. A missing/unreadable
-# config maps to `.unknown` (tool calling is a no-op), per the
-# function's documented contract — same shape as MLXBackend's
-# architecture validator above.
-BaseChatBackends/MLXToolDialect.swift:guard let data = try? Data(contentsOf: configURL),
-BaseChatBackends/MLXToolDialect.swift:let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-
-# ---------------------------------------------------------------------------
-# BaseChatFuzz
-# ---------------------------------------------------------------------------
-
-# SessionScript resource loader uses the "try-each-shape-in-order"
-# decoder pattern: each `try?` is a shape probe (single-object vs. array of scripts).
-# When both shape probes miss, SessionScript.loadAll writes an explicit stderr
-# diagnostic on the next line. The Data(contentsOf:) swallow is a benign
-# skip-this-resource case — the loader continues with the remaining scripts.
-BaseChatFuzz/SessionScript.swift:guard let data = try? Data(contentsOf: url) else { continue }
-BaseChatFuzz/SessionScript.swift:if let one = try? decoder.decode(SessionScript.self, from: data) {
-BaseChatFuzz/SessionScript.swift:if let many = try? decoder.decode([SessionScript].self, from: data) {
-
-# ScenarioTestBackend pauses mid-thinking to give cancel/retry scenarios a
-# deterministic window. The sleep is best-effort: if the Task is cancelled
-# during the pause, we deliberately fall through to the post-thinking emit
-# check (which honours Task.isCancelled on its own) rather than observing
-# the CancellationError.
-BaseChatFuzz/Scenarios/ScenarioTestBackend.swift:try? await Task.sleep(for: pause)
-
-# ---------------------------------------------------------------------------
-# BaseChatUI
-# ---------------------------------------------------------------------------
-
-# Task.sleep cancellation is intentionally ignored;
-# parser/rendering fallbacks are benign optional conversions.
-BaseChatUIModelManagement/ViewModels/ModelManagementViewModel.swift:try? await Task.sleep(for: .milliseconds(500))
+# Markdown rendering: AttributedString init is a parser; failure means
+# "render as plain text" and the caller already has a fallback path.
 BaseChatUI/Views/Chat/AssistantMarkdownView.swift:if let parsed = try? AttributedString(
-BaseChatUI/Views/Chat/TypingIndicatorView.swift:try? await Task.sleep(for: .milliseconds(400))
-# `awaitStreamCompletion` polling backoff: cancellation here just exits
-# the polling loop; the turn's own cancel runs through the runtime stream.
-BaseChatUI/ViewModels/ChatViewModel+Generation.swift:try? await Task.sleep(for: .milliseconds(1))
 
-# Best-effort cleanup of the temp directory holding a just-shared export
-# file. The share sheet has dismissed; if the file is gone (user moved it,
-# AirDrop snapshotted it, race with reaper), the unlink is a no-op and
-# nothing actionable would come of surfacing the error.
-BaseChatUI/Views/Chat/ExportButton.swift:try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-
-# ---------------------------------------------------------------------------
-# BaseChatTestSupport — test-only helpers, not production paths.
-# ---------------------------------------------------------------------------
-
-# withTimeout deadline task: Task.sleep cancellation is intentionally swallowed so
-# the deadline fires immediately when the parent task is cancelled, rather than
-# propagating CancellationError and racing with the operation task's resume path.
-BaseChatTestSupport/TestHelpers.swift:try? await Task.sleep(for: timeout)
-BaseChatTestSupport/TestHelpers.swift:try? FileManager.default.removeItem(at: url)
-BaseChatTestSupport/SlowMockBackend.swift:try? await Task.sleep(for: delay)
-BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: ttft)
-BaseChatTestSupport/PerceivedLatencyBackend.swift:try? await Task.sleep(for: delay)
-BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: delay)
-BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: stallDuration)
-BaseChatTestSupport/ChaosBackend.swift:try? await Task.sleep(for: silenceFor)
-# HardwareRequirements model-discovery walkers (MLX + GGUF). All directory
-# enumerations are best-effort: an unreadable container/search dir is skipped
-# and discovery continues with the remaining candidates. Mirrors the same
-# pattern used in ModelStorageService and BackgroundDownloadManager. The
-# resourceValues probe is the standard "skip-files-we-can't-stat" pattern.
-BaseChatTestSupport/HardwareRequirements.swift:let configData = try? Data(contentsOf: configURL),
-BaseChatTestSupport/HardwareRequirements.swift:let json = try? JSONSerialization.jsonObject(with: configData) as? [String: Any],
-BaseChatTestSupport/HardwareRequirements.swift:let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-BaseChatTestSupport/HardwareRequirements.swift:guard let contents = try? fileManager.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:let nestedContents = try? fileManager.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:guard let files = try? fileManager.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:if let containers = try? fileManager.contentsOfDirectory(
-BaseChatTestSupport/HardwareRequirements.swift:let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-
-# ---------------------------------------------------------------------------
-# Empty `catch { }` blocks.
-# ---------------------------------------------------------------------------
-# These are best-effort reads whose partial result is still useful;
-# swallowing the error is intentional and the remaining behaviour is
-# correct.
-
-# ClaudeBackend.readErrorBody: we're assembling an error body for a log
-# message after the upstream request already failed. A truncated body is
-# better than crashing the error handler.
-BaseChatBackends/ClaudeBackend.swift:} catch {
-
-# BaseChatTools — bck-tools CLI harness. Two benign catches:
-#   - TranscriptLogger.deinit can't propagate a close() failure and the
-#     file is about to be reaped with the process anyway.
-#   - NowTool.EmptyArgs.init(from:) probes the keyed container so it
-#     accepts both `{}` and `null`; a missing container is a valid
-#     zero-argument payload and not an error condition.
-BaseChatTools/TranscriptLogger.swift:} catch {
-BaseChatTools/ReferenceTools/NowTool.swift:} catch {
-
-# SampleRepoSearchTool walks the sandbox directory skipping files it
-# cannot read (binary data with a text extension, permission races,
-# non-UTF-8 encodings). Surfacing these as errors would make a noisy
-# search tool that fails on a single bad file instead of returning
-# the matches it did find. Mirrors the pattern in BackgroundDownloadManager
-# and ModelStorageService for directory walkers.
-BaseChatTools/ReferenceTools/SampleRepoSearchTool.swift:let values = try? url.resourceValues(forKeys: Set(keys))
+# Best-effort small-file read for the sample-repo search tool. Binary or
+# permission-denied files are skipped (continue) — surfacing the error
+# would terminate the iteration without adding signal.
 BaseChatTools/ReferenceTools/SampleRepoSearchTool.swift:guard let contents = try? String(contentsOf: url, encoding: .utf8) else { continue }
 
-# SessionListView debounces search input via Task.sleep; ignoring the
-# CancellationError is the standard pattern for sleeps that exist solely
-# as a debounce — the surrounding `if Task.isCancelled` guard short-circuits
-# the work that would otherwise execute on a stale query.
-BaseChatUI/Views/Sidebar/SessionListView.swift:try? await Task.sleep(nanoseconds: 200_000_000)
-
-# LinkPreviewDetector.firstURL: NSDataDetector init throws only for invalid
-# CheckingType bitmasks; `.link.rawValue` is a compile-time constant so this
-# cannot fail in practice. nil return means "no URL found", which is the
-# correct no-preview fallback.
-BaseChatUI/Views/Chat/LinkPreview.swift:let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-
-# ---------------------------------------------------------------------------
-# BaseChatMCP
-# ---------------------------------------------------------------------------
-
-# sendNotificationIgnoringErrors is the fire-and-forget helper used to send
-# notifications/cancelled from a Task cancellation handler. The handler runs
-# synchronously on cancel and must not throw (doing so would suppress the
-# CancellationError the caller is expecting). Both the encode and the send
-# are explicitly best-effort: if either fails the notification is simply
-# not sent — acceptable because the MCP spec treats cancellation notifications
-# as advisory.
+# MCP transport encode/send — fire-and-forget pattern. Encoding failure is
+# swallowed because the next call will retry with a fresh codec, and the
+# caller is the framing layer that has no recovery path.
 BaseChatMCP/InternalMCPSession.swift:guard let payload = try? codec.encode(message) else { return }
 BaseChatMCP/InternalMCPSession.swift:try? await transport.send(payload)
 
-# Optional decode of a non-mandatory OAuth AS metadata field. The field is
-# absent from older authorization server metadata documents (pre-RFC 9207).
-# Falling back to `false` (no iss parameter supported) is the spec-correct
-# behaviour for a missing field — treating a decode failure as `false` is
-# semantically identical to the field being absent.
-BaseChatMCP/MCPOAuth.swift:(try? container.decodeIfPresent(Bool.self, forKey: .authorizationResponseIssParameterSupported)) ?? false
-
-# Best-effort JSON parse of a raw token-endpoint HTTP response body. The
-# body is not guaranteed to be valid JSON (the request may have failed at the
-# HTTP layer); falling back to an empty dictionary is correct because all
-# the downstream field reads return nil for missing keys.
-BaseChatMCP/MCPOAuth.swift:let rawJSON = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-
-# PromptTemplate.toolDeclarationBlock — JSON serialisation of ToolDefinition
-# for Gemma 4 <|tool> blocks. These are best-effort conversions: if a tool's
-# parameter schema or the resulting dict cannot be serialised, the tool block
-# is silently skipped (caller handles nil return). No observable side effect.
-BaseChatInference/Services/PromptTemplate.swift:guard let paramsData   = try? JSONEncoder().encode(tool.parameters),
-BaseChatInference/Services/PromptTemplate.swift:let paramsObject = try? JSONSerialization.jsonObject(with: paramsData)
-BaseChatInference/Services/PromptTemplate.swift:guard let data = try? JSONSerialization.data(withJSONObject: dict, options: .sortedKeys),
-
-# LlamaToolCallParser — JSON parsing of streamed Gemma 4 / JSON-fallback
-# tool-call bodies. These are optional conversions: a parse failure means the
-# tool-call block is discarded or falls back to empty args, which is the
-# correct behaviour for a malformed model output.
-BaseChatBackends/LlamaToolCallParser.swift:let obj  = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-BaseChatBackends/LlamaToolCallParser.swift:let serialized = try? JSONSerialization.data(withJSONObject: argsDict),
-
-# Gemma 4 native-format string-value escape decoder: wraps the scanned raw
-# value in `"…"` and reuses JSONSerialization (with `.fragmentsAllowed`) to
-# unescape standard JSON escapes like `\n`, `\"`, `\\`. On failure we keep
-# the raw bytes — a malformed escape is preferable to dropping the call.
-BaseChatBackends/LlamaToolCallParser.swift:let decoded = try? JSONSerialization.jsonObject(
-
-# Gemma 4 native-format argument re-serialisation: round-trips the parsed
-# `[String: Any]` back into a canonical JSON string for ToolCall.arguments.
-# Failure here means a value type slipped through the tokenizer that
-# JSONSerialization rejects — caller falls back to "{}", same shape as
-# the JSON-fallback path's empty-arg fallback.
-BaseChatBackends/LlamaToolCallParser.swift:guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys]),
-
-# ---------------------------------------------------------------------------
-# BaseChatVoice
-# ---------------------------------------------------------------------------
-
-# Best-effort audio-session deactivation. iOS may already be tearing down the
-# session (route change, app backgrounded, interruption ended) by the time we
-# call this on stop/cancel. Throwing here would only surface a benign
-# "session not active" error to the user; the route is reclaimed regardless.
-# Mirrors the pattern in Apple's own AVAudioSession sample code.
+# AVAudioSession deactivation in tear-down. iOS routinely returns
+# `kAudioSessionInactiveError` for sessions that other apps still hold
+# active; that is expected and not actionable.
 BaseChatVoice/Services/VoiceAudioSessionCoordinator.swift:try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
-# ---------------------------------------------------------------------------
-# BaseChatUIModelManagement — endpoint editor rollback
-# ---------------------------------------------------------------------------
-
-# Best-effort Keychain cleanup when the EndpointStore insert fails after a
-# Keychain key was just stored. Throwing here would obscure the real error
-# (the failed row insert), so we swallow the cleanup failure — leaving an
-# orphan Keychain item that the bootstrap reaper will sweep on next launch.
-BaseChatUIModelManagement/Views/Settings/APIEndpointEditorView.swift:try? KeychainService.delete(account: newRecord.keychainAccount)
-BaseChatUIModelManagement/Views/Settings/RemoteServerConfigSheet.swift:try? KeychainService.delete(account: record.keychainAccount)
-
-# Model-management views call `ModelRegistry.refresh()` after delete / import /
-# download events. The legacy code path was `ChatViewModel.refreshModels()`,
-# which surfaced directory-creation errors via `errorMessage` — but those
-# only happen on a brand-new install before `ModelManagementSheet` is
-# presented (the sheet itself runs `refresh()` on appear). At post-delete /
-# post-download time the directory already exists and the call is purely a
-# rescan; a transient failure is non-actionable from these views (the user
-# is mid-flow on a sheet and surfacing the error here would cancel the
-# enclosing alert flow). The user-visible error path remains
-# `ChatViewModel.refreshModels()` from the host app's onAppear handler.
-BaseChatUIModelManagement/Views/Models/StorageManagementView.swift:try? modelRegistry.refresh()
-BaseChatUIModelManagement/Views/Models/LocalModelStorageView.swift:try? modelRegistry.refresh()
-BaseChatUIModelManagement/Views/Models/HuggingFaceBrowserView.swift:try? modelRegistry.refresh()
-BaseChatUIModelManagement/Views/Models/ModelManagementSheet.swift:try? modelRegistry.refresh()
-
-
-# ---------------------------------------------------------------------------
-# BaseChatInference — ModelInfo mmproj companion detection
-# ---------------------------------------------------------------------------
-
-# Best-effort directory scan when auto-detecting an mmproj companion file.
-# On first launch there may be no parent directory yet (new download target),
-# or the directory may be inaccessible due to sandbox restrictions.
-# A nil `candidates` produces an empty array via `?? []`, so `mmprojURL`
-# stays nil — the backend safely operates in text-only mode.
-BaseChatInference/Models/ModelInfo.swift:let candidates = (try? FileManager.default.contentsOfDirectory(
-
-# ---------------------------------------------------------------------------
-# BaseChatInference — waitUntilModelReady timeout sleep
-# ---------------------------------------------------------------------------
-
-# Timeout arm of the withTaskGroup race in waitUntilModelReady: group.cancelAll()
-# cancels this Task.sleep when the readiness stream wins first; swallowing
-# the CancellationError here is the intended "timer task exits cleanly" path.
-BaseChatInference/Services/InferenceService.swift:try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-
-# ---------------------------------------------------------------------------
-# BaseChatServer
-# ---------------------------------------------------------------------------
-
-# ChatCompletionToolChoice uses the standard "try-each-type-in-order" decoder
-# pattern: first probes for the string forms ("auto", "none", "required"),
-# then falls through to decode the object form {"type":"function",...}.
-# The `try?` is bound to a named constant; the else-branch handles the miss.
+# Single-value-container probe in the OpenAI-compatible chat-completions
+# adapter — try to decode a JSON value as `String`, fall through if not.
+# The fallthrough is the entire point; surfacing the error would defeat
+# the multi-shape decoder.
 BaseChatServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleValueContainer().decode(String.self) {
 
 # ---------------------------------------------------------------------------
-# BaseChatBackends — MLXDiffusionBackend
+# Approved empty `catch { }` blocks
 # ---------------------------------------------------------------------------
 
-# File-size probe for ImageModelLoadPlan pre-flight. Missing files return 0
-# bytes; the plan treats them as "not present" and may undercount, erring on
-# the side of allowing the load rather than blocking with a stale denial.
-BaseChatBackends/MLXDiffusionBackend.swift:return (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int64 ?? 0
-
-# Temporary-symlink teardown after loadModel completes. The symlink bridges
-# BCK's slug-based download path to Hub's expected directory convention;
-# removal is pure cleanup and its result is never actionable.
-BaseChatBackends/MLXDiffusionBackend.swift:return (tmpBase, { try? FileManager.default.removeItem(at: tmpBase) })
-
-# ---------------------------------------------------------------------------
-# StableDiffusion — vendored from mlx-swift-examples (MIT, PR #1068)
-# ---------------------------------------------------------------------------
-
-# Optional JSON field decoding in UNet/VAE configuration. These keys are
-# absent from older stable-diffusion checkpoints; nil is the correct fallback,
-# not an error to surface. Uses the "try-each-key-or-nil" pattern.
-StableDiffusion/Configuration.swift:try (try? container.decode([Int].self, forKey: .layersPerBlock))
-StableDiffusion/Configuration.swift:(try? container.decode([Int].self, forKey: .transformerLayersPerBlock)) ?? [1, 1, 1, 1]
-StableDiffusion/Configuration.swift:try (try? container.decodeIfPresent([Int].self, forKey: .numHeads))
-StableDiffusion/Configuration.swift:try (try? container.decode([Int].self, forKey: .crossAttentionDimension))
+# Stream cancellation cleanup paths — already-cancelled errors are the
+# only failure mode and would be redundant to log.
+BaseChatBackends/ClaudeBackend.swift:} catch {
+BaseChatTools/TranscriptLogger.swift:} catch {
+BaseChatTools/ReferenceTools/NowTool.swift:} catch {
