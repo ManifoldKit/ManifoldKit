@@ -1,5 +1,100 @@
 # Changelog
 
+## [0.19.0](https://github.com/roryford/BaseChatKit/compare/v0.18.0...v0.19.0) (2026-05-09)
+
+This release closes a driver-first improvement plan that dissolved seven structural drivers in BCK's surface. The headline shifts: `import BaseChatKit` is the canonical app-level import; `BackendName` is a real Swift enum; `BaseChatBackends` splits into five trait-gated products; backend capabilities now derive from a `ModelManifest` rather than hardcoded constants; the four `*Input` structs in `ConversationRuntime` collapse into one `TurnInput`; and `RAG` ships as a first-class knowledge-base module.
+
+### ⚠ BREAKING CHANGES
+
+* **`BackendName` raw value flip** — `BackendName.foundation` is now `"foundation"` (was `"Apple"`); the other five cases use lowercase canonical strings. Code that hardcoded the legacy strings (`if name == "Apple"`) breaks. Use `BackendName.<case>.rawValue` for new comparisons and `BackendName.parse(_:)` at every persistence boundary — it accepts both new and legacy forms so already-stored sessions migrate transparently.
+* **`BaseChatBackends` split into five products** — `BaseChatCloudCore`, `BaseChatMLX`, `BaseChatLlama`, `BaseChatFoundation`, `BaseChatCloud` are now publicly exposed alongside the umbrella. `import BaseChatBackends` keeps working. Code that did `@testable import BaseChatBackends` to reach internals now needs `@testable import BaseChat<Family>` for the family that owns the symbol.
+* **`ConversationRuntime` input collapse** — `SendInput` / `RegenerateInput` / `EditInput` / `BranchInput` are deprecated in favor of one `TurnInput { kind: TurnKind, config: TurnConfig }`. The public `runtime.send(_:)` / `regenerate(_:)` / `edit(_:)` / `branch(_:)` method names stay; the legacy structs forward via deprecation shim.
+* **`SendMessageError` replaces `NoResponseError`** — `ChatViewModel.sendMessage(_:)` now throws `.noActiveSession` / `.noModelLoaded` / `.empty` / `.runtime(Error)` instead of masking three distinct failure modes as one opaque error. Switch on the case to distinguish.
+* **`MessageStore` / `SessionStore` moved to `BaseChatRuntime`** — Persistence-port protocols belong with the turn loop. Consumers that conformed to or imported these protocols from `BaseChatInference` may need to add `import BaseChatRuntime`. Records (`ChatMessageRecord`, `MessagePart`, `MessageRole`) stay in `BaseChatInference`.
+* **`InferenceService.enqueue([Message])`** — A typed overload replaces the deprecated `[(role: String, content: String)]` tuple form. Use `Message.user(_)` / `.system(_)` / `.assistant(_)` to avoid stringly-typed roles.
+
+### Highlights
+
+#### `import BaseChatKit` is the canonical app-level import ([#1147](https://github.com/roryford/BaseChatKit/issues/1147))
+
+The new `BaseChatKit` umbrella product re-exports the four core modules (`BaseChatRuntime`, `BaseChatPersistenceSwiftData`, `BaseChatBackends`, `BaseChatUI`), so a hello-world chat app needs one import instead of six. The README's Quick Start drops to five lines. Specialized features (`BaseChatMCP`, `BaseChatVoice`, `BaseChatHuggingFace`, `BaseChatUIModelManagement`) remain opt-in. The cold-start CI gate now consumes `import BaseChatKit` from outside the package as the load-bearing tripwire for the umbrella's documented contract.
+
+```swift
+import SwiftUI
+import BaseChatKit  // re-exports Runtime + Persistence + Backends + UI
+
+@main struct DemoApp: App {
+    var body: some Scene { WindowGroup { ChatView(viewModel: chatViewModel) } }
+}
+```
+
+#### `BackendName` is a Swift enum with raw-value flip ([#1147](https://github.com/roryford/BaseChatKit/issues/1147))
+
+`BackendName` is now a real `enum: String, Sendable, CaseIterable, Codable, Hashable` — switch statements over the active backend can be exhaustive again. Raw values are lowercased canonical (`"foundation"`, `"ollama"`, `"claude"`, etc.); `BackendName.foundation` no longer secretly equals `"Apple"`. The new `BackendName.parse(_:)` accepts both 0.19+ canonical strings AND legacy 0.18 forms (`"Apple"`, `"Ollama"`, `"llama.cpp"`) so persisted session metadata migrates without a schema bump.
+
+```swift
+switch vm.activeBackendName.flatMap(BackendName.parse) {
+case .foundation: // ...
+case .ollama, .claude, .openAI, .mlx, .llama: // ...
+case .none: // mock backend or custom cloud provider
+}
+```
+
+#### `BaseChatBackends` split into five trait-gated products ([#1146](https://github.com/roryford/BaseChatKit/issues/1146))
+
+The 11.7k-LOC monolithic `BaseChatBackends` target is split into `BaseChatCloudCore` (always linked — URLSessionProvider, redirect guard, SSE base), `BaseChatMLX` (`MLX` trait), `BaseChatLlama` (`Llama` trait), `BaseChatFoundation` (OS availability, no trait), and `BaseChatCloud` (`CloudSaaS` or `Ollama` trait — OpenAI, Claude, Ollama). Three cross-family stub files (`ClaudeBackendStub`, `OpenAIBackendStub`, `OllamaBackendStub`) are deleted — per-target trait gating now does what they faked. `BaseChatBackends` remains as a thin re-export umbrella so `import BaseChatBackends` keeps compiling. Trait-combo CI builds are now ~5× faster because a one-line MLX change no longer rebuilds the cloud backends.
+
+#### `ModelManifest` derives backend capabilities from model truth ([#1141](https://github.com/roryford/BaseChatKit/issues/1141))
+
+Backend capabilities used to be hardcoded constants — `MLXBackend` claimed 8192 max context regardless of the loaded model, `OpenAIBackend` silently dropped `seed` even though the API accepts it, `OllamaBackend`'s thinking-tag fallback was hardwired to `<think>` Qwen3 markers. The new `ModelManifest` is a per-model source of truth (context window from `config.json`, `supportsSeed` from a vendored prefix table for cloud models, `thinkingMarkers` from the auto-detected `/api/show` template scan). `BackendCapabilities` becomes a derived view; `ContextWindowManager` reads the manifest's true context window. A new contract test asserts the cross-backend invariant that any backend emitting `.thinkingToken` events reports `supportsThinking == true`.
+
+```swift
+public struct ModelManifest: Sendable, Equatable {
+    let contextWindow: Int
+    let supportsTools: Bool
+    let supportsThinking: Bool
+    let thinkingMarkers: ThinkingMarkers?
+    let supportsSeed: Bool
+    let supportedSamplingParameters: SamplingParameterSet
+    let modelIdentifier: String
+    let producerKind: ProducerKind  // .local / .cloud / .lan
+}
+```
+
+#### `TurnInput` collapses ConversationRuntime input shape; typed `SendMessageError` ([#1145](https://github.com/roryford/BaseChatKit/issues/1145))
+
+The four `*Input` structs in `ConversationRuntime` duplicated ~14 sampling/streaming/loop-detection knobs each — adding a knob was a 5-touch change. They collapse into one `TurnInput { kind: TurnKind, config: TurnConfig }`; a single `processTurn` body replaces four near-duplicate branches. `ChatViewModel.sendMessage(_:)` now propagates a typed `SendMessageError` enum (`.noActiveSession`, `.noModelLoaded`, `.empty`, `.runtime(Error)`) instead of masking three distinct failure modes. `configure(bootstrap:)` is the canonical wiring; `configure(runtime:)` and `configure(_:)` are deprecated shims. `InferenceService.enqueue([Message])` replaces the role-string tuple form.
+
+```swift
+do {
+    try await vm.sendMessage("hi")
+} catch SendMessageError.noModelLoaded {
+    showModelPicker = true
+} catch SendMessageError.noActiveSession {
+    await vm.startNewSession()
+} catch let SendMessageError.runtime(err) {
+    activeError = err
+}
+```
+
+#### RAG knowledge base ([b9c00a4](https://github.com/roryford/BaseChatKit/commit/b9c00a4c09f1785637efbfbaf442f6a0489d6abe))
+
+Document ingestion, vector store, and retrieval-augmented context are now first-class — chat sessions can cite indexed knowledge instead of relying on the model's parametric memory. Embedding production goes through the existing `LlamaEmbeddingBackend` / `nomic-embed` path; retrieval is wired into `PromptContextPipeline` so the runtime composes prompts that interleave conversation history with retrieved chunks.
+
+### Features
+
+* **`MLXResourceArbiter`** — Per-instance cache accounting for multi-MLX-backend hosts. Two MLX backends in the same process (e.g. chat + embeddings) no longer trample each other's `MLX.Memory.cacheLimit`; `clearCache()` only fires when the last claim releases. New `BackendCapabilities.sharesMLXProcessResources` flag tells supervisors when to serialize lifecycle hooks ([#1144](https://github.com/roryford/BaseChatKit/issues/1144)).
+* **`ToolArgumentCoercer` recurses into nested schemas** — Tool calls with `parameters: { type: object, properties: { filter: { type: object, properties: { ... } } } }` now type-coerce nested fields. Bounded depth of 8 prevents pathological schemas. Small open-weight models — the original motivating use case — stop bouncing on nested-typo arguments ([#1144](https://github.com/roryford/BaseChatKit/issues/1144)).
+* **`FoundationOnly` trait + App Store-lean profile** — A new opt-in trait that excludes MLX (~100 MB) and llama.cpp (~600 MB), keeping the BCK overhead under 5 MB for indie iOS 26+/macOS 26+ apps that only need Foundation Models. CI gate asserts the bundle stays small. New `Templates/PrivacyInfo.xcprivacy` covers BCK's three triggered Required Reason API categories. New `docs/AppStoreSubmission.md` checklist covers encryption export, privacy manifest, ATS, mic entitlement, iOS 18 vs 26 targeting ([#1139](https://github.com/roryford/BaseChatKit/issues/1139)).
+* **AGENTS.md + `.cursorrules` + README CI gate** — AI-assistant-grade documentation covering imports, message types, tool-calling pitfalls, and the four common LLM hallucinations that an AI coding assistant trips over when extending BCK. New `scripts/check-readme.sh` CI gate prevents stale install pins or deleted-API references from sneaking back in. README install pins corrected from `from: "1.0.0"` (which never existed) to current ([#1136](https://github.com/roryford/BaseChatKit/issues/1136)).
+* **Persistence ports relocated** — `MessageStore` / `SessionStore` and their post-write hooks moved from `BaseChatInference` to `BaseChatRuntime`, where the turn loop owns them. Records stay in `BaseChatInference` because the dep DAG locks them there. New `ProtocolLocationAuditTest` pins both locations to prevent future drift ([#1140](https://github.com/roryford/BaseChatKit/issues/1140)).
+* **Typed `BackendName` constants and `loadFoundationModelIfAvailable()`** — Earlier in the cycle, `BaseChatInference` exposed a `BackendName` namespace with typed constants for the strings returned by `InferenceService.activeBackendName`. `ChatViewModel.loadFoundationModelIfAvailable()` refreshes the registry, selects the Foundation model, and dispatches a load in one call. The deprecated `loadModel(from:contextSize:)` overload is removed ([#1131](https://github.com/roryford/BaseChatKit/issues/1131)).
+
+### Fixes
+
+* **Cross-origin redirect credential strip** — A new `RedirectGuardDelegate` revalidates redirect URLs through `DNSRebindingGuard`, strips `Authorization` / `Cookie` / `Proxy-Authorization` / `X-API-*` headers on cross-origin redirects, rejects scheme downgrades, and caps hop count. `URLSessionFactory.background()` and a SwiftSyntax lint rule make `URLSessionProvider` the only construction site for `URLSession` instances. `BackgroundDownloadManager` resume blobs are now HMAC-SHA256-tagged with a per-install Keychain key — local-file-write attackers can no longer steer downloads. `MCPContentSanitizer` strips 8-bit CSI, OSC, DCS, and SOS/PM/APC sequences ([#1138](https://github.com/roryford/BaseChatKit/issues/1138)).
+* **Llama E2E basic suite no longer requests thinking** — Disables thinking blocks in the basic real-inference suite so the test isn't load-bearing on a model's reasoning behavior ([#1137](https://github.com/roryford/BaseChatKit/issues/1137)).
+
 ## [0.18.0](https://github.com/roryford/BaseChatKit/compare/v0.17.8...v0.18.0) (2026-05-08)
 
 ### Highlights
