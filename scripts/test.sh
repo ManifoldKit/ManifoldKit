@@ -34,10 +34,28 @@ set -euo pipefail
 OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# ── Hardware-trait suites ────────────────────────────────────────────────────
+# Suites that actually exercise MLX or Llama (hardware-trait code paths).
+# `--minimal` keeps SwiftPM's default traits whenever a filter targets one of
+# these; otherwise it injects --disable-default-traits to skip the MLX source
+# dependency. MLX is a *source* dep — building it triggers a Metal shader
+# compile pass through Xcode's toolchain, which is multiple wasted minutes
+# per cold build for runtime/persistence/UI/MCP/server iteration that never
+# touches a backend.
+HARDWARE_TRAIT_SUITES=(
+    ManifoldBackendsTests
+    ManifoldE2ETests
+    ManifoldMLXIntegrationTests
+    ManifoldFuzzTests
+)
+
 # ── Arguments ────────────────────────────────────────────────────────────────
 MIN_PASSED=0
 PARALLEL_MODE=0
+MINIMAL_MODE=0
 SWIFT_ARGS=()
+FILTERS_SEEN=()
+DISABLE_DEFAULT_TRAITS_PRESENT=0
 MCP_FILTER_REQUESTED=0
 MCP_TRAIT_REQUESTED=0
 TRAITS_ARG_INDEX=-1
@@ -46,6 +64,13 @@ while [[ $# -gt 0 ]]; do
         --min-passed)
             MIN_PASSED="${2:?'--min-passed requires an integer argument'}"
             shift 2
+            ;;
+        --minimal)
+            # Auto-inject --disable-default-traits when no filter targets a
+            # hardware-trait suite. Resolved after arg parsing so we've seen
+            # the full filter set first.
+            MINIMAL_MODE=1
+            shift
             ;;
         --parallel)
             # Track parallel mode separately so the parser can fall back to
@@ -61,6 +86,7 @@ while [[ $# -gt 0 ]]; do
             if [[ "$filter" == *ManifoldMCPTests* || "$filter" == *ManifoldMCPE2ETests* || "$filter" == *ManifoldMCPE2ESmokeTests* ]]; then
                 MCP_FILTER_REQUESTED=1
             fi
+            FILTERS_SEEN+=("$filter")
             SWIFT_ARGS+=("$1" "$filter")
             shift 2
             ;;
@@ -69,6 +95,12 @@ while [[ $# -gt 0 ]]; do
             if [[ "$filter" == *ManifoldMCPTests* || "$filter" == *ManifoldMCPE2ETests* || "$filter" == *ManifoldMCPE2ESmokeTests* ]]; then
                 MCP_FILTER_REQUESTED=1
             fi
+            FILTERS_SEEN+=("$filter")
+            SWIFT_ARGS+=("$1")
+            shift
+            ;;
+        --disable-default-traits)
+            DISABLE_DEFAULT_TRAITS_PRESENT=1
             SWIFT_ARGS+=("$1")
             shift
             ;;
@@ -104,6 +136,36 @@ if [[ $MCP_FILTER_REQUESTED -eq 1 && $MCP_TRAIT_REQUESTED -eq 0 ]]; then
         SWIFT_ARGS[$TRAITS_ARG_INDEX]="${SWIFT_ARGS[$TRAITS_ARG_INDEX]},MCP"
     else
         SWIFT_ARGS+=("--traits" "MCP")
+    fi
+fi
+
+# ── --minimal resolution ──────────────────────────────────────────────────────
+# If --minimal was requested and no filter targets a hardware-trait suite,
+# inject --disable-default-traits so SwiftPM skips the MLX source dep (and its
+# Metal shader compile pass). If no filter was passed at all, the user is
+# running the full matrix and the defaults are correct — leave them alone.
+if [[ $MINIMAL_MODE -eq 1 ]]; then
+    if [[ $DISABLE_DEFAULT_TRAITS_PRESENT -eq 1 ]]; then
+        echo "[--minimal] --disable-default-traits already present; nothing to inject."
+    elif [[ ${#FILTERS_SEEN[@]} -eq 0 ]]; then
+        echo "[--minimal] no --filter passed; running full matrix with default traits."
+    else
+        hw_hit=""
+        for filter in "${FILTERS_SEEN[@]}"; do
+            for suite in "${HARDWARE_TRAIT_SUITES[@]}"; do
+                if [[ "$filter" == *"$suite"* ]]; then
+                    hw_hit="$filter -> $suite"
+                    break 2
+                fi
+            done
+        done
+        if [[ -n "$hw_hit" ]]; then
+            echo "[--minimal] disabled: filter '$hw_hit' requires MLX/Llama traits; keeping defaults."
+        else
+            echo "[--minimal] injecting --disable-default-traits (no hardware-trait suites in filter set)."
+            SWIFT_ARGS+=("--disable-default-traits")
+            DISABLE_DEFAULT_TRAITS_PRESENT=1
+        fi
     fi
 fi
 
