@@ -1,4 +1,5 @@
 import Foundation
+import BaseChatInference
 
 /// Storage port for chat messages and message-scope search.
 ///

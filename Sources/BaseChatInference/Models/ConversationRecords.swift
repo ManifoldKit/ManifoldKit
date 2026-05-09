@@ -115,31 +115,3 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     }
 }
 
-/// A single match returned from full-text message search.
-///
-/// `snippet` is a short excerpt of the matched message centred around the
-/// first occurrence of the query, suitable for display under the parent
-/// session row. `matchRange` locates the query within `snippet` so callers
-/// can highlight it without re-searching.
-public struct MessageSearchHit: Identifiable, Hashable, Sendable {
-    public var id: UUID { messageID }
-    public var messageID: UUID
-    public var sessionID: UUID
-    public var snippet: String
-    public var matchRange: Range<String.Index>
-    public var timestamp: Date
-
-    public init(
-        messageID: UUID,
-        sessionID: UUID,
-        snippet: String,
-        matchRange: Range<String.Index>,
-        timestamp: Date
-    ) {
-        self.messageID = messageID
-        self.sessionID = sessionID
-        self.snippet = snippet
-        self.matchRange = matchRange
-        self.timestamp = timestamp
-    }
-}

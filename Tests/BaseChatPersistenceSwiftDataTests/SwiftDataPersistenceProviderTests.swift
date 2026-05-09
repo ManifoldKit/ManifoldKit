@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import BaseChatPersistenceSwiftData
 import BaseChatInference
+import BaseChatRuntime
 import BaseChatTestSupport
 
 /// Integration tests for ``SwiftDataPersistenceProvider`` against a fresh

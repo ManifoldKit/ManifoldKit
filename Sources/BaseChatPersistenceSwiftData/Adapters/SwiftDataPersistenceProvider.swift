@@ -1,5 +1,6 @@
 import Foundation
 import BaseChatInference
+import BaseChatRuntime
 import SwiftData
 
 /// Default ``SessionStore`` + ``MessageStore`` adapter backed by SwiftData.

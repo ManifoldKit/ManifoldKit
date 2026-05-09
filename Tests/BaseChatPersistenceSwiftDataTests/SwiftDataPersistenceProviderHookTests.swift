@@ -2,11 +2,12 @@ import XCTest
 import SwiftData
 @testable import BaseChatPersistenceSwiftData
 import BaseChatInference
+import BaseChatRuntime
 import BaseChatTestSupport
 
 /// Phase 1.2.1 — `MessageStorePostWriteHook` integration coverage for the
 /// SwiftData adapter. Same contract as the protocol-level tests in
-/// `BaseChatInferenceTests/MessageStorePostWriteHookTests.swift`, but
+/// `BaseChatRuntimeTests/MessageStorePostWriteHookTests.swift`, but
 /// exercising the real `SwiftDataPersistenceProvider` against an in-memory
 /// SwiftData container so the post-commit ordering and the
 /// `addPostWriteHook` registration path are covered against the production

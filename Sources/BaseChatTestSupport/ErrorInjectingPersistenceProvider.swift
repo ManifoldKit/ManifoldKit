@@ -1,5 +1,6 @@
 import Foundation
 import BaseChatInference
+import BaseChatRuntime
 
 /// Test double that wraps any combined ``SessionStore`` + ``MessageStore``
 /// adapter and adds two facilities the real adapter cannot offer: per-method

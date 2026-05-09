@@ -1,6 +1,7 @@
 @preconcurrency import XCTest
 import Foundation
 @testable import BaseChatInference
+@testable import BaseChatRuntime
 
 /// Phase 1.2.1 — protocol-level coverage for ``MessageStorePostWriteHook``
 /// against an in-memory ``MessageStore`` fake.

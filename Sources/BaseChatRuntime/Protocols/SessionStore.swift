@@ -1,4 +1,5 @@
 import Foundation
+import BaseChatInference
 
 /// Errors produced by ``SessionStore`` and ``MessageStore`` implementations.
 ///
