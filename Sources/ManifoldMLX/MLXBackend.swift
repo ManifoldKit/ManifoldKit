@@ -24,18 +24,6 @@ import ManifoldInference
 /// Requires real Apple Silicon hardware — does not work in iOS Simulator.
 public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
-    struct CachedLayerState {
-        let cacheTypeName: String
-        let offset: Int
-        let state: [MLXArray]
-        let metaState: [String]
-    }
-
-    struct PromptCacheSnapshot {
-        let promptTokens: [Int]
-        let layers: [CachedLayerState]
-    }
-
     // MARK: - Logging
 
     private static let logger = Logger(
@@ -130,15 +118,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// overrides this — see the generate path below.
     /// Access only under `stateLock`.
     private var _autoDetectedThinkingMarkers: ThinkingMarkers?
-    /// Cached prompt KV state for longest-common-prefix reuse on the next turn.
-    /// Access only under `stateLock`.
-    private var _promptCacheSnapshot: PromptCacheSnapshot?
-    /// Snapshot capture still materializing after the previous turn finished.
-    /// Access only under `stateLock`.
-    private var _pendingPromptCacheSnapshotTask: Task<Void, Never>?
-    /// Monotonic token used to invalidate stale post-finish snapshot writes.
-    /// Access only under `stateLock`.
-    private var _promptCacheWriteToken: UInt64 = 0
+    /// Prompt KV-cache reuse state. Access only under `stateLock`.
+    private var _promptCacheState = MLXPromptCacheCoordinator.State()
     /// Whether the currently loaded model/config is eligible for prompt-cache reuse.
     /// Access only under `stateLock`.
     private var _kvCacheReuseEligible = false
@@ -214,212 +195,6 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         self.enableKVCacheReuse = enableKVCacheReuse
     }
 
-    // MARK: - Architecture Allowlist
-
-    /// Canonical `model_type` values that `mlx-swift-lm`'s `LLMTypeRegistry.shared`
-    /// can serve as chat/instruct LMs. Anything outside this set (or the
-    /// VLM-specific set below) — CLIP, SigLIP, Whisper, BERT embeddings, etc. —
-    /// is refused at
-    /// load time via `InferenceError.unsupportedModelArchitecture`.
-    ///
-    /// Sourced from `LLMTypeRegistry.shared` in mlx-swift-lm
-    /// (`Libraries/MLXLLM/LLMModelFactory.swift`). When mlx-swift-lm adds a new
-    /// LM architecture, update this list to match so the preflight doesn't reject
-    /// a freshly supported model.
-    static let supportedLMArchitectures: Set<String> = [
-        "mistral", "llama", "phi", "phi3", "phimoe",
-        "gemma", "gemma2", "gemma3", "gemma3_text", "gemma3n", "gemma4",
-        "qwen2", "qwen3", "qwen3_moe", "qwen3_next",
-        "qwen3_5", "qwen3_5_moe", "qwen3_5_text",
-        "minicpm", "starcoder2", "cohere", "openelm", "internlm2",
-        "deepseek_v3", "granite", "granitemoehybrid",
-        "mimo", "mimo_v2_flash", "minimax",
-        "glm4", "glm4_moe", "glm4_moe_lite",
-        "acereason", "falcon_h1", "bitnet", "smollm3",
-        "ernie4_5", "lfm2", "lfm2_moe",
-        "baichuan_m1", "exaone4", "gpt_oss",
-        "lille-130m", "olmoe", "olmo2", "olmo3",
-        "bailing_moe", "nanochat", "nemotron_h",
-        "afmoe", "jamba_3b", "mistral3", "apertus",
-    ]
-
-    static let supportedVLMArchitectures: Set<String> = [
-        "paligemma", "qwen2_vl", "qwen2_5_vl", "qwen3_vl",
-        "qwen3_5", "qwen3_5_moe", "idefics3", "gemma3", "gemma4",
-        "smolvlm", "fastvlm", "llava_qwen2", "pixtral", "mistral3",
-        "lfm2_vl", "lfm2-vl", "glm_ocr",
-    ]
-
-    private static let normalizedSupportedArchitectures: Set<String> =
-        Set((supportedLMArchitectures.union(supportedVLMArchitectures)).map(normalizeArchitectureKey))
-
-    private static func normalizeArchitectureKey(_ value: String) -> String {
-        value.lowercased().unicodeScalars
-            .filter { CharacterSet.alphanumerics.contains($0) }
-            .map(String.init)
-            .joined()
-    }
-
-    /// Reads `config.json` at `url` and throws
-    /// `InferenceError.unsupportedModelArchitecture` if the declared `model_type`
-    /// is not a chat/instruct LM. If `config.json` is missing or unreadable the
-    /// check is a no-op — mlx-swift-lm's own load path will then surface the
-    /// real error (missing weights, malformed directory, etc.).
-    static func validateArchitecture(at url: URL) throws {
-        let configURL = url.appendingPathComponent("config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // Missing / malformed config.json: let the MLX load path produce the
-            // real diagnostic rather than masking it with a false architecture error.
-            return
-        }
-
-        let modelType = (json["model_type"] as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let normalizedModelType = normalizeArchitectureKey(modelType)
-        if !normalizedModelType.isEmpty,
-           normalizedSupportedArchitectures.contains(normalizedModelType) {
-            return
-        }
-
-        // Some HF repos omit model_type but include an `architectures` array
-        // (e.g. ["LlamaForCausalLM"]). Accept the load if any entry's snake_case
-        // prefix matches the allowlist — this keeps older snapshots working.
-        if let archs = json["architectures"] as? [String] {
-            for arch in archs {
-                let normalized = normalizeArchitectureKey(arch)
-                if Self.normalizedSupportedArchitectures.contains(where: { normalized.hasPrefix($0) }) {
-                    return
-                }
-            }
-        }
-
-        let reported = modelType.isEmpty ? (json["architectures"] as? [String])?.joined(separator: ",") ?? "unknown" : modelType
-        throw InferenceError.unsupportedModelArchitecture(reported)
-    }
-
-    // MARK: - Factory Routing
-
-    /// Returns `true` when the model at `url` must load through the VLM factory.
-    ///
-    /// This covers both explicit multimodal models (`vision_config`) and the
-    /// Gemma 4 MoE path that only exists behind `VLMModelFactory` today.
-    ///
-    /// Falls back to `false` (LLM factory) when config.json is missing/unreadable —
-    /// matches the same conservative default used by `validateArchitecture`. Dense
-    /// Gemma 4 models intentionally stay on the LLM factory so we don't pay the
-    /// memory cost of resident vision-tower weights.
-    static func requiresVLMFactory(at url: URL) -> Bool {
-        requiresVLMFactory(at: url, precomputedCapabilities: nil)
-    }
-
-    /// Variant that accepts pre-computed capabilities to avoid re-reading
-    /// `config.json` when the caller already ran ``ModelCapabilityProbe``.
-    static func requiresVLMFactory(
-        at url: URL,
-        precomputedCapabilities capabilities: ModelCapabilities?
-    ) -> Bool {
-        // Fast path: vision was already detected by the caller's probe run.
-        if let capabilities {
-            if capabilities.supportsVision { return true }
-        } else {
-            do {
-                if try ModelCapabilityProbe.probe(modelDirectory: url).supportsVision {
-                    return true
-                }
-            } catch {
-                Log.inference.info(
-                    "MLX capability probe failed for \(url.lastPathComponent, privacy: .public); falling back to config.json routing (\(error.localizedDescription, privacy: .public))"
-                )
-            }
-        }
-        // MoE fallback: Gemma 4 26B ships `text_config.enable_moe_block = true`
-        // and its MoE decoder only exists in the VLM factory today.
-        let configURL = url.appendingPathComponent("config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return false
-        }
-        if let textConfig = json["text_config"] as? [String: Any],
-           textConfig["enable_moe_block"] as? Bool == true {
-            return true
-        }
-        return false
-    }
-
-    private static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
-        zip(lhs, rhs).prefix(while: { $0 == $1 }).count
-    }
-
-    /// Result of `prepareInputAndCache(...)`.
-    struct PreparedGenerationInputs {
-        let generationInput: MLXPreparedInput
-        let cache: MLXPromptCache
-        /// Captured prompt token IDs when KV-cache reuse is eligible — used to
-        /// snapshot the cache after generation finishes. `nil` otherwise.
-        let promptTokenIds: [Int]?
-        /// Number of leading prompt tokens whose KV state was restored from
-        /// the previous turn. `0` when no reuse occurred.
-        let reuseLen: Int
-    }
-
-    /// Prepares the model input, allocates a KV cache, and applies the
-    /// longest-common-prefix reuse heuristic when an eligible snapshot exists.
-    ///
-    /// **CRITICAL:** the reuse path here is byte-identical to the inline
-    /// version it replaced — `longestCommonPrefixLength` clamped to
-    /// `promptTokenIds.count - 1`, gated by `isSupportedPromptCache` and
-    /// `promptTokenIds.count > 1`. Behaviour drift here corrupts the KV cache
-    /// across turns (see v0.5.3 incident).
-    @MainActor
-    static func prepareInputAndCache(
-        container: any MLXModelContainerProtocol,
-        chatMessages: [Chat.Message]?,
-        messages: [[String: String]],
-        generateConfig: GenerateParameters,
-        kvCacheReuseEligible: Bool,
-        snapshot: PromptCacheSnapshot?
-    ) async throws -> PreparedGenerationInputs {
-        let preparedInput =
-            if let chatMessages {
-                try await container.prepare(chat: SendableChatMessages(chatMessages))
-            } else {
-                try await container.prepare(messages: messages)
-            }
-        let cache = try await container.makeCache(parameters: generateConfig)
-        let promptTokenIds: [Int]? = if kvCacheReuseEligible {
-            preparedInput.promptTokenIds
-        } else {
-            nil
-        }
-
-        var generationInput = preparedInput
-        var reuseLen = 0
-        if kvCacheReuseEligible,
-           let snapshot,
-           let promptTokenIds,
-           isSupportedPromptCache(cache.value),
-           promptTokenIds.count > 1 {
-            let commonPrefixLen = longestCommonPrefixLength(
-                promptTokenIds,
-                snapshot.promptTokens
-            )
-            let candidate = min(commonPrefixLen, promptTokenIds.count - 1)
-            if candidate > 0,
-               restorePromptCache(snapshot, into: cache, reusedPromptTokenCount: candidate) {
-                generationInput = preparedInput.suffix(from: candidate)
-                reuseLen = candidate
-            }
-        }
-
-        return PreparedGenerationInputs(
-            generationInput: generationInput,
-            cache: cache,
-            promptTokenIds: promptTokenIds,
-            reuseLen: reuseLen
-        )
-    }
-
     /// Resolves the active thinking-marker pair from the per-request override
     /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
     /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
@@ -430,437 +205,6 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     ) -> ThinkingMarkers? {
         if config.maxThinkingTokens == 0 { return nil }
         return config.thinkingMarkers ?? autoDetected
-    }
-
-    /// Assembles the prepared chat-message inputs for the MLX container's two
-    /// `prepare(...)` overloads. Returns both shapes because the caller picks
-    /// `prepare(chat:)` for vision history (non-nil first element) and
-    /// `prepare(messages:)` otherwise.
-    static func buildChatMessages(
-        prompt: String,
-        effectiveSystemPrompt: String?,
-        conversationHistory: [(role: String, content: String)],
-        toolAwareHistory: [ToolAwareHistoryEntry]?,
-        structuredHistory: [StructuredMessage]?,
-        dialect: MLXToolDialect
-    ) throws -> (chatMessages: [Chat.Message]?, messages: [[String: String]]) {
-        let chatMessages: [Chat.Message]? =
-            if let structuredHistory, !structuredHistory.isEmpty {
-                if let toolAwareHistory, !toolAwareHistory.isEmpty {
-                    try toolAwareChatMessages(
-                        structuredHistory: structuredHistory,
-                        toolAwareHistory: toolAwareHistory,
-                        systemPrompt: effectiveSystemPrompt,
-                        dialect: dialect
-                    )
-                } else {
-                    try plainChatMessages(
-                        history: structuredHistory,
-                        systemPrompt: effectiveSystemPrompt
-                    )
-                }
-            } else {
-                nil
-            }
-
-        var msgs: [[String: String]] = []
-        if let sp = effectiveSystemPrompt, !sp.isEmpty {
-            msgs.append(["role": "system", "content": sp])
-        }
-        if let toolHistory = toolAwareHistory, !toolHistory.isEmpty {
-            for entry in toolHistory {
-                msgs.append(encodeToolAwareEntryAsText(entry, dialect: dialect))
-            }
-        } else if !conversationHistory.isEmpty {
-            for msg in conversationHistory {
-                msgs.append(["role": msg.role, "content": msg.content])
-            }
-        } else {
-            msgs.append(["role": "user", "content": prompt])
-        }
-        return (chatMessages, msgs)
-    }
-
-    /// Returns the Qwen 2.5 `<tools>…</tools>` block to append to the system
-    /// prompt, or `nil` when the dialect doesn't use this mechanism or the
-    /// caller supplied no tools.
-    static func buildQwenToolBlock(
-        config: GenerationConfig,
-        dialect: MLXToolDialect
-    ) -> String? {
-        guard !config.tools.isEmpty, dialect == .qwen25 else { return nil }
-        let toolObjects: [[String: Any]] = config.tools.map { tool -> [String: Any] in
-            var function_: [String: Any] = [
-                "name": tool.name,
-                "description": tool.description,
-            ]
-            if let paramsData = try? JSONEncoder().encode(tool.parameters),
-               let paramsObj = try? JSONSerialization.jsonObject(with: paramsData) {
-                function_["parameters"] = paramsObj
-            } else {
-                function_["parameters"] = ["type": "object", "properties": [String: Any]()]
-            }
-            return ["type": "function", "function": function_]
-        }
-        let toolsJSON: String
-        if let data = try? JSONSerialization.data(withJSONObject: toolObjects, options: [.prettyPrinted]),
-           let str = String(data: data, encoding: .utf8) {
-            toolsJSON = str
-        } else {
-            toolsJSON = "[]"
-        }
-        return "\n\n# Tools\n\nYou may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools:\n\n<tools>\n\(toolsJSON)\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>"
-    }
-
-    private func invalidatePromptCacheLocked() {
-        _pendingPromptCacheSnapshotTask?.cancel()
-        _pendingPromptCacheSnapshotTask = nil
-        _promptCacheSnapshot = nil
-        _promptCacheWriteToken &+= 1
-    }
-
-    private static func isSupportedPromptCache(_ caches: [any KVCache]) -> Bool {
-        !caches.isEmpty && caches.allSatisfy { $0 is KVCacheSimple }
-    }
-
-    private static func chatRole(for role: String) -> Chat.Message.Role {
-        switch role {
-        case "assistant": .assistant
-        case "system": .system
-        case "tool": .tool
-        default: .user
-        }
-    }
-
-    private static func userInputImage(from data: Data, mimeType: String) throws -> UserInput.Image {
-        guard let image = CIImage(data: data) else {
-            throw InferenceError.inferenceFailure(
-                "Unsupported image attachment format (\(mimeType))."
-            )
-        }
-        return .ciImage(image)
-    }
-
-    private static func imageInputs(from parts: [MessagePart]) throws -> [UserInput.Image] {
-        try parts.compactMap { part in
-            guard case let .image(data, mimeType, _) = part else { return nil }
-            return try userInputImage(from: data, mimeType: mimeType)
-        }
-    }
-
-    private static func plainChatMessages(
-        history: [StructuredMessage],
-        systemPrompt: String?
-    ) throws -> [Chat.Message]? {
-        let containsImages = history.contains { message in
-            message.parts.contains { part in
-                if case .image = part { return true }
-                return false
-            }
-        }
-        guard containsImages else { return nil }
-
-        var messages: [Chat.Message] = []
-        if let systemPrompt, !systemPrompt.isEmpty {
-            messages.append(.system(systemPrompt))
-        }
-        for message in history {
-            messages.append(
-                Chat.Message(
-                    role: chatRole(for: message.role),
-                    content: message.textContent,
-                    images: try imageInputs(from: message.parts)
-                )
-            )
-        }
-        return messages
-    }
-
-    private static func toolAwareChatMessages(
-        structuredHistory: [StructuredMessage],
-        toolAwareHistory: [ToolAwareHistoryEntry],
-        systemPrompt: String?,
-        dialect: MLXToolDialect
-    ) throws -> [Chat.Message]? {
-        guard structuredHistory.contains(where: { message in
-            message.parts.contains { part in
-                if case .image = part { return true }
-                return false
-            }
-        }) else {
-            return nil
-        }
-
-        var messages: [Chat.Message] = []
-        if let systemPrompt, !systemPrompt.isEmpty {
-            messages.append(.system(systemPrompt))
-        }
-
-        let structuredImageParts = try structuredHistory.map { try imageInputs(from: $0.parts) }
-        for (index, entry) in toolAwareHistory.enumerated() {
-            let encoded = encodeToolAwareEntryAsText(entry, dialect: dialect)
-            let role = encoded["role"] ?? entry.role
-            let content = encoded["content"] ?? entry.content
-            let images = index < structuredImageParts.count ? structuredImageParts[index] : []
-            messages.append(
-                Chat.Message(
-                    role: chatRole(for: role),
-                    content: content,
-                    images: images
-                )
-            )
-        }
-
-        if toolAwareHistory.count < structuredHistory.count {
-            for (offset, structuredMessage) in structuredHistory.dropFirst(toolAwareHistory.count).enumerated() {
-                let images = structuredImageParts[toolAwareHistory.count + offset]
-                messages.append(
-                    Chat.Message(
-                        role: chatRole(for: structuredMessage.role),
-                        content: structuredMessage.textContent,
-                        images: images
-                    )
-                )
-            }
-        }
-
-        return messages
-    }
-
-    /// Captures prompt-only KV state for the next turn.
-    ///
-    /// Contract assumptions taken from the currently pinned `mlx-swift-lm`:
-    /// 1. `LanguageModel.prepare(_:cache:windowSize:)` consumes any cached prefix
-    ///    from the front of the prepared prompt and only evaluates the remaining
-    ///    suffix, so restored caches must be paired with the uncached prompt tail.
-    /// 2. `KVCacheSimple.copy()/state/metaState/trim(_:)` are sufficient to clone
-    ///    and shrink prompt-only state safely for text-only models.
-    /// 3. Future `mlx-swift-lm` bumps must rerun the MLX KV-cache integration and
-    ///    performance suite before this contract is trusted unchanged.
-    ///
-    /// Marked `@MainActor` because every MLX call here (`copy()`, `eval`,
-    /// `state` slicing, `trim`) shares the same single-threaded GPU scheduler
-    /// as `ModelContainer.generate()`; running off-main risks racy crashes /
-    /// cache corruption.
-    @MainActor
-    private static func capturePromptCacheSnapshot(
-        from cache: MLXPromptCache,
-        promptTokens: [Int]
-    ) -> PromptCacheSnapshot? {
-        guard !promptTokens.isEmpty, isSupportedPromptCache(cache.value) else {
-            return nil
-        }
-        // Early-exit if the surrounding generation task was cancelled — `copy()`
-        // and `eval` materialise full prompt-prefix tensors per layer, which is
-        // expensive enough to be worth skipping when a reset/unload already
-        // invalidated the snapshot we'd be writing.
-        if Task.isCancelled { return nil }
-
-        var layers: [CachedLayerState] = []
-        layers.reserveCapacity(cache.value.count)
-        for original in cache.value {
-            if Task.isCancelled { return nil }
-            guard original.offset >= promptTokens.count else {
-                return nil
-            }
-
-            if original.state.isEmpty {
-                layers.append(
-                    CachedLayerState(
-                        cacheTypeName: String(describing: type(of: original)),
-                        offset: promptTokens.count,
-                        state: [],
-                        metaState: original.metaState
-                    )
-                )
-                continue
-            }
-
-            let copy = original.copy()
-            eval([copy])
-
-            let excess = copy.offset - promptTokens.count
-            if excess > 0 {
-                guard copy.isTrimmable, copy.trim(excess) == excess else {
-                    return nil
-                }
-            }
-
-            let state = copy.state.map { $0[.ellipsis] }
-            eval(state)
-            layers.append(
-                CachedLayerState(
-                    cacheTypeName: String(describing: type(of: copy)),
-                    offset: copy.offset,
-                    state: state,
-                    metaState: copy.metaState
-                )
-            )
-        }
-        return PromptCacheSnapshot(promptTokens: promptTokens, layers: layers)
-    }
-
-    private static func restorePromptCache(
-        _ snapshot: PromptCacheSnapshot,
-        into cache: MLXPromptCache,
-        reusedPromptTokenCount: Int
-    ) -> Bool {
-        guard reusedPromptTokenCount > 0,
-              cache.value.count == snapshot.layers.count,
-              isSupportedPromptCache(cache.value) else {
-            return false
-        }
-
-        for (index, layer) in snapshot.layers.enumerated() {
-            var target = cache.value[index]
-            guard String(describing: type(of: target)) == layer.cacheTypeName else {
-                return false
-            }
-            if layer.state.isEmpty {
-                guard let target = target as? KVCacheSimple else { return false }
-                target.offset = layer.offset
-                target.metaState = layer.metaState
-            } else {
-                target.state = layer.state.map { $0[.ellipsis] }
-                target.metaState = layer.metaState
-            }
-
-            guard target.offset >= reusedPromptTokenCount else { return false }
-            let excess = target.offset - reusedPromptTokenCount
-            if excess > 0 {
-                guard target.isTrimmable, target.trim(excess) == excess else {
-                    return false
-                }
-            }
-        }
-
-        eval(cache.value)
-        return true
-    }
-
-    // MARK: - Thinking-Marker Auto-Discovery
-
-    /// Reads `tokenizer_config.json` inside `url` and returns the best-matching
-    /// thinking-marker preset for the chat template it declares.
-    ///
-    /// Best-effort: a missing or unreadable `tokenizer_config.json`, or one
-    /// without a `chat_template` field, returns `nil`. The MLX tokenizer object
-    /// in `mlx-swift-lm` exposes the chat template through Hugging Face's
-    /// swift-transformers, but reaching it requires opening a `ModelContainer`
-    /// session — reading the on-disk JSON directly is faster and avoids
-    /// tying up the GPU during the load.
-    ///
-    /// - Parameter url: The model directory URL (same one passed to
-    ///   `MLXBackend.loadModel(from:plan:)`).
-    /// - Returns: The auto-detected ``ThinkingMarkers`` or `nil` if no known
-    ///   marker pair is present in the template.
-    static func detectThinkingMarkers(at url: URL) -> ThinkingMarkers? {
-        let configURL = url.appendingPathComponent("tokenizer_config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // Missing / unreadable tokenizer_config.json is expected for some
-            // model layouts (older snapshots, partial downloads). Don't warn —
-            // callers explicitly opt out of thinking parsing when this is nil.
-            return nil
-        }
-
-        // `chat_template` is a single string for most HF tokenizers, but a
-        // small number of repos ship an array of `{name, template}` entries
-        // (multi-template configs). When that happens, sniff the first entry
-        // whose name is `default` (or the first entry overall).
-        let templateString: String? = {
-            if let s = json["chat_template"] as? String { return s }
-            if let arr = json["chat_template"] as? [[String: Any]] {
-                if let def = arr.first(where: { ($0["name"] as? String)?.lowercased() == "default" }),
-                   let s = def["template"] as? String {
-                    return s
-                }
-                if let s = arr.first?["template"] as? String { return s }
-            }
-            return nil
-        }()
-        guard let template = templateString else { return nil }
-        return ThinkingMarkers.fromChatTemplate(template)
-    }
-
-    // MARK: - Manifest Production
-
-    /// Produces a ``ModelManifest`` from a freshly-loaded MLX model directory.
-    ///
-    /// Reads `config.json` to extract the true context window:
-    /// `text_config.max_position_embeddings` (preferred for VLM/MoE configs),
-    /// `max_position_embeddings`, or `model_max_length` as a final fallback.
-    /// Combines with the chat-template-detected ``ThinkingMarkers`` and the
-    /// vision-capability flag to populate the manifest.
-    ///
-    /// Falls back to ``ModelManifest/unknown(modelIdentifier:producerKind:)``
-    /// (with a `Log.warn`) when `config.json` is missing or carries no
-    /// position-embedding hint. The conservative default (8k) keeps prompts
-    /// shorter than necessary on misconfigured snapshots, which is safer than
-    /// over-trimming or over-feeding the model.
-    static func produceManifest(
-        at url: URL,
-        detectedThinkingMarkers: ThinkingMarkers?,
-        supportsVision: Bool
-    ) -> ModelManifest {
-        let modelIdentifier = url.lastPathComponent
-        let configURL = url.appendingPathComponent("config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            Log.inference.warning(
-                "MLX manifest probe: config.json missing or unreadable for \(modelIdentifier, privacy: .public); falling back to ModelManifest.unknown"
-            )
-            return .unknown(modelIdentifier: modelIdentifier, producerKind: .local)
-        }
-
-        let contextWindow = extractContextWindow(from: json)
-            ?? {
-                Log.inference.warning(
-                    "MLX manifest probe: no max_position_embeddings / model_max_length found for \(modelIdentifier, privacy: .public); falling back to 8192"
-                )
-                return 8192
-            }()
-
-        return ModelManifest(
-            contextWindow: contextWindow,
-            supportsTools: true,
-            supportsThinking: detectedThinkingMarkers != nil,
-            thinkingMarkers: detectedThinkingMarkers,
-            supportsSeed: true,
-            supportedSamplingParameters: [
-                .temperature, .topP, .topK, .repeatPenalty,
-                .presencePenalty, .frequencyPenalty,
-            ],
-            modelIdentifier: modelIdentifier,
-            producerKind: .local
-        )
-    }
-
-    /// Pulls the model's max position embedding count out of an MLX
-    /// `config.json` payload. Returns `nil` when no recognised key is
-    /// present.
-    static func extractContextWindow(from json: [String: Any]) -> Int? {
-        // Modern multi-modal configs nest the text encoder fields under
-        // `text_config`. Prefer that over the top-level keys when present.
-        if let textConfig = json["text_config"] as? [String: Any],
-           let value = positiveInt(from: textConfig["max_position_embeddings"]) {
-            return value
-        }
-        if let value = positiveInt(from: json["max_position_embeddings"]) {
-            return value
-        }
-        if let value = positiveInt(from: json["model_max_length"]) {
-            return value
-        }
-        return nil
-    }
-
-    private static func positiveInt(from value: Any?) -> Int? {
-        if let int = value as? Int, int > 0 { return int }
-        if let int64 = value as? Int64, int64 > 0 { return Int(int64) }
-        if let double = value as? Double, double > 0 { return Int(double) }
-        if let str = value as? String, let parsed = Int(str), parsed > 0 { return parsed }
-        return nil
     }
 
     // MARK: - Model Lifecycle
@@ -880,7 +224,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         // surfaces through `modelLoadFailed(underlying:)` and hides the root cause
         // from the UI. Throwing `.unsupportedModelArchitecture` here makes the reason
         // explicit and lets `ChatError` map it to `.selectModel`.
-        try Self.validateArchitecture(at: url)
+        try MLXModelProbe.validateArchitecture(at: url)
 
         let progressHandler = withStateLock { _loadProgressHandler }
 
@@ -903,7 +247,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 probedCapabilities = nil
             }
             let supportsVision = BackendVisionCapability.mlxSupportsImageInput(probedCapabilities: probedCapabilities)
-            let routeThroughVLMFactory = Self.requiresVLMFactory(at: url, precomputedCapabilities: probedCapabilities)
+            let routeThroughVLMFactory = MLXModelProbe.requiresVLMFactory(at: url, precomputedCapabilities: probedCapabilities)
             // Load from a local directory containing config.json + .safetensors.
             // We dispatch directly to either `LLMModelFactory.shared` or
             // `VLMModelFactory.shared` rather than calling the registry-iterating
@@ -933,8 +277,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 )
             }
             let detectedDialect = MLXToolDialect.detect(at: url)
-            let detectedThinkingMarkers = Self.detectThinkingMarkers(at: url)
-            let producedManifest = Self.produceManifest(
+            let detectedThinkingMarkers = MLXModelProbe.detectThinkingMarkers(at: url)
+            let producedManifest = MLXModelProbe.produceManifest(
                 at: url,
                 detectedThinkingMarkers: detectedThinkingMarkers,
                 supportsVision: supportsVision
@@ -946,7 +290,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 _autoDetectedThinkingMarkers = detectedThinkingMarkers
                 _supportsVision = supportsVision
                 _manifest = producedManifest
-                invalidatePromptCacheLocked()
+                _promptCacheState.invalidate()
                 _kvCacheReuseEligible = kvCacheReuseEligible
                 _hasInitializedRuntime = true
             }
@@ -1011,7 +355,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 throw InferenceError.alreadyGenerating
             }
             _isGenerating = true
-            return (container, _pendingPromptCacheSnapshotTask, _kvCacheReuseEligible)
+            return (container, _promptCacheState.pendingSnapshotTask, _kvCacheReuseEligible)
         }
         Self.logger.debug("MLX generate started")
 
@@ -1065,13 +409,13 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
 
         let effectiveSystemPrompt: String? = {
-            if let toolBlock = Self.buildQwenToolBlock(config: config, dialect: dialect) {
+            if let toolBlock = MLXChatMessageEncoder.buildQwenToolBlock(config: config, dialect: dialect) {
                 return (systemPrompt ?? "") + toolBlock
             }
             return systemPrompt
         }()
 
-        let (chatMessages, messages) = try Self.buildChatMessages(
+        let (chatMessages, messages) = try MLXChatMessageEncoder.buildChatMessages(
             prompt: prompt,
             effectiveSystemPrompt: effectiveSystemPrompt,
             conversationHistory: conversationHistory,
@@ -1097,13 +441,13 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 if kvCacheReuseEligible, let pendingSnapshotTask {
                     await pendingSnapshotTask.value
                 }
-                let resolvedSnapshot: PromptCacheSnapshot? =
+                let resolvedSnapshot: MLXPromptCacheCoordinator.Snapshot? =
                     if kvCacheReuseEligible, let self {
-                        self.withStateLock { self._promptCacheSnapshot }
+                        self.withStateLock { self._promptCacheState.snapshot }
                     } else {
                         nil
                     }
-                let prepared = try await Self.prepareInputAndCache(
+                let prepared = try await MLXPromptCacheCoordinator.prepareInputAndCache(
                     container: modelContainer,
                     chatMessages: chatMessages,
                     messages: messages,
@@ -1129,9 +473,12 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     yieldHook: MLXBackend._yieldHookForTesting
                 )
 
-                let snapshotInputs: (MLXPromptCache, [Int])? =
+                let snapshotInputs: MLXPromptCacheCoordinator.SnapshotCaptureInputs? =
                     if kvCacheReuseEligible, result.completedNormally, let ids = prepared.promptTokenIds {
-                        (prepared.cache, ids)
+                        MLXPromptCacheCoordinator.SnapshotCaptureInputs(
+                            cache: prepared.cache,
+                            promptTokenIds: ids
+                        )
                     } else {
                         nil
                     }
@@ -1140,8 +487,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     self.withStateLock { self._isGenerating = false }
                 }
                 generationStream.setPhase(.done)
-                if let self, let (cache, promptTokenIds) = snapshotInputs {
-                    self.scheduleSnapshotCaptureLocked(cache: cache, promptTokenIds: promptTokenIds)
+                if let self, let snapshotInputs {
+                    self.scheduleSnapshotCaptureLocked(
+                        cache: snapshotInputs.cache,
+                        promptTokenIds: snapshotInputs.promptTokenIds
+                    )
                 }
                 continuation.finish()
             } catch {
@@ -1173,32 +523,32 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Schedules an off-main capture of the prompt KV cache for next-turn reuse.
     ///
     /// The capture itself runs `@MainActor` because every MLX call inside
-    /// `capturePromptCacheSnapshot` (`copy()`, `eval`, `state` slicing, `trim`)
-    /// shares the single-threaded GPU scheduler with `ModelContainer.generate`.
-    /// A monotonic write token guards against stale snapshots overwriting a
-    /// newer turn's cache state if the next `generate()` call has already
-    /// invalidated this lineage.
+    /// `MLXPromptCacheCoordinator.capturePromptCacheSnapshot` shares the
+    /// single-threaded GPU scheduler with `ModelContainer.generate`. A monotonic
+    /// write token guards against stale snapshots overwriting a newer turn's
+    /// cache state if the next `generate()` call has already invalidated this
+    /// lineage.
     @MainActor
     private func scheduleSnapshotCaptureLocked(
         cache: MLXPromptCache,
         promptTokenIds: [Int]
     ) {
         withStateLock {
-            _promptCacheWriteToken &+= 1
-            let snapshotWriteToken = _promptCacheWriteToken
-            let snapshotTask = Task<Void, Never> { @MainActor [weak self] in
-                let snapshot = Self.capturePromptCacheSnapshot(
-                    from: cache,
-                    promptTokens: promptTokenIds
-                )
+            _promptCacheState.writeToken &+= 1
+            let snapshotWriteToken = _promptCacheState.writeToken
+            let snapshotTask = MLXPromptCacheCoordinator.makeSnapshotCaptureTask(
+                cache: cache,
+                promptTokenIds: promptTokenIds,
+                writeToken: snapshotWriteToken
+            ) { [weak self] token, snapshot in
                 guard let self else { return }
                 self.withStateLock {
-                    guard self._promptCacheWriteToken == snapshotWriteToken else { return }
-                    self._promptCacheSnapshot = snapshot
-                    self._pendingPromptCacheSnapshotTask = nil
+                    guard self._promptCacheState.writeToken == token else { return }
+                    self._promptCacheState.snapshot = snapshot
+                    self._promptCacheState.pendingSnapshotTask = nil
                 }
             }
-            _pendingPromptCacheSnapshotTask = snapshotTask
+            _promptCacheState.pendingSnapshotTask = snapshotTask
         }
     }
 
@@ -1218,18 +568,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             _isModelLoaded = true
             _supportsVision = supportsVision
             _dialect = dialect
-            invalidatePromptCacheLocked()
+            _promptCacheState.invalidate()
             _kvCacheReuseEligible = enableKVCacheReuse
             _hasInitializedRuntime = false
         }
     }
 
     func _hasPromptCacheSnapshotForTesting() -> Bool {
-        withStateLock { _promptCacheSnapshot != nil || _pendingPromptCacheSnapshotTask != nil }
+        withStateLock { _promptCacheState.hasSnapshotOrPending }
     }
 
     func _isPromptCacheSnapshotReadyForTesting() -> Bool {
-        withStateLock { _promptCacheSnapshot != nil && _pendingPromptCacheSnapshotTask == nil }
+        withStateLock { _promptCacheState.isSnapshotReady }
     }
 
     /// Test-only seam: forces the auto-detected thinking markers to a specific
@@ -1269,7 +619,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             _autoDetectedThinkingMarkers = nil
             _supportsVision = false
             _manifest = nil
-            invalidatePromptCacheLocked()
+            _promptCacheState.invalidate()
             _kvCacheReuseEligible = false
             _hasInitializedRuntime = false
             return had
@@ -1307,7 +657,7 @@ extension MLXBackend {
             _conversationHistory = []
             _toolAwareHistory = nil
             _structuredHistory = nil
-            invalidatePromptCacheLocked()
+            _promptCacheState.invalidate()
         }
     }
 
@@ -1326,7 +676,7 @@ extension MLXBackend {
     /// not affected.
     public func secureWipe() {
         let hasRuntime = withStateLock { () -> Bool in
-            invalidatePromptCacheLocked()
+            _promptCacheState.invalidate()
             return _hasInitializedRuntime
         }
         #if MLX
@@ -1362,60 +712,6 @@ extension MLXBackend: ToolCallingHistoryReceiver {
     /// being passed to the MLX generate path.
     public func setToolAwareHistory(_ messages: [ToolAwareHistoryEntry]) {
         withStateLock { _toolAwareHistory = messages }
-    }
-}
-
-// MARK: - Tool-Aware Entry Encoding
-
-extension MLXBackend {
-    /// Encodes a ``ToolAwareHistoryEntry`` into a plain `[String: String]` message
-    /// compatible with MLX chat-template preparation.
-    ///
-    /// For the Qwen 2.5 dialect:
-    /// - Assistant entries with `toolCalls` have the calls serialised as
-    ///   `<tool_call>{"name":…,"arguments":…}</tool_call>` appended to (or
-    ///   replacing) the textual content.
-    /// - Tool-role entries (carrying a ``ToolResult``) are represented as
-    ///   `role: "tool"` with the result content. The MLX chat template for
-    ///   Qwen maps the `tool` role to an `<tool_response>` block internally.
-    ///
-    /// For the `.unknown` dialect (and plain text turns) the entry collapses to
-    /// a simple `{role, content}` pair.
-    static func encodeToolAwareEntryAsText(
-        _ entry: ToolAwareHistoryEntry,
-        dialect: MLXToolDialect
-    ) -> [String: String] {
-        // For non-Qwen dialects or plain turns, fall back to the bare shape.
-        guard dialect == .qwen25 else {
-            return ["role": entry.role, "content": entry.content]
-        }
-
-        if let calls = entry.toolCalls, !calls.isEmpty {
-            // Assistant turn that triggered tool calls: encode calls as text.
-            var parts: [String] = []
-            if !entry.content.isEmpty {
-                parts.append(entry.content)
-            }
-            for call in calls {
-                let argsValue: Any
-                if let data = call.arguments.data(using: .utf8),
-                   let parsed = try? JSONSerialization.jsonObject(with: data) {
-                    argsValue = parsed
-                } else {
-                    argsValue = [String: Any]()
-                }
-                let callObj: [String: Any] = ["name": call.toolName, "arguments": argsValue]
-                if let data = try? JSONSerialization.data(withJSONObject: callObj),
-                   let jsonStr = String(data: data, encoding: .utf8) {
-                    parts.append("<tool_call>\n\(jsonStr)\n</tool_call>")
-                }
-            }
-            return ["role": "assistant", "content": parts.joined(separator: "\n")]
-        }
-
-        // Tool result turn: pass role and content as-is.
-        // The Qwen tokenizer template handles `role: "tool"` natively.
-        return ["role": entry.role, "content": entry.content]
     }
 }
 

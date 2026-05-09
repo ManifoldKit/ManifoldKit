@@ -8,7 +8,7 @@ import ManifoldInference
 /// Real-inference smoke test for `mlx-community/gemma-4-26b-a4b-it-4bit`,
 /// the 26B Mixture-of-Experts Gemma 4 variant. Validates the VLM-factory
 /// routing added in PR #769 (closes #752): the model has
-/// `text_config.enable_moe_block: true`, so `MLXBackend.requiresVLMFactory`
+/// `text_config.enable_moe_block: true`, so `MLXModelProbe.requiresVLMFactory`
 /// should send it to `VLMModelFactory.shared.loadContainer` rather than the
 /// LLM factory's no-MoE `Gemma4Model`.
 ///
@@ -40,7 +40,7 @@ final class Gemma4MoESmokeTests: XCTestCase {
 
         // Sanity: the routing helper must agree with the on-disk config.
         XCTAssertTrue(
-            MLXBackend.requiresVLMFactory(at: modelURL),
+            MLXModelProbe.requiresVLMFactory(at: modelURL),
             "requiresVLMFactory should return true for the 26B MoE config"
         )
 

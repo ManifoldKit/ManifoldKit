@@ -44,7 +44,7 @@ final class MLXVLMGateExperimentTests: XCTestCase {
 
         let resolved = try resolveVLMModelURL(selector: selector)
         try XCTSkipUnless(
-            MLXBackend.requiresVLMFactory(at: resolved),
+            MLXModelProbe.requiresVLMFactory(at: resolved),
             "MLX_VLM_TEST_MODEL=\(selector) does not resolve to a VLM (requiresVLMFactory returned false). Pick a model with vision_config or text_config.enable_moe_block."
         )
         modelURL = resolved

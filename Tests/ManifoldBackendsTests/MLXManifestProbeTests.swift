@@ -4,7 +4,7 @@ import XCTest
 @testable import ManifoldMLX
 @testable import ManifoldInference
 
-/// Unit tests for ``MLXBackend/produceManifest(at:detectedThinkingMarkers:supportsVision:)``.
+/// Unit tests for ``MLXModelProbe/produceManifest(at:detectedThinkingMarkers:supportsVision:)``.
 ///
 /// These tests don't load real MLX weights — they construct a temporary
 /// directory with a synthetic `config.json` and assert the probe extracts the
@@ -38,7 +38,7 @@ final class MLXManifestProbeTests: XCTestCase {
             "max_position_embeddings": 32_768,
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: false
@@ -60,7 +60,7 @@ final class MLXManifestProbeTests: XCTestCase {
             ] as [String: Any],
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: false
@@ -79,7 +79,7 @@ final class MLXManifestProbeTests: XCTestCase {
             ] as [String: Any],
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: true
@@ -95,7 +95,7 @@ final class MLXManifestProbeTests: XCTestCase {
             "model_max_length": 16_384,
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: false
@@ -107,7 +107,7 @@ final class MLXManifestProbeTests: XCTestCase {
         let dir = try makeTempDir()
         // No config.json written.
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: false
@@ -125,7 +125,7 @@ final class MLXManifestProbeTests: XCTestCase {
             "model_type": "minimal",
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: nil,
             supportsVision: false
@@ -143,7 +143,7 @@ final class MLXManifestProbeTests: XCTestCase {
             "max_position_embeddings": 32_768,
         ], in: dir)
 
-        let manifest = MLXBackend.produceManifest(
+        let manifest = MLXModelProbe.produceManifest(
             at: dir,
             detectedThinkingMarkers: .qwen3,
             supportsVision: false

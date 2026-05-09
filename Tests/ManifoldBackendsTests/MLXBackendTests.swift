@@ -130,7 +130,7 @@ final class MLXBackendTests: XCTestCase {
     // MARK: - Architecture preflight (no hardware gate)
 
     /// Writes a throwaway `config.json` into a temp directory so we can exercise
-    /// `MLXBackend.validateArchitecture` without invoking the real MLX load path
+    /// `MLXModelProbe.validateArchitecture` without invoking the real MLX load path
     /// (which would trip the metallib guard in `swift test`).
     private func writeTempConfig(_ json: [String: Any]) throws -> URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -144,7 +144,7 @@ final class MLXBackendTests: XCTestCase {
 
     func test_validateArchitecture_acceptsQwen3() throws {
         let url = try writeTempConfig(["model_type": "qwen3"])
-        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
+        XCTAssertNoThrow(try MLXModelProbe.validateArchitecture(at: url))
     }
 
     func test_validateArchitecture_acceptsGemma4() throws {
@@ -152,7 +152,7 @@ final class MLXBackendTests: XCTestCase {
         // mlx-swift-lm's LLMTypeRegistry in 3.31.3). Sabotage check: removing
         // "gemma4" from `supportedLMArchitectures` makes this throw.
         let url = try writeTempConfig(["model_type": "gemma4"])
-        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
+        XCTAssertNoThrow(try MLXModelProbe.validateArchitecture(at: url))
     }
 
     func test_validateArchitecture_acceptsQwen25VL() throws {
@@ -160,19 +160,19 @@ final class MLXBackendTests: XCTestCase {
             "model_type": "qwen2_5_vl",
             "vision_config": ["hidden_size": 1]
         ])
-        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
+        XCTAssertNoThrow(try MLXModelProbe.validateArchitecture(at: url))
     }
 
     func test_validateArchitecture_acceptsLlamaViaArchitectures() throws {
         // HF repos that omit `model_type` but ship `architectures: ["LlamaForCausalLM"]`
         // must still pass — snake_case prefix match keeps older snapshots working.
         let url = try writeTempConfig(["architectures": ["LlamaForCausalLM"]])
-        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: url))
+        XCTAssertNoThrow(try MLXModelProbe.validateArchitecture(at: url))
     }
 
     func test_validateArchitecture_rejectsVisionEncoder() throws {
         let url = try writeTempConfig(["model_type": "clip"])
-        XCTAssertThrowsError(try MLXBackend.validateArchitecture(at: url)) { error in
+        XCTAssertThrowsError(try MLXModelProbe.validateArchitecture(at: url)) { error in
             guard case InferenceError.unsupportedModelArchitecture(let arch) = error else {
                 return XCTFail("Expected .unsupportedModelArchitecture, got \(error)")
             }
@@ -184,7 +184,7 @@ final class MLXBackendTests: XCTestCase {
 
     func test_validateArchitecture_rejectsEmbeddings() throws {
         let url = try writeTempConfig(["model_type": "bert"])
-        XCTAssertThrowsError(try MLXBackend.validateArchitecture(at: url)) { error in
+        XCTAssertThrowsError(try MLXModelProbe.validateArchitecture(at: url)) { error in
             guard case InferenceError.unsupportedModelArchitecture = error else {
                 return XCTFail("Expected .unsupportedModelArchitecture, got \(error)")
             }
@@ -194,7 +194,7 @@ final class MLXBackendTests: XCTestCase {
     func test_validateArchitecture_rejectsVisionViaArchitectures() throws {
         // `model_type` missing, `architectures` says CLIPModel — must still be refused.
         let url = try writeTempConfig(["architectures": ["CLIPModel"]])
-        XCTAssertThrowsError(try MLXBackend.validateArchitecture(at: url)) { error in
+        XCTAssertThrowsError(try MLXModelProbe.validateArchitecture(at: url)) { error in
             guard case InferenceError.unsupportedModelArchitecture = error else {
                 return XCTFail("Expected .unsupportedModelArchitecture, got \(error)")
             }
@@ -208,7 +208,7 @@ final class MLXBackendTests: XCTestCase {
             .appendingPathComponent("mlx-arch-empty-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        XCTAssertNoThrow(try MLXBackend.validateArchitecture(at: dir))
+        XCTAssertNoThrow(try MLXModelProbe.validateArchitecture(at: dir))
     }
 
     // MARK: - VLM Factory Routing (issue #752, no hardware gate)
@@ -222,7 +222,7 @@ final class MLXBackendTests: XCTestCase {
         let url = try writeTempConfig([
             "text_config": ["enable_moe_block": true]
         ])
-        XCTAssertTrue(MLXBackend.requiresVLMFactory(at: url))
+        XCTAssertTrue(MLXModelProbe.requiresVLMFactory(at: url))
     }
 
     func test_requiresVLMFactory_whenVisionConfigPresent_returnsTrue() throws {
@@ -230,7 +230,7 @@ final class MLXBackendTests: XCTestCase {
             "model_type": "qwen2_5_vl",
             "vision_config": ["hidden_size": 1]
         ])
-        XCTAssertTrue(MLXBackend.requiresVLMFactory(at: url))
+        XCTAssertTrue(MLXModelProbe.requiresVLMFactory(at: url))
     }
 
     func test_requiresVLMFactory_whenTextConfigOmitsMoE_returnsFalse() throws {
@@ -241,14 +241,14 @@ final class MLXBackendTests: XCTestCase {
         let url = try writeTempConfig([
             "text_config": ["enable_moe_block": false]
         ])
-        XCTAssertFalse(MLXBackend.requiresVLMFactory(at: url))
+        XCTAssertFalse(MLXModelProbe.requiresVLMFactory(at: url))
     }
 
     func test_requiresVLMFactory_whenConfigHasNoTextConfig_returnsFalse() throws {
         // Regular LLMs (qwen3, llama, mistral, …) have a flat config.json with
         // no `text_config` block. They route through LLMModelFactory.
         let url = try writeTempConfig(["model_type": "qwen3"])
-        XCTAssertFalse(MLXBackend.requiresVLMFactory(at: url))
+        XCTAssertFalse(MLXModelProbe.requiresVLMFactory(at: url))
     }
 
     func test_requiresVLMFactory_whenConfigMissing_returnsFalse() throws {
@@ -258,7 +258,7 @@ final class MLXBackendTests: XCTestCase {
             .appendingPathComponent("mlx-vlm-empty-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        XCTAssertFalse(MLXBackend.requiresVLMFactory(at: dir))
+        XCTAssertFalse(MLXModelProbe.requiresVLMFactory(at: dir))
     }
 }
 
