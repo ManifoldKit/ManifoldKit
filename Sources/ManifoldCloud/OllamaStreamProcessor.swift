@@ -135,21 +135,15 @@ struct OllamaStreamProcessor {
                 if Task.isCancelled { return false }
                 try noteEventYielded()
                 continuation.yield(.toolCallStart(callId: call.id, name: call.toolName))
-                await Task.yield()
-                try await Task.sleep(for: .milliseconds(1))
-                if Task.isCancelled { return false }
                 if !call.arguments.isEmpty {
                     try noteEventYielded()
                     continuation.yield(.toolCallArgumentsDelta(
                         callId: call.id,
                         textDelta: call.arguments
                     ))
-                    await Task.yield()
-                    if Task.isCancelled { return false }
                 }
                 try noteEventYielded()
                 continuation.yield(.toolCall(call))
-                await Task.yield()
             }
             // Post-loop cancellation: if the cancel arrived after the last
             // tool_call was emitted but before this helper returned, still
