@@ -39,6 +39,32 @@ final class MCPCatalogTests: XCTestCase {
         let ids = MCPCatalog.all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "Duplicate catalog entry IDs found")
     }
+
+    func test_universalLinkOAuthRedirectBaseURLOverridesCatalogCallbacks() throws {
+        let descriptors = try MCPCatalog.all(oauthRedirectBaseURL: URL(string: "https://demo.manifoldkit.dev/oauth")!)
+        XCTAssertEqual(descriptors.count, MCPCatalog.all.count)
+
+        for descriptor in descriptors {
+            guard case .oauth(let oauth) = descriptor.authorization else {
+                XCTFail("\(descriptor.displayName) missing OAuth descriptor")
+                continue
+            }
+
+            XCTAssertEqual(oauth.redirectURI.scheme, "https")
+            XCTAssertEqual(oauth.redirectURI.host, "demo.manifoldkit.dev")
+            XCTAssertTrue(oauth.redirectURI.path.hasPrefix("/oauth/mcp/"))
+            XCTAssertTrue(oauth.redirectURI.path.hasSuffix("/callback"))
+        }
+    }
+
+    func test_universalLinkOAuthRedirectBaseURLRejectsNonHTTPS() {
+        XCTAssertThrowsError(try MCPCatalog.all(oauthRedirectBaseURL: URL(string: "basechat://oauth")!)) { error in
+            guard case MCPError.malformedMetadata = error else {
+                XCTFail("Expected malformedMetadata, got \(error)")
+                return
+            }
+        }
+    }
     #endif
 }
 #endif
