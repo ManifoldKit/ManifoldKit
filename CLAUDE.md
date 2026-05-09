@@ -1,27 +1,27 @@
-# BaseChatKit — Claude Code Instructions
+# ManifoldKit — Claude Code Instructions
 
 ## Targets
 
 | Target | Role | ML deps |
 |--------|------|---------|
-| `BaseChatKit` | Umbrella library that re-exports `BaseChatInference` + `BaseChatRuntime` + `BaseChatPersistenceSwiftData` + `BaseChatBackends` + `BaseChatUI` so app code can `import BaseChatKit` instead of stitching together 4–6 imports. Specialised modules (UIModelManagement, MCP, Voice, …) stay explicit imports. | None |
-| `BaseChatInference` | Inference orchestration — backend protocols, generation events, prompt assembly, conversation records (no persistence ports) | None |
-| `BaseChatMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
-| `BaseChatRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |
-| `BaseChatPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `BaseChatBootstrap` | None |
-| `BaseChatCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) | None |
-| `BaseChatMLX` | MLX inference backend, resource arbiter, capability probe, MLX tool dialect (depends on `BaseChatInference`) | MLX |
-| `BaseChatLlama` | llama.cpp (GGUF) inference, generation driver, embedding backend, GGUF tool-call parser (depends on `BaseChatInference`) | LlamaSwift |
-| `BaseChatFoundation` | Apple Foundation Models bridge — gated by OS availability (iOS 26 / macOS 26+), no trait | None |
-| `BaseChatCloud` | SaaS + LAN cloud backends: OpenAI Chat Completions, OpenAI Responses, Anthropic Claude, Ollama (depends on `BaseChatCloudCore`) | None |
-| `BaseChatBackends` | Umbrella re-export module backed by `Sources/BaseChatBackendsUmbrella/`. Hosts cross-family glue (`DefaultBackends`, per-family `BackendRegistrar` conformances) and `@_exported import`s the four family targets so existing `import BaseChatBackends` consumers keep compiling. | MLX, LlamaSwift |
-| `BaseChatUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here) | None |
-| `BaseChatUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors | None |
-| `BaseChatVoice` | Optional speech I/O adapters and voice composer accessory (depends on `BaseChatUI`) | None |
-| `BaseChatTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.) | None |
-| `BaseChatMLXIntegrationTests` | Xcode-only real MLX model E2E tests | MLX |
+| `ManifoldKit` | Umbrella library that re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + `ManifoldBackends` + `ManifoldUI` so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Specialised modules (UIModelManagement, MCP, Voice, …) stay explicit imports. | None |
+| `ManifoldInference` | Inference orchestration — backend protocols, generation events, prompt assembly, conversation records (no persistence ports) | None |
+| `ManifoldMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
+| `ManifoldRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |
+| `ManifoldPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `ManifoldBootstrap` | None |
+| `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) | None |
+| `ManifoldMLX` | MLX inference backend, resource arbiter, capability probe, MLX tool dialect (depends on `ManifoldInference`) | MLX |
+| `ManifoldLlama` | llama.cpp (GGUF) inference, generation driver, embedding backend, GGUF tool-call parser (depends on `ManifoldInference`) | LlamaSwift |
+| `ManifoldFoundation` | Apple Foundation Models bridge — gated by OS availability (iOS 26 / macOS 26+), no trait | None |
+| `ManifoldCloud` | SaaS + LAN cloud backends: OpenAI Chat Completions, OpenAI Responses, Anthropic Claude, Ollama (depends on `ManifoldCloudCore`) | None |
+| `ManifoldBackends` | Umbrella re-export module backed by `Sources/ManifoldBackendsUmbrella/`. Hosts cross-family glue (`DefaultBackends`, per-family `BackendRegistrar` conformances) and `@_exported import`s the four family targets so existing `import ManifoldBackends` consumers keep compiling. | MLX, LlamaSwift |
+| `ManifoldUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here) | None |
+| `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors | None |
+| `ManifoldVoice` | Optional speech I/O adapters and voice composer accessory (depends on `ManifoldUI`) | None |
+| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.) | None |
+| `ManifoldMLXIntegrationTests` | Xcode-only real MLX model E2E tests | MLX |
 
-**Dependency rules:** Never import any backend family target (or the `BaseChatBackends` umbrella) from UI; never import `BaseChatUIModelManagement` from `BaseChatUI` (CI lint enforces this). `BaseChatUIModelManagement` depends on `BaseChatUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. The four family targets (`BaseChatMLX`, `BaseChatLlama`, `BaseChatFoundation`, `BaseChatCloud`) and `BaseChatMCP` depend on `BaseChatInference` directly (not `BaseChatRuntime`), keeping them free of SwiftData. `BaseChatCloud → BaseChatCloudCore` is unconditional (always linked together); the consumer→family edge is trait-gated (`MLX` for `BaseChatMLX`, `Llama` for `BaseChatLlama`, `CloudSaaS || Ollama` for `BaseChatCloud`; `BaseChatCloudCore` and `BaseChatFoundation` are always linked). The umbrella `BaseChatBackends` re-exports each family conditionally so `import BaseChatBackends` keeps working in any trait combination. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
+**Dependency rules:** Never import any backend family target (or the `ManifoldBackends` umbrella) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. The four family targets (`ManifoldMLX`, `ManifoldLlama`, `ManifoldFoundation`, `ManifoldCloud`) and `ManifoldMCP` depend on `ManifoldInference` directly (not `ManifoldRuntime`), keeping them free of SwiftData. `ManifoldCloud → ManifoldCloudCore` is unconditional (always linked together); the consumer→family edge is trait-gated (`MLX` for `ManifoldMLX`, `Llama` for `ManifoldLlama`, `CloudSaaS || Ollama` for `ManifoldCloud`; `ManifoldCloudCore` and `ManifoldFoundation` are always linked). The umbrella `ManifoldBackends` re-exports each family conditionally so `import ManifoldBackends` keeps working in any trait combination. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
 
 ## Running tests
 
@@ -33,10 +33,10 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 **Special cases:**
 - MLX integration tests require Xcode (Metal shaders): `scripts/test-mlx-integration.sh`
 - Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
-- MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter BaseChatMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
+- MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
 - Llama: use `scripts/test-llama-isolated.sh` when in-process runs accumulate Metal global state
-- `BaseChatE2ETests`: bare form `swift test --filter BaseChatE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'BaseChatE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
+- `ManifoldE2ETests`: bare form `swift test --filter ManifoldE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'ManifoldE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
 
 ## Test conventions
 
@@ -56,7 +56,7 @@ For trait conventions, suite layout, classification (Unit / Integration / E2E), 
 
 ## Turn-loop orchestration
 
-`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`) is the single turn loop — owns `send`, `regenerate`, `edit`, `cancel`, and `branch`. No alternative path. Host apps get a configured runtime via `BaseChatBootstrap` and forward user actions to it.
+`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the single turn loop — owns `send`, `regenerate`, `edit`, `cancel`, and `branch`. No alternative path. Host apps get a configured runtime via `ManifoldBootstrap` and forward user actions to it.
 
 ## Coding conventions
 
@@ -82,7 +82,7 @@ These patterns either produce `#SendingRisksDataRace` in strict Swift 6 builds o
 
 ## Platform policy
 
-BaseChatKit targets **n-1**: the current Apple OS release and the one immediately before it.
+ManifoldKit targets **n-1**: the current Apple OS release and the one immediately before it.
 
 | Platform | Current (n) | Minimum (n-1) |
 |----------|-------------|---------------|
@@ -109,10 +109,10 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 | `scripts/example-ui-tests.sh` | `build-for-testing` / `test-without-building` for Example app XCUITests. |
 | `scripts/clean-leaked-test-artifacts.sh` | Removes test fixtures that leaked into `~/Documents/Models/`. |
 | `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found" or other `workspace-state.json` desync errors after changing the trait set. |
-| `scripts/fuzz.sh` | Runs the BaseChatFuzz harness (default: 5 min against Ollama). |
-| `scripts/test-mlx-integration.sh` | Runs `BaseChatMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
+| `scripts/fuzz.sh` | Runs the ManifoldFuzz harness (default: 5 min against Ollama). |
+| `scripts/test-mlx-integration.sh` | Runs `ManifoldMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
 
-**SwiftPM local-package consumers need explicit `name:`.** When adding `.package(path: ...)` references (worktrees, cold-start gates, scratch consumers), pass `name: "BaseChatKit"` explicitly — `.package(path:)` derives identity from the last path component, which breaks under non-default checkout paths.
+**SwiftPM local-package consumers need explicit `name:`.** When adding `.package(path: ...)` references (worktrees, cold-start gates, scratch consumers), pass `name: "ManifoldKit"` explicitly — `.package(path:)` derives identity from the last path component, which breaks under non-default checkout paths.
 
 ## Pre-push checklist
 
@@ -120,16 +120,16 @@ Run the same two-invocation shape CI uses (see `.github/workflows/ci.yml`). Runn
 
 ```bash
 # 1. XCTest suites
-scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
-  --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
-  --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
-  --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
-  --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
-  --filter BaseChatServerTests \
+scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests \
+  --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests \
+  --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests \
+  --filter ManifoldBackendsTests --filter ManifoldInferenceTests \
+  --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests \
+  --filter ManifoldServerTests \
   --disable-default-traits --skip-update
 
 # 2. Swift Testing — separate process (mixing with XCTest causes libmalloc SIGABRT — #681)
-scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
+scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
   --disable-default-traits --skip-update
 ```
 
@@ -149,7 +149,7 @@ When changing behavior of any function or type, grep for ALL test references acr
 
 Never use `assertionFailure`/`fatalError` for conditions that have fallback logic — they trap in `swift test`. Use `Log.*` warnings. Reserve `assertionFailure` for true programmer errors with no recovery path.
 
-`try?` is banned in production code. `SilentCatchAuditTest` (in `BaseChatInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
+`try?` is banned in production code. `SilentCatchAuditTest` (in `ManifoldInferenceTests`) fails CI if `try?` appears in error-propagation paths. Use `do/catch` with `Log.*` so the error is visible. Optional decoding at trust boundaries is the only legitimate exception.
 
 ## Commit style
 
@@ -172,7 +172,7 @@ Release Please auto-creates a release PR after `feat:`/`fix:` merges. The auto-g
 
 Use **Prisma-style Highlights format** (adopted v0.11.2, PR #649): `### Highlights` with short verb-led headlines, 2–3 sentences of context, and a runnable code snippet for new/changed public APIs. Small features and fixes go as one-line bullets under `### Features`/`### Fixes`. Pre-0.11.2 entries stay in their original format.
 
-Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge via `gh api -X PUT repos/roryford/BaseChatKit/pulls/<N>/merge -f merge_method=squash`.
+Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge via `gh api -X PUT repos/roryford/ManifoldKit/pulls/<N>/merge -f merge_method=squash`.
 
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
 
@@ -185,7 +185,7 @@ All changes go through PRs — direct pushes to `main` are blocked.
 3. Report the PR URL — maintainer reviews and merges manually
 4. Do NOT pass `--auto` or `--merge`
 
-CI must pass all suites before merge. `BaseChatBackendsTests` runs without hardware traits in CI — run with `--traits MLX,Llama` locally before merging backend changes.
+CI must pass all suites before merge. `ManifoldBackendsTests` runs without hardware traits in CI — run with `--traits MLX,Llama` locally before merging backend changes.
 
 ## Issue & PR hygiene
 

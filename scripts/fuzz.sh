@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/fuzz.sh — Run the BaseChatFuzz harness with a friendly preflight.
+# scripts/fuzz.sh — Run the ManifoldFuzz harness with a friendly preflight.
 #
 # Default behaviour (no args): runs `swift run --traits Fuzz,MLX,Llama,Ollama
 # fuzz-chat --minutes 5` against Ollama. Discovers which backends are usable and
@@ -117,7 +117,7 @@ if [[ "$PRODUCT_MAJOR" =~ ^[0-9]+$ ]] && (( PRODUCT_MAJOR >= 26 )); then
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  BaseChatFuzz preflight"
+echo "  ManifoldFuzz preflight"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 printf "  Discovered: Llama=%s, MLX=%s, Ollama=%s, Foundation=%s\n" \
     "$LLAMA_HIT" "$MLX_HIT" "$OLLAMA_HIT" "$FOUNDATION_HIT"
@@ -223,8 +223,8 @@ if [[ $WITH_MLX -eq 1 ]]; then
     done < <(build_mlx_env "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}")
     set +e
     env "${MLX_ENV[@]}" xcodebuild test \
-        -scheme BaseChatKit-Package \
-        -only-testing BaseChatFuzzTests/MLXFuzzTests \
+        -scheme ManifoldKit-Package \
+        -only-testing ManifoldFuzzTests/MLXFuzzTests \
         -destination 'platform=macOS'
     MLX_EXIT=$?
     set -e

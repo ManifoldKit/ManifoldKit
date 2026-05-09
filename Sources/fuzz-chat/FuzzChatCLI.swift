@@ -1,13 +1,13 @@
 // Body gated on the `Fuzz` trait. Without the trait, the executable links to
 // a no-op stub that prints a "trait not enabled" message — mirrors the
-// BaseChatServer trait pattern (PR #946) and keeps fuzz-chat out of the
-// default-trait build's link graph for the BaseChatFuzz / BaseChatBackends
+// ManifoldServer trait pattern (PR #946) and keeps fuzz-chat out of the
+// default-trait build's link graph for the ManifoldFuzz / ManifoldBackends
 // symbols.
 #if Fuzz
 import Foundation
-import BaseChatFuzz
-import BaseChatInference
-import BaseChatFuzzBackends
+import ManifoldFuzz
+import ManifoldInference
+import ManifoldFuzzBackends
 
 @main
 @MainActor
@@ -200,7 +200,7 @@ struct FuzzChatCLI {
         // Shrink mode: greedy-delta-debug the recorded trigger down to a
         // minimal still-reproducing input. Implies replay — we reuse the
         // `Replayer` under the hood — so `--shrink` is exclusive with
-        // `--replay`. See Sources/BaseChatFuzz/Replay/Shrinker.swift.
+        // `--replay`. See Sources/ManifoldFuzz/Replay/Shrinker.swift.
         if let hash = shrinkHash {
             if replayHash != nil {
                 fail("--shrink and --replay cannot be combined (shrink already replays)")
@@ -216,7 +216,7 @@ struct FuzzChatCLI {
 
         // Replay mode short-circuits the campaign loop entirely. It reruns a
         // single recorded finding against the same prompt/config/seed 3x and
-        // prints a promotion verdict. See Sources/BaseChatFuzz/Replay/Replayer.swift.
+        // prints a promotion verdict. See Sources/ManifoldFuzz/Replay/Replayer.swift.
         if let hash = replayHash {
             let exitCode = await runReplay(
                 hash: hash,

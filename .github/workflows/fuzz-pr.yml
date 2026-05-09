@@ -12,7 +12,7 @@ on:
   pull_request:
     paths:
       - "Sources/**"
-      - "Tests/BaseChatFuzzTests/**"
+      - "Tests/ManifoldFuzzTests/**"
       - "Package.swift"
       - "Package.resolved"
       - ".github/fuzz-allowlist.json"
@@ -64,7 +64,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-fuzz-spm-
 
       # MockInferenceBackend + ChaosBackend do not need MLX or Llama, but the
-      # fuzz-chat executable's dependency graph pulls `BaseChatBackends` in.
+      # fuzz-chat executable's dependency graph pulls `ManifoldBackends` in.
       # Disabling default traits drops MLX + Llama compilation time — the mock
       # path does not instantiate them at runtime.
       - name: Run fuzz (PR tier, mock backend, 200 iter, seed 1)

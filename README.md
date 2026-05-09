@@ -1,8 +1,8 @@
-# BaseChatKit
+# ManifoldKit
 
 A modular SwiftUI framework for building chat interfaces powered by local and cloud LLMs on Apple platforms.
 
-BaseChatKit provides a complete, production-ready chat UI with pluggable inference backends, model management, and SwiftData persistence. Drop it into your app, register backends, and you have a working chat interface.
+ManifoldKit provides a complete, production-ready chat UI with pluggable inference backends, model management, and SwiftData persistence. Drop it into your app, register backends, and you have a working chat interface.
 
 **Built for production failure modes.** BCK is designed around the things that go wrong between a working demo and an App Store release:
 
@@ -10,7 +10,7 @@ BaseChatKit provides a complete, production-ready chat UI with pluggable inferen
 - **Latest-wins model handoff** — racing model loads can't corrupt active state. If the user taps model A, then model B before A finishes, A is discarded and B wins deterministically.
 - **Memory admission and pressure handling** — `ModelLoadPlan` estimates resident + KV memory before a load commits and returns an `allow`/`warn`/`deny` verdict; `InferenceService.denyPolicy` decides whether to fail fast, warn and proceed, or hand off to a custom hook. The drop-in `ChatViewModel` stops generation and unloads the model on critical memory pressure.
 - **Mock backend for app-level testing** — `MockInferenceBackend` implements the full streaming contract so your app's tests can exercise BCK without loading a real model.
-- **Certificate pinning with fail-closed defaults** — `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing or empty; custom hosts use platform trust by default or can be hardened to fail-closed via `BaseChatConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`.
+- **Certificate pinning with fail-closed defaults** — `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing or empty; custom hosts use platform trust by default or can be hardened to fail-closed via `ManifoldConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`.
 
 For the exact source-backed contract, see [docs/RELIABILITY.md](docs/RELIABILITY.md).
 See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale behind BCK 0.6.0.
@@ -19,8 +19,8 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 
 
 <p align="center">
-  <img src="Example/Screenshots/demo-macos.png" alt="BaseChatKit on macOS — chat with streaming response and session sidebar" width="58%">
-  <img src="Example/Screenshots/demo-ios.png" alt="BaseChatKit on iOS — chat conversation on iPhone" width="36%">
+  <img src="Example/Screenshots/demo-macos.png" alt="ManifoldKit on macOS — chat with streaming response and session sidebar" width="58%">
+  <img src="Example/Screenshots/demo-ios.png" alt="ManifoldKit on iOS — chat conversation on iPhone" width="36%">
 </p>
 
 ## Features
@@ -42,7 +42,7 @@ See [docs/SCOPE_DECISION.md](docs/SCOPE_DECISION.md) for the scoping rationale b
 - iOS 18+ / macOS 15+
 - Apple Foundation Models require iOS 26+ / macOS 26+
 
-BaseChatKit follows an **n-1 platform policy**: the current Apple OS release
+ManifoldKit follows an **n-1 platform policy**: the current Apple OS release
 and the one immediately before it. When Apple ships a new major OS each
 September, both minimums are bumped by one. See
 [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy) for the rationale.
@@ -55,7 +55,7 @@ BCK and AnyLanguageModel occupy adjacent niches. AnyLanguageModel optimizes for 
 
 ## Architecture
 
-BaseChatKit ships **14 libraries**, **2 executables**, and **1 macro plugin**. The
+ManifoldKit ships **14 libraries**, **2 executables**, and **1 macro plugin**. The
 core runtime stack is six libraries; the rest are optional sibling modules and
 test-only targets gated behind SwiftPM traits.
 
@@ -63,66 +63,66 @@ The diagram below shows the dependency graph for the targets a typical adopter
 cares about. Arrows point from a consumer toward its dependency:
 
 ```
-BaseChatVoice              BaseChatUIModelManagement
+ManifoldVoice              ManifoldUIModelManagement
 (Voice trait)              (model browser + endpoint UI)
         │                          │
-        └────────► BaseChatUI ◄────┘
+        └────────► ManifoldUI ◄────┘
                        │
                        ▼
-            BaseChatPersistenceSwiftData
-            (SwiftData schema, BaseChatBootstrap)
+            ManifoldPersistenceSwiftData
+            (SwiftData schema, ManifoldBootstrap)
                        │
                        ▼
-                 BaseChatRuntime
+                 ManifoldRuntime
                  (Ports, use cases, ConversationRuntime)
                        │
                        ▼
-                BaseChatInference  ◄─── BaseChatBackends
+                ManifoldInference  ◄─── ManifoldBackends
                 (Protocols, services)   (MLX, llama.cpp,
                        ▲                 Foundation, Cloud)
                        │
-                BaseChatMCP
+                ManifoldMCP
                 (MCP descriptors, client, tool bridge)
 ```
 
-`BaseChatBackends` and `BaseChatMCP` depend on `BaseChatInference` **directly**,
-not via `BaseChatRuntime` — that keeps both modules free of SwiftData so
+`ManifoldBackends` and `ManifoldMCP` depend on `ManifoldInference` **directly**,
+not via `ManifoldRuntime` — that keeps both modules free of SwiftData so
 host apps can wire backends or MCP into a non-SwiftData runtime.
 
 ### Core runtime targets
 
-- **BaseChatInference** — Inference orchestration. Protocols, models, and services for model loading, generation, context windows, prompt assembly, compression, tokenizers, and capability detection. No SwiftData. No ML dependencies. This is the integration point for custom backends and the minimum target for apps that bring their own persistence and UI.
-- **BaseChatMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`. Depends on `BaseChatInference` directly.
-- **BaseChatRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), session-list orchestration, `ConversationEvent` observability, and the shared turn loop `ConversationRuntime`. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
-- **BaseChatPersistenceSwiftData** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, adapter implementations of the runtime ports, and the full-stack `BaseChatBootstrap` entry point.
-- **BaseChatBackends** — Concrete inference backend implementations. Depends on `BaseChatInference` (not `BaseChatRuntime` or `BaseChatPersistenceSwiftData`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
-- **BaseChatUI** — SwiftUI chat views and view models. Depends on `BaseChatRuntime` and `BaseChatInference`. Stays a chat-only consumer surface — never imports `BaseChatBackends` or `BaseChatUIModelManagement`. Cloud endpoint state crosses the UI boundary as SwiftData-free `APIEndpointRecord` values supplied by an `EndpointStore`.
+- **ManifoldInference** — Inference orchestration. Protocols, models, and services for model loading, generation, context windows, prompt assembly, compression, tokenizers, and capability detection. No SwiftData. No ML dependencies. This is the integration point for custom backends and the minimum target for apps that bring their own persistence and UI.
+- **ManifoldMCP** — Model Context Protocol client surface: descriptors, auth/transport types, connection lifecycle (`MCPClient`), and tool bridge (`MCPToolSource`) for registering MCP tools with `ToolRegistry`. Depends on `ManifoldInference` directly.
+- **ManifoldRuntime** — Persistence-agnostic ports (`EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`), session-list orchestration, `ConversationEvent` observability, and the shared turn loop `ConversationRuntime`. No SwiftData, no SwiftUI, no Observation — apps that bring their own persistence stop here and supply their own adapters.
+- **ManifoldPersistenceSwiftData** — SwiftData schema, `@Model` types (`ChatMessage`, `ChatSession`, `SamplerPreset`, `APIEndpoint`, `ModelBenchmarkCache`), `ModelContainerFactory`, adapter implementations of the runtime ports, and the full-stack `ManifoldBootstrap` entry point.
+- **ManifoldBackends** — Concrete inference backend implementations. Depends on `ManifoldInference` (not `ManifoldRuntime` or `ManifoldPersistenceSwiftData`), so backends stay free of SwiftData. Pulls MLX, llama.cpp, and cloud APIs.
+- **ManifoldUI** — SwiftUI chat views and view models. Depends on `ManifoldRuntime` and `ManifoldInference`. Stays a chat-only consumer surface — never imports `ManifoldBackends` or `ManifoldUIModelManagement`. Cloud endpoint state crosses the UI boundary as SwiftData-free `APIEndpointRecord` values supplied by an `EndpointStore`.
 
 ### Optional sibling modules
 
-- **BaseChatUIModelManagement** — Model browser, download UI, storage management, and cloud-endpoint editors (`APIConfigurationView`). Depends on `BaseChatUI`. The reverse edge is broken by closure-injecting `APIConfigurationView` via a `@ViewBuilder apiConfiguration:` parameter on `ChatView` — see [Building a Chat UI](Sources/BaseChatUI/BaseChatUI.docc/Articles/BuildingAChatUI.md) for the canonical wiring.
-- **BaseChatHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
-- **BaseChatAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
-- **BaseChatVoice** *(trait: `Voice`, default-off)* — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `BaseChatUI` so hosts can opt in without adding a back-edge into the base chat surface.
-- **BaseChatServer** *(trait: `Server`, default-off, executable)* — OpenAI-compatible HTTP server executable for exposing a selected `BaseChatInference` backend over `/v1/chat/completions`. Validates unsupported request capabilities before dispatch and returns clear `invalid_request_error` responses with `unsupported_capability` codes. Trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands.
-- **BaseChatTools** *(trait: `Tools`, default-off)* + **`bck-tools`** executable — End-to-end tool-calling validation harness and CLI for exercising `ToolRegistry` against real backends.
-- **BaseChatAppIntents** *(trait: `AppIntents`, default-off)* — Bridge between Apple `AppIntent` types and BaseChatKit's `ToolDefinition`, so iOS/macOS app intents can be exposed as tools to the inference layer.
-- **BaseChatFuzz** *(trait: `Fuzz`, default-off)* + **`fuzz-chat`** executable — Fuzzing harness that drives real backends with adversarial inputs. Run via `scripts/fuzz.sh`.
-- **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — `BaseChatMacrosPlugin` synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
+- **ManifoldUIModelManagement** — Model browser, download UI, storage management, and cloud-endpoint editors (`APIConfigurationView`). Depends on `ManifoldUI`. The reverse edge is broken by closure-injecting `APIConfigurationView` via a `@ViewBuilder apiConfiguration:` parameter on `ChatView` — see [Building a Chat UI](Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) for the canonical wiring.
+- **ManifoldHuggingFace** *(trait: `HuggingFace`, default-on)* — HuggingFace Hub search plus background download / validation services.
+- **ManifoldAnyLanguageModelBridge** *(trait: `AnyLanguageModel`, default-off)* — Thin `InferenceBackend` adapter over HuggingFace's `AnyLanguageModel`.
+- **ManifoldVoice** *(trait: `Voice`, default-off)* — Optional speech-recognition / synthesis adapters and voice composer UI. Depends on `ManifoldUI` so hosts can opt in without adding a back-edge into the base chat surface.
+- **ManifoldServer** *(trait: `Server`, default-off, executable)* — OpenAI-compatible HTTP server executable for exposing a selected `ManifoldInference` backend over `/v1/chat/completions`. Validates unsupported request capabilities before dispatch and returns clear `invalid_request_error` responses with `unsupported_capability` codes. Trait-gated; add `--traits Server` to `swift run`/`swift build`/`swift test` commands.
+- **ManifoldTools** *(trait: `Tools`, default-off)* + **`manifold-tools`** executable — End-to-end tool-calling validation harness and CLI for exercising `ToolRegistry` against real backends.
+- **ManifoldAppIntents** *(trait: `AppIntents`, default-off)* — Bridge between Apple `AppIntent` types and ManifoldKit's `ToolDefinition`, so iOS/macOS app intents can be exposed as tools to the inference layer.
+- **ManifoldFuzz** *(trait: `Fuzz`, default-off)* + **`fuzz-chat`** executable — Fuzzing harness that drives real backends with adversarial inputs. Run via `scripts/fuzz.sh`.
+- **`@ToolSchema` macro** *(trait: `Macros`, default-off)* — `ManifoldMacrosPlugin` synthesises `static var jsonSchema` on `Decodable` tool-argument structs. The plugin and its `swift-syntax` dependency (~647 source files) are gated behind the `Macros` trait so default builds skip the swift-syntax compile cost. Add `--traits Macros` to `swift build`/`swift test` invocations that use `@ToolSchema`.
 
 ### Test-only targets
 
-`BaseChatTestSupport` ships shared mocks and fakes (`MockInferenceBackend`,
+`ManifoldTestSupport` ships shared mocks and fakes (`MockInferenceBackend`,
 `CharTokenizer`, `makeInMemoryContainer`, etc.) for app-level testing.
-`BaseChatMLXIntegrationTests` runs real MLX model E2E tests under Xcode (Metal
+`ManifoldMLXIntegrationTests` runs real MLX model E2E tests under Xcode (Metal
 shaders unavailable to `swift test`); see `scripts/test-mlx-integration.sh`.
 
 ### Turn-loop orchestration
 
-`ConversationRuntime` (`Sources/BaseChatRuntime/Services/ConversationRuntime.swift`)
+`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`)
 is the **single turn loop** for chat. It owns `send`, `regenerate`, `edit`,
 `cancel`, and `branch` — there is no alternative path. Host apps get a
-configured `ConversationRuntime` from `BaseChatBootstrap` (exposed as
+configured `ConversationRuntime` from `ManifoldBootstrap` (exposed as
 `bootstrap.conversationRuntime`) and forward user actions to it via
 `ChatViewModel.configure(runtime:)` or `ChatViewModel.configure(conversationRuntime:)`.
 Custom adopters wiring their own runtime stack should still route every user
@@ -137,28 +137,28 @@ for the full list of dependency rules the lint enforces.
 ### 1. Add the package
 
 ```swift
-.package(url: "https://github.com/roryford/BaseChatKit.git", from: "0.18.0")
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.18.0")
 ```
 
-Most apps add a single product — the `BaseChatKit` umbrella, which re-exports
+Most apps add a single product — the `ManifoldKit` umbrella, which re-exports
 the runtime, persistence, backends, UI, and inference surface in one import:
 
 ```swift
 .target(name: "MyApp", dependencies: [
-    .product(name: "BaseChatKit", package: "BaseChatKit"),
+    .product(name: "ManifoldKit", package: "ManifoldKit"),
 ])
 ```
 
-Use the individual products (`BaseChatRuntime`, `BaseChatPersistenceSwiftData`,
-`BaseChatBackends`, `BaseChatUI`, …) when you need finer-grained dependency
-control — for example, a UI-only target that doesn't link `BaseChatBackends`.
-Specialised modules (`BaseChatUIModelManagement`, `BaseChatMCP`, `BaseChatVoice`,
-`BaseChatHuggingFace`, `BaseChatAppIntents`) stay opt-in: add them explicitly
+Use the individual products (`ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
+`ManifoldBackends`, `ManifoldUI`, …) when you need finer-grained dependency
+control — for example, a UI-only target that doesn't link `ManifoldBackends`.
+Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`,
+`ManifoldHuggingFace`, `ManifoldAppIntents`) stay opt-in: add them explicitly
 when you need that surface, since they're not in the umbrella.
 
 ### 2. Build modes
 
-BaseChatKit ships four pre-blessed build profiles keyed by the network surface a binary exposes. Backends are gated behind Swift package traits so consumers in regulated or air-gapped environments can compile out everything that touches the network.
+ManifoldKit ships four pre-blessed build profiles keyed by the network surface a binary exposes. Backends are gated behind Swift package traits so consumers in regulated or air-gapped environments can compile out everything that touches the network.
 
 | Profile | Build command | Build profile at runtime | Remote providers compiled in |
 |---------|---------------|--------------------------|-----------------------------|
@@ -172,7 +172,7 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: [
         .trait(name: "MLX"),
@@ -198,7 +198,7 @@ Apple Foundation Models.
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: ["FoundationOnly"]   // overrides the MLX/Llama/HuggingFace defaults
 )
@@ -215,7 +215,7 @@ Equivalent legacy form (still supported, before the named trait existed):
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: []   // disables MLX, Llama, HuggingFace defaults
 )
@@ -236,7 +236,7 @@ For example, a cloud-only consumer can keep the chat UI and local-model loaders 
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: [
         .trait(name: "MLX"),
@@ -250,7 +250,7 @@ For example, a cloud-only consumer can keep the chat UI and local-model loaders 
 You can inspect the compiled contract at runtime without a custom shim:
 
 ```swift
-import BaseChatInference
+import ManifoldInference
 
 let compiled = CompiledBackends.current
 
@@ -271,20 +271,20 @@ if compiled.localModelTypes.contains(.mlx) {
 }
 ```
 
-If you already depend on `BaseChatBackends`, the same data is also available via `DefaultBackends.compiledBackends`.
+If you already depend on `ManifoldBackends`, the same data is also available via `DefaultBackends.compiledBackends`.
 
 `CompiledBackends.current` describes what's compiled into the binary based on SwiftPM traits — it answers "could this build ever support backend X?" `FrameworkCapabilityService.enabledBackends` describes what's actually been registered at runtime — "is backend X usable right now?" Gate UI affordances on `enabledBackends` unless you specifically need the compile-time view (e.g., to hide a download tab in a SaaS-only build).
 
 ### 2.1 Optional MCP traits
 
-`BaseChatMCP` ships as its own module (`import BaseChatMCP`). Package traits expose MCP-specific configuration:
+`ManifoldMCP` ships as its own module (`import ManifoldMCP`). Package traits expose MCP-specific configuration:
 
 - `MCP` — explicit MCP opt-in marker for consumer manifests.
 - `MCPBuiltinCatalog` — enables built-in `MCPCatalog` descriptors (`notion`, `linear`, `github`).
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: [
         .trait(name: "MCP"),
@@ -296,17 +296,17 @@ If you already depend on `BaseChatBackends`, the same data is also available via
 Quick checks:
 
 ```bash
-scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --skip-update
-scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
 ```
 
-### 2.2 BaseChatServer
+### 2.2 ManifoldServer
 
-`BaseChatServer` runs an OpenAI-compatible local HTTP surface backed by BaseChatKit inference. The server target and its `Hummingbird` dependency are trait-gated behind `Server` (default-off), so add `--traits Server` to every build/run/test command:
+`ManifoldServer` runs an OpenAI-compatible local HTTP surface backed by ManifoldKit inference. The server target and its `Hummingbird` dependency are trait-gated behind `Server` (default-off), so add `--traits Server` to every build/run/test command:
 
 ```bash
-swift build --product BaseChatServer --disable-default-traits --traits Server,Ollama
-swift run --disable-default-traits --traits Server,Ollama BaseChatServer -- \
+swift build --product ManifoldServer --disable-default-traits --traits Server,Ollama
+swift run --disable-default-traits --traits Server,Ollama ManifoldServer -- \
   --backend ollama --model llama3.2 --host 127.0.0.1 --port 8080 \
   --api-key local-dev --cors-origin http://localhost:3000 --metrics
 ```
@@ -317,14 +317,14 @@ Backend availability follows SwiftPM traits: MLX requires `--traits MLX` plus `-
 
 ### 2.3 Optional voice
 
-`BaseChatVoice` is an opt-in module for speech input/output. It plugs into
-`ChatView` through the `composerAccessory:` seam, so `BaseChatUI` stays free of
+`ManifoldVoice` is an opt-in module for speech input/output. It plugs into
+`ChatView` through the `composerAccessory:` seam, so `ManifoldUI` stays free of
 audio-framework dependencies while hosts can mount a voice accessory above the
 stock `ChatInputBar`.
 
 ```swift
  .package(
-     url: "https://github.com/roryford/BaseChatKit.git",
+     url: "https://github.com/roryford/ManifoldKit.git",
      from: "0.18.0",
      traits: [
          .trait(name: "Voice"),
@@ -333,8 +333,8 @@ stock `ChatInputBar`.
 ```
 
 ```swift
-import BaseChatUI
-import BaseChatVoice
+import ManifoldUI
+import ManifoldVoice
 
 @State private var voice = VoiceConversationController(
     wakeWordDetector: AppleWakeWordDetector(wakeWords: ["hey base chat"])
@@ -368,17 +368,17 @@ The full list of SwiftPM traits, derived from `Package.swift`. Defaults
 |-------|----------|-------------------|
 | `MLX` | Yes | `MLXBackend` (Apple Silicon, mlx-swift xcframework). |
 | `Llama` | Yes | `LlamaBackend` (GGUF via mattt/llama.swift xcframework). |
-| `HuggingFace` | Yes | `BaseChatHuggingFace` Hub search, browse, and background download/validation. |
+| `HuggingFace` | Yes | `ManifoldHuggingFace` Hub search, browse, and background download/validation. |
 | `Ollama` | No | `OllamaBackend` (self-hosted HTTP at `localhost:11434` or custom host). |
 | `CloudSaaS` | No | `OpenAIBackend`, `ClaudeBackend`, and any third-party SaaS code paths. |
-| `MCP` | No | `BaseChatMCP` opt-in marker for consumer manifests. |
+| `MCP` | No | `ManifoldMCP` opt-in marker for consumer manifests. |
 | `MCPBuiltinCatalog` | No | Built-in `MCPCatalog` descriptors (`notion`, `linear`, `github`). |
-| `AnyLanguageModel` | No | `BaseChatAnyLanguageModelBridge` adapter over HuggingFace's `AnyLanguageModel`. |
-| `Voice` | No | `BaseChatVoice` speech I/O adapters and voice composer accessory. |
-| `Tools` | No | `BaseChatTools` tool-calling validation harness and `bck-tools` CLI. |
-| `AppIntents` | No | `BaseChatAppIntents` AppIntent ↔ ToolDefinition bridge. |
-| `Server` | No | `BaseChatServer` executable + Hummingbird HTTP dependency. |
-| `Macros` | No | `BaseChatMacrosPlugin` (`@ToolSchema`) + swift-syntax (~647 source files). |
+| `AnyLanguageModel` | No | `ManifoldAnyLanguageModelBridge` adapter over HuggingFace's `AnyLanguageModel`. |
+| `Voice` | No | `ManifoldVoice` speech I/O adapters and voice composer accessory. |
+| `Tools` | No | `ManifoldTools` tool-calling validation harness and `manifold-tools` CLI. |
+| `AppIntents` | No | `ManifoldAppIntents` AppIntent ↔ ToolDefinition bridge. |
+| `Server` | No | `ManifoldServer` executable + Hummingbird HTTP dependency. |
+| `Macros` | No | `ManifoldMacrosPlugin` (`@ToolSchema`) + swift-syntax (~647 source files). |
 | `Fuzz` | No | Real backends in `fuzz-chat` for `scripts/fuzz.sh`. Not needed for `swift test`. |
 | `FoundationOnly` | No | App Store-lean marker. Overrides `MLX`/`Llama`/`HuggingFace` defaults; pulls no heavy dependencies. See [`docs/AppStoreSubmission.md`](docs/AppStoreSubmission.md). |
 
@@ -388,8 +388,8 @@ The full list of SwiftPM traits, derived from `Package.swift`. Defaults
 ### 2.5 Bring your own UI
 
 If you want host-owned SwiftUI views instead of `ChatView`, depend only on
-`BaseChatInference` plus the backends you want. This keeps SwiftData,
-`BaseChatRuntime`, `BaseChatUI`, and model-management UI out of your app graph.
+`ManifoldInference` plus the backends you want. This keeps SwiftData,
+`ManifoldRuntime`, `ManifoldUI`, and model-management UI out of your app graph.
 
 ```swift
 // swift-tools-version: 6.1
@@ -400,7 +400,7 @@ let package = Package(
     platforms: [.iOS(.v18), .macOS(.v15)],
     dependencies: [
         .package(
-            url: "https://github.com/roryford/BaseChatKit.git",
+            url: "https://github.com/roryford/ManifoldKit.git",
             from: "0.18.0",
             traits: [
                 .trait(name: "MLX"),
@@ -413,8 +413,8 @@ let package = Package(
         .target(
             name: "MyChatApp",
             dependencies: [
-                .product(name: "BaseChatInference", package: "BaseChatKit"),
-                .product(name: "BaseChatBackends", package: "BaseChatKit"),
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldBackends", package: "ManifoldKit"),
             ]
         )
     ]
@@ -427,8 +427,8 @@ Own the observable state in your app, register the compiled backends once, load 
 ```swift
 import Observation
 import SwiftUI
-import BaseChatInference
-import BaseChatBackends
+import ManifoldInference
+import ManifoldBackends
 
 @MainActor
 @Observable
@@ -488,7 +488,7 @@ struct HostChatView: View {
 }
 ```
 
-BaseChatKit's view models and services use Swift Observation (`@Observable`),
+ManifoldKit's view models and services use Swift Observation (`@Observable`),
 not Combine `ObservableObject`. In SwiftUI, store them in `@State` and inject
 them with `.environment(value)`, then read them with `@Environment(Type.self)`.
 Use `ObservableObject` only in a host-owned adapter when you must bridge to
@@ -496,26 +496,26 @@ legacy Combine-based views.
 
 ### 3. Create the runtime at app startup
 
-With the `BaseChatKit` umbrella, `import BaseChatKit` covers
-`BaseChatRuntime`, `BaseChatPersistenceSwiftData`, `BaseChatBackends`,
-`BaseChatUI`, and `BaseChatInference` in one line:
+With the `ManifoldKit` umbrella, `import ManifoldKit` covers
+`ManifoldRuntime`, `ManifoldPersistenceSwiftData`, `ManifoldBackends`,
+`ManifoldUI`, and `ManifoldInference` in one line:
 
 ```swift
 import SwiftUI
 import SwiftData
-import BaseChatKit
-import BaseChatUIModelManagement   // model browser/download UI is opt-in
+import ManifoldKit
+import ManifoldUIModelManagement   // model browser/download UI is opt-in
 
 @main
 struct MyApp: App {
-    private let runtime: BaseChatBootstrap
+    private let runtime: ManifoldBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
+        let runtime = try! ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
                 appName: "My Chat App",
                 bundleIdentifier: "com.example.mychatapp"
             )
@@ -563,8 +563,8 @@ struct MyApp: App {
 ```
 
 Apps that need finer-grained dependency control can swap the umbrella for the
-individual product imports (`import BaseChatRuntime`, `import BaseChatPersistenceSwiftData`,
-`import BaseChatInference`, `import BaseChatBackends`, `import BaseChatUI`).
+individual product imports (`import ManifoldRuntime`, `import ManifoldPersistenceSwiftData`,
+`import ManifoldInference`, `import ManifoldBackends`, `import ManifoldUI`).
 The umbrella exists so most consumers don't need to.
 
 ### 4. Wire up the UI
@@ -594,18 +594,18 @@ struct ContentView: View {
 
 ### Migrating from `configure(persistence:)`
 
-Pre-runtime BaseChatKit apps often wired persistence from a root view's `.task`
+Pre-runtime ManifoldKit apps often wired persistence from a root view's `.task`
 or `.onAppear` and called `chatViewModel.configure(persistence:)` once stores
 were available. A runtime bootstrap collapses that into one value created in
-`App.init()` while keeping BaseChatUI behind runtime ports.
+`App.init()` while keeping ManifoldUI behind runtime ports.
 
 **Before** — late-binding from a view lifecycle:
 
 ```swift
 import SwiftUI
-import BaseChatInference
-import BaseChatRuntime
-import BaseChatUI
+import ManifoldInference
+import ManifoldRuntime
+import ManifoldUI
 
 @main
 struct LegacyApp: App {
@@ -629,20 +629,20 @@ struct LegacyApp: App {
 ```swift
 import SwiftUI
 import SwiftData
-import BaseChatRuntime
-import BaseChatPersistenceSwiftData
-import BaseChatInference
-import BaseChatUI
+import ManifoldRuntime
+import ManifoldPersistenceSwiftData
+import ManifoldInference
+import ManifoldUI
 
 @main
 struct ModernApp: App {
-    private let runtime: BaseChatBootstrap
+    private let runtime: ManifoldBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
+        let runtime = try! ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
                 appName: "My App",
                 bundleIdentifier: "com.example.myapp"
             )
@@ -721,7 +721,7 @@ endpoint and diagnostics wiring.
 
 | Type | Backend | Format | Source | Image input |
 |------|---------|--------|--------|-------------|
-| GGUF | `LlamaBackend` (llama.cpp) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/roryford/BaseChatKit/issues/416) |
+| GGUF | `LlamaBackend` (llama.cpp) | Single `.gguf` file | HuggingFace, local | Not yet; tracked in [#416](https://github.com/roryford/ManifoldKit/issues/416) |
 | MLX | `MLXBackend` (mlx-swift) | Directory with `config.json` + `.safetensors` | HuggingFace, local | Vision models only |
 | Foundation | `FoundationBackend` | `ModelInfo.builtInFoundation` (built-in, no download) | Apple Intelligence | No public FoundationModels image-input API yet |
 | OpenAI | `OpenAIBackend` | Cloud API | api.openai.com | Vision-capable models |
@@ -732,8 +732,8 @@ endpoint and diagnostics wiring.
 ### Model storage scoping
 
 `ModelStorageService()` stores and discovers local models under
-`<Application Support>/<BaseChatConfiguration.shared.bundleIdentifier>/<modelsDirectoryName>`
-by default. This keeps multiple BaseChatKit-based apps on the same machine from
+`<Application Support>/<ManifoldConfiguration.shared.bundleIdentifier>/<modelsDirectoryName>`
+by default. This keeps multiple ManifoldKit-based apps on the same machine from
 seeing each other's downloaded models. Hosts that intentionally share a model
 pool can opt in by passing an explicit directory, for example
 `ModelStorageService(baseDirectory: sharedModelsDirectory)`.
@@ -753,14 +753,14 @@ pool can opt in by passing an explicit directory, for example
 | Type | Purpose |
 |------|---------|
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend |
-| `BaseChatBootstrap` | SwiftData-backed bootstrap — installs configuration, builds persistence adapters, and holds shared services |
+| `ManifoldBootstrap` | SwiftData-backed bootstrap — installs configuration, builds persistence adapters, and holds shared services |
 | `ConversationRuntime` | Single turn loop for send/regenerate/edit/cancel/branch, with `ConversationEvent` hooks for token usage and recoverable session-touch failures |
-| `BackgroundDownloadManager` | Background model downloads with progress and validation (`BaseChatHuggingFace`) |
+| `BackgroundDownloadManager` | Background model downloads with progress and validation (`ManifoldHuggingFace`) |
 | `ModelStorageService` | Local model file discovery and storage paths |
 | `DeviceCapabilityService` | RAM/chipset queries for model size recommendations |
 | `KeychainService` | Secure API key storage |
 | `ContextWindowManager` | Token estimation and message trimming |
-| `HuggingFaceService` | HuggingFace Hub API (search, model info, download URLs) (`BaseChatHuggingFace`) |
+| `HuggingFaceService` | HuggingFace Hub API (search, model info, download URLs) (`ManifoldHuggingFace`) |
 
 ### Views
 
@@ -811,15 +811,15 @@ let (_, stream) = try inferenceService.enqueue(
 ## MCP Quick Start
 
 ```swift
-import BaseChatInference
-import BaseChatMCP
+import ManifoldInference
+import ManifoldMCP
 
 let client = MCPClient()
 let source = try await client.connect(descriptor)
 await source.register(in: registry)
 ```
 
-For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), see `Sources/BaseChatMCP/BaseChatMCP.docc/Articles/MCPGettingStarted.md`.
+For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), see `Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPGettingStarted.md`.
 
 ## Custom Backends
 
@@ -930,7 +930,7 @@ to pattern-match the enum for UI purposes.
 
 ## Prompt Templates
 
-GGUF models require explicit chat formatting. BaseChatKit includes templates for:
+GGUF models require explicit chat formatting. ManifoldKit includes templates for:
 
 - **ChatML** — `<|im_start|>user\n...<|im_end|>`
 - **Llama 3** — `<|start_header_id|>user<|end_header_id|>\n\n...<|eot_id|>`
@@ -947,7 +947,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model, what
 
 - API keys stored in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
 - Keys read just-in-time from Keychain rather than cached as long-lived properties; during an in-flight `URLSession` request the key bytes do exist in process memory as a Swift `String` and are not zeroized after use (see [docs/FIPS.md](docs/FIPS.md) §non-mitigations)
-- Certificate pinning support via `PinnedSessionDelegate` — configure `pinnedHosts` with SPKI SHA-256 hashes; `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing/empty; custom hosts use platform trust by default or can be set to fail-closed via `BaseChatConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`
+- Certificate pinning support via `PinnedSessionDelegate` — configure `pinnedHosts` with SPKI SHA-256 hashes; `api.openai.com` and `api.anthropic.com` fail closed if pin sets are missing/empty; custom hosts use platform trust by default or can be set to fail-closed via `ManifoldConfiguration.shared.customHostTrustPolicy = .requireExplicitPins`
 - HTTPS enforced for non-localhost endpoints
 - User content sanitised in prompt templates to prevent injection
 - Sensitive data uses `privacy: .private` in os.Logger calls
@@ -960,7 +960,7 @@ primitives BCK invokes and where the validation boundary actually sits.
 
 ## Binary Dependencies
 
-`BaseChatBackends` includes two pre-built binary xcframeworks:
+`ManifoldBackends` includes two pre-built binary xcframeworks:
 
 - **llama.swift** — wraps a pre-built llama.cpp xcframework. The binary is not compiled from source as part of your project. If you require a source-verified build, follow the [llama.swift build instructions](https://github.com/mattt/llama.swift) to compile your own xcframework.
 - **mlx-swift** — Apple's MLX framework ships as a pre-built xcframework from [ml-explore/mlx-swift](https://github.com/ml-explore/mlx-swift). Source builds are supported via that upstream repo.
@@ -981,7 +981,7 @@ scripts/clean-build.sh
 
 This removes the entire `.build` directory and runs `swift package resolve` before your next build.
 
-### Stale "No such module 'BaseChatPersistenceSwiftData'" in the editor
+### Stale "No such module 'ManifoldPersistenceSwiftData'" in the editor
 
 SourceKit can retain stale module-not-found diagnostics from a previous trait-set build even while `swift build` succeeds cleanly. The editor's index does not flush automatically when the trait set changes.
 
@@ -995,7 +995,7 @@ See the `Example/` directory for a complete demo app showing integration pattern
 
 ```bash
 cd Example
-open BaseChatDemo.xcodeproj
+open ManifoldDemo.xcodeproj
 ```
 
 ## License

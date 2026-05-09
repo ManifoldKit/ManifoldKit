@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# migrate-uimm-imports.sh — codemod for the v2.0 BaseChatUIModelManagement peel.
+# migrate-uimm-imports.sh — codemod for the v2.0 ManifoldUIModelManagement peel.
 #
-# Adds `import BaseChatUIModelManagement` to any Swift file that uses one of
-# the symbols that moved from BaseChatUI to the new module, inserting the new
-# import line immediately after the first existing `import BaseChatUI` line.
+# Adds `import ManifoldUIModelManagement` to any Swift file that uses one of
+# the symbols that moved from ManifoldUI to the new module, inserting the new
+# import line immediately after the first existing `import ManifoldUI` line.
 #
 # Idempotent — re-running the script on an already-migrated file leaves it
 # unchanged. Handles `#if`-gated import blocks correctly: the new import is
-# placed inside the same `#if` branch as the originating BaseChatUI import.
+# placed inside the same `#if` branch as the originating ManifoldUI import.
 #
 # Usage:
 #   scripts/migrate-uimm-imports.sh [<path> ...]
@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-# Symbols that moved out of BaseChatUI in v2.0.
+# Symbols that moved out of ManifoldUI in v2.0.
 SYMBOLS=(
     ModelManagementSheet
     ModelManagementViewModel
@@ -45,7 +45,7 @@ migrate_file() {
     local file="$1"
 
     # Skip if already migrated.
-    if grep -qE '^\s*import\s+BaseChatUIModelManagement\s*$' "$file"; then
+    if grep -qE '^\s*import\s+ManifoldUIModelManagement\s*$' "$file"; then
         return 0
     fi
 
@@ -54,7 +54,7 @@ migrate_file() {
         return 0
     fi
 
-    # Find the first `import BaseChatUI` (exact module match, not a prefix).
+    # Find the first `import ManifoldUI` (exact module match, not a prefix).
     # Using awk for portability — `sed -i` differs across BSD/GNU.
     local tmp
     tmp=$(mktemp)
@@ -62,11 +62,11 @@ migrate_file() {
         BEGIN { inserted = 0 }
         {
             print
-            if (!inserted && $0 ~ /^[[:space:]]*import[[:space:]]+BaseChatUI[[:space:]]*$/) {
+            if (!inserted && $0 ~ /^[[:space:]]*import[[:space:]]+ManifoldUI[[:space:]]*$/) {
                 # Mirror leading indentation so #if-gated blocks stay tidy.
                 indent = $0
                 sub(/import.*$/, "", indent)
-                print indent "import BaseChatUIModelManagement"
+                print indent "import ManifoldUIModelManagement"
                 inserted = 1
             }
         }
@@ -80,7 +80,7 @@ migrate_file() {
         local rc=$?
         rm -f "$tmp"
         if [ "$rc" -eq 2 ]; then
-            echo "warning: $file uses moved symbols but has no 'import BaseChatUI' to anchor the new import after — add manually" >&2
+            echo "warning: $file uses moved symbols but has no 'import ManifoldUI' to anchor the new import after — add manually" >&2
             return 0
         fi
         return "$rc"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/test-mlx-integration.sh — Run BaseChatMLXIntegrationTests with the
+# scripts/test-mlx-integration.sh — Run ManifoldMLXIntegrationTests with the
 # discovery env vars properly forwarded to the xctest runner.
 #
 # Why this exists
 # ---------------
-# `BaseChatMLXIntegrationTests` requires real MLX model files on disk (Apple
+# `ManifoldMLXIntegrationTests` requires real MLX model files on disk (Apple
 # Silicon + Metal + a HuggingFace-style snapshot dir with config.json,
 # tokenizer.json, and *.safetensors weights). The discovery helper
 # `HardwareRequirements.findMLXModelDirectory()` is opt-out — it returns nil
@@ -20,7 +20,7 @@
 #   1. `xcodebuild build-for-testing` to produce the test bundle and an
 #      `.xctestrun` plist.
 #   2. PlistBuddy-edit the `.xctestrun` to add `EnvironmentVariables` to the
-#      `BaseChatMLXIntegrationTests` target's dict.
+#      `ManifoldMLXIntegrationTests` target's dict.
 #   3. `xcodebuild test-without-building -xctestrun <patched>` to execute
 #      with the injected env.
 #
@@ -55,8 +55,8 @@ if [[ "$REBUILD" -eq 1 || ! -d "$DERIVED" ]]; then
     echo "==> Building test bundle (xcodebuild build-for-testing)…"
     rm -rf "$DERIVED"
     xcodebuild build-for-testing \
-        -scheme BaseChatKit-Package \
-        -only-testing BaseChatMLXIntegrationTests \
+        -scheme ManifoldKit-Package \
+        -only-testing ManifoldMLXIntegrationTests \
         -destination 'platform=macOS' \
         -derivedDataPath "$DERIVED" \
         -quiet
@@ -68,19 +68,19 @@ if [[ -z "$RUNFILE" ]]; then
     exit 1
 fi
 
-# Find the BaseChatMLXIntegrationTests target index in the TestTargets array.
+# Find the ManifoldMLXIntegrationTests target index in the TestTargets array.
 TARGET_INDEX=""
 TOTAL=$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets" "$RUNFILE" 2>/dev/null | grep -c "BlueprintName")
 for ((i = 0; i < TOTAL; i++)); do
     name=$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:$i:BlueprintName" "$RUNFILE" 2>/dev/null || true)
-    if [[ "$name" == "BaseChatMLXIntegrationTests" ]]; then
+    if [[ "$name" == "ManifoldMLXIntegrationTests" ]]; then
         TARGET_INDEX=$i
         break
     fi
 done
 
 if [[ -z "$TARGET_INDEX" ]]; then
-    echo "ERROR: BaseChatMLXIntegrationTests target not found in $RUNFILE" >&2
+    echo "ERROR: ManifoldMLXIntegrationTests target not found in $RUNFILE" >&2
     exit 1
 fi
 
@@ -110,5 +110,5 @@ fi
 echo "==> Running tests (xcodebuild test-without-building)…"
 xcodebuild test-without-building \
     -xctestrun "$RUNFILE" \
-    -only-testing BaseChatMLXIntegrationTests \
+    -only-testing ManifoldMLXIntegrationTests \
     -destination 'platform=macOS'

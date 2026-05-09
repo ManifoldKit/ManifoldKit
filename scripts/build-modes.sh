@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/build-modes.sh — Build BaseChatKit in each documented build mode and
+# scripts/build-modes.sh — Build ManifoldKit in each documented build mode and
 # optionally run a binary symbol audit against the produced object files.
 #
 # This is Phase 3 of #714. It is the single entrypoint for the build-mode CI
@@ -52,8 +52,8 @@ traits_for_mode() {
 
 # Symbols that must NOT appear in modes which exclude the CloudSaaS trait.
 # Matched against `nm -gU` output, which surfaces both the Swift mangled form
-# (`$s17BaseChatBackends13ClaudeBackendC`) and the Obj-C metaclass form
-# (`_OBJC_CLASS_$_BaseChatBackends.ClaudeBackend`). Catches both runtime
+# (`$s17ManifoldBackends13ClaudeBackendC`) and the Obj-C metaclass form
+# (`_OBJC_CLASS_$_ManifoldBackends.ClaudeBackend`). Catches both runtime
 # entry points (Tin-foil-hat SEV-2.6 in the plan).
 CLOUD_SYMBOLS=(
   "ClaudeBackend"
@@ -76,7 +76,7 @@ CLOUD_HOSTS=(
 # this for explicit DSOs the offline binary should not need; the runtime
 # always-link list (Foundation etc.) is intentionally not policed here.
 OFFLINE_BANNED_DYLIBS=(
-  # Currently empty: BaseChatInference uses URLSession from Foundation, which
+  # Currently empty: ManifoldInference uses URLSession from Foundation, which
   # is unavoidable. The ban-list is kept as a hook for future extraction
   # (e.g., if URLSessionProvider is moved into a CloudSaaS-gated module).
 )
@@ -117,17 +117,17 @@ audit_mode() {
 
   mkdir -p "$ARTIFACT_DIR/$mode"
 
-  # Locate the BaseChatBackends release object directory. SwiftPM emits per-
+  # Locate the ManifoldBackends release object directory. SwiftPM emits per-
   # target build folders under .build/<arch>-apple-macosx/release/<Target>.build/.
   local backends_dir
-  backends_dir=$(find .build -type d -path '*/release/BaseChatBackends.build' 2>/dev/null | head -n 1 || true)
+  backends_dir=$(find .build -type d -path '*/release/ManifoldBackends.build' 2>/dev/null | head -n 1 || true)
 
   local audit_failures=0
 
   if [[ -z "$backends_dir" ]]; then
-    echo "    note: BaseChatBackends.build not found — module excluded from this mode."
+    echo "    note: ManifoldBackends.build not found — module excluded from this mode."
   else
-    echo "    BaseChatBackends.build at: $backends_dir"
+    echo "    ManifoldBackends.build at: $backends_dir"
 
     # Snapshot per-mode artifacts for the procurement evidence archive.
     # `nm.txt` is the *gating* file: every line in it must be a real symbol
@@ -178,7 +178,7 @@ audit_mode() {
     # produces a static archive for libraries by default, so this is a best-
     # effort capture for the artifact rather than a hard gate.
     local backends_dylib
-    backends_dylib=$(find .build -type f \( -name 'libBaseChatBackends.dylib' -o -name 'BaseChatBackends.o' \) 2>/dev/null | head -n 1 || true)
+    backends_dylib=$(find .build -type f \( -name 'libManifoldBackends.dylib' -o -name 'ManifoldBackends.o' \) 2>/dev/null | head -n 1 || true)
     if [[ -n "$backends_dylib" ]]; then
       {
         echo "### $backends_dylib"
@@ -195,14 +195,14 @@ audit_mode() {
       echo "    asserting NO cloud symbols in [$mode]"
       for sym in "${CLOUD_SYMBOLS[@]}"; do
         if grep -Fq "$sym" "$nm_out"; then
-          echo "::error::build-modes audit [$mode]: cloud symbol '$sym' present in BaseChatBackends release objects"
+          echo "::error::build-modes audit [$mode]: cloud symbol '$sym' present in ManifoldBackends release objects"
           grep -F "$sym" "$nm_out" | head -n 5 >&2 || true
           audit_failures=$((audit_failures + 1))
         fi
       done
 
-      # Hostname literals in BaseChatBackends. APIProvider.swift in
-      # BaseChatInference legitimately holds these as data — that module is
+      # Hostname literals in ManifoldBackends. APIProvider.swift in
+      # ManifoldInference legitimately holds these as data — that module is
       # intentionally out of scope here (see SECURITY.md).
       if [[ "$mode" == "offline" ]]; then
         echo "    asserting NO cloud hostname literals in [$mode]"
@@ -210,7 +210,7 @@ audit_mode() {
           # `grep -F` (fixed strings) is required — `$host` contains dots,
           # which would otherwise match arbitrary characters in default BRE.
           if grep -Fq "$host" "$strings_ascii_out" || grep -Fq "$host" "$strings_utf16_out"; then
-            echo "::error::build-modes audit [$mode]: hostname literal '$host' present in BaseChatBackends release objects"
+            echo "::error::build-modes audit [$mode]: hostname literal '$host' present in ManifoldBackends release objects"
             audit_failures=$((audit_failures + 1))
           fi
         done

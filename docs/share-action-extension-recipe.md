@@ -1,6 +1,6 @@
 # Share & Action Extension Recipe (App Group handoff)
 
-This guide explains how BaseChatDemo wires a Share Extension and an Action Extension to hand content into a new `ChatViewModel` session without linking BaseChatKit inside the extension.
+This guide explains how ManifoldDemo wires a Share Extension and an Action Extension to hand content into a new `ChatViewModel` session without linking ManifoldKit inside the extension.
 
 ## Architecture overview
 
@@ -12,18 +12,18 @@ This guide explains how BaseChatDemo wires a Share Extension and an Action Exten
            ↑ writes, then completeRequest()
 
 ┌─────────────────────────┐ .onChange(of: scenePhase == .active)
-│  BaseChatDemo (host app) │ ──reads──► PendingSharePayload
-│                          │ ──────────► PendingPayload (BaseChatUI)
+│  ManifoldDemo (host app) │ ──reads──► PendingSharePayload
+│                          │ ──────────► PendingPayload (ManifoldUI)
 │  ChatViewModel           │ ──────────► ingestPendingPayload(_:intent:)
 └─────────────────────────┘
 ```
 
-The key isolation boundary is `PendingSharePayload` — a pure Foundation `Codable` struct compiled into all three targets (host app, Share Extension, Action Extension). Extensions cannot link BaseChatKit (App Extensions must not import frameworks with `@main`/`App` conformances), so this thin shared type is the handoff contract.
+The key isolation boundary is `PendingSharePayload` — a pure Foundation `Codable` struct compiled into all three targets (host app, Share Extension, Action Extension). Extensions cannot link ManifoldKit (App Extensions must not import frameworks with `@main`/`App` conformances), so this thin shared type is the handoff contract.
 
 ## File map
 
 ```
-Example/BaseChatDemo/Extensions/
+Example/ManifoldDemo/Extensions/
 ├── PendingSharePayload.swift          # Shared Codable (no BCK deps)
 ├── ShareExtension/
 │   ├── ShareViewController.swift      # UIViewController principal class
@@ -35,7 +35,7 @@ Example/BaseChatDemo/Extensions/
     └── ActionExtensionInfo.plist      # NSExtension config
 ```
 
-Host-app changes live in `BaseChatDemoApp.swift` (`checkForPendingSharePayload`, `pendingPayload(from:)`, `.onChange(of: scenePhase)`, `.task(id:)`).
+Host-app changes live in `ManifoldDemoApp.swift` (`checkForPendingSharePayload`, `pendingPayload(from:)`, `.onChange(of: scenePhase)`, `.task(id:)`).
 
 ## Entitlement checklist
 
@@ -45,17 +45,17 @@ All three targets — the host app and both extensions — must share the same A
 <!-- *.entitlements -->
 <key>com.apple.security.application-groups</key>
 <array>
-    <string>group.com.basechatkit.demo</string>
+    <string>group.com.manifoldkit.demo</string>
 </array>
 ```
 
-`BaseChatDemo.entitlements` already had this from the App Intents path (#442). Each extension gets its own `.entitlements` file with the same group.
+`ManifoldDemo.entitlements` already had this from the App Intents path (#442). Each extension gets its own `.entitlements` file with the same group.
 
 ## PendingSharePayload
 
 ```swift
 // Extensions/PendingSharePayload.swift — pure Foundation, no BCK deps.
-// Compiled into: BaseChatDemo, BaseChatDemoShareExtension, BaseChatDemoActionExtension.
+// Compiled into: ManifoldDemo, ManifoldDemoShareExtension, ManifoldDemoActionExtension.
 struct PendingSharePayload: Codable, Sendable {
     enum Kind: String, Codable { case text, url, image }
 
@@ -76,7 +76,7 @@ Extensions write this to the App Group and complete immediately — no inference
 // ShareViewController.swift (same pattern for ActionViewController)
 private func submitAndComplete(payload: PendingSharePayload) {
     guard let data = try? JSONEncoder().encode(payload),
-          let defaults = UserDefaults(suiteName: "group.com.basechatkit.demo") else {
+          let defaults = UserDefaults(suiteName: "group.com.manifoldkit.demo") else {
         extensionContext?.completeRequest(returningItems: nil)
         return
     }
@@ -91,7 +91,7 @@ private func submitAndComplete(payload: PendingSharePayload) {
 ## Host-app drain pattern
 
 ```swift
-// BaseChatDemoApp.swift
+// ManifoldDemoApp.swift
 
 .onChange(of: scenePhase) { _, newPhase in
     if newPhase == .active {
@@ -143,7 +143,7 @@ The two-stage pattern (`stagedSharePayload` + `.task(id:)`) handles the race whe
 
 | Key | Written by | Consumed by |
 |-----|-----------|-------------|
-| `bck.inbound` | `AskBaseChatDemoIntent` (App Intent) | `handleOpenURL` via `basechatdemo://ingest` |
+| `bck.inbound` | `AskManifoldDemoIntent` (App Intent) | `handleOpenURL` via `manifolddemo://ingest` |
 | `bck.pending-share` | Share Extension / Action Extension | `checkForPendingSharePayload` on foreground |
 
 Using separate keys prevents the two paths from clobbering each other.

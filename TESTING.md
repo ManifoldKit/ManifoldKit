@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document describes BaseChatKit's testing philosophy, architecture, and patterns. It is aimed at contributors (including those new to Swift) and serves as both a reference and a rationale for how and why tests are structured the way they are.
+This document describes ManifoldKit's testing philosophy, architecture, and patterns. It is aimed at contributors (including those new to Swift) and serves as both a reference and a rationale for how and why tests are structured the way they are.
 
 ---
 
@@ -19,7 +19,7 @@ This document describes BaseChatKit's testing philosophy, architecture, and patt
 
 ## Testing Pyramid
 
-BaseChatKit uses a five-layer testing pyramid. Each layer catches different classes of bugs at different costs:
+ManifoldKit uses a five-layer testing pyramid. Each layer catches different classes of bugs at different costs:
 
 ```
          ╱  XCUITests (Example app)         ╲   Few, slow, high confidence
@@ -67,51 +67,51 @@ UI automation tests that launch the real Example app in a simulator and drive it
 
 | Target | Layer | Runs in CI | Hardware needed | Framework |
 |--------|-------|-----------|-----------------|-----------|
-| `BaseChatCoreTests` | Unit, Integration | Yes | None | Mixed (XCTest + Swift Testing) |
-| `BaseChatInferenceTests` | Unit, Integration | Yes | None | XCTest |
-| `BaseChatInferenceSwiftTestingTests` | Unit | Yes | None | Swift Testing |
-| `BaseChatUITests` | Integration | Yes | None | XCTest |
-| `BaseChatMCPTests` | Unit, Integration | Yes | None | XCTest |
-| `BaseChatMCPE2ETests` | E2E (explicit opt-in smoke) | Nightly smoke only (requires `RUN_MCP_E2E=1`) | `EverythingServerSmokeTests` also needs npx + network | XCTest |
-| `BaseChatServerTests` | Unit, Integration | Yes | None | XCTest |
-| `BaseChatBackendsTests` | Unit, E2E | Partial | MLX/Llama need Apple Silicon | Mixed |
-| `BaseChatTestSupportTests` | Unit | Yes | None | XCTest |
-| `BaseChatE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
-| `BaseChatMLXIntegrationTests` | E2E | No | Apple Silicon + Metal + local MLX model | XCTest |
-| `BaseChatDemoUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
+| `ManifoldCoreTests` | Unit, Integration | Yes | None | Mixed (XCTest + Swift Testing) |
+| `ManifoldInferenceTests` | Unit, Integration | Yes | None | XCTest |
+| `ManifoldInferenceSwiftTestingTests` | Unit | Yes | None | Swift Testing |
+| `ManifoldUITests` | Integration | Yes | None | XCTest |
+| `ManifoldMCPTests` | Unit, Integration | Yes | None | XCTest |
+| `ManifoldMCPE2ETests` | E2E (explicit opt-in smoke) | Nightly smoke only (requires `RUN_MCP_E2E=1`) | `EverythingServerSmokeTests` also needs npx + network | XCTest |
+| `ManifoldServerTests` | Unit, Integration | Yes | None | XCTest |
+| `ManifoldBackendsTests` | Unit, E2E | Partial | MLX/Llama need Apple Silicon | Mixed |
+| `ManifoldTestSupportTests` | Unit | Yes | None | XCTest |
+| `ManifoldE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
+| `ManifoldMLXIntegrationTests` | E2E | No | Apple Silicon + Metal + local MLX model | XCTest |
+| `ManifoldDemoUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
 
 ### Running tests
 
 ```bash
 # CI-safe local gate (no hardware required). Two-invocation shape mirrors CI —
 # see CLAUDE.md Pre-push checklist for the rationale.
-scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests \
-  --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests \
-  --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests \
-  --filter BaseChatBackendsTests --filter BaseChatInferenceTests \
-  --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests \
-  --filter BaseChatServerTests --disable-default-traits --skip-update
+scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests \
+  --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests \
+  --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests \
+  --filter ManifoldBackendsTests --filter ManifoldInferenceTests \
+  --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests \
+  --filter ManifoldServerTests --disable-default-traits --skip-update
 
 # Swift Testing runs in a separate process to avoid mixed-runner crashes (#681).
-# Do NOT add --parallel to BaseChatInferenceTests — the UserDefaults.standard
+# Do NOT add --parallel to ManifoldInferenceTests — the UserDefaults.standard
 # race in test_autoSelectFirstRunModel_* and download-tests legacy-key reads
 # causes non-deterministic failures (issue #910).
-scripts/test.sh --filter BaseChatInferenceSwiftTestingTests \
+scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
   --disable-default-traits --skip-update
 
 # Apple Silicon only
-swift test --filter BaseChatBackendsTests --traits MLX,Llama
+swift test --filter ManifoldBackendsTests --traits MLX,Llama
 
 # Additional headless E2E coverage (mock backends; no special hardware)
-swift test --filter BaseChatE2ETests --disable-default-traits
+swift test --filter ManifoldE2ETests --disable-default-traits
 
 # MCP built-in catalog descriptors (trait-gated metadata tests)
-scripts/test.sh --filter BaseChatMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
 
 # MCP end-to-end smoke tests are explicit opt-in only.
 # Nightly runs the streamable-HTTP smoke; keep the filter narrow so the
 # npx/network-backed EverythingServerSmokeTests suite does not run by default.
-RUN_MCP_E2E=1 scripts/test.sh --filter BaseChatMCPE2ESmokeTests \
+RUN_MCP_E2E=1 scripts/test.sh --filter ManifoldMCPE2ESmokeTests \
   --disable-default-traits --skip-update --min-passed 1
 
 # Full subprocess E2E, local only: requires npx on PATH and network access to
@@ -120,18 +120,18 @@ RUN_MCP_E2E=1 swift test --filter EverythingServerSmokeTests --disable-default-t
 
 # Xcode-only — real MLX model inference (requires local MLX fixture; see below)
 # Cannot run via swift test; MLX Metal shaders are only compiled by Xcode.
-xcodebuild test -scheme BaseChatKit-Package -only-testing BaseChatMLXIntegrationTests -destination 'platform=macOS'
+xcodebuild test -scheme ManifoldKit-Package -only-testing ManifoldMLXIntegrationTests -destination 'platform=macOS'
 
 # Example app UI tests (preferred debug loop)
 scripts/example-ui-tests.sh build-for-testing
-scripts/example-ui-tests.sh test-without-building -only-testing:BaseChatDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+scripts/example-ui-tests.sh test-without-building -only-testing:ManifoldDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
 
 # Full UI test sweep when you need it
 scripts/example-ui-tests.sh test
 
 # Discover or override the simulator explicitly when needed
 xcrun simctl list devices available
-scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:BaseChatDemoUITests/SettingsUITests
+scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:ManifoldDemoUITests/SettingsUITests
 ```
 
 `build-for-testing` is the expensive step. Run it once, then use `test-without-building` with `-only-testing` for targeted reruns while debugging. The helper prefers a booted iPhone simulator, otherwise the first available iPhone simulator, so contributors do not have to keep stale device names in sync.
@@ -147,7 +147,7 @@ override func setUp() async throws {
 }
 ```
 
-Available flags (from `BaseChatTestSupport/HardwareRequirements.swift`):
+Available flags (from `ManifoldTestSupport/HardwareRequirements.swift`):
 
 | Flag | Meaning |
 |------|---------|
@@ -155,9 +155,9 @@ Available flags (from `BaseChatTestSupport/HardwareRequirements.swift`):
 | `isPhysicalDevice` | Not the iOS Simulator |
 | `hasFoundationModels` | macOS 26+ / iOS 26+ |
 
-### Local MLX model fixture (`BaseChatMLXIntegrationTests`)
+### Local MLX model fixture (`ManifoldMLXIntegrationTests`)
 
-`BaseChatMLXIntegrationTests` runs real GPU inference using a model you provide locally. The harness calls `HardwareRequirements.findMLXModelDirectory()` during `setUp`; if no valid directory is found the entire suite is **skipped**, not failed.
+`ManifoldMLXIntegrationTests` runs real GPU inference using a model you provide locally. The harness calls `HardwareRequirements.findMLXModelDirectory()` during `setUp`; if no valid directory is found the entire suite is **skipped**, not failed.
 
 **Required fixture shape**
 
@@ -178,7 +178,7 @@ Place your MLX snapshot in either location. The harness scans all immediate subd
 
 **When no fixture is found**
 
-The suite calls `XCTSkip` and is marked skipped — CI sees a green pass, not a failure. You only need a local fixture when you're actively working on `BaseChatMLXIntegrationTests` or `MLXBackend`.
+The suite calls `XCTSkip` and is marked skipped — CI sees a green pass, not a failure. You only need a local fixture when you're actively working on `ManifoldMLXIntegrationTests` or `MLXBackend`.
 
 ### MLX KV-cache reuse regression checks
 
@@ -188,20 +188,20 @@ Issue #749's prompt-cache reuse path has an extra validation bar beyond "still g
 2. **Real cache hit** — the warm path must emit `GenerationEvent.kvCacheReuse(...)`.
 3. **Measured improvement** — warm second-turn TTFT must materially beat the cold path for a long shared prefix.
 
-The Xcode-only suite lives in `BaseChatMLXIntegrationTests/MLXKVPersistenceIntegrationTests.swift`. Run it with:
+The Xcode-only suite lives in `ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests.swift`. Run it with:
 
 ```bash
-xcodebuild test -scheme BaseChatKit-Package \
-  -only-testing:BaseChatMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
+xcodebuild test -scheme ManifoldKit-Package \
+  -only-testing:ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
   -destination 'platform=macOS'
 ```
 
 When bumping `mlx-swift-lm` or `mlx-swift`, rerun both MLX integration targets before trusting the update:
 
 ```bash
-xcodebuild test -scheme BaseChatKit-Package \
-  -only-testing:BaseChatMLXIntegrationTests/MLXModelE2ETests \
-  -only-testing:BaseChatMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
+xcodebuild test -scheme ManifoldKit-Package \
+  -only-testing:ManifoldMLXIntegrationTests/MLXModelE2ETests \
+  -only-testing:ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
   -destination 'platform=macOS'
 ```
 
@@ -561,7 +561,7 @@ Users do unexpected things during generation:
 
 ## Mock Infrastructure
 
-All shared test infrastructure lives in `Sources/BaseChatTestSupport/`:
+All shared test infrastructure lives in `Sources/ManifoldTestSupport/`:
 
 ### Mock Backends
 
@@ -608,19 +608,19 @@ All shared test infrastructure lives in `Sources/BaseChatTestSupport/`:
 
 Ask these questions in order:
 
-1. **Can this be tested with just the type and its direct dependencies?** → Unit test in `BaseChatCoreTests`
-2. **Does it need ChatViewModel + SwiftData + a mock backend?** → Integration test in `BaseChatUITests`
-3. **Does it need real (non-mock) components wired together?** → E2E test in `BaseChatE2ETests`
-4. **Does it need the real UI in a simulator?** → XCUITest in `BaseChatDemoUITests`
+1. **Can this be tested with just the type and its direct dependencies?** → Unit test in `ManifoldCoreTests`
+2. **Does it need ChatViewModel + SwiftData + a mock backend?** → Integration test in `ManifoldUITests`
+3. **Does it need real (non-mock) components wired together?** → E2E test in `ManifoldE2ETests`
+4. **Does it need the real UI in a simulator?** → XCUITest in `ManifoldDemoUITests`
 
 ### Test structure template
 
 ```swift
 import XCTest
 import SwiftData
-@testable import BaseChatUI
-import BaseChatInference
-import BaseChatTestSupport
+@testable import ManifoldUI
+import ManifoldInference
+import ManifoldTestSupport
 
 @MainActor
 final class MyFeatureTests: XCTestCase {
@@ -672,7 +672,7 @@ After your test passes, temporarily break the code path being tested and confirm
 
 - **Test files:** `{Feature}Tests.swift` for unit, `{Feature}IntegrationTests.swift` for integration, `{Feature}E2ETests.swift` for E2E
 - **Test methods:** `test_{method}_{scenario}_{expected}` — e.g., `test_stopGeneration_midStream_preservesPartialContent`
-- **Placement:** Match the target that owns the code being tested. ViewModel tests go in `BaseChatUITests`, service tests in `BaseChatCoreTests`, backend tests in `BaseChatBackendsTests`.
+- **Placement:** Match the target that owns the code being tested. ViewModel tests go in `ManifoldUITests`, service tests in `ManifoldCoreTests`, backend tests in `ManifoldBackendsTests`.
 
 ### Framework choice
 
@@ -693,7 +693,7 @@ Swift Testing's `withKnownIssue` lets you mark a failing assertion as an expecte
 - The wrapper is scoped as tightly as possible — only the failing assertion, not the whole test body.
 
 ```swift
-// FIXME: https://github.com/your-org/BaseChatKit/issues/123 — context boundary off-by-one under compression
+// FIXME: https://github.com/your-org/ManifoldKit/issues/123 — context boundary off-by-one under compression
 withKnownIssue("context trim drops one message too many, tracked in #123") {
     #expect(vm.messages.count == 4)
 }
@@ -774,42 +774,42 @@ This project additionally uses a "Layer 4 — Headless E2E" bucket (see [Testing
 
 | File | Location | Declared | Honest classification | Action |
 |---|---|---|---|---|
-| `LlamaBackendLoadSerializationCharacterizationTests.swift` | `BaseChatBackendsTests` | Characterization / integration | **E2E** — requires real GGUF on disk + Apple Silicon + Metal via `HardwareRequirements.findGGUFModel()` | **Moved** to `BaseChatE2ETests/LlamaBackendLoadSerializationCharacterizationE2ETests.swift`; class renamed to match. Pairs with the existing `LlamaE2ETests.swift` which also requires a real GGUF. |
-| `SwiftDataPersistenceProviderTests.swift` | `BaseChatCoreTests` | Docstring said "Unit tests" | **Integration** — uses a real in-memory SwiftData `ModelContainer` on every test. | **Docstring fixed**; file location is correct (the target intentionally mixes Unit + Integration, per the Test Targets table above). No rename — existing references across the repo are stable. |
+| `LlamaBackendLoadSerializationCharacterizationTests.swift` | `ManifoldBackendsTests` | Characterization / integration | **E2E** — requires real GGUF on disk + Apple Silicon + Metal via `HardwareRequirements.findGGUFModel()` | **Moved** to `ManifoldE2ETests/LlamaBackendLoadSerializationCharacterizationE2ETests.swift`; class renamed to match. Pairs with the existing `LlamaE2ETests.swift` which also requires a real GGUF. |
+| `SwiftDataPersistenceProviderTests.swift` | `ManifoldCoreTests` | Docstring said "Unit tests" | **Integration** — uses a real in-memory SwiftData `ModelContainer` on every test. | **Docstring fixed**; file location is correct (the target intentionally mixes Unit + Integration, per the Test Targets table above). No rename — existing references across the repo are stable. |
 
 No other `*Tests.swift` file is clearly mislabeled. The remaining suspicions called out in the audit brief resolved as follows.
 
 ### Intentional exceptions
 
-- **`OllamaBackendTests.swift`** (BaseChatBackendsTests) — despite hitting code paths for Ollama, every test uses `MockURLProtocol` with UUID-scoped hostnames. No process ever contacts `localhost:11434`. Correctly classified as unit / integration in the Backends target. The real daemon E2E lives in `BaseChatE2ETests/OllamaE2ETests.swift` behind `HardwareRequirements.hasOllamaServer`.
-- **`FoundationBackendUnitTests.swift`** (BaseChatBackendsTests) — the filename states "unit". It uses `ProcessInfo` + `XCTSkip` to skip before iOS 26 / macOS 26, does not instantiate the system language model, and exercises only state-machine guards. Honest. The paired E2E path lives in `FoundationModelE2ETests.swift` (same target) which runs real Apple Intelligence inference.
-- **`FoundationModelE2ETests.swift`** (BaseChatBackendsTests) — named E2E, loads the real system model, skips on unsupported OS. Located in `BaseChatBackendsTests` for convenience of `#if canImport(FoundationModels)`. Doesn't run in CI on older SDKs (skips). Left as-is; flagging rather than relocating because the move would cost a conditional-compile guard without buying separation of concerns — the skip is airtight.
-- **`MLXBackendTests.swift` / `MLXBackendGenerationTests.swift` / `MLXBackendThinkingTests.swift` / `MLXCachePolicyTests.swift`** (BaseChatBackendsTests, `#if MLX`) — all use `MockMLXModelContainer` injected via `MLXBackend._inject`. No real weights loaded. Hardware-gated paths (`test_loadModel_invalidDirectory_throws`) exercise negative filesystem paths only. Honest as Backends target unit/integration.
-- **`LlamaBackendTests.swift` / `LlamaBackendMemoryPressureTests.swift`** (BaseChatBackendsTests, `#if Llama`) — instantiate `LlamaBackend` (which calls `llama_backend_init` on Metal) but never load a real GGUF. Skip on simulator / non-Apple-Silicon. Honest as hardware-gated integration in the Backends target; not E2E because they don't load real weights.
-- **`CloudBackendSSETests.swift`** (BaseChatBackendsTests, titled "Claude Backend SSE E2E") — uses `MockURLProtocol`, not real cloud APIs. Named E2E per this project's "Layer 4 — Headless E2E" convention documented in the Testing Pyramid. Not relocated because the convention is intentional and consistent with `ChatTurnRoundTripE2ETests`, `LoopDetectionE2ETests`, `ContextOverflowE2ETests`, etc., which also live in `BaseChatE2ETests` without hitting real backends.
-- **`ContextOverflowE2ETests.swift`** (BaseChatE2ETests) — pure computation over `PromptAssembler` + `HeuristicTokenizer`. No backend, no persistence, no I/O. Would be a unit test by the strict taxonomy; kept in `BaseChatE2ETests` because TESTING.md explicitly defines Layer 4 as "real components wired together ... with only the inference backend mocked". Passing a full prompt through the real assembler pipeline fits that definition.
-- **`DownloadValidationE2ETests.swift` / `DownloadValidateLoadGenerateE2ETests.swift`** (BaseChatE2ETests) — use real filesystem temp dirs and the real `BackgroundDownloadManager`. No network. Under the strict taxonomy these are integration tests; under the project's Layer-4 definition they qualify as headless E2E. Honest per the project convention.
-- **`BaseChatMLXIntegrationTests/MLXModelE2ETests.swift`** — target is named `...IntegrationTests` (legacy) but the file and class are `MLXModelE2ETests` and the suite loads a real MLX model through Metal. The CLAUDE.md Targets table already classifies this target as "Xcode-only real MLX model E2E tests", so the naming mismatch is cosmetic. Left as-is to avoid churning the Xcode scheme + CI exclusion rules.
-- **`BaseChatBackendsTests/AllBackendsAcceptPlanTests.swift` / `OpenAICompatEndpointTests.swift` / `CloudEndpointSelectionIntegrationTests.swift`** — all reference `http://localhost:11434` only as configuration strings; none perform actual requests without `MockURLProtocol` interception.
-- **`BaseChatCoreTests/APIEndpointTests.swift` / `APIEndpointValidationTests.swift` / `CustomEndpointValidationTests.swift`** — localhost URLs appear only as test input data passed to pure validation logic. No network activity.
-- **`BaseChatUITests/APIConfigurationLogicTests.swift`** — localhost reference is a string-equality assertion on `APIProvider.defaultBaseURL`. Pure unit.
-- **`BaseChatInferenceTests/SilentCatchAuditTest.swift`** — scans `Sources/*.swift` on disk at test time, so technically integration (filesystem I/O) rather than unit. Documented in file header as a source-audit check; treated as a "static analysis" lint-like test. Location in `BaseChatInferenceTests` is fine; not relocated.
-- **`BaseChatInferenceTests/KeychainIntegrationTests.swift`** — hits the real macOS/iOS Keychain via `SecItem`. Correctly named, correctly located.
-- **`BaseChatInferenceTests/BackgroundDownloadIntegrationTests.swift`** — real filesystem persistence. Correctly named.
-- **`BaseChatUITests/PersistenceIntegrationTests.swift` / `ChatExportIntegrationTests.swift` / `ContextEstimationIntegrationTests.swift` / `ChatViewModelIntegrationTests.swift` / `ChatViewModelScenePhaseIntegrationTests.swift` / `EditUserMessageIntegrationTests.swift`** — all honestly named integration suites that wire ChatViewModel + SwiftData + mock backends.
-- **`BaseChatUITests/*Tests.swift` without the `Integration` suffix** (e.g. `CancellationTests`, `ConcurrencyTests`, `PinMessageTests`, `SessionOverrideTests`) — most exercise ChatViewModel + SwiftData + mock and are therefore integration by the strict taxonomy, but live in `BaseChatUITests` which TESTING.md classifies as "Integration" in its Test Targets table. The naming is loose by project convention, not dishonest.
-- **`BaseChatInferenceTests/HuggingFaceServiceTests.swift`** — uses `MockURLProtocol`; no real HuggingFace traffic.
-- **`BaseChatFuzzTests/FindingsSinkTests.swift`** — uses a temp-dir sink, so strictly integration. Other files in the fuzz target are pure unit. Located with the rest of the fuzz suite; no move.
-- **`BaseChatBackendsTests/LlamaBackendMemoryPressureTests.swift`** — contains a hardware-free unit portion (callback API) at the top and an `#if Llama` hardware-gated portion at the bottom. Both are honest as written.
+- **`OllamaBackendTests.swift`** (ManifoldBackendsTests) — despite hitting code paths for Ollama, every test uses `MockURLProtocol` with UUID-scoped hostnames. No process ever contacts `localhost:11434`. Correctly classified as unit / integration in the Backends target. The real daemon E2E lives in `ManifoldE2ETests/OllamaE2ETests.swift` behind `HardwareRequirements.hasOllamaServer`.
+- **`FoundationBackendUnitTests.swift`** (ManifoldBackendsTests) — the filename states "unit". It uses `ProcessInfo` + `XCTSkip` to skip before iOS 26 / macOS 26, does not instantiate the system language model, and exercises only state-machine guards. Honest. The paired E2E path lives in `FoundationModelE2ETests.swift` (same target) which runs real Apple Intelligence inference.
+- **`FoundationModelE2ETests.swift`** (ManifoldBackendsTests) — named E2E, loads the real system model, skips on unsupported OS. Located in `ManifoldBackendsTests` for convenience of `#if canImport(FoundationModels)`. Doesn't run in CI on older SDKs (skips). Left as-is; flagging rather than relocating because the move would cost a conditional-compile guard without buying separation of concerns — the skip is airtight.
+- **`MLXBackendTests.swift` / `MLXBackendGenerationTests.swift` / `MLXBackendThinkingTests.swift` / `MLXCachePolicyTests.swift`** (ManifoldBackendsTests, `#if MLX`) — all use `MockMLXModelContainer` injected via `MLXBackend._inject`. No real weights loaded. Hardware-gated paths (`test_loadModel_invalidDirectory_throws`) exercise negative filesystem paths only. Honest as Backends target unit/integration.
+- **`LlamaBackendTests.swift` / `LlamaBackendMemoryPressureTests.swift`** (ManifoldBackendsTests, `#if Llama`) — instantiate `LlamaBackend` (which calls `llama_backend_init` on Metal) but never load a real GGUF. Skip on simulator / non-Apple-Silicon. Honest as hardware-gated integration in the Backends target; not E2E because they don't load real weights.
+- **`CloudBackendSSETests.swift`** (ManifoldBackendsTests, titled "Claude Backend SSE E2E") — uses `MockURLProtocol`, not real cloud APIs. Named E2E per this project's "Layer 4 — Headless E2E" convention documented in the Testing Pyramid. Not relocated because the convention is intentional and consistent with `ChatTurnRoundTripE2ETests`, `LoopDetectionE2ETests`, `ContextOverflowE2ETests`, etc., which also live in `ManifoldE2ETests` without hitting real backends.
+- **`ContextOverflowE2ETests.swift`** (ManifoldE2ETests) — pure computation over `PromptAssembler` + `HeuristicTokenizer`. No backend, no persistence, no I/O. Would be a unit test by the strict taxonomy; kept in `ManifoldE2ETests` because TESTING.md explicitly defines Layer 4 as "real components wired together ... with only the inference backend mocked". Passing a full prompt through the real assembler pipeline fits that definition.
+- **`DownloadValidationE2ETests.swift` / `DownloadValidateLoadGenerateE2ETests.swift`** (ManifoldE2ETests) — use real filesystem temp dirs and the real `BackgroundDownloadManager`. No network. Under the strict taxonomy these are integration tests; under the project's Layer-4 definition they qualify as headless E2E. Honest per the project convention.
+- **`ManifoldMLXIntegrationTests/MLXModelE2ETests.swift`** — target is named `...IntegrationTests` (legacy) but the file and class are `MLXModelE2ETests` and the suite loads a real MLX model through Metal. The CLAUDE.md Targets table already classifies this target as "Xcode-only real MLX model E2E tests", so the naming mismatch is cosmetic. Left as-is to avoid churning the Xcode scheme + CI exclusion rules.
+- **`ManifoldBackendsTests/AllBackendsAcceptPlanTests.swift` / `OpenAICompatEndpointTests.swift` / `CloudEndpointSelectionIntegrationTests.swift`** — all reference `http://localhost:11434` only as configuration strings; none perform actual requests without `MockURLProtocol` interception.
+- **`ManifoldCoreTests/APIEndpointTests.swift` / `APIEndpointValidationTests.swift` / `CustomEndpointValidationTests.swift`** — localhost URLs appear only as test input data passed to pure validation logic. No network activity.
+- **`ManifoldUITests/APIConfigurationLogicTests.swift`** — localhost reference is a string-equality assertion on `APIProvider.defaultBaseURL`. Pure unit.
+- **`ManifoldInferenceTests/SilentCatchAuditTest.swift`** — scans `Sources/*.swift` on disk at test time, so technically integration (filesystem I/O) rather than unit. Documented in file header as a source-audit check; treated as a "static analysis" lint-like test. Location in `ManifoldInferenceTests` is fine; not relocated.
+- **`ManifoldInferenceTests/KeychainIntegrationTests.swift`** — hits the real macOS/iOS Keychain via `SecItem`. Correctly named, correctly located.
+- **`ManifoldInferenceTests/BackgroundDownloadIntegrationTests.swift`** — real filesystem persistence. Correctly named.
+- **`ManifoldUITests/PersistenceIntegrationTests.swift` / `ChatExportIntegrationTests.swift` / `ContextEstimationIntegrationTests.swift` / `ChatViewModelIntegrationTests.swift` / `ChatViewModelScenePhaseIntegrationTests.swift` / `EditUserMessageIntegrationTests.swift`** — all honestly named integration suites that wire ChatViewModel + SwiftData + mock backends.
+- **`ManifoldUITests/*Tests.swift` without the `Integration` suffix** (e.g. `CancellationTests`, `ConcurrencyTests`, `PinMessageTests`, `SessionOverrideTests`) — most exercise ChatViewModel + SwiftData + mock and are therefore integration by the strict taxonomy, but live in `ManifoldUITests` which TESTING.md classifies as "Integration" in its Test Targets table. The naming is loose by project convention, not dishonest.
+- **`ManifoldInferenceTests/HuggingFaceServiceTests.swift`** — uses `MockURLProtocol`; no real HuggingFace traffic.
+- **`ManifoldFuzzTests/FindingsSinkTests.swift`** — uses a temp-dir sink, so strictly integration. Other files in the fuzz target are pure unit. Located with the rest of the fuzz suite; no move.
+- **`ManifoldBackendsTests/LlamaBackendMemoryPressureTests.swift`** — contains a hardware-free unit portion (callback API) at the top and an `#if Llama` hardware-gated portion at the bottom. Both are honest as written.
 
 ### Actions taken in this PR
 
-1. `git mv Tests/BaseChatBackendsTests/LlamaBackendLoadSerializationCharacterizationTests.swift Tests/BaseChatE2ETests/LlamaBackendLoadSerializationCharacterizationE2ETests.swift` — real-GGUF test moved to its correct target.
+1. `git mv Tests/ManifoldBackendsTests/LlamaBackendLoadSerializationCharacterizationTests.swift Tests/ManifoldE2ETests/LlamaBackendLoadSerializationCharacterizationE2ETests.swift` — real-GGUF test moved to its correct target.
 2. Class rename: `LlamaBackendLoadSerializationCharacterizationTests` → `LlamaBackendLoadSerializationCharacterizationE2ETests` for matching naming. No external references to update (grep clean).
 3. `SwiftDataPersistenceProviderTests.swift` header docstring: "Unit tests" → "Integration tests", with an explicit pointer to this audit.
 4. This section added to TESTING.md.
 
-No other relocations were needed. The audit confirms the `BaseChatE2ETests` suite is honestly named under the project's documented Layer 4 definition, and that `BaseChatBackendsTests` no longer contains any file that loads real model weights.
+No other relocations were needed. The audit confirms the `ManifoldE2ETests` suite is honestly named under the project's documented Layer 4 definition, and that `ManifoldBackendsTests` no longer contains any file that loads real model weights.
 
 ---
 

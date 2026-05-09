@@ -24,7 +24,7 @@ because the worker environment has no Ollama daemon.
 ollama --version   # expect: ollama version is 0.3.12
 
 # 2. Run capture script
-swift run bck-tools capture-ollama-tool-calls \
+swift run manifold-tools capture-ollama-tool-calls \
     --model llama3.1:8b \
     --out Tests/Fixtures/ollama/tool-calls/0.3.12/
 

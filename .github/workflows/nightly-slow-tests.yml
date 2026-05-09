@@ -4,7 +4,7 @@ name: Nightly slow tests
 #  - LargeSessionListPerformanceTests — XCTMeasure perf baselines (~65s)
 #  - IntegratedStreamingPerformanceTests — full pipeline TTFT/cadence/E2E baselines (~20s)
 #  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s)
-#  - BaseChatMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
+#  - ManifoldMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
 # These are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
 # unconditionally (CI is also unset locally). MCP E2E remains separately gated
@@ -60,26 +60,26 @@ jobs:
         id: test-large-session-list
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-large-session-list.log
-        run: scripts/test.sh --filter "BaseChatUITests.LargeSessionListPerformanceTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldUITests.LargeSessionListPerformanceTests" --disable-default-traits --skip-update --min-passed 1
 
       - name: Test — IntegratedStreamingPerformanceTests
         id: test-integrated-streaming
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-integrated-streaming.log
-        run: scripts/test.sh --filter "BaseChatUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update --min-passed 1
 
       - name: Test — TrafficBoundaryAuditTest
         id: test-traffic-boundary-audit
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
-        run: scripts/test.sh --filter "BaseChatInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
 
       - name: Test — MCP streamable HTTP E2E smoke
         id: test-mcp-e2e-smoke
         env:
           RUN_MCP_E2E: "1"
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-e2e-smoke.log
-        run: scripts/test.sh --filter "BaseChatMCPE2ESmokeTests" --disable-default-traits --traits MCP --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldMCPE2ESmokeTests" --disable-default-traits --traits MCP --skip-update --min-passed 1
 
       - name: Test — Operational tier (soak + migration)
         id: test-operational
@@ -87,9 +87,9 @@ jobs:
           RUN_OPERATIONAL_TESTS: "1"
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-operational.log
         run: |
-          scripts/test.sh --filter "BaseChatPersistenceSwiftDataTests.SchemaV3MigrationTests" \
+          scripts/test.sh --filter "ManifoldPersistenceSwiftDataTests.SchemaV3MigrationTests" \
             --disable-default-traits --skip-update --min-passed 1
-          scripts/test.sh --filter "BaseChatRuntimeTests.SoakRunnerTests" \
+          scripts/test.sh --filter "ManifoldRuntimeTests.SoakRunnerTests" \
             --disable-default-traits --skip-update --min-passed 1
 
       - name: Stage test diagnostics

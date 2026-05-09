@@ -1,6 +1,6 @@
 import SwiftUI
-import BaseChatCore
-import BaseChatUI
+import ManifoldCore
+import ManifoldUI
 
 struct ContentView: View {
     var body: some View {

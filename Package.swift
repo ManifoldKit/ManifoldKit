@@ -9,58 +9,58 @@
 //     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
 //     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
 //     treats that as the full enabled-trait set, so the MLX/Llama/HuggingFace
-//     defaults drop out and BaseChatBackends compiles to FoundationBackend +
+//     defaults drop out and ManifoldBackends compiles to FoundationBackend +
 //     cloud-stub bodies only (no MLX checkout, no LlamaSwift xcframework, no
 //     swift-huggingface). Mutual exclusion with MLX/Llama/HuggingFace is
 //     enforced by the consumer override semantics, not by the package itself.
 //   - The CI gate `foundation-only-build` (`.github/workflows/ci.yml`)
-//     enforces a ≤ 5 MB BaseChatBackends artifact and zero MLX/Llama symbol
+//     enforces a ≤ 5 MB ManifoldBackends artifact and zero MLX/Llama symbol
 //     leaks under the FoundationOnly trait.
 
 import PackageDescription
 import CompilerPluginSupport
 
 let package = Package(
-    name: "BaseChatKit",
+    name: "ManifoldKit",
     platforms: [
         .iOS(.v18),
         .macOS(.v15),
     ],
     products: [
-        // Umbrella product. Re-exports BaseChatInference + BaseChatRuntime +
-        // BaseChatPersistenceSwiftData + BaseChatBackends + BaseChatUI so a
-        // typical app can `import BaseChatKit` and skip the 4–6 import dance.
+        // Umbrella product. Re-exports ManifoldInference + ManifoldRuntime +
+        // ManifoldPersistenceSwiftData + ManifoldBackends + ManifoldUI so a
+        // typical app can `import ManifoldKit` and skip the 4–6 import dance.
         // Specialised modules (MCP, Voice, ModelManagement, AppIntents, …) stay
         // explicit imports because not every host wants them in the build graph.
-        .library(name: "BaseChatKit", targets: ["BaseChatKit"]),
-        .library(name: "BaseChatInference", targets: ["BaseChatInference"]),
-        .library(name: "BaseChatMCP", targets: ["BaseChatMCP"]),
-        .library(name: "BaseChatRuntime", targets: ["BaseChatRuntime"]),
-        .library(name: "BaseChatPersistenceSwiftData", targets: ["BaseChatPersistenceSwiftData"]),
-        // Initiative I7 split BaseChatBackends into 5 trait-gated source
-        // targets. The legacy `BaseChatBackends` target/module is preserved
-        // (renamed only on disk to `Sources/BaseChatBackendsUmbrella` to make
-        // its role visible) so existing `import BaseChatBackends` consumers
+        .library(name: "ManifoldKit", targets: ["ManifoldKit"]),
+        .library(name: "ManifoldInference", targets: ["ManifoldInference"]),
+        .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
+        .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
+        .library(name: "ManifoldPersistenceSwiftData", targets: ["ManifoldPersistenceSwiftData"]),
+        // Initiative I7 split ManifoldBackends into 5 trait-gated source
+        // targets. The legacy `ManifoldBackends` target/module is preserved
+        // (renamed only on disk to `Sources/ManifoldBackendsUmbrella` to make
+        // its role visible) so existing `import ManifoldBackends` consumers
         // keep compiling — the target body is now a thin re-export shim plus
         // the cross-family registration glue (DefaultBackends and the
         // BackendRegistrar conformances).
-        .library(name: "BaseChatBackends", targets: ["BaseChatBackends"]),
-        .library(name: "BaseChatCloudCore", targets: ["BaseChatCloudCore"]),
-        .library(name: "BaseChatMLX", targets: ["BaseChatMLX"]),
-        .library(name: "BaseChatLlama", targets: ["BaseChatLlama"]),
-        .library(name: "BaseChatFoundation", targets: ["BaseChatFoundation"]),
-        .library(name: "BaseChatCloud", targets: ["BaseChatCloud"]),
-        .library(name: "BaseChatUI", targets: ["BaseChatUI"]),
-        .library(name: "BaseChatUIModelManagement", targets: ["BaseChatUIModelManagement"]),
-        .library(name: "BaseChatHuggingFace", targets: ["BaseChatHuggingFace"]),
-        .library(name: "BaseChatAnyLanguageModelBridge", targets: ["BaseChatAnyLanguageModelBridge"]),
-        .library(name: "BaseChatVoice", targets: ["BaseChatVoice"]),
-        .library(name: "BaseChatFuzz", targets: ["BaseChatFuzz"]),
+        .library(name: "ManifoldBackends", targets: ["ManifoldBackends"]),
+        .library(name: "ManifoldCloudCore", targets: ["ManifoldCloudCore"]),
+        .library(name: "ManifoldMLX", targets: ["ManifoldMLX"]),
+        .library(name: "ManifoldLlama", targets: ["ManifoldLlama"]),
+        .library(name: "ManifoldFoundation", targets: ["ManifoldFoundation"]),
+        .library(name: "ManifoldCloud", targets: ["ManifoldCloud"]),
+        .library(name: "ManifoldUI", targets: ["ManifoldUI"]),
+        .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
+        .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
+        .library(name: "ManifoldAnyLanguageModelBridge", targets: ["ManifoldAnyLanguageModelBridge"]),
+        .library(name: "ManifoldVoice", targets: ["ManifoldVoice"]),
+        .library(name: "ManifoldFuzz", targets: ["ManifoldFuzz"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
-        .library(name: "BaseChatTools", targets: ["BaseChatTools"]),
-        .executable(name: "bck-tools", targets: ["bck-tools"]),
-        .library(name: "BaseChatAppIntents", targets: ["BaseChatAppIntents"]),
-        .executable(name: "BaseChatServer", targets: ["BaseChatServer"]),
+        .library(name: "ManifoldTools", targets: ["ManifoldTools"]),
+        .executable(name: "manifold-tools", targets: ["manifold-tools"]),
+        .library(name: "ManifoldAppIntents", targets: ["ManifoldAppIntents"]),
+        .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
     ],
     traits: [
         .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
@@ -70,21 +70,21 @@ let package = Package(
         .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
         .trait(name: "Ollama", description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major."),
         .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
-        .trait(name: "MCP", description: "Enable the BaseChatMCP module and MCP client surface."),
-        .trait(name: "MCPBuiltinCatalog", description: "Enable BaseChatMCP's built-in catalog descriptors."),
-        .trait(name: "Voice", description: "Enable the BaseChatVoice speech I/O spike and voice composer UI."),
-        .trait(name: "Tools", description: "Enable the BaseChatTools end-to-end tool-calling validation harness and its `bck-tools` CLI."),
-        .trait(name: "AppIntents", description: "Enable the BaseChatAppIntents AppIntent ↔ ToolDefinition bridge."),
-        .trait(name: "Server", description: "Enable BaseChatServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
+        .trait(name: "MCP", description: "Enable the ManifoldMCP module and MCP client surface."),
+        .trait(name: "MCPBuiltinCatalog", description: "Enable ManifoldMCP's built-in catalog descriptors."),
+        .trait(name: "Voice", description: "Enable the ManifoldVoice speech I/O spike and voice composer UI."),
+        .trait(name: "Tools", description: "Enable the ManifoldTools end-to-end tool-calling validation harness and its `manifold-tools` CLI."),
+        .trait(name: "AppIntents", description: "Enable the ManifoldAppIntents AppIntent ↔ ToolDefinition bridge."),
+        .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
-        // Fuzz is intentionally NOT a default trait. Enabling it adds BaseChatBackends
+        // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
         // scripts/fuzz.sh, which passes --traits Fuzz,MLX,Llama explicitly.
         .trait(name: "Fuzz", description: "Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test."),
         // FoundationOnly is an explicit App Store-lean marker. Consumers that
         // pass `traits: ["FoundationOnly"]` override the default trait set
-        // (which is MLX + Llama + HuggingFace), so BaseChatBackends compiles
+        // (which is MLX + Llama + HuggingFace), so ManifoldBackends compiles
         // without MLX, llama.cpp, or swift-huggingface — keeping the BCK
         // overhead under 5 MB and dropping ~700 MB of binary dependencies
         // from the resolved graph. Apple Foundation Models still work via
@@ -132,7 +132,7 @@ let package = Package(
         // (off by default) so the ~647-file swift-syntax tree stays out of
         // default builds. Consumers using `@ToolSchema` must add `--traits Macros`.
         .macro(
-            name: "BaseChatMacrosPlugin",
+            name: "ManifoldMacrosPlugin",
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax", condition: .when(traits: ["Macros"])),
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax", condition: .when(traits: ["Macros"])),
@@ -140,7 +140,7 @@ let package = Package(
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax", condition: .when(traits: ["Macros"])),
                 .product(name: "SwiftDiagnostics", package: "swift-syntax", condition: .when(traits: ["Macros"])),
             ],
-            path: "Sources/BaseChatMacrosPlugin",
+            path: "Sources/ManifoldMacrosPlugin",
             swiftSettings: [
                 .define("Macros", .when(traits: ["Macros"])),
             ]
@@ -148,24 +148,24 @@ let package = Package(
         // Inference: models, protocols, services — no SwiftData, no heavy ML
         // deps, no persistence ports. The persistence-port protocols
         // (MessageStore, SessionStore, ChatPersistenceError, MessageSearchHit,
-        // and the post-write hooks) live in BaseChatRuntime alongside the
+        // and the post-write hooks) live in ManifoldRuntime alongside the
         // ConversationRuntime use case that consumes them. The records they
         // traffic in (ChatMessageRecord, ChatSessionRecord, MessagePart,
         // MessageRole) stay here because inference services (PromptAssembler,
         // ContextWindowManager, TranscriptHealer) also consume them and the
-        // dep DAG points BaseChatRuntime → BaseChatInference, not the other way.
+        // dep DAG points ManifoldRuntime → ManifoldInference, not the other way.
         // Hosts the @ToolSchema attribute declaration so callers get the macro
         // for free wherever JSONSchemaValue is in scope. The macro plugin and
         // its swift-syntax dependency are trait-gated (`Macros`, off by
-        // default); the `Sources/BaseChatInference/Macros/ToolSchema.swift`
+        // default); the `Sources/ManifoldInference/Macros/ToolSchema.swift`
         // declaration is wrapped in `#if Macros` so the public API is only
         // visible when the trait is enabled.
         .target(
-            name: "BaseChatInference",
+            name: "ManifoldInference",
             dependencies: [
-                .target(name: "BaseChatMacrosPlugin", condition: .when(traits: ["Macros"])),
+                .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
-            path: "Sources/BaseChatInference",
+            path: "Sources/ManifoldInference",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
@@ -178,9 +178,9 @@ let package = Package(
         ),
         // MCP: Model Context Protocol client surface and tool bridge.
         .target(
-            name: "BaseChatMCP",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatMCP",
+            name: "ManifoldMCP",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldMCP",
             swiftSettings: [
                 .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
             ]
@@ -189,25 +189,25 @@ let package = Package(
         // SamplerPresetStore, BenchmarkCache), use cases (PromptContextPipeline,
         // ChatExportService, SessionListService, ConversationRuntime), and
         // session-list orchestration. No SwiftData, no SwiftUI, no Observation.
-        // MessageStore and SessionStore moved here from BaseChatInference in
+        // MessageStore and SessionStore moved here from ManifoldInference in
         // initiative I4 so persistence ports live alongside the use cases that
         // consume them.
         .target(
-            name: "BaseChatRuntime",
+            name: "ManifoldRuntime",
             dependencies: [
-                .target(name: "BaseChatInference"),
+                .target(name: "ManifoldInference"),
             ],
-            path: "Sources/BaseChatRuntime"
+            path: "Sources/ManifoldRuntime"
         ),
         // PersistenceSwiftData: SwiftData schema (@Model types), container factory,
         // SwiftData adapter implementations, and the full-stack bootstrap class.
         .target(
-            name: "BaseChatPersistenceSwiftData",
+            name: "ManifoldPersistenceSwiftData",
             dependencies: [
-                .target(name: "BaseChatRuntime"),
-                .target(name: "BaseChatInference"),
+                .target(name: "ManifoldRuntime"),
+                .target(name: "ManifoldInference"),
             ],
-            path: "Sources/BaseChatPersistenceSwiftData"
+            path: "Sources/ManifoldPersistenceSwiftData"
         ),
         // Vendored StableDiffusion (from mlx-swift-examples, MIT License).
         // All sources are inside #if MLX guards so non-MLX builds compile to empty files.
@@ -226,7 +226,7 @@ let package = Package(
         // ─────────────────────────────────────────────────────────────────
         // Backends — initiative I7 split.
         //
-        // The original 11.7k-LOC `BaseChatBackends` target hosted four
+        // The original 11.7k-LOC `ManifoldBackends` target hosted four
         // unrelated runtimes (MLX / llama.cpp / Foundation / Cloud). Any
         // single-line change recompiled all 11.7k LOC; cross-runtime symbol
         // visibility forced 28 `@unchecked Sendable` conformances and three
@@ -236,40 +236,40 @@ let package = Package(
         // file `#if`s smeared across the body.
         //
         // Trait-gating rule (per CLAUDE.md): gate the consumer→family edge,
-        // not the family→library edge. `BaseChatCloud → BaseChatCloudCore` is
-        // unconditional (always linked together); `Consumer → BaseChatCloud`
+        // not the family→library edge. `ManifoldCloud → ManifoldCloudCore` is
+        // unconditional (always linked together); `Consumer → ManifoldCloud`
         // is gated by `CloudSaaS || Ollama` so a `FoundationOnly` build never
         // pulls Cloud sources at all.
         //
-        // The legacy `BaseChatBackends` target/module is preserved as a thin
-        // re-export shim (sources moved to `Sources/BaseChatBackendsUmbrella/`
+        // The legacy `ManifoldBackends` target/module is preserved as a thin
+        // re-export shim (sources moved to `Sources/ManifoldBackendsUmbrella/`
         // to make the role obvious in directory listings) that hosts
         // cross-family glue (`DefaultBackends`, the per-family
         // `BackendRegistrar` conformances) and `@_exported import`s the four
-        // family targets so existing `import BaseChatBackends` consumers keep
+        // family targets so existing `import ManifoldBackends` consumers keep
         // compiling without edits.
         // ─────────────────────────────────────────────────────────────────
 
-        // BaseChatCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
+        // ManifoldCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
         // infrastructure. Always linked — the file bodies are themselves
         // gated by `#if Ollama || CloudSaaS` so a FoundationOnly build still
         // compiles this target to empty objects (cheap) and links them.
         .target(
-            name: "BaseChatCloudCore",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatCloudCore",
+            name: "ManifoldCloudCore",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldCloudCore",
             swiftSettings: [
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
             ]
         ),
 
-        // BaseChatMLX: MLX inference backend, resource arbiter, capability
+        // ManifoldMLX: MLX inference backend, resource arbiter, capability
         // probe, MLX-specific tool dialect.
         .target(
-            name: "BaseChatMLX",
+            name: "ManifoldMLX",
             dependencies: [
-                "BaseChatInference",
+                "ManifoldInference",
                 .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXRandom", package: "mlx-swift", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXLLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
@@ -285,74 +285,74 @@ let package = Package(
                 // Vendored StableDiffusion (Sources/StableDiffusion), used by MLXDiffusionBackend.
                 .target(name: "StableDiffusion", condition: .when(traits: ["MLX"])),
             ],
-            path: "Sources/BaseChatMLX",
+            path: "Sources/ManifoldMLX",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
 
-        // BaseChatLlama: llama.cpp (GGUF) inference, generation driver,
+        // ManifoldLlama: llama.cpp (GGUF) inference, generation driver,
         // process-lifecycle refcount, embedding backend, GGUF-specific tool
         // call parser, tokenizer adapters.
         .target(
-            name: "BaseChatLlama",
+            name: "ManifoldLlama",
             dependencies: [
-                "BaseChatInference",
+                "ManifoldInference",
                 .product(name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
             ],
-            path: "Sources/BaseChatLlama",
+            path: "Sources/ManifoldLlama",
             swiftSettings: [
                 .define("Llama", .when(traits: ["Llama"])),
             ]
         ),
 
-        // BaseChatFoundation: Apple Foundation Models bridge. No trait —
+        // ManifoldFoundation: Apple Foundation Models bridge. No trait —
         // gated by OS availability via `#if canImport(FoundationModels)` and
         // `@available(iOS 26, macOS 26, *)`.
         .target(
-            name: "BaseChatFoundation",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatFoundation"
+            name: "ManifoldFoundation",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldFoundation"
         ),
 
-        // BaseChatCloud: SaaS + LAN cloud backends (OpenAI Chat Completions,
+        // ManifoldCloud: SaaS + LAN cloud backends (OpenAI Chat Completions,
         // OpenAI Responses, Anthropic Claude, Ollama). Inherits the shared
-        // SSE / TLS / DNS-rebind plumbing from BaseChatCloudCore.
+        // SSE / TLS / DNS-rebind plumbing from ManifoldCloudCore.
         .target(
-            name: "BaseChatCloud",
+            name: "ManifoldCloud",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatCloudCore",
+                "ManifoldInference",
+                "ManifoldCloudCore",
             ],
-            path: "Sources/BaseChatCloud",
+            path: "Sources/ManifoldCloud",
             swiftSettings: [
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
             ]
         ),
 
-        // BaseChatBackends: the legacy umbrella module, now a thin re-export
+        // ManifoldBackends: the legacy umbrella module, now a thin re-export
         // shim. Hosts cross-family registration glue (`DefaultBackends`, the
         // per-family `BackendRegistrar` conformances `MLXBackends` /
         // `LlamaBackends` / `FoundationBackends` / `CloudBackends`) and
         // `@_exported import`s the four family targets so existing
-        // `import BaseChatBackends` consumers keep compiling without edits.
-        // The target name stays `BaseChatBackends` (module name follows the
-        // target) so `@testable import BaseChatBackends` is preserved; the
-        // sources live under `Sources/BaseChatBackendsUmbrella/` to make the
+        // `import ManifoldBackends` consumers keep compiling without edits.
+        // The target name stays `ManifoldBackends` (module name follows the
+        // target) so `@testable import ManifoldBackends` is preserved; the
+        // sources live under `Sources/ManifoldBackendsUmbrella/` to make the
         // role obvious from the directory listing.
         .target(
-            name: "BaseChatBackends",
+            name: "ManifoldBackends",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatCloudCore",
-                "BaseChatFoundation",
-                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                "ManifoldInference",
+                "ManifoldCloudCore",
+                "ManifoldFoundation",
+                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
             ],
-            path: "Sources/BaseChatBackendsUmbrella",
+            path: "Sources/ManifoldBackendsUmbrella",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
@@ -364,9 +364,9 @@ let package = Package(
         ),
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
         .target(
-            name: "BaseChatUI",
-            dependencies: ["BaseChatRuntime", "BaseChatInference"],
-            path: "Sources/BaseChatUI",
+            name: "ManifoldUI",
+            dependencies: ["ManifoldRuntime", "ManifoldInference"],
+            path: "Sources/ManifoldUI",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
@@ -374,21 +374,21 @@ let package = Package(
             ]
         ),
         // Model management UI: download/storage browser, API endpoint editors,
-        // remote-server configuration. Peeled out of BaseChatUI in v2.0 so a
+        // remote-server configuration. Peeled out of ManifoldUI in v2.0 so a
         // chat-only host can ship without ~1,800 LOC of management surface.
-        // Depends on BaseChatUI (the moved views consume `ChatViewModel` via
-        // `@Environment`); BaseChatUI MUST NOT depend on this target — that
+        // Depends on ManifoldUI (the moved views consume `ChatViewModel` via
+        // `@Environment`); ManifoldUI MUST NOT depend on this target — that
         // would close the dep cycle. The CI lint in `.github/workflows/ci.yml`
         // enforces this.
         .target(
-            name: "BaseChatUIModelManagement",
+            name: "ManifoldUIModelManagement",
             dependencies: [
-                "BaseChatUI",
-                "BaseChatRuntime",
-                "BaseChatInference",
-                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "ManifoldUI",
+                "ManifoldRuntime",
+                "ManifoldInference",
+                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
-            path: "Sources/BaseChatUIModelManagement",
+            path: "Sources/ManifoldUIModelManagement",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
@@ -396,63 +396,63 @@ let package = Package(
             ]
         ),
         .target(
-            name: "BaseChatHuggingFace",
+            name: "ManifoldHuggingFace",
             dependencies: [
-                "BaseChatInference",
+                "ManifoldInference",
                 .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
             ],
-            path: "Sources/BaseChatHuggingFace",
+            path: "Sources/ManifoldHuggingFace",
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .target(
-            name: "BaseChatAnyLanguageModelBridge",
+            name: "ManifoldAnyLanguageModelBridge",
             dependencies: [
-                "BaseChatInference",
+                "ManifoldInference",
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
-            path: "Sources/BaseChatAnyLanguageModelBridge",
+            path: "Sources/ManifoldAnyLanguageModelBridge",
             swiftSettings: [
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
-        // BaseChatKit: umbrella library. Single-file `Exports.swift`
+        // ManifoldKit: umbrella library. Single-file `Exports.swift`
         // re-exports the four most-imported modules so app code can write
-        // `import BaseChatKit` and reach `ChatView`, `ChatViewModel`,
-        // `BaseChatBootstrap`, `DefaultBackends`, and the public Inference
+        // `import ManifoldKit` and reach `ChatView`, `ChatViewModel`,
+        // `ManifoldBootstrap`, `DefaultBackends`, and the public Inference
         // surface from one import. Specialised modules stay opt-in (see
         // `Exports.swift` for the rationale).
         .target(
-            name: "BaseChatKit",
+            name: "ManifoldKit",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatBackends",
-                "BaseChatUI",
+                "ManifoldInference",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldBackends",
+                "ManifoldUI",
             ],
-            path: "Sources/BaseChatKit"
+            path: "Sources/ManifoldKit"
         ),
         // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
         .target(
-            name: "BaseChatVoice",
-            dependencies: ["BaseChatUI"],
-            path: "Sources/BaseChatVoice",
+            name: "ManifoldVoice",
+            dependencies: ["ManifoldUI"],
+            path: "Sources/ManifoldVoice",
             swiftSettings: [
                 .define("Voice", .when(traits: ["Voice"])),
             ]
         ),
         // Shared test mocks and utilities
         .target(
-            name: "BaseChatTestSupport",
+            name: "ManifoldTestSupport",
             dependencies: [
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
             ],
-            path: "Sources/BaseChatTestSupport",
+            path: "Sources/ManifoldTestSupport",
             exclude: ["FuzzCalibrationCorpus"],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
@@ -463,52 +463,52 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatCoreTests",
+            name: "ManifoldCoreTests",
             dependencies: [
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ]
         ),
-        // BaseChatRuntime-only tests: protocol contracts, value types, and
+        // ManifoldRuntime-only tests: protocol contracts, value types, and
         // services that don't import SwiftData. Tests that exercise both
-        // BaseChatRuntime and BaseChatPersistenceSwiftData (e.g. the
-        // adapter-against-port integrations) stay in BaseChatCoreTests.
+        // ManifoldRuntime and ManifoldPersistenceSwiftData (e.g. the
+        // adapter-against-port integrations) stay in ManifoldCoreTests.
         .testTarget(
-            name: "BaseChatRuntimeTests",
+            name: "ManifoldRuntimeTests",
             dependencies: [
-                "BaseChatRuntime",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldRuntime",
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ]
         ),
-        // BaseChatPersistenceSwiftData-only tests: SwiftData @Model schema,
-        // ModelContainerFactory, BaseChatBootstrap, and the SwiftData adapter
+        // ManifoldPersistenceSwiftData-only tests: SwiftData @Model schema,
+        // ModelContainerFactory, ManifoldBootstrap, and the SwiftData adapter
         // implementations of the runtime ports.
         .testTarget(
-            name: "BaseChatPersistenceSwiftDataTests",
+            name: "ManifoldPersistenceSwiftDataTests",
             dependencies: [
-                "BaseChatPersistenceSwiftData",
-                "BaseChatRuntime",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldRuntime",
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ]
         ),
         // Tests for the shared test-helper module itself (e.g. `withTimeout`).
         // Kept as a dedicated target so hang-sabotage helpers don't accrete
         // inside product-suite test targets and so they can be exercised
-        // with `swift test --filter BaseChatTestSupportTests`.
+        // with `swift test --filter ManifoldTestSupportTests`.
         .testTarget(
-            name: "BaseChatTestSupportTests",
-            dependencies: ["BaseChatTestSupport"]
+            name: "ManifoldTestSupportTests",
+            dependencies: ["ManifoldTestSupport"]
         ),
         .testTarget(
-            name: "BaseChatInferenceTests",
+            name: "ManifoldInferenceTests",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatTestSupport",
-                .target(name: "BaseChatMacrosPlugin", condition: .when(traits: ["Macros"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
+                .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax", condition: .when(traits: ["Macros"])),
             ],
             // SilentCatchAuditTest reads `silent_catch_allowlist.txt` directly
@@ -521,19 +521,19 @@ let package = Package(
                 .define("Macros", .when(traits: ["Macros"])),
             ]
         ),
-        // Swift Testing suites split from BaseChatInferenceTests to prevent a
+        // Swift Testing suites split from ManifoldInferenceTests to prevent a
         // libmalloc double-free SIGABRT that occurs when XCTest and Swift Testing
         // harnesses both initialise in the same process (~25% of CI runs).
         .testTarget(
-            name: "BaseChatInferenceSwiftTestingTests",
-            dependencies: ["BaseChatInference", "BaseChatTestSupport"]
+            name: "ManifoldInferenceSwiftTestingTests",
+            dependencies: ["ManifoldInference", "ManifoldTestSupport"]
         ),
         .testTarget(
-            name: "BaseChatMCPTests",
+            name: "ManifoldMCPTests",
             dependencies: [
-                .target(name: "BaseChatMCP", condition: .when(traits: ["MCP"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             resources: [.copy("Fixtures")],
             swiftSettings: [
@@ -541,37 +541,37 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatMCPE2ETests",
+            name: "ManifoldMCPE2ETests",
             dependencies: [
-                .target(name: "BaseChatMCP", condition: .when(traits: ["MCP"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             swiftSettings: [
                 .define("MCP", .when(traits: ["MCP"])),
             ]
         ),
         // Umbrella test target — covers every family target via per-trait
-        // conditional deps so `@testable import BaseChatMLX`,
-        // `@testable import BaseChatLlama`, etc. resolve from the same
-        // suite. The `BaseChatBackends` dep also keeps
-        // `@testable import BaseChatBackends` working for tests that exercise
+        // conditional deps so `@testable import ManifoldMLX`,
+        // `@testable import ManifoldLlama`, etc. resolve from the same
+        // suite. The `ManifoldBackends` dep also keeps
+        // `@testable import ManifoldBackends` working for tests that exercise
         // the umbrella's cross-family glue (DefaultBackends, BackendRegistrar
         // conformances).
         .testTarget(
-            name: "BaseChatBackendsTests",
+            name: "ManifoldBackendsTests",
             dependencies: [
-                "BaseChatBackends",
-                "BaseChatCloudCore",
-                "BaseChatFoundation",
-                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
-                "BaseChatUI",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldBackends",
+                "ManifoldCloudCore",
+                "ManifoldFoundation",
+                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                "ManifoldUI",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
             ],
             swiftSettings: [
@@ -584,20 +584,20 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatUITests",
+            name: "ManifoldUITests",
             dependencies: [
-                "BaseChatUI",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldUI",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
                 .product(name: "ViewInspector", package: "ViewInspector"),
             ]
         ),
         .testTarget(
-            name: "BaseChatVoiceTests",
+            name: "ManifoldVoiceTests",
             dependencies: [
-                .target(name: "BaseChatVoice", condition: .when(traits: ["Voice"])),
+                .target(name: "ManifoldVoice", condition: .when(traits: ["Voice"])),
                 .product(name: "ViewInspector", package: "ViewInspector"),
             ],
             swiftSettings: [
@@ -605,69 +605,69 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatUIModelManagementTests",
+            name: "ManifoldUIModelManagementTests",
             dependencies: [
-                "BaseChatUIModelManagement",
-                "BaseChatUI",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldUIModelManagement",
+                "ManifoldUI",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
-            name: "BaseChatHuggingFaceTests",
+            name: "ManifoldHuggingFaceTests",
             dependencies: [
-                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
                 .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
             ],
-            path: "Tests/BaseChatHuggingFaceTests",
+            path: "Tests/ManifoldHuggingFaceTests",
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
-            name: "BaseChatAnyLanguageModelBridgeTests",
+            name: "ManifoldAnyLanguageModelBridgeTests",
             dependencies: [
-                .target(name: "BaseChatAnyLanguageModelBridge", condition: .when(traits: ["AnyLanguageModel"])),
-                "BaseChatInference",
+                .target(name: "ManifoldAnyLanguageModelBridge", condition: .when(traits: ["AnyLanguageModel"])),
+                "ManifoldInference",
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
-            path: "Tests/BaseChatAnyLanguageModelBridgeTests",
+            path: "Tests/ManifoldAnyLanguageModelBridgeTests",
             swiftSettings: [
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
-        // BaseChatServer: OpenAI-compatible HTTP server. Shipped as a single
+        // ManifoldServer: OpenAI-compatible HTTP server. Shipped as a single
         // executable target — the routing layer, trait-aware backend provider,
         // and `@main` entry point all live here. Trait-gated behind `Server`,
         // which also conditionally pulls in Hummingbird. Without the trait the
         // target compiles to a no-op stub that prints a "trait not enabled"
-        // message (see `BaseChatServerCommand.swift`).
+        // message (see `ManifoldServerCommand.swift`).
         //
-        // BaseChatBackends and BaseChatInference are also `Server`-conditional
-        // for the same reason `fuzz-chat`'s BaseChatBackends dep is `Fuzz`-
+        // ManifoldBackends and ManifoldInference are also `Server`-conditional
+        // for the same reason `fuzz-chat`'s ManifoldBackends dep is `Fuzz`-
         // conditional (see comment on the `Fuzz` trait above): an unconditional
-        // BaseChatBackends dep on a second executable in the auto-generated
-        // `BaseChatKit-Package` Xcode scheme produces two `Copy llama.framework`
+        // ManifoldBackends dep on a second executable in the auto-generated
+        // `ManifoldKit-Package` Xcode scheme produces two `Copy llama.framework`
         // tasks that collide on the same output path — breaking
-        // `xcodebuild test -only-testing BaseChatMLXIntegrationTests`. Gating
-        // the deps keeps `bck-tools` as the sole executable that pulls
+        // `xcodebuild test -only-testing ManifoldMLXIntegrationTests`. Gating
+        // the deps keeps `manifold-tools` as the sole executable that pulls
         // llama.framework into the auto-scheme. See issue #982.
         .executableTarget(
-            name: "BaseChatServer",
+            name: "ManifoldServer",
             dependencies: [
-                .target(name: "BaseChatInference", condition: .when(traits: ["Server"])),
-                .target(name: "BaseChatBackends", condition: .when(traits: ["Server"])),
+                .target(name: "ManifoldInference", condition: .when(traits: ["Server"])),
+                .target(name: "ManifoldBackends", condition: .when(traits: ["Server"])),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
             ],
-            path: "Sources/BaseChatServer",
+            path: "Sources/ManifoldServer",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
@@ -678,11 +678,11 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatServerTests",
+            name: "ManifoldServerTests",
             dependencies: [
-                "BaseChatServer",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldServer",
+                "ManifoldInference",
+                "ManifoldTestSupport",
                 .product(name: "HummingbirdTesting", package: "hummingbird", condition: .when(traits: ["Server"])),
             ],
             swiftSettings: [
@@ -690,21 +690,21 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatE2ETests",
+            name: "ManifoldE2ETests",
             dependencies: [
-                "BaseChatBackends",
-                "BaseChatCloudCore",
-                "BaseChatFoundation",
-                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "BaseChatLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "BaseChatCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
-                "BaseChatUI",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
-                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
-                .target(name: "BaseChatHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "ManifoldBackends",
+                "ManifoldCloudCore",
+                "ManifoldFoundation",
+                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
+                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                "ManifoldUI",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
+                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
+                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
@@ -716,14 +716,14 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatSnapshotTests",
+            name: "ManifoldSnapshotTests",
             dependencies: [
-                "BaseChatUI",
-                "BaseChatUIModelManagement",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldUI",
+                "ManifoldUIModelManagement",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
             ],
             exclude: ["__Snapshots__"],
@@ -735,25 +735,25 @@ let package = Package(
         ),
         // Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic.
         // Trait-free so it never pulls MLX/Llama transitively — backend selection
-        // happens in `BaseChatFuzzBackends` (importable real-backend factories),
-        // `fuzz-chat` (CLI), and `BaseChatFuzzTests` (XCTest harness).
+        // happens in `ManifoldFuzzBackends` (importable real-backend factories),
+        // `fuzz-chat` (CLI), and `ManifoldFuzzTests` (XCTest harness).
         .target(
-            name: "BaseChatFuzz",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatFuzz",
+            name: "ManifoldFuzz",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldFuzz",
             resources: [.process("Resources")]
         ),
         // Importable real-backend factories for fuzz campaigns. Shared by the
         // CLI and the Xcode-hosted MLX fuzz tests so XCTest can reuse the same
         // wiring without importing the `fuzz-chat` executable target.
         .target(
-            name: "BaseChatFuzzBackends",
+            name: "ManifoldFuzzBackends",
             dependencies: [
-                "BaseChatFuzz",
-                "BaseChatInference",
-                "BaseChatBackends",
+                "ManifoldFuzz",
+                "ManifoldInference",
+                "ManifoldBackends",
             ],
-            path: "Sources/BaseChatFuzzBackends",
+            path: "Sources/ManifoldFuzzBackends",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
@@ -764,16 +764,16 @@ let package = Package(
             ]
         ),
         // CLI driver. Wires Ollama, Llama, Foundation; MLX runs via xcodebuild fuzz path.
-        // BaseChatBackends is conditional on the Fuzz trait to avoid a llama.framework
-        // copy conflict with BaseChatMLXIntegrationTests in the auto-generated Xcode scheme.
+        // ManifoldBackends is conditional on the Fuzz trait to avoid a llama.framework
+        // copy conflict with ManifoldMLXIntegrationTests in the auto-generated Xcode scheme.
         // Use scripts/fuzz.sh (which passes --traits Fuzz,MLX,Llama) to run the fuzzer.
         .executableTarget(
             name: "fuzz-chat",
             dependencies: [
-                .target(name: "BaseChatFuzz", condition: .when(traits: ["Fuzz"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
-                .target(name: "BaseChatFuzzBackends", condition: .when(traits: ["Fuzz"])),
+                .target(name: "ManifoldFuzz", condition: .when(traits: ["Fuzz"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
+                .target(name: "ManifoldFuzzBackends", condition: .when(traits: ["Fuzz"])),
             ],
             path: "Sources/fuzz-chat",
             swiftSettings: [
@@ -786,13 +786,13 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatFuzzTests",
+            name: "ManifoldFuzzTests",
             dependencies: [
-                .target(name: "BaseChatFuzz", condition: .when(traits: ["Fuzz"])),
-                .target(name: "BaseChatFuzzBackends", condition: .when(traits: ["Fuzz"])),
-                .target(name: "BaseChatBackends", condition: .when(traits: ["Fuzz"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                .target(name: "ManifoldFuzz", condition: .when(traits: ["Fuzz"])),
+                .target(name: "ManifoldFuzzBackends", condition: .when(traits: ["Fuzz"])),
+                .target(name: "ManifoldBackends", condition: .when(traits: ["Fuzz"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
@@ -803,31 +803,31 @@ let package = Package(
                 .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
         ),
-        // BaseChatTools: end-to-end tool-calling validation harness.
+        // ManifoldTools: end-to-end tool-calling validation harness.
         // Ships a fixed reference toolset (now, calc, read_file, list_dir,
         // http_get_fixture), a declarative scenario runner, and a JSONL
         // transcript logger. Library target so the test suite can exercise
         // the runner against in-process scripted backends; the CLI lives in
-        // the `bck-tools` executable target below.
+        // the `manifold-tools` executable target below.
         .target(
-            name: "BaseChatTools",
+            name: "ManifoldTools",
             dependencies: [
-                "BaseChatInference",
+                "ManifoldInference",
             ],
-            path: "Sources/BaseChatTools",
+            path: "Sources/ManifoldTools",
             exclude: ["README.md"],
             resources: [
                 .copy("Scenarios/built-in"),
             ]
         ),
         .executableTarget(
-            name: "bck-tools",
+            name: "manifold-tools",
             dependencies: [
-                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
-                .target(name: "BaseChatBackends", condition: .when(traits: ["Tools"])),
-                "BaseChatInference",
+                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
+                .target(name: "ManifoldBackends", condition: .when(traits: ["Tools"])),
+                "ManifoldInference",
             ],
-            path: "Sources/bck-tools",
+            path: "Sources/manifold-tools",
             swiftSettings: [
                 .define("Tools", .when(traits: ["Tools"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
@@ -836,31 +836,31 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BaseChatToolsTests",
+            name: "ManifoldToolsTests",
             dependencies: [
-                .target(name: "BaseChatTools", condition: .when(traits: ["Tools"])),
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             swiftSettings: [
                 .define("Tools", .when(traits: ["Tools"])),
             ]
         ),
-        // BaseChatAppIntents: AppIntent ↔ ToolDefinition bridge.
+        // ManifoldAppIntents: AppIntent ↔ ToolDefinition bridge.
         // Lets hosts expose any AppIntent as a model-callable tool by deriving
         // the JSON-Schema parameters from `@Parameter` reflection. Trait-free
-        // and depends only on BaseChatInference so apps can opt in without
+        // and depends only on ManifoldInference so apps can opt in without
         // pulling AppIntents on platforms / module graphs that don't need it.
         .target(
-            name: "BaseChatAppIntents",
-            dependencies: ["BaseChatInference"],
-            path: "Sources/BaseChatAppIntents"
+            name: "ManifoldAppIntents",
+            dependencies: ["ManifoldInference"],
+            path: "Sources/ManifoldAppIntents"
         ),
         .testTarget(
-            name: "BaseChatAppIntentsTests",
+            name: "ManifoldAppIntentsTests",
             dependencies: [
-                .target(name: "BaseChatAppIntents", condition: .when(traits: ["AppIntents"])),
-                "BaseChatInference",
+                .target(name: "ManifoldAppIntents", condition: .when(traits: ["AppIntents"])),
+                "ManifoldInference",
             ],
             swiftSettings: [
                 .define("AppIntents", .when(traits: ["AppIntents"])),
@@ -868,16 +868,16 @@ let package = Package(
         ),
         // Xcode-only: real MLX model inference requiring Metal shader library.
         // Cannot run via `swift test` — MLX's metallib is only compiled by Xcode.
-        // Run with: xcodebuild test -scheme BaseChatKit-Package -only-testing BaseChatMLXIntegrationTests
+        // Run with: xcodebuild test -scheme ManifoldKit-Package -only-testing ManifoldMLXIntegrationTests
         .testTarget(
-            name: "BaseChatMLXIntegrationTests",
+            name: "ManifoldMLXIntegrationTests",
             dependencies: [
-                "BaseChatBackends",
-                .target(name: "BaseChatMLX", condition: .when(traits: ["MLX"])),
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatInference",
-                "BaseChatTestSupport",
+                "ManifoldBackends",
+                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldInference",
+                "ManifoldTestSupport",
             ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
@@ -895,10 +895,10 @@ let package = Package(
         .testTarget(
             name: "APIFreezeTests",
             dependencies: [
-                "BaseChatInference",
-                "BaseChatRuntime",
-                "BaseChatPersistenceSwiftData",
-                "BaseChatTestSupport",
+                "ManifoldInference",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldTestSupport",
             ]
         ),
     ],

@@ -263,7 +263,7 @@ jobs:
 
       # ── dep-budget ────────────────────────────────────────────────────────
       # Guards against silent dependency-graph explosions like the one that
-      # prompted the BaseChatServer trait-gating work (Package.resolved went
+      # prompted the ManifoldServer trait-gating work (Package.resolved went
       # 20 → 38 pins in a single PR). Adds friction proportional to dep weight:
       # 1–2 pins is fine, anything more requires the `deps-ok` label as a
       # deliberate sign-off captured in the PR's history.

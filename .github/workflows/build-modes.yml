@@ -15,7 +15,7 @@ name: Build modes + binary symbol audit
 #  - **PR vs schedule matrix split.** On `pull_request`, the matrix runs only
 #    `[saas]`; on `schedule` (and `workflow_dispatch`) it runs all four
 #    `[offline, ollama, saas, full]`. Rationale: `saas` carries a
-#    CloudSaaS-only test step (`BaseChatBackendsTests --traits CloudSaaS`)
+#    CloudSaaS-only test step (`ManifoldBackendsTests --traits CloudSaaS`)
 #    that is real signal not covered by ci.yml, so it stays per-PR. `full`
 #    is a release-config + all-traits build that produces a binary symbol
 #    audit; per-PR it cost ~9 min wall-clock (~90 min billed at the 10x
@@ -29,8 +29,8 @@ name: Build modes + binary symbol audit
 #    workflow manually via `gh workflow run build-modes.yml` before merging
 #    a risky dep bump if the symbol-audit signal is needed pre-merge.
 #  - All four modes run on `macos-15` (10x billing): the package depends on
-#    `os` (Apple-only) and SwiftUI throughout `BaseChatUI`/
-#    `BaseChatUIModelManagement`, so a Linux compile leg is structurally
+#    `os` (Apple-only) and SwiftUI throughout `ManifoldUI`/
+#    `ManifoldUIModelManagement`, so a Linux compile leg is structurally
 #    unviable. The audit relies on Darwin-only `nm -gU` / `otool -L` flags
 #    anyway, so a heterogeneous matrix would have produced silently
 #    no-op artifacts on Linux even if the build worked.
@@ -61,12 +61,12 @@ on:
       # floor bumps don't affect trait-gated builds, and the nightly run catches
       # any gap within 24 hours.
       - "Package.resolved"
-      - "Sources/BaseChatBackends/**"
-      - "Sources/BaseChatServerBackends/**"
-      - "Sources/BaseChatUI/Views/Settings/**"
-      - "Sources/BaseChatUIModelManagement/Views/Settings/**"
-      - "Sources/BaseChatInference/Models/APIProvider.swift"
-      - "Sources/bck-tools/main.swift"
+      - "Sources/ManifoldBackends/**"
+      - "Sources/ManifoldServerBackends/**"
+      - "Sources/ManifoldUI/Views/Settings/**"
+      - "Sources/ManifoldUIModelManagement/Views/Settings/**"
+      - "Sources/ManifoldInference/Models/APIProvider.swift"
+      - "Sources/manifold-tools/main.swift"
       - ".github/workflows/build-modes.yml"
       - "scripts/build-modes.sh"
 
@@ -131,9 +131,9 @@ jobs:
       # doesn't always have the new revision pack). The flag is also
       # deprecated in current SwiftPM. Dropping it costs ~1s of `git fetch`
       # and is the documented escape hatch.
-      - name: Test [saas] — BaseChatBackends with CloudSaaS only
+      - name: Test [saas] — ManifoldBackends with CloudSaaS only
         if: matrix.mode == 'saas'
-        run: scripts/test.sh --filter BaseChatBackendsTests --disable-default-traits --traits CloudSaaS
+        run: scripts/test.sh --filter ManifoldBackendsTests --disable-default-traits --traits CloudSaaS
 
       - name: Build + audit [${{ matrix.mode }}]
         env:

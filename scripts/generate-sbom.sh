@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# generate-sbom.sh — emit a CycloneDX 1.5 SBOM for the BaseChatKit Swift package.
+# generate-sbom.sh — emit a CycloneDX 1.5 SBOM for the ManifoldKit Swift package.
 #
 # Why this lives as a hand-rolled converter rather than `cyclonedx-bom` /
 # `swift-sbom-action`:
@@ -118,17 +118,17 @@ bom = {
         "timestamp": timestamp,
         "tools": [
             {
-                "vendor": "BaseChatKit",
+                "vendor": "ManifoldKit",
                 "name": "scripts/generate-sbom.sh",
                 "version": "1.0.0",
             }
         ],
         "component": {
             "type": "library",
-            "bom-ref": f"pkg:swift/BaseChatKit@{package_version}",
-            "name": "BaseChatKit",
+            "bom-ref": f"pkg:swift/ManifoldKit@{package_version}",
+            "name": "ManifoldKit",
             "version": package_version,
-            "purl": f"pkg:swift/BaseChatKit@{package_version}",
+            "purl": f"pkg:swift/ManifoldKit@{package_version}",
             "properties": [
                 {"name": "vcs:git-revision", "value": git_sha},
             ],

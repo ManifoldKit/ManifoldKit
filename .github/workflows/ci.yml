@@ -128,57 +128,57 @@ jobs:
           fi
           echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
 
-      - name: Lint — BaseChatUI does not import BaseChatUIModelManagement
-        # The two modules form a one-way edge: BaseChatUIModelManagement depends
-        # on BaseChatUI, never the other way around. A back-edge would close the
+      - name: Lint — ManifoldUI does not import ManifoldUIModelManagement
+        # The two modules form a one-way edge: ManifoldUIModelManagement depends
+        # on ManifoldUI, never the other way around. A back-edge would close the
         # cycle the v2.0 peel was designed to break. The cycle is currently
         # dissolved by closure-injecting `APIConfigurationView` into ChatView and
         # GenerationSettingsView; this lint guards against accidental regression.
         run: |
           set -euo pipefail
-          if grep -RIn --include='*.swift' '^[[:space:]]*import[[:space:]]\+BaseChatUIModelManagement' Sources/BaseChatUI/; then
-            echo "::error::BaseChatUI must not import BaseChatUIModelManagement (would close the dep cycle)."
+          if grep -RIn --include='*.swift' '^[[:space:]]*import[[:space:]]\+ManifoldUIModelManagement' Sources/ManifoldUI/; then
+            echo "::error::ManifoldUI must not import ManifoldUIModelManagement (would close the dep cycle)."
             exit 1
           fi
-          echo "BaseChatUI -> BaseChatUIModelManagement edge is clean."
+          echo "ManifoldUI -> ManifoldUIModelManagement edge is clean."
 
-      - name: Lint — BaseChatRuntime must not import SwiftData or SwiftUI
-        # BaseChatRuntime is a pure inference-orchestration module: no persistence
+      - name: Lint — ManifoldRuntime must not import SwiftData or SwiftUI
+        # ManifoldRuntime is a pure inference-orchestration module: no persistence
         # framework, no UI framework, no Observation. This keeps it usable from
         # any context that doesn't need a full app stack.
         run: |
           set -euo pipefail
-          if grep -rn --include='*.swift' 'import SwiftData\|import SwiftUI\|import Observation' Sources/BaseChatRuntime/; then
-            echo "::error::BaseChatRuntime must not import SwiftData, SwiftUI, or Observation."
+          if grep -rn --include='*.swift' 'import SwiftData\|import SwiftUI\|import Observation' Sources/ManifoldRuntime/; then
+            echo "::error::ManifoldRuntime must not import SwiftData, SwiftUI, or Observation."
             exit 1
           fi
-          echo "BaseChatRuntime framework-isolation posture OK."
+          echo "ManifoldRuntime framework-isolation posture OK."
 
-      - name: Lint — BaseChatRuntime must not use URLSession or Keychain
-        # BaseChatRuntime must not perform networking or access the system keychain
-        # directly — those concerns belong in BaseChatInference or BaseChatBackends.
+      - name: Lint — ManifoldRuntime must not use URLSession or Keychain
+        # ManifoldRuntime must not perform networking or access the system keychain
+        # directly — those concerns belong in ManifoldInference or ManifoldBackends.
         run: |
           set -euo pipefail
-          if grep -rn --include='*.swift' 'URLSession\|SecItemCopyMatching\|kSecClass' Sources/BaseChatRuntime/; then
-            echo "::error::BaseChatRuntime must not use URLSession or Keychain."
+          if grep -rn --include='*.swift' 'URLSession\|SecItemCopyMatching\|kSecClass' Sources/ManifoldRuntime/; then
+            echo "::error::ManifoldRuntime must not use URLSession or Keychain."
             exit 1
           fi
-          echo "BaseChatRuntime networking/keychain posture OK."
+          echo "ManifoldRuntime networking/keychain posture OK."
 
-      - name: Lint — BaseChatUI must not import BaseChatPersistenceSwiftData
-        # BaseChatUI must not reach the SwiftData adapter layer directly.
-        # All persistence access goes through the port protocols in BaseChatRuntime.
+      - name: Lint — ManifoldUI must not import ManifoldPersistenceSwiftData
+        # ManifoldUI must not reach the SwiftData adapter layer directly.
+        # All persistence access goes through the port protocols in ManifoldRuntime.
         #
         run: |
           set -euo pipefail
-          if grep -rn --include='*.swift' 'import BaseChatPersistenceSwiftData' Sources/BaseChatUI/; then
-            echo "::error::BaseChatUI must not import BaseChatPersistenceSwiftData directly."
+          if grep -rn --include='*.swift' 'import ManifoldPersistenceSwiftData' Sources/ManifoldUI/; then
+            echo "::error::ManifoldUI must not import ManifoldPersistenceSwiftData directly."
             exit 1
           fi
-          echo "BaseChatUI -> BaseChatPersistenceSwiftData edge is clean."
+          echo "ManifoldUI -> ManifoldPersistenceSwiftData edge is clean."
 
       - name: Lint — Macro plugin builds inside the SwiftPM sandbox
-        # SwiftPM compiles macro plugins (`BaseChatMacrosPlugin`) inside a
+        # SwiftPM compiles macro plugins (`ManifoldMacrosPlugin`) inside a
         # sandbox-exec jail by default on macOS. The jail blocks network
         # access and most filesystem writes, which is the only thing
         # standing between a compromised swift-syntax dependency and
@@ -191,7 +191,7 @@ jobs:
           set -euo pipefail
           if grep -nE 'unsafeFlags|--disable-sandbox|SWIFTPM_DISABLE_SANDBOX' Package.swift; then
             echo "::error::Package.swift must not disable the SwiftPM macro/build sandbox."
-            echo "::error::Macro plugins (BaseChatMacrosPlugin) must run sandboxed — see issue #726."
+            echo "::error::Macro plugins (ManifoldMacrosPlugin) must run sandboxed — see issue #726."
             exit 1
           fi
           # Defensive: guard against anyone wiring --disable-sandbox into a
@@ -217,23 +217,23 @@ jobs:
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
-      # - Runs BaseChatCoreTests + BaseChatRuntimeTests + BaseChatPersistenceSwiftDataTests
-      #   + BaseChatInferenceTests + BaseChatInferenceSwiftTestingTests
-      #   + BaseChatMCPTests + BaseChatUITests + BaseChatBackendsTests + BaseChatTestSupportTests.
-      # - BaseChatInferenceTests contains XCTest suites only; Swift Testing suites live in
-      #   BaseChatInferenceSwiftTestingTests to prevent a libmalloc SIGABRT from mixed harnesses.
+      # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests
+      #   + ManifoldInferenceTests + ManifoldInferenceSwiftTestingTests
+      #   + ManifoldMCPTests + ManifoldUITests + ManifoldBackendsTests + ManifoldTestSupportTests.
+      # - ManifoldInferenceTests contains XCTest suites only; Swift Testing suites live in
+      #   ManifoldInferenceSwiftTestingTests to prevent a libmalloc SIGABRT from mixed harnesses.
       # - --disable-default-traits skips MLX (default-enabled) to avoid metallib
       #   crashes in CI — Metal shaders are only compiled by Xcode.
-      # - BaseChatBackendsTests without traits runs only CI-safe cloud/SSE tests.
+      # - ManifoldBackendsTests without traits runs only CI-safe cloud/SSE tests.
       # - Server tests run in the sibling `server-tests` job behind a paths
       #   filter so Hummingbird only compiles when server code changes.
       # - Macro tests run in the sibling `macros-tests` job behind a paths
       #   filter so swift-syntax (~647 files) only compiles when macro
       #   code changes.
       # Local-only coverage:
-      # - Run `swift test --filter BaseChatBackendsTests --traits MLX,Llama` on
+      # - Run `swift test --filter ManifoldBackendsTests --traits MLX,Llama` on
       #   Apple Silicon for MLX/llama.cpp paths.
-      # - Run `swift test --filter BaseChatE2ETests` on physical hardware.
+      # - Run `swift test --filter ManifoldE2ETests` on physical hardware.
       # - MCP E2E stays out of per-PR CI; nightly-slow-tests runs the
       #   RUN_MCP_E2E-gated streamable-HTTP smoke with a narrow filter so
       #   npx/network-backed subprocess tests remain local-only.
@@ -249,7 +249,7 @@ jobs:
       # Run the full XCTest batch with --parallel. Every test that read or wrote
       # `UserDefaults.standard` has been migrated to a per-suite
       # `UserDefaults(suiteName:)` instance — see
-      # `Tests/BaseChatCoreTests/UserDefaultsStandardAuditTest` (the tripwire
+      # `Tests/ManifoldCoreTests/UserDefaultsStandardAuditTest` (the tripwire
       # that fails CI if a future test reintroduces the bare `.standard`
       # access) and issue #910 for the migration history. Combined with
       # MockURLProtocol's per-test unique hosts, the XCTest batch is now
@@ -263,7 +263,7 @@ jobs:
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter BaseChatCoreTests --filter BaseChatRuntimeTests --filter BaseChatPersistenceSwiftDataTests --filter BaseChatUITests --filter BaseChatUIModelManagementTests --filter BaseChatMCPTests --filter BaseChatBackendsTests --filter BaseChatTestSupportTests --filter BaseChatAppIntentsTests --filter BaseChatInferenceTests --disable-default-traits --skip-update --parallel
+        run: scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -274,7 +274,7 @@ jobs:
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
-        run: scripts/test.sh --filter BaseChatInferenceSwiftTestingTests --disable-default-traits --skip-update
+        run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       - name: Report SwiftPM debug cache state
         if: always()
@@ -346,8 +346,8 @@ jobs:
         with:
           filters: |
             server:
-              - 'Sources/BaseChatServer*/**'
-              - 'Tests/BaseChatServerTests/**'
+              - 'Sources/ManifoldServer*/**'
+              - 'Tests/ManifoldServerTests/**'
               - 'Package.swift'
               - 'Package.resolved'
               - '.github/workflows/ci.yml'
@@ -405,7 +405,7 @@ jobs:
         timeout-minutes: 12
         env:
           BASECHAT_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
-        run: scripts/test.sh --filter BaseChatServerTests --disable-default-traits --traits Server --skip-update
+        run: scripts/test.sh --filter ManifoldServerTests --disable-default-traits --traits Server --skip-update
 
       - name: Stage test diagnostics
         if: failure() && steps.server-changed.outputs.server == 'true'
@@ -449,9 +449,9 @@ jobs:
         with:
           filters: |
             macros:
-              - 'Sources/BaseChatMacrosPlugin/**'
-              - 'Sources/BaseChatInference/Macros/**'
-              - 'Tests/BaseChatInferenceTests/ToolSchemaMacro*.swift'
+              - 'Sources/ManifoldMacrosPlugin/**'
+              - 'Sources/ManifoldInference/Macros/**'
+              - 'Tests/ManifoldInferenceTests/ToolSchemaMacro*.swift'
               - 'Package.swift'
               - 'Package.resolved'
               - '.github/workflows/ci.yml'
@@ -566,8 +566,8 @@ jobs:
         run: scripts/cold-start-conformance.sh
 
   # Cold-start conformance (tier 2) — extends the tier-1 pattern to the
-  # high-level orchestration surface real chat apps use: BaseChatBootstrap →
-  # ChatViewModel → vm.sendMessage(). Catches breaks in BaseChatBootstrap link
+  # high-level orchestration surface real chat apps use: ManifoldBootstrap →
+  # ChatViewModel → vm.sendMessage(). Catches breaks in ManifoldBootstrap link
   # shape (Inference + Runtime + PersistenceSwiftData + UI products), the
   # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
   # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.

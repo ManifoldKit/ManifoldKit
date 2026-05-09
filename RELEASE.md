@@ -1,6 +1,6 @@
 # Release Artifacts
 
-Every BaseChatKit release ships supply-chain integrity artifacts in
+Every ManifoldKit release ships supply-chain integrity artifacts in
 addition to the source archive. They are produced by
 [`.github/workflows/release-provenance.yml`](./.github/workflows/release-provenance.yml)
 and signed via [Sigstore](https://www.sigstore.dev/) using the GitHub
@@ -21,7 +21,7 @@ binds each artifact to:
 
 - the exact commit SHA the tag points at,
 - the workflow file that produced it (`release-provenance.yml`), and
-- the GitHub repository (`roryford/BaseChatKit`).
+- the GitHub repository (`roryford/ManifoldKit`).
 
 ## Verifying a release before pinning
 
@@ -33,14 +33,14 @@ TAG=v0.12.2   # replace with the release you want to verify
 gh release download "$TAG" \
     --pattern 'sbom.cdx.json' \
     --pattern 'dependency-tree.json' \
-    --repo roryford/BaseChatKit
+    --repo roryford/ManifoldKit
 
 gh attestation verify sbom.cdx.json \
-    --repo roryford/BaseChatKit \
+    --repo roryford/ManifoldKit \
     --predicate-type https://slsa.dev/provenance/v1
 
 gh attestation verify dependency-tree.json \
-    --repo roryford/BaseChatKit \
+    --repo roryford/ManifoldKit \
     --predicate-type https://slsa.dev/provenance/v1
 ```
 
@@ -50,22 +50,22 @@ this repository.
 
 If verification fails, treat the artifacts as untrusted and open a
 security advisory via
-[GitHub Security Advisories](https://github.com/roryford/BaseChatKit/security/advisories/new).
+[GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new).
 
 ## What the attestations do *not* cover
 
 - The source archive GitHub auto-generates from a tag (`zipball` /
   `tarball`) is not produced by this workflow and is not attested.
   Source-archive provenance and reproducible binary builds are tracked
-  under [#714](https://github.com/roryford/BaseChatKit/issues/714) and
-  [#728](https://github.com/roryford/BaseChatKit/issues/728).
+  under [#714](https://github.com/roryford/ManifoldKit/issues/714) and
+  [#728](https://github.com/roryford/ManifoldKit/issues/728).
 - The attestation does not vouch for upstream dependencies themselves;
   it only asserts that the SBOM accurately enumerates what was pinned
   at tag time. Cross-checking the SBOM's `swift:git-revision` properties
   against upstream tags is left to the consumer.
 - The `.xcframework` for `llama.swift` is consumed as a prebuilt
   binary blob from upstream; pinning it by SHA256 with a reproducibility
-  audit is the scope of [#728](https://github.com/roryford/BaseChatKit/issues/728).
+  audit is the scope of [#728](https://github.com/roryford/ManifoldKit/issues/728).
 
 ## Regenerating artifacts for an existing tag
 
@@ -88,7 +88,7 @@ in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) refuses to
 merge a PR that edits `Package.swift` without a corresponding
 `Package.resolved` update.
 
-The `BaseChatMacrosPlugin` target builds inside the SwiftPM sandbox
+The `ManifoldMacrosPlugin` target builds inside the SwiftPM sandbox
 (`sandbox-exec` jail on macOS — no network, restricted filesystem
 writes). A CI lint refuses to merge any change that adds `unsafeFlags`,
 passes `--disable-sandbox` to `swift build`/`swift test` from a

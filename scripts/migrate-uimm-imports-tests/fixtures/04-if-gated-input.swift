@@ -1,6 +1,6 @@
 import SwiftUI
 #if Ollama
-import BaseChatUI
+import ManifoldUI
 #endif
 
 struct OllamaGated: View {

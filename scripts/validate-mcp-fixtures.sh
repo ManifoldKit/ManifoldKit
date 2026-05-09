@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FIXTURE_ROOT="$ROOT/Tests/BaseChatMCPTests/Fixtures/Providers"
+FIXTURE_ROOT="$ROOT/Tests/ManifoldMCPTests/Fixtures/Providers"
 
 "$ROOT/scripts/regenerate-mcp-fixtures.sh" --check
 

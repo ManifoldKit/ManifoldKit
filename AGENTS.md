@@ -1,14 +1,14 @@
-# AGENTS.md — BaseChatKit guide for AI coding assistants
+# AGENTS.md — ManifoldKit guide for AI coding assistants
 
 This file is for AI coding assistants (Claude, Cursor, Copilot, …) helping a
-human use **BaseChatKit (BCK)** in their app. Contributors who need the
+human use **ManifoldKit (BCK)** in their app. Contributors who need the
 project's internal conventions read [`CLAUDE.md`](CLAUDE.md); this is the
 shorter, recipe-shaped surface for *consumers*.
 
 BCK is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/roryford/BaseChatKit.git", from: "0.18.0")
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.18.0")
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
@@ -18,54 +18,54 @@ BCK is a Swift package. Install via SwiftPM:
 
 ## Imports
 
-App code should `import BaseChatKit` — the umbrella product re-exports the
+App code should `import ManifoldKit` — the umbrella product re-exports the
 five most-imported modules in one line:
 
 ```swift
-import BaseChatKit   // covers Inference, Runtime, PersistenceSwiftData, Backends, UI
+import ManifoldKit   // covers Inference, Runtime, PersistenceSwiftData, Backends, UI
 ```
 
 Specialised modules stay opt-in and are imported by name when you need them:
 
 | Product | Import when you need… |
 |---------|------------------------|
-| **`BaseChatKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `BaseChatBootstrap`, `DefaultBackends`, `InferenceService`, `BackendName` — the 80%-case surface. |
-| `BaseChatUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
-| `BaseChatHuggingFace` *(optional, `HuggingFace` trait, default-on)* | Hub search, browse, background downloads. |
-| `BaseChatVoice` *(optional, `Voice` trait)* | Speech I/O composer accessory. |
-| `BaseChatMCP` *(optional, `MCP` trait)* | Model Context Protocol client + tool bridge. |
-| `BaseChatAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
+| **`ManifoldKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `ManifoldBootstrap`, `DefaultBackends`, `InferenceService`, `BackendName` — the 80%-case surface. |
+| `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
+| `ManifoldHuggingFace` *(optional, `HuggingFace` trait, default-on)* | Hub search, browse, background downloads. |
+| `ManifoldVoice` *(optional, `Voice` trait)* | Speech I/O composer accessory. |
+| `ManifoldMCP` *(optional, `MCP` trait)* | Model Context Protocol client + tool bridge. |
+| `ManifoldAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
 
 Contributors changing BCK internals can still import the individual products
-(`BaseChatInference`, `BaseChatRuntime`, `BaseChatPersistenceSwiftData`,
-`BaseChatBackends`, `BaseChatUI`); the umbrella is the consumer-facing surface.
+(`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
+`ManifoldBackends`, `ManifoldUI`); the umbrella is the consumer-facing surface.
 
 The dependency graph is one-way: UI depends on Runtime depends on Inference;
-backends depend on Inference directly. Never import `BaseChatBackends` from a
+backends depend on Inference directly. Never import `ManifoldBackends` from a
 view target — CI lint rejects that edge.
 
 ## Bootstrap recipe (canonical hello-world)
 
-The shipped `BaseChatBootstrap` wires inference, persistence, the conversation
+The shipped `ManifoldBootstrap` wires inference, persistence, the conversation
 runtime, and the model container in the right order. Drop this in
 `@main App.init()`:
 
 ```swift
 import SwiftUI
 import SwiftData
-import BaseChatKit
-import BaseChatUIModelManagement   // model browser/download UI is opt-in
+import ManifoldKit
+import ManifoldUIModelManagement   // model browser/download UI is opt-in
 
 @main
 struct MyChatApp: App {
-    private let runtime: BaseChatBootstrap
+    private let runtime: ManifoldBootstrap
     @State private var chatViewModel: ChatViewModel
     @State private var sessionManager: SessionManagerViewModel
     @State private var modelManagement: ModelManagementViewModel
 
     init() {
-        let runtime = try! BaseChatBootstrap(
-            configuration: BaseChatConfiguration(
+        let runtime = try! ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
                 appName: "My Chat",
                 bundleIdentifier: "com.example.mychat"
             )
@@ -111,8 +111,8 @@ The corresponding `ContentView` is small:
 
 ```swift
 import SwiftUI
-import BaseChatKit
-import BaseChatUIModelManagement
+import ManifoldKit
+import ManifoldUIModelManagement
 
 struct ContentView: View {
     @Environment(ChatViewModel.self) private var vm
@@ -170,7 +170,7 @@ method enforces both preconditions.
 accessor — never against raw string literals:
 
 ```swift
-import BaseChatKit   // re-exports BaseChatInference
+import ManifoldKit   // re-exports ManifoldInference
 
 if vm.activeBackendName == BackendName.foundation.rawValue {
     // Foundation-specific copy
@@ -204,9 +204,9 @@ There are three message-shaped types. Pick the right one:
 
 | Type | Module | When to use |
 |------|--------|-------------|
-| `ChatMessageRecord` | `BaseChatInference` | Transport / app code. The shape `sendMessage(_:)` returns. |
-| `ChatMessage` (`@Model`) | `BaseChatPersistenceSwiftData` | SwiftData row — owned by the persistence layer. |
-| `StructuredMessage` | `BaseChatInference` | Cloud-wire payload assembled by `InferenceService`. Internal — backends consume it. |
+| `ChatMessageRecord` | `ManifoldInference` | Transport / app code. The shape `sendMessage(_:)` returns. |
+| `ChatMessage` (`@Model`) | `ManifoldPersistenceSwiftData` | SwiftData row — owned by the persistence layer. |
+| `StructuredMessage` | `ManifoldInference` | Cloud-wire payload assembled by `InferenceService`. Internal — backends consume it. |
 
 App code reads and writes `ChatMessageRecord`. The persistence and wire types
 are managed by BCK.
@@ -235,7 +235,7 @@ on every consumer:
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: [.trait(name: "Macros")]
 )
@@ -286,7 +286,7 @@ Cloud endpoints (OpenAI, Claude, Ollama, LM Studio, custom) flow through
 `APIEndpointRecord` values. The 5-step canonical flow:
 
 ```swift
-import BaseChatInference
+import ManifoldInference
 
 // 1. Build the record.
 let endpoint = APIEndpointRecord(
@@ -313,7 +313,7 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.18.0",
     traits: [
         .trait(name: "MLX"),
@@ -332,10 +332,10 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 These are the four mistakes most assistants make against BCK. Don't write any
 of them:
 
-1. **The umbrella module is `BaseChatKit`** (added in 0.19). Reach for
-   `import BaseChatKit` first — it covers Inference, Runtime,
+1. **The umbrella module is `ManifoldKit`** (added in 0.19). Reach for
+   `import ManifoldKit` first — it covers Inference, Runtime,
    PersistenceSwiftData, Backends, and UI. Specialised modules
-   (`BaseChatUIModelManagement`, `BaseChatMCP`, `BaseChatVoice`, …) stay
+   (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, …) stay
    explicit imports.
 2. **The send method is `vm.sendMessage(_:)`, NOT `vm.send(_:)`.**
    `ChatViewModel.send` does not exist. Use `try await vm.sendMessage("hi")`
@@ -368,7 +368,7 @@ that bite consumers:
 - **`Ollama` (default-off)** — required for `OllamaBackend`. Self-hosted only.
 - **`MCPBuiltinCatalog` (default-off)** — required for the built-in MCP catalog
   (`notion`, `linear`, `github` descriptors).
-- **`Voice` (default-off)** — required for `BaseChatVoice` speech I/O.
+- **`Voice` (default-off)** — required for `ManifoldVoice` speech I/O.
 
 When you `--disable-default-traits`, you must explicitly add the ones you want
 back. The "default consumer app" build is `swift build` with no flags —
@@ -396,6 +396,6 @@ BCK is Swift-concurrency-native. The rules:
 - Read the relevant source under `Sources/`. The public surface is small.
 - The `Example/Examples/MinimalExample/` app is the canonical runnable wiring.
 - DocC catalogs live alongside the modules
-  (`Sources/BaseChatUI/BaseChatUI.docc/`).
+  (`Sources/ManifoldUI/ManifoldUI.docc/`).
 - For contributor-facing conventions (testing, traits, release process),
   see [CLAUDE.md](CLAUDE.md). For consumer-facing API, this file is enough.

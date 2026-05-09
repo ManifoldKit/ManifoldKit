@@ -1,6 +1,6 @@
 import SwiftUI
-import BaseChatUI
-import BaseChatUIModelManagement
+import ManifoldUI
+import ManifoldUIModelManagement
 
 struct UI: View {
     var body: some View { APIConfigurationView() }

@@ -1,10 +1,10 @@
 import Foundation
-import BaseChatInference
-import BaseChatRuntime
-import BaseChatPersistenceSwiftData
-import BaseChatTestSupport
+import ManifoldInference
+import ManifoldRuntime
+import ManifoldPersistenceSwiftData
+import ManifoldTestSupport
 
-/// Compile-time consumer of every BaseChatKit public surface we want to lock.
+/// Compile-time consumer of every ManifoldKit public surface we want to lock.
 ///
 /// **Compilation IS the assertion.** If any consumed type is removed, renamed,
 /// or its signature drifts, this file fails to compile and CI fails. The
@@ -27,7 +27,7 @@ import BaseChatTestSupport
 /// ## What's NOT here
 ///
 /// - Internal types, package types, even when used in tests.
-/// - SwiftUI views (their public surface is too volatile to freeze; `BaseChatUI`
+/// - SwiftUI views (their public surface is too volatile to freeze; `ManifoldUI`
 ///   tests cover the binding contract).
 /// - Trait-gated types whose visibility depends on an opt-in trait —
 ///   `MCPClient`, `LlamaBackend`, etc. Add a per-trait `#if` consumer if a
@@ -61,7 +61,7 @@ enum PublicSurfaceConsumer {
         consumeChaosBackend()
     }
 
-    // MARK: - BaseChatInference
+    // MARK: - ManifoldInference
 
     private static func consumeBackendCapabilities() {
         // Default init.
@@ -191,7 +191,7 @@ enum PublicSurfaceConsumer {
         let _: InferenceError = .unsupportedGrammar(reason: "x")
     }
 
-    // MARK: - BaseChatRuntime
+    // MARK: - ManifoldRuntime
 
     private static func consumeRuntimeInputs() {
         let sessionID = UUID()
@@ -219,7 +219,7 @@ enum PublicSurfaceConsumer {
         let _: ConversationStreamHandle = ConversationStreamHandle()
     }
 
-    // MARK: - BaseChatTestSupport
+    // MARK: - ManifoldTestSupport
 
     private static func consumeMockBackend() {
         let backend = MockInferenceBackend()

@@ -18,7 +18,7 @@ What you expected to happen.
 What actually happened. Include any error messages or crash logs.
 
 **Environment**
-- BaseChatKit version/commit:
+- ManifoldKit version/commit:
 - Xcode version:
 - Swift version:
 - OS + version (iOS/macOS):

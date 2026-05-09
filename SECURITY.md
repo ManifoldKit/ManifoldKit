@@ -1,6 +1,6 @@
 # Security Policy
 
-BaseChatKit (BCK) is a Swift package for building local-first and cloud-optional chat
+ManifoldKit (BCK) is a Swift package for building local-first and cloud-optional chat
 interfaces on Apple platforms. This document describes:
 
 - [Supported versions](#supported-versions) — what gets security fixes.
@@ -53,7 +53,7 @@ to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.12.0",
     traits: [
         .trait(name: "MLX"),
@@ -62,10 +62,10 @@ to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
 )
 ```
 
-**Guarantees** (enforced by [`TrafficBoundaryAuditTest`](Tests/BaseChatInferenceTests/TrafficBoundaryAuditTest.swift)
+**Guarantees** (enforced by [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
 and the import-graph rule in the same audit):
 
-- No `Sources/BaseChatBackends/Cloud/*` symbols are reachable.
+- No `Sources/ManifoldBackends/Cloud/*` symbols are reachable.
 - No `OllamaBackend`, `ClaudeBackend`, or `OpenAIBackend` is registered.
 - No hostname literal pointing to `api.openai.com`, `api.anthropic.com`,
   or any third-party SaaS endpoint is reachable from app code.
@@ -84,7 +84,7 @@ and the import-graph rule in the same audit):
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.12.0",
     traits: [
         .trait(name: "MLX"),
@@ -114,7 +114,7 @@ Same `offline` guarantees, plus:
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.12.0",
     traits: [
         .trait(name: "MLX"),
@@ -133,7 +133,7 @@ transport-security boundary.
 
 ```swift
 .package(
-    url: "https://github.com/roryford/BaseChatKit.git",
+    url: "https://github.com/roryford/ManifoldKit.git",
     from: "0.12.0",
     traits: [
         .trait(name: "MLX"),
@@ -151,13 +151,13 @@ narrower mode for shipping production binaries.
 
 | Mechanism                                                                                                                | Enforces                                                                                                            |
 |--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
-| [`TrafficBoundaryAuditTest`](Tests/BaseChatInferenceTests/TrafficBoundaryAuditTest.swift)                                | Rule classes 1–7: `URLSession` import allowlist, C interop / dynamic dispatch ban, hostname literals allowlist, privacy-API allowlist, `Package.swift` hygiene, import-graph layering, trait-name validity. |
-| [`DenyAllURLProtocolTests`](Tests/BaseChatTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/BaseChatBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | Runtime network isolation: when `networkDisabled` is set, every URL request fails closed.                          |
-| `#if Ollama` / `#if CloudSaaS` conditional compilation in `Sources/BaseChatBackends/`                                    | Trait-gated backend code is not compiled into the binary if the trait is absent.                                    |
+| [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)                                | Rule classes 1–7: `URLSession` import allowlist, C interop / dynamic dispatch ban, hostname literals allowlist, privacy-API allowlist, `Package.swift` hygiene, import-graph layering, trait-name validity. |
+| [`DenyAllURLProtocolTests`](Tests/ManifoldTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/ManifoldBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | Runtime network isolation: when `networkDisabled` is set, every URL request fails closed.                          |
+| `#if Ollama` / `#if CloudSaaS` conditional compilation in `Sources/ManifoldBackends/`                                    | Trait-gated backend code is not compiled into the binary if the trait is absent.                                    |
 | `--disable-default-traits` swift test invocations in CI (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml))      | At least one CI job exercises the offline trait set on every PR; signature regressions surface as compile errors.   |
 
 There is currently no separate `scripts/build-modes.sh` — that consolidation is tracked
-under the umbrella ([#714](https://github.com/roryford/BaseChatKit/issues/714)) and will
+under the umbrella ([#714](https://github.com/roryford/ManifoldKit/issues/714)) and will
 be added when the build-mode CI matrix lands.
 
 ### Explicit non-guarantees
@@ -177,12 +177,12 @@ responsibility:
   redacted strings if invoked with elevated entitlements.
 - **GGUF / safetensors weight tampering** — model-file integrity is the user's
   responsibility (typically via HuggingFace's signed manifest, which BCK does not
-  yet verify; see [#367](https://github.com/roryford/BaseChatKit/issues/367)).
+  yet verify; see [#367](https://github.com/roryford/ManifoldKit/issues/367)).
 
 ## Reporting a Vulnerability
 
 Report suspected vulnerabilities through
-[GitHub Security Advisories](https://github.com/roryford/BaseChatKit/security/advisories/new).
+[GitHub Security Advisories](https://github.com/roryford/ManifoldKit/security/advisories/new).
 This keeps the discussion private until a fix is ready. Please **do not** open public
 issues for security-impacting bugs.
 
@@ -219,7 +219,7 @@ There is no bug bounty programme today.
 | Asset                              | Mechanism                                                                                                                                |
 |------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
 | API keys                           | System Keychain, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, **not** synced via iCloud Keychain. Per-endpoint UUID accounts.         |
-| SwiftData store (chat history)     | `NSFileProtection.completeUntilFirstUserAuthentication` (default) on iOS / iPadOS / tvOS / watchOS. Opt in to `.complete` via `BaseChatConfiguration.fileProtectionClass`. |
+| SwiftData store (chat history)     | `NSFileProtection.completeUntilFirstUserAuthentication` (default) on iOS / iPadOS / tvOS / watchOS. Opt in to `.complete` via `ManifoldConfiguration.fileProtectionClass`. |
 | Model weights                      | Plain files under `modelsDirectory`. Path-traversal validation runs at filename ingest (`DownloadableModel.validate(fileName:)`). No content-integrity check today. |
 | In-flight TLS                      | SPKI-pinned for `api.openai.com` and `api.anthropic.com`; pluggable via `PinnedSessionDelegate.pinnedHosts` for custom hosts.            |
 
@@ -228,7 +228,7 @@ CoreCrypto, which has FIPS-140-3 validations on supported OS versions, but BCK d
 not pin to or verify those validations at runtime.
 
 For deployments that need stricter at-rest sealing, set
-`BaseChatConfiguration.shared.fileProtectionClass = .complete` and ship background
+`ManifoldConfiguration.shared.fileProtectionClass = .complete` and ship background
 work that is robust to a locked device.
 
 ## Pending Mitigations
@@ -237,24 +237,24 @@ The following are known gaps with tracking issues. Each is listed in
 [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) under "Known non-mitigations":
 
 - **Macro plugin sandbox** — SwiftPM `.buildToolPlugin` / `.commandPlugin` declarations
-  are banned by the audit, but `Sources/BaseChatMacrosPlugin/` runs at build time with
+  are banned by the audit, but `Sources/ManifoldMacrosPlugin/` runs at build time with
   full filesystem and network access. Tracked under
-  [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5.
+  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
 - **xcframework checksum pinning** — `llama.swift` and `mlx-swift` xcframeworks are
   pulled by SwiftPM with `Package.resolved` revision pinning but no SHA-256 binary
-  checksum. Tracked under [#714](https://github.com/roryford/BaseChatKit/issues/714)
+  checksum. Tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714)
   Phase 5.
 - **GGUF signed-manifest verification** — model weights downloaded from HuggingFace
   are not signature-verified.
-  [#367](https://github.com/roryford/BaseChatKit/issues/367).
+  [#367](https://github.com/roryford/ManifoldKit/issues/367).
 - **Build-provenance attestation** — no SLSA-style attestation. Tracked under
-  [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5.
+  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
 - **Secure Enclave / key zeroization** — API keys are read into Swift `String` for
   request signing and rely on ARC + zeroing-on-free behaviour from
   Foundation/Security.framework. Tracked under
-  [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5.
+  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
 - **SBOM** — no Software Bill of Materials is published. Tracked under
-  [#714](https://github.com/roryford/BaseChatKit/issues/714) Phase 5.
+  [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5.
 - **FIPS validation** — see Cryptography at Rest above. No commitment to a FIPS-only
   build path.
 

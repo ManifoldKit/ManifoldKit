@@ -1,8 +1,8 @@
 #if Fuzz
 import Foundation
-import BaseChatFuzz
-import BaseChatInference
-import BaseChatTestSupport
+import ManifoldFuzz
+import ManifoldInference
+import ManifoldTestSupport
 
 /// `FuzzBackendFactory` conformance that produces a fresh `ChaosBackend` per
 /// iteration with a fixed initial failure mode. Useful for exercising the
