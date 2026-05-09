@@ -565,12 +565,15 @@ jobs:
         timeout-minutes: 6
         run: scripts/cold-start-conformance.sh
 
-  # Cold-start conformance (tier 2) — extends the tier-1 pattern to the
+  # Cold-start conformance (tiers 2 + 3) — extends the tier-1 pattern to the
   # high-level orchestration surface real chat apps use: ManifoldBootstrap →
   # ChatViewModel → vm.sendMessage(). Catches breaks in ManifoldBootstrap link
   # shape (Inference + Runtime + PersistenceSwiftData + UI products), the
   # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
-  # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
+  # pattern. Tier 3 then composes a downstream SwiftUI RootView around ChatView,
+  # proving @Observable view models are passed via `.environment(_)` and the
+  # `apiConfiguration:` builder shape still compiles. See the scripts for the
+  # full rationale.
   cold-start-tier2:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
@@ -598,6 +601,10 @@ jobs:
       - name: Run cold-start tier-2 conformance
         timeout-minutes: 6
         run: scripts/cold-start-tier2-bootstrap.sh
+
+      - name: Run cold-start tier-3 ChatView conformance
+        timeout-minutes: 6
+        run: scripts/cold-start-tier3-chatview.sh
 
   # FoundationOnly bundle audit — proves the App Store-lean trait set keeps
   # ManifoldKit overhead under 5 MB and never leaks MLX/Llama framework symbols. One
