@@ -271,6 +271,32 @@ final class MCPHardeningTests: XCTestCase {
         XCTAssertTrue(redacted.hasPrefix("Bearer <"), "Redacted string should start with 'Bearer <'")
     }
 
+    func test_oauthSecurity_normalizesIssuerForComparison() {
+        let upperDefaultPort = URL(string: "https://AUTH.example.com:443/tenant/")!
+        let canonical = URL(string: "https://auth.example.com/tenant")!
+        let differentPath = URL(string: "https://auth.example.com/other")!
+
+        XCTAssertTrue(OAuthSecurity.isSameIssuer(upperDefaultPort, canonical))
+        XCTAssertFalse(OAuthSecurity.isSameIssuer(upperDefaultPort, differentPath))
+    }
+
+    func test_oauthTokenExchange_rejectsInvalidBearerTokens() {
+        let newlineToken = MCPOAuthTokens(
+            accessToken: "line1\nline2",
+            refreshToken: nil,
+            expiresAt: nil,
+            scopes: ["tools:read"],
+            issuer: URL(string: "https://auth.example.com")!
+        )
+
+        XCTAssertThrowsError(try OAuthTokenExchange.validateBearerTransmission(newlineToken)) { error in
+            guard case .authorizationFailed(let message) = error as? MCPError else {
+                return XCTFail("Expected authorizationFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("invalid bearer characters"))
+        }
+    }
+
     // MARK: - Fix 6: SSRF — .local mDNS
 
     func test_ssrf_localDomain_rejected() async {

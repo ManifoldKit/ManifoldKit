@@ -84,7 +84,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// usage is approved. These do legitimate network I/O — cloud backends,
     /// the model-download manager, test infra.
     ///
-    /// **Cap: 26 entries.** Adding to this list weakens Rule 1; require
+    /// **Cap: 29 entries.** Adding to this list weakens Rule 1; require
     /// reviewer sign-off and prefer to route new network code through
     /// `URLSessionProvider` (which is itself in this allowlist).
     private static let networkIOAllowlist: Set<String> = [
@@ -149,6 +149,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // session for MCP HTTP/SSE transports; guarded by networkDisabled
         // flag so tests can disable network I/O at test time.
         "ManifoldMCP/MCPURLSessionFactory.swift",
+        // MCP OAuth decomposition (#1113). The three files below were
+        // carved out of MCPOAuth.swift (which is already on this allowlist)
+        // and continue to route every request through `sessionProvider()`
+        // (an MCPURLSessionFactory-backed URLSession) and `MCPSSRFPolicy`.
+        // No new network boundary — same I/O, smaller files.
+        "ManifoldMCP/OAuthSecurity.swift",
+        "ManifoldMCP/OAuthTokenExchange.swift",
+        "ManifoldMCP/AuthorizationServerDiscovery.swift",
     ]
 
     /// Files where hostname literals (e.g. `https://api.anthropic.com`) are
@@ -254,7 +262,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 28,
+            Self.networkIOAllowlist.count, 31,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
