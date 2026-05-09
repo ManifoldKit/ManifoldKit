@@ -1,3 +1,4 @@
+#if CloudSaaS || Ollama
 import XCTest
 import Foundation
 @testable import ManifoldBackends
@@ -156,3 +157,4 @@ final class CrossBackendReplayParityTests: XCTestCase {
     }
 #endif
 }
+#endif

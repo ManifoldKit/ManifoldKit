@@ -1,3 +1,4 @@
+#if Llama
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldLlama
@@ -36,3 +37,4 @@ final class LlamaKVCacheSecureWipeTests: XCTestCase {
         #endif
     }
 }
+#endif
