@@ -67,19 +67,21 @@ final class BackendCapabilitiesContractTests: XCTestCase {
 
     // MARK: - supportsThinking
 
-    /// Cloud backends remain at the default `false` until their
-    /// thinking-event wiring is formalised through #604 / #605 / #598.
-    /// Even though `OpenAIBackend` and `ClaudeBackend` already plumb reasoning
-    /// deltas, the capability flag is the static, model-agnostic contract
-    /// callers rely on to gate reasoning UI — see issue #480.
+    /// `supportsThinking` is now derived from ``ModelManifest`` rather than
+    /// hardcoded on each backend. Claude 4-class models advertise extended
+    /// thinking via the manifest table, so `ClaudeBackend` configured with
+    /// the default `claude-sonnet-4-20250514` name reports `true`.
+    /// `OpenAIBackend`'s default `gpt-4o-mini` is a chat model (no thinking),
+    /// and `OllamaBackend` resolves at load time via `/api/show` so an
+    /// unloaded instance reports the manifest-default `false`.
     #if Ollama && CloudSaaS
-    func test_cloudBackends_doNotAdvertiseThinking() {
-        XCTAssertFalse(ClaudeBackend().capabilities.supportsThinking,
-                       "ClaudeBackend.supportsThinking stays false until #604 formalises the declaration")
+    func test_cloudBackends_advertiseThinkingFromManifest() {
+        XCTAssertTrue(ClaudeBackend().capabilities.supportsThinking,
+                      "ClaudeBackend default model is claude-sonnet-4, which the manifest table reports as a thinking model")
         XCTAssertFalse(OpenAIBackend().capabilities.supportsThinking,
-                       "OpenAIBackend.supportsThinking stays false until #605 formalises the declaration")
+                       "OpenAIBackend default model gpt-4o-mini is not a thinking model")
         XCTAssertFalse(OllamaBackend().capabilities.supportsThinking,
-                       "OllamaBackend.supportsThinking stays false until #598 formalises the declaration")
+                       "OllamaBackend reports thinking only after /api/show probe runs at loadModel time")
     }
     #endif
 

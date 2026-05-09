@@ -574,6 +574,21 @@ public protocol InferenceBackend: AnyObject, Sendable {
     /// What this backend supports (parameters, context size, prompt templates).
     var capabilities: BackendCapabilities { get }
 
+    /// Introspectable description of the currently loaded model — context
+    /// window, sampling parameter support, thinking markers.
+    ///
+    /// Populated at ``loadModel(from:plan:)`` time. Returns `nil` when no
+    /// model has been loaded yet, or when the backend cannot introspect the
+    /// model (uncommon — most backends fall back to
+    /// ``ModelManifest/unknown(modelIdentifier:producerKind:)``).
+    ///
+    /// The default implementation returns `nil`. Backends that have not yet
+    /// adopted the manifest source-of-truth pattern compile against this
+    /// default; consumers (``ContextWindowManager``, request builders) fall
+    /// back to ``BackendCapabilities`` when the manifest is absent. This
+    /// keeps the addition non-breaking for adopters of `InferenceBackend`.
+    var manifest: ModelManifest? { get }
+
     /// Loads a model from the given URL, consuming a precomputed ``ModelLoadPlan``.
     ///
     /// - For GGUF backends, `url` points to a single `.gguf` file.
@@ -646,4 +661,7 @@ public protocol InferenceBackend: AnyObject, Sendable {
 extension InferenceBackend {
     public func resetConversation() {}
     public func secureWipe() {}
+    /// Default — backends that haven't adopted manifest source-of-truth yet
+    /// return `nil`, and consumers fall back to ``capabilities``.
+    public var manifest: ModelManifest? { nil }
 }

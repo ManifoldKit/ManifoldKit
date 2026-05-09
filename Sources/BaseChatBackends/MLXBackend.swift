@@ -69,12 +69,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         withStateLock {
-            BackendCapabilities(
+            // The manifest is populated at loadModel-time from config.json's
+            // `max_position_embeddings`. Until a load completes (or for
+            // injected test doubles that bypass loadModel), fall back to the
+            // historical conservative 8k default rather than a manifest the
+            // probe never produced.
+            let ctxTokens = Int32(_manifest?.contextWindow ?? 8192)
+            return BackendCapabilities(
                 supportedParameters: [
                     .temperature, .topP, .topK, .repeatPenalty,
                     .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
                 ],
-                maxContextTokens: 8192,
+                maxContextTokens: ctxTokens,
                 requiresPromptTemplate: false,
                 supportsSystemPrompt: true,
                 supportsToolCalling: true,
@@ -137,6 +143,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Whether the currently loaded MLX model accepts image inputs.
     /// Access only under `stateLock`.
     private var _supportsVision = false
+
+    /// Manifest produced at ``loadModel(from:plan:)`` time from the model's
+    /// `config.json` and `tokenizer_config.json`. Drives ``capabilities``'s
+    /// `maxContextTokens` once populated; falls back to `8192` until then.
+    /// Access only under `stateLock`.
+    private var _manifest: ModelManifest?
+
+    /// Public accessor for the manifest captured at the most recent successful
+    /// load. Returns `nil` before any load and after ``unloadModel()``. Used by
+    /// ``ContextWindowManager`` and the conformance harness — see
+    /// `BackendCapabilitiesContractTests`.
+    public var manifest: ModelManifest? { withStateLock { _manifest } }
 
     /// Backend tuning knobs (KV cache quantization, prefill batch size).
     /// Applied at every ``generate`` call's ``GenerateParameters`` construction.
@@ -756,6 +774,86 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         return ThinkingMarkers.fromChatTemplate(template)
     }
 
+    // MARK: - Manifest Production
+
+    /// Produces a ``ModelManifest`` from a freshly-loaded MLX model directory.
+    ///
+    /// Reads `config.json` to extract the true context window:
+    /// `text_config.max_position_embeddings` (preferred for VLM/MoE configs),
+    /// `max_position_embeddings`, or `model_max_length` as a final fallback.
+    /// Combines with the chat-template-detected ``ThinkingMarkers`` and the
+    /// vision-capability flag to populate the manifest.
+    ///
+    /// Falls back to ``ModelManifest/unknown(modelIdentifier:producerKind:)``
+    /// (with a `Log.warn`) when `config.json` is missing or carries no
+    /// position-embedding hint. The conservative default (8k) keeps prompts
+    /// shorter than necessary on misconfigured snapshots, which is safer than
+    /// over-trimming or over-feeding the model.
+    static func produceManifest(
+        at url: URL,
+        detectedThinkingMarkers: ThinkingMarkers?,
+        supportsVision: Bool
+    ) -> ModelManifest {
+        let modelIdentifier = url.lastPathComponent
+        let configURL = url.appendingPathComponent("config.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            Log.inference.warning(
+                "MLX manifest probe: config.json missing or unreadable for \(modelIdentifier, privacy: .public); falling back to ModelManifest.unknown"
+            )
+            return .unknown(modelIdentifier: modelIdentifier, producerKind: .local)
+        }
+
+        let contextWindow = extractContextWindow(from: json)
+            ?? {
+                Log.inference.warning(
+                    "MLX manifest probe: no max_position_embeddings / model_max_length found for \(modelIdentifier, privacy: .public); falling back to 8192"
+                )
+                return 8192
+            }()
+
+        return ModelManifest(
+            contextWindow: contextWindow,
+            supportsTools: true,
+            supportsThinking: detectedThinkingMarkers != nil,
+            thinkingMarkers: detectedThinkingMarkers,
+            supportsSeed: true,
+            supportedSamplingParameters: [
+                .temperature, .topP, .topK, .repeatPenalty,
+                .presencePenalty, .frequencyPenalty,
+            ],
+            modelIdentifier: modelIdentifier,
+            producerKind: .local
+        )
+    }
+
+    /// Pulls the model's max position embedding count out of an MLX
+    /// `config.json` payload. Returns `nil` when no recognised key is
+    /// present.
+    static func extractContextWindow(from json: [String: Any]) -> Int? {
+        // Modern multi-modal configs nest the text encoder fields under
+        // `text_config`. Prefer that over the top-level keys when present.
+        if let textConfig = json["text_config"] as? [String: Any],
+           let value = positiveInt(from: textConfig["max_position_embeddings"]) {
+            return value
+        }
+        if let value = positiveInt(from: json["max_position_embeddings"]) {
+            return value
+        }
+        if let value = positiveInt(from: json["model_max_length"]) {
+            return value
+        }
+        return nil
+    }
+
+    private static func positiveInt(from value: Any?) -> Int? {
+        if let int = value as? Int, int > 0 { return int }
+        if let int64 = value as? Int64, int64 > 0 { return Int(int64) }
+        if let double = value as? Double, double > 0 { return Int(double) }
+        if let str = value as? String, let parsed = Int(str), parsed > 0 { return parsed }
+        return nil
+    }
+
     // MARK: - Model Lifecycle
 
     public func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
@@ -827,12 +925,18 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             }
             let detectedDialect = MLXToolDialect.detect(at: url)
             let detectedThinkingMarkers = Self.detectThinkingMarkers(at: url)
+            let producedManifest = Self.produceManifest(
+                at: url,
+                detectedThinkingMarkers: detectedThinkingMarkers,
+                supportsVision: supportsVision
+            )
             let kvCacheReuseEligible = enableKVCacheReuse && !routeThroughVLMFactory
             withStateLock {
                 _modelContainer = container
                 _dialect = detectedDialect
                 _autoDetectedThinkingMarkers = detectedThinkingMarkers
                 _supportsVision = supportsVision
+                _manifest = producedManifest
                 invalidatePromptCacheLocked()
                 _kvCacheReuseEligible = kvCacheReuseEligible
                 _hasInitializedRuntime = true
@@ -1146,6 +1250,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             _dialect = .unknown
             _autoDetectedThinkingMarkers = nil
             _supportsVision = false
+            _manifest = nil
             invalidatePromptCacheLocked()
             _kvCacheReuseEligible = false
             _hasInitializedRuntime = false

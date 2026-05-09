@@ -57,10 +57,27 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
     public override var backendName: String { "OpenAI" }
 
+    /// Manifest looked up from ``CloudModelManifestTable/openAI(modelName:)``
+    /// against the configured ``modelName``.
+    ///
+    /// Cloud backends can't introspect the model at runtime, so the manifest
+    /// is derived from a vendored prefix table. Returns an `unknown(...)`
+    /// manifest (conservative defaults: 8k context, no seed, no penalties)
+    /// for any model name that doesn't prefix-match a table entry — that
+    /// keeps the backend safe against new model releases without having to
+    /// ship a code change for every API name.
+    public override var manifest: ModelManifest? {
+        CloudModelManifestTable.openAI(modelName: modelName)
+    }
+
     public override var capabilities: BackendCapabilities {
-        BackendCapabilities(
+        // Derive the wire-relevant context window from the manifest produced
+        // at loadModel-time; fall back to OpenAI's mainstream 128k when the
+        // host configured a model name we don't recognise.
+        let resolvedContext = Int32(manifest?.contextWindow ?? 128_000)
+        return BackendCapabilities(
             supportedParameters: [.temperature, .topP],
-            maxContextTokens: 128_000,
+            maxContextTokens: resolvedContext,
             requiresPromptTemplate: false,
             supportsSystemPrompt: true,
             // Chat Completions tool calling: the request encodes BCK
@@ -222,6 +239,30 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // `format: "json"` switch.
             body["format"] = "json"
             body["response_format"] = ["type": "json_object"]
+        }
+
+        // Manifest-gated extra parameters. Reasoning models (`o1`/`o3`/`o4`)
+        // reject `seed` and most penalties — gating per-model on the
+        // manifest avoids HTTP 400s that previously surfaced as cryptic
+        // "Unsupported parameter" upstream errors.
+        let resolvedManifest = manifest ?? .unknown(modelIdentifier: modelName, producerKind: .cloud)
+        if resolvedManifest.supportsSeed, let seed = config.seed {
+            // OpenAI accepts `seed` as a 32-bit signed integer in JSON.
+            // Truncate the 64-bit storage to that range — matches what the
+            // wire format will accept anyway.
+            body["seed"] = Int(truncatingIfNeeded: seed)
+        }
+        if resolvedManifest.supportedSamplingParameters.contains(.presencePenalty),
+           let presence = config.presencePenalty {
+            body["presence_penalty"] = presence
+        }
+        if resolvedManifest.supportedSamplingParameters.contains(.frequencyPenalty),
+           let frequency = config.frequencyPenalty {
+            body["frequency_penalty"] = frequency
+        }
+        if resolvedManifest.supportedSamplingParameters.contains(.topK),
+           let topK = config.topK {
+            body["top_k"] = Int(topK)
         }
 
         // Tool definitions — OpenAI accepts the canonical

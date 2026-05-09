@@ -57,6 +57,31 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// (the `.cloud()` factory defaults to `1`).
     private var effectiveNumCtx: Int = defaultNumCtxFloor
 
+    /// ``ThinkingMarkers`` auto-detected from the loaded model's `/api/show`
+    /// `template` field. Set by ``loadModel(from:plan:)`` via the show
+    /// probe; consumed by ``parseResponseStream(bytes:config:continuation:)``
+    /// when the server never populates the side-channel `message.thinking`
+    /// field and the model leaks reasoning via inline tags.
+    ///
+    /// Guarded by `stateLock`. `nil` on non-thinking models (or when the
+    /// probe failed); ``parseResponseStream`` falls back to ``ThinkingMarkers/qwen3``
+    /// only when both this and the per-request override are absent.
+    private var _autoDetectedThinkingMarkers: ThinkingMarkers?
+
+    /// Manifest produced by the `/api/show` probe at load time. Captures the
+    /// real `model_info.context_length`, the auto-detected thinking marker
+    /// pair, and the thinking-capability flag in one structured value.
+    /// Guarded by `stateLock`.
+    private var _manifest: ModelManifest?
+
+    /// Public accessor for the manifest captured at the most recent
+    /// successful load. Returns `nil` before any load. Used by the
+    /// conformance harness to assert the cross-backend invariant that
+    /// `.thinkingToken` emitters report `manifest.supportsThinking == true`.
+    public override var manifest: ModelManifest? {
+        withStateLock { _manifest }
+    }
+
     // MARK: - Init
 
     /// Creates an Ollama backend.
@@ -94,12 +119,23 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     public override var backendName: String { "Ollama" }
 
     public override var capabilities: BackendCapabilities {
-        BackendCapabilities(
+        // Prefer the `/api/show` `model_info.context_length` captured into
+        // the manifest at load time. Fall back to the historical 128k
+        // default (covers most modern Llama 3.x / Qwen3 weights) until a
+        // real probe runs.
+        let resolvedManifest = withStateLock { _manifest }
+        let resolvedContext: Int32
+        if let resolvedManifest {
+            resolvedContext = Int32(resolvedManifest.contextWindow)
+        } else {
+            resolvedContext = 128_000
+        }
+        return BackendCapabilities(
             supportedParameters: [
                 .temperature, .topP, .topK, .repeatPenalty,
                 .minP, .presencePenalty, .frequencyPenalty,
             ],
-            maxContextTokens: 128_000,
+            maxContextTokens: resolvedContext,
             requiresPromptTemplate: false,
             supportsSystemPrompt: true,
             // Tool calling wiring: Ollama's native /api/chat endpoint accepts an
@@ -118,6 +154,11 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             maxOutputTokens: 128_000,
             supportsStreaming: true,
             isRemote: true,
+            // Reflect the auto-detected thinking capability from `/api/show`
+            // here so consumers can gate reasoning UI without consulting the
+            // legacy `isThinkingModel` flag separately. Defaults to the live
+            // probe value; the manifest carries the same bit.
+            supportsThinking: isThinkingModel,
             // Ollama emits tool calls as whole entries on a single NDJSON
             // line — no incremental `arguments` fragments arrive across
             // multiple lines (some `qwen2.5:7b` configs may stream deltas
@@ -174,25 +215,66 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         let planned = plan.effectiveContextSize
         effectiveNumCtx = planned > Self.defaultNumCtxFloor ? planned : Self.defaultNumCtxFloor
 
-        self.isThinkingModel = (try? await detectThinkingCapability()) ?? false
+        let probed: ShowProbe
+        do {
+            probed = try await probeShow()
+        } catch {
+            Log.network.info("OllamaBackend /api/show probe threw \(error.localizedDescription, privacy: .public) — treating \(self.modelName, privacy: .public) as non-thinking with conservative manifest")
+            probed = .empty
+        }
+
+        self.isThinkingModel = probed.thinking
+        let resolvedContextWindow = probed.contextLength ?? max(effectiveNumCtx, Self.defaultNumCtxFloor)
+        let manifest = ModelManifest(
+            contextWindow: resolvedContextWindow,
+            supportsTools: true,
+            supportsThinking: probed.thinking,
+            thinkingMarkers: probed.thinkingMarkers,
+            supportsSeed: false, // Ollama's /api/chat ignores seed in current releases.
+            supportedSamplingParameters: [
+                .temperature, .topP, .topK,
+                .presencePenalty, .frequencyPenalty,
+                .repeatPenalty,
+            ],
+            modelIdentifier: modelName,
+            producerKind: .lan
+        )
+        withStateLock {
+            _autoDetectedThinkingMarkers = probed.thinkingMarkers
+            _manifest = manifest
+        }
 
         setIsModelLoaded(true)
-        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(self.effectiveNumCtx, privacy: .public)")
+        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(self.effectiveNumCtx, privacy: .public) ctxWindow=\(resolvedContextWindow, privacy: .public)")
     }
 
-    /// Calls Ollama's `/api/show` endpoint and classifies the model as
-    /// thinking-capable or not.
+    /// Decoded subset of Ollama's `/api/show` response we actually consume.
+    private struct ShowProbe {
+        let thinking: Bool
+        let thinkingMarkers: ThinkingMarkers?
+        let contextLength: Int?
+
+        static let empty = ShowProbe(thinking: false, thinkingMarkers: nil, contextLength: nil)
+    }
+
+    /// Calls Ollama's `/api/show` endpoint and extracts thinking capability,
+    /// auto-detected thinking markers, and the model's true context window.
     ///
-    /// Detection prefers `capabilities: ["thinking", ...]` (surfaced by modern
-    /// Ollama releases) and falls back to scanning the Jinja `template` field
-    /// for `<think>`, `</think>`, or `{{ if .Thinking }}` markers that
-    /// reasoning models ship by convention.
+    /// Thinking detection prefers `capabilities: ["thinking", ...]` (surfaced
+    /// by modern Ollama releases) and falls back to scanning the Jinja
+    /// `template` field for `<think>` / `{{ if .Thinking }}` markers that
+    /// reasoning models ship by convention. ``ThinkingMarkers`` are extracted
+    /// from the same template so the wire-format inline-fallback path
+    /// (`OllamaBackend.parseResponseStream`) can route reasoning content
+    /// through ``ThinkingParser`` rather than hardcoding `<think>` even when
+    /// the loaded model uses a different marker family.
     ///
-    /// Returns `false` (not `nil`) on HTTP failures other than thrown network
-    /// errors so callers get a clean boolean; `throws` so internal bugs (bad
-    /// URL, serialization failure) still surface for the test harness.
-    private func detectThinkingCapability() async throws -> Bool {
-        guard let baseURL else { return false }
+    /// Context length is read from `model_info.context_length`. On HTTP
+    /// failures or shape mismatches the probe returns ``ShowProbe/empty``;
+    /// only true network exceptions throw, so callers can wrap the call in
+    /// `try?` for best-effort behaviour.
+    private func probeShow() async throws -> ShowProbe {
+        guard let baseURL else { return .empty }
         let showURL = baseURL.appendingPathComponent("api/show")
 
         var request = URLRequest(url: showURL)
@@ -205,34 +287,73 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             (data, response) = try await urlSession.data(for: request)
         } catch {
             Log.network.info("OllamaBackend /api/show probe failed (\(error.localizedDescription, privacy: .public)) — treating \(self.modelName, privacy: .public) as non-thinking")
-            return false
+            return .empty
         }
 
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             Log.network.info("OllamaBackend /api/show returned HTTP \(http.statusCode, privacy: .public) for \(self.modelName, privacy: .public) — treating as non-thinking")
-            return false
+            return .empty
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let json: [String: Any]
+        do {
+            guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                Log.network.info("OllamaBackend /api/show returned non-object JSON for \(self.modelName, privacy: .public) — treating as non-thinking")
+                return .empty
+            }
+            json = parsed
+        } catch {
             Log.network.info("OllamaBackend /api/show returned non-JSON for \(self.modelName, privacy: .public) — treating as non-thinking")
-            return false
+            return .empty
         }
 
-        // Preferred: structured capabilities list.
+        // Thinking capability — prefer the structured capabilities list.
+        var thinking = false
         if let caps = json["capabilities"] as? [String],
            caps.contains(where: { $0.lowercased() == "thinking" }) {
-            return true
+            thinking = true
         }
 
-        // Fallback: scan the template for thinking markers.
+        // Thinking markers — auto-detect from the Jinja template via the
+        // shared ``PromptTemplateDetector`` rules. Then opportunistically
+        // back-fill the thinking flag when the template carries a
+        // recognised marker pair.
+        var detectedMarkers: ThinkingMarkers?
         if let template = json["template"] as? String {
-            let markers = ["<think>", "</think>", "{{ if .Thinking }}", "{{if .Thinking}}"]
-            if markers.contains(where: { template.contains($0) }) {
-                return true
+            detectedMarkers = ThinkingMarkers.fromChatTemplate(template)
+            if !thinking {
+                let legacyMarkers = ["<think>", "</think>", "{{ if .Thinking }}", "{{if .Thinking}}"]
+                if legacyMarkers.contains(where: { template.contains($0) }) {
+                    thinking = true
+                }
             }
         }
 
-        return false
+        // model_info.context_length — the authoritative wire value. Missing
+        // on snapshots compiled from older Modelfiles; fall back to the
+        // caller's plan-derived window in that case.
+        var contextLength: Int?
+        if let modelInfo = json["model_info"] as? [String: Any] {
+            // Ollama reports context length under either the canonical
+            // `context_length` key or the architecture-prefixed
+            // `<arch>.context_length` (e.g. `llama.context_length`).
+            for (key, value) in modelInfo where key.hasSuffix("context_length") {
+                if let int = value as? Int, int > 0 {
+                    contextLength = int
+                    break
+                }
+                if let int64 = value as? Int64, int64 > 0 {
+                    contextLength = Int(int64)
+                    break
+                }
+            }
+        }
+
+        return ShowProbe(
+            thinking: thinking,
+            thinkingMarkers: detectedMarkers,
+            contextLength: contextLength
+        )
     }
 
     // MARK: - Request Building
@@ -454,7 +575,12 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         // of the stream so partial tags split across chunks are held back
         // correctly by the parser's own buffering.
         var sawThinkingField = false
-        let fallbackMarkers = config.thinkingMarkers ?? .qwen3
+        // Order: explicit per-request override > auto-detected markers from
+        // the `/api/show` template scan > Qwen3 default. Hardcoding
+        // `.qwen3` was the bug — non-Qwen reasoning models (`<thinking>`,
+        // `<reasoning>`) silently leaked their markers as visible tokens.
+        let detectedMarkers = withStateLock { _autoDetectedThinkingMarkers }
+        let fallbackMarkers = config.thinkingMarkers ?? detectedMarkers ?? .qwen3
         var contentParser: ThinkingParser?
 
         func noteEventYielded() throws {
@@ -1165,6 +1291,11 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     // MARK: - Unload
 
     public override func unloadModel() {
+        withStateLock {
+            _manifest = nil
+            _autoDetectedThinkingMarkers = nil
+        }
+        isThinkingModel = false
         super.unloadModel()
     }
 }

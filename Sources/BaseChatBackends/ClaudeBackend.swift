@@ -67,10 +67,30 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
     public override var backendName: String { "Claude" }
 
+    /// Manifest looked up from ``CloudModelManifestTable/claude(modelName:)``
+    /// against the configured ``modelName``.
+    ///
+    /// Returns an `unknown(...)` manifest for any model name that doesn't
+    /// prefix-match a table entry — same conservative-by-default policy as
+    /// ``OpenAIBackend/manifest``.
+    public override var manifest: ModelManifest? {
+        CloudModelManifestTable.claude(modelName: modelName)
+    }
+
     public override var capabilities: BackendCapabilities {
-        BackendCapabilities(
+        // Manifest is the source of truth for context window + thinking
+        // capability. Falls back to Anthropic's mainstream 200k baseline
+        // and "extended thinking enabled" until the table covers a model
+        // name — Claude 4-class models all support thinking, so the
+        // optimistic default is safer than under-reporting and silently
+        // hiding the reasoning UI.
+        let resolvedManifest = manifest ?? .unknown(modelIdentifier: modelName, producerKind: .cloud)
+        let resolvedContext = Int32(resolvedManifest.contextWindow == 8192
+            ? 200_000
+            : resolvedManifest.contextWindow)
+        return BackendCapabilities(
             supportedParameters: [.temperature, .topP],
-            maxContextTokens: 200_000,
+            maxContextTokens: resolvedContext,
             requiresPromptTemplate: false,
             supportsSystemPrompt: true,
             // Anthropic Messages API tool calling: the request encodes BCK
@@ -97,6 +117,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             // image attachments before we ever build a request body, so an
             // outdated model name surfaces a clear "not vision-capable"
             // error rather than a 400 from Anthropic.
+            supportsThinking: resolvedManifest.supportsThinking,
             supportsVision: BackendVisionCapability.claudeMessagesSupportsImageInput(modelName: modelName),
             streamsToolCallArguments: true,
             supportsParallelToolCalls: true
