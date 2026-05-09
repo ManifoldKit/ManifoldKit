@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Handles directory creation, model discovery, deletion, and storage accounting.
 /// On iOS the models directory is excluded from iCloud backup.
-public final class ModelStorageService {
+public final class ModelStorageService: @unchecked Sendable {
 
     private let fileManager: FileManager
     /// Overrides the default Application-Support-relative directory. Used in tests.
