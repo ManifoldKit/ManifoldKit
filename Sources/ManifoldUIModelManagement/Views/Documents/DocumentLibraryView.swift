@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 import ManifoldRuntime
 import ManifoldInference
 
@@ -24,7 +25,7 @@ public struct DocumentLibraryView: View {
     /// Document file types accepted by the importer. Mirrors the `parsers:`
     /// list passed to ``RAGService`` in ``ManifoldBootstrap`` — keep in sync
     /// when adding a new ``DocumentParser``.
-    private static let allowedContentTypes: [UTType] = [.plainText, .pdf]
+    nonisolated private static let allowedContentTypes: [UTType] = [.plainText, .pdf]
 
     public init(viewModel: DocumentLibraryViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -217,20 +218,21 @@ public struct DocumentLibraryView: View {
 
     #if os(macOS)
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        var collected: [URL] = []
+        let collectedLock = OSAllocatedUnfairLock(initialState: [URL]())
         let group = DispatchGroup()
         for provider in providers {
             group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 if let url, Self.allowedContentTypes.contains(where: { url.pathExtension.lowercased() == $0.preferredFilenameExtension }) {
-                    collected.append(url)
+                    collectedLock.withLock { $0.append(url) }
                 }
                 group.leave()
             }
         }
         group.notify(queue: .main) {
-            guard !collected.isEmpty else { return }
-            Task { await viewModel.ingest(urls: collected) }
+            let urls = collectedLock.withLock { $0 }
+            guard !urls.isEmpty else { return }
+            Task { await viewModel.ingest(urls: urls) }
         }
         return true
     }

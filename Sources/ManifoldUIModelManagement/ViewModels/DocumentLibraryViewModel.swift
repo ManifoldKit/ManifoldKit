@@ -66,8 +66,8 @@ public final class DocumentLibraryViewModel {
         await withTaskGroup(of: Void.self) { group in
             for url in urls {
                 ingestingURLs.insert(url)
-                group.addTask { [weak self] in
-                    await self?.ingestOne(url: url, service: ragService)
+                group.addTask {
+                    await self.ingestOne(url: url, service: ragService)
                 }
             }
             await group.waitForAll()
