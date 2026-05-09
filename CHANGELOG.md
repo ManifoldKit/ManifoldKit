@@ -1,16 +1,33 @@
 # Changelog
 
-## [0.21.0](https://github.com/roryford/ManifoldKit/compare/v0.20.0...v0.21.0) (2026-05-09)
+## [0.21.0](https://github.com/roryford/ManifoldKit/compare/v0.20.0...v0.21.0) — 2026-05-09
 
+### Highlights
 
-### Features
+#### RAG Phase 2 — document library UI and source citations ([#1157](https://github.com/roryford/ManifoldKit/issues/1157))
 
-* **rag:** Phase 2 — document library UI, source citations, demo wiring ([#1157](https://github.com/roryford/ManifoldKit/issues/1157)) ([6769616](https://github.com/roryford/ManifoldKit/commit/67696168183be4fc794f7465ac7def2cdb17b8ee))
+Phase 1 shipped the engine (`FlatFileVectorStore`, `RAGService`, `ConversationRuntime` wiring). Phase 2 makes RAG reachable without writing any plumbing. A new `DocumentLibrarySheet` lets users add `.txt`/`.pdf` files directly from a sidebar button; each ingested document is chunked, indexed, and retrieved automatically on every turn. Retrieved passages now surface as a collapsed "Sources" disclosure beneath the assistant bubble via the new `CitationsView` — mirroring the existing `ThinkingBlockView` idiom. `RAGService` gains a `retrieve(query:limit:)` method that returns both the prompt slot and per-hit `Citation` provenance in one call; the existing `retrieveSlots` is kept as a compatibility shim.
 
+```swift
+// Enable RAG when bootstrapping — keyword fallback runs without an embedding model
+let runtime = try ManifoldBootstrap(
+    configuration: config,
+    ragConfiguration: RAGConfiguration(),
+    inferenceService: inferenceService,
+    makeModelContainer: { container }
+)
 
-### Bug Fixes
+// Citations are attached to the assistant ChatMessageRecord automatically
+// and rendered by MessageBubbleView — no host-app changes required.
+let assistant: ChatMessageRecord = ...
+if let citations = assistant.citations {
+    CitationsView(citations: citations) // collapsed "Sources" disclosure
+}
+```
 
-* **tests:** make DemoScenarioOllamaE2ETests compile so all 4 tests register ([#1154](https://github.com/roryford/ManifoldKit/issues/1154)) ([8ed2384](https://github.com/roryford/ManifoldKit/commit/8ed2384b9251edd8f4aeb8dcaaf2d03a7456b9fb))
+### Fixes
+
+* **tests:** make `DemoScenarioOllamaE2ETests` compile so all 4 tests register ([#1154](https://github.com/roryford/ManifoldKit/issues/1154))
 
 ## [0.20.0] — 2026-05-09
 
