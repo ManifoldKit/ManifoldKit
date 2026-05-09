@@ -36,7 +36,7 @@ final class MLXKVReuseIntegrationTests: XCTestCase {
             )
         }
         try XCTSkipIf(
-            MLXBackend.requiresVLMFactory(at: mlxDir),
+            MLXModelProbe.requiresVLMFactory(at: mlxDir),
             "KV-cache reuse is gated off for VLMs — see MLXVLMGateExperimentTests for that path."
         )
         modelURL = mlxDir

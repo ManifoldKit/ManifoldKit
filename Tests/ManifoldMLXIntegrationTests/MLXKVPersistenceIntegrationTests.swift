@@ -31,7 +31,7 @@ final class MLXKVPersistenceIntegrationTests: XCTestCase {
             )
         }
         try XCTSkipIf(
-            MLXBackend.requiresVLMFactory(at: mlxDir),
+            MLXModelProbe.requiresVLMFactory(at: mlxDir),
             "KV-cache reuse v1 is intentionally limited to text-only MLX models; VLM/MoE fixtures are out of scope."
         )
         modelURL = mlxDir
