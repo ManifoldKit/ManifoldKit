@@ -41,7 +41,11 @@ BCK's test targets are conditionally linked on Swift package traits:
 | `Server` | no | ManifoldServer |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
-The default-traits build is what CI's per-PR matrix runs against. Use `--disable-default-traits` locally to drop MLX/Llama (faster, sim-friendly).
+The default-traits build is what CI's per-PR matrix runs against. Use `--disable-default-traits` locally to drop MLX/Llama/HuggingFace (faster, sim-friendly).
+
+**When to disable default traits locally:** any iteration that doesn't exercise a hardware backend — `ManifoldRuntimeTests`, `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`, `ManifoldInferenceTests`, `ManifoldMCPTests`, `ManifoldServerTests`. Skipping MLX avoids an mlx-swift source checkout and a Metal shader compilation pass on every rebuild — the dominant cost in a default-traits cold build.
+
+**When to keep defaults on:** changes under `Sources/ManifoldMLX/` or `Sources/ManifoldLlama/`, the matching `ManifoldBackendsTests` MLX/Llama suites, and `ManifoldE2ETests`. Those tests `XCTSkip` without the trait — the run looks green but exercises nothing.
 
 ## Running a single suite
 
