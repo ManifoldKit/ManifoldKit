@@ -334,6 +334,105 @@ final class ConversationRuntimeTests: XCTestCase {
 
     enum TestError: Error { case deadlineElapsed }
 
+    // MARK: - RAG citations
+
+    /// In-memory RAG-adjacent fakes mirroring the shapes from `RAGServiceTests`,
+    /// re-stated here so this file stays independent of that fixture set.
+    @MainActor
+    final class CitationDocumentStore: DocumentStore {
+        var inserted: [DocumentRecord] = []
+        func insertDocument(_ record: DocumentRecord) async throws { inserted.append(record) }
+        func fetchDocuments() async throws -> [DocumentRecord] { inserted }
+        func fetchDocument(id: UUID) async throws -> DocumentRecord? { inserted.first { $0.id == id } }
+        func deleteDocument(id: UUID) async throws { inserted.removeAll { $0.id == id } }
+    }
+
+    actor CitationVectorStore: VectorStore {
+        var keywordHits: [VectorSearchHit] = []
+        func setKeywordHits(_ hits: [VectorSearchHit]) { keywordHits = hits }
+        func insert(chunks: [DocumentChunk], documentTitle: String, embeddings: [[Float]]) throws {}
+        func search(embedding: [Float], limit: Int) throws -> [VectorSearchHit] { [] }
+        func keywordSearch(query: String, limit: Int) throws -> [VectorSearchHit] { keywordHits }
+        func delete(documentID: UUID) throws {}
+        func deleteAll() throws {}
+    }
+
+    func test_send_withRagService_attachesCitationsToAssistantMessage() async throws {
+        // Pre-seed the vector store with a keyword hit so RAGService.retrieve()
+        // returns one slot + one citation for any non-empty query.
+        let vectorStore = CitationVectorStore()
+        let docID = UUID()
+        let hit = VectorSearchHit(
+            chunk: DocumentChunk(documentID: docID, text: "ManifoldKit is a SwiftUI chat framework.", chunkIndex: 0),
+            documentTitle: "Overview.txt",
+            score: 1.0
+        )
+        await vectorStore.setKeywordHits([hit])
+        let ragService = RAGService(documentStore: CitationDocumentStore(), vectorStore: vectorStore)
+
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        let backend = mock
+        backend.isModelLoaded = true
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            sessionStore: nil,
+            inferenceService: inference,
+            ragService: ragService
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "What is ManifoldKit?"))
+        _ = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        let stored = Array(store.messages.values).sorted { $0.timestamp < $1.timestamp }
+        let assistant = stored.first(where: { $0.role == .assistant })
+        XCTAssertNotNil(assistant, "Assistant message persisted")
+        let citations = assistant?.citations ?? []
+        XCTAssertEqual(citations.count, 1, "One citation per retrieval hit")
+        XCTAssertEqual(citations.first?.documentID, docID)
+        XCTAssertEqual(citations.first?.documentTitle, "Overview.txt")
+        XCTAssertEqual(citations.first?.chunkIndex, 0)
+    }
+
+    func test_send_withRagService_noHits_assistantMessageHasNilCitations() async throws {
+        // Empty keyword hits → no citations attached. Assistant.citations stays nil
+        // so the bubble doesn't render an empty "Sources" disclosure.
+        let vectorStore = CitationVectorStore()
+        await vectorStore.setKeywordHits([])
+        let ragService = RAGService(documentStore: CitationDocumentStore(), vectorStore: vectorStore)
+
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["fine"]
+        let backend = mock
+        backend.isModelLoaded = true
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            sessionStore: nil,
+            inferenceService: inference,
+            ragService: ragService
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "anything"))
+        _ = try await collectEvents(from: runtime) { event in
+            if case .afterGeneration = event { return true }
+            return false
+        }
+
+        let stored = Array(store.messages.values).sorted { $0.timestamp < $1.timestamp }
+        let assistant = stored.first(where: { $0.role == .assistant })
+        XCTAssertNotNil(assistant)
+        XCTAssertNil(assistant?.citations, "No retrieval hits → citations stays nil")
+    }
+
     // MARK: - Send happy path
 
     func test_send_happyPath_persistsBothMessagesAndStreamsTokens() async throws {

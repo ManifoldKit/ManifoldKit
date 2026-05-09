@@ -384,10 +384,12 @@ struct ConversationTurnExecutor: Sendable {
             slots = []
         }
 
+        var ragCitations: [Citation] = []
         if let ragService, let userPrompt {
             do {
-                let ragSlots = try await ragService.retrieveSlots(query: userPrompt)
-                slots.append(contentsOf: ragSlots)
+                let result = try await ragService.retrieve(query: userPrompt)
+                slots.append(contentsOf: result.slots)
+                ragCitations = result.citations
             } catch {
                 Log.inference.warning("ConversationRuntime: RAG retrieval failed, continuing without retrieved context: \(error.localizedDescription)")
             }
@@ -397,10 +399,16 @@ struct ConversationTurnExecutor: Sendable {
 
         // Build the assistant message slot up front so token deltas can
         // reference its id from the first emitted token.
+        //
+        // Citations carry the provenance of any retrieved passages so the UI
+        // can render a "Sources" disclosure beneath the assistant bubble.
+        // `nil` when RAG didn't run for this turn (no service, no user
+        // prompt, or retrieval threw).
         var assistantMessage = ChatMessageRecord(
             role: .assistant,
             content: "",
-            sessionID: sessionID
+            sessionID: sessionID,
+            citations: ragCitations.isEmpty ? nil : ragCitations
         )
         let assistantID = assistantMessage.id
 

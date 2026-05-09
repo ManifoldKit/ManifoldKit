@@ -214,6 +214,7 @@ struct ManifoldDemoApp: App {
                     DemoContentView(
                         toolRegistry: toolRegistry,
                         sandboxRoot: sandboxRoot,
+                        ragService: runtime.ragService,
                         pendingPayloadBuffer: pendingPayloadBuffer,
                         pendingDemoScenarioID: pendingDemoScenarioID
                     )
@@ -350,8 +351,14 @@ struct ManifoldDemoApp: App {
 
     @MainActor
     private func installRuntime(using container: ModelContainer) {
+        // Pass an unconfigured `RAGConfiguration()` so the demo exercises the
+        // keyword-fallback retrieval path even without a configured embedding
+        // model. Hosts that want semantic search supply an `EmbeddingBackend`
+        // here; without one, retrieval still runs on case-insensitive keyword
+        // search via `FlatFileVectorStore.keywordSearch(query:limit:)`.
         let runtime = try! ManifoldBootstrap(
             configuration: runtimeConfiguration,
+            ragConfiguration: RAGConfiguration(),
             inferenceService: inferenceService,
             makeModelContainer: { container }
         )
