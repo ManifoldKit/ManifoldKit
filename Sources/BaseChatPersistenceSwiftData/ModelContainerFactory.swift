@@ -25,7 +25,7 @@ import BaseChatInference
 public enum ModelContainerFactory {
     /// The current schema version.
     public static var currentSchema: any VersionedSchema.Type {
-        BaseChatSchemaV4.self
+        BaseChatSchemaV5.self
     }
 
     /// Returns an on-disk `ModelContainer` configured with the current schema.

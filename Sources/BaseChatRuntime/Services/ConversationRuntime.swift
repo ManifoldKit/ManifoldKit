@@ -436,6 +436,7 @@ public final class ConversationRuntime: Sendable {
     private let sessionStore: (any SessionStore)?
     private let inferenceService: InferenceService
     private let pipeline: PromptContextPipeline?
+    private let ragService: RAGService?
 
     // MARK: Event stream
 
@@ -491,13 +492,15 @@ public final class ConversationRuntime: Sendable {
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
-        pipeline: PromptContextPipeline? = nil
+        pipeline: PromptContextPipeline? = nil,
+        ragService: RAGService? = nil
     ) {
         self.init(
             messageStore: messageStore,
             sessionStore: sessionStore,
             inferenceService: inferenceService,
             pipeline: pipeline,
+            ragService: ragService,
             emptyResponseObserver: nil
         )
     }
@@ -510,12 +513,14 @@ public final class ConversationRuntime: Sendable {
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
+        ragService: RAGService? = nil,
         emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
     ) {
         self.messageStore = messageStore
         self.sessionStore = sessionStore
         self.inferenceService = inferenceService
         self.pipeline = pipeline
+        self.ragService = ragService
         self.emptyResponseObserver = emptyResponseObserver
         var cap: AsyncStream<ConversationEvent>.Continuation!
         self.events = AsyncStream(bufferingPolicy: .unbounded) { cap = $0 }
@@ -1031,7 +1036,7 @@ public final class ConversationRuntime: Sendable {
         )
         emit(.beforeContextAssembly(prompt: userPrompt, request: request))
 
-        let slots: [PromptSlot]
+        var slots: [PromptSlot]
         if let pipeline {
             do {
                 slots = try await pipeline.assemble(messageCount: messageCount)
@@ -1042,6 +1047,16 @@ public final class ConversationRuntime: Sendable {
         } else {
             slots = []
         }
+
+        if let ragService, let userPrompt {
+            do {
+                let ragSlots = try await ragService.retrieveSlots(query: userPrompt)
+                slots.append(contentsOf: ragSlots)
+            } catch {
+                Log.inference.warning("ConversationRuntime: RAG retrieval failed, continuing without retrieved context: \(error.localizedDescription)")
+            }
+        }
+
         emit(.contextAssembled(slots: slots))
 
         // Build the assistant message slot up front so token deltas can
