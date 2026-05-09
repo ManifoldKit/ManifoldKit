@@ -1,7 +1,7 @@
 # ManifoldKit Threat Model
 
 This document is the engineering-honest companion to [SECURITY.md](../SECURITY.md). Where
-SECURITY.md is the customer-facing summary ("what BCK guarantees, who it's for, what to
+SECURITY.md is the customer-facing summary ("what ManifoldKit guarantees, who it's for, what to
 do with a vulnerability"), this document is the line-by-line procurement checklist:
 what is enforced, what is **not** enforced, and which CI mechanism or open issue maps
 to each row.
@@ -16,10 +16,10 @@ article.
 
 ## Audience and scope
 
-BCK targets **integrators building Apple-platform chat applications**. The threat
-model covers everything BCK ships in source form: the Swift modules, the test infra,
+ManifoldKit targets **integrators building Apple-platform chat applications**. The threat
+model covers everything ManifoldKit ships in source form: the Swift modules, the test infra,
 the trait gates, and the documented configuration surface. It does **not** cover host
-application code, third-party model weights, or operating-system primitives BCK
+application code, third-party model weights, or operating-system primitives ManifoldKit
 relies on (Keychain, file protection, `URLSession`, MLX, llama.cpp).
 
 Build modes — `offline`, `ollama`, `saas`, `full` — are summarised in
@@ -28,7 +28,7 @@ where the threat surface differs by mode.
 
 ## Assets
 
-What BCK is trying to protect, in priority order:
+What ManifoldKit is trying to protect, in priority order:
 
 1. **API keys.** Stored in Keychain with
    `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Compromise of an API key gives an
@@ -44,7 +44,7 @@ What BCK is trying to protect, in priority order:
 4. **Conversation KV-cache residue.** The llama.cpp and MLX backends retain
    per-session KV state for the lifetime of the load. A second user inheriting the
    same `LlamaBackend` instance can in principle observe earlier conversation
-   tokens via timing or memory inspection. (Single-user devices, BCK's primary
+   tokens via timing or memory inspection. (Single-user devices, ManifoldKit's primary
    target, mostly defang this.)
 5. **Build-time secrets.** Developer dotfiles, `Package.resolved` URLs, and macro
    plugin source. A macro plugin runs at build time with the dev shell's full
@@ -53,8 +53,8 @@ What BCK is trying to protect, in priority order:
 
 ## Trust boundaries
 
-BCK distinguishes the following boundaries. Each subsection summarises what is
-considered hostile on the far side and what BCK validates as data crosses.
+ManifoldKit distinguishes the following boundaries. Each subsection summarises what is
+considered hostile on the far side and what ManifoldKit validates as data crosses.
 
 ### B1. Network ↔ device
 
@@ -97,7 +97,7 @@ considered hostile on the far side and what BCK validates as data crosses.
     traversal at ingest; `modelsDirectory` placement enforces a
     `.standardized.path` prefix check.
   - 24-hour stale-temp sweep in `BackgroundDownloadManager.cleanupStaleTempFiles()`.
-- **Not mitigated:** macOS at-rest encryption is FileVault (out-of-process); BCK
+- **Not mitigated:** macOS at-rest encryption is FileVault (out-of-process); ManifoldKit
   does no extra sealing on macOS. MLX Metal KV-cache buffers are evicted (not
   zeroed) on session switch — explicit zeroing is not available via the current
   MLX API. `LlamaBackend` zero-wipes KV tensors via `llama_memory_clear(mem, true)`.
@@ -141,19 +141,19 @@ considered hostile on the far side and what BCK validates as data crosses.
 
 ### B5. UI / framework ↔ host application
 
-- **Hostile side:** consumer-app code that links BCK. BCK protects its own
+- **Hostile side:** consumer-app code that links ManifoldKit. ManifoldKit protects its own
   invariants (Keychain access patterns, kill-switch honour, audit allowlists), not
   the host app's.
 - **What crosses:** dependency-injection points (`InferenceService`,
   `ChatViewModel.inferenceService`, `ManifoldConfiguration.shared`); SwiftData
   schemas; closure injection points (`apiConfiguration` view-builder on
   `ChatView`).
-- **Mitigations enforced today:** import-graph audit (Rule 6) ensures BCK's own
+- **Mitigations enforced today:** import-graph audit (Rule 6) ensures ManifoldKit's own
   modules cannot regress (UI cannot import Backends; Inference cannot import Core
   or Backends); `package`-visibility on `ChatViewModel.inferenceService`
   prevents leaking the full `InferenceService` API on the public boundary.
 - **Not mitigated:** consumer apps that subclass, swizzle, or otherwise bypass
-  BCK's APIs. BCK is a library, not a sandbox.
+  ManifoldKit's APIs. ManifoldKit is a library, not a sandbox.
 
 ## Threats considered
 
@@ -179,7 +179,7 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
 - **Mitigations:** `NSFileProtection.completeUntilFirstUserAuthentication`
   (default) seals the store after device reboot until first unlock. Opt in to
   `.complete` for stricter behaviour at the cost of background-task availability.
-- **Gaps:** macOS uses FileVault for at-rest sealing; BCK does no extra work
+- **Gaps:** macOS uses FileVault for at-rest sealing; ManifoldKit does no extra work
   there. iCloud Keychain sync is disabled at the API level (Keychain access
   class), so a recovered iCloud backup does not include API keys.
 
@@ -224,7 +224,7 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
   and `FileProtectionType.none` from `Sources/`. Each finding requires an
   explicit fingerprint entry with justification.
 - **Gaps:** The audit is a source grep — a host app can still call any of these
-  APIs. BCK does not whitelist them at runtime.
+  APIs. ManifoldKit does not whitelist them at runtime.
 
 ### Build-time exfiltration via macros
 
@@ -301,7 +301,7 @@ scope.
 
 ### Explicitly out of scope
 
-- **MDM / managed-app-config.** BCK does not parse managed-app-config plists; host
+- **MDM / managed-app-config.** ManifoldKit does not parse managed-app-config plists; host
   apps that need MDM-driven configuration must wrap `ManifoldConfiguration`
   themselves.
 - **Model-bundling recipes.** Shipping a model bundled inside the app binary is

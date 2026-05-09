@@ -12,7 +12,7 @@
 set -euo pipefail
 
 PACKAGE_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-OUTPUT_DIR="${BCK_PERF_AUDIT_INPUT_DIR:-${PACKAGE_DIR}/tmp/fuzz}"
+OUTPUT_DIR="${MANIFOLD_PERF_AUDIT_INPUT_DIR:-${PACKAGE_DIR}/tmp/fuzz}"
 
 if ! command -v jq >/dev/null 2>&1; then
     echo "summarize.sh: jq is required but was not found in PATH" >&2

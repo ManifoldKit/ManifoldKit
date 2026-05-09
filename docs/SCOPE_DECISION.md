@@ -1,8 +1,8 @@
-# Scope Decision — BCK 0.6.0
+# Scope Decision — ManifoldKit 0.6.0
 
-## Why we slimmed BCK
+## Why we slimmed ManifoldKit
 
-Consumer audits of ManifoldKit's two known consumers — a private internal app and the public [ChatbotUI-iOS](https://github.com/roryford/ChatbotUI-iOS) demo — showed that less than half of the codebase had any real demand. Several large subsystems had zero consumers at all, and several more had a single consumer that used only a narrow slice of the public API. The April 2026 feature-expansion plan that introduced most of this surface area was built without this data, so 0.6.0 is the correction: we are deleting what nobody used and repositioning BCK around what actually makes it valuable to the apps that ship it.
+Consumer audits of ManifoldKit's two known consumers — a private internal app and the public [ChatbotUI-iOS](https://github.com/roryford/ChatbotUI-iOS) demo — showed that less than half of the codebase had any real demand. Several large subsystems had zero consumers at all, and several more had a single consumer that used only a narrow slice of the public API. The April 2026 feature-expansion plan that introduced most of this surface area was built without this data, so 0.6.0 is the correction: we are deleting what nobody used and repositioning ManifoldKit around what actually makes it valuable to the apps that ship it.
 
 ## Consumer audit summary
 
@@ -31,11 +31,11 @@ The internal consumer is the original home of the compression pipeline and exerc
 
 ## What's staying (and why)
 
-- **Streaming resilience** — production failure mode where transient network loss, provider 429s, or cold TLS handshakes kill a stream mid-token. We caught this because BCK runs in apps that ship to real users on real networks, not just demo flows.
-- **Model handoff (latest-wins `LoadRequestToken`)** — production failure mode where the user taps model A, then model B before A finishes loading, and the stale A load corrupts the active state. We caught this because BCK runs in apps where users actually change their mind.
-- **Memory pressure auto-unload** — production failure mode where iOS pages out the loaded model silently and the next generation crashes on a zero pointer. We caught this because BCK runs on real devices that also run Safari, Messages, and background tasks.
-- **Mock backend (`MockInferenceBackend`)** — production failure mode where an app-level feature depends on BCK's streaming contract and has no way to test it without loading a real model. We caught this because BCK consumers write XCTests.
-- **Certificate pinning (fail-closed on known cloud APIs)** — production failure mode where a mis-configured device trusts a compromised CA and silently leaks chat traffic. We caught this because BCK ships cloud backends that actually get used in production.
+- **Streaming resilience** — production failure mode where transient network loss, provider 429s, or cold TLS handshakes kill a stream mid-token. We caught this because ManifoldKit runs in apps that ship to real users on real networks, not just demo flows.
+- **Model handoff (latest-wins `LoadRequestToken`)** — production failure mode where the user taps model A, then model B before A finishes loading, and the stale A load corrupts the active state. We caught this because ManifoldKit runs in apps where users actually change their mind.
+- **Memory pressure auto-unload** — production failure mode where iOS pages out the loaded model silently and the next generation crashes on a zero pointer. We caught this because ManifoldKit runs on real devices that also run Safari, Messages, and background tasks.
+- **Mock backend (`MockInferenceBackend`)** — production failure mode where an app-level feature depends on ManifoldKit's streaming contract and has no way to test it without loading a real model. We caught this because ManifoldKit consumers write XCTests.
+- **Certificate pinning (fail-closed on known cloud APIs)** — production failure mode where a mis-configured device trusts a compromised CA and silently leaks chat traffic. We caught this because ManifoldKit ships cloud backends that actually get used in production.
 
 The concrete, implementation-backed version of those guarantees lives in [RELIABILITY.md](RELIABILITY.md).
 
@@ -43,16 +43,16 @@ The concrete, implementation-backed version of those guarantees lives in [RELIAB
 
 ManifoldKit is a drop-in chat framework with operational reliability guarantees, optimized for the ChatbotUI-iOS-shaped consumer: take `ChatView`, `SessionListView`, and `ModelManagementSheet` wholesale, inject an `InferenceService`, and compose app-level features on top of the `ChatViewModel` API. The value is not "we support every backend" — it's "your chat UI keeps working when the network flickers, the user changes their mind mid-load, or iOS decides to reclaim your model's memory."
 
-AnyLanguageModel optimizes for provider abstraction — one protocol, many providers, API familiarity with Apple's `FoundationModels`. BCK optimizes for production failure modes — drop-in UI, operational reliability, and the things that go wrong between the demo and the App Store review. These are adjacent but distinct positions. We don't compete on backend count; we compete on what happens when the demo ends.
+AnyLanguageModel optimizes for provider abstraction — one protocol, many providers, API familiarity with Apple's `FoundationModels`. ManifoldKit optimizes for production failure modes — drop-in UI, operational reliability, and the things that go wrong between the demo and the App Store review. These are adjacent but distinct positions. We don't compete on backend count; we compete on what happens when the demo ends.
 
 ## Deferred to Weeks 2-3
 
-- **Compression repatriation** — the compression pipeline was originally extracted from the internal consumer and will be moved back there once that app has a clean extraction path. It stays in BCK 0.6.0 to avoid breaking the internal consumer mid-release.
-- **Macro engine deletion** — the full macro system had only one consumer and is being deleted from BCK now that consumer has taken ownership of its own expander. ChatbotUI-iOS's single-field usage migrates to the `systemPromptContext` property added in 0.6.0.
+- **Compression repatriation** — the compression pipeline was originally extracted from the internal consumer and will be moved back there once that app has a clean extraction path. It stays in ManifoldKit 0.6.0 to avoid breaking the internal consumer mid-release.
+- **Macro engine deletion** — the full macro system had only one consumer and is being deleted from ManifoldKit now that consumer has taken ownership of its own expander. ChatbotUI-iOS's single-field usage migrates to the `systemPromptContext` property added in 0.6.0.
 - **`ManifoldInference` target extraction** — splitting the inference-only surface out of `ManifoldCore` so that UI-less consumers (server-side, CLI tools, test harnesses) can depend on the engine without pulling SwiftUI types. Target for 0.7.0.
 
 ## Consumer impact
 
-The internal consumer keeps building on its own vendored expander, so the BCK-side deletion does not affect it.
+The internal consumer keeps building on its own vendored expander, so the ManifoldKit-side deletion does not affect it.
 
 ChatbotUI-iOS migrates its single-field usage from the old context property to the `systemPromptContext` dictionary: the dict was added in 0.6.0 as the forward-compatible replacement for that specific use case. Drop-in UI, `ChatViewModel`, `ModelManagementSheet`, `APIConfigurationView`, and the HuggingFace downloader all remain unchanged.

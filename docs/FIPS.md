@@ -1,21 +1,21 @@
 # FIPS 140-3 Posture
 
 > **Audience:** procurement, compliance, and security teams evaluating ManifoldKit
-> (BCK) for use in regulated environments (healthcare, federal-adjacent, finance,
+> for use in regulated environments (healthcare, federal-adjacent, finance,
 > defense). This document is the honest answer to the question
 > "are your cryptographic primitives FIPS 140-3 validated?"
 >
-> **TL;DR:** BCK does not hold a FIPS 140-3 validation certificate, and does not
-> claim to. BCK calls into Apple's platform crypto APIs (CryptoKit, CommonCrypto,
+> **TL;DR:** ManifoldKit does not hold a FIPS 140-3 validation certificate, and does not
+> claim to. ManifoldKit calls into Apple's platform crypto APIs (CryptoKit, CommonCrypto,
 > Security.framework). Whether those calls land inside a FIPS-validated boundary
 > depends entirely on the deployment OS version and Apple's published validation
 > certificates for that OS — the validation boundary is the operating system, not
-> BCK. A regulated downstream app must validate this independently against its
+> ManifoldKit. A regulated downstream app must validate this independently against its
 > deployment-target OS and procurement requirements.
 
 ## Why this document exists
 
-When BCK is evaluated for use in a healthcare, federal, or defense-adjacent
+When ManifoldKit is evaluated for use in a healthcare, federal, or defense-adjacent
 context, the procurement question that surfaces is some variant of:
 
 > "Are your cryptographic primitives FIPS 140-3 validated?"
@@ -25,25 +25,25 @@ naive "yes" or "no" would mislead. Producing this written, sourced answer up
 front prevents weeks of round-tripping with security teams asking the same
 question across multiple integrations.
 
-This document does **not** claim BCK is FIPS-validated. It documents *which*
-cryptographic primitives BCK invokes, *where* the validation boundary actually
-sits (in the OS, not in BCK), and *what a downstream regulated app must verify
+This document does **not** claim ManifoldKit is FIPS-validated. It documents *which*
+cryptographic primitives ManifoldKit invokes, *where* the validation boundary actually
+sits (in the OS, not in ManifoldKit), and *what a downstream regulated app must verify
 independently* before claiming a FIPS posture for its own deployment.
 
 ## Scope and boundary
 
 | Layer | Owner | FIPS status |
 |---|---|---|
-| Application code (BCK + your app) | You + BCK | **Outside** the validated boundary. Calls platform APIs. |
+| Application code (ManifoldKit + your app) | You + ManifoldKit | **Outside** the validated boundary. Calls platform APIs. |
 | `CryptoKit`, `CommonCrypto`, `Security.framework` | Apple | API surface only; routes calls into the validated module below. |
 | `Apple CoreCrypto` kernel/user-space module | Apple | The actual FIPS 140-3 validated module — **only on specific OS versions, with specific configurations.** |
-| Hardware (Secure Enclave, AES engine) | Apple | Separate validations exist; not used directly by BCK today. |
+| Hardware (Secure Enclave, AES engine) | Apple | Separate validations exist; not used directly by ManifoldKit today. |
 
 The only layer that holds a FIPS 140-3 certificate is Apple CoreCrypto, and only
-on the OS versions Apple has submitted for validation. BCK's code is part of the
+on the OS versions Apple has submitted for validation. ManifoldKit's code is part of the
 "application code" row — it is **outside** any validation boundary.
 
-## Inventory of cryptographic primitives used by BCK
+## Inventory of cryptographic primitives used by ManifoldKit
 
 This is a complete inventory as of v0.12.2. It is generated from a manual audit
 of every `import CryptoKit`, `import CommonCrypto`, and `import Security` site
@@ -60,7 +60,7 @@ in the source tree.
   extract the public key bytes to hash.
 - **Validation boundary:** `CC_SHA256` is part of `libcommonCrypto.dylib`, which
   routes into CoreCrypto on validated OS versions. The hash itself is a
-  one-way digest used for equality comparison; there is no key material in BCK's
+  one-way digest used for equality comparison; there is no key material in ManifoldKit's
   process that is governed by this primitive.
 
 ### 2. Keychain (`KeychainService`)
@@ -72,8 +72,8 @@ in the source tree.
   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 - **Purpose:** Storing API keys for cloud backends (OpenAI, Anthropic, etc.).
 - **Validation boundary:** Keychain item storage and the at-rest encryption of
-  the keychain database are managed entirely by the OS. BCK never sees the
-  cipher, IV, or wrapping key. This is the strongest part of BCK's posture —
+  the keychain database are managed entirely by the OS. ManifoldKit never sees the
+  cipher, IV, or wrapping key. This is the strongest part of ManifoldKit's posture —
   the application code is a thin wrapper over a platform-managed store.
 
 ### 3. UUID v5 generation (`UUID+v5`)
@@ -85,7 +85,7 @@ in the source tree.
 - **Validation boundary:** SHA-1 is *not* a FIPS-approved hash for security
   use. It is used here for **non-security identifier derivation** only. The
   CryptoKit `Insecure.` namespace is the deliberate flag: this primitive is not
-  part of any security boundary in BCK.
+  part of any security boundary in ManifoldKit.
 
 ### 4. MCP OAuth PKCE + token-prefix logging (`MCPOAuth`)
 
@@ -97,7 +97,7 @@ in the source tree.
     correlation. The full token is never logged.
 - **Validation boundary:** SHA-256 and `SecRandomCopyBytes` route into
   CoreCrypto on validated OS versions. The PKCE flow itself follows
-  RFC 7636 — BCK does not implement custom crypto here.
+  RFC 7636 — ManifoldKit does not implement custom crypto here.
 
 ### 5. Fuzz harness fingerprinting (`ManifoldFuzz`)
 
@@ -113,14 +113,14 @@ in the source tree.
 
 ### 6. Future Secure Enclave usage
 
-BCK does **not** currently use `SecKeyCreateRandomKey` with
+ManifoldKit does **not** currently use `SecKeyCreateRandomKey` with
 `kSecAttrTokenIDSecureEnclave`, `LAContext`, or any Secure Enclave-backed key
 material. If this is added in a future release, it will be documented here and
 in the [Security Model DocC article][secmodel].
 
-### What BCK does **not** use
+### What ManifoldKit does **not** use
 
-BCK does **not** implement, vendor, or call out to:
+ManifoldKit does **not** implement, vendor, or call out to:
 
 - Custom AES, ChaCha20, HMAC, or signature primitives.
 - Bouncy Castle, OpenSSL, libsodium, or any third-party crypto library.
@@ -128,12 +128,12 @@ BCK does **not** implement, vendor, or call out to:
 - JWT signing, JWS, JWE, or any in-process token-issuance crypto.
 
 Tokens received from cloud APIs are stored in Keychain (see §2) and submitted as
-`Authorization: Bearer` headers over `URLSession`. BCK does not sign requests,
+`Authorization: Bearer` headers over `URLSession`. ManifoldKit does not sign requests,
 mint tokens, or hold long-lived key material outside Keychain.
 
 ## Apple CoreCrypto FIPS 140-3 validation linkage
 
-BCK targets **n−1**: the current Apple OS release plus the one immediately
+ManifoldKit targets **n−1**: the current Apple OS release plus the one immediately
 before (see [CLAUDE.md](../CLAUDE.md) "Platform policy"). At the time of
 writing, that floor is **macOS 15** and **iOS 18**.
 
@@ -174,7 +174,7 @@ Apple's CoreCrypto validation typically requires:
 A regulated downstream app is responsible for confirming each of these matches
 its deployment.
 
-## Honest gap list — things BCK does outside the validated boundary
+## Honest gap list — things ManifoldKit does outside the validated boundary
 
 This list is what an enterprise security reviewer should know before signing
 off. It is exhaustive as of v0.12.2.
@@ -182,8 +182,8 @@ off. It is exhaustive as of v0.12.2.
 1. **`CC_SHA256` invoked directly from Swift.** `PinnedSessionDelegate` calls
    `CC_SHA256` via the CommonCrypto C API rather than `CryptoKit.SHA256`. The
    underlying implementation is the same on all validated OS versions
-   (CommonCrypto routes to CoreCrypto), but the call site is in BCK's process,
-   so the bytes-in / bytes-out boundary crosses BCK. There is no key material
+   (CommonCrypto routes to CoreCrypto), but the call site is in ManifoldKit's process,
+   so the bytes-in / bytes-out boundary crosses ManifoldKit. There is no key material
    here; the hash is used only for fingerprint comparison.
 2. **`Insecure.SHA1` use in UUID v5.** SHA-1 is non-approved. It is used for
    identifier derivation, not security. A reviewer who flags this should be
@@ -195,22 +195,22 @@ off. It is exhaustive as of v0.12.2.
    They are not zeroized after use. Memory zeroization for transient secrets
    is **not implemented** — see #714 Phase 5 non-mitigations.
 4. **No build-attestation or reproducible-build provenance** is published for
-   BCK releases. A regulated deployment that requires SLSA-style provenance
-   on the BCK package will need to build from source under its own attested
+   ManifoldKit releases. A regulated deployment that requires SLSA-style provenance
+   on the ManifoldKit package will need to build from source under its own attested
    pipeline (the source is on GitHub at a tagged commit; `Package.resolved`
    pins all transitive dependencies).
 5. **Binary xcframeworks** (`llama.swift`, `mlx-swift`) are pre-built and
-   shipped via Swift Package Manager. They contain no BCK-supplied
+   shipped via Swift Package Manager. They contain no ManifoldKit-supplied
    cryptography, but they do contain Metal compute shaders and inference code.
    See [Binary Dependencies](../README.md#binary-dependencies) in the README.
 6. **Secure Enclave** is not currently used (see §6 above). API keys live in
    the standard Keychain, not the SEP. A deployment that requires SEP-bound
-   credentials is outside BCK's current capability.
+   credentials is outside ManifoldKit's current capability.
 7. **KV-cache residue** from local inference (MLX, llama.cpp) is held in
    process memory and may be paged to disk by the OS. There is no in-memory
    wipe at conversation end. Sensitive prompts in a high-assurance environment
    should be paired with platform-level memory protection (e.g., disabling
-   swap on macOS via MDM, or using `mlock` — neither implemented in BCK).
+   swap on macOS via MDM, or using `mlock` — neither implemented in ManifoldKit).
 
 ## Recommendations for FIPS-required deployments
 
@@ -231,38 +231,38 @@ language in its ATO (Authority to Operate) or vendor questionnaire response:
    (see #714 Phases 1–4). This shrinks the audit surface for "data leaves
    the device" review.
 5. **Consider Keychain access groups + the Data Protection class
-   `NSFileProtectionComplete`** for any persisted data adjacent to BCK
-   (SwiftData stores, exports). BCK uses
+   `NSFileProtectionComplete`** for any persisted data adjacent to ManifoldKit
+   (SwiftData stores, exports). ManifoldKit uses
    `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` for its own keychain items,
    which is the strongest non-interactive class.
 6. **Plan for cert lifecycle.** CMVP certs move to Historical status on a
    5-year rolling schedule. A long-lived deployment will need to re-validate
    against a newer cert when the original moves to Historical. This is an OS
-   upgrade question, not a BCK question — but BCK's `n−1` policy means at
+   upgrade question, not a ManifoldKit question — but ManifoldKit's `n−1` policy means at
    least one supported OS version always has a current cert at any given
    time.
 
-## What BCK will and will not do
+## What ManifoldKit will and will not do
 
 | Request | Answer |
 |---|---|
-| Add a FIPS-validated crypto primitive to BCK directly. | **No.** Validating a separate module is a multi-year, six-figure undertaking and the right answer is to use the validated OS module. |
-| Document which BCK call sites cross the OS boundary. | **Yes** — see the inventory above. We will keep this current per release. |
-| Publish the CMVP cert numbers for currently supported OSes. | **No** — cert lifecycle is independent of BCK's release cycle. Look them up at submission time. |
+| Add a FIPS-validated crypto primitive to ManifoldKit directly. | **No.** Validating a separate module is a multi-year, six-figure undertaking and the right answer is to use the validated OS module. |
+| Document which ManifoldKit call sites cross the OS boundary. | **Yes** — see the inventory above. We will keep this current per release. |
+| Publish the CMVP cert numbers for currently supported OSes. | **No** — cert lifecycle is independent of ManifoldKit's release cycle. Look them up at submission time. |
 | Add `mlock` / memory-zeroization for in-process secrets. | **Tracked** under #714 Phase 5 non-mitigations. Not implemented today. |
 | Add Secure Enclave-backed credential storage. | **Not currently planned.** File a feature request if you need this. |
 | Provide a SLSA build-provenance attestation. | **Tracked** under #714 Phase 5. Not implemented today. |
 
 ## Out of scope
 
-- Obtaining a separate FIPS 140-3 certificate for BCK code. This is a
+- Obtaining a separate FIPS 140-3 certificate for ManifoldKit code. This is a
   multi-year, six-figure undertaking that is only justified for federal-mandate
   deployments where no validated platform module exists. On Apple platforms,
   the validated platform module (CoreCrypto) is the right tool.
 - Validating cryptography in transitive Swift package dependencies. We pin
   versions in `Package.resolved` and review crypto-adjacent dependencies
   manually, but no transitive dependency holds a FIPS cert independently.
-- Running BCK on non-Apple platforms (Linux for CI is compile-only). Any
+- Running ManifoldKit on non-Apple platforms (Linux for CI is compile-only). Any
   Linux execution path falls back to `swift-crypto`, which is **not**
   FIPS-validated.
 
@@ -276,7 +276,7 @@ Use this when responding to a procurement security review:
       activates it on managed devices.
 - [ ] Cloud backends are either disabled (via `Ollama`/`CloudSaaS` traits) or
       explicitly approved for the data classification in scope.
-- [ ] The application code's own crypto usage (your code, not BCK's) has
+- [ ] The application code's own crypto usage (your code, not ManifoldKit's) has
       been audited against the same boundary criteria as §3 above.
 - [ ] The honest gap list (§"Honest gap list") has been reviewed and any
       gaps that affect your deployment have a documented mitigation or
@@ -292,9 +292,9 @@ Use this when responding to a procurement security review:
   <https://support.apple.com/guide/security/welcome/web>
 - RFC 7636 (PKCE): <https://datatracker.ietf.org/doc/html/rfc7636>
 - RFC 4122 §4.3 (UUID v5): <https://datatracker.ietf.org/doc/html/rfc4122#section-4.3>
-- BCK Security Model DocC article: see [`SecurityModel.md`][secmodel]
-- BCK Security Policy: [`.github/SECURITY.md`](../.github/SECURITY.md)
-- BCK Threat Model (when published): `THREAT_MODEL.md` — tracked under #736.
+- ManifoldKit Security Model DocC article: see [`SecurityModel.md`][secmodel]
+- ManifoldKit Security Policy: [`.github/SECURITY.md`](../.github/SECURITY.md)
+- ManifoldKit Threat Model (when published): `THREAT_MODEL.md` — tracked under #736.
 
 ---
 

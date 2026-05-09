@@ -1,11 +1,11 @@
 # AGENTS.md — ManifoldKit guide for AI coding assistants
 
 This file is for AI coding assistants (Claude, Cursor, Copilot, …) helping a
-human use **ManifoldKit (BCK)** in their app. Contributors who need the
+human use **ManifoldKit** in their app. Contributors who need the
 project's internal conventions read [`CLAUDE.md`](CLAUDE.md); this is the
 shorter, recipe-shaped surface for *consumers*.
 
-BCK is a Swift package. Install via SwiftPM:
+ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
 .package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.18.0")
@@ -36,7 +36,7 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldMCP` *(optional, `MCP` trait)* | Model Context Protocol client + tool bridge. |
 | `ManifoldAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
 
-Contributors changing BCK internals can still import the individual products
+Contributors changing ManifoldKit internals can still import the individual products
 (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
 `ManifoldBackends`, `ManifoldUI`); the umbrella is the consumer-facing surface.
 
@@ -209,7 +209,7 @@ There are three message-shaped types. Pick the right one:
 | `StructuredMessage` | `ManifoldInference` | Cloud-wire payload assembled by `InferenceService`. Internal — backends consume it. |
 
 App code reads and writes `ChatMessageRecord`. The persistence and wire types
-are managed by BCK.
+are managed by ManifoldKit.
 
 ## Tool calling
 
@@ -329,7 +329,7 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 
 ## Common LLM hallucinations to avoid
 
-These are the four mistakes most assistants make against BCK. Don't write any
+These are the four mistakes most assistants make against ManifoldKit. Don't write any
 of them:
 
 1. **The umbrella module is `ManifoldKit`** (added in 0.19). Reach for
@@ -353,7 +353,7 @@ of them:
 
 ## Trait gotchas
 
-BCK uses SwiftPM traits aggressively to keep dependency graphs small. The ones
+ManifoldKit uses SwiftPM traits aggressively to keep dependency graphs small. The ones
 that bite consumers:
 
 - **`Macros` (default-off)** — required for `@ToolSchema`. See above.
@@ -376,7 +376,7 @@ back. The "default consumer app" build is `swift build` with no flags —
 
 ## Concurrency
 
-BCK is Swift-concurrency-native. The rules:
+ManifoldKit is Swift-concurrency-native. The rules:
 
 - **`@Observable` + `@MainActor` everywhere.** The view models are `@Observable`
   (Swift Observation), not Combine `ObservableObject`. Store them in `@State`

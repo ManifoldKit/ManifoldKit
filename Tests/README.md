@@ -1,6 +1,6 @@
 # ManifoldKit Tests
 
-This directory contains the test suites that gate every PR to BCK. CI runs these on macOS arm64; locally you run them via `scripts/test.sh`.
+This directory contains the test suites that gate every PR to ManifoldKit. CI runs these on macOS arm64; locally you run them via `scripts/test.sh`.
 
 ## Top-level layout
 
@@ -26,7 +26,7 @@ This directory contains the test suites that gate every PR to BCK. CI runs these
 
 ## Trait conventions
 
-BCK's test targets are conditionally linked on Swift package traits:
+ManifoldKit's test targets are conditionally linked on Swift package traits:
 
 | Trait | Default? | Gates |
 |---|---|---|
