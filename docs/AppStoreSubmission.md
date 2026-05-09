@@ -1,0 +1,203 @@
+# App Store submission checklist
+
+This is the indie-developer checklist for shipping a BaseChatKit-backed app
+to the App Store. It assumes you have already chosen a build profile (see
+README §2 "Build modes"). Every item here is something Apple's review
+automation either checks directly or flags for human review.
+
+If you're targeting iOS 26+ / macOS 26+ exclusively and using only Apple
+Foundation Models, see the **FoundationOnly fast path** at the end — most
+of the items below collapse to a single answer.
+
+## 1. Encryption export classification
+
+Every app submitted to the App Store must answer the encryption-export
+question. BCK does not ship its own crypto, but it uses HTTPS for cloud
+backends. That counts as encryption under U.S. export law.
+
+- **FoundationOnly / offline build** (`traits: ["FoundationOnly"]` or no
+  cloud backends compiled in): set `ITSAppUsesNonExemptEncryption=false` in
+  your `Info.plist`. No further filing needed.
+- **Cloud backends compiled in** (`CloudSaaS`, `Ollama`): set
+  `ITSAppUsesNonExemptEncryption=true` and complete the annual
+  self-classification form on App Store Connect. Most developers qualify
+  for the "uses encryption only for app-specific authentication and HTTPS
+  to a server" exemption — see Apple's
+  [encryption export documentation](https://developer.apple.com/documentation/security/complying_with_encryption_export_regulations).
+
+```xml
+<!-- Info.plist for FoundationOnly / offline builds -->
+<key>ITSAppUsesNonExemptEncryption</key>
+<false/>
+```
+
+## 2. Privacy manifest
+
+Apple requires `PrivacyInfo.xcprivacy` for any app that uses
+required-reason APIs (which BCK does — `UserDefaults`, file timestamps,
+disk-space queries).
+
+- Copy `Templates/PrivacyInfo.xcprivacy` from this repo into your app
+  target's resources.
+- Review each `NSPrivacyAccessedAPIType` entry; remove ones for features
+  you compile out (the file is annotated with the triggering BCK feature).
+- See `Templates/PrivacyInfo.xcprivacy.README.md` for the full reference.
+
+BCK's privacy posture is **zero tracking, zero data collection, zero
+tracking domains** by default. The template's `NSPrivacyTracking=false`
+and empty `NSPrivacyTrackingDomains`/`NSPrivacyCollectedDataTypes` arrays
+reflect that. If your app adds analytics or tracking, populate those
+arrays accordingly — your additions are layered on top of BCK's posture,
+not in place of it.
+
+## 3. App Transport Security
+
+Default ATS is fine for SaaS-only and FoundationOnly builds. You only need
+an exception block if you bundle a localhost Ollama instance or talk to
+unencrypted self-hosted endpoints.
+
+```xml
+<!-- Info.plist — only needed if you ship localhost Ollama -->
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+        <key>localhost</key>
+        <dict>
+            <key>NSExceptionAllowsInsecureHTTPLoads</key>
+            <true/>
+            <key>NSIncludesSubdomains</key>
+            <false/>
+        </dict>
+    </dict>
+</dict>
+```
+
+App Review will ask about ATS exceptions during a manual review pass.
+Justify with: "the app talks to a user-installed Ollama daemon at
+`http://localhost:11434`; the address is loopback-only and never reaches
+the network." Apple has approved this pattern for other on-device LLM
+shells.
+
+## 4. Microphone / speech entitlements (Voice trait only)
+
+If you build with the `Voice` trait, add both usage-description strings.
+Apps without `Voice` should not ship these keys.
+
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Used for voice chat input. Audio is transcribed on-device and never sent to a server.</string>
+<key>NSSpeechRecognitionUsageDescription</key>
+<string>Transcribes your voice into chat input. Transcription runs on-device.</string>
+```
+
+The default Apple speech transcriber returns a user-facing error on the
+simulator, so validate the real capture flow on device or macOS hardware
+before submission.
+
+## 5. iOS 18 vs iOS 26 deployment targeting
+
+`FoundationBackend` requires iOS 26 / macOS 26. If your app's deployment
+target is iOS 18, you must gate the Foundation Models code path at runtime
+and fall back to a different backend (or surface a "Foundation Models
+require iOS 26" placeholder) on iOS 18 devices.
+
+```swift
+import BaseChatBackends
+
+if FoundationBackend.isAvailable {
+    vm.loadFoundationModelIfAvailable()
+} else {
+    // iOS 18 fallback: surface a different backend (Llama, Ollama, cloud)
+    // or a "Update to iOS 26 for on-device Apple intelligence" placeholder.
+}
+```
+
+`loadFoundationModelIfAvailable()` is a no-op on iOS 18 — it returns
+without throwing — so it's safe to call unconditionally if you'd rather
+let users without iOS 26 see the regular load failure UI.
+
+## 6. App Store review claims
+
+If your marketing copy mentions "private", "on-device", "no telemetry",
+or similar privacy claims, App Review may ask for substantiation. The
+defensible claim shape, when accurate for your build:
+
+> Inference runs on-device via Apple Foundation Models / MLX / llama.cpp.
+> The chat framework (BaseChatKit, MIT-licensed) ships with zero analytics
+> and zero outbound network by default; see
+> https://github.com/roryford/BaseChatKit and the bundled
+> `PrivacyInfo.xcprivacy` for the audited surface.
+
+Pointing reviewers at BCK's `Templates/PrivacyInfo.xcprivacy`, the public
+source, and the [SECURITY.md](../SECURITY.md) threat-model doc usually
+clears review questions in the first round.
+
+## 7. Bundle size estimate
+
+BCK's overhead in your final IPA varies by build profile:
+
+| Profile | BCK overhead | Notes |
+|---------|--------------|-------|
+| `traits: ["FoundationOnly"]` | < 5 MB | Foundation Models only. Enforced by CI. |
+| Cloud-only (`CloudSaaS`, no MLX/Llama) | ~10 MB | Adds OpenAI / Claude SSE clients. |
+| Default (`MLX`, `Llama`, `HuggingFace`) | ~700 MB | MLX checkout (~100 MB) + LlamaSwift xcframework (~563 MB). |
+| Full (`MLX`, `Llama`, `Ollama`, `CloudSaaS`, `HuggingFace`) | ~700 MB | Same — Ollama and CloudSaaS are ~MB-scale text. |
+
+The MLX and Llama figures are checkout sizes; what lands in your IPA is
+smaller after dead-code stripping but still substantial. If your app
+targets only Apple Foundation Models, use the **FoundationOnly fast
+path** below to keep your IPA App-Store-thin.
+
+> What the FoundationOnly CI gate actually enforces: the
+> [`foundation-only-build`](../.github/workflows/ci.yml) job runs
+> [`scripts/check-foundation-only-bundle.sh`](../scripts/check-foundation-only-bundle.sh),
+> which (1) runs `nm -gU` against the compiled `BaseChatBackends/*.o`
+> objects to assert zero MLX/llama.cpp framework symbols, and (2) caps
+> the compiled `BaseChatBackends.build` directory at 5 MB. SwiftPM's
+> `traits` system gates *compilation* but not *resolution* —
+> `.build/checkouts` still contains every declared `.package(url:)`
+> regardless of trait set, but the linker only pulls in what the
+> compiled objects reference, so the symbol audit and bundle-size cap
+> are what bound your final IPA.
+
+## 8. SwiftPackageIndex submission (maintainer / out-of-tree)
+
+Submitting BCK to the [Swift Package Index](https://swiftpackageindex.com)
+is a one-time maintainer task and lives outside this repo. The steps:
+
+1. Fork [`SwiftPackageIndex/PackageList`](https://github.com/SwiftPackageIndex/PackageList).
+2. Add `https://github.com/roryford/BaseChatKit.git` to `packages.json`,
+   keeping the file alphabetically sorted.
+3. Open a PR against `SwiftPackageIndex/PackageList`.
+4. After merge, update GitHub repo metadata:
+   - Topics: `swift, ios, macos, llm, foundation-models, mlx, llama-cpp,
+     on-device-ai, swiftui`
+   - Homepage: the SPI-generated DocC URL once it's live.
+   - Enable Discussions for community Q&A.
+
+This checklist covers it from the consumer side — if you're shipping a
+BCK-based app, you don't need to do this; the maintainer handles the
+PackageList submission once.
+
+---
+
+## FoundationOnly fast path
+
+For indie iOS 26+ / macOS 26+ apps using only Apple Foundation Models, the
+checklist collapses to:
+
+1. **Package**: `traits: ["FoundationOnly"]` on your `.package(url:)` entry.
+2. **Encryption export**: `ITSAppUsesNonExemptEncryption=false`.
+3. **Privacy manifest**: copy `Templates/PrivacyInfo.xcprivacy`. You can
+   drop the `NSPrivacyAccessedAPICategoryDiskSpace` and
+   `NSPrivacyAccessedAPICategoryFileTimestamp` entries if you don't ship
+   any model-storage UI; keep `NSPrivacyAccessedAPICategoryUserDefaults`.
+4. **ATS**: defaults are fine.
+5. **Microphone / speech**: not needed (no `Voice` trait).
+6. **Deployment target**: iOS 26 / macOS 26 minimum.
+7. **Bundle size**: < 5 MB BCK overhead, enforced by CI
+   (`.github/workflows/ci.yml::foundation-only-build`).
+
+That's the full submission surface. BCK does not add tracking, analytics,
+identity-API access, or cross-app data sharing in this configuration.
