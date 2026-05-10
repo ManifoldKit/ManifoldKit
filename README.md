@@ -989,6 +989,12 @@ SourceKit can retain stale module-not-found diagnostics from a previous trait-se
 
 If restarting the language server is insufficient, run `scripts/clean-build.sh` and reopen the project.
 
+For non-destructive investigation, see `docs/SOURCEKIT_DIAGNOSTICS.md` and run:
+
+```bash
+scripts/sourcekit-stale-module-diagnostics.sh
+```
+
 ## Example App
 
 See the `Example/` directory for a complete demo app showing integration patterns.
