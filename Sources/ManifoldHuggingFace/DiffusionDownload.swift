@@ -169,6 +169,8 @@ public extension HuggingFaceService {
             let baseline = totalBytes
             let totalCount = plan.items.count
             let relativePath = item.relativePath
+
+            Log.download.info("[\(index + 1)/\(plan.items.count)] starting: \(item.relativePath, privacy: .public)")
             try await downloadFile(
                 from: remote,
                 to: item.localURL,
@@ -188,13 +190,19 @@ public extension HuggingFaceService {
                     ))
                 }
             )
+            Log.download.info("[\(index + 1)/\(plan.items.count)] download done: \(item.relativePath, privacy: .public)")
+
             let actualSize = item.localURL.fileSize ?? 0
             totalBytes += actualSize
+
+            Log.download.info("[\(index + 1)/\(plan.items.count)] validating: \(item.relativePath, privacy: .public)")
             try DownloadFileValidator.validate(
                 item.localURL,
                 diffusionRole: item.role,
                 expectedSize: nil
             )
+            Log.download.info("[\(index + 1)/\(plan.items.count)] validated: \(item.relativePath, privacy: .public)")
+
             // Final per-file emission so progress reflects the completed file
             // even when the transport never reported an intermediate chunk.
             progress(DiffusionDownloadProgress(
@@ -223,15 +231,18 @@ public extension HuggingFaceService {
             huggingFaceRepoID: repoID
         )
 
+        Log.download.info("Writing package manifest")
         try writePackageManifest(
             for: info,
             files: ["model_index.json"] + plan.items.map(\.relativePath),
             in: stagingDirectory
         )
+        Log.download.info("Moving staging directory to destination")
         if FileManager.default.fileExists(atPath: destinationDirectory.path) {
             try FileManager.default.removeItem(at: destinationDirectory)
         }
         try FileManager.default.moveItem(at: stagingDirectory, to: destinationDirectory)
+        Log.download.info("Install complete")
         return info
     }
 
@@ -460,14 +471,17 @@ public extension HuggingFaceService {
 
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let filename = remote.lastPathComponent
                 let task = session.downloadTask(with: remote) { tempURL, response, error in
                     state.progressObservation = nil
 
                     if let error {
+                        Log.download.error("downloadTask error for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
                         continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: error))
                         return
                     }
                     if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                        Log.download.error("HTTP \(http.statusCode) for \(filename, privacy: .public)")
                         if let url = tempURL { try? FileManager.default.removeItem(at: url) }
                         continuation.resume(throwing: HuggingFaceError.downloadFailed(
                             underlying: NSError(
@@ -479,9 +493,11 @@ public extension HuggingFaceService {
                         return
                     }
                     guard let tempURL else {
+                        Log.download.error("downloadTask nil tempURL for \(filename, privacy: .public)")
                         continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: URLError(.unknown)))
                         return
                     }
+                    Log.download.info("downloadTask complete for \(filename, privacy: .public), moving to destination")
                     do {
                         try FileManager.default.createDirectory(
                             at: local.deletingLastPathComponent(),
@@ -491,16 +507,26 @@ public extension HuggingFaceService {
                             try FileManager.default.removeItem(at: local)
                         }
                         try FileManager.default.moveItem(at: tempURL, to: local)
+                        Log.download.info("Move complete for \(filename, privacy: .public)")
                         continuation.resume()
                     } catch {
+                        Log.download.error("Move failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
                         continuation.resume(throwing: error)
                     }
                 }
 
                 if let onChunk {
+                    var lastLoggedPct = -10
                     state.progressObservation = task.progress.observe(\.completedUnitCount) { progress, _ in
                         let received = progress.completedUnitCount
                         let total = progress.totalUnitCount
+                        if total > 0 {
+                            let pct = Int(Double(received) / Double(total) * 100)
+                            if pct >= lastLoggedPct + 10 {
+                                lastLoggedPct = pct
+                                Log.download.debug("\(filename, privacy: .public): \(pct)% (\(received)/\(total) bytes)")
+                            }
+                        }
                         onChunk(received, total > 0 ? total : 0)
                     }
                 }
