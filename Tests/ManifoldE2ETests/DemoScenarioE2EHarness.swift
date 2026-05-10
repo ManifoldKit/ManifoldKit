@@ -10,19 +10,22 @@ struct DemoScenarioE2ESpec: Sendable {
     let userPrompt: String
     let expectedToolNames: [String]
     let maxIterations: Int
+    let allowsAdditionalToolCalls: Bool
 
     init(
         id: String,
         systemPrompt: String,
         userPrompt: String,
         expectedToolNames: [String],
-        maxIterations: Int = 4
+        maxIterations: Int = 4,
+        allowsAdditionalToolCalls: Bool = false
     ) {
         self.id = id
         self.systemPrompt = systemPrompt
         self.userPrompt = userPrompt
         self.expectedToolNames = expectedToolNames
         self.maxIterations = maxIterations
+        self.allowsAdditionalToolCalls = allowsAdditionalToolCalls
     }
 }
 
@@ -98,13 +101,29 @@ struct DemoScenarioE2EHarness {
             line: line
         )
         if !spec.expectedToolNames.isEmpty {
-            XCTAssertEqual(
-                Set(result.dispatchedCalls.map(\.toolName)),
-                Set(spec.expectedToolNames),
-                "Scenario should dispatch the expected tool set.\n\(result.diagnostics)",
-                file: file,
-                line: line
-            )
+            if spec.allowsAdditionalToolCalls {
+                let actualNames = result.dispatchedCalls.map(\.toolName)
+                XCTAssertTrue(
+                    actualNames.starts(with: spec.expectedToolNames),
+                    "Scenario should start with the expected tool calls.\n\(result.diagnostics)",
+                    file: file,
+                    line: line
+                )
+                XCTAssertTrue(
+                    actualNames.allSatisfy { spec.expectedToolNames.contains($0) },
+                    "Scenario should not dispatch unexpected tool names.\n\(result.diagnostics)",
+                    file: file,
+                    line: line
+                )
+            } else {
+                XCTAssertEqual(
+                    result.dispatchedCalls.map(\.toolName),
+                    spec.expectedToolNames,
+                    "Scenario should dispatch exactly the expected tool calls in order.\n\(result.diagnostics)",
+                    file: file,
+                    line: line
+                )
+            }
         }
 
         return result
