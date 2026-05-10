@@ -310,10 +310,11 @@ public extension HuggingFaceService {
         manifest: DiffusionManifest,
         destinationDirectory: URL
     ) throws -> DiffusionDownloadPlan {
-        // UNet + VAE are required for every diffusers pipeline we support.
-        // Surface a clear error here rather than letting the loader trip later
-        // on a missing submodule.
-        for required in ["unet", "vae"] where !manifest.submodules.contains(required) {
+        let isFlux = manifest.submodules.contains("transformer")
+        // Require the denoiser submodule appropriate for each pipeline family,
+        // plus VAE which every pipeline needs.
+        let requiredDenoiser = isFlux ? "transformer" : "unet"
+        for required in [requiredDenoiser, "vae"] where !manifest.submodules.contains(required) {
             throw HuggingFaceError.invalidDownloadedFile(
                 reason: "Manifest is missing required submodule \"\(required)\""
             )
@@ -322,7 +323,7 @@ public extension HuggingFaceService {
         var items: [DiffusionDownloadItem] = []
 
         items.append(contentsOf: try plan(
-            submodule: "unet",
+            submodule: requiredDenoiser,
             weights: "diffusion_pytorch_model.safetensors",
             destinationDirectory: destinationDirectory
         ))
@@ -415,79 +416,101 @@ public extension HuggingFaceService {
 
     // MARK: - File download
 
-    /// Downloads a single file to disk using `URLSession.bytes(for:)`, reporting
-    /// progress periodically.
+    // Uses downloadTask(with:completionHandler:) so the OS networking stack writes
+    // to a temp file directly — no per-byte Swift async loop.
+    //
+    // We deliberately avoid the async download(from:delegate:) API because
+    // CompositeURLSessionDelegate conforms to URLSessionDownloadDelegate and
+    // implements didFinishDownloadingTo at the session level. The async API
+    // intercepts that same callback to resolve its continuation; the two mechanisms
+    // conflict on a session whose delegate already handles it, causing a hang.
+    //
+    // downloadTask(with:completionHandler:) is documented to NOT call the session
+    // delegate's didFinishDownloadingTo, so CompositeURLSessionDelegate is
+    // unaffected. The redirect guard fires via willPerformHTTPRedirection, which
+    // is a separate task-delegate callback unaffected by the completion-handler
+    // variant. Progress is reported via KVO on task.progress.completedUnitCount.
     private func downloadFile(
         from remote: URL,
         to local: URL,
         using session: URLSession,
         onChunk: (@Sendable (_ received: Int64, _ expected: Int64) -> Void)? = nil
     ) async throws {
-        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
-        do {
-            (bytes, response) = try await session.bytes(from: remote)
-        } catch {
-            throw HuggingFaceError.downloadFailed(underlying: error)
-        }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw HuggingFaceError.downloadFailed(
-                underlying: NSError(
-                    domain: "ManifoldHuggingFace",
-                    code: http.statusCode,
-                    userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) for \(remote.lastPathComponent)"]
-                )
-            )
-        }
+        final class State: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _task: URLSessionDownloadTask?
+            private var _cancelled = false
+            var progressObservation: NSKeyValueObservation?
 
-        // Ensure parent directory exists (caller may have created it; idempotent).
-        try FileManager.default.createDirectory(
-            at: local.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        // Explicitly remove any leftover from a previous attempt so a partial
-        // file's tail can't survive into the new download. `createFile(...)`
-        // is documented to overwrite, but a stale file could otherwise pass
-        // size/header validation if the new write is short.
-        if FileManager.default.fileExists(atPath: local.path) {
-            try? FileManager.default.removeItem(at: local)
-        }
-        FileManager.default.createFile(atPath: local.path, contents: nil)
-        guard let handle = try? FileHandle(forWritingTo: local) else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Cannot open file for writing: \(local.lastPathComponent)")
-        }
-        defer { try? handle.close() }
-
-        let expected = response.expectedContentLength
-        let flushAt = 64 * 1024
-        let reportEvery: Int64 = 256 * 1024 // emit progress every 256 KB
-        var buffer = Data()
-        buffer.reserveCapacity(flushAt)
-        var received: Int64 = 0
-        var lastReported: Int64 = 0
-
-        // `AsyncBytes` yields one byte at a time but the runtime buffers
-        // upstream — accumulating into `buffer` and flushing in 64 KB chunks
-        // amortises the FileHandle.write cost without an extra wrapping API.
-        do {
-            for try await byte in bytes {
-                buffer.append(byte)
-                received += 1
-                if buffer.count >= flushAt {
-                    try handle.write(contentsOf: buffer)
-                    buffer.removeAll(keepingCapacity: true)
-                }
-                if received - lastReported >= reportEvery {
-                    onChunk?(received, expected)
-                    lastReported = received
-                }
+            func store(_ task: URLSessionDownloadTask) {
+                lock.lock(); defer { lock.unlock() }
+                _task = task
+                if _cancelled { task.cancel() }
             }
-        } catch {
-            throw HuggingFaceError.downloadFailed(underlying: error)
+
+            func cancel() {
+                lock.lock()
+                _cancelled = true
+                let t = _task
+                lock.unlock()
+                t?.cancel()
+            }
         }
-        if !buffer.isEmpty {
-            try handle.write(contentsOf: buffer)
+        let state = State()
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let task = session.downloadTask(with: remote) { tempURL, response, error in
+                    state.progressObservation = nil
+
+                    if let error {
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: error))
+                        return
+                    }
+                    if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                        if let url = tempURL { try? FileManager.default.removeItem(at: url) }
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(
+                            underlying: NSError(
+                                domain: "ManifoldHuggingFace",
+                                code: http.statusCode,
+                                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) for \(remote.lastPathComponent)"]
+                            )
+                        ))
+                        return
+                    }
+                    guard let tempURL else {
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: URLError(.unknown)))
+                        return
+                    }
+                    do {
+                        try FileManager.default.createDirectory(
+                            at: local.deletingLastPathComponent(),
+                            withIntermediateDirectories: true
+                        )
+                        if FileManager.default.fileExists(atPath: local.path) {
+                            try FileManager.default.removeItem(at: local)
+                        }
+                        try FileManager.default.moveItem(at: tempURL, to: local)
+                        continuation.resume()
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+
+                if let onChunk {
+                    state.progressObservation = task.progress.observe(\.completedUnitCount) { progress, _ in
+                        let received = progress.completedUnitCount
+                        let total = progress.totalUnitCount
+                        onChunk(received, total > 0 ? total : 0)
+                    }
+                }
+
+                state.store(task)
+                task.resume()
+            }
+        } onCancel: {
+            state.cancel()
         }
-        onChunk?(received, expected)
     }
 }
 
