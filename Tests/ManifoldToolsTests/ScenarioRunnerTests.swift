@@ -158,9 +158,16 @@ final class ScenarioRunnerTests: XCTestCase {
     // MARK: - TranscriptLogger
 
     func test_transcriptLogger_writesOneJsonlRowPerEvent() async throws {
-        let path = FileManager.default.temporaryDirectory
-            .appendingPathComponent("manifold-tools-\(UUID().uuidString).jsonl")
-        defer { try? FileManager.default.removeItem(at: path) }
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("tmp", isDirectory: true)
+            .appendingPathComponent("ManifoldToolsTests", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("manifold-tools-\(UUID().uuidString).jsonl")
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
 
         let logger = try TranscriptLogger(url: path)
         logger.append(.prompt(scenarioId: "t", system: "sys", user: "u"))

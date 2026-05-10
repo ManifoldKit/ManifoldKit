@@ -27,6 +27,7 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
     private var backend: OllamaBackend!
     private var modelName: String!
     private var sandboxRoot: URL!
+    private var harness: DemoScenarioE2EHarness!
 
     /// Models that reliably tool-call on Ollama. Picks the first one
     /// available in the local Ollama install.
@@ -73,14 +74,18 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
 
         // Per-test sandbox so the journal-write scenario doesn't trip on
         // residue from a previous run.
-        sandboxRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("BCK-DemoE2E-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: sandboxRoot, withIntermediateDirectories: true)
+        sandboxRoot = try DemoScenarioE2EFixtures.makeSandboxRoot()
+        harness = DemoScenarioE2EHarness(
+            backend: backend,
+            backendName: "Ollama",
+            modelName: modelName
+        )
     }
 
     override func tearDown() async throws {
         backend?.unloadModel()
         backend = nil
+        harness = nil
         modelName = nil
         if let root = sandboxRoot {
             try? FileManager.default.removeItem(at: root)
@@ -95,29 +100,36 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         let registry = ToolRegistry()
         registry.register(CalcTool.makeExecutor())
 
-        try await runScenario(
+        _ = try await harness.runAndAssert(
+            DemoScenarioE2ESpec(
+                id: "tip-calc",
+                systemPrompt: "Use the `calc` tool to evaluate any arithmetic in the user's question. Then answer in one sentence.",
+                userPrompt: "What's an 18% tip on $73.40?",
+                expectedToolNames: ["calc"]
+            ),
             registry: registry,
-            systemPrompt: "Use the `calc` tool to evaluate any arithmetic in the user's question. Then answer in one sentence.",
-            userPrompt: "What's an 18% tip on $73.40?",
-            expectedToolNames: ["calc"]
         )
     }
 
     func test_worldClock_invokesToolAndReturnsAnswer() async throws {
         let registry = ToolRegistry()
-        registry.register(makeCurrentTimeExecutor())
+        registry.register(DemoScenarioE2EFixtures.makeCurrentTimeExecutor())
 
-        try await runScenario(
+        let result = try await harness.runAndAssert(
+            DemoScenarioE2ESpec(
+                id: "world-clock",
+                systemPrompt: "Use the `now` tool to answer time questions. For Tokyo, pass the exact IANA timezone `Asia/Tokyo` and answer with the tool result; do not guess the current time.",
+                userPrompt: "What time is it in Tokyo right now?",
+                expectedToolNames: ["now"]
+            ),
             registry: registry,
-            systemPrompt: "Use the `now` tool to answer time questions. For Tokyo, pass the exact IANA timezone `Asia/Tokyo` and answer with the tool result; do not guess the current time.",
-            userPrompt: "What time is it in Tokyo right now?",
-            expectedToolNames: ["now"]
-        ) { dispatchedCalls, _ in
-            XCTAssertTrue(
-                dispatchedCalls.contains(where: { $0.arguments.contains("Asia/Tokyo") }),
-                "World-clock scenario should call now with Asia/Tokyo"
-            )
-        }
+        )
+        XCTAssertTrue(
+            result.dispatchedCalls.contains { call in
+                call.arguments.contains("Asia/Tokyo") || call.arguments.contains("Asia\\/Tokyo")
+            },
+            "World-clock scenario should call now with Asia/Tokyo.\n\(result.diagnostics)"
+        )
     }
 
     func test_workspaceSearch_invokesToolAndReturnsAnswer() async throws {
@@ -133,208 +145,39 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         let registry = ToolRegistry()
         registry.register(SampleRepoSearchTool.makeExecutor(root: sandboxRoot))
 
-        try await runScenario(
+        let result = try await harness.runAndAssert(
+            DemoScenarioE2ESpec(
+                id: "workspace-search",
+                systemPrompt: "Use the `sample_repo_search` tool to look for the user's query. Then answer with a short summary.",
+                userPrompt: "Find any note that mentions 'MCP'.",
+                expectedToolNames: ["sample_repo_search"]
+            ),
             registry: registry,
-            systemPrompt: "Use the `sample_repo_search` tool to look for the user's query. Then answer with a short summary.",
-            userPrompt: "Find any note that mentions 'MCP'.",
-            expectedToolNames: ["sample_repo_search"]
-        ) { _, visibleAnswer in
-            XCTAssertTrue(
-                visibleAnswer.localizedCaseInsensitiveContains("MCP"),
-                "Workspace-search answer should mention MCP"
-            )
-        }
+        )
+        XCTAssertTrue(
+            result.finalText.localizedCaseInsensitiveContains("MCP"),
+            "Workspace-search answer should mention MCP.\n\(result.diagnostics)"
+        )
     }
 
     func test_journalWrite_invokesToolAndReturnsAnswer() async throws {
         let registry = ToolRegistry()
-        registry.register(makeWriteFileExecutor(root: sandboxRoot))
+        registry.register(DemoScenarioE2EFixtures.makeWriteFileExecutor(root: sandboxRoot))
 
-        try await runScenario(
+        let result = try await harness.runAndAssert(
+            DemoScenarioE2ESpec(
+                id: "journal-write",
+                systemPrompt: "Use the `write_file` tool to save the user's content. Path must be relative. Then confirm in one sentence.",
+                userPrompt: "Write a one-sentence journal entry to journal/today.md saying I had a productive day.",
+                expectedToolNames: ["write_file"]
+            ),
             registry: registry,
-            systemPrompt: "Use the `write_file` tool to save the user's content. Path must be relative. Then confirm in one sentence.",
-            userPrompt: "Write a one-sentence journal entry to journal/today.md saying I had a productive day.",
-            expectedToolNames: ["write_file"]
-        ) { [self] _, _ in
-            let journalPath = sandboxRoot!.appendingPathComponent("journal/today.md")
-            XCTAssertTrue(
-                FileManager.default.fileExists(atPath: journalPath.path),
-                "Journal-write scenario should create journal/today.md"
-            )
-        }
-    }
-
-    // MARK: - Helpers
-
-    /// Drives the agent loop against the supplied registry. Asserts: at
-    /// least one tool was dispatched AND the final visible answer is
-    /// non-empty.
-    ///
-    /// On failure, logs the model name and the dispatched tool calls so a
-    /// developer triaging a flaky run can tell flaky-model from
-    /// framework-regression.
-    private func runScenario(
-        registry: ToolRegistry,
-        systemPrompt: String,
-        userPrompt: String,
-        maxIterations: Int = 4,
-        expectedToolNames: [String] = [],
-        extraAssertions: ((_ dispatchedCalls: [ToolCall], _ visibleAnswer: String) -> Void)? = nil
-    ) async throws {
-        var history: [ToolAwareHistoryEntry] = [
-            ToolAwareHistoryEntry(role: "system", content: systemPrompt),
-            ToolAwareHistoryEntry(role: "user", content: userPrompt),
-        ]
-
-        let config = GenerationConfig(
-            temperature: 0.2,
-            topP: 1.0,
-            maxOutputTokens: 256,
-            tools: registry.definitions,
-            toolChoice: .auto,
-            maxToolIterations: maxIterations
         )
-
-        var dispatchedCalls: [ToolCall] = []
-        var visibleAnswer = ""
-
-        for _ in 0..<config.maxToolIterations {
-            backend.setToolAwareHistory(history)
-            let stream = try backend.generate(prompt: "", systemPrompt: nil, config: config)
-
-            var turnCalls: [ToolCall] = []
-            var turnText = ""
-            for try await event in stream.events {
-                switch event {
-                case .toolCall(let call): turnCalls.append(call)
-                case .token(let text): turnText += text
-                default: break
-                }
-            }
-
-            if turnCalls.isEmpty {
-                visibleAnswer = turnText
-                break
-            }
-
-            history.append(ToolAwareHistoryEntry(role: "assistant", content: "", toolCalls: turnCalls))
-            for call in turnCalls {
-                dispatchedCalls.append(call)
-                let result = await registry.dispatch(call)
-                history.append(ToolAwareHistoryEntry(role: "tool", content: result.content, toolCallId: call.id))
-            }
-        }
-
-        if dispatchedCalls.isEmpty || visibleAnswer.isEmpty {
-            print("[DemoE2E] model=\(modelName ?? "?") dispatched=\(dispatchedCalls.map(\.toolName)) visible=\(visibleAnswer.prefix(120))")
-        }
-
-        XCTAssertFalse(
-            dispatchedCalls.isEmpty,
-            "Scenario must invoke at least one tool (model=\(modelName ?? "?"))"
+        let journalPath = sandboxRoot!.appendingPathComponent("journal/today.md")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: journalPath.path),
+            "Journal-write scenario should create journal/today.md.\n\(result.diagnostics)"
         )
-        XCTAssertFalse(
-            visibleAnswer.isEmpty,
-            "Scenario must produce a non-empty visible answer (model=\(modelName ?? "?"))"
-        )
-        if !expectedToolNames.isEmpty {
-            XCTAssertEqual(
-                Set(dispatchedCalls.map(\.toolName)),
-                Set(expectedToolNames),
-                "Scenario should dispatch the expected tool set (model=\(modelName ?? "?"))"
-            )
-        }
-        extraAssertions?(dispatchedCalls, visibleAnswer)
-    }
-
-    private func makeCurrentTimeExecutor() -> any ToolExecutor {
-        struct Args: Decodable, Sendable {
-            let timezone: String?
-        }
-        struct Result: Encodable, Sendable {
-            let timestamp: String
-            let timezone: String
-            let localTime: String
-        }
-
-        let definition = ToolDefinition(
-            name: "now",
-            description: "Returns the current date and time. If the user asks for a place-specific time, pass an IANA timezone like 'Asia/Tokyo' when possible; never guess.",
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "timezone": .object([
-                        "type": .string("string"),
-                        "description": .string("Optional IANA timezone identifier, for example 'Asia/Tokyo'.")
-                    ])
-                ]),
-                "required": .array([])
-            ])
-        )
-
-        return TypedToolExecutor<Args, Result>(definition: definition) { args in
-            let timeZone = args.timezone.flatMap(TimeZone.init(identifier:)) ?? .current
-            let clock = ISO8601DateFormatter()
-            clock.timeZone = timeZone
-
-            let localFormatter = DateFormatter()
-            localFormatter.locale = Locale(identifier: "en_US_POSIX")
-            localFormatter.timeZone = timeZone
-            localFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss zzz"
-
-            let now = Date()
-            return Result(
-                timestamp: clock.string(from: now),
-                timezone: timeZone.identifier,
-                localTime: localFormatter.string(from: now)
-            )
-        }
-    }
-
-    /// Demo-mirror of the production `WriteFileTool` — kept here so the E2E
-    /// suite stays inside `ManifoldE2ETests` without depending on the demo
-    /// app's source. Mirrors the contract: relative paths only, sandbox-
-    /// containment via `SandboxResolver`, parent-dir creation on demand.
-    private func makeWriteFileExecutor(root: URL) -> any ToolExecutor {
-        struct Args: Decodable, Sendable {
-            let path: String
-            let content: String
-        }
-        struct Result: Encodable, Sendable {
-            let path: String
-            let bytesWritten: Int
-        }
-        let definition = ToolDefinition(
-            name: "write_file",
-            description: "Writes a UTF-8 text file inside the sandbox. Relative path required.",
-            parameters: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "path": .object(["type": .string("string")]),
-                    "content": .object(["type": .string("string")]),
-                ]),
-                "required": .array([.string("path"), .string("content")])
-            ])
-        )
-        return TypedToolExecutor<Args, Result>(
-            definition: definition,
-            requiresApproval: false   // E2E auto-approves; gate behaviour is covered separately
-        ) { args in
-            guard let resolved = SandboxResolver.resolve(path: args.path, inside: root) else {
-                throw NSError(
-                    domain: "WriteFileTool",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "path escapes sandbox: \(args.path)"]
-                )
-            }
-            try FileManager.default.createDirectory(
-                at: resolved.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            let payload = Data(args.content.utf8)
-            try payload.write(to: resolved, options: .atomic)
-            return Result(path: args.path, bytesWritten: payload.count)
-        }
     }
 }
 #endif
