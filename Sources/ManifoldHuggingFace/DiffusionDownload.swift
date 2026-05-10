@@ -210,11 +210,15 @@ public extension HuggingFaceService {
             "Diffusion download complete: \(repoID, privacy: .private) (\(plan.items.count) files, \(totalBytes) bytes)"
         )
 
+        // FLUX models have a `transformer` submodule; SD/SDXL models have `unet`.
+        let format: ImageModelFormat = manifest.submodules.contains("transformer")
+            ? .fluxSchnell : .mlxDiffusion
+
         let info = ImageModelInfo(
             id: repoID,
             name: resolvedDisplayName,
             directoryURL: destinationDirectory,
-            format: .mlxDiffusion,
+            format: format,
             fileSize: totalBytes,
             huggingFaceRepoID: repoID
         )

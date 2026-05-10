@@ -97,6 +97,9 @@ let package = Package(
         // manual revision pin) and adds the `gemma4` model_type to LLMTypeRegistry so
         // mlx-community/gemma-4-* can load.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
+        // flux.swift vendored: mzbac/flux.swift pins swift-transformers 0.1.x
+        // while ManifoldKit needs 1.2.x — same conflict that forced StableDiffusion
+        // to be vendored. Source lives in Sources/FluxSwift (MIT license, 12 files).
         // mlx-swift-examples was previously a direct dependency for StableDiffusion.
         // Its package manifest declared platforms: iOS 16 while depending on mlx-swift
         // which requires iOS 17, causing a SPM platform-validation error for consumers.
@@ -123,6 +126,9 @@ let package = Package(
         // Swift 6.1+. Do not bump beyond what the installed toolchain supports.
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"601.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
+        // swift-log: pulled in by vendored FluxSwift source. Lightweight structured
+        // logging façade; no runtime overhead beyond the backend you install.
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
@@ -292,6 +298,43 @@ let package = Package(
             ]
         ),
 
+        // FluxSwift: vendored mzbac/flux.swift (MIT). Provides FLUX.1 transformer,
+        // VAE, text encoders, tokenizer, and quantization utilities.
+        // Vendored instead of a package dependency because flux.swift pins
+        // swift-transformers 0.1.x; ManifoldKit requires 1.2.x.
+        .target(
+            name: "FluxSwift",
+            dependencies: [
+                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                .product(name: "MLXNN", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                .product(name: "MLXFast", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                .product(name: "MLXOptimizers", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                .product(name: "MLXRandom", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
+                .product(name: "Logging", package: "swift-log", condition: .when(traits: ["MLX"])),
+            ],
+            path: "Sources/FluxSwift",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+            ]
+        ),
+
+        // ManifoldFlux: FLUX.1 Schnell image-generation backend. Wraps FluxSwift
+        // and exposes ImageGenerationBackend + registration extension.
+        // Shares the MLX trait — enabled whenever MLX inference is available.
+        .target(
+            name: "ManifoldFlux",
+            dependencies: [
+                "ManifoldInference",
+                .target(name: "FluxSwift", condition: .when(traits: ["MLX"])),
+                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+            ],
+            path: "Sources/ManifoldFlux",
+            swiftSettings: [
+                .define("MLX", .when(traits: ["MLX"])),
+            ]
+        ),
+
         // ManifoldLlama: llama.cpp (GGUF) inference, generation driver,
         // process-lifecycle refcount, embedding backend, GGUF-specific tool
         // call parser, tokenizer adapters.
@@ -349,6 +392,7 @@ let package = Package(
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
+                .target(name: "ManifoldFlux", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
             ],

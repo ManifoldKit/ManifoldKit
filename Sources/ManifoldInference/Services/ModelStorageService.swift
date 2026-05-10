@@ -249,7 +249,7 @@ public final class ModelStorageService: @unchecked Sendable {
             return nil
         }
         guard manifest.packageKind == .diffusion,
-              manifest.format == .mlxDiffusion else {
+              manifest.format == .mlxDiffusion || manifest.format == .fluxSchnell else {
             return nil
         }
 
@@ -263,11 +263,12 @@ public final class ModelStorageService: @unchecked Sendable {
             }
         }
 
+        guard let format = manifest.format else { return nil }
         return ImageModelInfo(
             id: manifest.id,
             name: manifest.displayName,
             directoryURL: directory,
-            format: .mlxDiffusion,
+            format: format,
             fileSize: packageSize(at: directory, files: manifest.files),
             huggingFaceRepoID: manifest.huggingFaceRepoID
         )
