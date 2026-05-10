@@ -22,6 +22,8 @@ public struct ImageModelInstallView: View {
 
     @State private var installingID: String? = nil
     @State private var progress: Double = 0
+    @State private var downloadSnapshot: [String: DiffusionDownloadProgress] = [:]
+    @State private var downloadStartTime: [String: Date] = [:]
     @State private var rowError: [String: String] = [:]
     @State private var installedModels: [String: ImageModelInfo] = [:]
 
@@ -100,6 +102,12 @@ public struct ImageModelInstallView: View {
                 ProgressView(value: progress, total: 1.0)
                     .progressViewStyle(.linear)
                     .accessibilityIdentifier("image-model-install-progress-\(entry.id)")
+                if let label = downloadProgressLabel(for: entry) {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
             if let message = rowError[entry.id] {
                 Text(message)
@@ -136,6 +144,8 @@ public struct ImageModelInstallView: View {
     private func install(_ entry: DiffusionModelCatalogEntry) async {
         installingID = entry.id
         progress = 0
+        downloadSnapshot[entry.id] = nil
+        downloadStartTime[entry.id] = Date()
         rowError[entry.id] = nil
 
         let destination = storageRoot.appendingPathComponent(
@@ -151,18 +161,68 @@ public struct ImageModelInstallView: View {
                 progress: { snapshot in
                     Task { @MainActor in
                         progress = snapshot.fractionCompleted
+                        downloadSnapshot[entry.id] = snapshot
                     }
                 }
             )
             installedModels[entry.id] = info
             installingID = nil
             progress = 0
+            downloadSnapshot[entry.id] = nil
+            downloadStartTime[entry.id] = nil
             onInstalled(info)
         } catch {
             rowError[entry.id] = error.localizedDescription
             installingID = nil
             progress = 0
+            downloadSnapshot[entry.id] = nil
+            downloadStartTime[entry.id] = nil
         }
+    }
+
+    private static let byteFormatter: ByteCountFormatter = {
+        let fmt = ByteCountFormatter()
+        fmt.countStyle = .file
+        fmt.allowedUnits = [.useGB, .useMB]
+        fmt.allowsNonnumericFormatting = false
+        return fmt
+    }()
+
+    private func downloadProgressLabel(for entry: DiffusionModelCatalogEntry) -> String? {
+        guard let snapshot = downloadSnapshot[entry.id],
+              snapshot.totalBytesReceived > 0 else { return nil }
+
+        let received = snapshot.totalBytesReceived
+        let expected = snapshot.totalBytesExpected
+        let fmt = Self.byteFormatter
+
+        let receivedStr = fmt.string(fromByteCount: received)
+
+        guard expected > 0 else { return receivedStr }
+
+        let expectedStr = fmt.string(fromByteCount: expected)
+        var label = "\(receivedStr) / \(expectedStr)"
+
+        if let startTime = downloadStartTime[entry.id] {
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed > 3, received > 0 {
+                let speed = Double(received) / elapsed
+                let remainingBytes = Double(expected - received)
+                let eta = remainingBytes / speed
+                if eta > 0 {
+                    label += " · \(etaLabel(eta))"
+                }
+            }
+        }
+        return label
+    }
+
+    private func etaLabel(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return "~\(max(1, Int(seconds.rounded()))) sec remaining"
+        }
+        let minutes = Int((seconds / 60).rounded(.up))
+        return "~\(minutes) min remaining"
     }
 
     /// Slugifies a HuggingFace repo ID (`"stabilityai/sdxl-turbo"`) into a

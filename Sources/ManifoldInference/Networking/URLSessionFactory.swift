@@ -46,11 +46,12 @@ public enum URLSessionFactory {
     ///   their delegate strongly until invalidated.
     public static func ephemeral(
         hopCap: Int = 3,
+        resourceTimeout: TimeInterval = defaultResourceTimeout,
         additionalDataDelegate: URLSessionDataDelegate? = nil
     ) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = defaultRequestTimeout
-        config.timeoutIntervalForResource = defaultResourceTimeout
+        config.timeoutIntervalForResource = resourceTimeout
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,

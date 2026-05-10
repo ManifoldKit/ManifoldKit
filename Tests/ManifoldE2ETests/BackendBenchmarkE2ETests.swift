@@ -196,3 +196,46 @@ final class LlamaBackendBenchmark: XCTestCase {
     }
 }
 #endif
+
+// MARK: - Foundation backend (Apple Intelligence)
+
+#if canImport(FoundationModels)
+@available(iOS 26, macOS 26, *)
+@MainActor
+final class FoundationBackendBenchmark: XCTestCase {
+
+    private var backend: FoundationBackend!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        try XCTSkipUnless(
+            FoundationBackend.isAvailable,
+            "Apple Intelligence is not available on this device"
+        )
+        let ready = await FoundationBackend.probeIsReady()
+        try XCTSkipUnless(ready, "Apple Intelligence is not ready — download may be in progress")
+
+        backend = FoundationBackend()
+        try await backend.loadModel(from: ModelInfo.builtInFoundation.url, plan: .cloud())
+    }
+
+    override func tearDown() async throws {
+        backend?.unloadModel()
+        backend = nil
+        try await super.tearDown()
+    }
+
+    func test_throughput() async throws {
+        let config = GenerationConfig(temperature: 0.3, maxOutputTokens: benchTokens)
+        let warmup = try backend.generate(prompt: benchPrompt, systemPrompt: nil, config: config)
+        for try await _ in warmup.events {}
+
+        var results: [(ttftMs: Double, totalMs: Double, tokens: Int)] = []
+        for _ in 1...benchRuns {
+            results.append(try await timedGenerate(backend: backend))
+        }
+        printResults(label: "ManifoldKit→Foundation", model: "apple-intelligence", results: results)
+        XCTAssertGreaterThan(results.map { Double($0.tokens) / ($0.totalMs / 1000) }.max() ?? 0, 1)
+    }
+}
+#endif

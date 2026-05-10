@@ -94,7 +94,9 @@ public extension HuggingFaceService {
         // installed on every fallback session. HuggingFace ↔ CDN redirects
         // are common and benign; an attacker-controlled redirect into IMDS
         // or a LAN IP would otherwise be followed silently.
-        let session = urlSession ?? URLSessionFactory.ephemeral()
+        // Diffusion models can be several GB; the default 10-minute resource
+        // timeout is too short on slower connections.
+        let session = urlSession ?? URLSessionFactory.ephemeral(resourceTimeout: 7200)
         let resolvedDisplayName = displayName ?? repoID.split(separator: "/").last.map(String.init) ?? repoID
 
         let parentDirectory = destinationDirectory.deletingLastPathComponent()
@@ -169,6 +171,8 @@ public extension HuggingFaceService {
             let baseline = totalBytes
             let totalCount = plan.items.count
             let relativePath = item.relativePath
+
+            Log.download.info("[\(index + 1)/\(plan.items.count)] starting: \(item.relativePath, privacy: .public)")
             try await downloadFile(
                 from: remote,
                 to: item.localURL,
@@ -188,13 +192,19 @@ public extension HuggingFaceService {
                     ))
                 }
             )
+            Log.download.info("[\(index + 1)/\(plan.items.count)] download done: \(item.relativePath, privacy: .public)")
+
             let actualSize = item.localURL.fileSize ?? 0
             totalBytes += actualSize
+
+            Log.download.info("[\(index + 1)/\(plan.items.count)] validating: \(item.relativePath, privacy: .public)")
             try DownloadFileValidator.validate(
                 item.localURL,
                 diffusionRole: item.role,
                 expectedSize: nil
             )
+            Log.download.info("[\(index + 1)/\(plan.items.count)] validated: \(item.relativePath, privacy: .public)")
+
             // Final per-file emission so progress reflects the completed file
             // even when the transport never reported an intermediate chunk.
             progress(DiffusionDownloadProgress(
@@ -223,15 +233,18 @@ public extension HuggingFaceService {
             huggingFaceRepoID: repoID
         )
 
+        Log.download.info("Writing package manifest")
         try writePackageManifest(
             for: info,
             files: ["model_index.json"] + plan.items.map(\.relativePath),
             in: stagingDirectory
         )
+        Log.download.info("Moving staging directory to destination")
         if FileManager.default.fileExists(atPath: destinationDirectory.path) {
             try FileManager.default.removeItem(at: destinationDirectory)
         }
         try FileManager.default.moveItem(at: stagingDirectory, to: destinationDirectory)
+        Log.download.info("Install complete")
         return info
     }
 
@@ -310,10 +323,11 @@ public extension HuggingFaceService {
         manifest: DiffusionManifest,
         destinationDirectory: URL
     ) throws -> DiffusionDownloadPlan {
-        // UNet + VAE are required for every diffusers pipeline we support.
-        // Surface a clear error here rather than letting the loader trip later
-        // on a missing submodule.
-        for required in ["unet", "vae"] where !manifest.submodules.contains(required) {
+        let isFlux = manifest.submodules.contains("transformer")
+        // Require the denoiser submodule appropriate for each pipeline family,
+        // plus VAE which every pipeline needs.
+        let requiredDenoiser = isFlux ? "transformer" : "unet"
+        for required in [requiredDenoiser, "vae"] where !manifest.submodules.contains(required) {
             throw HuggingFaceError.invalidDownloadedFile(
                 reason: "Manifest is missing required submodule \"\(required)\""
             )
@@ -322,7 +336,7 @@ public extension HuggingFaceService {
         var items: [DiffusionDownloadItem] = []
 
         items.append(contentsOf: try plan(
-            submodule: "unet",
+            submodule: requiredDenoiser,
             weights: "diffusion_pytorch_model.safetensors",
             destinationDirectory: destinationDirectory
         ))
@@ -415,79 +429,126 @@ public extension HuggingFaceService {
 
     // MARK: - File download
 
-    /// Downloads a single file to disk using `URLSession.bytes(for:)`, reporting
-    /// progress periodically.
+    // Uses downloadTask(with:completionHandler:) so the OS networking stack writes
+    // to a temp file directly — no per-byte Swift async loop.
+    //
+    // We deliberately avoid the async download(from:delegate:) API because
+    // CompositeURLSessionDelegate conforms to URLSessionDownloadDelegate and
+    // implements didFinishDownloadingTo at the session level. The async API
+    // intercepts that same callback to resolve its continuation; the two mechanisms
+    // conflict on a session whose delegate already handles it, causing a hang.
+    //
+    // downloadTask(with:completionHandler:) is documented to NOT call the session
+    // delegate's didFinishDownloadingTo, so CompositeURLSessionDelegate is
+    // unaffected. The redirect guard fires via willPerformHTTPRedirection, which
+    // is a separate task-delegate callback unaffected by the completion-handler
+    // variant. Progress is reported via KVO on task.progress.completedUnitCount.
     private func downloadFile(
         from remote: URL,
         to local: URL,
         using session: URLSession,
         onChunk: (@Sendable (_ received: Int64, _ expected: Int64) -> Void)? = nil
     ) async throws {
-        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
-        do {
-            (bytes, response) = try await session.bytes(from: remote)
-        } catch {
-            throw HuggingFaceError.downloadFailed(underlying: error)
-        }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw HuggingFaceError.downloadFailed(
-                underlying: NSError(
-                    domain: "ManifoldHuggingFace",
-                    code: http.statusCode,
-                    userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) for \(remote.lastPathComponent)"]
-                )
-            )
-        }
+        final class State: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _task: URLSessionDownloadTask?
+            private var _cancelled = false
+            private var _progressObservation: NSKeyValueObservation?
 
-        // Ensure parent directory exists (caller may have created it; idempotent).
-        try FileManager.default.createDirectory(
-            at: local.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        // Explicitly remove any leftover from a previous attempt so a partial
-        // file's tail can't survive into the new download. `createFile(...)`
-        // is documented to overwrite, but a stale file could otherwise pass
-        // size/header validation if the new write is short.
-        if FileManager.default.fileExists(atPath: local.path) {
-            try? FileManager.default.removeItem(at: local)
-        }
-        FileManager.default.createFile(atPath: local.path, contents: nil)
-        guard let handle = try? FileHandle(forWritingTo: local) else {
-            throw HuggingFaceError.invalidDownloadedFile(reason: "Cannot open file for writing: \(local.lastPathComponent)")
-        }
-        defer { try? handle.close() }
-
-        let expected = response.expectedContentLength
-        let flushAt = 64 * 1024
-        let reportEvery: Int64 = 256 * 1024 // emit progress every 256 KB
-        var buffer = Data()
-        buffer.reserveCapacity(flushAt)
-        var received: Int64 = 0
-        var lastReported: Int64 = 0
-
-        // `AsyncBytes` yields one byte at a time but the runtime buffers
-        // upstream — accumulating into `buffer` and flushing in 64 KB chunks
-        // amortises the FileHandle.write cost without an extra wrapping API.
-        do {
-            for try await byte in bytes {
-                buffer.append(byte)
-                received += 1
-                if buffer.count >= flushAt {
-                    try handle.write(contentsOf: buffer)
-                    buffer.removeAll(keepingCapacity: true)
-                }
-                if received - lastReported >= reportEvery {
-                    onChunk?(received, expected)
-                    lastReported = received
-                }
+            func store(_ task: URLSessionDownloadTask) {
+                lock.lock(); defer { lock.unlock() }
+                _task = task
+                if _cancelled { task.cancel() }
             }
-        } catch {
-            throw HuggingFaceError.downloadFailed(underlying: error)
+
+            func cancel() {
+                lock.lock()
+                _cancelled = true
+                let t = _task
+                lock.unlock()
+                t?.cancel()
+            }
+
+            func setObservation(_ obs: NSKeyValueObservation?) {
+                lock.lock(); defer { lock.unlock() }
+                _progressObservation = obs
+            }
         }
-        if !buffer.isEmpty {
-            try handle.write(contentsOf: buffer)
+        let state = State()
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let filename = remote.lastPathComponent
+                let task = session.downloadTask(with: remote) { tempURL, response, error in
+                    state.setObservation(nil)
+
+                    if let error {
+                        Log.download.error("downloadTask error for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: error))
+                        return
+                    }
+                    if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                        Log.download.error("HTTP \(http.statusCode) for \(filename, privacy: .public)")
+                        if let url = tempURL { try? FileManager.default.removeItem(at: url) }
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(
+                            underlying: NSError(
+                                domain: "ManifoldHuggingFace",
+                                code: http.statusCode,
+                                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) for \(remote.lastPathComponent)"]
+                            )
+                        ))
+                        return
+                    }
+                    guard let tempURL else {
+                        Log.download.error("downloadTask nil tempURL for \(filename, privacy: .public)")
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: URLError(.unknown)))
+                        return
+                    }
+                    Log.download.info("downloadTask complete for \(filename, privacy: .public), moving to destination")
+                    do {
+                        try FileManager.default.createDirectory(
+                            at: local.deletingLastPathComponent(),
+                            withIntermediateDirectories: true
+                        )
+                        if FileManager.default.fileExists(atPath: local.path) {
+                            try FileManager.default.removeItem(at: local)
+                        }
+                        try FileManager.default.moveItem(at: tempURL, to: local)
+                        Log.download.info("Move complete for \(filename, privacy: .public)")
+                        continuation.resume()
+                    } catch {
+                        Log.download.error("Move failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        continuation.resume(throwing: error)
+                    }
+                }
+
+                if let onChunk {
+                    // task.progress uses a 0-100 unit scale, not bytes.
+                    // Observe countOfBytesReceived directly for real byte counts.
+                    var lastLoggedPct = -10
+                    state.setObservation(task.observe(\.countOfBytesReceived) { [weak task] _, _ in
+                        guard let task else { return }
+                        let received = task.countOfBytesReceived
+                        let expected = task.countOfBytesExpectedToReceive
+                        // countOfBytesExpectedToReceive is NSURLSessionTransferSizeUnknown (-1) when absent.
+                        let safeExpected: Int64 = expected > 0 ? expected : 0
+                        if safeExpected > 0 {
+                            let pct = Int(Double(received) / Double(safeExpected) * 100)
+                            if pct >= lastLoggedPct + 10 {
+                                lastLoggedPct = pct
+                                Log.download.debug("\(filename, privacy: .public): \(pct)% (\(received)/\(safeExpected) bytes)")
+                            }
+                        }
+                        onChunk(received, safeExpected)
+                    })
+                }
+
+                state.store(task)
+                task.resume()
+            }
+        } onCancel: {
+            state.cancel()
         }
-        onChunk?(received, expected)
     }
 }
 

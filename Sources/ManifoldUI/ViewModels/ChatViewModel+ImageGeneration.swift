@@ -186,6 +186,15 @@ extension ChatViewModel {
                 isComplete: false,
                 error: nil
             )
+            if let sessionID = activeSessionID {
+                let placeholder = ChatMessageRecord(
+                    id: messageID,
+                    role: .assistant,
+                    contentParts: [],
+                    sessionID: sessionID
+                )
+                messages.append(placeholder)
+            }
 
         case .progress(let messageID, let step, let totalSteps):
             // A `progress` for an unknown ID would mean we missed `started`;
@@ -213,6 +222,9 @@ extension ChatViewModel {
                 isComplete: true,
                 error: nil
             )
+            if let idx = messages.firstIndex(where: { $0.id == messageID }) {
+                messages[idx].contentParts = [.generatedImage(payload)]
+            }
 
         case .failed(let messageID, let error):
             let existing = imageGenerationProgress[messageID]

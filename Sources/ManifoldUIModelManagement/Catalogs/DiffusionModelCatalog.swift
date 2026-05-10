@@ -51,10 +51,10 @@ public struct DiffusionModelCatalogEntry: Sendable, Identifiable, Hashable {
 public enum DiffusionModelCatalog {
     public static let curated: [DiffusionModelCatalogEntry] = [
         DiffusionModelCatalogEntry(
-            id: "argmaxinc/mlx-FLUX.1-schnell-4bit-quantized",
-            displayName: "FLUX.1 Schnell",
-            description: "High-quality 1024×1024 generation in 4 steps. Apache 2.0 licensed. Requires an M-series Mac.",
-            approximateBytes: 7_030_000_000
+            id: "stabilityai/sdxl-turbo",
+            displayName: "SDXL Turbo",
+            description: "Fast 1024×1024 generation in 1–4 steps. Requires an M-series Mac.",
+            approximateBytes: 7_000_000_000
         ),
     ]
 }
