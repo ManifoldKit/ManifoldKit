@@ -103,7 +103,7 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
 
         let hub = HubApi(downloadBase: hubBase, useOfflineMode: true)
         guard let generator = try preset.textToImageGenerator(
-            hub: hub, configuration: .init()
+            hub: hub, configuration: .init(quantize: true)
         ) else {
             throw MLXDiffusionError.unsupportedModelLayout(url)
         }
@@ -151,6 +151,9 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
                         let stopped = self.withLock { self._stopRequested }
                         if stopped { throw CancellationError() }
 
+                        // Force evaluation here to bound peak memory: without this, MLX
+                        // accumulates the full N-step compute graph before running anything.
+                        MLX.eval(latent)
                         step += 1
                         lastLatent = latent
                         continuation.yield(.progress(step: step, total: totalSteps))
@@ -161,8 +164,17 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
                         return
                     }
 
-                    let decoded = generator.decode(xt: finalLatent)
-                    let imageURL = try Self.savePNG(Image(decoded), to: config.outputDirectory)
+                    // Get a VAE-only decoder closure, then flush the GPU activation
+                    // cache built up during denoising before the decode step starts.
+                    // This prevents UNet activations and VAE activations from
+                    // competing for GPU memory simultaneously.
+                    let decode = generator.detachedDecoder()
+                    MLX.GPU.set(cacheLimit: 0)
+
+                    let decoded = decode(finalLatent)
+                    // decode() returns float32 in [0, 1]; Image expects uint8 [0, 255].
+                    let frame = decoded.ndim == 4 ? decoded[0] : decoded
+                    let imageURL = try Self.savePNG(Image((frame * 255).asType(.uint8)), to: config.outputDirectory)
                     continuation.yield(.completed(imageURL))
                     continuation.finish()
                 } catch is CancellationError {
