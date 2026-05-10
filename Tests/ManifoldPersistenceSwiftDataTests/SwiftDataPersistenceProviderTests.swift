@@ -154,6 +154,23 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         XCTAssertEqual(fetched[0].completionTokens, 7)
     }
 
+    func test_insertMessage_doesNotPersistTransientStatus() async throws {
+        let session = ChatSessionRecord(title: "Status Test")
+        try await provider.insertSession(session)
+        let record = ChatMessageRecord(
+            role: .user,
+            content: "hello",
+            sessionID: session.id,
+            status: .sent
+        )
+
+        try await provider.insertMessage(record)
+
+        let fetched = try await provider.fetchMessages(for: session.id)
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertNil(fetched[0].status, "Message status is UI-only and must not force a SwiftData schema migration")
+    }
+
     func test_fetchMessages_ordersByTimestampAscending() async throws {
         let session = ChatSessionRecord(title: "Order Test")
         try await provider.insertSession(session)

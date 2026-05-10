@@ -75,8 +75,17 @@ public struct MessageBubbleView: View {
         VStack(alignment: .trailing, spacing: 4) {
             MessagePartsView(parts: message.contentParts, role: .user)
 
-            timestampLabel
-                .foregroundStyle(.white.opacity(0.7))
+            HStack(spacing: 6) {
+                if let statusText = Self.statusText(for: message) {
+                    Text(statusText)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .accessibilityLabel(Self.statusAccessibilityLabel(for: message) ?? statusText)
+                }
+
+                timestampLabel
+                    .foregroundStyle(.white.opacity(0.7))
+            }
         }
         .padding(12)
         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16))
@@ -229,6 +238,24 @@ public struct MessageBubbleView: View {
         if hasThinking { suffixes.append("Includes reasoning.") }
         if hasAudio { suffixes.append("Includes audio.") }
         return suffixes.isEmpty ? base : "\(base). \(suffixes.joined(separator: " "))"
+    }
+
+    public static func statusText(for message: ChatMessageRecord) -> String? {
+        guard message.role == .user, let status = message.status else { return nil }
+        return switch status {
+        case .sending: "Sending…"
+        case .sent: "Sent"
+        case .failed: "Failed"
+        }
+    }
+
+    public static func statusAccessibilityLabel(for message: ChatMessageRecord) -> String? {
+        guard message.role == .user, let status = message.status else { return nil }
+        return switch status {
+        case .sending: "Message sending"
+        case .sent: "Message sent"
+        case .failed: "Message failed to send"
+        }
     }
 }
 

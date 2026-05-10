@@ -31,6 +31,7 @@ extension ChatViewModel {
         // MARK: Message lifecycle
 
         case .messageInserted(let record):
+            var record = record
             // The runtime persists user and assistant messages and re-emits
             // them via `.messageInserted`. Two cases:
             //
@@ -51,10 +52,14 @@ extension ChatViewModel {
             // gate, would leak the cancelled session's content into the
             // newly-active transcript.
             guard record.sessionID == activeSessionID else { break }
+            if record.role == .user {
+                record.status = .sent
+            }
             if let idx = messages.firstIndex(where: { $0.id == record.id }) {
                 messages[idx].timestamp = record.timestamp
                 messages[idx].promptTokens = record.promptTokens
                 messages[idx].completionTokens = record.completionTokens
+                messages[idx].status = record.status
             } else {
                 messages.append(record)
             }
@@ -175,6 +180,7 @@ extension ChatViewModel {
             if case .cancelled = error {
                 lastTurnState = .idle
             } else {
+                markMostRecentUserMessageFailed()
                 lastTurnState = .failed(error)
             }
             activeConversationStreamHandle = nil
@@ -312,5 +318,14 @@ extension ChatViewModel {
         // update the text. Signatures arrive separately.
         let signature = msg.contentParts[idx].thinkingSignature
         msg.contentParts[idx] = .thinking(partial, signature: signature)
+    }
+}
+
+private extension ChatViewModel {
+    func markMostRecentUserMessageFailed() {
+        guard let idx = messages.lastIndex(where: { $0.role == .user && $0.sessionID == activeSessionID }) else {
+            return
+        }
+        messages[idx].status = .failed
     }
 }

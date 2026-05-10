@@ -52,6 +52,13 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Delivery state used by chat UI affordances for user-authored messages.
+public enum MessageStatus: String, Codable, Hashable, Sendable {
+    case sending
+    case sent
+    case failed
+}
+
 /// Plain-data snapshot of a chat message for use across persistence boundaries.
 public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     public var id: UUID
@@ -61,6 +68,9 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     public var sessionID: UUID
     public var promptTokens: Int?
     public var completionTokens: Int?
+    /// Transient UI delivery state. Persistence intentionally omits this value
+    /// so adding message status does not require a SwiftData schema migration.
+    public var status: MessageStatus?
     /// Provenance of any RAG passages injected into the prompt for this turn.
     ///
     /// Populated by ``ConversationRuntime`` from
@@ -98,6 +108,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         sessionID: UUID,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
+        status: MessageStatus? = nil,
         citations: [Citation]? = nil
     ) {
         self.id = id
@@ -107,6 +118,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.status = status
         self.citations = citations
     }
 
@@ -119,6 +131,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         sessionID: UUID,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
+        status: MessageStatus? = nil,
         citations: [Citation]? = nil
     ) {
         self.id = id
@@ -128,7 +141,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.status = status
         self.citations = citations
     }
 }
-
