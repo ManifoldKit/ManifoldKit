@@ -28,7 +28,7 @@
 #   --mlx         Also benchmark ManifoldKit → MLXBackend (requires Xcode)
 #   --no-raw      Skip the raw Ollama HTTP baseline
 #   --only PATH   Run only one path:
-#                   ollama-raw | sdk-ollama | sdk-llama | server-ollama | server-llama | mlx
+#                   ollama-raw | sdk-ollama | sdk-llama | server-ollama | server-llama | mlx | sdk-foundation
 #
 # ## Examples
 #
@@ -141,6 +141,7 @@ head_ "ManifoldKit benchmark suite"
                                || log "Llama  : no GGUF found (skipping Llama paths)"
 [[ $RUN_MLX          -eq 1 ]] && log "MLX    : enabled (requires Xcode build)" \
                                || log "MLX    : disabled (pass --mlx to enable)"
+log "Foundation: Apple Intelligence (skips gracefully if unavailable)"
 log "Runs   : $BENCH_RUNS warm runs per path"
 
 TABLE_ROWS=()
@@ -267,7 +268,17 @@ if [[ $LLAMA_AVAILABLE -eq 1 ]] && \
         "ManifoldKit server→Llama"
 fi
 
-# ── Path 6: ManifoldKit SDK → MLXBackend ─────────────────────────────────────
+# ── Path 6: ManifoldKit SDK → FoundationBackend (Apple Intelligence) ─────────
+if [[ -z "$ONLY_PATH" || "$ONLY_PATH" == "sdk-foundation" ]]; then
+    head_ "ManifoldKit SDK → FoundationBackend"
+    SDK_OUT=$(xcrun swift test \
+            --filter FoundationBackendBenchmark \
+            --skip-update 2>&1)
+    echo "$SDK_OUT" | grep -E "ManifoldKit→Foundation run|BENCH_RESULT" || true
+    add_row "$(extract_sdk_result "$SDK_OUT" "ManifoldKit→Foundation")"
+fi
+
+# ── Path 7: ManifoldKit SDK → MLXBackend ─────────────────────────────────────
 if [[ $RUN_MLX -eq 1 ]] && \
    [[ -z "$ONLY_PATH" || "$ONLY_PATH" == "mlx" ]]; then
     head_ "ManifoldKit SDK → MLXBackend (via xcodebuild)"

@@ -378,6 +378,9 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 }
                 currentSystemPrompt = effectiveInstructions
                 _sessionIsClean = true  // fresh session always starts clean
+                // Signal the system daemon to warm up KV-cache state so the
+                // first streamResponse() on this session pays less IPC setup.
+                session!.prewarm()
             }
 
             return (session!, generationID)
@@ -406,7 +409,14 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
             do {
                 var options = GenerationOptions()
-                options.temperature = Double(config.temperature)
+                if config.temperature == 0 {
+                    options.sampling = .greedy
+                } else {
+                    options.temperature = Double(config.temperature)
+                }
+                if let maxTokens = config.maxOutputTokens {
+                    options.maximumResponseTokens = maxTokens
+                }
 
                 // Mark the session as dirty before iterating.  If the Task is
                 // cancelled or the loop breaks early (e.g. output token limit) before
@@ -432,7 +442,6 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         session: activeSession,
                         prompt: prompt,
                         options: options,
-                        outputLimit: config.maxOutputTokens,
                         continuation: continuation,
                         generationStream: generationStream
                     )
@@ -479,13 +488,11 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         session: LanguageModelSession,
         prompt: String,
         options: GenerationOptions,
-        outputLimit: Int?,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
         generationStream: GenerationStream
     ) async throws -> Bool {
         let responseStream = session.streamResponse(to: prompt, options: options)
 
-        var outputTokenCount = 0
         var previousCount = 0
         var isFirstToken = true
         var streamExhausted = true
@@ -504,17 +511,6 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 }
                 continuation.yield(.token(newContent))
                 previousCount = currentText.count
-
-                // Approximate token count using the conservative 3-char heuristic.
-                // Stops runaway generation for open-ended prompts.
-                if let outputLimit {
-                    outputTokenCount += max(1, newContent.count / 3)
-                    if outputTokenCount >= outputLimit {
-                        Self.logger.info("Output token limit (\(outputLimit)) reached")
-                        streamExhausted = false
-                        break
-                    }
-                }
             }
         }
         return streamExhausted
