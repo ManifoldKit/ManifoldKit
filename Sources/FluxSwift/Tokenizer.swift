@@ -1,3 +1,5 @@
+#if MLX
+
 // copied from mlx-swift-mlx stable diffusion example https://github.com/ml-explore/mlx-swift-examples/blob/main/Libraries/StableDiffusion/Tokenizer.swift
 import Foundation
 
@@ -132,3 +134,4 @@ public class CLIPTokenizer {
         return result.map { Int32($0) }
     }
 }
+#endif

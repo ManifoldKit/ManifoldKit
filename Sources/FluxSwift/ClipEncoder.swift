@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXFast
@@ -203,3 +205,4 @@ public class CLIPEncoder: Module {
         textModel(x)
     }
 }
+#endif

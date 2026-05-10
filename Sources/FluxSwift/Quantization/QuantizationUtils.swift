@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXNN
@@ -742,3 +744,4 @@ extension QuantizationUtils {
         return QuantizedWeightInfo(isQuantized: false)
     }
 }
+#endif

@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import Hub
 import MLX
@@ -241,3 +243,4 @@ public class FluxModelCore: @unchecked Sendable {
 
 
 extension FluxModelCore: FLUXComponents {}
+#endif

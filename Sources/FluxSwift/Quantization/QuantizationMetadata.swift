@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import Logging
 
@@ -149,3 +151,4 @@ public struct QuantizedWeightInfo {
         }
     }
 }
+#endif

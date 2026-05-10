@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import Hub
 import MLX
@@ -553,3 +555,4 @@ public enum FluxError: LocalizedError {
     }
   }
 }
+#endif

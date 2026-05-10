@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXNN
@@ -142,3 +144,4 @@ public extension FLUX {
         return Quantization.analyzeModel(fluxModel)
     }
 }
+#endif

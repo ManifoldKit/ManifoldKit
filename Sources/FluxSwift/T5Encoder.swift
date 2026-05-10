@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXFast
@@ -240,3 +242,4 @@ public class T5Encoder: Module {
     return relativeBuckets
   }
 }
+#endif

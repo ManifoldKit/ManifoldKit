@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import Hub
 import MLX
@@ -296,3 +298,4 @@ extension FluxConfigurationError: LocalizedError {
     }
   }
 }
+#endif

@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXFast
@@ -669,3 +671,4 @@ public class MultiModalDiffusionTransformer: Module {
     return MLX.zeros([1, seqLen, 3])
   }
 }
+#endif

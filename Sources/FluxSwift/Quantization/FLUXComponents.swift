@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXNN
@@ -172,3 +174,4 @@ struct ComponentWeights {
         )
     }
 }
+#endif

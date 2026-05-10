@@ -1,3 +1,5 @@
+#if MLX
+
 import Foundation
 import MLX
 import MLXNN
@@ -407,3 +409,4 @@ public class VAE: Module {
     return (mean - config.shiftFactor) * config.scalingFactor
   }
 }
+#endif
