@@ -1,4 +1,4 @@
-#if Ollama && Tools
+#if Tools && (Ollama || CloudSaaS || canImport(FoundationModels))
 import Foundation
 import XCTest
 import ManifoldInference
@@ -76,7 +76,7 @@ struct DemoScenarioE2EResult: Sendable {
 
 @MainActor
 struct DemoScenarioE2EHarness {
-    let backend: any InferenceBackend & ToolCallingHistoryReceiver
+    let backend: any InferenceBackend
     let backendName: String
     let modelName: String
 
@@ -152,8 +152,17 @@ struct DemoScenarioE2EHarness {
         var finalText = ""
 
         for _ in 0..<config.maxToolIterations {
-            backend.setToolAwareHistory(history)
-            let stream = try backend.generate(prompt: "", systemPrompt: nil, config: config)
+            let stream: GenerationStream
+            if let receiver = backend as? ToolCallingHistoryReceiver {
+                receiver.setToolAwareHistory(history)
+                stream = try backend.generate(prompt: "", systemPrompt: nil, config: config)
+            } else {
+                stream = try backend.generate(
+                    prompt: transcriptPrompt(from: history),
+                    systemPrompt: spec.systemPrompt,
+                    config: config
+                )
+            }
 
             var turnCalls: [ToolCall] = []
             var turnText = ""
@@ -189,6 +198,26 @@ struct DemoScenarioE2EHarness {
             toolTraces: toolTraces,
             finalText: finalText
         )
+    }
+
+    private func transcriptPrompt(from history: [ToolAwareHistoryEntry]) -> String {
+        let body = history.map { entry -> String in
+            if let toolCallId = entry.toolCallId {
+                return "tool_result id=\(toolCallId): \(entry.content)"
+            }
+            if let toolCalls = entry.toolCalls, !toolCalls.isEmpty {
+                let calls = toolCalls
+                    .map { "\($0.toolName)(id:\($0.id), arguments:\($0.arguments))" }
+                    .joined(separator: "\n")
+                return "assistant tool_calls:\n\(calls)"
+            }
+            return "\(entry.role): \(entry.content)"
+        }.joined(separator: "\n\n")
+        return """
+        Continue this tool-calling transcript. If a tool result is present, answer the original user using the tool-derived facts. Otherwise call the required tool.
+
+        \(body)
+        """
     }
 }
 
@@ -285,6 +314,111 @@ enum DemoScenarioE2EFixtures {
             let payload = Data(args.content.utf8)
             try payload.write(to: resolved, options: .atomic)
             return Result(path: args.path, bytesWritten: payload.count)
+        }
+    }
+}
+
+enum DemoScenarioMeetingNotes {
+    static let requiredFinalFacts = ["Riley", "Friday", "Security review"]
+
+    static var spec: DemoScenarioE2ESpec {
+        DemoScenarioE2ESpec(
+            id: "meeting-notes-cross-backend",
+            systemPrompt: """
+            You are validating ManifoldKit demo tool calling. Use exactly the `meeting_notes_lookup` tool with meeting_id `beta-launch-sync` and include_decisions true. After the tool returns, answer in one concise sentence that includes the owner, ship decision, and blocker exactly from the tool result.
+            """,
+            userPrompt: "Summarize the BetaLaunch meeting note.",
+            expectedToolNames: ["meeting_notes_lookup"],
+            maxIterations: 4
+        )
+    }
+
+    @MainActor
+    static func makeRegistry() -> ToolRegistry {
+        struct Args: Decodable, Sendable {
+            let meeting_id: String
+            let include_decisions: Bool
+        }
+        struct Result: Encodable, Sendable {
+            let meeting_id: String
+            let project: String
+            let owner: String
+            let decision: String
+            let blocker: String
+        }
+
+        let registry = ToolRegistry()
+        registry.register(TypedToolExecutor<Args, Result>(
+            definition: ToolDefinition(
+                name: "meeting_notes_lookup",
+                description: "Looks up deterministic meeting notes by meeting_id. Pass include_decisions true when decisions are needed.",
+                parameters: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "meeting_id": .object([
+                            "type": .string("string"),
+                            "description": .string("Canonical meeting id, for example beta-launch-sync.")
+                        ]),
+                        "include_decisions": .object([
+                            "type": .string("boolean"),
+                            "description": .string("Whether to include decision and blocker facts.")
+                        ]),
+                    ]),
+                    "required": .array([.string("meeting_id"), .string("include_decisions")])
+                ])
+            )
+        ) { args in
+            guard args.meeting_id == "beta-launch-sync", args.include_decisions else {
+                throw NSError(
+                    domain: "MeetingNotesTool",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "expected beta-launch-sync with include_decisions=true"]
+                )
+            }
+            return Result(
+                meeting_id: args.meeting_id,
+                project: "BetaLaunch",
+                owner: "Riley",
+                decision: "Ship candidate Friday",
+                blocker: "Security review"
+            )
+        })
+        return registry
+    }
+
+    static func makeScriptedCall(id: String = "call-meeting-notes") -> ToolCall {
+        ToolCall(
+            id: id,
+            toolName: "meeting_notes_lookup",
+            arguments: #"{"meeting_id":"beta-launch-sync","include_decisions":true}"#
+        )
+    }
+
+    static func assertContract(
+        _ result: DemoScenarioE2EResult,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            result.dispatchedCalls.map(\.toolName),
+            ["meeting_notes_lookup"],
+            "Meeting-notes scenario should dispatch the shared tool path.\n\(result.diagnostics)",
+            file: file,
+            line: line
+        )
+        guard let call = result.dispatchedCalls.first, let trace = result.toolTraces.first else {
+            XCTFail("Meeting-notes scenario did not dispatch a tool.\n\(result.diagnostics)", file: file, line: line)
+            return
+        }
+        let normalizedArgs = call.arguments
+            .replacingOccurrences(of: #"\/"#, with: "/")
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        XCTAssertTrue(normalizedArgs.contains(#""meeting_id":"beta-launch-sync""#), "Arguments must include meeting_id.\n\(result.diagnostics)", file: file, line: line)
+        XCTAssertTrue(normalizedArgs.contains(#""include_decisions":true"#), "Arguments must include include_decisions=true.\n\(result.diagnostics)", file: file, line: line)
+        for fact in requiredFinalFacts {
+            XCTAssertTrue(trace.result.content.localizedCaseInsensitiveContains(fact), "Tool result must contain \(fact).\n\(result.diagnostics)", file: file, line: line)
+            XCTAssertTrue(result.finalText.localizedCaseInsensitiveContains(fact), "Final answer must contain \(fact).\n\(result.diagnostics)", file: file, line: line)
         }
     }
 }
