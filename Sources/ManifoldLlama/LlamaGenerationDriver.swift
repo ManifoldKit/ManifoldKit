@@ -334,6 +334,11 @@ struct LlamaGenerationDriver {
 
         if promptDecodeFailed {
             Self.logger.error("Llama prompt decode failed")
+            // Synchronize before returning so any partially-committed Metal
+            // command buffers from the prompt chunks that did succeed are
+            // flushed.  The next generate() call will clear the KV cache;
+            // without this fence that clear can race with in-flight GPU work.
+            llama_synchronize(context)
             await MainActor.run { generationStream.setPhase(.failed("Failed to decode prompt")) }
             continuation.finish(throwing: InferenceError.inferenceFailure("Failed to decode prompt"))
             return false
@@ -342,6 +347,8 @@ struct LlamaGenerationDriver {
         // Honour cancellation that fired mid-prompt before entering the
         // generation loop.
         if isCancelled() {
+            // Flush any Metal ops from prompt chunks already decoded.
+            llama_synchronize(context)
             await MainActor.run { generationStream.setPhase(.done) }
             continuation.finish()
             return true
@@ -547,6 +554,10 @@ struct LlamaGenerationDriver {
             if isCancelled() { break }
 
             if llama_decode(context, genBatch) != 0 {
+                // Synchronize before surfacing the error so the GPU drains any
+                // work that *did* commit before the failure.  Without this, a
+                // subsequent KV-cache clear from a retry can race Metal ops.
+                llama_synchronize(context)
                 await MainActor.run { generationStream.setPhase(.failed("Decode failed during generation")) }
                 continuation.finish(throwing: InferenceError.inferenceFailure("Decode failed during generation"))
                 return false
@@ -566,6 +577,28 @@ struct LlamaGenerationDriver {
                 continuation.yield(event)
             }
         }
+
+        // Flush all pending Metal command buffers before returning.
+        //
+        // `llama_decode` enqueues Metal compute passes asynchronously — by the
+        // time the generation loop exits (EOG, cancellation, or token budget),
+        // the GPU may still be executing the last batch.  If the caller
+        // immediately starts a new `generate()` call, the KV-cache clear
+        // (`llama_memory_clear` / `llama_memory_seq_rm`) at the top of the next
+        // run enqueues *new* Metal operations before the previous command buffers
+        // have committed.  That ordering violation trips llama.cpp's internal
+        // render-set assertion:
+        //
+        //   GGML_ASSERT([rsets->data count] == 0)   (ggml-metal-device.m:618)
+        //
+        // which leads to corrupted KV state and, on the very next `llama_decode`,
+        // a Swift array bounds crash (ContiguousArrayBuffer.swift:692).
+        // `llama_synchronize` blocks the calling thread until the GPU is idle,
+        // making the context safe for the next caller.  The call is cheap when
+        // the GPU is already done (typically sub-millisecond) and is the
+        // authoritative fix recommended by the llama.cpp contract (see
+        // `docs/LLAMA_CONTRACT.md` and `llama.h` line 972).
+        llama_synchronize(context)
 
         await MainActor.run { generationStream.setPhase(.done) }
         Self.logger.debug("LlamaGenerationDriver run finished")
