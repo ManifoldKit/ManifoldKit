@@ -75,8 +75,8 @@ final class LlamaBackendLoadSerializationCharacterizationE2ETests: XCTestCase {
                           "LlamaBackend requires Metal (unavailable in simulator)")
         guard let found = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run "
-                + "LlamaBackend load-serialization characterization tests."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in "
+                + "~/Documents/Models/ to run LlamaBackend load-serialization characterization tests."
             )
         }
         modelURL = found

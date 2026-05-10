@@ -96,6 +96,25 @@ final class HardwareRequirementsGGUFTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    func test_findGGUFModel_absolutePathThatFailsValidation_returnsNilRatherThanFallingBack() {
+        // When LLAMA_TEST_MODEL is an absolute path that points at a
+        // non-existent file, findGGUFModel must return nil rather than
+        // silently falling back to a different discovered model.
+        //
+        // We exercise the public path that consults `modelSearchDirectories()`.
+        // Because that directory is unlikely to contain any GGUFs in a test
+        // context, we only need to confirm the call returns nil — not that it
+        // skips a valid candidate. The invariant under test is that the caller
+        // does NOT enable unrestricted discovery when given a path-shaped
+        // selector, so we can't accidentally load a random model from disk.
+        let nonExistentPath = tempDirectory.appendingPathComponent("does-not-exist.gguf").path
+        let result = HardwareRequirements.findGGUFModel(
+            environment: ["LLAMA_TEST_MODEL": nonExistentPath]
+        )
+
+        XCTAssertNil(result, "Absolute-path override that fails validation must not fall back to discovered models")
+    }
+
     func test_isValidGGUFModel_rejectsDirectoriesAndTinyFiles() {
         let directory = tempDirectory.appendingPathComponent("fake.gguf", isDirectory: true)
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)

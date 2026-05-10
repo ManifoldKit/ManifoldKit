@@ -64,7 +64,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// and this assertion fails.
     func test_kvReuse_consecutiveTurns() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -111,7 +111,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// Sabotage check: always set `reuseLen = 0` — no `.kvCacheReuse` event fires.
     func test_kvReuse_prefixDivergence() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -159,7 +159,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// Turn 3 no longer sees a reuse event.
     func test_kvReuse_cancelPreservesPrefix() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -205,7 +205,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// Turn 2 incorrectly emits `.kvCacheReuse`.
     func test_kvReuse_resetConversationInvalidates() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -245,7 +245,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// incorrect prefix match. Either way, the test confirms no crash.
     func test_kvReuse_unloadModelInvalidates() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -287,7 +287,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// invariant that stopGeneration is a pause, not a reset.
     func test_kvReuse_stopGenerationPreservesState() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -330,7 +330,7 @@ final class LlamaKVPersistenceTests: XCTestCase {
     /// Turn 2 and failing the equality assertion.
     func test_kvReuse_determinism() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()

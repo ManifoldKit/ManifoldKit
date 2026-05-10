@@ -31,7 +31,7 @@ final class LlamaTopKConsumptionTests: XCTestCase {
     /// `topK = 1` collapses sampling to greedy — output is identical across seeds.
     func test_topK1_isGreedyAcrossSeeds() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()

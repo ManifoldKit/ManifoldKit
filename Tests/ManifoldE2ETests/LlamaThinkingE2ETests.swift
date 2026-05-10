@@ -60,8 +60,9 @@ final class LlamaThinkingE2ETests: XCTestCase {
 
         guard let url = Self.locateThinkingGGUF() else {
             throw XCTSkip(
-                "No thinking-capable GGUF found. Place a Qwen3 (or other ChatML "
-                + "thinking) model at ~/Library/Caches/ManifoldKit/test-models/qwen3-thinking.gguf "
+                "No thinking-capable GGUF found. Set LLAMA_TEST_MODEL=<path> to a Qwen3 (or other "
+                + "ChatML thinking) model, or place one at "
+                + "~/Library/Caches/ManifoldKit/test-models/qwen3-thinking.gguf "
                 + "or in ~/Documents/Models/. See Tests/ManifoldE2ETests/README.md."
             )
         }

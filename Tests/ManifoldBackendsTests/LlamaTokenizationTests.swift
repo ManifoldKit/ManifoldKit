@@ -46,7 +46,7 @@ final class LlamaTokenizationTests: XCTestCase {
     func test_tokenize_parseSpecial_true_treatsImStartAsSingleToken() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run this test."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this test."
             )
         }
 
@@ -118,7 +118,7 @@ final class LlamaTokenizationTests: XCTestCase {
     func test_countTokens_includesSpecialTokenBudget() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run this test."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this test."
             )
         }
 
