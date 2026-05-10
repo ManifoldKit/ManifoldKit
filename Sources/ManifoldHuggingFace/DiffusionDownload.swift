@@ -94,7 +94,9 @@ public extension HuggingFaceService {
         // installed on every fallback session. HuggingFace ↔ CDN redirects
         // are common and benign; an attacker-controlled redirect into IMDS
         // or a LAN IP would otherwise be followed silently.
-        let session = urlSession ?? URLSessionFactory.ephemeral()
+        // Diffusion models can be several GB; the default 10-minute resource
+        // timeout is too short on slower connections.
+        let session = urlSession ?? URLSessionFactory.ephemeral(resourceTimeout: 7200)
         let resolvedDisplayName = displayName ?? repoID.split(separator: "/").last.map(String.init) ?? repoID
 
         let parentDirectory = destinationDirectory.deletingLastPathComponent()
@@ -516,18 +518,23 @@ public extension HuggingFaceService {
                 }
 
                 if let onChunk {
+                    // task.progress uses a 0-100 unit scale, not bytes.
+                    // Observe countOfBytesReceived directly for real byte counts.
                     var lastLoggedPct = -10
-                    state.progressObservation = task.progress.observe(\.completedUnitCount) { progress, _ in
-                        let received = progress.completedUnitCount
-                        let total = progress.totalUnitCount
-                        if total > 0 {
-                            let pct = Int(Double(received) / Double(total) * 100)
+                    state.progressObservation = task.observe(\.countOfBytesReceived) { [weak task] _, _ in
+                        guard let task else { return }
+                        let received = task.countOfBytesReceived
+                        let expected = task.countOfBytesExpectedToReceive
+                        // countOfBytesExpectedToReceive is NSURLSessionTransferSizeUnknown (-1) when absent.
+                        let safeExpected: Int64 = expected > 0 ? expected : 0
+                        if safeExpected > 0 {
+                            let pct = Int(Double(received) / Double(safeExpected) * 100)
                             if pct >= lastLoggedPct + 10 {
                                 lastLoggedPct = pct
-                                Log.download.debug("\(filename, privacy: .public): \(pct)% (\(received)/\(total) bytes)")
+                                Log.download.debug("\(filename, privacy: .public): \(pct)% (\(received)/\(safeExpected) bytes)")
                             }
                         }
-                        onChunk(received, total > 0 ? total : 0)
+                        onChunk(received, safeExpected)
                     }
                 }
 
