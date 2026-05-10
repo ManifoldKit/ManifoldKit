@@ -42,6 +42,46 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
         XCTAssertTrue(hits.allSatisfy { $0.snippet.localizedStandardContains("dragon") })
     }
 
+    func test_searchMessages_multiTermQueryMatchesNonAdjacentTerms() async throws {
+        let session = ChatSessionRecord(title: "Multi Term")
+        try await provider.insertSession(session)
+        try await provider.insertMessage(ChatMessageRecord(
+            role: .user,
+            content: "dragon lore with maps and treasure",
+            timestamp: Date(timeIntervalSince1970: 1_000),
+            sessionID: session.id
+        ))
+        try await provider.insertMessage(ChatMessageRecord(
+            role: .assistant,
+            content: "dragon migration routes",
+            timestamp: Date(timeIntervalSince1970: 2_000),
+            sessionID: session.id
+        ))
+        try await provider.insertMessage(ChatMessageRecord(
+            role: .user,
+            content: "treasure vault inventory",
+            timestamp: Date(timeIntervalSince1970: 3_000),
+            sessionID: session.id
+        ))
+
+        let hits = try await provider.searchMessages(query: "dragon treasure", limit: 100)
+
+        XCTAssertEqual(hits.map(\.snippet).map { $0.replacingOccurrences(of: "…", with: "") },
+                       ["dragon lore with maps and treasure"])
+    }
+
+    func test_searchMessages_diacriticInsensitiveQueryBuildsSnippet() async throws {
+        let session = ChatSessionRecord(title: "Diacritics")
+        try await provider.insertSession(session)
+        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "Meet at the café after lunch", sessionID: session.id))
+
+        let hits = try await provider.searchMessages(query: "cafe", limit: 100)
+
+        XCTAssertEqual(hits.count, 1)
+        let hit = try XCTUnwrap(hits.first)
+        XCTAssertEqual(String(hit.snippet[hit.matchRange]), "café")
+    }
+
     func test_searchMessages_emptyQueryReturnsNoHits() async throws {
         let session = ChatSessionRecord(title: "Empty Query")
         try await provider.insertSession(session)
