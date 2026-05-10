@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/roryford/ManifoldKit/compare/v0.23.0...v0.23.1) — 2026-05-10
+
+### Fixes
+
+* **FoundationBackend token budget** — `maximumResponseTokens` was never passed to the SDK, so the SDK's internal default capped output far below `GenerationConfig.maxOutputTokens`. Greedy sampling (`temperature == 0`) now sets `.sampling = .greedy` instead of `temperature = 0.0`, and `prewarm()` is called after session creation to reduce first-turn latency ([#1180](https://github.com/roryford/ManifoldKit/issues/1180))
+* **Model override env var fallback** — when `LLAMA_TEST_MODEL` or `MLX_TEST_MODEL` pointed to a path that failed validation, the helper silently fell back to unrestricted local-model discovery and could load a different model. It now returns `nil` immediately and tests skip explicitly ([#1182](https://github.com/roryford/ManifoldKit/issues/1182))
+
 ## [0.23.0](https://github.com/roryford/ManifoldKit/compare/v0.22.0...v0.23.0) — 2026-05-10
 
 ### Highlights
