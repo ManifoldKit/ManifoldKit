@@ -106,13 +106,13 @@ swift test --filter ManifoldBackendsTests --traits MLX,Llama
 swift test --filter ManifoldE2ETests --disable-default-traits
 
 # MCP built-in catalog descriptors (trait-gated metadata tests)
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCP,MCPBuiltinCatalog --skip-update
 
 # MCP end-to-end smoke tests are explicit opt-in only.
 # Nightly runs the streamable-HTTP smoke; keep the filter narrow so the
 # npx/network-backed EverythingServerSmokeTests suite does not run by default.
 RUN_MCP_E2E=1 scripts/test.sh --filter ManifoldMCPE2ESmokeTests \
-  --disable-default-traits --skip-update --min-passed 1
+  --disable-default-traits --traits MCP --skip-update --min-passed 1
 
 # Full subprocess E2E, local only: requires npx on PATH and network access to
 # download @modelcontextprotocol/server-everything.

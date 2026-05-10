@@ -69,7 +69,7 @@ jobs:
         env:
           RUN_SLOW_TESTS: "1"
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-and-mcp-hardening.log
-        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --filter "ManifoldMCPTests.MCPHardeningTests" --disable-default-traits --skip-update --min-passed 2
+        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --filter "ManifoldMCPTests.MCPHardeningTests" --disable-default-traits --traits MCP --skip-update --min-passed 2
 
       - name: Test — PinnedSessionDelegateTests (CloudSaaS)
         env:

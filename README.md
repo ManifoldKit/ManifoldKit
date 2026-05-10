@@ -296,8 +296,8 @@ If you already depend on `ManifoldBackends`, the same data is also available via
 Quick checks:
 
 ```bash
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --skip-update
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCP --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCP,MCPBuiltinCatalog --skip-update
 ```
 
 ### 2.2 ManifoldServer
@@ -988,6 +988,12 @@ SourceKit can retain stale module-not-found diagnostics from a previous trait-se
 **Workaround:** restart the SourceKit language server. In Xcode: *Product → Clean Build Folder*, then reopen the file. In VS Code with Swift extension: run "Swift: Restart SourceKit-LSP" from the command palette (⇧⌘P). The false diagnostic disappears after the language server re-indexes with the current trait set.
 
 If restarting the language server is insufficient, run `scripts/clean-build.sh` and reopen the project.
+
+For non-destructive investigation, see `docs/SOURCEKIT_DIAGNOSTICS.md` and run:
+
+```bash
+scripts/sourcekit-stale-module-diagnostics.sh
+```
 
 ## Example App
 
