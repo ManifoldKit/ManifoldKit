@@ -1,0 +1,33 @@
+{
+  "id": "parallel-readme-comparison",
+  "description": "Parallel file-read probe — compare two README fixtures returned from same-turn tool calls.",
+  "systemPrompt": "You have tools. When comparing two README files, call `read_file` for both files before answering. Use only tool output and mention each side's unique capability.",
+  "userPrompt": "Compare readmes/backend-a.md and readmes/backend-b.md. Mention the shared nonce and each backend's tool mode.",
+  "requiredTools": ["read_file"],
+  "assertions": [
+    {
+      "kind": "toolInvoked",
+      "value": "read_file",
+      "message": "Scenario requires file reads rather than hallucinated README contents"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "read_file",
+      "values": ["DEMO-README-NONCE"],
+      "message": "At least one README tool result should contain the shared nonce"
+    },
+    {
+      "kind": "containsAll",
+      "values": ["DEMO-README-NONCE", "streaming tools", "batch tools"],
+      "message": "Final answer should compare both seeded README facts"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

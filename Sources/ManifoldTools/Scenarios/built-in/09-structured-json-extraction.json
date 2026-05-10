@@ -1,0 +1,22 @@
+{
+  "id": "structured-json-extraction",
+  "description": "Structured-output probe — tool-free extraction should return the requested JSON keys and nonce.",
+  "systemPrompt": "Return only compact JSON that satisfies the user's requested schema. Do not include markdown fences or commentary.",
+  "userPrompt": "Extract invoice id INV-754-CORE, total 123.45, and currency USD into keys invoice_id, total, and currency.",
+  "requiredTools": [],
+  "assertions": [
+    {
+      "kind": "containsAll",
+      "values": ["\"invoice_id\":\"INV-754-CORE\"", "\"total\":123.45", "\"currency\":\"USD\""],
+      "message": "Final answer should be compact JSON with the seeded invoice fields"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

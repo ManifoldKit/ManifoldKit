@@ -26,6 +26,7 @@ public final class ScenarioRunner {
         public let scenarioId: String
         public let finalAnswer: String
         public let toolCallsExecuted: [String]
+        public let toolResults: [ToolResultRecord]
         public let assertions: [AssertionOutcome]
         public var passed: Bool { assertions.allSatisfy(\.passed) }
     }
@@ -58,6 +59,7 @@ public final class ScenarioRunner {
         ]
         var accumulatedText = ""
         var toolCallsExecuted: [String] = []
+        var toolResults: [ToolResultRecord] = []
 
         let definitions = registry.definitions.filter { scenario.requiredTools.isEmpty || scenario.requiredTools.contains($0.name) }
 
@@ -121,6 +123,11 @@ public final class ScenarioRunner {
             for call in turnToolCalls {
                 let result = await registry.dispatch(call)
                 toolCallsExecuted.append(call.toolName)
+                toolResults.append(ToolResultRecord(
+                    toolName: call.toolName,
+                    content: result.content,
+                    errorKind: result.errorKind?.rawValue
+                ))
                 logger?.append(.toolResult(
                     scenarioId: scenario.id,
                     name: call.toolName,
@@ -152,7 +159,8 @@ public final class ScenarioRunner {
             let outcome = AssertionEvaluator.evaluate(
                 assertion,
                 finalAnswer: accumulatedText,
-                toolsInvoked: toolCallsExecuted
+                toolsInvoked: toolCallsExecuted,
+                toolResults: toolResults
             )
             assertionOutcomes.append(outcome)
             logger?.append(.assertion(scenarioId: scenario.id, passed: outcome.passed, message: outcome.message))
@@ -162,6 +170,7 @@ public final class ScenarioRunner {
             scenarioId: scenario.id,
             finalAnswer: accumulatedText,
             toolCallsExecuted: toolCallsExecuted,
+            toolResults: toolResults,
             assertions: assertionOutcomes
         )
     }

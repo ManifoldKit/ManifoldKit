@@ -333,6 +333,7 @@ func runCLI() async -> Int32 {
     registry.register(CalcTool.makeExecutor())
     registry.register(ReadFileTool.makeExecutor())
     registry.register(ListDirTool.makeExecutor())
+    registry.register(SampleRepoSearchTool.makeExecutor(root: ReadFileTool.defaultRoot()))
     registry.register(HttpGetFixtureTool.makeExecutor(allowRealNetwork: cli.realNetwork))
 
     var allPassed = true
@@ -400,16 +401,47 @@ enum MockFactory {
         let toolName = scenario.requiredTools.first ?? "now"
         let args: String
         let finalAnswer: String
+        if scenario.requiredTools.isEmpty {
+            return ScriptedBackend(turns: [.tokens([MockFactory.toolFreeAnswer(for: scenario)])])
+        }
+        if scenario.id == "shopping-list-budget" {
+            return ScriptedBackend(turns: [
+                .toolCall(name: "read_file", arguments: #"{"path":"shopping-list.txt"}"#),
+                .toolCall(name: "calc", arguments: #"{"a":12.5,"op":"+","b":7.25}"#),
+                .tokens(["apples and rice cost 19.75; do not buy saffron."])
+            ])
+        }
         switch toolName {
         case "calc":
             args = #"{"a":7823,"op":"*","b":41}"#
             finalAnswer = "320743"
         case "read_file":
-            args = #"{"path":"example.txt"}"#
-            finalAnswer = "NONCE-example-2026-04-22"
+            if scenario.id == "parallel-readme-comparison" {
+                return ScriptedBackend(turns: [
+                    .mixed(tokens: [], toolCalls: [
+                        (name: "read_file", arguments: #"{"path":"readmes/backend-a.md"}"#),
+                        (name: "read_file", arguments: #"{"path":"readmes/backend-b.md"}"#)
+                    ]),
+                    .tokens(["Backend A uses streaming tools; Backend B uses batch tools. Both mention DEMO-README-NONCE."])
+                ])
+            } else if scenario.id == "oversize-tool-output" {
+                args = #"{"path":"oversize-output.txt"}"#
+                finalAnswer = "The tool output was too large and exceeded maxBytes, so I will ask for a narrower slice."
+            } else {
+                args = #"{"path":"example.txt"}"#
+                finalAnswer = "NONCE-example-2026-04-22"
+            }
         case "list_dir":
-            args = #"{"dir":"."}"#
-            finalAnswer = "a.txt b.txt c.txt example.txt"
+            if scenario.id == "meeting-notes-summary" {
+                return ScriptedBackend(turns: [
+                    .toolCall(name: "list_dir", arguments: #"{"dir":"notes"}"#),
+                    .toolCall(name: "read_file", arguments: #"{"path":"notes/standup.md"}"#),
+                    .tokens(["Aurora shipped the tool harness; Beacon is blocked on MCP credentials."])
+                ])
+            } else {
+                args = #"{"dir":"."}"#
+                finalAnswer = "a.txt b.txt c.txt example.txt"
+            }
         default:
             args = "{}"
             finalAnswer = "2099-01-01T00:00:00Z"
@@ -418,6 +450,13 @@ enum MockFactory {
             .toolCall(name: toolName, arguments: args),
             .tokens([finalAnswer])
         ])
+    }
+
+    private static func toolFreeAnswer(for scenario: Scenario) -> String {
+        if scenario.id == "structured-json-extraction" {
+            return #"{"invoice_id":"INV-754-CORE","total":123.45,"currency":"USD"}"#
+        }
+        return ""
     }
 }
 

@@ -1,0 +1,38 @@
+{
+  "id": "meeting-notes-summary",
+  "description": "Multi-turn filesystem probe — list notes, read the relevant file, and summarize the nonces.",
+  "systemPrompt": "You have tools. For questions about workspace notes, first call `list_dir`, then call `read_file` for the relevant note, and only then summarize facts from tool output. Never invent note contents.",
+  "userPrompt": "Summarize the standup note in the notes directory. Include the Aurora and Beacon statuses.",
+  "requiredTools": ["list_dir", "read_file"],
+  "assertions": [
+    {
+      "kind": "toolInvoked",
+      "value": "list_dir",
+      "message": "Scenario requires `list_dir` before reading note files"
+    },
+    {
+      "kind": "toolInvoked",
+      "value": "read_file",
+      "message": "Scenario requires `read_file` to inspect standup.md"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "read_file",
+      "values": ["MEETING-NOTES-754"],
+      "message": "Tool result should expose the seeded standup nonce"
+    },
+    {
+      "kind": "containsAll",
+      "values": ["Aurora", "Beacon", "MCP credentials"],
+      "message": "Final answer should summarize both seeded standup statuses"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

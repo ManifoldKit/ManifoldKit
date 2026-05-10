@@ -1,0 +1,44 @@
+{
+  "id": "shopping-list-budget",
+  "description": "Mixed-tool chain — read a shopping list, calculate the selected total, and avoid hallucinated items.",
+  "systemPrompt": "You have tools. Read files with `read_file` and perform arithmetic with `calc`; do not calculate prices in your head or invent shopping-list items.",
+  "userPrompt": "Read shopping-list.txt. What is the total for apples and rice only, and which expensive item should I skip?",
+  "requiredTools": ["read_file", "calc"],
+  "assertions": [
+    {
+      "kind": "toolInvoked",
+      "value": "read_file",
+      "message": "Scenario requires the shopping list to be read from the fixture"
+    },
+    {
+      "kind": "toolInvoked",
+      "value": "calc",
+      "message": "Scenario requires `calc` for the selected total"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "read_file",
+      "values": ["saffron"],
+      "message": "Tool result should include the expensive fixture item"
+    },
+    {
+      "kind": "toolResultContains",
+      "value": "calc",
+      "values": ["19.75"],
+      "message": "Tool result should include the calculated selected total"
+    },
+    {
+      "kind": "containsAll",
+      "values": ["19.75", "saffron"],
+      "message": "Final answer should include the calculated total and expensive item from the fixture"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}

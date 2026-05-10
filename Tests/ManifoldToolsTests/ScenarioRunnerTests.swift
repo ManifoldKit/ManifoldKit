@@ -63,6 +63,36 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(outcome.message.contains("never dispatched"))
     }
 
+    func test_toolResultContainsAssertion_requiresToolOutput() {
+        let assertion = Scenario.Assertion(
+            kind: "toolResultContains",
+            value: "read_file",
+            values: ["MEETING-NOTES-754", "Aurora"],
+            message: nil
+        )
+        let records = [
+            ToolResultRecord(toolName: "read_file", content: "Aurora MEETING-NOTES-754", errorKind: nil)
+        ]
+        XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "", toolResults: records).passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "", toolResults: []).passed)
+    }
+
+    func test_toolResultErrorKindAssertion_requiresExpectedError() {
+        let assertion = Scenario.Assertion(
+            kind: "toolResultErrorKind",
+            value: "sample_repo_search",
+            values: ["cancelled"],
+            message: nil
+        )
+        let records = [
+            ToolResultRecord(toolName: "sample_repo_search", content: "cancelled by user", errorKind: "cancelled")
+        ]
+        XCTAssertTrue(AssertionEvaluator.evaluate(assertion, finalAnswer: "", toolResults: records).passed)
+        XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "", toolResults: [
+            ToolResultRecord(toolName: "sample_repo_search", content: "timeout", errorKind: "timeout")
+        ]).passed)
+    }
+
     func test_unknownAssertionKind_fails() {
         let assertion = Scenario.Assertion(kind: "fuzzy", value: "x", values: nil, message: nil)
         XCTAssertFalse(AssertionEvaluator.evaluate(assertion, finalAnswer: "x").passed)
@@ -72,13 +102,25 @@ final class ScenarioRunnerTests: XCTestCase {
 
     func test_scenarioLoader_decodesAllBuiltIn() throws {
         let scenarios = try ScenarioLoader.loadBuiltIn()
-        XCTAssertEqual(scenarios.count, 4, "expected four built-in scenarios")
+        XCTAssertEqual(scenarios.count, 9, "expected nine built-in scenarios")
         let ids = scenarios.map(\.id).sorted()
-        XCTAssertEqual(ids, ["01-now", "02-calc", "03-read", "04-list"])
+        XCTAssertEqual(ids, [
+            "01-now",
+            "02-calc",
+            "03-read",
+            "04-list",
+            "meeting-notes-summary",
+            "oversize-tool-output",
+            "parallel-readme-comparison",
+            "shopping-list-budget",
+            "structured-json-extraction",
+        ])
         for s in scenarios {
             XCTAssertFalse(s.systemPrompt.isEmpty, "\(s.id) missing systemPrompt")
-            XCTAssertFalse(s.requiredTools.isEmpty, "\(s.id) missing requiredTools")
             XCTAssertFalse(s.assertions.isEmpty, "\(s.id) missing assertions")
+            if s.requiredTools.isEmpty {
+                XCTAssertEqual(s.id, "structured-json-extraction", "only structured JSON is currently tool-free")
+            }
         }
     }
 
@@ -128,6 +170,226 @@ final class ScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(outcome.passed)
     }
 
+    func test_runner_executesMeetingNotesMultiTurnFilesystemScenario() async throws {
+        let scenario = try builtInScenario("meeting-notes-summary")
+        let registry = ToolRegistry(tools: [
+            ListDirTool.makeExecutor(),
+            ReadFileTool.makeExecutor()
+        ])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "list_dir", arguments: #"{"dir":"notes"}"#),
+            .toolCall(name: "read_file", arguments: #"{"path":"notes/standup.md"}"#),
+            .tokens(["Aurora shipped the deterministic tool harness; Beacon is blocked on MCP credentials."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["list_dir", "read_file"])
+        XCTAssertTrue(
+            outcome.toolResults.contains { $0.toolName == "read_file" && $0.content.contains("MEETING-NOTES-754") },
+            "side-effect-free filesystem read should expose the seeded note nonce"
+        )
+    }
+
+    func test_runner_executesShoppingListReadThenCalcScenario() async throws {
+        let scenario = try builtInScenario("shopping-list-budget")
+        let registry = ToolRegistry(tools: [
+            ReadFileTool.makeExecutor(),
+            CalcTool.makeExecutor()
+        ])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "read_file", arguments: #"{"path":"shopping-list.txt"}"#),
+            .toolCall(name: "calc", arguments: #"{"a":12.5,"op":"+","b":7.25}"#),
+            .tokens(["apples and rice cost 19.75; skip saffron."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["read_file", "calc"])
+        XCTAssertTrue(outcome.toolResults.contains { $0.toolName == "calc" && $0.content.contains("19.75") })
+    }
+
+    func test_runner_executesParallelReadmeComparisonFromSameTurnToolCalls() async throws {
+        let scenario = try builtInScenario("parallel-readme-comparison")
+        let registry = ToolRegistry(tools: [ReadFileTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .mixed(tokens: [], toolCalls: [
+                (name: "read_file", arguments: #"{"path":"readmes/backend-a.md"}"#),
+                (name: "read_file", arguments: #"{"path":"readmes/backend-b.md"}"#)
+            ]),
+            .tokens(["DEMO-README-NONCE appears in both; Backend A uses streaming tools and Backend B uses batch tools."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["read_file", "read_file"])
+        XCTAssertEqual(outcome.toolResults.filter { $0.toolName == "read_file" }.count, 2)
+        XCTAssertTrue(outcome.finalAnswer.contains("DEMO-README-NONCE"))
+    }
+
+    func test_runner_surfacesOversizeToolOutputPolicy() async throws {
+        let scenario = Scenario(
+            id: "test-oversize-output",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "read huge file",
+            requiredTools: ["huge_fixture"],
+            assertions: [
+                Scenario.Assertion(kind: "toolInvoked", value: "huge_fixture", values: nil, message: nil),
+                Scenario.Assertion(kind: "toolResultErrorKind", value: "huge_fixture", values: ["invalidArguments"], message: nil),
+                Scenario.Assertion(kind: "containsAll", value: nil, values: ["exceeds maxBytes", "narrower"], message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let registry = ToolRegistry(tools: [
+            FixedToolExecutor(name: "huge_fixture") { _ in
+                ToolResult(callId: "", content: String(repeating: "x", count: 64), errorKind: nil)
+            }
+        ])
+        registry.outputPolicy = ToolOutputPolicy(maxBytes: 16, onOversize: .rejectWithError)
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "huge_fixture", arguments: "{}"),
+            .tokens(["The tool output exceeds maxBytes; request a narrower slice."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "assertions=\(outcome.assertions)")
+        XCTAssertEqual(outcome.toolResults.first?.errorKind, "invalidArguments")
+        XCTAssertTrue(outcome.toolResults.first?.content.contains("64 > 16") == true)
+    }
+
+    func test_runner_builtinOversizeScenarioTripsDefaultOutputPolicy() async throws {
+        let scenario = try builtInScenario("oversize-tool-output")
+        let registry = ToolRegistry(tools: [ReadFileTool.makeExecutor()])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "read_file", arguments: #"{"path":"oversize-output.txt"}"#),
+            .tokens(["The read_file output exceeds maxBytes; ask for a narrower slice."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "default output policy should reject the oversize fixture")
+        XCTAssertEqual(outcome.toolResults.first?.errorKind, "invalidArguments")
+        XCTAssertTrue(outcome.toolResults.first?.content.contains("32768") == true)
+    }
+
+
+    func test_runner_recordsCancellationContractWithoutLeakingStaleOutput() async throws {
+        let scenario = Scenario(
+            id: "cancel-mid-search",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "search slowly",
+            requiredTools: ["sample_repo_search"],
+            assertions: [
+                Scenario.Assertion(kind: "toolInvoked", value: "sample_repo_search", values: nil, message: nil),
+                Scenario.Assertion(kind: "toolResultErrorKind", value: "sample_repo_search", values: ["cancelled"], message: nil),
+                Scenario.Assertion(kind: "containsLiteral", value: "cancelled", values: nil, message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let registry = ToolRegistry(tools: [
+            FixedToolExecutor(name: "sample_repo_search") { _ in
+                ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
+            }
+        ])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "sample_repo_search", arguments: #"{"query":"needle"}"#),
+            .tokens(["Search was cancelled by the user; no stale results were used."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertFalse(outcome.finalAnswer.contains("FAKE_STALE_RESULT"))
+    }
+
+    func test_runner_recoversAfterTransientToolCrash() async throws {
+        let scenario = Scenario(
+            id: "crash-recovery",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "retry after crash",
+            requiredTools: ["sample_repo_search"],
+            assertions: [
+                Scenario.Assertion(kind: "toolInvoked", value: "sample_repo_search", values: nil, message: nil),
+                Scenario.Assertion(kind: "toolResultErrorKind", value: "sample_repo_search", values: ["transient"], message: nil),
+                Scenario.Assertion(kind: "containsAll", value: nil, values: ["recovered", "CRASH-RECOVERY-754"], message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let crashingTool = SequencedToolExecutor(
+            name: "sample_repo_search",
+            results: [
+                ToolResult(callId: "", content: "simulated worker crash", errorKind: .transient),
+                ToolResult(callId: "", content: #"{"matches":[{"path":"recovery.md","snippet":"CRASH-RECOVERY-754"}]}"#, errorKind: nil)
+            ]
+        )
+        let registry = ToolRegistry(tools: [crashingTool])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash"}"#),
+            .toolCall(name: "sample_repo_search", arguments: #"{"query":"crash"}"#),
+            .tokens(["The search recovered and found CRASH-RECOVERY-754."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertEqual(outcome.toolCallsExecuted, ["sample_repo_search", "sample_repo_search"])
+        XCTAssertTrue(outcome.toolResults.contains { $0.errorKind == nil && $0.content.contains("CRASH-RECOVERY-754") })
+    }
+
+    func test_runner_executesAppIntentStyleToolAndRecordsSideEffect() async throws {
+        let recorder = ReminderRecorder()
+        let scenario = Scenario(
+            id: "create-reminder",
+            description: "",
+            systemPrompt: "sys",
+            userPrompt: "create reminder",
+            requiredTools: ["create_reminder_intent"],
+            assertions: [
+                Scenario.Assertion(kind: "toolInvoked", value: "create_reminder_intent", values: nil, message: nil),
+                Scenario.Assertion(kind: "toolResultContains", value: "create_reminder_intent", values: ["REMINDER-754"], message: nil),
+                Scenario.Assertion(kind: "containsLiteral", value: "REMINDER-754", values: nil, message: nil)
+            ],
+            backend: Scenario.BackendSpec(kind: "mock", model: "scripted", fallbackModel: nil, temperature: 0, seed: nil, topK: nil)
+        )
+        let registry = ToolRegistry(tools: [
+            FixedToolExecutor(name: "create_reminder_intent", requiresApproval: true) { _ in
+                await recorder.record("REMINDER-754")
+                return ToolResult(callId: "", content: #"{"created":true,"id":"REMINDER-754"}"#, errorKind: nil)
+            }
+        ])
+        let backend = ScriptedBackend(turns: [
+            .toolCall(name: "create_reminder_intent", arguments: #"{"title":"Wave 1 QA"}"#),
+            .tokens(["Created reminder REMINDER-754."])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        let recordedReminders = await recorder.values()
+        XCTAssertEqual(recordedReminders, ["REMINDER-754"])
+    }
+
+    func test_runner_passesStructuredJSONScenarioWithoutTools() async throws {
+        let scenario = try builtInScenario("structured-json-extraction")
+        let registry = ToolRegistry()
+        let backend = ScriptedBackend(turns: [
+            .tokens([#"{"invoice_id":"INV-754-CORE","total":123.45,"currency":"USD"}"#])
+        ])
+
+        let outcome = try await ScenarioRunner(backend: backend, registry: registry).run(scenario)
+
+        XCTAssertTrue(outcome.passed, "answer=\(outcome.finalAnswer)")
+        XCTAssertTrue(outcome.toolCallsExecuted.isEmpty)
+        XCTAssertFalse(outcome.finalAnswer.contains("```"), "structured JSON scenario should not need markdown fences")
+    }
+
     func test_runner_honoursMaxIterationsOnLoopingTool() async throws {
         // Script keeps emitting tool calls; runner should bail after maxIterations
         // and run assertions against whatever text was captured (empty string here
@@ -153,6 +415,11 @@ final class ScenarioRunnerTests: XCTestCase {
         let outcome = try await runner.run(scenario)
         XCTAssertFalse(outcome.passed, "scenario should not pass once the runner aborts on iteration cap")
         XCTAssertEqual(outcome.toolCallsExecuted.count, 2, "should dispatch exactly maxIterations tool calls")
+    }
+
+    private func builtInScenario(_ id: String) throws -> Scenario {
+        let scenarios = try ScenarioLoader.loadBuiltIn()
+        return try XCTUnwrap(scenarios.first { $0.id == id }, "missing built-in scenario \(id)")
     }
 
     // MARK: - TranscriptLogger
@@ -182,6 +449,80 @@ final class ScenarioRunnerTests: XCTestCase {
         for line in lines {
             XCTAssertNoThrow(try JSONSerialization.jsonObject(with: line), "each row must be valid JSON")
         }
+    }
+}
+
+private struct FixedToolExecutor: ToolExecutor {
+    let definition: ToolDefinition
+    let supportsConcurrentDispatch: Bool
+    let requiresApproval: Bool
+    private let handler: @Sendable (JSONSchemaValue) async throws -> ToolResult
+
+    init(
+        name: String,
+        supportsConcurrentDispatch: Bool = true,
+        requiresApproval: Bool = false,
+        handler: @escaping @Sendable (JSONSchemaValue) async throws -> ToolResult
+    ) {
+        self.definition = ToolDefinition(
+            name: name,
+            description: "Test fixture tool \(name)",
+            parameters: .object([
+                "type": .string("object"),
+                "properties": .object([:]),
+                "required": .array([])
+            ])
+        )
+        self.supportsConcurrentDispatch = supportsConcurrentDispatch
+        self.requiresApproval = requiresApproval
+        self.handler = handler
+    }
+
+    func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+        try await handler(arguments)
+    }
+}
+
+private final class SequencedToolExecutor: ToolExecutor, @unchecked Sendable {
+    let definition: ToolDefinition
+    let supportsConcurrentDispatch = false
+    let requiresApproval = false
+
+    private var results: [ToolResult]
+    private var cursor = 0
+
+    init(name: String, results: [ToolResult]) {
+        self.definition = ToolDefinition(
+            name: name,
+            description: "Sequenced test fixture tool \(name)",
+            parameters: .object([
+                "type": .string("object"),
+                "properties": .object([:]),
+                "required": .array([])
+            ])
+        )
+        self.results = results
+    }
+
+    func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+        guard cursor < results.count else {
+            return results.last ?? ToolResult(callId: "", content: "", errorKind: nil)
+        }
+        let result = results[cursor]
+        cursor += 1
+        return result
+    }
+}
+
+private actor ReminderRecorder {
+    private var recorded: [String] = []
+
+    func record(_ value: String) {
+        recorded.append(value)
+    }
+
+    func values() -> [String] {
+        recorded
     }
 }
 #endif
