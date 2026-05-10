@@ -458,6 +458,36 @@ final class MCPHardeningTests: XCTestCase {
         XCTAssertEqual(afterForeground, .idle)
     }
 
+    func test_notificationLifecycleObserverMapsFoundationNotifications() async {
+        let center = NotificationCenter()
+        let notificationName = Notification.Name("test.mcp.memory-warning")
+        let observer = MCPNotificationLifecycleEventObserver(
+            notificationCenter: center,
+            mapping: [notificationName: .memoryWarning]
+        )
+
+        var iterator = observer.events.makeAsyncIterator()
+        center.post(name: notificationName, object: nil)
+        let event = await iterator.next()
+
+        XCTAssertEqual(event, .memoryWarning)
+    }
+
+    func test_notificationLifecycleObserverFinishesStreamOnDeinit() async {
+        let center = NotificationCenter()
+        let notificationName = Notification.Name("test.mcp.memory-warning")
+        var observer: MCPNotificationLifecycleEventObserver? = MCPNotificationLifecycleEventObserver(
+            notificationCenter: center,
+            mapping: [notificationName: .memoryWarning]
+        )
+        var iterator = observer!.events.makeAsyncIterator()
+
+        observer = nil
+        let event = await iterator.next()
+
+        XCTAssertNil(event)
+    }
+
     private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

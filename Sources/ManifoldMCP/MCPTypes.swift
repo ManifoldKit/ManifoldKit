@@ -161,7 +161,7 @@ public struct MCPClientConfiguration: Sendable {
         keychain: MCPKeychainConfiguration = .init(),
         lifecyclePolicy: MCPSessionLifecyclePolicy = .cancelOnBackground,
         networkPathObserver: (any MCPNetworkPathObserver)? = nil,
-        lifecycleObserver: (any MCPLifecycleEventObserver)? = nil
+        lifecycleObserver: (any MCPLifecycleEventObserver)? = MCPNotificationLifecycleEventObserver.platformMemoryWarnings()
     ) {
         self.sseStreamLimits = sseStreamLimits
         self.requestTimeout = requestTimeout
