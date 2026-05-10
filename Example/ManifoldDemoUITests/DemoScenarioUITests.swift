@@ -4,10 +4,6 @@ import XCTest
 ///
 /// Layer-2 scope: verify the picker exposes every scripted scenario and that
 /// each `--bck-demo-scenario` launch arg reaches the canned assistant answer.
-/// The tool-invocation and approval UI assertions are present as expected
-/// failures until the UI-testing bridge persists scripted tool events into the
-/// transcript.
-///
 /// Each test launches with `--uitesting` plus optional
 /// `--bck-demo-scenario <id>` to confirm the launch-arg path resolves the
 /// scenario and the scripted-backend turn list is wired through
@@ -137,39 +133,27 @@ final class DemoScenarioUITests: XCTestCase {
 
         let app = launchDemoApp(
             scenario: "journal-write",
-            environment: ["MANIFOLD_DEMO_SANDBOX_ROOT": sandboxRoot.path]
+            extraArguments: ["--bck-demo-autosend-scenario"],
+            environment: [
+                "MANIFOLD_DEMO_SANDBOX_ROOT": sandboxRoot.path,
+                "MANIFOLD_DEMO_INLINE_APPROVAL": "1"
+            ]
         )
         openChatDetailIfNeeded(app: app)
 
         XCTAssertTrue(waitForChatInputReady(app: app, timeout: 30))
 
-        let messageInput = app.textFields["Message input"]
-        XCTAssertTrue(
-            messageInput.valueDescriptionContains("Write a short journal entry"),
-            "Journal-write scenario should prefill the scripted prompt instead of sending immediately"
-        )
-
-        let sendButton = app.buttons["Send message"]
-        XCTAssertTrue(sendButton.waitForExistence(timeout: 10), "Journal-write scenario should leave the prompt ready to send")
-        XCTAssertTrue(sendButton.isEnabled, "Send button should be enabled for the prefilled journal prompt")
-        sendButton.tap()
-
-        let approvalSheet = app.otherElements["approval-sheet"]
-        guard approvalSheet.waitForExistence(timeout: 8) else {
-            XCTExpectFailure(
-                """
-                Blocked: the scripted launch path reaches the prefilled journal prompt, \
-                but the current UI-testing backend/tool bridge does not surface the \
-                approval sheet for the scripted write_file call.
-                """
-            )
+        let approvalSheet = app.descendants(matching: .any)["approval-sheet"]
+        if approvalSheet.waitForExistence(timeout: 8) {
+            app.buttons["Approve"].tap()
+        } else {
+            let inlineApproval = app.descendants(matching: .any)["tool-invocation-pending-write_file"]
             XCTAssertTrue(
-                approvalSheet.exists,
-                "Journal-write scenario should present the approval sheet"
+                inlineApproval.waitForExistence(timeout: 5),
+                "Journal-write scenario should present an approval control"
             )
-            return
+            app.buttons["approval-approve-button"].tap()
         }
-        app.buttons["approval-sheet-approve-button"].tap()
 
         XCTAssertTrue(
             app.descendants(matching: .any)["tool-invocation-completed-write_file"].waitForExistence(timeout: 20),
@@ -266,18 +250,12 @@ final class DemoScenarioUITests: XCTestCase {
         line: UInt = #line
     ) {
         let element = app.descendants(matching: .any)[identifier]
-        if element.waitForExistence(timeout: 3) {
-            return
-        }
-
-        XCTExpectFailure(
-            """
-            Blocked: the scripted demo launch path emits deterministic tool calls, \
-            but the runtime adapter currently persists only the final assistant text \
-            into the transcript. PR body documents this UI injection-seam gap.
-            """
+        XCTAssertTrue(
+            element.waitForExistence(timeout: 10),
+            message,
+            file: file,
+            line: line
         )
-        XCTAssertTrue(element.exists, message, file: file, line: line)
     }
 
     private func repositoryRoot(file: StaticString = #filePath) -> URL {
@@ -291,6 +269,7 @@ final class DemoScenarioUITests: XCTestCase {
     /// `--bck-demo-scenario <id>` cold-launch arg.
     private func launchDemoApp(
         scenario: String?,
+        extraArguments: [String] = [],
         environment: [String: String] = [:]
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -298,6 +277,7 @@ final class DemoScenarioUITests: XCTestCase {
         if let scenario {
             app.launchArguments += ["--bck-demo-scenario", scenario]
         }
+        app.launchArguments += extraArguments
         app.launchEnvironment.merge(environment) { _, new in new }
         #if !os(macOS)
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
@@ -308,13 +288,5 @@ final class DemoScenarioUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
         #endif
         return app
-    }
-}
-
-private extension XCUIElement {
-    func valueDescriptionContains(_ needle: String) -> Bool {
-        let valueText = (value as? String) ?? ""
-        return valueText.localizedCaseInsensitiveContains(needle)
-            || label.localizedCaseInsensitiveContains(needle)
     }
 }

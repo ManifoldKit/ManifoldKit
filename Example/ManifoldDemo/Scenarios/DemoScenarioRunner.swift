@@ -49,8 +49,12 @@ enum DemoScenarioRunner {
 
         chat.systemPrompt = scenario.systemPrompt
         chat.inputText = scenario.prompt
-        if scenario.autoSend {
-            await chat.sendMessage()
+        if scenario.autoSend || CommandLine.arguments.contains("--bck-demo-autosend-scenario") {
+            do {
+                _ = try await chat.sendMessage(scenario.prompt)
+            } catch {
+                chat.errorMessage = "Failed to run scenario: \(error.localizedDescription)"
+            }
         }
     }
 }
