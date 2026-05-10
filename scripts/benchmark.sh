@@ -60,17 +60,18 @@ RUN_MLX=0
 SKIP_RAW=0
 ONLY_PATH=""
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --mlx)     RUN_MLX=1 ;;
         --no-raw)  SKIP_RAW=1 ;;
-        --only=*)  ONLY_PATH="${arg#*=}" ;;
+        --only=*)  ONLY_PATH="${1#*=}" ;;
         --only)    shift; ONLY_PATH="$1" ;;
         -h|--help)
             grep "^#" "$0" | sed 's/^# \?//' | sed 's/^#//'
             exit 0
             ;;
     esac
+    shift
 done
 
 # ── Colours ───────────────────────────────────────────────────────────────────

@@ -67,10 +67,15 @@ private func printResults(
     }
     let sortedTTFT = results.map(\.ttftMs).sorted()
     let sortedTPS  = results.map { Double($0.tokens) / ($0.totalMs / 1000) }.sorted()
-    let mid = results.count / 2
+    // Compute true median: average the two middle values for even counts,
+    // matching Python's statistics.median() behaviour.
+    func median(_ xs: [Double]) -> Double {
+        let n = xs.count
+        return n.isMultiple(of: 2) ? (xs[n / 2 - 1] + xs[n / 2]) / 2 : xs[n / 2]
+    }
     // BENCH_RESULT sentinel — grep'd by benchmark.sh to assemble the table.
     print(String(format: "BENCH_RESULT label=%@ model=%@ median_ttft_ms=%.0f median_tps=%.1f",
-                 label, model, sortedTTFT[mid], sortedTPS[mid]))
+                 label, model, median(sortedTTFT), median(sortedTPS)))
 }
 
 // MARK: - Ollama backend

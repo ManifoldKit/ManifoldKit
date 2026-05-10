@@ -149,7 +149,7 @@ def main():
 
     if args.markdown:
         label = args.label or args.url
-        print(f"| {label} | {s['median_ttft_ms']:.0f} ms | {s['median_tps']:.1f} tok/s |")
+        print(f"| {label} | {s['median_ttft_ms']:.0f} ms | {s['median_tps']:.1f} tok/s | {args.model} |")
     else:
         print(f"median TTFT : {s['median_ttft_ms']:.0f} ms")
         print(f"median TPS  : {s['median_tps']:.1f} tok/s")
