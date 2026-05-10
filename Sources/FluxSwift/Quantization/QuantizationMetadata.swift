@@ -86,12 +86,9 @@ public struct QuantizationMetadata: Codable {
         }
         
         let groupSize = Int(metadata["group_size"] ?? "64") ?? 64
-        let version = metadata["flux_swift_version"] ?? "unknown"
-        let method = metadata["quantization_method"] ?? "mlx-nn-quantize"
         let originalPath = metadata["original_model_path"]
-        let sha256 = metadata["original_sha256"]
         
-        var quantMetadata = QuantizationMetadata(
+        let quantMetadata = QuantizationMetadata(
             bits: bits,
             groupSize: groupSize,
             modelType: modelType,

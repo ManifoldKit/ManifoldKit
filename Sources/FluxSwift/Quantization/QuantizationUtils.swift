@@ -719,7 +719,8 @@ extension QuantizationUtils {
         if FileManager.default.fileExists(atPath: metadataPath.path) {
             logger.debug("Found metadata.json, checking if quantized")
             
-            if let metadata = try? loadMetadata(from: metadataPath) {
+            do {
+                let metadata = try loadMetadata(from: metadataPath)
                 logger.info("Detected quantized model: \(metadata.quantizationBits)-bit")
                 return QuantizedWeightInfo(
                     isQuantized: true,
@@ -731,6 +732,8 @@ extension QuantizationUtils {
                         "model_type": metadata.modelType
                     ]
                 )
+            } catch {
+                logger.warning("Failed to load quantization metadata from \(metadataPath.lastPathComponent): \(error.localizedDescription)")
             }
         }
         

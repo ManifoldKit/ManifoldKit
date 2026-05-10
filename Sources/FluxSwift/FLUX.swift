@@ -74,22 +74,24 @@ open class FLUX {
   internal static func loadTokenizers(directory: URL, hub: HubApi) throws -> (
     any Tokenizer, CLIPTokenizer
   ) {
-    let t5TokenizerConfig = try? hub.configuration(
-      fileURL: directory.appending(path: "tokenizer_2/tokenizer_config.json"))
+    let t5TokenizerConfig: Config
+    do {
+      t5TokenizerConfig = try hub.configuration(
+        fileURL: directory.appending(path: "tokenizer_2/tokenizer_config.json"))
+    } catch {
+      logger.warning("Failed to load T5 tokenizer configuration: \(error.localizedDescription)")
+      throw FluxError.weightsNotFound("T5 tokenizer configuration not found")
+    }
     let t5TokenizerVocab = try hub.configuration(
       fileURL: directory.appending(path: "tokenizer_2/tokenizer.json"))
     
-    guard let t5Config = t5TokenizerConfig else {
-      throw FluxError.weightsNotFound("T5 tokenizer configuration not found")
-    }
-    
     let t5Tokenizer = try AutoTokenizer.from(
-      tokenizerConfig: t5Config, tokenizerData: t5TokenizerVocab)
+      tokenizerConfig: t5TokenizerConfig, tokenizerData: t5TokenizerVocab)
     
     let vocabulary = try JSONDecoder().decode(
       [String: Int].self, from: Data(contentsOf: directory.appending(path: "tokenizer/vocab.json"))
     )
-    let merges = try String(contentsOf: directory.appending(path: "tokenizer/merges.txt"))
+    let merges = try String(contentsOf: directory.appending(path: "tokenizer/merges.txt"), encoding: .utf8)
       .components(separatedBy: .newlines)
       .dropFirst()
       .filter { !$0.isEmpty }
