@@ -380,7 +380,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 _sessionIsClean = true  // fresh session always starts clean
                 // Signal the system daemon to warm up KV-cache state so the
                 // first streamResponse() on this session pays less IPC setup.
-                session!.prewarm()
+                session?.prewarm()
             }
 
             return (session!, generationID)

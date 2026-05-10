@@ -453,7 +453,7 @@ public extension HuggingFaceService {
             private let lock = NSLock()
             private var _task: URLSessionDownloadTask?
             private var _cancelled = false
-            var progressObservation: NSKeyValueObservation?
+            private var _progressObservation: NSKeyValueObservation?
 
             func store(_ task: URLSessionDownloadTask) {
                 lock.lock(); defer { lock.unlock() }
@@ -468,6 +468,11 @@ public extension HuggingFaceService {
                 lock.unlock()
                 t?.cancel()
             }
+
+            func setObservation(_ obs: NSKeyValueObservation?) {
+                lock.lock(); defer { lock.unlock() }
+                _progressObservation = obs
+            }
         }
         let state = State()
 
@@ -475,7 +480,7 @@ public extension HuggingFaceService {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 let filename = remote.lastPathComponent
                 let task = session.downloadTask(with: remote) { tempURL, response, error in
-                    state.progressObservation = nil
+                    state.setObservation(nil)
 
                     if let error {
                         Log.download.error("downloadTask error for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -521,7 +526,7 @@ public extension HuggingFaceService {
                     // task.progress uses a 0-100 unit scale, not bytes.
                     // Observe countOfBytesReceived directly for real byte counts.
                     var lastLoggedPct = -10
-                    state.progressObservation = task.observe(\.countOfBytesReceived) { [weak task] _, _ in
+                    state.setObservation(task.observe(\.countOfBytesReceived) { [weak task] _, _ in
                         guard let task else { return }
                         let received = task.countOfBytesReceived
                         let expected = task.countOfBytesExpectedToReceive
@@ -535,7 +540,7 @@ public extension HuggingFaceService {
                             }
                         }
                         onChunk(received, safeExpected)
-                    }
+                    })
                 }
 
                 state.store(task)

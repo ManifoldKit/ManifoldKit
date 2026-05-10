@@ -180,17 +180,21 @@ public struct ImageModelInstallView: View {
         }
     }
 
+    private static let byteFormatter: ByteCountFormatter = {
+        let fmt = ByteCountFormatter()
+        fmt.countStyle = .file
+        fmt.allowedUnits = [.useGB, .useMB]
+        fmt.allowsNonnumericFormatting = false
+        return fmt
+    }()
+
     private func downloadProgressLabel(for entry: DiffusionModelCatalogEntry) -> String? {
         guard let snapshot = downloadSnapshot[entry.id],
               snapshot.totalBytesReceived > 0 else { return nil }
 
         let received = snapshot.totalBytesReceived
         let expected = snapshot.totalBytesExpected
-
-        let fmt = ByteCountFormatter()
-        fmt.countStyle = .file
-        fmt.allowedUnits = [.useGB, .useMB]
-        fmt.allowsNonnumericFormatting = false
+        let fmt = Self.byteFormatter
 
         let receivedStr = fmt.string(fromByteCount: received)
 
