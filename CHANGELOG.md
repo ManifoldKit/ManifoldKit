@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.23.0](https://github.com/roryford/ManifoldKit/compare/v0.22.0...v0.23.0) — 2026-05-10
+
+### Highlights
+
+#### On-device image generation with FLUX.1 Schnell ([#1178](https://github.com/roryford/ManifoldKit/issues/1178))
+
+`FluxDiffusionBackend` brings FLUX.1 Schnell on-device image generation to ManifoldKit via MLX. The backend generates 1024×1024 images in four denoising steps using the pre-quantized `argmaxinc/mlx-FLUX.1-schnell-4bit-quantized` weights (~7 GB, Apache 2.0, ungated). The curated diffusion catalog has been updated to ship this model as the default, replacing the previous SD 2.1 and SDXL Turbo entries whose licenses were incompatible with App Store distribution.
+
+```swift
+import ManifoldMLX
+
+let backend = FluxDiffusionBackend()
+let image = try await backend.generate(
+    prompt: "a red fox in a snowy forest, photorealistic",
+    steps: 4,
+    size: CGSize(width: 1024, height: 1024)
+)
+```
+
+### Features
+
+* **benchmark suite** — `scripts/benchmark.sh` auto-detects available backends and prints a TTFT + throughput Markdown table; `scripts/bench/http-bench.py` covers raw Ollama and ManifoldServer HTTP paths; `BackendBenchmarkE2ETests` covers OllamaBackend and LlamaBackend in-process ([24f247a](https://github.com/roryford/ManifoldKit/commit/24f247a38fd84352e0ffb48f4fc2c1a13f5a99aa))
+
+### Fixes
+
+* **Llama Metal sync** — command buffers are now explicitly synchronized between consecutive `generate()` calls, preventing a race where a second call could start before the Metal pipeline drained ([d5c1767](https://github.com/roryford/ManifoldKit/commit/d5c1767e7ad93832856f4c220a97c30d045ea443))
+
 ## [0.22.0](https://github.com/roryford/ManifoldKit/compare/v0.21.0...v0.22.0) — 2026-05-10
 
 ### Highlights
