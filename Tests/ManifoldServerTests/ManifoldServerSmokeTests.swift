@@ -36,6 +36,9 @@ final class ManifoldServerSmokeTests: XCTestCase {
                 XCTAssertEqual(response.status, .ok)
                 let models = try JSONDecoder().decode(ModelsListResponse.self, from: Data(buffer: response.body))
                 XCTAssertEqual(models.data.map(\.id), ["tiny"])
+                XCTAssertEqual(models.data.first?.object, "model")
+                XCTAssertEqual(models.data.first?.ownedBy, "manifold")
+                XCTAssertEqual(models.data.first?.status, "available")
             }
 
             let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))

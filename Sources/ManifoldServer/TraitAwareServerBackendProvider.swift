@@ -73,21 +73,42 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     internal let selection: ServerBackendSelection
     internal let compiledBackends: CompiledBackends
     private var cachedBackend: (any InferenceBackend)?
+    private var loadedModelID: String?
 
     internal init(
         selection: ServerBackendSelection,
-        compiledBackends: CompiledBackends = DefaultBackends.compiledBackends
+        compiledBackends: CompiledBackends = DefaultBackends.compiledBackends,
+        loadedModelID: String? = nil
     ) {
         self.selection = selection
         self.compiledBackends = compiledBackends
+        self.loadedModelID = loadedModelID
     }
 
     internal func listModels() async throws -> [String] {
-        switch selection.backend {
+        let configuredModels: [String] = switch selection.backend {
         case .foundation:
-            return [ModelInfo.builtInFoundation.name]
-        case .ollama, .cloud, .mlx, .llama:
-            return [selection.model, selection.modelPath].compactMap { $0 }
+            [ModelInfo.builtInFoundation.name]
+        case .ollama:
+            [selection.model ?? APIProvider.ollama.defaultModelName]
+        case .cloud, .mlx, .llama:
+            [selection.model, selection.modelPath].compactMap { $0 }
+        }
+
+        guard let loadedModelID, !configuredModels.contains(loadedModelID) else {
+            return configuredModels
+        }
+        return [loadedModelID] + configuredModels
+    }
+
+    internal func listModelRecords() async throws -> [ModelsListResponse.Model] {
+        try await listModels().map { id in
+            ModelsListResponse.Model(
+                id: id,
+                status: loadedModelID == id ? "loaded" : "available",
+                backend: selection.backend.rawValue,
+                source: modelSource
+            )
         }
     }
 
@@ -112,7 +133,34 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
             throw ServerError.notImplemented("Cloud SaaS backend loading is not implemented for ManifoldServer v1; configure a local or self-hosted backend instead.")
         }
         cachedBackend = backend
+        loadedModelID = modelID(for: request)
         return backend
+    }
+
+    private var modelSource: String {
+        switch selection.backend {
+        case .foundation:
+            return "built_in"
+        case .mlx, .llama:
+            return selection.modelPath == nil ? "remote_identifier" : "local_path"
+        case .ollama, .cloud:
+            return "remote_endpoint"
+        }
+    }
+
+    internal func modelID(for request: ServerBackendRequest) -> String? {
+        switch selection.backend {
+        case .foundation:
+            return ModelInfo.builtInFoundation.name
+        case .mlx:
+            return selection.modelPath ?? request.model ?? selection.model
+        case .ollama:
+            return request.model ?? selection.model ?? APIProvider.ollama.defaultModelName
+        case .llama:
+            return selection.modelPath
+        case .cloud:
+            return selection.model
+        }
     }
 
     private func loadMLXBackend(modelOverride: String?) async throws -> any InferenceBackend {

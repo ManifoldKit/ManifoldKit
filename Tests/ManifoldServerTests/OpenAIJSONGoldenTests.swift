@@ -173,6 +173,31 @@ final class OpenAIJSONGoldenTests: XCTestCase {
         XCTAssertEqual(chunk.usage?.completionTokens, 5)
         XCTAssertEqual(chunk.usage?.totalTokens, 12)
     }
+
+    func testModelsListResponseIncludesOpenAIAndManifoldMetadata() throws {
+        let response = ModelsListResponse(modelRecords: [
+            ModelsListResponse.Model(
+                id: "demo-model",
+                created: 0,
+                ownedBy: "manifold",
+                status: "loaded",
+                backend: "foundation",
+                source: "built_in"
+            )
+        ])
+
+        let encoded = try OpenAIJSONGolden.encode(response)
+        let decoded = try JSONDecoder().decode(ModelsListResponse.self, from: Data(encoded.utf8))
+
+        XCTAssertEqual(decoded.object, "list")
+        XCTAssertEqual(decoded.data.first?.id, "demo-model")
+        XCTAssertEqual(decoded.data.first?.object, "model")
+        XCTAssertEqual(decoded.data.first?.created, 0)
+        XCTAssertEqual(decoded.data.first?.ownedBy, "manifold")
+        XCTAssertEqual(decoded.data.first?.status, "loaded")
+        XCTAssertEqual(decoded.data.first?.backend, "foundation")
+        XCTAssertTrue(encoded.contains("\"owned_by\":\"manifold\""))
+    }
 }
 
 #endif

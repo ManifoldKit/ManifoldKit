@@ -6,10 +6,33 @@ internal struct ModelsListResponse: Codable, Equatable, Sendable {
     internal struct Model: Codable, Equatable, Sendable {
         internal var id: String
         internal var object: String
+        internal var created: Int
+        internal var ownedBy: String
+        internal var status: String?
+        internal var backend: String?
+        internal var source: String?
 
-        internal init(id: String, object: String = "model") {
+        internal init(
+            id: String,
+            object: String = "model",
+            created: Int = 0,
+            ownedBy: String = "manifold",
+            status: String? = nil,
+            backend: String? = nil,
+            source: String? = nil
+        ) {
             self.id = id
             self.object = object
+            self.created = created
+            self.ownedBy = ownedBy
+            self.status = status
+            self.backend = backend
+            self.source = source
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, object, created, status, backend, source
+            case ownedBy = "owned_by"
         }
     }
 
@@ -17,8 +40,12 @@ internal struct ModelsListResponse: Codable, Equatable, Sendable {
     internal var data: [Model]
 
     internal init(models: [String]) {
+        self.init(modelRecords: models.map { Model(id: $0) })
+    }
+
+    internal init(modelRecords: [Model]) {
         self.object = "list"
-        self.data = models.map { Model(id: $0) }
+        self.data = modelRecords
     }
 }
 
