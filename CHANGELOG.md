@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.22.0](https://github.com/roryford/ManifoldKit/compare/v0.21.0...v0.22.0) — 2026-05-10
+
+### Highlights
+
+**Ship a first-class model catalog with LRU eviction and disk-budget enforcement**
+
+`ModelCatalog` wraps `ModelStorageService` with a JSON manifest sidecar, giving host apps persistent metadata — download source, SHA-256 hash, last-used timestamp — without re-scanning the models directory on every call. LRU eviction lets apps enforce a disk budget in a single call, and `touch()` is called automatically on every successful model load.
+
+```swift
+let catalog = ModelCatalog(storage: storageService)
+
+// Record a model after download
+try await catalog.record(CatalogEntry(
+    modelInfo: info,
+    source: .huggingFace(repo: "org/model", file: "model.gguf")
+))
+
+// Enforce a 10 GB disk budget, evicting least-recently-used models first
+let evicted = try await catalog.enforceDiskBudget(10 * 1_000_000_000)
+```
+
+### Features
+
+* **`/v1/models` enrichment** — each entry now carries `status` (`loaded` / `available`), `backend`, and `source` so API clients can tell which model is active and where it came from ([#1169](https://github.com/roryford/ManifoldKit/issues/1169))
+* **MCP memory-warning observer** — `MCPNotificationLifecycleEventObserver` is default-wired into `MCPSessionConfiguration`; drops idle SSE buffers on `UIApplication.didReceiveMemoryWarningNotification` ([#1168](https://github.com/roryford/ManifoldKit/issues/1168))
+* **MCP per-server disclosure consent** — `MCPDataDisclosureConsentStore` persists first-run review decisions per server so the consent dialog is shown exactly once ([#1170](https://github.com/roryford/ManifoldKit/issues/1170))
+
+### Fixes
+
+* **Llama thinking budgets** — separate thinking and visible token budgets; greedy sampler now activates correctly at `temperature=0` ([#1171](https://github.com/roryford/ManifoldKit/issues/1171))
+* **Llama embedding test discovery** — isolation script now lists all six `LlamaEmbeddingBackend*` classes; env vars renamed from `BCK_` to `MANIFOLD_` prefix ([#1173](https://github.com/roryford/ManifoldKit/issues/1173))
+
 ## [0.21.0](https://github.com/roryford/ManifoldKit/compare/v0.20.0...v0.21.0) — 2026-05-09
 
 ### Highlights
