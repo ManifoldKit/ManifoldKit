@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.23.0](https://github.com/roryford/ManifoldKit/compare/v0.22.0...v0.23.0) (2026-05-10)
+
+
+### Features
+
+* **benchmark:** add repeatable backend throughput benchmark suite ([24f247a](https://github.com/roryford/ManifoldKit/commit/24f247a38fd84352e0ffb48f4fc2c1a13f5a99aa))
+* **catalog:** replace SD/SDXL with FLUX.1 Schnell ([80d7c48](https://github.com/roryford/ManifoldKit/commit/80d7c48777f6d61b1e29a25a0fb550097faec245))
+* **flux:** add FluxDiffusionBackend for FLUX.1 Schnell ([7ee4711](https://github.com/roryford/ManifoldKit/commit/7ee47113ae4a71c4d2680b0c7ca0ba6f38df14be))
+
+
+### Bug Fixes
+
+* **llama:** synchronize Metal command buffers between consecutive generate() calls ([d5c1767](https://github.com/roryford/ManifoldKit/commit/d5c1767e7ad93832856f4c220a97c30d045ea443))
+
 ## [0.22.0](https://github.com/roryford/ManifoldKit/compare/v0.21.0...v0.22.0) — 2026-05-10
 
 ### Highlights
