@@ -9,15 +9,18 @@ struct ConnectedServicesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: DemoMCPCoordinator
     @State private var pendingConnect: MCPServerDescriptor?
+    private let disclosureConsentStore: MCPDataDisclosureConsentStore
 
     init(
         toolRegistry: ToolRegistry,
-        isFoundationModelsActive: @escaping () -> Bool = { false }
+        isFoundationModelsActive: @escaping () -> Bool = { false },
+        userDefaults: UserDefaults = .standard
     ) {
         _coordinator = State(initialValue: DemoMCPCoordinator(
             toolRegistry: toolRegistry,
             isFoundationModelsActive: isFoundationModelsActive
         ))
+        self.disclosureConsentStore = MCPDataDisclosureConsentStore(userDefaults: userDefaults)
     }
 
     var body: some View {
@@ -53,7 +56,7 @@ struct ConnectedServicesView: View {
                 coordinator.startListenersIfNeeded()
             }
             .confirmationDialog(
-                "Connect service",
+                "Review data use",
                 isPresented: Binding(
                     get: { pendingConnect != nil },
                     set: { if !$0 { pendingConnect = nil } }
@@ -62,6 +65,7 @@ struct ConnectedServicesView: View {
             ) {
                 if let descriptor = pendingConnect {
                     Button("Connect") {
+                        disclosureConsentStore.accept(serverID: descriptor.id)
                         coordinator.connect(descriptor)
                         pendingConnect = nil
                     }
@@ -107,7 +111,11 @@ struct ConnectedServicesView: View {
                     .accessibilityIdentifier("connected-service-disconnect-\(descriptor.id.uuidString)")
                 } else {
                     Button("Connect") {
-                        pendingConnect = descriptor
+                        if disclosureConsentStore.hasAccepted(serverID: descriptor.id) {
+                            coordinator.connect(descriptor)
+                        } else {
+                            pendingConnect = descriptor
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(snapshot.isBusy)
@@ -176,7 +184,28 @@ struct ConnectedServicesView: View {
             guard oauth.scopes.isEmpty == false else { return "" }
             return "\n\nRequested scopes: \(oauth.scopes.joined(separator: ", "))."
         }()
-        return "\(descriptor.dataDisclosure)\(scopes)"
+        return "\(descriptor.dataDisclosure)\(scopes)\n\nYou will only see this disclosure the first time you connect this service."
+    }
+}
+
+struct MCPDataDisclosureConsentStore {
+    private let userDefaults: UserDefaults
+    private let keyPrefix = "manifold.demo.mcp.dataDisclosure.accepted."
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
+
+    func hasAccepted(serverID: UUID) -> Bool {
+        userDefaults.bool(forKey: key(for: serverID))
+    }
+
+    func accept(serverID: UUID) {
+        userDefaults.set(true, forKey: key(for: serverID))
+    }
+
+    private func key(for serverID: UUID) -> String {
+        keyPrefix + serverID.uuidString
     }
 }
 
@@ -225,12 +254,14 @@ struct ConnectedServicesView: View {
 
     init(
         toolRegistry: ToolRegistry,
-        isFoundationModelsActive: @escaping () -> Bool = { false }
+        isFoundationModelsActive: @escaping () -> Bool = { false },
+        userDefaults: UserDefaults = .standard
     ) {
         self.toolRegistry = toolRegistry
         // Probe is captured but unused — there's no MCP surface to filter when
         // ManifoldMCP isn't linked. Keeps call sites symmetrical.
         _ = isFoundationModelsActive
+        _ = userDefaults
     }
 
     var body: some View {
