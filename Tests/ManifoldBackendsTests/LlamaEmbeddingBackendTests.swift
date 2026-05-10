@@ -8,7 +8,7 @@ import XCTest
 /// Locates a GGUF embedding model on disk for `LlamaEmbeddingBackend` tests.
 ///
 /// Resolution order (first hit wins):
-///   1. `BCK_EMBEDDING_MODEL_PATH` env var — explicit override for live-fire runs
+///   1. `MANIFOLD_EMBEDDING_MODEL_PATH` env var — explicit override for live-fire runs
 ///   2. `~/Documents/Models/*.gguf` containing "embed"/"embedding"/"bge"/"minilm"/"nomic"/"jina",
 ///      only when `MANIFOLD_DISCOVER_LOCAL_MODELS=1` opts into local discovery
 ///
@@ -20,7 +20,7 @@ import XCTest
 enum EmbeddingTestModelLocator {
     static func locate() -> URL? {
         let env = ProcessInfo.processInfo.environment
-        if let envPath = env["BCK_EMBEDDING_MODEL_PATH"], !envPath.isEmpty {
+        if let envPath = env["MANIFOLD_EMBEDDING_MODEL_PATH"], !envPath.isEmpty {
             let url = URL(fileURLWithPath: envPath)
             if FileManager.default.fileExists(atPath: url.path) {
                 return url
@@ -62,7 +62,7 @@ enum EmbeddingTestModelLocator {
     /// test is skipped.
     static func locateAlternate() -> URL? {
         let env = ProcessInfo.processInfo.environment
-        if let envPath = env["BCK_EMBEDDING_MODEL_PATH_ALT"], !envPath.isEmpty {
+        if let envPath = env["MANIFOLD_EMBEDDING_MODEL_PATH_ALT"], !envPath.isEmpty {
             let url = URL(fileURLWithPath: envPath)
             if FileManager.default.fileExists(atPath: url.path) {
                 return url
@@ -89,7 +89,7 @@ final class LlamaEmbeddingBackendLoadUnloadTests: XCTestCase {
 
     func test_loadModel_setsLoadedAndDimensions() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run live-fire load tests.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run live-fire load tests.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -103,7 +103,7 @@ final class LlamaEmbeddingBackendLoadUnloadTests: XCTestCase {
 
     func test_unloadModel_clearsState() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -149,7 +149,7 @@ final class LlamaEmbeddingBackendEmbedTests: XCTestCase {
 
     func test_embed_singleText_returnsOneUnitVector() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -164,7 +164,7 @@ final class LlamaEmbeddingBackendEmbedTests: XCTestCase {
 
     func test_embed_multipleTexts_returnsCorrectShape() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -182,7 +182,7 @@ final class LlamaEmbeddingBackendEmbedTests: XCTestCase {
 
     func test_embed_emptyArray_returnsEmpty() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -215,7 +215,7 @@ final class LlamaEmbeddingBackendDeterminismTests: XCTestCase {
 
     func test_sameInput_acrossTwoCalls_isIdentical() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         let modelURL = EmbeddingTestModelLocator.locate()!
 
         let backend = LlamaEmbeddingBackend()
@@ -298,9 +298,9 @@ final class LlamaEmbeddingBackendDimensionMismatchTests: XCTestCase {
     /// the new dimension observable.
     func test_dimensions_reflectsNewModelAfterReload() async throws {
         try XCTSkipUnless(EmbeddingTestModelLocator.locate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to a local embedding GGUF to run this test.")
         try XCTSkipUnless(EmbeddingTestModelLocator.locateAlternate() != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH_ALT to a second embedding GGUF to run this test.")
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH_ALT to a second embedding GGUF to run this test.")
         let primary = EmbeddingTestModelLocator.locate()!
         let alternate = EmbeddingTestModelLocator.locateAlternate()!
 
@@ -333,7 +333,7 @@ final class LlamaEmbeddingBackendDimensionMismatchTests: XCTestCase {
 
 /// Runs `embed` 20 times against the same input and asserts (1) consistent
 /// vectors across runs and (2) sub-500 ms median latency per call. Skipped
-/// unless `BCK_EMBEDDING_MODEL_PATH` is set so default CI / local runs do not
+/// unless `MANIFOLD_EMBEDDING_MODEL_PATH` is set so default CI / local runs do not
 /// pay the model-load cost.
 final class LlamaEmbeddingBackendLiveFireTests: XCTestCase {
     override func setUp() async throws {
@@ -342,13 +342,13 @@ final class LlamaEmbeddingBackendLiveFireTests: XCTestCase {
         try XCTSkipUnless(HardwareRequirements.isAppleSilicon, "LlamaEmbeddingBackend requires Apple Silicon")
         // Live-fire is opt-in via env var even when the model exists in the
         // default search path — it is the most expensive test in the suite.
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["BCK_EMBEDDING_MODEL_PATH"] != nil,
-                          "Set BCK_EMBEDDING_MODEL_PATH to run live-fire latency tests")
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["MANIFOLD_EMBEDDING_MODEL_PATH"] != nil,
+                          "Set MANIFOLD_EMBEDDING_MODEL_PATH to run live-fire latency tests")
     }
 
     func test_repeatedEmbed_isConsistentAndFast() async throws {
         let modelURL = try XCTUnwrap(EmbeddingTestModelLocator.locate(),
-                                     "BCK_EMBEDDING_MODEL_PATH must point at a real GGUF")
+                                     "MANIFOLD_EMBEDDING_MODEL_PATH must point at a real GGUF")
         let backend = LlamaEmbeddingBackend()
         try await backend.loadModel(from: modelURL)
         defer { backend.unloadModel() }

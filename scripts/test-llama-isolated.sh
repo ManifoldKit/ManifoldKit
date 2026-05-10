@@ -78,7 +78,12 @@ LLAMA_TEST_CLASSES=(
     LlamaArchitecturePreflightTests
     LlamaBackendMemoryPressureTests
     LlamaBackendTests
-    LlamaEmbeddingBackendTests
+    LlamaEmbeddingBackendLoadUnloadTests
+    LlamaEmbeddingBackendEmbedTests
+    LlamaEmbeddingBackendDeterminismTests
+    LlamaEmbeddingBackendUnloadedErrorTests
+    LlamaEmbeddingBackendDimensionMismatchTests
+    LlamaEmbeddingBackendLiveFireTests
     LlamaGrammarSamplerTests
     LlamaKVCacheSecureWipeTests
     LlamaKVPersistenceTests
@@ -88,12 +93,13 @@ LLAMA_TEST_CLASSES=(
     LlamaToolCapabilityTests
 )
 
-# Sanity-check that every class above corresponds to a real test file. Catches
+# Sanity-check that every class above exists in the test sources. Catches
 # typos and renames before we waste minutes invoking xctest with a dead filter.
+# Uses grep rather than a 1:1 file check because some files host multiple classes
+# (e.g. LlamaEmbeddingBackendTests.swift contains six separate test classes).
 for class in "${LLAMA_TEST_CLASSES[@]}"; do
-    file="Tests/ManifoldBackendsTests/${class}.swift"
-    if [[ ! -f "$file" ]]; then
-        echo "test-llama-isolated.sh: expected test file '$file' not found." >&2
+    if ! grep -qr "final class ${class}" Tests/ManifoldBackendsTests/ 2>/dev/null; then
+        echo "test-llama-isolated.sh: no class '${class}' found in Tests/ManifoldBackendsTests/." >&2
         echo "Update LLAMA_TEST_CLASSES in $0 if the class was renamed or removed." >&2
         exit 2
     fi
