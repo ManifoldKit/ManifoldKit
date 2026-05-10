@@ -16,7 +16,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$(mktemp -d -t manifoldkit-cold-start-tier3.XXXXXX)"
+WORK_ROOT="$REPO_ROOT/tmp/cold-start-tier3"
+WORK="$WORK_ROOT/run-$$-$RANDOM"
+mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "==> Cold-start conformance (tier 3 - ChatView composition)"
@@ -133,11 +135,19 @@ SWIFT
 
 # 3. Build and run the consumer. Running evaluates the host RootView body once,
 # which is enough to catch the public composition shape without launching a GUI.
+# Some developer machines set `safe.bareRepository=explicit`; SwiftPM stores
+# checkouts as bare repositories, so allow bare repos only for these subprocesses.
+SWIFT_ENV=(
+    GIT_CONFIG_COUNT=1
+    GIT_CONFIG_KEY_0=safe.bareRepository
+    GIT_CONFIG_VALUE_0=all
+)
+
 echo "==> swift build"
-swift build --package-path . 2>&1 | tail -40
+env "${SWIFT_ENV[@]}" swift build --package-path . 2>&1 | tail -40
 
 echo "==> swift run"
-swift run --package-path . ColdStartTier3
+env "${SWIFT_ENV[@]}" swift run --package-path . ColdStartTier3
 EXIT=$?
 
 if [[ $EXIT -ne 0 ]]; then
