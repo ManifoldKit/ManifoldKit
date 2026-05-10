@@ -465,6 +465,39 @@ systems where it does not recognise `NSLock` as a synchronisation primitive.
 between the `stopGeneration()` caller thread and the generation task background
 thread.
 
+### 5. Unsynchronized Metal command buffers between consecutive `generate()` calls — fixed in this PR
+
+**Violation:** `llama_decode` enqueues Metal compute passes asynchronously.
+When `LlamaGenerationDriver.run()` returned without calling `llama_synchronize`,
+the GPU could still be executing the final batch's command buffers at the time
+the *next* `generate()` call began.  The KV-cache clear at the top of the new
+run (`llama_memory_clear` / `llama_memory_seq_rm`) enqueues fresh Metal
+operations before the previous command buffers had committed.  That ordering
+violation trips llama.cpp's internal render-set assertion:
+
+```
+GGML_ASSERT([rsets->data count] == 0)   (ggml-metal-device.m:618)
+Signal 5 (SIGTRAP)
+Swift/ContiguousArrayBuffer.swift:692: Fatal error: Index out of range
+```
+
+The crash was model-specific (observed on llama3.1:8b, not Qwen3-4B) because
+larger models produce longer Metal command buffers that are more likely to still
+be in flight when the second call begins.
+
+**Fix:** `llama_synchronize(context)` is called at every exit path of
+`LlamaGenerationDriver.run()`: the normal completion path, the mid-prompt
+cancellation path, the prompt-decode-failure path, and the in-loop
+decode-failure path.  `llama_synchronize` blocks the calling thread until the
+GPU is idle — sub-millisecond when the GPU is already done — and is the
+authoritative synchronization primitive for this purpose (see `llama.h` line 972).
+
+**Detection signal:** `GGML_ASSERT([rsets->data count] == 0)` in
+`ggml-metal-device.m` on the second consecutive `generate()` call; followed by
+a Swift `Fatal error: Index out of range` in `ContiguousArrayBuffer.swift`.
+Regression test: `test_consecutiveGenerateCalls_doesNotCrash` in
+`Tests/ManifoldE2ETests/LlamaE2ETests.swift`.
+
 ---
 
 ## Security

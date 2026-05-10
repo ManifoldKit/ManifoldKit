@@ -264,6 +264,34 @@ final class LlamaE2ETests: XCTestCase {
         }
     }
 
+    /// Regression test for the Metal render-set assertion that fires when a second
+    /// `generate()` call starts before the GPU has drained the previous run's command
+    /// buffers.
+    ///
+    /// Root cause: `llama_decode` enqueues Metal compute passes asynchronously.  Without
+    /// `llama_synchronize` at the end of the generation driver, the KV-cache clear at the
+    /// top of the next `run()` call (`llama_memory_clear` / `llama_memory_seq_rm`) can
+    /// race in-flight GPU work, tripping:
+    ///
+    ///   GGML_ASSERT([rsets->data count] == 0)   (ggml-metal-device.m:618)
+    ///
+    /// which corrupts context state and causes a Swift array bounds crash on the next
+    /// `llama_decode` call.  The fix adds `llama_synchronize(context)` at every exit
+    /// path of `LlamaGenerationDriver.run()`.
+    ///
+    /// Model: any GGUF — the race is architecture-independent; it is gated by the
+    /// `LLAMA_TEST_MODEL` env check so it only runs when a model is present.
+    func test_consecutiveGenerateCalls_doesNotCrash() async throws {
+        let firstResponse = try await generate(prompt: "Say hello in one word.")
+        XCTAssertFalse(firstResponse.isEmpty, "First generate() call should return non-empty output")
+
+        // The second call was the crash site before the fix: Metal command buffers from
+        // the first run were still in flight when the KV-cache clear for the second run
+        // enqueued new GPU operations, tripping the render-set assertion.
+        let secondResponse = try await generate(prompt: "Say goodbye in one word.")
+        XCTAssertFalse(secondResponse.isEmpty, "Second consecutive generate() call should return non-empty output without crashing")
+    }
+
     func test_backendCapabilities() {
         XCTAssertTrue(backend.capabilities.supportsStreaming)
         XCTAssertFalse(backend.capabilities.isRemote)
