@@ -38,7 +38,7 @@ final class LlamaGrammarSamplerTests: XCTestCase {
     /// this assertion will fail for most natural-language models.
     func test_grammar_constrainsOutput() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -90,7 +90,7 @@ final class LlamaGrammarSamplerTests: XCTestCase {
     /// the top of `run()` already resets decode state regardless of the grammar.
     func test_grammar_cancelCleansTeardown() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()

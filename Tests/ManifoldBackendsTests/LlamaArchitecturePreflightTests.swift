@@ -100,7 +100,7 @@ final class LlamaArchitecturePreflightTests: XCTestCase {
         try XCTSkipUnless(HardwareRequirements.isAppleSilicon, "LlamaBackend requires Apple Silicon")
         try XCTSkipUnless(HardwareRequirements.isPhysicalDevice, "LlamaBackend requires Metal (unavailable in simulator)")
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No chat GGUF available in ~/Documents/Models/ — skipping preflight happy-path test")
+            throw XCTSkip("No chat GGUF available. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run the preflight happy-path test.")
         }
 
         let backend = LlamaBackend()

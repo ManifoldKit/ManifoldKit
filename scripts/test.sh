@@ -13,6 +13,21 @@
 #      suites that crashed (started but never completed).
 #   4. Prints a clear summary and exits non-zero if there are failures or crashes.
 #
+# Model env vars (--traits Llama / --traits MLX)
+# -----------------------------------------------
+# Unlike xcodebuild, `swift test` inherits the calling shell's environment
+# directly, so model-discovery env vars work without any special forwarding:
+#
+#   LLAMA_TEST_MODEL=/path/to/model.gguf \
+#     scripts/test.sh --filter ManifoldBackendsTests --traits Llama --skip-update
+#
+#   MLX_TEST_MODEL=gemma-4-mini \
+#     scripts/test.sh --filter ManifoldBackendsTests --traits MLX --skip-update
+#
+# For ManifoldMLXIntegrationTests, use scripts/test-mlx-integration.sh instead
+# (xcodebuild requires PlistBuddy env injection — see that script's header).
+# For Llama tests with metal-state isolation, use scripts/test-llama-isolated.sh.
+#
 # Output format understood:
 #   XCTest:
 #     Test Case '-[Module.Suite testFoo]' passed (0.001 seconds).

@@ -125,6 +125,18 @@ final class HardwareRequirementsMLXTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    func test_findMLXModelDirectory_absolutePathThatFailsValidation_returnsNilRatherThanFallingBack() {
+        // When MLX_TEST_MODEL is an absolute path that points at an invalid
+        // directory, findMLXModelDirectory must return nil rather than
+        // silently falling back to a different discovered model.
+        let nonExistentPath = tempDirectory.appendingPathComponent("does-not-exist-dir").path
+        let result = HardwareRequirements.findMLXModelDirectory(
+            environment: ["MLX_TEST_MODEL": nonExistentPath]
+        )
+
+        XCTAssertNil(result, "Absolute-path override that fails validation must not fall back to discovered models")
+    }
+
     private func createValidMLXDirectory(at directory: URL) {
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         createFile("config.json", in: directory, contents: #"{"model_type":"llama"}"#)

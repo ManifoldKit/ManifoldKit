@@ -57,12 +57,17 @@ enum FuzzModelDiscovery {
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
+        let rawSelector = environment["MLX_TEST_MODEL"]
         if let override = directFilesystemModelOverride(
-            environment["MLX_TEST_MODEL"],
+            rawSelector,
             isValid: { isValidMLXDirectory($0, fileManager: .default) }
         ) {
             return override
         }
+        // When the selector looks like a direct path but failed validation,
+        // return nil so the fuzz runner reports a clear error rather than
+        // silently loading a different discovered model.
+        if isDirectPathSelector(rawSelector) { return nil }
         guard shouldDiscoverLocalModels(
             environment: environment,
             selectorKey: "MLX_TEST_MODEL",
@@ -146,12 +151,17 @@ enum FuzzModelDiscovery {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         maximumModelSize: Int64? = nil
     ) -> URL? {
+        let rawSelector = environment["LLAMA_TEST_MODEL"]
         if let override = directFilesystemModelOverride(
-            environment["LLAMA_TEST_MODEL"],
+            rawSelector,
             isValid: { isValidGGUFModel($0, maximumModelSize: maximumModelSize) }
         ) {
             return override
         }
+        // When the selector looks like a direct path but failed validation,
+        // return nil so the fuzz runner reports a clear error rather than
+        // silently loading a different discovered model.
+        if isDirectPathSelector(rawSelector) { return nil }
         guard shouldDiscoverLocalModels(
             environment: environment,
             selectorKey: "LLAMA_TEST_MODEL",
@@ -347,6 +357,15 @@ enum FuzzModelDiscovery {
         if normalizedModelSelector(environment[selectorKey]) != nil { return true }
         if normalizedModelSelector(substring) != nil { return true }
         return environment["MANIFOLD_DISCOVER_LOCAL_MODELS"] == "1"
+    }
+
+    /// Returns `true` when `selector` looks like a direct filesystem path
+    /// (i.e. contains a `/` after normalisation), meaning the caller intended
+    /// to point at a specific file/directory rather than supply a name fragment.
+    private static func isDirectPathSelector(_ selector: String?) -> Bool {
+        guard let selector = normalizedModelSelector(selector) else { return false }
+        let expanded = (selector as NSString).expandingTildeInPath
+        return expanded.contains("/")
     }
 
     private static func directFilesystemModelOverride(

@@ -40,7 +40,7 @@ final class LlamaE2ETests: XCTestCase {
         try XCTSkipUnless(HardwareRequirements.isPhysicalDevice, "LlamaBackend requires Metal (unavailable in simulator)")
 
         guard let url = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model found in ~/Documents/Models/")
+            throw XCTSkip("No GGUF model found. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run Llama E2E tests.")
         }
 
         if let prior = Self.loadFailure {

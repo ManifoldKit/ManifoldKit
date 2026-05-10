@@ -32,7 +32,7 @@ final class LlamaSeedDeterminismTests: XCTestCase {
     /// diverge after the first sampled token and this assertion will fail.
     func test_sameSeed_producesIdenticalOutput() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -63,7 +63,7 @@ final class LlamaSeedDeterminismTests: XCTestCase {
     /// internal seed and this assertion will fail.
     func test_differentSeeds_produceDifferentOutput() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this test.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()

@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/llama.swift",
       "state" : {
-        "revision" : "cb7d773e9876a6428b958a85731addcbb535811e",
-        "version" : "2.9093.0"
+        "revision" : "52f82ec7a142daef8d55ed4ebc6df2eb7401ecd6",
+        "version" : "2.9090.0"
       }
     },
     {

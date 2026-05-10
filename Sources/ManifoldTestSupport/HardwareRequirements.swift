@@ -178,19 +178,31 @@ enum HardwareRequirements {
     /// `nameContains` to select a specific fixture, or set
     /// `MANIFOLD_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
-    /// When `MLX_TEST_MODEL` is set, the first directory whose path contains that
-    /// value wins. Otherwise falls back to `nameContains`, then to the first
-    /// discovered candidate in deterministic path order.
+    /// When `MLX_TEST_MODEL` is set to an absolute or tilde-relative path,
+    /// that path is validated directly. If the path does not resolve to a valid
+    /// MLX model directory the function returns `nil` — it does NOT fall back
+    /// to local discovery, so that a misconfigured path surfaces as a skip
+    /// rather than silently running against a different model.
+    ///
+    /// When `MLX_TEST_MODEL` is set to a bare name or substring (no `/`),
+    /// discovery runs and the first candidate whose path contains the value wins.
+    /// Falls back to `nameContains`, then to the first discovered candidate in
+    /// deterministic path order.
     static func findMLXModelDirectory(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
+        let rawSelector = environment["MLX_TEST_MODEL"]
         if let override = directFilesystemModelOverride(
-            environment["MLX_TEST_MODEL"],
+            rawSelector,
             isValid: { isValidMLXDirectory($0, fileManager: .default) }
         ) {
             return override
         }
+        // When the selector looks like a direct path but failed validation,
+        // return nil immediately so callers skip rather than accidentally running
+        // against a different discovered model.
+        if isDirectPathSelector(rawSelector) { return nil }
         guard shouldDiscoverLocalModels(
             environment: environment,
             selectorKey: "MLX_TEST_MODEL",
@@ -266,20 +278,32 @@ enum HardwareRequirements {
     /// `nameContains` to select a specific fixture, or set
     /// `MANIFOLD_DISCOVER_LOCAL_MODELS=1` to allow fallback discovery.
     ///
-    /// When `LLAMA_TEST_MODEL` is set, the first GGUF whose path contains that
-    /// value wins. Otherwise falls back to `nameContains`, then to the smallest
-    /// discovered candidate that satisfies the size bounds.
+    /// When `LLAMA_TEST_MODEL` is set to an absolute or tilde-relative path,
+    /// that path is validated directly. If the path does not resolve to a valid
+    /// GGUF file the function returns `nil` — it does NOT fall back to local
+    /// discovery, so that a misconfigured path surfaces as a skip rather than
+    /// silently running against a different model.
+    ///
+    /// When `LLAMA_TEST_MODEL` is set to a bare name or substring (no `/`),
+    /// discovery runs and the first candidate whose path contains the value wins.
+    /// Falls back to `nameContains`, then to the smallest discovered candidate
+    /// that satisfies the size bounds.
     static func findGGUFModel(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         maximumModelSize: Int64? = nil
     ) -> URL? {
+        let rawSelector = environment["LLAMA_TEST_MODEL"]
         if let override = directFilesystemModelOverride(
-            environment["LLAMA_TEST_MODEL"],
+            rawSelector,
             isValid: { isValidGGUFModel($0, maximumModelSize: maximumModelSize) }
         ) {
             return override
         }
+        // When the selector looks like a direct path but failed validation,
+        // return nil immediately so callers skip rather than accidentally running
+        // against a different discovered model.
+        if isDirectPathSelector(rawSelector) { return nil }
         guard shouldDiscoverLocalModels(
             environment: environment,
             selectorKey: "LLAMA_TEST_MODEL",
@@ -476,6 +500,20 @@ enum HardwareRequirements {
         if normalizedModelSelector(environment[selectorKey]) != nil { return true }
         if normalizedModelSelector(substring) != nil { return true }
         return environment["MANIFOLD_DISCOVER_LOCAL_MODELS"] == "1"
+    }
+
+    /// Returns `true` when `selector` looks like a direct filesystem path
+    /// (i.e. contains a `/` after normalisation), meaning the caller intended
+    /// to point at a specific file/directory rather than supply a name fragment.
+    ///
+    /// Used to prevent a misconfigured absolute path from silently falling
+    /// through to local-model discovery: if the path looks intentional but
+    /// fails validation, callers should return `nil` so tests skip with a
+    /// clear message rather than running against an unexpected model.
+    private static func isDirectPathSelector(_ selector: String?) -> Bool {
+        guard let selector = normalizedModelSelector(selector) else { return false }
+        let expanded = (selector as NSString).expandingTildeInPath
+        return expanded.contains("/")
     }
 
     private static func directFilesystemModelOverride(

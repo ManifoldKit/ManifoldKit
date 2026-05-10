@@ -297,7 +297,7 @@ final class LlamaBackendTests: XCTestCase {
     func test_stopGeneration_thenGenerate_succeeds_regression390() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run this regression test."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this regression test."
             )
         }
 
@@ -453,7 +453,7 @@ final class LlamaBackendTests: XCTestCase {
     func test_loadModel_fromPlan_passesEffectiveContextSizeToCContext() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run this test."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this test."
             )
         }
 
@@ -500,7 +500,7 @@ final class LlamaBackendTests: XCTestCase {
     func test_loadModel_fromPlan_clampRespected_noMetalHostMallocFailure() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model found on disk. Place a `.gguf` file in ~/Documents/Models/ to run this regression test."
+                "No GGUF model found on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this regression test."
             )
         }
 
@@ -598,7 +598,7 @@ final class LlamaBackendTests: XCTestCase {
     func test_countTokens_withLoadedModel_returnsPlausibleCount() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
             throw XCTSkip(
-                "No GGUF model on disk. Place a `.gguf` file in ~/Documents/Models/ to run this test."
+                "No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` file in ~/Documents/Models/ to run this test."
             )
         }
 
@@ -620,7 +620,7 @@ final class LlamaBackendTests: XCTestCase {
     /// must return the same value (pure vocabulary lookup, no stochastic state).
     func test_countTokens_idempotent_withLoadedModel() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF model on disk.")
+            throw XCTSkip("No GGUF model on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this test.")
         }
 
         let backend = LlamaBackend()
@@ -678,7 +678,7 @@ final class LlamaBackendTests: XCTestCase {
     /// `tokenCount < maxBudget` assertion fails.
     func test_fixture_eogTokenTerminatesStreamBeforeBudget_regression519() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this fixture.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this fixture.")
         }
 
         let backend = LlamaBackend()
@@ -751,7 +751,7 @@ final class LlamaBackendTests: XCTestCase {
     /// throwing the expected `InferenceError.contextExhausted`.
     func test_fixture_nBatchBoundary_oversizedPromptThrowsContextExhausted_scaffold520() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this fixture.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this fixture.")
         }
 
         let backend = LlamaBackend()
@@ -863,7 +863,7 @@ final class LlamaBackendTests: XCTestCase {
     /// the `LlamaGenerationDriver` decomposition follow-up lands.
     func test_fixture_stopGeneration_midDecode_isGeneratingFallsFalseWithinBudget_regression522() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this fixture.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this fixture.")
         }
 
         let backend = LlamaBackend()
@@ -950,7 +950,7 @@ final class LlamaBackendTests: XCTestCase {
     /// zero-count assertion.
     func test_fixture_maxThinkingTokens_zero_disablesThinkingEntirely_regression597() async throws {
         guard let modelURL = HardwareRequirements.findGGUFModel() else {
-            throw XCTSkip("No GGUF on disk. Place a `.gguf` in ~/Documents/Models/ to run this fixture.")
+            throw XCTSkip("No GGUF on disk. Set LLAMA_TEST_MODEL=<path> or place a `.gguf` in ~/Documents/Models/ to run this fixture.")
         }
 
         let backend = LlamaBackend()
