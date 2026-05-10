@@ -4,6 +4,7 @@ import Foundation
 import XCTest
 @testable import ManifoldMCP
 import ManifoldInference
+import ManifoldTestSupport
 
 final class EverythingServerSmokeTests: XCTestCase {
     override func setUpWithError() throws {
@@ -12,26 +13,14 @@ final class EverythingServerSmokeTests: XCTestCase {
             ProcessInfo.processInfo.environment["RUN_MCP_E2E"] == "1",
             "Set RUN_MCP_E2E=1 to run MCP E2E tests"
         )
-        try XCTSkipIf(!hasNpx(), "npx not installed")
+        try XCTSkipUnless(hasExecutableOnPATH("npx"), "npx not installed or not on PATH")
     }
 
     func test_everythingServer_connectsAndListsTools() async throws {
         // Sabotage: returning early before connect() would fail the tool-count assertion
 
-        let command = MCPStdioCommand.npx(package: "@modelcontextprotocol/server-everything")
-        let descriptor = MCPServerDescriptor(
-            displayName: "Everything Server",
-            transport: .stdio(command),
-            initializationTimeout: .seconds(60),
-            dataDisclosure: "E2E test server"
-        )
-
-        let client = MCPClient()
-        let source = try await client.connect(descriptor)
-
-        defer {
-            Task { await client.disconnect(serverID: descriptor.id) }
-        }
+        let (server, source) = try await connectEverythingServer()
+        defer { Task { await server.close() } }
 
         // Verify we get tools back after connecting
         try await source.refreshTools()
@@ -42,20 +31,8 @@ final class EverythingServerSmokeTests: XCTestCase {
     func test_everythingServer_refreshToolsReturnsPositiveCount() async throws {
         // Sabotage: returning early before connect() would fail the tool-count assertion
 
-        let command = MCPStdioCommand.npx(package: "@modelcontextprotocol/server-everything")
-        let descriptor = MCPServerDescriptor(
-            displayName: "Everything Server",
-            transport: .stdio(command),
-            initializationTimeout: .seconds(60),
-            dataDisclosure: "E2E test server"
-        )
-
-        let client = MCPClient()
-        let source = try await client.connect(descriptor)
-
-        defer {
-            Task { await client.disconnect(serverID: descriptor.id) }
-        }
+        let (server, source) = try await connectEverythingServer()
+        defer { Task { await server.close() } }
 
         try await source.refreshTools()
         let toolNames = await source.currentToolNames()
@@ -63,20 +40,8 @@ final class EverythingServerSmokeTests: XCTestCase {
     }
 
     func test_everythingServer_taskCancellationPropagates() async throws {
-        let command = MCPStdioCommand.npx(package: "@modelcontextprotocol/server-everything")
-        let descriptor = MCPServerDescriptor(
-            displayName: "Everything Server",
-            transport: .stdio(command),
-            initializationTimeout: .seconds(60),
-            dataDisclosure: "E2E test server"
-        )
-
-        let client = MCPClient()
-        let source = try await client.connect(descriptor)
-
-        defer {
-            Task { await client.disconnect(serverID: descriptor.id) }
-        }
+        let (server, source) = try await connectEverythingServer()
+        defer { Task { await server.close() } }
 
         // Start a task that does work on the source and immediately cancel it.
         // The task should surface CancellationError (or MCPError.cancelled).
@@ -103,11 +68,32 @@ final class EverythingServerSmokeTests: XCTestCase {
         }
     }
 
-    // MARK: - Helpers
-
-    private func hasNpx() -> Bool {
-        FileManager.default.fileExists(atPath: "/usr/local/bin/npx")
-            || FileManager.default.fileExists(atPath: "/opt/homebrew/bin/npx")
+    private func connectEverythingServer() async throws -> (MCPJSONLineProcessServer, MCPToolSource) {
+        let server = MCPJSONLineProcessServer(package: "@modelcontextprotocol/server-everything")
+        let capabilities = try await withTimeout(.seconds(30)) {
+            try await server.start()
+        }
+        let source = MCPToolSource(
+            serverID: UUID(),
+            displayName: "Everything Server",
+            capabilities: capabilities,
+            toolNamespace: nil,
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall,
+            listTools: {
+                try await server.sendRequest(method: "tools/list", params: nil)
+            },
+            callTool: { toolName, arguments in
+                try await server.sendRequest(
+                    method: "tools/call",
+                    params: .object([
+                        "name": .string(toolName),
+                        "arguments": arguments,
+                    ])
+                )
+            }
+        )
+        return (server, source)
     }
 }
 #endif

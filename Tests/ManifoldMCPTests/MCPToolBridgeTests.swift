@@ -3,6 +3,7 @@ import Foundation
 import XCTest
 @testable import ManifoldMCP
 import ManifoldInference
+import ManifoldTestSupport
 
 @MainActor
 final class MCPToolBridgeTests: XCTestCase {
@@ -643,6 +644,85 @@ final class MCPToolBridgeTests: XCTestCase {
         let names = await MainActor.run { registry.definitions.map(\.name) }
         XCTAssertEqual(names, ["search"])
     }
+
+    func test_filesystemSourceRegistersToolsAndDispatchesScriptedBackendTurn() async throws {
+        let sandbox = try makeProjectSandbox(named: "mcp-filesystem-unit")
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let filesystem = ScriptedFilesystemSandbox(root: sandbox)
+        let source = MCPToolSource(
+            serverID: UUID(),
+            displayName: "Filesystem",
+            capabilities: .init(),
+            toolNamespace: nil,
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall,
+            listTools: {
+                .object([
+                    "tools": .array([
+                        filesystemTool(name: "list_directory", description: "List sandbox contents"),
+                        filesystemTool(name: "read_file", description: "Read a sandbox file"),
+                        filesystemTool(name: "write_file", description: "Write a sandbox file"),
+                    ]),
+                ])
+            },
+            callTool: { toolName, arguments in
+                try await filesystem.call(toolName: toolName, arguments: arguments)
+            }
+        )
+
+        let registry = ToolRegistry()
+        await source.register(in: registry)
+        let registeredToolNames = registry.definitions.map(\.name)
+        XCTAssertEqual(registeredToolNames, ["list_directory", "read_file", "write_file"])
+
+        let backend = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false
+        ))
+        backend.isModelLoaded = true
+        backend.scriptedToolCallsPerTurn = [
+            [ToolCall(id: "write-1", toolName: "write_file", arguments: #"{"path":"notes/hello.txt","content":"hello filesystem"}"#)],
+            [ToolCall(id: "read-1", toolName: "read_file", arguments: #"{"path":"notes/hello.txt"}"#)],
+            [ToolCall(id: "list-1", toolName: "list_directory", arguments: #"{"path":"notes"}"#)],
+            [],
+        ]
+        backend.tokensToYieldPerTurn = [[], [], [], ["done"]]
+
+        let service = InferenceService(backend: backend, toolRegistry: registry)
+        let (_, stream) = try service.enqueue(
+            messages: [.user("write, read, then list a sandbox file")],
+            tools: registry.definitions,
+            maxToolIterations: 5
+        )
+
+        let events = try await collectEvents(stream)
+        let toolResults = events.compactMap { event -> ToolResult? in
+            if case .toolResult(let result) = event { return result }
+            return nil
+        }
+
+        XCTAssertEqual(toolResults.map(\.callId), ["write-1", "read-1", "list-1"])
+        XCTAssertTrue(toolResults.allSatisfy { $0.errorKind == nil }, "Expected all filesystem tool calls to succeed")
+        let fileExists = try await filesystem.fileExists(relativePath: "notes/hello.txt")
+        let fileContents = try await filesystem.read(relativePath: "notes/hello.txt")
+        XCTAssertTrue(fileExists)
+        XCTAssertEqual(fileContents, "hello filesystem")
+        XCTAssertTrue(toolResults[1].content.contains("hello filesystem"))
+        XCTAssertTrue(toolResults[2].content.contains("hello.txt"))
+
+        let traversal = await registry.dispatch(
+            ToolCall(id: "escape-1", toolName: "read_file", arguments: #"{"path":"../outside.txt"}"#)
+        )
+        XCTAssertEqual(traversal.callId, "escape-1")
+        XCTAssertNotNil(traversal.errorKind, "Path traversal must be rejected by the filesystem tool")
+    }
 }
 
 private func makeSource(
@@ -664,6 +744,101 @@ private func makeSource(
         },
         callTool: { _, _ in nil }
     )
+}
+
+private func filesystemTool(name: String, description: String) -> JSONSchemaValue {
+    .object([
+        "name": .string(name),
+        "description": .string(description),
+        "inputSchema": .object([
+            "type": .string("object"),
+            "properties": .object([
+                "path": .object(["type": .string("string")]),
+                "content": .object(["type": .string("string")]),
+            ]),
+            "required": .array([.string("path")]),
+        ]),
+    ])
+}
+
+private func collectEvents(_ stream: GenerationStream) async throws -> [GenerationEvent] {
+    var events: [GenerationEvent] = []
+    for try await event in stream.events {
+        events.append(event)
+    }
+    return events
+}
+
+private func makeProjectSandbox(named prefix: String) throws -> URL {
+    let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent("tmp", isDirectory: true)
+        .appendingPathComponent(prefix, isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
+private actor ScriptedFilesystemSandbox {
+    private let root: URL
+    private let fileManager = FileManager.default
+
+    init(root: URL) {
+        self.root = root.standardizedFileURL
+    }
+
+    func call(toolName: String, arguments: JSONSchemaValue) throws -> JSONSchemaValue {
+        guard case .object(let object) = arguments,
+              case .string(let path)? = object["path"] else {
+            throw MCPError.malformedMetadata("filesystem tool requires a string path")
+        }
+
+        switch toolName {
+        case "list_directory":
+            let url = try resolve(path)
+            let names = try fileManager.contentsOfDirectory(atPath: url.path).sorted()
+            return textResult(names.joined(separator: "\n"))
+        case "read_file":
+            return try textResult(read(relativePath: path))
+        case "write_file":
+            guard case .string(let content)? = object["content"] else {
+                throw MCPError.malformedMetadata("write_file requires string content")
+            }
+            let url = try resolve(path)
+            try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            return textResult("wrote \(path)")
+        default:
+            throw MCPError.toolNotFound(toolName)
+        }
+    }
+
+    func fileExists(relativePath: String) throws -> Bool {
+        fileManager.fileExists(atPath: try resolve(relativePath).path)
+    }
+
+    func read(relativePath: String) throws -> String {
+        try String(contentsOf: resolve(relativePath), encoding: .utf8)
+    }
+
+    private func resolve(_ relativePath: String) throws -> URL {
+        let candidate = root.appendingPathComponent(relativePath).standardizedFileURL
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard candidate.path == root.path || candidate.path.hasPrefix(rootPath) else {
+            throw MCPError.authorizationFailed("path traversal rejected: \(relativePath)")
+        }
+        return candidate
+    }
+
+    private func textResult(_ text: String) -> JSONSchemaValue {
+        .object([
+            "content": .array([
+                .object([
+                    "type": .string("text"),
+                    "text": .string(text),
+                ]),
+            ]),
+        ])
+    }
 }
 
 private actor ToolListProvider {
