@@ -102,12 +102,15 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     }
 
     internal func listModelRecords() async throws -> [ModelsListResponse.Model] {
-        try await listModels().map { id in
-            ModelsListResponse.Model(
+        let currentModelID = loadedModelID ?? modelID(for: ServerBackendRequest())
+        return try await listModels().map { id in
+            let isCurrent = currentModelID == id
+            return ModelsListResponse.Model(
                 id: id,
                 status: loadedModelID == id ? "loaded" : "available",
                 backend: selection.backend.rawValue,
-                source: modelSource
+                source: modelSource,
+                current: isCurrent
             )
         }
     }

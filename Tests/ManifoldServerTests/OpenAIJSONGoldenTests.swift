@@ -182,7 +182,8 @@ final class OpenAIJSONGoldenTests: XCTestCase {
                 ownedBy: "manifold",
                 status: "loaded",
                 backend: "foundation",
-                source: "built_in"
+                source: "built_in",
+                current: true
             )
         ])
 
@@ -196,7 +197,9 @@ final class OpenAIJSONGoldenTests: XCTestCase {
         XCTAssertEqual(decoded.data.first?.ownedBy, "manifold")
         XCTAssertEqual(decoded.data.first?.status, "loaded")
         XCTAssertEqual(decoded.data.first?.backend, "foundation")
+        XCTAssertEqual(decoded.data.first?.current, true)
         XCTAssertTrue(encoded.contains("\"owned_by\":\"manifold\""))
+        XCTAssertTrue(encoded.contains("\"current\":true"))
     }
 }
 
