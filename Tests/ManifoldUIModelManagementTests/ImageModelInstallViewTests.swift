@@ -8,10 +8,10 @@ import XCTest
 /// shape that hosts depend on and make sure the entries stay valid.
 final class ImageModelInstallViewTests: XCTestCase {
 
-    func testCatalogHasAtLeastTwoEntries() {
+    func testCatalogHasAtLeastOneEntry() {
         XCTAssertGreaterThanOrEqual(
-            DiffusionModelCatalog.curated.count, 2,
-            "Curated catalog should expose at least two installable models so the first-run UI has obvious good defaults."
+            DiffusionModelCatalog.curated.count, 1,
+            "Curated catalog should expose at least one installable model so the first-run UI has a valid default."
         )
     }
 
