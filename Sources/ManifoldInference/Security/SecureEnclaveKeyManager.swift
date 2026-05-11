@@ -58,7 +58,7 @@ public enum SecureEnclaveError: Error, Equatable, Sendable, LocalizedError {
 /// let recovered = try manager.unwrapFromStorage(wrapped)
 /// // recovered == payload
 /// ```
-public final class SecureEnclaveKeyManager: @unchecked Sendable {
+public final class SecureEnclaveKeyManager: SecureEnclaveKeyStoreProtocol, @unchecked Sendable {
 
     /// The process-wide singleton. Operations are thread-safe via an internal lock.
     public static let shared = SecureEnclaveKeyManager()
