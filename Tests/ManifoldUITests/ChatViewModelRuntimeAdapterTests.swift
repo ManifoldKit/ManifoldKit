@@ -23,6 +23,10 @@ import ManifoldTestSupport
 @MainActor
 final class ChatViewModelRuntimeAdapterTests: XCTestCase {
 
+    private struct MessageStatusTestError: LocalizedError {
+        var errorDescription: String? { "status test failure" }
+    }
+
     // MARK: - In-memory stores (copied shape from ConversationRuntimeTests)
 
     /// Minimal in-memory MessageStore used by the runtime in these tests.
@@ -156,7 +160,36 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         let stored = try await store.fetchMessages(for: sessionID)
         XCTAssertEqual(stored.count, 2, "Runtime store should hold user + assistant messages")
         XCTAssertTrue(stored.contains(where: { $0.role == .assistant && $0.content == "Hello from runtime" }),
-                      "Persisted assistant message should contain streamed tokens")
+                       "Persisted assistant message should contain streamed tokens")
+    }
+
+    func test_runtimeAdapter_marksInsertedUserMessageSent() async throws {
+        let mock = MockInferenceBackend()
+        let (vm, _) = try makeVMWithRuntime(mock: mock)
+        guard let sessionID = vm.activeSessionID else {
+            XCTFail("activeSession must be set")
+            return
+        }
+        let record = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+
+        await vm.handle(runtimeEvent: .messageInserted(record))
+
+        XCTAssertEqual(vm.messages.first?.status, .sent)
+    }
+
+    func test_runtimeAdapter_marksMostRecentUserMessageFailedOnTurnError() async throws {
+        let mock = MockInferenceBackend()
+        let (vm, _) = try makeVMWithRuntime(mock: mock)
+        guard let sessionID = vm.activeSessionID else {
+            XCTFail("activeSession must be set")
+            return
+        }
+        let record = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+        await vm.handle(runtimeEvent: .messageInserted(record))
+
+        await vm.handle(runtimeEvent: .errorRaised(.inference(MessageStatusTestError())))
+
+        XCTAssertEqual(vm.messages.first?.status, .failed)
     }
 
     // MARK: - Test 2: stopGeneration cancels the in-flight handle
@@ -260,4 +293,3 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
         XCTAssertNil(weakVM, "VM must be deallocated once external strong refs drop — drain task must not retain self across the for-await suspension")
     }
 }
-

@@ -173,6 +173,34 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         XCTAssertNil(msg.promptTokens, "Prompt tokens should be nil by default")
     }
 
+    // MARK: - Message status
+
+    func test_messageRecord_statusDefaultsToNil() {
+        let msg = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+
+        XCTAssertNil(msg.status, "Status is opt-in so existing records keep their current rendering")
+    }
+
+    func test_messageBubbleStatusText_rendersUserDeliveryStates() {
+        let sent = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .sent)
+        let failed = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .failed)
+        let sending = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .sending)
+
+        XCTAssertEqual(MessageBubbleView.statusText(for: sent), "Sent")
+        XCTAssertEqual(MessageBubbleView.statusAccessibilityLabel(for: sent), "Message sent")
+        XCTAssertEqual(MessageBubbleView.statusText(for: failed), "Failed")
+        XCTAssertEqual(MessageBubbleView.statusAccessibilityLabel(for: failed), "Message failed to send")
+        XCTAssertEqual(MessageBubbleView.statusText(for: sending), "Sending…")
+        XCTAssertEqual(MessageBubbleView.statusAccessibilityLabel(for: sending), "Message sending")
+    }
+
+    func test_messageBubbleStatusText_ignoresAssistantStatus() {
+        let assistant = ChatMessageRecord(role: .assistant, content: "Reply", sessionID: sessionID, status: .sent)
+
+        XCTAssertNil(MessageBubbleView.statusText(for: assistant))
+        XCTAssertNil(MessageBubbleView.statusAccessibilityLabel(for: assistant))
+    }
+
     // MARK: - Role enumeration coverage
 
     func test_allRoles_areDistinct() {
