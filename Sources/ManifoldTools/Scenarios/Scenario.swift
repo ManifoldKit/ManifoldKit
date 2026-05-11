@@ -35,10 +35,27 @@ public struct Scenario: Codable, Sendable, Equatable {
         /// - `"toolInvoked"` — the scenario must have dispatched the tool named `value` at least once.
         ///   This is the honesty gate: a scenario that only asserts `containsLiteral` can silently
         ///   pass when a model hallucinates the expected answer without actually calling the tool.
+        /// - `"toolResultContains"` — at least one result for tool `value` must contain every
+        ///   string in `values`.
+        /// - `"toolResultErrorKind"` — at least one result for tool `value` must have errorKind
+        ///   equal to the first entry in `values`.
         public let kind: String
         public let value: String?
         public let values: [String]?
         public let message: String?
+    }
+}
+
+/// Tool result fragment retained by ``ScenarioRunner`` for assertions.
+public struct ToolResultRecord: Equatable, Sendable {
+    public let toolName: String
+    public let content: String
+    public let errorKind: String?
+
+    public init(toolName: String, content: String, errorKind: String?) {
+        self.toolName = toolName
+        self.content = content
+        self.errorKind = errorKind
     }
 }
 
@@ -62,7 +79,8 @@ public enum AssertionEvaluator {
     public static func evaluate(
         _ assertion: Scenario.Assertion,
         finalAnswer: String,
-        toolsInvoked: [String] = []
+        toolsInvoked: [String] = [],
+        toolResults: [ToolResultRecord] = []
     ) -> AssertionOutcome {
         switch assertion.kind {
         case "containsLiteral":
@@ -97,6 +115,33 @@ public enum AssertionEvaluator {
             let passed = toolsInvoked.contains(name)
             let detail = passed ? "dispatched" : "never dispatched — final answer may be hallucinated"
             let label = assertion.message ?? "tool '\(name)' invoked"
+            return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
+
+        case "toolResultContains":
+            guard let name = assertion.value else {
+                return AssertionOutcome(passed: false, message: "toolResultContains missing 'value'")
+            }
+            guard let values = assertion.values, !values.isEmpty else {
+                return AssertionOutcome(passed: false, message: "toolResultContains missing 'values'")
+            }
+            let matchingResults = toolResults.filter { $0.toolName == name }
+            let passed = matchingResults.contains { result in
+                values.allSatisfy { result.content.contains($0) }
+            }
+            let detail = passed ? "found in tool result" : "missing from tool results"
+            let label = assertion.message ?? "tool '\(name)' result contains \(values)"
+            return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
+
+        case "toolResultErrorKind":
+            guard let name = assertion.value else {
+                return AssertionOutcome(passed: false, message: "toolResultErrorKind missing 'value'")
+            }
+            guard let expected = assertion.values?.first else {
+                return AssertionOutcome(passed: false, message: "toolResultErrorKind missing first 'values' entry")
+            }
+            let passed = toolResults.contains { $0.toolName == name && $0.errorKind == expected }
+            let detail = passed ? "observed" : "not observed"
+            let label = assertion.message ?? "tool '\(name)' errorKind == \(expected)"
             return AssertionOutcome(passed: passed, message: "\(label) — \(detail)")
 
         default:

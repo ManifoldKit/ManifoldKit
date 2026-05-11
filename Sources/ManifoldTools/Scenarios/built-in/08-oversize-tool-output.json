@@ -1,0 +1,33 @@
+{
+  "id": "oversize-tool-output",
+  "description": "Output-policy probe — large file reads must surface a bounded-output error instead of flooding context.",
+  "systemPrompt": "You have tools. If a tool reports that output exceeds maxBytes, explain the size policy and ask for a narrower slice. Do not pretend you saw the hidden content.",
+  "userPrompt": "Read oversize-output.txt and summarize it.",
+  "requiredTools": ["read_file"],
+  "assertions": [
+    {
+      "kind": "toolInvoked",
+      "value": "read_file",
+      "message": "Scenario requires `read_file` to hit the oversize policy"
+    },
+    {
+      "kind": "toolResultErrorKind",
+      "value": "read_file",
+      "values": ["invalidArguments"],
+      "message": "Oversize output should be rejected before it floods context"
+    },
+    {
+      "kind": "containsAll",
+      "values": ["exceeds maxBytes", "narrower"],
+      "message": "Final answer should surface the bounded-output contract without hallucinating file contents"
+    }
+  ],
+  "backend": {
+    "kind": "ollama",
+    "model": "llama3.1:8b",
+    "fallbackModel": "qwen2.5:7b-instruct",
+    "temperature": 0.0,
+    "seed": 42,
+    "topK": 1
+  }
+}
