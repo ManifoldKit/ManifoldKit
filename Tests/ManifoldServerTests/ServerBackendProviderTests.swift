@@ -56,7 +56,8 @@ final class ServerBackendProviderTests: XCTestCase {
                 id: "llama3",
                 status: "available",
                 backend: "ollama",
-                source: "remote_endpoint"
+                source: "remote_endpoint",
+                current: true
             )
         ])
     }
@@ -74,7 +75,8 @@ final class ServerBackendProviderTests: XCTestCase {
                 id: "llama3.2",
                 status: "available",
                 backend: "ollama",
-                source: "remote_endpoint"
+                source: "remote_endpoint",
+                current: true
             )
         ])
     }

@@ -39,6 +39,7 @@ final class ManifoldServerSmokeTests: XCTestCase {
                 XCTAssertEqual(models.data.first?.object, "model")
                 XCTAssertEqual(models.data.first?.ownedBy, "manifold")
                 XCTAssertEqual(models.data.first?.status, "available")
+                XCTAssertNil(models.data.first?.current)
             }
 
             let body = try requestBody(ChatCompletionRequest(model: "tiny", messages: [.init(role: "user", content: "hi")]))
@@ -46,6 +47,26 @@ final class ManifoldServerSmokeTests: XCTestCase {
                 XCTAssertEqual(response.status, .ok)
                 let completion = try JSONDecoder().decode(ChatCompletionResponse.self, from: Data(buffer: response.body))
                 XCTAssertEqual(completion.content, "hello world")
+            }
+        }
+    }
+
+    func testModelsRouteIncludesCurrentBackendMetadataForTraitAwareProvider() async throws {
+        let provider = TraitAwareServerBackendProvider(
+            selection: ServerBackendSelection(backend: .mlx, model: "mlx-community/example", modelPath: "Models/example"),
+            compiledBackends: CompiledBackends(buildProfile: .offline, traits: [], localModelTypes: [], cloudProviders: [])
+        )
+        let app = ServerApp(backendProvider: provider).makeApplication()
+
+        try await app.test(.router) { client in
+            try await client.execute(uri: "/v1/models", method: .get) { response in
+                XCTAssertEqual(response.status, .ok)
+                let models = try JSONDecoder().decode(ModelsListResponse.self, from: Data(buffer: response.body))
+                XCTAssertEqual(models.data.map(\.id), ["mlx-community/example", "Models/example"])
+                XCTAssertEqual(models.data.map(\.backend), ["mlx", "mlx"])
+                XCTAssertEqual(models.data.map(\.source), ["local_path", "local_path"])
+                XCTAssertEqual(models.data.map(\.current), [false, true])
+                XCTAssertEqual(models.data.map(\.status), ["available", "available"])
             }
         }
     }

@@ -11,6 +11,7 @@ internal struct ModelsListResponse: Codable, Equatable, Sendable {
         internal var status: String?
         internal var backend: String?
         internal var source: String?
+        internal var current: Bool?
 
         internal init(
             id: String,
@@ -19,7 +20,8 @@ internal struct ModelsListResponse: Codable, Equatable, Sendable {
             ownedBy: String = "manifold",
             status: String? = nil,
             backend: String? = nil,
-            source: String? = nil
+            source: String? = nil,
+            current: Bool? = nil
         ) {
             self.id = id
             self.object = object
@@ -28,10 +30,11 @@ internal struct ModelsListResponse: Codable, Equatable, Sendable {
             self.status = status
             self.backend = backend
             self.source = source
+            self.current = current
         }
 
         private enum CodingKeys: String, CodingKey {
-            case id, object, created, status, backend, source
+            case id, object, created, status, backend, source, current
             case ownedBy = "owned_by"
         }
     }

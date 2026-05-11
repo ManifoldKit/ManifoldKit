@@ -131,6 +131,21 @@ final class TraitAwareServerBackendProviderTests: XCTestCase {
         let models = try await provider.listModels()
         XCTAssertEqual(models, ["mlx-community/example", "Models/example"])
     }
+
+    func testListModelRecordsMarksConfiguredModelCurrent() async throws {
+        let provider = TraitAwareServerBackendProvider(
+            selection: ServerBackendSelection(backend: .mlx, model: "mlx-community/example", modelPath: "Models/example"),
+            compiledBackends: emptyBuild
+        )
+
+        let records = try await provider.listModelRecords()
+
+        XCTAssertEqual(records.map(\.id), ["mlx-community/example", "Models/example"])
+        XCTAssertEqual(records.map(\.backend), ["mlx", "mlx"])
+        XCTAssertEqual(records.map(\.source), ["local_path", "local_path"])
+        XCTAssertEqual(records.map(\.current), [false, true])
+        XCTAssertEqual(records.map(\.status), ["available", "available"])
+    }
 }
 
 #endif
