@@ -116,22 +116,26 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         guard !trimmed.isEmpty, limit > 0 else { return [] }
 
         // SwiftData #Predicate localizedStandardContains is case- and
-        // diacritic-insensitive and runs in-store, so we don't pull every
-        // message into memory just to filter. A small over-fetch (limit*2)
-        // covers the case where the plain-text `content` cache is stale and
-        // a snippet pass rejects the match.
-        let needle = trimmed
+        // diacritic-insensitive and runs in-store. For multi-term queries we
+        // use the first term as the store predicate, then require every term
+        // in memory so words can match across non-adjacent parts of a message.
+        let terms = Self.messageSearchTerms(from: trimmed)
+        let needle = terms[0]
         var descriptor = FetchDescriptor<ChatMessage>(
             predicate: #Predicate { $0.content.localizedStandardContains(needle) },
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
-        descriptor.fetchLimit = limit
+        if terms.count == 1 {
+            descriptor.fetchLimit = limit
+        }
 
         let results = try modelContext.fetch(descriptor)
         var hits: [MessageSearchHit] = []
-        hits.reserveCapacity(results.count)
+        hits.reserveCapacity(min(results.count, limit))
         for message in results {
-            guard let (snippet, range) = makeMessageSearchSnippet(content: message.content, query: trimmed) else {
+            guard terms.allSatisfy({ message.content.localizedStandardContains($0) }),
+                  let snippetTerm = terms.first(where: { message.content.localizedStandardContains($0) }),
+                  let (snippet, range) = makeMessageSearchSnippet(content: message.content, query: snippetTerm) else {
                 continue
             }
             hits.append(MessageSearchHit(
@@ -141,8 +145,13 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
                 matchRange: range,
                 timestamp: message.timestamp
             ))
+            if hits.count == limit { break }
         }
         return hits
+    }
+
+    private static func messageSearchTerms(from query: String) -> [String] {
+        query.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
     // MARK: - Messages

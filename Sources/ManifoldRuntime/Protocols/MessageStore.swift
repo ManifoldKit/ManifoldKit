@@ -68,7 +68,9 @@ public protocol MessageStore: AnyObject, Sendable {
 
     /// Searches messages whose plain-text content contains `query`.
     ///
-    /// Matching is case-insensitive. Results are sorted by message timestamp
+    /// Matching is case- and diacritic-insensitive. Multi-word queries match
+    /// messages containing every whitespace-delimited term, even when the
+    /// terms are not adjacent. Results are sorted by message timestamp
     /// in descending order (most recent first) and capped at `limit`. Each hit
     /// carries a short snippet centred on the first match to support inline
     /// previews in search UI.
@@ -145,7 +147,7 @@ public protocol MessageStorePostWriteHook: Sendable {
 
 // MARK: - Snippet helpers
 
-/// Builds a short snippet around the first case-insensitive occurrence of
+/// Builds a short snippet around the first case- and diacritic-insensitive occurrence of
 /// `query` in `content`. Used by ``MessageStore`` implementations to
 /// populate ``MessageSearchHit/snippet``.
 ///
@@ -157,8 +159,9 @@ public func makeMessageSearchSnippet(
     query: String,
     contextRadius: Int = 50
 ) -> (snippet: String, matchRange: Range<String.Index>)? {
+    let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
     guard !query.isEmpty,
-          let matchInContent = content.range(of: query, options: .caseInsensitive) else {
+          let matchInContent = content.range(of: query, options: options) else {
         return nil
     }
 
@@ -177,9 +180,9 @@ public func makeMessageSearchSnippet(
     snippet = prefixEllipsis + snippet + suffixEllipsis
 
     // Re-locate the query inside the snippet — the ellipsis prefix shifts
-    // indices, and re-running the case-insensitive search is cheaper and
-    // simpler than offset arithmetic.
-    guard let matchInSnippet = snippet.range(of: query, options: .caseInsensitive) else {
+    // indices, and re-running the case- and diacritic-insensitive search is
+    // cheaper and simpler than offset arithmetic.
+    guard let matchInSnippet = snippet.range(of: query, options: options) else {
         return (snippet, snippet.startIndex..<snippet.startIndex)
     }
     return (snippet, matchInSnippet)
