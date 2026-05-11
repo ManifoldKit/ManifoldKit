@@ -1,5 +1,19 @@
 .build/
 .swiftpm/
+# Un-ignore only the shared xcschemes directory so platform-specific
+# test lanes (e.g. iOS Simulator file-protection tests) can be tracked.
+# Each intermediate component must be explicitly un-ignored for git to
+# descend into the otherwise-ignored .swiftpm/ tree.  Files Xcode may
+# auto-generate inside .swiftpm/xcode/ (pbxproj, xcuserstate, etc.) stay
+# ignored via the wildcard rules below.
+!.swiftpm/
+!.swiftpm/xcode/
+!.swiftpm/xcode/xcshareddata/
+!.swiftpm/xcode/xcshareddata/xcschemes/
+!.swiftpm/xcode/xcshareddata/xcschemes/*.xcscheme
+.swiftpm/xcode/*.pbxproj
+.swiftpm/xcode/*.pbxproj.bak
+.swiftpm/xcode/xcuserdata/
 DerivedData/
 *.xcodeproj/project.xcworkspace/
 *.xcodeproj/xcuserdata/

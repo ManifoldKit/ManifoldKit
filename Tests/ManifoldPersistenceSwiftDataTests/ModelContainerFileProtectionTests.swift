@@ -40,13 +40,47 @@ final class ModelContainerFileProtectionTests: XCTestCase {
         return directory.appendingPathComponent("Manifold.sqlite")
     }
 
-    /// Reads the Data Protection class from `url` via `FileManager` attributes.
-    /// Returns `nil` if the key is unset (expected on macOS) or the file is
-    /// missing. We read via `attributesOfItem(atPath:)` rather than
-    /// `URLResourceValues` because the latter has known Swift type-checker
-    /// issues around `fileProtection` in some SDK/compiler combinations.
+    /// Reads the Data Protection class from `url`.
+    ///
+    /// Returns `nil` if no protection class is set (expected on macOS) or the
+    /// file is missing.
+    ///
+    /// ## Simulator / real-device differences
+    ///
+    /// `FileManager.attributesOfItem` does not populate `.protectionKey` on the
+    /// iOS Simulator — `setAttributes` accepts the call without error but the
+    /// stat metadata the simulator exposes never reflects it.
+    ///
+    /// `URLResourceValues.fileProtection` works on both the simulator and real
+    /// hardware and is therefore used as the primary read path.  However, its
+    /// raw-value namespace uses the `NSURLFileProtection*` prefix while
+    /// `FileProtectionType` uses `NSFileProtection*`, so a conversion is
+    /// required.  The two namespaces map 1-to-1 by replacing the `NSURL` prefix
+    /// with `NSFile`.
+    ///
+    /// On the simulator all four protection classes are reported identically as
+    /// `.completeUntilFirstUserAuthentication` because the simulator sandbox
+    /// does not enforce individual tiers.  Tests that rely on reading back a
+    /// specific non-default class must be skipped on the simulator — see
+    /// `test_makeContainer_honoursCustomProtectionClass`.
     private func readFileProtection(at url: URL) -> FileProtectionType? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+
+        // Primary: URLResourceValues works on both real devices and simulators.
+        // The returned type uses the `NSURLFileProtection*` raw-value prefix;
+        // convert to `FileProtectionType` by swapping in the `NSFileProtection*`
+        // prefix.
+        if let rv = try? url.resourceValues(forKeys: [.fileProtectionKey]),
+           let fp = rv.fileProtection {
+            let rawValue = fp.rawValue.replacingOccurrences(
+                of: "NSURLFileProtection",
+                with: "NSFileProtection"
+            )
+            return FileProtectionType(rawValue: rawValue)
+        }
+
+        // Fallback: attributesOfItem works on real iOS devices but the
+        // simulator never populates .protectionKey here.
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
             return nil
         }
@@ -81,6 +115,15 @@ final class ModelContainerFileProtectionTests: XCTestCase {
         #if !(os(iOS) || os(tvOS) || os(watchOS)) || targetEnvironment(macCatalyst)
         try XCTSkipIf(true, "File protection only applies on iOS/tvOS/watchOS")
         #else
+        // The iOS Simulator sandbox does not distinguish individual protection
+        // classes — setAttributes succeeds but every class reads back as the
+        // simulator default (.completeUntilFirstUserAuthentication).  This
+        // assertion requires the real Secure Enclave to be meaningful.
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil,
+            "Simulator reports all protection classes as the default — run on physical hardware"
+        )
+
         ManifoldConfiguration.shared.fileProtectionClass = .complete
 
         let storeURL = try makeTempStoreURL()
