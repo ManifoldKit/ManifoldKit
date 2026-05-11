@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.24.0](https://github.com/roryford/ManifoldKit/compare/v0.23.1...v0.24.0) (2026-05-11)
+
+
+### Features
+
+* add chat message status slice ([#1196](https://github.com/roryford/ManifoldKit/issues/1196)) ([551d7c1](https://github.com/roryford/ManifoldKit/commit/551d7c1866420e5dbeacb331ac26a6fd2f5cd516))
+* add persistence search maturation slice ([#1194](https://github.com/roryford/ManifoldKit/issues/1194)) ([dfa65ea](https://github.com/roryford/ManifoldKit/commit/dfa65eacddaa4cbf71db96db9366ab5d1385d8d5))
+* enrich ManifoldServer models response ([#1195](https://github.com/roryford/ManifoldKit/issues/1195)) ([7f8b525](https://github.com/roryford/ManifoldKit/commit/7f8b5254a7562409e3dbcf221b17f5323af4cd26))
+
+
+### Bug Fixes
+
+* add FoundationBackend availability provider seam ([#524](https://github.com/roryford/ManifoldKit/issues/524)) ([#1202](https://github.com/roryford/ManifoldKit/issues/1202)) ([a41aaaf](https://github.com/roryford/ManifoldKit/commit/a41aaafb8c5da4ab3a65e115d293a8e25a8410a0))
+* make SecureEnclaveKeyManagerTests runnable on Apple Silicon Mac ([#1201](https://github.com/roryford/ManifoldKit/issues/1201)) ([1b475c6](https://github.com/roryford/ManifoldKit/commit/1b475c6d1bb0724f128b03fa3708e2e99779abd9))
+
 ## [0.23.1](https://github.com/roryford/ManifoldKit/compare/v0.23.0...v0.23.1) — 2026-05-10
 
 ### Fixes
