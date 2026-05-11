@@ -136,6 +136,17 @@ struct DemoContentView: View {
                 Color.clear.frame(width: 1, height: 1)
             }
         }
+        .overlay {
+            if usesInlineApprovalForUITesting,
+               let call = viewModel.toolApprovalGate?.pending.first {
+                ToolApprovalSheet(call: call)
+                    .environment(viewModel)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(radius: 12)
+                    .padding()
+            }
+        }
         .onAppear {
             if horizontalSizeClass == .compact {
                 columnVisibility = .detailOnly
@@ -420,7 +431,10 @@ struct DemoContentView: View {
     /// without another observed property driving the re-render.
     private var approvalSheetIsPresented: Binding<Bool> {
         Binding(
-            get: { (viewModel.toolApprovalGate?.pending.first) != nil },
+            get: {
+                !usesInlineApprovalForUITesting
+                    && (viewModel.toolApprovalGate?.pending.first) != nil
+            },
             set: { newValue in
                 guard !newValue else { return }
                 // Drag-dismiss (iOS) is a dismiss without an explicit
@@ -434,6 +448,10 @@ struct DemoContentView: View {
                 }
             }
         )
+    }
+
+    private var usesInlineApprovalForUITesting: Bool {
+        ProcessInfo.processInfo.environment["MANIFOLD_DEMO_INLINE_APPROVAL"] == "1"
     }
 
     private func policyLabel(_ policy: UIToolApprovalGate.Policy) -> String {

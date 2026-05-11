@@ -411,6 +411,15 @@ struct ConversationTurnExecutor: Sendable {
             citations: ragCitations.isEmpty ? nil : ragCitations
         )
         let assistantID = assistantMessage.id
+        func writeFinalContent(_ text: String, into message: inout ChatMessageRecord) {
+            message.contentParts.removeAll {
+                if case .text = $0 { return true }
+                return false
+            }
+            if !text.isEmpty {
+                message.contentParts.append(.text(text))
+            }
+        }
 
         let composedSystemPrompt = composeSystemPrompt(config.systemPrompt, slots: slots)
 
@@ -535,9 +544,11 @@ struct ConversationTurnExecutor: Sendable {
                     emit(.thinkingFinalized(messageID: assistantID, text: block, signature: signature))
 
                 case .dispatchToolCall(let call):
+                    assistantMessage.contentParts.append(.toolCall(call))
                     emit(.toolCallRequested(call))
 
                 case .appendToolResult(let result):
+                    assistantMessage.contentParts.append(.toolResult(result))
                     emit(.toolCallCompleted(result.callId, result))
 
                 case .toolLoopLimitReached(let iterations):
@@ -628,7 +639,7 @@ struct ConversationTurnExecutor: Sendable {
             // behaviour) and emit error. We do not collapse this into
             // `.streamFinished(reason: .empty)` because consumers need to
             // know the run failed.
-            assistantMessage.content = accumulated
+            writeFinalContent(accumulated, into: &assistantMessage)
             if !accumulated.isEmpty {
                 do {
                     try await persistence.insertMessage(assistantMessage)
@@ -653,7 +664,7 @@ struct ConversationTurnExecutor: Sendable {
             // On cancel, persist whatever streamed in so far if non-empty —
             // matches ChatViewModel.stopGeneration's behaviour.
             if !accumulated.isEmpty {
-                assistantMessage.content = accumulated
+                writeFinalContent(accumulated, into: &assistantMessage)
                 do {
                     try await persistence.insertMessage(assistantMessage)
                     emit(.messageInserted(assistantMessage))
@@ -689,7 +700,7 @@ struct ConversationTurnExecutor: Sendable {
         }
 
         // Happy path: persist the assistant message.
-        assistantMessage.content = accumulated
+        writeFinalContent(accumulated, into: &assistantMessage)
         do {
             try await persistence.insertMessage(assistantMessage)
             emit(.messageInserted(assistantMessage))

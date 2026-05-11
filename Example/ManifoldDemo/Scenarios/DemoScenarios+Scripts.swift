@@ -71,12 +71,13 @@ extension DemoScenarios {
             ]
 
         case rateLimitedRetry.id:
-            // Same call twice — the demo tool's first invocation returns
-            // `.rateLimited`; the second succeeds. Both calls carry identical
-            // arguments to mirror what a well-behaved retry looks like.
+            // The demo tool's first invocation returns `.rateLimited`; the
+            // second succeeds. Keep the user-visible query identical while
+            // adding a retry marker so the orchestrator's duplicate-call guard
+            // does not short-circuit the scripted recovery.
             return [
                 .toolCall(name: "fakeRateLimited", arguments: #"{"query":"ManifoldKit"}"#),
-                .toolCall(name: "fakeRateLimited", arguments: #"{"query":"ManifoldKit"}"#),
+                .toolCall(name: "fakeRateLimited", arguments: #"{"query":"ManifoldKit","retry":true}"#),
                 .tokens([
                     "The ", "first ", "call ", "was ", "rate-limited, ",
                     "but ", "the ", "retry ", "succeeded."

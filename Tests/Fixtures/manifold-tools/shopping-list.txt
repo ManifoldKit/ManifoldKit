@@ -1,0 +1,5 @@
+apples: 12.50
+rice: 7.25
+saffron: 41.00
+
+Budget note: buy apples and rice; skip saffron.

@@ -244,10 +244,33 @@ extension ChatViewModel {
 
         // MARK: Observational / future cases
 
+        case .toolCallRequested(let call):
+            guard let messageID = activeConversationMessageID else { break }
+            mutateMessage(id: messageID) { message in
+                guard !message.contentParts.contains(where: {
+                    if case .toolCall(let existing) = $0 {
+                        return existing.id == call.id
+                    }
+                    return false
+                }) else { return }
+                message.contentParts.append(.toolCall(call))
+            }
+
+        case .toolCallCompleted(_, let result):
+            guard let messageID = activeConversationMessageID else { break }
+            mutateMessage(id: messageID) { message in
+                guard !message.contentParts.contains(where: {
+                    if case .toolResult(let existing) = $0 {
+                        return existing.callId == result.callId
+                    }
+                    return false
+                }) else { return }
+                message.contentParts.append(.toolResult(result))
+            }
+
         case .beforeContextAssembly, .contextAssembled, .afterGeneration,
              .sessionTouchFailed,
-             .compressionTriggered, .toolCallRequested, .toolCallApproved,
-             .toolCallCompleted:
+             .compressionTriggered, .toolCallApproved:
             // These are observational or reserved for future sub-flows.
             // No ChatViewModel state mutation is needed here yet.
             break
