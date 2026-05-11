@@ -1,11 +1,23 @@
 #if canImport(FoundationModels)
 import XCTest
+import FoundationModels
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
 @testable import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldFoundation
+
+// MARK: - Test doubles
+
+/// Stub availability provider that always reports the configured availability.
+/// Injected into `FoundationBackend` to drive unavailable / available branches
+/// in unit tests without requiring a real Apple Intelligence entitlement.
+@available(iOS 26, macOS 26, *)
+private struct StubAvailabilityProvider: FoundationModelAvailabilityProvider {
+    let stubbedAvailability: SystemLanguageModel.Availability
+    var availability: SystemLanguageModel.Availability { stubbedAvailability }
+}
 
 /// Isolated unit tests for `FoundationBackend` state management and guard paths.
 ///
@@ -552,36 +564,35 @@ final class FoundationBackendUnitTests: XCTestCase {
 
     // MARK: - Availability variants (#524)
 
-    /// Documents the current gap: `FoundationBackend.loadModel` collapses every
-    /// non-`.available` `SystemLanguageModel.Availability` case into a single
-    /// error message. There is no dependency-injection hook to stub availability,
-    /// so per-reason assertions (`.deviceNotEligible`, `.appleIntelligenceNotEnabled`,
-    /// `.modelNotReady`, …) can't be driven from a unit test today.
+    /// Verifies that `loadModel` throws `InferenceError.inferenceFailure` when
+    /// the injected availability provider reports anything other than `.available`.
     ///
-    /// The weak contract we CAN pin: on a device where Apple Intelligence is not
-    /// available (simulator / CI), `loadModel` throws, and the error is an
-    /// `InferenceError.inferenceFailure` whose message mentions Apple Intelligence.
-    /// Any future refactor that swallows the error, changes the type, or returns
-    /// success on a non-available device trips this test.
+    /// Uses `StubAvailabilityProvider` to force the unavailable branch, so this
+    /// test runs on every machine — including those where Apple Intelligence IS
+    /// available — without relying on the real system state.
     ///
-    /// Follow-up: #524 tracks adding an `AvailabilityProvider` injection hook so
-    /// the per-reason messages can be asserted.
+    /// Sabotage check: remove (or negate) the `guard availabilityProvider.availability == .available`
+    /// check in `FoundationBackend.loadModel`. The `XCTFail("loadModel must throw…")` line
+    /// will fire because `loadModel` will proceed to the probe and (on a machine with
+    /// real Apple Intelligence) succeed, returning without throwing. Remove the sabotage
+    /// before committing.
     func test_loadModel_whenUnavailable_throwsInferenceFailure() async throws {
-        // Only meaningful when the real system says "unavailable" — otherwise
-        // we'd need the injection hook that #524 exists to track.
-        try XCTSkipIf(
-            FoundationBackend.isAvailable,
-            "Apple Intelligence IS available on this device — cannot exercise the unavailable branch without the availability-provider hook tracked in #524"
+        // Build a backend that is wired to report "unavailable" regardless of the
+        // real system state. The stub covers every non-.available reason without
+        // needing to enumerate them individually.
+        let stub = StubAvailabilityProvider(
+            stubbedAvailability: .unavailable(.appleIntelligenceNotEnabled)
         )
+        let unavailableBackend = FoundationBackend(availabilityProvider: stub)
 
         let url = URL(fileURLWithPath: "/dev/null")
         do {
-            try await backend.loadModel(from: url, plan: .testStub(effectiveContextSize: 4096))
+            try await unavailableBackend.loadModel(from: url, plan: .testStub(effectiveContextSize: 4096))
             XCTFail("loadModel must throw when SystemLanguageModel availability is not .available")
         } catch let InferenceError.inferenceFailure(msg) {
-            // Current behaviour: the probe path and the pre-probe availability
-            // check both throw inferenceFailure. Either message is acceptable
-            // for this contract — both reference Apple Intelligence.
+            // The availability guard fires before the probe, so the message should
+            // always reference Apple Intelligence regardless of which unavailable
+            // reason the stub returns.
             XCTAssertTrue(
                 msg.localizedCaseInsensitiveContains("Apple Intelligence"),
                 "Error message should mention Apple Intelligence, got: \(msg)"

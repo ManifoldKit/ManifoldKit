@@ -165,6 +165,11 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// the same as a `nil` session and creates a fresh `LanguageModelSession`.
     private var _sessionIsClean = true
 
+    /// Determines `SystemLanguageModel` availability. Injected at init so unit
+    /// tests can drive the unavailable branch without a real Apple Intelligence
+    /// entitlement. Production code always uses `SystemAvailabilityProvider.shared`.
+    private let availabilityProvider: any FoundationModelAvailabilityProvider
+
     private func withStateLock<T>(_ body: () throws -> T) rethrows -> T {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -173,7 +178,16 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Init
 
-    public init() {}
+    public init() {
+        self.availabilityProvider = SystemAvailabilityProvider.shared
+    }
+
+    /// Designated init for testing — allows injecting a stub availability provider
+    /// so the unavailable branch in `loadModel` can be exercised without a real
+    /// Apple Intelligence entitlement.
+    init(availabilityProvider: any FoundationModelAvailabilityProvider) {
+        self.availabilityProvider = availabilityProvider
+    }
 
     // MARK: - Test-only accessors
 
@@ -229,6 +243,13 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         SystemLanguageModel.default.availability == .available
     }
 
+    /// Whether the system language model is available according to this backend's
+    /// injected availability provider. Equals `FoundationBackend.isAvailable` in
+    /// production; can differ in tests that inject a stub provider.
+    var isAvailableViaProvider: Bool {
+        availabilityProvider.availability == .available
+    }
+
     /// Probes the model with a minimal request to confirm it can serve inference.
     ///
     /// `isAvailable` can return `true` while the model isn't fully downloaded or
@@ -254,7 +275,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // Plan is informational for Foundation — the system owns all memory.
         unloadModel()
 
-        guard SystemLanguageModel.default.availability == .available else {
+        guard availabilityProvider.availability == .available else {
             throw InferenceError.inferenceFailure(
                 "Apple Intelligence model is not available on this device"
             )
