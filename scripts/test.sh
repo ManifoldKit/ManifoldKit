@@ -239,6 +239,11 @@ if [[ $PARALLEL_MODE -eq 1 ]]; then
     fi
 fi
 
+mcp_test_events=0
+if [[ $MCP_FILTER_REQUESTED -eq 1 ]]; then
+    mcp_test_events=$(grep -cE "(Test Case '-\[ManifoldMCP(E2E)?Tests\.|^\[[0-9]+/[0-9]+\] Testing ManifoldMCP(E2E)?Tests\.)" "$OUTPUT_FILE" || true)
+fi
+
 # Suites that started but never emitted a 'passed' or 'failed' line are crash victims.
 # Exclude the two top-level container lines ("All tests" and the .xctest bundle).
 xctest_suites_started=$(grep "^Test Suite '" "$OUTPUT_FILE" \
@@ -354,6 +359,9 @@ elif [[ $total_crashed_count -gt 0 ]]; then
 elif [[ $SWIFT_EXIT -ne 0 ]]; then
     echo "  RESULT: FAILED (swift test exit code $SWIFT_EXIT)"
     FINAL_EXIT=$SWIFT_EXIT
+elif [[ $MCP_FILTER_REQUESTED -eq 1 && $mcp_test_events -eq 0 ]]; then
+    echo "  RESULT: TRIPWIRE — MCP filter matched 0 MCP test cases; ensure --traits MCP compiled the target"
+    FINAL_EXIT=3
 elif [[ $total_passed -eq 0 && $total_skipped -gt 0 && $total_failed -eq 0 && $total_crashed_count -eq 0 ]]; then
     echo "  RESULT: TRIPWIRE — 0 tests passed, $total_skipped skipped (entire suite silently skipped)"
     FINAL_EXIT=3

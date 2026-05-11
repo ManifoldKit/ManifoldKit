@@ -296,8 +296,8 @@ If you already depend on `ManifoldBackends`, the same data is also available via
 Quick checks:
 
 ```bash
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --skip-update
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCP --skip-update
+scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --traits MCP,MCPBuiltinCatalog --skip-update
 ```
 
 ### 2.2 ManifoldServer
