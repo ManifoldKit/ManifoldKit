@@ -3,6 +3,19 @@ name: Release Please
 on:
   push:
     branches: [main]
+    paths:
+      # Fire only when files that can affect the released version change.
+      # release-please scans full commit history on each run, so skipping
+      # pushes here never causes it to miss a feat:/fix: commit — the next
+      # triggered run sees them all. Excluded: Tests/**, .github/**, scripts/**,
+      # docs/**, README.md, Package.resolved (Dependabot bumps are chore: and
+      # don't bump the version). CHANGELOG.md / version.txt /
+      # .release-please-manifest.json must stay so release-please's own PR
+      # merge triggers the GitHub release tag creation.
+      - "Sources/**"
+      - "CHANGELOG.md"
+      - "version.txt"
+      - ".release-please-manifest.json"
   workflow_dispatch:
 
 permissions:
