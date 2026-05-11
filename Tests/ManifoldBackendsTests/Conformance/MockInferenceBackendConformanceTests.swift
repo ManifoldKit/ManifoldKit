@@ -18,6 +18,7 @@ import ManifoldTestSupport
 ///    family has been called for it, and that explicit
 ///    `claimWithoutBehaviouralAssertion(...)` records do clear the unproven
 ///    bit. Acts as a self-test of the meta-contract bookkeeping itself.
+@MainActor
 final class MockInferenceBackendConformanceTests: XCTestCase {
 
     private let backendName = "MockInferenceBackend"
