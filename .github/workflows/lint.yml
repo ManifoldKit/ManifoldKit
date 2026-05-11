@@ -29,6 +29,26 @@ on:
     branches: [main]
   push:
     branches: [main]
+    paths:
+      # On push to main, only four steps actually run (the rest are gated to
+      # pull_request): actionlint, known-issue-lint, readme-lint, secret-scan.
+      # This filter covers the union of what each step checks so a push that
+      # can't affect any of them (e.g. a Package.resolved Dependabot bump)
+      # doesn't spin up a runner.
+      #
+      #   actionlint          → .github/workflows/**
+      #   known-issue-lint    → Sources/**, Tests/**
+      #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
+      #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
+      #
+      # Package.resolved, Package.swift, docs/**, and unrelated scripts/ changes
+      # are excluded: Dependabot PRs already run the full lint on the PR event.
+      - "Sources/**"
+      - "Tests/**"
+      - ".github/workflows/**"
+      - "README.md"
+      - "version.txt"
+      - "scripts/check-readme.sh"
 
 concurrency:
   # Mirror the per-event/per-ref pattern the originals used so a force-push
