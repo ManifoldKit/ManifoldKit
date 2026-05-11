@@ -255,7 +255,7 @@ jobs:
         # Advanced Security > Dependency graph). Once enabled this should be
         # switched to fail-closed by removing continue-on-error.
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
           vulnerability-check: true
