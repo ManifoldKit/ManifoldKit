@@ -121,20 +121,25 @@ echo
 echo "Indexing with SourceKit-LSP..."
 sourcekit-lsp --scratch-path "$SCRATCH_PATH" debug index --project "$REPO_ROOT" 2>&1 | tee "$LOG_PATH"
 
+REPRODUCED=0
 if grep -Fq "No such module 'ManifoldPersistenceSwiftData'" "$LOG_PATH"; then
+  REPRODUCED=1
   echo
   echo "Reproduced stale SourceKit module diagnostic. See: $LOG_PATH"
-  exit 2
+else
+  echo
+  echo "Did not reproduce the stale module diagnostic in SourceKit-LSP debug index output."
+  echo "If Xcode still shows the diagnostic, capture the long-lived editor state with:"
+  echo "  scripts/sourcekit-stale-module-diagnostics.sh --run --collect-diagnose"
 fi
-
-echo
-echo "Did not reproduce the stale module diagnostic in SourceKit-LSP debug index output."
-echo "If Xcode still shows the diagnostic, capture the long-lived editor state with:"
-echo "  scripts/sourcekit-stale-module-diagnostics.sh --run --collect-diagnose"
 
 if [[ "$COLLECT_DIAGNOSE" -eq 1 ]]; then
   DIAGNOSE_PATH="$SCRATCH_PATH/sourcekit-lsp-diagnose-$(date +%Y%m%d-%H%M%S)"
   echo
   echo "Writing SourceKit-LSP diagnose bundle to $DIAGNOSE_PATH"
   sourcekit-lsp diagnose --components swift-versions --bundle-output-path "$DIAGNOSE_PATH"
+fi
+
+if [[ "$REPRODUCED" -eq 1 ]]; then
+  exit 2
 fi
