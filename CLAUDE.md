@@ -111,6 +111,7 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 | `scripts/clean-build.sh` | Full `.build` wipe + `swift package resolve`. Use when builds fail with "XCFramework Info.plist not found" or other `workspace-state.json` desync errors after changing the trait set. |
 | `scripts/fuzz.sh` | Runs the ManifoldFuzz harness (default: 5 min against Ollama). |
 | `scripts/test-mlx-integration.sh` | Runs `ManifoldMLXIntegrationTests` with discovery env vars patched into `.xctestrun`. Use instead of bare `xcodebuild test`. See #986. |
+| `scripts/test-ios-simulator.sh` | Runs `ModelContainerFileProtectionTests` on an iOS Simulator via xcodebuild. Required because `NSFileProtection*` is an iOS-only kernel feature skipped by the macOS `swift test` lane. |
 
 **SwiftPM local-package consumers need explicit `name:`.** When adding `.package(path: ...)` references (worktrees, cold-start gates, scratch consumers), pass `name: "ManifoldKit"` explicitly — `.package(path:)` derives identity from the last path component, which breaks under non-default checkout paths.
 

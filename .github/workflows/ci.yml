@@ -14,6 +14,7 @@ on:
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
+      - "scripts/test-ios-simulator.sh"
   pull_request:
     branches: [main]
     paths:
@@ -27,6 +28,7 @@ on:
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
+      - "scripts/test-ios-simulator.sh"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -644,3 +646,80 @@ jobs:
       - name: Run FoundationOnly bundle audit
         timeout-minutes: 6
         run: scripts/check-foundation-only-bundle.sh
+
+  # iOS Simulator lane — runs ModelContainerFileProtectionTests on a real iOS
+  # Simulator destination so the four tests guarded by `#if os(iOS)` actually
+  # execute.  NSFileProtectionComplete / NSFileProtectionCompleteUntilFirst-
+  # UserAuthentication are iOS kernel features; the standard macOS `swift test`
+  # lane skips those tests entirely.  Scoped to only the
+  # ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests suite to
+  # keep runtime short.  See scripts/test-ios-simulator.sh for the full rationale.
+  ci-ios-file-protection:
+    runs-on: macos-15  # match the `test` job runner
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect persistence-relevant changes
+        id: persistence-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            persistence:
+              - 'Sources/ManifoldPersistenceSwiftData/**'
+              - 'Tests/ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests.swift'
+              - '.swiftpm/xcode/xcshareddata/xcschemes/ManifoldPersistenceSwiftDataTests.xcscheme'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test-ios-simulator.sh'
+
+      - name: Select Xcode
+        if: steps.persistence-changed.outputs.persistence == 'true'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        if: steps.persistence-changed.outputs.persistence == 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Test — ModelContainerFileProtectionTests (iOS Simulator)
+        id: test-ios-file-protection
+        if: steps.persistence-changed.outputs.persistence == 'true'
+        timeout-minutes: 15
+        run: scripts/test-ios-simulator.sh --ci
+
+      - name: Stage test diagnostics
+        if: failure() && steps.persistence-changed.outputs.persistence == 'true'
+        run: |
+          mkdir -p test-diagnostics
+          {
+            echo "run-id=${{ github.run_id }}"
+            echo "run-attempt=${{ github.run_attempt }}"
+            echo "job=ci-ios-file-protection"
+            echo "test-ios-file-protection-failed=${{ steps.test-ios-file-protection.outcome == 'failure' }}"
+          } > test-diagnostics/failed-steps.txt
+          find "${HOME}/Library/Developer/Xcode/DerivedData" -type d -name "*.xcresult" -maxdepth 6 2>/dev/null \
+            | while read -r r; do cp -R "$r" test-diagnostics/ || true; done
+
+      - name: Upload test diagnostics on failure
+        if: failure() && steps.persistence-changed.outputs.persistence == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcresult-ios-file-protection-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: test-diagnostics/
