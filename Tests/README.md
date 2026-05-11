@@ -81,38 +81,47 @@ If your test hits SwiftData, it's an integration test — name and place it acco
 ## Adding a new backend
 
 1. Implement `InferenceBackend` (and any opt-in protocols) in `Sources/ManifoldBackends/<YourBackend>.swift`.
-2. Add a conformance test class under `Tests/ManifoldBackendsTests/Conformance/<YourBackend>ConformanceTests.swift`. Subclass `XCTestCase` and use the strengthened harness:
+2. Add a conformance test class under `Tests/ManifoldBackendsTests/Conformance/<YourBackend>ConformanceTests.swift`. Subclass `XCTestCase` and opt into the relevant contract mixins:
 
    ```swift
-   override func setUp() {
-       super.setUp()
-       BackendContractChecks.resetCapabilityClaims()
-   }
+   final class YourBackendConformanceTests: XCTestCase,
+                                            BackendContractMixin,
+                                            GrammarFailClosedContractMixin {
+       let contractBackendName = "YourBackend"
 
-   func test_universalInvariants_allPass() {
-       BackendContractChecks.assertAllInvariants(makingBackend: { YourBackend() })
-   }
+       func makeContractBackend() -> YourBackend {
+           YourBackend()
+       }
 
-   func test_grammarFailClosed_throwsUnsupportedGrammar() async throws {
-       try await BackendContractChecks.assertGrammarFailClosedContract(
-           backendName: "YourBackend",
-           makingBackend: { YourBackend() }
-       )
-   }
+       override func setUp() {
+           super.setUp()
+           BackendContractChecks.resetCapabilityClaims()
+       }
 
-   // …other per-capability assertions…
+       func test_universalInvariants_allPass() {
+           assertUniversalBackendContract()
+       }
 
-   func test_metaContract() {
-       BackendContractChecks.assertCapabilityMetaContract(
-           backendName: "YourBackend",
-           capabilities: YourBackend().capabilities
-       )
+       @MainActor
+       func test_grammarFailClosed_throwsUnsupportedGrammar() async throws {
+           try await assertGrammarFailClosedContract()
+       }
+
+       // …other per-capability assertions…
+
+       func test_metaContract() {
+           BackendContractChecks.assertCapabilityMetaContract(
+               backendName: "YourBackend",
+               capabilities: YourBackend().capabilities
+           )
+       }
    }
    ```
 
-3. Every `true` capability flag your backend declares must have at least one assertion family that records a claim against it (or call `claimWithoutBehaviouralAssertion(...)` as a temporary bootstrap — file the follow-up issue).
-4. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
-5. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
+3. If the backend adopts an opt-in protocol, add the matching mixin (`ConversationHistoryReceiverContractMixin`, `StructuredHistoryReceiverContractMixin`, etc.) and a concrete `test_…` method that calls its assertion helper. Protocol-extension methods are not XCTest-discoverable on their own.
+4. Every `true` capability flag your backend declares must have at least one assertion family that records a claim against it (or call `claimWithoutBehaviouralAssertion(...)` as a temporary bootstrap — file the follow-up issue).
+5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
+6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
 
 The full assertion shape is documented in `Tests/ManifoldBackendsTests/BackendContractTests.swift`.
 

@@ -19,9 +19,18 @@ import ManifoldTestSupport
 ///    `claimWithoutBehaviouralAssertion(...)` records do clear the unproven
 ///    bit. Acts as a self-test of the meta-contract bookkeeping itself.
 @MainActor
-final class MockInferenceBackendConformanceTests: XCTestCase {
+final class MockInferenceBackendConformanceTests: XCTestCase,
+                                                 BackendContractMixin,
+                                                 GrammarFailClosedContractMixin,
+                                                 ConversationHistoryReceiverContractMixin,
+                                                 StructuredHistoryReceiverContractMixin {
 
     private let backendName = "MockInferenceBackend"
+    let contractBackendName = "MockInferenceBackend"
+
+    func makeContractBackend() -> MockInferenceBackend {
+        MockInferenceBackend()
+    }
 
     override func setUp() {
         super.setUp()
@@ -34,7 +43,7 @@ final class MockInferenceBackendConformanceTests: XCTestCase {
     // MARK: - Universal invariants
 
     func test_universalInvariants_allPass() {
-        BackendContractChecks.assertAllInvariants(makingBackend: { MockInferenceBackend() })
+        assertUniversalBackendContract()
     }
 
     // MARK: - False-claim family: grammar fail-closed
@@ -52,16 +61,24 @@ final class MockInferenceBackendConformanceTests: XCTestCase {
     ///       capabilities; the early-return inside the assertion family fires
     ///       and the test correctly skips the throw assertion (claim is
     ///       still recorded, so meta-contract still satisfied).
+    @MainActor
     func test_grammarFailClosed_throwsUnsupportedGrammar() async throws {
-        try await BackendContractChecks.assertGrammarFailClosedContract(
-            backendName: backendName,
-            makingBackend: { MockInferenceBackend() }
-        )
+        try await assertGrammarFailClosedContract()
         // Claim recorded.
         XCTAssertTrue(
             BackendContractChecks.capturedClaims().contains("\(backendName)::supportsGrammarConstrainedSampling"),
             "assertGrammarFailClosedContract must record the capability claim"
         )
+    }
+
+    // MARK: - Opt-in protocol contracts
+
+    func test_conversationHistoryReceiverContract_replacesHistory() {
+        assertConversationHistoryReceiverContract(readHistory: \.lastReceivedHistory)
+    }
+
+    func test_structuredHistoryReceiverContract_replacesHistory() {
+        assertStructuredHistoryReceiverContract(readHistory: \.lastReceivedStructuredHistory)
     }
 
     // MARK: - Meta-contract self-tests
