@@ -388,9 +388,12 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             // consumed.  In the last case the session is "dirty" — LanguageModelSession
             // asserts (SIGTRAP) if streamResponse() is called on a session whose
             // previous ResponseStream iterator was dropped before returning nil.
-            let needsNewSession = session == nil
-                || effectiveInstructions != currentSystemPrompt
-                || !_sessionIsClean
+            let needsNewSession = needsNewFoundationSession(
+                sessionExists: session != nil,
+                currentInstructions: currentSystemPrompt,
+                newInstructions: effectiveInstructions,
+                isClean: _sessionIsClean
+            )
             if needsNewSession {
                 if let effectiveInstructions, !effectiveInstructions.isEmpty {
                     session = LanguageModelSession(instructions: effectiveInstructions)
@@ -697,4 +700,29 @@ struct FoundationTokenizer: TokenizerProvider {
         max(1, text.count / 3)
     }
 }
+
+// MARK: - Session predicate
+
+/// Returns `true` when `generate()` must allocate a fresh `LanguageModelSession`.
+///
+/// Extracted as a file-private pure function so tests can cover all four branches
+/// without requiring a real Apple Intelligence entitlement.
+///
+/// - Parameters:
+///   - sessionExists: Whether a session has already been created.
+///   - currentInstructions: The instructions that were used to create the current session.
+///   - newInstructions: The instructions required for the upcoming generation turn.
+///   - isClean: `true` when the current session's `ResponseStream` was fully consumed
+///     (iterator returned `nil`). `false` means the stream was abandoned mid-flight;
+///     reusing it would cause `LanguageModelSession` to SIGTRAP on the next
+///     `streamResponse()` call.
+func needsNewFoundationSession(
+    sessionExists: Bool,
+    currentInstructions: String?,
+    newInstructions: String?,
+    isClean: Bool
+) -> Bool {
+    !sessionExists || currentInstructions != newInstructions || !isClean
+}
+
 #endif
