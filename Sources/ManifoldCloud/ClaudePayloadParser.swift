@@ -126,6 +126,11 @@ enum ClaudePayloadParser {
         return type == "message_stop"
     }
 
+    struct CacheUsage {
+        let cacheCreationInputTokens: Int
+        let cacheReadInputTokens: Int
+    }
+
     static func parseUsage(from json: String) -> (promptTokens: Int?, completionTokens: Int?)? {
         guard let parsed = parseObject(json),
               let type = parsed["type"] as? String else {
@@ -149,6 +154,26 @@ enum ClaudePayloadParser {
         default:
             return nil
         }
+    }
+
+    /// Parses Anthropic prompt-cache token counts from a `message_start` payload.
+    ///
+    /// Both fields default to 0 when absent — an absent field means no cache
+    /// activity occurred, not a parse failure, so we treat them as optional
+    /// with a zero fallback rather than nil-gating the whole result.
+    static func parseCacheUsage(from json: String) -> CacheUsage? {
+        guard let parsed = parseObject(json),
+              parsed["type"] as? String == "message_start",
+              let message = parsed["message"] as? [String: Any],
+              let usage = message["usage"] as? [String: Any] else {
+            return nil
+        }
+        let creation = usage["cache_creation_input_tokens"] as? Int ?? 0
+        let read = usage["cache_read_input_tokens"] as? Int ?? 0
+        // Only materialise a CacheUsage when there is actual cache activity to
+        // report — avoids a debug log on every non-cached turn.
+        guard creation > 0 || read > 0 else { return nil }
+        return CacheUsage(cacheCreationInputTokens: creation, cacheReadInputTokens: read)
     }
 
     static func parseStreamError(from json: String) -> CloudBackendError? {
