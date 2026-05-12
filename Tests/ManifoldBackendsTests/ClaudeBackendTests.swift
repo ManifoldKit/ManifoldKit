@@ -421,4 +421,82 @@ extension ClaudeBackendTests {
     }
 }
 
+// MARK: - HTTP 529 providerOverloaded
+
+extension ClaudeBackendTests {
+
+    /// Claude returns HTTP 529 when it is temporarily at capacity.
+    /// The backend must route this to `.providerOverloaded` — not the
+    /// generic `serverError` bucket — so callers can apply purpose-built
+    /// backoff rather than treating it as an opaque 5xx.
+    func test_529_throwsProviderOverloaded() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let backend = ClaudeBackend(urlSession: session)
+        // Disable retries so the error surfaces immediately.
+        backend.retryStrategy = ExponentialBackoffStrategy(maxRetries: 0)
+        let url = URL(string: "https://claude-529-\(UUID().uuidString).test")!
+        backend.configure(baseURL: url, apiKey: "sk-ant-test", modelName: "claude-sonnet-4-20250514")
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        MockURLProtocol.stub(url: url, response: .immediate(data: Data(), statusCode: 529))
+        defer { MockURLProtocol.unstub(url: url) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        do {
+            for try await _ in stream.events {}
+            XCTFail("Expected providerOverloaded error for HTTP 529")
+        } catch {
+            guard let cloudError = extractCloudError(error) else {
+                XCTFail("Expected CloudBackendError, got \(error)")
+                return
+            }
+            if case .providerOverloaded(let provider, _) = cloudError {
+                XCTAssertEqual(provider, "Claude",
+                               "529 must surface as providerOverloaded with provider='Claude'")
+            } else {
+                XCTFail("Expected .providerOverloaded for HTTP 529, got \(cloudError)")
+            }
+        }
+    }
+
+    /// Sabotage check: a 503 must NOT become providerOverloaded — it must remain
+    /// the generic serverError so 529 routing stays narrow.
+    func test_503_doesNotThrowProviderOverloaded() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let backend = ClaudeBackend(urlSession: session)
+        backend.retryStrategy = ExponentialBackoffStrategy(maxRetries: 0)
+        let url = URL(string: "https://claude-503-\(UUID().uuidString).test")!
+        backend.configure(baseURL: url, apiKey: "sk-ant-test", modelName: "claude-sonnet-4-20250514")
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        MockURLProtocol.stub(url: url, response: .immediate(
+            data: Data(#"{"error":{"message":"service unavailable"}}"#.utf8),
+            statusCode: 503
+        ))
+        defer { MockURLProtocol.unstub(url: url) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        do {
+            for try await _ in stream.events {}
+            XCTFail("Expected serverError for HTTP 503")
+        } catch {
+            guard let cloudError = extractCloudError(error) else {
+                XCTFail("Expected CloudBackendError, got \(error)")
+                return
+            }
+            if case .providerOverloaded = cloudError {
+                XCTFail("503 must not surface as providerOverloaded — that path is reserved for 529")
+            } else if case .serverError(let code, _) = cloudError {
+                XCTAssertEqual(code, 503)
+            }
+            // Any non-providerOverloaded error is acceptable — the important
+            // thing is that 503 is not mis-classified as providerOverloaded.
+        }
+    }
+}
+
 #endif
