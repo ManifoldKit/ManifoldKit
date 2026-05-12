@@ -62,6 +62,17 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
     /// Per-task hop counters keyed by `URLSessionTask.taskIdentifier`.
     private var hopCounts: [Int: Int] = [:]
 
+    // MARK: - Testing seam
+
+    /// Overrides the synchronous hostname resolver used by ``blockedHostReason(for:)``.
+    ///
+    /// `nil` (the default) uses the real `getaddrinfo` resolver. Set this in
+    /// tests to inject deterministic address lists. Return `nil` to simulate
+    /// resolution failure (the redirect will be blocked).
+    ///
+    /// - Warning: For testing only. Reset to `nil` in `tearDown`.
+    nonisolated(unsafe) static var _synchronousResolverForTesting: ((String) -> [String]?)? = nil
+
     // MARK: - Init
 
     /// Creates a redirect guard with the given hop cap.
@@ -224,7 +235,12 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
         }
 
         // DNS hostname — resolve synchronously and reject on any blocked address.
-        for address in resolveSynchronously(host) {
+        // Nil return means resolution failed; block the redirect rather than
+        // falling through (same TTL-0 bypass risk as in DNSRebindingGuard).
+        guard let addresses = resolveSynchronously(host) else {
+            return "could not resolve hostname '\(host)'"
+        }
+        for address in addresses {
             if let category = PrivateIPClassifier.classifyIPLiteral(address) {
                 return "host \(host) resolved to \(address) (\(category))"
             }
@@ -232,10 +248,12 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
         return nil
     }
 
-    /// Synchronous `getaddrinfo` wrapper. Returns an empty array on
-    /// resolution failure — the subsequent connection attempt will produce
-    /// the appropriate network error itself.
-    static func resolveSynchronously(_ hostname: String) -> [String] {
+    /// Synchronous `getaddrinfo` wrapper. Returns `nil` on resolution failure;
+    /// callers treat `nil` as a block rather than failing open.
+    static func resolveSynchronously(_ hostname: String) -> [String]? {
+        if let override = _synchronousResolverForTesting {
+            return override(hostname)
+        }
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
         hints.ai_socktype = SOCK_STREAM
@@ -246,7 +264,7 @@ public final class RedirectGuardDelegate: NSObject, URLSessionTaskDelegate, @unc
 
         guard getaddrinfo(hostname, nil, &hints, &result) == 0,
               result != nil else {
-            return []
+            return nil
         }
 
         var addresses: [String] = []

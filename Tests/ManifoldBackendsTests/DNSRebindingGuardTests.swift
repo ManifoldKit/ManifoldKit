@@ -173,13 +173,31 @@ final class DNSRebindingGuardTests: XCTestCase {
         }
     }
 
-    // MARK: - Resolution Failure (fail-open)
+    // MARK: - Resolution Failure (fail-closed)
 
-    func test_unresolvedHostname_failsOpen() async throws {
-        // If DNS resolution fails (NXDOMAIN, network error), the guard fails open
-        // so the subsequent URLSession connection produces the right error.
+    func test_unresolvedHostname_isBlocked() async {
+        // Resolution failure must block — an attacker can arrange SERVFAIL for
+        // the guard's query, then serve a private IP to URLSession's next
+        // resolver query (TTL-0 / SERVFAIL pattern), bypassing the guard if it
+        // fails open. Sabotage: returning [] (not nil) here causes this to pass,
+        // exposing the bypass.
+        DNSRebindingGuard._resolverForTesting = { _ in nil }
+        await assertBlocked(url: "https://does-not-exist.invalid/api")
+    }
+
+    func test_nodataResolution_passes() async throws {
+        // A seam returning [] means "resolved successfully but no addresses" —
+        // no blocked address was found, so the guard passes.
+        // (In production getaddrinfo never returns success with zero addresses,
+        // but the seam distinguishes NODATA from failure explicitly.)
         DNSRebindingGuard._resolverForTesting = { _ in [] }
-        try await DNSRebindingGuard.validate(url: URL(string: "https://does-not-exist.invalid/api")!)
+        try await DNSRebindingGuard.validate(url: URL(string: "https://api.example.com/v1")!)
+    }
+
+    func test_hostlessURL_isBlocked() async {
+        // A URL with no host (e.g. file://, data:) must not silently pass.
+        // Sabotage: changing `throw` to `return` in the guard lets these through.
+        await assertBlocked(url: "file:///etc/passwd")
     }
 
     // MARK: - Helpers
