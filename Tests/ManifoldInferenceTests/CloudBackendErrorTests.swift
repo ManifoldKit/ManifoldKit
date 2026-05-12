@@ -141,4 +141,116 @@ final class CloudBackendErrorTests: XCTestCase {
         XCTAssertNotNil(error.errorDescription)
         XCTAssertFalse(error.errorDescription?.isEmpty ?? true)
     }
+
+    // MARK: - New cases: quotaExceeded / providerOverloaded / contentFiltered
+
+    func test_quotaExceeded_description_includesProvider() {
+        let error = CloudBackendError.quotaExceeded(provider: "Claude")
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("Claude"),
+                      "quotaExceeded should mention the provider: \(description)")
+        XCTAssertTrue(description.lowercased().contains("quota") || description.lowercased().contains("billing"),
+                      "quotaExceeded should mention quota or billing: \(description)")
+    }
+
+    func test_quotaExceeded_isNotRetryable() {
+        // Billing cap: the user must act; retrying within the same period won't help.
+        // Sabotage check: moving quotaExceeded into the retryable arm would flip this.
+        XCTAssertFalse(CloudBackendError.quotaExceeded(provider: "Claude").isRetryable,
+                       "quotaExceeded must not be retryable — user action required")
+    }
+
+    func test_providerOverloaded_description_withRetryAfter() {
+        let error = CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: 15)
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("Claude"),
+                      "providerOverloaded should mention the provider: \(description)")
+        XCTAssertTrue(description.contains("15"),
+                      "providerOverloaded should include the retry delay: \(description)")
+    }
+
+    func test_providerOverloaded_description_withoutRetryAfter() {
+        let error = CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: nil)
+        let description = error.errorDescription ?? ""
+        XCTAssertFalse(description.isEmpty,
+                       "providerOverloaded should have a description even without retryAfter")
+    }
+
+    func test_providerOverloaded_isRetryable() {
+        // Provider at capacity is transient — exponential backoff should help.
+        // Sabotage check: removing providerOverloaded from the retryable arm flips this.
+        XCTAssertTrue(CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: nil).isRetryable,
+                      "providerOverloaded must be retryable — capacity issues are transient")
+    }
+
+    func test_contentFiltered_description_withReason() {
+        let error = CloudBackendError.contentFiltered(provider: "Claude", reason: "violence")
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("Claude"),
+                      "contentFiltered should mention the provider: \(description)")
+        XCTAssertTrue(description.contains("violence"),
+                      "contentFiltered should include the reason: \(description)")
+    }
+
+    func test_contentFiltered_description_withoutReason() {
+        let error = CloudBackendError.contentFiltered(provider: "OpenAI", reason: nil)
+        let description = error.errorDescription ?? ""
+        XCTAssertTrue(description.contains("OpenAI"),
+                      "contentFiltered should mention the provider when no reason: \(description)")
+    }
+
+    func test_contentFiltered_isNotRetryable() {
+        // Content must change for the request to succeed — retrying the same prompt won't help.
+        // Sabotage check: adding contentFiltered to the retryable arm flips this.
+        XCTAssertFalse(CloudBackendError.contentFiltered(provider: "Claude", reason: nil).isRetryable,
+                       "contentFiltered must not be retryable — content must change")
+    }
+
+    // MARK: - CategorizedError conformance
+
+    func test_category_rateLimited_passesRetryAfter() {
+        let error = CloudBackendError.rateLimited(retryAfter: 30)
+        XCTAssertEqual(error.category, .rateLimited(retryAfter: 30),
+                       "rateLimited category must preserve the retryAfter value")
+    }
+
+    func test_category_rateLimited_nilRetryAfter() {
+        let error = CloudBackendError.rateLimited(retryAfter: nil)
+        XCTAssertEqual(error.category, .rateLimited(retryAfter: nil))
+    }
+
+    func test_category_quotaExceeded() {
+        let error = CloudBackendError.quotaExceeded(provider: "Claude")
+        XCTAssertEqual(error.category, .quotaExceeded)
+    }
+
+    func test_category_providerOverloaded_passesRetryAfter() {
+        let error = CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: nil)
+        XCTAssertEqual(error.category, .providerOverloaded(retryAfter: nil),
+                       "providerOverloaded category must preserve the retryAfter value")
+    }
+
+    func test_category_authenticationFailed() {
+        XCTAssertEqual(CloudBackendError.authenticationFailed(provider: "Claude").category, .authenticationFailed)
+        XCTAssertEqual(CloudBackendError.missingAPIKey.category, .authenticationFailed)
+    }
+
+    func test_category_contentFiltered() {
+        let error = CloudBackendError.contentFiltered(provider: "Claude", reason: nil)
+        XCTAssertEqual(error.category, .contentFiltered)
+    }
+
+    func test_category_networkErrors_areRetryableTransient() {
+        XCTAssertEqual(CloudBackendError.networkError(underlying: URLError(.notConnectedToInternet)).category, .retryableTransient)
+        XCTAssertEqual(CloudBackendError.streamInterrupted.category, .retryableTransient)
+        XCTAssertEqual(CloudBackendError.timeout(.seconds(30)).category, .retryableTransient)
+    }
+
+    func test_category_5xxServerError_isRetryableTransient() {
+        XCTAssertEqual(CloudBackendError.serverError(statusCode: 503, message: "unavailable").category, .retryableTransient)
+    }
+
+    func test_category_4xxServerError_isNonRetryable() {
+        XCTAssertEqual(CloudBackendError.serverError(statusCode: 400, message: "bad request").category, .nonRetryable)
+    }
 }

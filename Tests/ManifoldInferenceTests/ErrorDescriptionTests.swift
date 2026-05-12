@@ -120,4 +120,59 @@ final class ErrorDescriptionTests: XCTestCase {
         // The cast succeeds if CloudBackendError conforms to BackendError.
         XCTAssertTrue(error is CloudBackendError)
     }
+
+    // MARK: - InferenceErrorCategory (InferenceError)
+
+    func test_inferenceError_contextExhausted_category_isContextExceeded() {
+        let error = InferenceError.contextExhausted(promptTokens: 1000, maxOutputTokens: 100, contextSize: 512)
+        XCTAssertEqual(error.category, .contextExceeded,
+                       "contextExhausted must map to .contextExceeded — callers branch on this to offer compression")
+    }
+
+    func test_inferenceError_unsupportedModelArchitecture_category_isUnsupportedRequest() {
+        let error = InferenceError.unsupportedModelArchitecture("clip")
+        XCTAssertEqual(error.category, .unsupportedRequest)
+    }
+
+    func test_inferenceError_unsupportedGrammar_category_isUnsupportedRequest() {
+        let error = InferenceError.unsupportedGrammar(reason: "backend lacks GBNF support")
+        XCTAssertEqual(error.category, .unsupportedRequest)
+    }
+
+    func test_inferenceError_noBackendSatisfiesRequirements_category_isUnsupportedRequest() {
+        let error = InferenceError.noBackendSatisfiesRequirements([.toolCalling])
+        XCTAssertEqual(error.category, .unsupportedRequest)
+    }
+
+    func test_inferenceError_alreadyGenerating_category_isRetryableTransient() {
+        // The caller can wait for the active generation to finish and retry.
+        // Sabotage check: moving alreadyGenerating to .nonRetryable flips this.
+        XCTAssertEqual(InferenceError.alreadyGenerating.category, .retryableTransient,
+                       "alreadyGenerating must be retryableTransient — the caller should wait and retry")
+    }
+
+    func test_inferenceError_permanentErrors_category_isNonRetryable() {
+        let permanentErrors: [InferenceError] = [
+            .modelNotFound(path: "/missing.gguf"),
+            .modelLoadFailed(underlying: NSError(domain: "test", code: 1)),
+            .inferenceFailure("crash"),
+            .memoryInsufficient(required: 8_589_934_592, available: 0),
+            .generationError("decode error"),
+        ]
+        for error in permanentErrors {
+            XCTAssertEqual(error.category, .nonRetryable,
+                           "\(error) must map to .nonRetryable")
+        }
+    }
+
+    func test_inferenceError_conformsToCategorizedError() {
+        // Protocol conformance is verified via protocol existential.
+        let error: any CategorizedError = InferenceError.alreadyGenerating
+        XCTAssertNotNil(error.category as InferenceErrorCategory?)
+    }
+
+    func test_cloudBackendError_conformsToCategorizedError() {
+        let error: any CategorizedError = CloudBackendError.missingAPIKey
+        XCTAssertNotNil(error.category as InferenceErrorCategory?)
+    }
 }

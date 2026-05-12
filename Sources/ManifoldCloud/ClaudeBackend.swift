@@ -492,6 +492,14 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             let retryAfter = response.value(forHTTPHeaderField: "Retry-After")
                 .flatMap { TimeInterval($0) }
             throw CloudBackendError.rateLimited(retryAfter: retryAfter)
+        case 529:
+            // Claude-specific "overloaded" status — provider is temporarily at
+            // capacity. Distinct from 503 Service Unavailable; signals a known
+            // operational state rather than a generic server fault, so callers
+            // can apply purpose-built backoff rather than the generic 5xx path.
+            let retryAfter = response.value(forHTTPHeaderField: "Retry-After")
+                .flatMap { TimeInterval($0) }
+            throw CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: retryAfter)
         default:
             let errorBody = await Self.readErrorBody(from: bytes)
             Log.network.debug("Claude upstream error body: \(errorBody, privacy: .private)")

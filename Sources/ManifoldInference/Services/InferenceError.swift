@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors that can occur during model loading and inference.
-public enum InferenceError: LocalizedError {
+public enum InferenceError: LocalizedError, CategorizedError {
     case modelNotFound(path: String)
     case modelLoadFailed(underlying: Error)
     case inferenceFailure(String)
@@ -58,6 +58,24 @@ public enum InferenceError: LocalizedError {
             }
             let names = unmet.map { String(describing: $0) }.joined(separator: ", ")
             return "No wired backend satisfies the request's required capabilities: \(names)."
+        }
+    }
+
+    // MARK: - CategorizedError
+
+    public var category: InferenceErrorCategory {
+        switch self {
+        case .contextExhausted:
+            return .contextExceeded
+        case .unsupportedModelArchitecture, .unsupportedGrammar:
+            return .unsupportedRequest
+        case .noBackendSatisfiesRequirements:
+            return .unsupportedRequest
+        case .alreadyGenerating:
+            return .retryableTransient
+        case .modelNotFound, .modelLoadFailed, .inferenceFailure,
+             .memoryInsufficient, .generationError:
+            return .nonRetryable
         }
     }
 
