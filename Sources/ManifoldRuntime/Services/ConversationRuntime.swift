@@ -43,6 +43,24 @@ public final class ConversationRuntime: Sendable {
     // MARK: Ports
 
     private let inferenceService: InferenceService
+
+    /// Optional auxiliary backend for framework-internal classification tasks
+    /// (title generation, compression routing). When set, these cheap tasks
+    /// run against this service instead of the primary ``inferenceService``,
+    /// leaving the user's chosen model free for real conversation turns.
+    ///
+    /// Host apps can inject a `FoundationBackend`-backed service here on
+    /// iOS 26+ / macOS 26+ where on-device inference is free and low-latency.
+    /// `ManifoldBootstrap` wires this automatically when the platform supports it.
+    public let auxiliaryInferenceService: InferenceService?
+
+    /// Returns ``auxiliaryInferenceService`` when set, otherwise the primary
+    /// ``inferenceService``. Used internally for classification tasks that do
+    /// not belong on the user's chosen model (title generation, compression).
+    public var classificationService: InferenceService {
+        auxiliaryInferenceService ?? inferenceService
+    }
+
     private let executor: ConversationTurnExecutor
 
     // MARK: Event stream
@@ -98,7 +116,8 @@ public final class ConversationRuntime: Sendable {
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
-        ragService: RAGService? = nil
+        ragService: RAGService? = nil,
+        auxiliaryInferenceService: InferenceService? = nil
     ) {
         self.init(
             messageStore: messageStore,
@@ -106,6 +125,7 @@ public final class ConversationRuntime: Sendable {
             inferenceService: inferenceService,
             pipeline: pipeline,
             ragService: ragService,
+            auxiliaryInferenceService: auxiliaryInferenceService,
             emptyResponseObserver: nil
         )
     }
@@ -119,9 +139,11 @@ public final class ConversationRuntime: Sendable {
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
         ragService: RAGService? = nil,
+        auxiliaryInferenceService: InferenceService? = nil,
         emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
     ) {
         self.inferenceService = inferenceService
+        self.auxiliaryInferenceService = auxiliaryInferenceService
         let persistence = ConversationPersistencePort(
             messageStore: messageStore,
             sessionStore: sessionStore

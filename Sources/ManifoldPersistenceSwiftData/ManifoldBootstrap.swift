@@ -185,6 +185,11 @@ public final class ManifoldBootstrap {
             }
             self.ragService = resolvedRAGService
 
+            // ManifoldPersistenceSwiftData does not depend on ManifoldFoundation,
+            // so FoundationBackend cannot be instantiated here directly. Host apps
+            // that run on iOS 26+ / macOS 26+ can wire their own auxiliary service
+            // via the `auxiliaryInferenceService:` parameter on ConversationRuntime.
+            // See ManifoldFoundation.FoundationBackend for the recommended setup.
             self.conversationRuntime = ConversationRuntime(
                 messageStore: resolvedPersistence,
                 sessionStore: resolvedPersistence,
