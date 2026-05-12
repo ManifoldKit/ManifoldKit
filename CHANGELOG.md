@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.25.0](https://github.com/roryford/ManifoldKit/compare/v0.24.0...v0.25.0) (2026-05-12)
+
+
+### Features
+
+* **cloud:** set Anthropic prompt-cache breakpoints in ClaudeBackend ([419df1b](https://github.com/roryford/ManifoldKit/commit/419df1b57f653023ca1abe0c66bd850a3b101d95))
+* **inference:** unified error category surface across InferenceError + CloudBackendError ([5733eb8](https://github.com/roryford/ManifoldKit/commit/5733eb83fdda2de508aaa9db745ba8a08b203f52)), closes [#1206](https://github.com/roryford/ManifoldKit/issues/1206)
+* **runtime:** auxiliary backend slot for framework-internal classification calls ([3d0d58d](https://github.com/roryford/ManifoldKit/commit/3d0d58d5f1c558693718642756669427991b0777)), closes [#1208](https://github.com/roryford/ManifoldKit/issues/1208)
+* **runtime:** UsageStore port + per-turn token accounting ([9579aab](https://github.com/roryford/ManifoldKit/commit/9579aab9f7d1227942e81ba17ff9165e1c111682))
+
+
+### Bug Fixes
+
+* close DNS rebinding guard fail-open and hostless URL bypass ([0a736b8](https://github.com/roryford/ManifoldKit/commit/0a736b89bb793c938e84497337baef3e7133f91b))
+* extract needsFoundationSession predicate for CI testability ([f1c97ff](https://github.com/roryford/ManifoldKit/commit/f1c97ff244b1fa39200396fb599745dec450a5a5))
+* guard OllamaBackend.effectiveNumCtx with stateLock ([cc2f930](https://github.com/roryford/ManifoldKit/commit/cc2f93030a8f585e61731d17b3e17d399654c58e))
+* persist tool-only assistant turns on cancellation ([1a0a917](https://github.com/roryford/ManifoldKit/commit/1a0a917d3c215b1c3ffbbcc74c1cfe6368f4ffad))
+
 ## [0.24.0](https://github.com/roryford/ManifoldKit/compare/v0.23.1...v0.24.0) (2026-05-11)
 
 
