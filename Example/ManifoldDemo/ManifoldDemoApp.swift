@@ -377,7 +377,11 @@ struct ManifoldDemoApp: App {
         vm.configure(runtime: runtime)
         sessionManager.configure(runtime: runtime)
         modelManagementViewModel.benchmarkCache = runtime.benchmarkCache
-        vm.onFirstMessage = { [inferenceService, weak vm] session, text in
+        // Use the runtime's classificationService so title generation routes
+        // to the auxiliary backend (FoundationBackend on iOS 26+/macOS 26+)
+        // rather than the user's chosen chat model.
+        let classificationService = runtime.conversationRuntime.classificationService
+        vm.onFirstMessage = { [classificationService, weak vm] session, text in
             guard let vm else { return }
             Task { @MainActor in
                 while vm.isGenerating {
@@ -386,7 +390,7 @@ struct ManifoldDemoApp: App {
                 await sessionManager.autoRenameSession(
                     session,
                     firstMessage: text,
-                    inferenceService: inferenceService
+                    inferenceService: classificationService
                 )
             }
         }
