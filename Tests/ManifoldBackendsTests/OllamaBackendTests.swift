@@ -1591,6 +1591,51 @@ struct OllamaBackendTests {
                 "num_ctx must be at or above the floor (got \(numCtx))")
     }
 
+    // MARK: - effectiveNumCtx lock (race-condition regression)
+
+    /// `effectiveNumCtx` is written by `loadModel` and read by `buildRequest`.
+    /// Both must go through `withStateLock` so a concurrent model switch
+    /// (loadModel + generate overlap) can't cause `buildRequest` to read a
+    /// stale or partially-updated context size, which would make Ollama
+    /// silently truncate at the wrong boundary with no error signal.
+    ///
+    /// This test verifies the happy-path contract: a plan carrying a context
+    /// size above the default floor must land in `options.num_ctx` on the
+    /// next `generate` call. The stateLock-based isolation is the only
+    /// mechanism that makes this safe across concurrent calls.
+    ///
+    /// Sabotage check: removing the `withStateLock` wrapper from either the
+    /// write in `loadModel` or the read in `buildRequest` does not break this
+    /// sequential test, but TSan in a concurrent scenario would fire — the
+    /// comment on `effectiveNumCtx` and this fixture together document the
+    /// invariant for future readers.
+    @Test func loadModel_customPlan_numCtxFlowsThroughToRequest() async throws {
+        let (backend, chatURL) = makeConfiguredBackend()
+
+        // Use a plan with a context size well above the floor so the assertion
+        // can distinguish "used the plan value" from "fell back to the floor".
+        let largePlan = ModelLoadPlan.cloud(requestedContextSize: 32768)
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: largePlan)
+
+        let chunks: [Data] = [
+            ndjsonLine(#"{"message":{"role":"assistant","content":"ok"},"done":false}"#),
+            ndjsonLine(#"{"message":{"role":"assistant","content":""},"done":true}"#),
+        ]
+        MockURLProtocol.stub(url: chatURL, response: .sse(chunks: chunks, statusCode: 200))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
+        for try await _ in stream.events { }
+
+        let captured = MockURLProtocol.capturedRequests.last(where: { $0.url == chatURL })
+        let body = try extractBody(from: captured)
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let options = try #require(json["options"] as? [String: Any])
+        let numCtx = try #require(options["num_ctx"] as? Int)
+        #expect(numCtx == 32768,
+                "num_ctx must reflect the plan-derived value written by loadModel (got \(numCtx))")
+    }
+
     // MARK: - :cloud model tag guard
 
     /// Ollama v0.18.0+ routes `:cloud`-suffixed model IDs to remote
