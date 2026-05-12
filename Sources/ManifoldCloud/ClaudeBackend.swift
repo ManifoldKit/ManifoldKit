@@ -30,6 +30,21 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         )
     }
 
+    // MARK: - Prompt Cache Policy
+
+    private var _cachePolicy: PromptCachePolicy = .automatic
+
+    /// Controls whether Anthropic prompt-cache breakpoints are inserted into
+    /// outbound requests. Defaults to `.automatic`, which tags the system
+    /// prompt block and the last tool definition with
+    /// `cache_control: {type: "ephemeral"}` — reducing repeat-turn input costs
+    /// by 4–10× for large system prompts or tool catalogs. Set to `.disabled`
+    /// to restore pre-0.25.0 behaviour.
+    public var cachePolicy: PromptCachePolicy {
+        get { withStateLock { _cachePolicy } }
+        set { withStateLock { _cachePolicy = newValue } }
+    }
+
     // MARK: - Structured History
 
     /// Structured replay history. Set by the coordinator when the caller
@@ -240,8 +255,25 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             "top_p": config.topP
         ]
 
+        // Snapshot cache policy under the lock once so the rest of the build
+        // is consistent even if another thread toggles it concurrently.
+        let resolvedCachePolicy = withStateLock { _cachePolicy }
+
         if let systemPrompt, !systemPrompt.isEmpty {
-            body["system"] = systemPrompt
+            if resolvedCachePolicy == .automatic {
+                // Emit as a single-element content-block array so Anthropic can
+                // cache the entire prefix up to and including this block. The
+                // plain-string form has no slot for cache_control.
+                body["system"] = [
+                    [
+                        "type": "text",
+                        "text": systemPrompt,
+                        "cache_control": ["type": "ephemeral"],
+                    ] as [String: Any]
+                ]
+            } else {
+                body["system"] = systemPrompt
+            }
         }
 
         // Enable extended thinking when the caller asked for a thinking budget.
@@ -264,7 +296,16 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // Anthropic's side; the framework-level `.none` suppresses the
         // tools field entirely so the model has nothing to call.
         if !config.tools.isEmpty, config.toolChoice != .none {
-            body["tools"] = config.tools.map(ClaudeMessageEncoder.encodeToolDefinition)
+            var toolEntries = config.tools.map(ClaudeMessageEncoder.encodeToolDefinition)
+            // Tag the last tool entry with cache_control when automatic so
+            // Anthropic caches the entire system+tools prefix. The breakpoint
+            // applies to the last block in the tagged sequence — tagging every
+            // entry would create redundant breakpoints and potentially conflict
+            // with the system-prompt breakpoint already set above.
+            if resolvedCachePolicy == .automatic, !toolEntries.isEmpty {
+                toolEntries[toolEntries.count - 1]["cache_control"] = ["type": "ephemeral"]
+            }
+            body["tools"] = toolEntries
             switch config.toolChoice {
             case .auto:
                 // Anthropic defaults to auto when tool_choice is omitted.
@@ -442,6 +483,15 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                        let completion = usage.completionTokens {
                         continuation.yield(.usage(prompt: prompt, completion: completion))
                     }
+                }
+
+                // Log prompt-cache activity from the message_start event so
+                // operators can verify that breakpoints are being hit without
+                // needing a structured extension to TokenUsage.
+                if let cacheUsage = ClaudePayloadParser.parseCacheUsage(from: payload) {
+                    Log.inference.debug(
+                        "Claude prompt cache: creation=\(cacheUsage.cacheCreationInputTokens) read=\(cacheUsage.cacheReadInputTokens)"
+                    )
                 }
 
                 if isStreamEnd(payload) {
