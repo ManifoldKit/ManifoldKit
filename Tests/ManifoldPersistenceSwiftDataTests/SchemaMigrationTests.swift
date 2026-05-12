@@ -73,8 +73,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV5() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV5.self))
+    func test_containerFactory_currentSchema_isV6() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV6.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {

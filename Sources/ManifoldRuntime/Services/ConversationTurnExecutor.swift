@@ -6,6 +6,8 @@ struct ConversationTurnExecutor: Sendable {
     private let inferenceService: InferenceService
     private let pipeline: PromptContextPipeline?
     private let ragService: RAGService?
+    /// Best-effort usage persistence. `nil` when the host did not wire a store.
+    private let usageStore: (any UsageStore)?
     private let registry: InFlightStreamRegistry
     private let eventSink: @Sendable (ConversationEvent) -> Void
     private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
@@ -15,6 +17,7 @@ struct ConversationTurnExecutor: Sendable {
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline?,
         ragService: RAGService?,
+        usageStore: (any UsageStore)?,
         registry: InFlightStreamRegistry,
         emit: @escaping @Sendable (ConversationEvent) -> Void,
         emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
@@ -23,6 +26,7 @@ struct ConversationTurnExecutor: Sendable {
         self.inferenceService = inferenceService
         self.pipeline = pipeline
         self.ragService = ragService
+        self.usageStore = usageStore
         self.registry = registry
         self.eventSink = emit
         self.emptyResponseObserver = emptyResponseObserver
@@ -728,6 +732,32 @@ struct ConversationTurnExecutor: Sendable {
         if await persistence.touchSession(sessionID: sessionID) == false {
             emit(.sessionTouchFailed(sessionID: sessionID))
         }
+
+        // Best-effort usage recording. A persistence failure here must not
+        // abort the turn loop or surface an error to the user — the
+        // generation has already succeeded. Log the failure so it's
+        // observable in crash reporters and development builds.
+        if let usageStore, let usage {
+            // `activeBackendName` is the closest proxy for the model
+            // identifier available without threading extra state through
+            // enqueueAsync. A dedicated model-identifier accessor can be
+            // added in a follow-up (#1207 TODO).
+            let backendName = await readActiveBackendName()
+            let record = TurnUsageRecord(
+                sessionID: sessionID,
+                endpointID: nil, // TODO: thread endpoint ID from InferenceService (#1207 follow-up)
+                modelIdentifier: backendName ?? "unknown",
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens
+            )
+            do {
+                try await usageStore.record(record)
+            } catch {
+                Log.persistence.warning(
+                    "UsageStore.record failed (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
     }
 
 
@@ -757,6 +787,7 @@ struct ConversationTurnExecutor: Sendable {
     private func readActiveBackendName() async -> String? {
         inferenceService.activeBackendName
     }
+
 
     private func composeSystemPrompt(_ base: String?, slots: [PromptSlot]) -> String? {
         let slotText = slots

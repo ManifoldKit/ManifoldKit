@@ -111,13 +111,18 @@ public final class ConversationRuntime: Sendable {
     ///     to keep the event sequence stable, then enqueues with no extra
     ///     slots. When present, the pipeline is queried before each turn
     ///     and the resulting slots are surfaced via `.contextAssembled`.
+    ///   - usageStore: Optional. When provided, a ``TurnUsageRecord`` is
+    ///     persisted after each successful generation turn. Recording is
+    ///     best-effort — a store failure logs a warning and never aborts
+    ///     the turn loop.
     public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
         ragService: RAGService? = nil,
-        auxiliaryInferenceService: InferenceService? = nil
+        auxiliaryInferenceService: InferenceService? = nil,
+        usageStore: (any UsageStore)? = nil
     ) {
         self.init(
             messageStore: messageStore,
@@ -126,6 +131,7 @@ public final class ConversationRuntime: Sendable {
             pipeline: pipeline,
             ragService: ragService,
             auxiliaryInferenceService: auxiliaryInferenceService,
+            usageStore: usageStore,
             emptyResponseObserver: nil
         )
     }
@@ -140,6 +146,7 @@ public final class ConversationRuntime: Sendable {
         pipeline: PromptContextPipeline? = nil,
         ragService: RAGService? = nil,
         auxiliaryInferenceService: InferenceService? = nil,
+        usageStore: (any UsageStore)? = nil,
         emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
     ) {
         self.inferenceService = inferenceService
@@ -157,6 +164,7 @@ public final class ConversationRuntime: Sendable {
             inferenceService: inferenceService,
             pipeline: pipeline,
             ragService: ragService,
+            usageStore: usageStore,
             registry: registry,
             emit: { continuation.yield($0) },
             emptyResponseObserver: emptyResponseObserver
