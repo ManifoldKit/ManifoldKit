@@ -56,6 +56,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// default (the silent-truncation footgun). Falls back to
     /// ``defaultNumCtxFloor`` when the plan carries a non-meaningful size
     /// (the `.cloud()` factory defaults to `1`).
+    /// Guarded by `stateLock`.
     private var effectiveNumCtx: Int = defaultNumCtxFloor
 
     /// ``ThinkingMarkers`` auto-detected from the loaded model's `/api/show`
@@ -214,7 +215,8 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         // to the floor — Ollama's own 2048 default is a documented footgun
         // that silently truncates multi-turn conversations.
         let planned = plan.effectiveContextSize
-        effectiveNumCtx = planned > Self.defaultNumCtxFloor ? planned : Self.defaultNumCtxFloor
+        let resolvedNumCtx = planned > Self.defaultNumCtxFloor ? planned : Self.defaultNumCtxFloor
+        withStateLock { effectiveNumCtx = resolvedNumCtx }
 
         let probed: OllamaShowProbe
         do {
@@ -229,7 +231,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         }
 
         self.isThinkingModel = probed.thinking
-        let resolvedContextWindow = probed.contextLength ?? max(effectiveNumCtx, Self.defaultNumCtxFloor)
+        let resolvedContextWindow = probed.contextLength ?? max(resolvedNumCtx, Self.defaultNumCtxFloor)
         let manifest = ModelManifest(
             contextWindow: resolvedContextWindow,
             supportsTools: true,
@@ -250,7 +252,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         }
 
         setIsModelLoaded(true)
-        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(self.effectiveNumCtx, privacy: .public) ctxWindow=\(resolvedContextWindow, privacy: .public)")
+        Log.inference.info("OllamaBackend configured for \(self.modelName, privacy: .public) at \(self.baseURL?.host() ?? "unknown", privacy: .public) thinking=\(self.isThinkingModel, privacy: .public) num_ctx=\(resolvedNumCtx, privacy: .public) ctxWindow=\(resolvedContextWindow, privacy: .public)")
     }
 
     // MARK: - Request Building
@@ -329,6 +331,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             thinkDirective = nil
         }
 
+        let numCtx = withStateLock { effectiveNumCtx }
         var options: [String: Any] = [
             "temperature": config.temperature,
             "top_p": config.topP,
@@ -340,7 +343,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             // silently truncated at that ceiling with no error signal. Set
             // `num_ctx` explicitly to BCK's effective context size so the
             // server honours whatever budget we decided on at load time.
-            "num_ctx": effectiveNumCtx,
+            "num_ctx": numCtx,
         ]
         // Only include the modern penalty knobs when the caller set them. Omitting
         // preserves whatever the Ollama server-side default is (typically 0 for

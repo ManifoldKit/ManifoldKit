@@ -630,6 +630,16 @@ struct ConversationTurnExecutor: Sendable {
             ))
         }
 
+        // True when the assistant message already carries tool-related content
+        // parts, even if no visible text tokens arrived. Used below so all
+        // three terminal paths (error, cancellation, normal) persist tool-only
+        // turns rather than silently dropping them.
+        let hasToolContent = assistantMessage.contentParts.contains { part in
+            if case .toolCall = part { return true }
+            if case .toolResult = part { return true }
+            return false
+        }
+
         let reason: FinishReason
         if cancelled {
             reason = .cancelled
@@ -640,7 +650,7 @@ struct ConversationTurnExecutor: Sendable {
             // `.streamFinished(reason: .empty)` because consumers need to
             // know the run failed.
             writeFinalContent(accumulated, into: &assistantMessage)
-            if !accumulated.isEmpty {
+            if !accumulated.isEmpty || hasToolContent {
                 do {
                     try await persistence.insertMessage(assistantMessage)
                     emit(.messageInserted(assistantMessage))
@@ -654,7 +664,7 @@ struct ConversationTurnExecutor: Sendable {
             emit(.errorRaised(streamFailed))
             emit(.streamFinished(messageID: assistantID, reason: .stop))
             return
-        } else if emptyResponse {
+        } else if emptyResponse && !hasToolContent {
             reason = .empty
         } else {
             reason = .stop
@@ -663,7 +673,7 @@ struct ConversationTurnExecutor: Sendable {
         if cancelled {
             // On cancel, persist whatever streamed in so far if non-empty —
             // matches ChatViewModel.stopGeneration's behaviour.
-            if !accumulated.isEmpty {
+            if !accumulated.isEmpty || hasToolContent {
                 writeFinalContent(accumulated, into: &assistantMessage)
                 do {
                     try await persistence.insertMessage(assistantMessage)
