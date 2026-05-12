@@ -19,6 +19,19 @@ import XCTest
 /// UUID-namespaced hostname so stubs don't bleed between tests.
 final class RedirectGuardDelegateTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        // UUID-based fake hostnames used in E2E tests can't resolve via real DNS.
+        // Default the seam to a public IP so those hosts pass the rebinding guard.
+        // Tests that specifically exercise resolution failure override this to nil.
+        RedirectGuardDelegate._synchronousResolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        RedirectGuardDelegate._synchronousResolverForTesting = nil
+        super.tearDown()
+    }
+
     // MARK: - Static helper: same-origin check
 
     func test_isSameOrigin_truePerSchemeHostPort() {
@@ -144,6 +157,28 @@ final class RedirectGuardDelegateTests: XCTestCase {
     func test_blockedHostReason_publicIP_passes() {
         XCTAssertNil(RedirectGuardDelegate.blockedHostReason(
             for: URL(string: "https://1.1.1.1/")!
+        ))
+    }
+
+    func test_blockedHostReason_unresolvableHostname_isBlocked() {
+        // Resolution failure must block — same TTL-0 bypass risk as DNSRebindingGuard.
+        // Sabotage: returning [] (not nil) from the seam causes this to pass,
+        // exposing the redirect-chain SSRF bypass.
+        RedirectGuardDelegate._synchronousResolverForTesting = { _ in nil }
+        let reason = RedirectGuardDelegate.blockedHostReason(
+            for: URL(string: "https://does-not-exist.invalid/api")!
+        )
+        XCTAssertNotNil(reason, "Unresolvable hostname must be blocked as a redirect target")
+        XCTAssertTrue(
+            reason?.contains("could not resolve") == true,
+            "Expected resolution-failure reason, got: \(reason ?? "nil")"
+        )
+    }
+
+    func test_blockedHostReason_hostnameResolvingToPublicIP_passes() {
+        RedirectGuardDelegate._synchronousResolverForTesting = { _ in ["93.184.216.34"] }
+        XCTAssertNil(RedirectGuardDelegate.blockedHostReason(
+            for: URL(string: "https://api.example.com/v1")!
         ))
     }
 

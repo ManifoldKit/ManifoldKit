@@ -37,7 +37,7 @@ public enum DNSRebindingGuard {
     /// tests to inject deterministic address lists without touching the network.
     ///
     /// - Warning: For testing only. Write this before any concurrent access.
-    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String])? = nil
+    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String]?)? = nil
 
     // MARK: - Public API
 
@@ -55,7 +55,9 @@ public enum DNSRebindingGuard {
         // Localhost is always allowed — it is an explicitly configured local server.
         if PrivateIPClassifier.isLocalhostURL(url) { return }
 
-        guard let host = url.host() else { return }
+        guard let host = url.host() else {
+            throw CloudBackendError.blockedAddress("URL has no host component")
+        }
 
         // IP literals are checked immediately without DNS resolution.
         if let category = PrivateIPClassifier.classifyIPLiteral(host) {
@@ -65,7 +67,14 @@ public enum DNSRebindingGuard {
         }
 
         // DNS hostname — resolve and check every returned address.
-        let addresses = await resolveHostname(host)
+        // Nil return means resolution failed; block rather than fall through —
+        // an attacker can arrange SERVFAIL for this call, then serve a private
+        // IP to URLSession's separate resolver query (TTL-0 / SERVFAIL pattern).
+        guard let addresses = await resolveHostname(host) else {
+            throw CloudBackendError.blockedAddress(
+                "Could not resolve hostname '\(host)' — connection blocked"
+            )
+        }
         for address in addresses {
             if let category = PrivateIPClassifier.classifyIPLiteral(address) {
                 Log.network.error(
@@ -84,10 +93,11 @@ public enum DNSRebindingGuard {
     ///
     /// Runs `getaddrinfo` on a utility-priority background task to avoid blocking
     /// the cooperative thread pool during the resolver round-trip.
-    /// Returns an empty array on resolution failure (network error, NXDOMAIN, etc.)
-    /// so the guard fails open for unresolvable names — the subsequent URLSession
-    /// connection will produce the appropriate network error itself.
-    private static func resolveHostname(_ hostname: String) async -> [String] {
+    /// Returns `nil` on resolution failure (network error, NXDOMAIN, etc.) —
+    /// callers treat `nil` as a block. Failing open would let an attacker arrange
+    /// SERVFAIL for the guard's query, then serve a private IP to URLSession's
+    /// subsequent query (TTL-0 pattern), bypassing the entire DNS rebinding defence.
+    private static func resolveHostname(_ hostname: String) async -> [String]? {
         if let override = _resolverForTesting {
             return await override(hostname)
         }
@@ -103,7 +113,7 @@ public enum DNSRebindingGuard {
 
             guard getaddrinfo(hostname, nil, &hints, &result) == 0,
                   result != nil else {
-                return []
+                return nil
             }
 
             var addresses: [String] = []
