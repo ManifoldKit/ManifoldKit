@@ -1981,6 +1981,144 @@ final class ConversationRuntimeTests: XCTestCase {
         }
     }
 
+    /// Cancellation fires after a tool call has been received but before the
+    /// stream closes. Without the `hasToolContent` guard, `accumulated` is
+    /// empty so the old code silently dropped the assistant message —
+    /// losing the tool calls from the transcript.
+    ///
+    /// Strategy: emit two tool-call delta sequences. The first (`.call`) fires
+    /// immediately so `contentParts` has one toolCall before the gate holds.
+    /// A `toolDeltaEmissionGate` pauses before the second entry, giving a
+    /// cancel window. The runtime processes cancel while the first toolCall
+    /// part is already in the assistant message.
+    ///
+    /// Sabotage check: revert the `|| hasToolContent` addition in the
+    /// cancellation path of `ConversationTurnExecutor.runGenerationTurn`.
+    /// The assertion `store.messages…count == 1` will flip to 0, confirming
+    /// the test catches the regression.
+    func test_cancel_toolOnlyTurn_persistsAssistantWithToolContent() async throws {
+        let call1 = ToolCall(id: "tool-cancel-1", toolName: "lookup", arguments: "{}")
+        let call2 = ToolCall(id: "tool-cancel-2", toolName: "fetch", arguments: "{}")
+        let mock = MockInferenceBackend()
+        // No visible text tokens. Two tool calls emitted as a delta sequence:
+        // the first fires immediately; the second is held by the gate.
+        mock.tokensToYield = []
+        mock.scriptedToolCallDeltasPerTurn = [[
+            .call(call1),
+            .call(call2)
+        ]]
+        let gate = TokenEmissionGate()
+        mock.toolDeltaEmissionGate = gate
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let handle = try await runtime.send(SendInput(
+            sessionID: UUID(),
+            userText: "tool-only cancel test"
+        ))
+
+        // Drain events on a background task; cancel as soon as we see
+        // toolCallRequested (first call emitted), then release the gate
+        // so the mock can finish its teardown.
+        let drain = Task { @MainActor [runtime] in
+            var events: [ConversationEvent] = []
+            var didCancel = false
+            for await event in runtime.events {
+                events.append(event)
+                if case .toolCallRequested = event, !didCancel {
+                    didCancel = true
+                    await runtime.cancel(handle)
+                }
+                if case .streamFinished = event { return events }
+            }
+            return events
+        }
+
+        // Advance twice: first permit lets call1 emit; after cancel propagates
+        // the second let the mock's Task drain cleanly.
+        await gate.advance()
+        let events = try await waitForEvents(from: drain)
+        await gate.release()
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled],
+                       "Tool-only cancel emits exactly one cancelled terminal")
+
+        let assistantMessages = store.messages.values.filter { $0.role == .assistant }
+        XCTAssertEqual(assistantMessages.count, 1,
+                       "Assistant message with tool content must be persisted on cancellation")
+
+        let toolCallParts = assistantMessages.first?.contentParts.filter {
+            if case .toolCall = $0 { return true }
+            return false
+        } ?? []
+        XCTAssertGreaterThanOrEqual(toolCallParts.count, 1,
+                                    "Persisted assistant must carry at least the first tool call content part")
+    }
+
+    /// Stream errors after tool calls arrive but before any text token.
+    /// The error path had the same `accumulated.isEmpty` gap — verify it
+    /// also persists when `hasToolContent` is true.
+    ///
+    /// Sabotage check: revert the `|| hasToolContent` addition in the
+    /// error path of `ConversationTurnExecutor.runGenerationTurn`.
+    /// The assertion `store.messages…count == 1` will flip to 0.
+    func test_streamError_toolOnlyTurn_persistsAssistantWithToolContent() async throws {
+        let call = ToolCall(id: "tool-error-1", toolName: "fetch", arguments: "{}")
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = []
+        mock.scriptedToolCalls = [call]
+        mock.shouldThrowInsideStream = InferenceError.inferenceFailure("network blip")
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "tool-only error test"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Stream error emits exactly one terminal event")
+
+        let assistantMessages = store.messages.values.filter { $0.role == .assistant }
+        XCTAssertEqual(assistantMessages.count, 1,
+                       "Assistant message with tool content must be persisted on stream error")
+
+        let toolCallParts = assistantMessages.first?.contentParts.filter {
+            if case .toolCall = $0 { return true }
+            return false
+        } ?? []
+        XCTAssertEqual(toolCallParts.count, 1,
+                       "Persisted assistant must carry the tool call content part")
+    }
+
+    /// A stream that completes normally but yields only tool calls and no
+    /// visible text. Without the `hasToolContent` guard the `emptyResponse`
+    /// flag stays true and the message was dropped as an empty turn.
+    ///
+    /// Sabotage check: revert the `&& !hasToolContent` addition in the
+    /// `emptyResponse` branch of `ConversationTurnExecutor.runGenerationTurn`.
+    /// The assertion `store.messages…count == 1` will flip to 0.
+    func test_normalCompletion_toolOnlyTurn_persistsAssistantWithToolContent() async throws {
+        let call = ToolCall(id: "tool-normal-1", toolName: "calculate", arguments: "{\"x\":1}")
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = []
+        mock.scriptedToolCalls = [call]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "tool-only normal test"))
+        let events = try await collectUntilStreamFinished(from: runtime)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+                       "Tool-only normal completion finishes with .stop, not .empty")
+
+        let assistantMessages = store.messages.values.filter { $0.role == .assistant }
+        XCTAssertEqual(assistantMessages.count, 1,
+                       "Assistant message with tool content must be persisted on normal completion")
+
+        let toolCallParts = assistantMessages.first?.contentParts.filter {
+            if case .toolCall = $0 { return true }
+            return false
+        } ?? []
+        XCTAssertEqual(toolCallParts.count, 1,
+                       "Persisted assistant must carry the tool call content part")
+    }
+
     // MARK: - Branch: insertSession fails
 
     func test_branch_insertSessionFails_throwsBeforeAnyMessagesCopied() async throws {
