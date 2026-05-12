@@ -161,8 +161,8 @@ final class ClaudePromptCacheTests: XCTestCase {
 
         var cfg = GenerationConfig()
         cfg.tools = [
-            ToolDefinition(name: "search", description: "Web search", parameters: .init(properties: [:], required: [])),
-            ToolDefinition(name: "calculator", description: "Do math", parameters: .init(properties: [:], required: [])),
+            ToolDefinition(name: "search", description: "Web search", parameters: .object([:])),
+            ToolDefinition(name: "calculator", description: "Do math", parameters: .object([:])),
         ]
         cfg.toolChoice = .auto
 
@@ -187,7 +187,7 @@ final class ClaudePromptCacheTests: XCTestCase {
 
         var cfg = GenerationConfig()
         cfg.tools = [
-            ToolDefinition(name: "search", description: "Web search", parameters: .init(properties: [:], required: [])),
+            ToolDefinition(name: "search", description: "Web search", parameters: .object([:])),
         ]
         cfg.toolChoice = .auto
 
@@ -207,7 +207,7 @@ final class ClaudePromptCacheTests: XCTestCase {
 
         var cfg = GenerationConfig()
         cfg.tools = [
-            ToolDefinition(name: "ping", description: "Ping", parameters: .init(properties: [:], required: [])),
+            ToolDefinition(name: "ping", description: "Ping", parameters: .object([:])),
         ]
         cfg.toolChoice = .auto
 
