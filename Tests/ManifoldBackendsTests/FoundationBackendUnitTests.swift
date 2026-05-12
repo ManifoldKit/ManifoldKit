@@ -700,4 +700,140 @@ final class FoundationBackendUnitTests: XCTestCase {
     }
 }
 
+// MARK: - needsNewFoundationSession predicate tests
+
+/// Tests for the `needsNewFoundationSession` pure function.
+///
+/// These tests do NOT gate on `FoundationBackend.isAvailable` and run on every
+/// CI machine — including simulators — because they exercise only the extracted
+/// predicate, not the `LanguageModelSession` API.
+@available(iOS 26, macOS 26, *)
+final class NeedsNewFoundationSessionTests: XCTestCase {
+
+    override func setUp() async throws {
+        try await super.setUp()
+        guard ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+        ) else {
+            throw XCTSkip("FoundationModels requires iOS 26 / macOS 26")
+        }
+    }
+
+    // MARK: - 1. No session exists → always create new
+
+    func test_noSession_alwaysCreatesNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: false,
+                currentInstructions: nil,
+                newInstructions: nil,
+                isClean: true
+            ),
+            "When no session exists a new one must always be created"
+        )
+    }
+
+    func test_noSession_withInstructions_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: false,
+                currentInstructions: nil,
+                newInstructions: "You are helpful.",
+                isClean: true
+            ),
+            "When no session exists a new one must be created regardless of instructions"
+        )
+    }
+
+    // MARK: - 2. Session exists, clean, same instructions → reuse
+
+    func test_existingCleanSession_sameInstructions_reuses() {
+        XCTAssertFalse(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: "You are helpful.",
+                newInstructions: "You are helpful.",
+                isClean: true
+            ),
+            "A clean session with matching instructions must be reused to preserve conversation history"
+        )
+    }
+
+    func test_existingCleanSession_bothNilInstructions_reuses() {
+        XCTAssertFalse(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: nil,
+                newInstructions: nil,
+                isClean: true
+            ),
+            "A clean session with no instructions on either side must be reused"
+        )
+    }
+
+    // MARK: - 3. Session exists, dirty → create new
+
+    func test_dirtySession_sameInstructions_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: "You are helpful.",
+                newInstructions: "You are helpful.",
+                isClean: false
+            ),
+            "A dirty session must never be reused — calling streamResponse() on it would SIGTRAP"
+        )
+    }
+
+    func test_dirtySession_nilInstructions_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: nil,
+                newInstructions: nil,
+                isClean: false
+            ),
+            "A dirty session with nil instructions must still be replaced"
+        )
+    }
+
+    // MARK: - 4. Session exists, clean, instructions changed → create new
+
+    func test_existingCleanSession_instructionsChanged_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: "You are a pirate.",
+                newInstructions: "You are helpful.",
+                isClean: true
+            ),
+            "Instructions are baked into LanguageModelSession at creation — a change forces a new session"
+        )
+    }
+
+    func test_existingCleanSession_instructionsNilToNonNil_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: nil,
+                newInstructions: "You are helpful.",
+                isClean: true
+            ),
+            "Transitioning from no instructions to having instructions forces a new session"
+        )
+    }
+
+    func test_existingCleanSession_instructionsNonNilToNil_createsNew() {
+        XCTAssertTrue(
+            needsNewFoundationSession(
+                sessionExists: true,
+                currentInstructions: "You are helpful.",
+                newInstructions: nil,
+                isClean: true
+            ),
+            "Removing instructions forces a new session"
+        )
+    }
+}
+
 #endif
