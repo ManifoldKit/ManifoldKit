@@ -6,6 +6,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV3.self,
             ManifoldSchemaV4.self,
             ManifoldSchemaV5.self,
+            ManifoldSchemaV6.self,
         ]
     }
 
@@ -13,6 +14,8 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
         [
             .lightweight(fromVersion: ManifoldSchemaV3.self, toVersion: ManifoldSchemaV4.self),
             .lightweight(fromVersion: ManifoldSchemaV4.self, toVersion: ManifoldSchemaV5.self),
+            // V6 adds TurnUsageRecordModel — purely additive, no existing column changes.
+            .lightweight(fromVersion: ManifoldSchemaV5.self, toVersion: ManifoldSchemaV6.self),
         ]
     }
 }

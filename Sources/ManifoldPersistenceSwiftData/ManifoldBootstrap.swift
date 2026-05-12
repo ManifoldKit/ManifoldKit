@@ -90,6 +90,9 @@ public final class ManifoldBootstrap {
     public let samplerPresetStore: SwiftDataSamplerPresetStore
     public let benchmarkCache: SwiftDataBenchmarkCache
     public let endpointStore: SwiftDataEndpointStore
+    /// Persists per-turn token counts for all cloud-backed sessions. Host apps
+    /// can read aggregated totals via ``usageStore`` to surface cost dashboards.
+    public let usageStore: SwiftDataUsageStore
     /// The shared turn-loop runtime, pre-wired against ``persistence`` and
     /// ``inferenceService``. Apps that bootstrap through this type should pass
     /// this instance to ``ChatViewModel/configure(conversationRuntime:)`` (or
@@ -159,6 +162,8 @@ public final class ManifoldBootstrap {
             self.samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
             self.benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
             self.endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+            let resolvedUsageStore = SwiftDataUsageStore(modelContext: mainContext)
+            self.usageStore = resolvedUsageStore
 
             let resolvedRAGService: RAGService?
             if let ragConfig = ragConfiguration {
@@ -194,7 +199,8 @@ public final class ManifoldBootstrap {
                 messageStore: resolvedPersistence,
                 sessionStore: resolvedPersistence,
                 inferenceService: resolvedInferenceService,
-                ragService: resolvedRAGService
+                ragService: resolvedRAGService,
+                usageStore: resolvedUsageStore
             )
             self.imageGenerationService = imageGenerationService
             if let imageGenerationService {
@@ -219,6 +225,7 @@ public final class ManifoldBootstrap {
         samplerPresetStore: SwiftDataSamplerPresetStore,
         benchmarkCache: SwiftDataBenchmarkCache,
         endpointStore: SwiftDataEndpointStore,
+        usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
         ragService: RAGService? = nil
     ) {
@@ -229,12 +236,14 @@ public final class ManifoldBootstrap {
         self.samplerPresetStore = samplerPresetStore
         self.benchmarkCache = benchmarkCache
         self.endpointStore = endpointStore
+        self.usageStore = usageStore
         self.ragService = ragService
         self.conversationRuntime = ConversationRuntime(
             messageStore: persistence,
             sessionStore: persistence,
             inferenceService: inferenceService,
-            ragService: ragService
+            ragService: ragService,
+            usageStore: usageStore
         )
         self.imageGenerationService = imageGenerationService
         if let imageGenerationService {
@@ -282,6 +291,7 @@ public final class ManifoldBootstrap {
                 let samplerPresetStore = SwiftDataSamplerPresetStore(modelContext: mainContext)
                 let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
                 let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
+                let usageStore = SwiftDataUsageStore(modelContext: mainContext)
                 await Task.yield()
 
                 continuation.yield(.complete)
@@ -294,6 +304,7 @@ public final class ManifoldBootstrap {
                     samplerPresetStore: samplerPresetStore,
                     benchmarkCache: benchmarkCache,
                     endpointStore: endpointStore,
+                    usageStore: usageStore,
                     imageGenerationService: imageGenerationService
                 )
             } catch {
