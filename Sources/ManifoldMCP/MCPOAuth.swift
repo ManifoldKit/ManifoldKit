@@ -119,10 +119,12 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
             request.httpMethod = "DELETE"
             request.setValue("Bearer \(managementToken)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 5
+            // Management URI is a fixed endpoint — redirects are not expected and would be
+            // a sign of misconfiguration or a hostile network. Allow zero.
             _ = try await sessionProvider().data(
                 for: request,
                 delegate: MCPRedirectCapDelegate(
-                    maxRedirects: nil,
+                    maxRedirects: 0,
                     validator: MCPSSRFPolicy.validateOAuthRedirectURL
                 )
             )
@@ -459,12 +461,25 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
             cachedRegisteredClientID = parsed.clientID
 
             // RFC 7592 — persist management credentials if provided (D12).
+            // Validate both the URI (SSRF) and token (bearer-safe chars) at storage time so
+            // disconnect() never operates on untrusted values even if its own check is bypassed.
             if let token = parsed.registrationAccessToken,
                let uriString = parsed.registrationClientURI,
                let uri = URL(string: uriString) {
-                registrationManagementToken = token
-                registrationManagementURI = uri
-                Log.inference.info("MCPOAuthAuthorization: RFC 7592 management token stored for \(self.serverID)")
+                do {
+                    try await MCPSSRFPolicy.validateOAuthRequestURL(uri, label: "registration management URI")
+                    let invalidScalars = CharacterSet.controlCharacters
+                        .union(.newlines)
+                        .union(.whitespacesAndNewlines)
+                    guard !token.unicodeScalars.contains(where: { invalidScalars.contains($0) }) else {
+                        throw MCPError.dcrFailed("registration_access_token contains invalid bearer characters")
+                    }
+                    registrationManagementToken = token
+                    registrationManagementURI = uri
+                    Log.inference.info("MCPOAuthAuthorization: RFC 7592 management token stored for \(self.serverID)")
+                } catch {
+                    Log.inference.warning("MCPOAuthAuthorization: RFC 7592 management credentials rejected (\(error.localizedDescription)); client deregistration will be skipped")
+                }
             }
 
             return parsed.clientID

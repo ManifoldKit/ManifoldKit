@@ -5,7 +5,8 @@ import ManifoldInference
 // MARK: - MCPSSRFPolicy
 
 internal enum MCPSSRFPolicy {
-    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String])? = nil
+    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String]?)? = nil
+    nonisolated(unsafe) static var _synchronousResolverForTesting: ((String) -> [String]?)? = nil
 
     static func validateTransportURL(_ url: URL) throws {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
@@ -76,7 +77,12 @@ internal enum MCPSSRFPolicy {
         if PrivateIPClassifier.classifyIPLiteral(host) != nil {
             throw MCPError.ssrfBlocked(url)
         }
-        let addresses = await resolveHostname(host)
+        // Nil means resolution failed. Block rather than fall through — an attacker can
+        // arrange SERVFAIL for the guard's query, then serve a private IP to URLSession's
+        // separate resolver query (TTL-0 / SERVFAIL pattern).
+        guard let addresses = await resolveHostname(host) else {
+            throw MCPError.ssrfBlocked(url)
+        }
         for address in addresses where PrivateIPClassifier.classifyIPLiteral(address) != nil {
             throw MCPError.ssrfBlocked(url)
         }
@@ -90,7 +96,9 @@ internal enum MCPSSRFPolicy {
         if PrivateIPClassifier.classifyIPLiteral(host) != nil {
             throw MCPError.ssrfBlocked(url)
         }
-        let addresses = resolveHostnameSynchronously(host)
+        guard let addresses = resolveHostnameSynchronously(host) else {
+            throw MCPError.ssrfBlocked(url)
+        }
         for address in addresses where PrivateIPClassifier.classifyIPLiteral(address) != nil {
             throw MCPError.ssrfBlocked(url)
         }
@@ -101,7 +109,7 @@ internal enum MCPSSRFPolicy {
         return host.hasSuffix(".") ? String(host.dropLast()) : host
     }
 
-    private static func resolveHostname(_ hostname: String) async -> [String] {
+    private static func resolveHostname(_ hostname: String) async -> [String]? {
         if let override = _resolverForTesting {
             return await override(hostname)
         }
@@ -110,7 +118,11 @@ internal enum MCPSSRFPolicy {
         }.value
     }
 
-    private static func resolveHostnameSynchronously(_ hostname: String) -> [String] {
+    /// Returns `nil` on resolution failure so callers can fail closed.
+    private static func resolveHostnameSynchronously(_ hostname: String) -> [String]? {
+        if let override = _synchronousResolverForTesting {
+            return override(hostname)
+        }
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
         hints.ai_socktype = SOCK_STREAM
@@ -120,7 +132,7 @@ internal enum MCPSSRFPolicy {
         defer { freeaddrinfo(result) }
 
         guard getaddrinfo(hostname, nil, &hints, &result) == 0, result != nil else {
-            return []
+            return nil
         }
 
         var addresses: [String] = []

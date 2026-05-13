@@ -371,11 +371,19 @@ struct GGUFMetadataReader {
 
     // MARK: - Value Skipping
 
+    /// Maximum nesting depth for GGUF array values. Bounds `skipValue` recursion to
+    /// prevent stack overflow from crafted files with deeply nested arrays.
+    private static let maxArrayDepth = 32
+
+    /// Maximum element count for a single GGUF array. Bounds the inner loop to
+    /// prevent spin-loops from crafted files with huge declared array counts.
+    private static let maxArrayElementCount: UInt64 = 65_536
+
     /// Skips a value of the given type without parsing it.
     ///
-    /// For arrays, recursively skips each element. For strings, reads the length prefix
-    /// and skips that many bytes.
-    private static func skipValue(type: UInt32, from handle: FileHandle) throws {
+    /// For arrays, recursively skips each element up to ``maxArrayDepth`` nesting
+    /// levels and ``maxArrayElementCount`` elements per array.
+    private static func skipValue(type: UInt32, from handle: FileHandle, depth: Int = 0) throws {
         guard let valueType = ValueType(rawValue: type) else {
             throw GGUFReaderError.readError("Unknown value type: \(type)")
         }
@@ -397,10 +405,16 @@ struct GGUFMetadataReader {
             _ = try readString(from: handle)
 
         case .array:
+            guard depth < maxArrayDepth else {
+                throw GGUFReaderError.readError("Array nesting depth exceeds safety limit (\(maxArrayDepth))")
+            }
             let elementType = try readUInt32(from: handle)
             let count = try readUInt64(from: handle)
+            guard count <= maxArrayElementCount else {
+                throw GGUFReaderError.readError("Array element count \(count) exceeds safety limit (\(maxArrayElementCount))")
+            }
             for _ in 0..<count {
-                try skipValue(type: elementType, from: handle)
+                try skipValue(type: elementType, from: handle, depth: depth + 1)
             }
         }
     }
