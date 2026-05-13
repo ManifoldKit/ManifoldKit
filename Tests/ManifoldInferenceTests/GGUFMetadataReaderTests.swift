@@ -199,6 +199,40 @@ final class GGUFMetadataReaderTests: XCTestCase {
         XCTAssertTrue(GGUFMetadataReader.isValidGGUF(at: url))
     }
 
+    // MARK: - Security: malformed input bounds
+
+    func test_readMetadata_deeplyNestedArray_throwsBeforeStackOverflow() throws {
+        // A crafted GGUF with 64 levels of nested single-element arrays must be rejected
+        // by the depth limit, not crash the process via stack overflow.
+        let data = makeGGUFV3Header(metadata: [makeNestedArrayKV(key: "k", depth: 64)])
+        let url = try writeTempFile(named: "nested.gguf", data: data)
+
+        XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+            guard case .readError(let msg) = error as? GGUFReaderError else {
+                XCTFail("Expected readError for deep nesting, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("depth"), "Error message must mention depth limit, got: \(msg)")
+        }
+        // Sabotage: remove the depth guard from skipValue — readMetadata succeeds instead of
+        // throwing, so the XCTAssertThrowsError assertion fails.
+    }
+
+    func test_readMetadata_arrayExceedingElementLimit_throws() throws {
+        // A crafted GGUF with a single key whose array claims 100 000 elements (all uint8)
+        // must be rejected by the element-count limit.
+        let data = makeGGUFV3Header(metadata: [makeHugeArrayKV(key: "k", count: 100_000)])
+        let url = try writeTempFile(named: "huge-array.gguf", data: data)
+
+        XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
+            guard case .readError(let msg) = error as? GGUFReaderError else {
+                XCTFail("Expected readError for oversized array, got \(error)")
+                return
+            }
+            XCTAssertTrue(msg.contains("element count"), "Error message must mention element count, got: \(msg)")
+        }
+    }
+
     func test_isValidGGUF_invalidFile_returnsFalse() throws {
         let data = Data(repeating: 0, count: 64)
         let url = try writeTempFile(named: "invalid.gguf", data: data)
@@ -278,6 +312,44 @@ final class GGUFMetadataReaderTests: XCTestCase {
         // Value
         appendUInt32(&data, value)
         return data
+    }
+
+    /// Builds a KV pair whose value is `depth` levels of nested single-element arrays
+    /// terminating in a uint8. Used to exercise the recursion depth limit in `skipValue`.
+    private func makeNestedArrayKV(key: String, depth: Int) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        // Value type: ARRAY = 9
+        appendUInt32(&data, 9)
+        // Build nested arrays: each level wraps one element of type ARRAY (9), except
+        // the innermost which contains one uint8 (type 0).
+        for level in 0..<depth {
+            let innerType: UInt32 = level == depth - 1 ? 0 : 9  // innermost = uint8
+            appendUInt32(&data, innerType)   // element type
+            appendUInt64(&data, 1)           // count = 1
+        }
+        appendUInt8(&data, 0)               // the single innermost uint8 value
+        return data
+    }
+
+    /// Builds a KV pair whose value is a uint8 array declaring `count` elements but
+    /// providing no actual data. Used to exercise the element-count safety limit.
+    private func makeHugeArrayKV(key: String, count: UInt64) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        // Value type: ARRAY = 9
+        appendUInt32(&data, 9)
+        appendUInt32(&data, 0)              // element type: uint8
+        appendUInt64(&data, count)          // declared count (no actual bytes follow)
+        return data
+    }
+
+    private func appendUInt8(_ data: inout Data, _ value: UInt8) {
+        data.append(value)
     }
 
     private func appendUInt32(_ data: inout Data, _ value: UInt32) {

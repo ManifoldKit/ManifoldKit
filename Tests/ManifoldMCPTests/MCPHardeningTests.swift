@@ -8,6 +8,7 @@ final class MCPHardeningTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.reset()
         MCPSSRFPolicy._resolverForTesting = nil
+        MCPSSRFPolicy._synchronousResolverForTesting = nil
         super.tearDown()
     }
 
@@ -143,6 +144,55 @@ final class MCPHardeningTests: XCTestCase {
                 return
             }
             XCTAssertEqual(blockedURL.host, "token.example.com")
+        }
+    }
+
+    // MARK: - DNS resolution failure — fail-closed
+
+    func test_ssrf_transportRequest_blocksOnDNSResolutionFailure() async {
+        // Resolution failure must block, not pass. An attacker can arrange SERVFAIL for
+        // the guard's query and then serve a private IP to URLSession's separate query.
+        MCPSSRFPolicy._resolverForTesting = { _ in nil }
+
+        await XCTAssertThrowsErrorAsync(
+            try await MCPSSRFPolicy.validateTransportRequestURL(URL(string: "https://example.com/mcp")!)
+        ) { error in
+            guard case .ssrfBlocked = error as? MCPError else {
+                XCTFail("DNS resolution failure must produce ssrfBlocked, got \(error)")
+                return
+            }
+        }
+        // Sabotage: swap nil return to [] (empty array) — the test would pass the SSRF check,
+        // failing the assertion above and confirming the fail-open bug is still present.
+    }
+
+    func test_ssrf_oauthRequest_blocksOnDNSResolutionFailure() async {
+        MCPSSRFPolicy._resolverForTesting = { _ in nil }
+
+        await XCTAssertThrowsErrorAsync(
+            try await MCPSSRFPolicy.validateOAuthRequestURL(
+                URL(string: "https://auth.example.com/token")!,
+                label: "token endpoint"
+            )
+        ) { error in
+            guard case .ssrfBlocked = error as? MCPError else {
+                XCTFail("DNS resolution failure must produce ssrfBlocked, got \(error)")
+                return
+            }
+        }
+    }
+
+    func test_ssrf_transportRedirect_blocksOnDNSResolutionFailure() {
+        // The synchronous redirect path uses _synchronousResolverForTesting.
+        MCPSSRFPolicy._synchronousResolverForTesting = { _ in nil }
+
+        XCTAssertThrowsError(
+            try MCPSSRFPolicy.validateTransportRedirectURL(URL(string: "https://example.com/mcp")!)
+        ) { error in
+            guard case .ssrfBlocked = error as? MCPError else {
+                XCTFail("DNS resolution failure must produce ssrfBlocked, got \(error)")
+                return
+            }
         }
     }
 
