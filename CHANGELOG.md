@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* close three P0 security holes in SSRF guard, GGUF parser, and OAuth DCR ([#1219](https://github.com/roryford/ManifoldKit/issues/1219)) ([bd66fe4](https://github.com/roryford/ManifoldKit/commit/bd66fe40d92b124196f7397d713d7981cb75c5c2))
+
 ## [0.25.0](https://github.com/roryford/ManifoldKit/compare/v0.24.0...v0.25.0) — 2026-05-12
 
 ### Highlights
