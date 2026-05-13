@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.25.0](https://github.com/roryford/ManifoldKit/compare/v0.24.0...v0.25.0) — 2026-05-12
+
+### Highlights
+
+#### Track token usage per turn ([9579aab](https://github.com/roryford/ManifoldKit/commit/9579aab9f7d1227942e81ba17ff9165e1c111682))
+
+`UsageStore` is a new persistence port in `ManifoldRuntime` that records `TurnUsageRecord` values after every successful conversation turn — prompt tokens, completion tokens, model ID, and wall-clock duration. `ConversationRuntime` records usage automatically on each turn; `ManifoldBootstrap` wires in a `SwiftDataUsageStore` backed by the new `ManifoldSchemaV6` (additive migration from V5, no data loss). Query aggregated totals with `UsageSummary`.
+
+```swift
+let summary = try await bootstrap.usageStore.summary(since: .distantPast)
+print("Total prompt tokens:", summary.totalPromptTokens)
+print("Total completion tokens:", summary.totalCompletionTokens)
+```
+
+#### Automatic Anthropic prompt-cache breakpoints ([419df1b](https://github.com/roryford/ManifoldKit/commit/419df1b57f653023ca1abe0c66bd850a3b101d95))
+
+`ClaudeBackend` now emits `cache_control: {type: "ephemeral"}` breakpoints on the system prompt block and the last tool definition when `cachePolicy == .automatic` (the new default). For apps with large system prompts or tool catalogs this reduces repeat-turn input costs by 4–10×. Set `cachePolicy = .disabled` to restore pre-0.25.0 behaviour.
+
+```swift
+let backend = ClaudeBackend(apiKey: key)
+backend.cachePolicy = .disabled  // opt out if needed
+```
+
+### Features
+
+**Auxiliary classification backend** — `ConversationRuntime` gains an `auxiliaryInferenceService: InferenceService?` slot (default `nil`, no breaking change). Framework-internal tasks such as title generation now route through `classificationService`, which returns the auxiliary when set and falls back to the primary. This prevents cheap 3–5 word title calls from being billed against the user's main model ([#1208](https://github.com/roryford/ManifoldKit/issues/1208))
+
+**Unified error category surface** — `InferenceErrorCategory` and `CategorizedError` are new types in `ManifoldInference`. Both `InferenceError` and `CloudBackendError` now conform to `CategorizedError`, so callers can ask a single `.category` question (`contextExceeded`, `authenticationFailed`, `providerOverloaded`, etc.) without switching on concrete error types ([#1206](https://github.com/roryford/ManifoldKit/issues/1206))
+
+### Fixes
+
+**DNS rebinding guard** — the guard previously fail-opened when the remote address was unresolvable, and URLs without a host component bypassed the check entirely; both paths now fail closed ([0a736b8](https://github.com/roryford/ManifoldKit/commit/0a736b89bb793c938e84497337baef3e7133f91b))
+
+**OllamaBackend context window race** — `effectiveNumCtx` is now read under `stateLock`, eliminating a data race when the value was updated concurrently with an in-flight generation ([cc2f930](https://github.com/roryford/ManifoldKit/commit/cc2f93030a8f585e61731d17b3e17d399654c58e))
+
+**Tool-only turns on cancellation** — assistant turns that contained only tool calls were not persisted when the user cancelled; they are now saved so conversation history remains consistent ([1a0a917](https://github.com/roryford/ManifoldKit/commit/1a0a917d3c215b1c3ffbbcc74c1cfe6368f4ffad))
+
 ## [0.24.0](https://github.com/roryford/ManifoldKit/compare/v0.23.1...v0.24.0) (2026-05-11)
 
 
