@@ -17,11 +17,9 @@ public final class MCPNotificationLifecycleEventObserver: MCPLifecycleEventObser
     ) {
         self.notificationCenter = notificationCenter
 
-        var eventContinuation: AsyncStream<MCPLifecycleEvent>.Continuation!
-        self.events = AsyncStream { streamContinuation in
-            eventContinuation = streamContinuation
-        }
-        self.continuation = eventContinuation
+        let (events, continuation) = AsyncStream.makeStream(of: MCPLifecycleEvent.self)
+        self.events = events
+        self.continuation = continuation
 
         self.tokens = mapping.map { name, event in
             notificationCenter.addObserver(
@@ -29,7 +27,7 @@ public final class MCPNotificationLifecycleEventObserver: MCPLifecycleEventObser
                 object: nil,
                 queue: nil
             ) { _ in
-                eventContinuation.yield(event)
+                continuation.yield(event)
             }
         }
     }

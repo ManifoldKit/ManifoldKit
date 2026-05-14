@@ -46,14 +46,10 @@ public actor MCPClient {
 
     public init(configuration: MCPClientConfiguration = .init()) {
         self.configuration = configuration
-        var eventContinuation: AsyncStream<MCPConnectionEvent>.Continuation!
-        var stateContinuation: AsyncStream<MCPConnectionState>.Continuation!
-        connectionEvents = AsyncStream { continuation in
-            eventContinuation = continuation
-        }
-        connectionState = AsyncStream { continuation in
-            stateContinuation = continuation
-        }
+        let (connectionEvents, eventContinuation) = AsyncStream.makeStream(of: MCPConnectionEvent.self)
+        let (connectionState, stateContinuation) = AsyncStream.makeStream(of: MCPConnectionState.self)
+        self.connectionEvents = connectionEvents
+        self.connectionState = connectionState
         connectionEventContinuation = eventContinuation
         connectionStateContinuation = stateContinuation
         connectionStateContinuation.yield(.idle)
