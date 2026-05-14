@@ -2,165 +2,172 @@ import Foundation
 import ManifoldInference
 
 #if MCPBuiltinCatalog
+
+// MARK: - Static server spec
+
+/// Holds all per-server static data in one place so each server is defined
+/// exactly once instead of repeating the same strings across three overloads.
+private struct MCPServerSpec {
+    let id: UUID
+    let displayName: String
+    let endpointHost: String
+    let endpointPath: String
+    let toolNamespace: String
+    let oauthScopes: [String]
+    let oauthIssuerHost: String
+    let dataDisclosure: String
+}
+
+// MARK: - Built-in specs
+// UUID(uuidString:)! on a hardcoded literal is intentional: a typo should
+// crash immediately at first access rather than silently producing a nil ID.
+
+private let notionSpec = MCPServerSpec(
+    id: UUID(uuidString: "5E4A6401-C86D-43DE-847E-AE02A34E89D8")!,
+    displayName: "Notion",
+    endpointHost: "mcp.notion.com",
+    endpointPath: "/mcp",
+    toolNamespace: "notion",
+    oauthScopes: ["read:content", "write:content"],
+    oauthIssuerHost: "notion.com",
+    dataDisclosure: "Tool calls may send prompt content and selected arguments to Notion."
+)
+
+private let linearSpec = MCPServerSpec(
+    id: UUID(uuidString: "B146A315-DFA4-4F75-9AF8-7B98CDE569FB")!,
+    displayName: "Linear",
+    endpointHost: "mcp.linear.app",
+    endpointPath: "/mcp",
+    toolNamespace: "linear",
+    oauthScopes: ["read", "write"],
+    oauthIssuerHost: "linear.app",
+    dataDisclosure: "Tool calls may send prompt content and selected arguments to Linear."
+)
+
+private let githubSpec = MCPServerSpec(
+    id: UUID(uuidString: "7B573A8A-C3CB-450D-9EBE-2E7D4C973682")!,
+    displayName: "GitHub",
+    endpointHost: "api.githubcopilot.com",
+    endpointPath: "/mcp/",
+    toolNamespace: "github",
+    oauthScopes: ["read:user", "repo"],
+    oauthIssuerHost: "github.com",
+    dataDisclosure: "Tool calls may send prompt content and selected arguments to GitHub."
+)
+
+// MARK: - Catalog
+
 public enum MCPCatalog {
+
+    // MARK: All servers
+
     public static var all: [MCPServerDescriptor] {
         [notion, linear, github]
     }
 
     public static func all(oauthRedirectBaseURL: URL) throws -> [MCPServerDescriptor] {
         [
-            try notion(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL)),
-            try linear(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL)),
-            try github(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL)),
+            try notion(oauthRedirectBaseURL: oauthRedirectBaseURL),
+            try linear(oauthRedirectBaseURL: oauthRedirectBaseURL),
+            try github(oauthRedirectBaseURL: oauthRedirectBaseURL),
         ]
     }
 
+    // MARK: Notion
+
     public static var notion: MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "5E4A6401-C86D-43DE-847E-AE02A34E89D8")!,
-            displayName: "Notion",
-            endpointHost: "mcp.notion.com",
-            endpointPath: "/mcp",
-            toolNamespace: "notion",
-            oauthScopes: ["read:content", "write:content"],
-            oauthIssuerHost: "notion.com",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to Notion.",
-            redirectURI: defaultRedirectURI(toolNamespace: "notion")
-        )
+        // URLComponents with hardcoded scheme/host/path always succeeds; try! is safe.
+        try! makeDescriptor(from: notionSpec, redirectURI: defaultRedirectURI(toolNamespace: notionSpec.toolNamespace))
     }
 
     public static func notion(oauthRedirectBaseURL: URL) throws -> MCPServerDescriptor {
-        try notion(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL))
-    }
-
-    private static func notion(oauthRedirectBaseURL: URL?) throws -> MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "5E4A6401-C86D-43DE-847E-AE02A34E89D8")!,
-            displayName: "Notion",
-            endpointHost: "mcp.notion.com",
-            endpointPath: "/mcp",
-            toolNamespace: "notion",
-            oauthScopes: ["read:content", "write:content"],
-            oauthIssuerHost: "notion.com",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to Notion.",
+        try makeDescriptor(
+            from: notionSpec,
             redirectURI: try universalLinkRedirectURI(
-                toolNamespace: "notion",
+                toolNamespace: notionSpec.toolNamespace,
                 oauthRedirectBaseURL: oauthRedirectBaseURL
             )
         )
     }
 
+    // MARK: Linear
+
     public static var linear: MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "B146A315-DFA4-4F75-9AF8-7B98CDE569FB")!,
-            displayName: "Linear",
-            endpointHost: "mcp.linear.app",
-            endpointPath: "/mcp",
-            toolNamespace: "linear",
-            oauthScopes: ["read", "write"],
-            oauthIssuerHost: "linear.app",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to Linear.",
-            redirectURI: defaultRedirectURI(toolNamespace: "linear")
-        )
+        // URLComponents with hardcoded scheme/host/path always succeeds; try! is safe.
+        try! makeDescriptor(from: linearSpec, redirectURI: defaultRedirectURI(toolNamespace: linearSpec.toolNamespace))
     }
 
     public static func linear(oauthRedirectBaseURL: URL) throws -> MCPServerDescriptor {
-        try linear(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL))
-    }
-
-    private static func linear(oauthRedirectBaseURL: URL?) throws -> MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "B146A315-DFA4-4F75-9AF8-7B98CDE569FB")!,
-            displayName: "Linear",
-            endpointHost: "mcp.linear.app",
-            endpointPath: "/mcp",
-            toolNamespace: "linear",
-            oauthScopes: ["read", "write"],
-            oauthIssuerHost: "linear.app",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to Linear.",
+        try makeDescriptor(
+            from: linearSpec,
             redirectURI: try universalLinkRedirectURI(
-                toolNamespace: "linear",
+                toolNamespace: linearSpec.toolNamespace,
                 oauthRedirectBaseURL: oauthRedirectBaseURL
             )
         )
     }
 
+    // MARK: GitHub
+
     public static var github: MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "7B573A8A-C3CB-450D-9EBE-2E7D4C973682")!,
-            displayName: "GitHub",
-            endpointHost: "api.githubcopilot.com",
-            endpointPath: "/mcp/",
-            toolNamespace: "github",
-            oauthScopes: ["read:user", "repo"],
-            oauthIssuerHost: "github.com",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to GitHub.",
-            redirectURI: defaultRedirectURI(toolNamespace: "github")
-        )
+        // URLComponents with hardcoded scheme/host/path always succeeds; try! is safe.
+        try! makeDescriptor(from: githubSpec, redirectURI: defaultRedirectURI(toolNamespace: githubSpec.toolNamespace))
     }
 
     public static func github(oauthRedirectBaseURL: URL) throws -> MCPServerDescriptor {
-        try github(oauthRedirectBaseURL: Optional(oauthRedirectBaseURL))
-    }
-
-    private static func github(oauthRedirectBaseURL: URL?) throws -> MCPServerDescriptor {
-        descriptor(
-            id: UUID(uuidString: "7B573A8A-C3CB-450D-9EBE-2E7D4C973682")!,
-            displayName: "GitHub",
-            endpointHost: "api.githubcopilot.com",
-            endpointPath: "/mcp/",
-            toolNamespace: "github",
-            oauthScopes: ["read:user", "repo"],
-            oauthIssuerHost: "github.com",
-            dataDisclosure: "Tool calls may send prompt content and selected arguments to GitHub.",
+        try makeDescriptor(
+            from: githubSpec,
             redirectURI: try universalLinkRedirectURI(
-                toolNamespace: "github",
+                toolNamespace: githubSpec.toolNamespace,
                 oauthRedirectBaseURL: oauthRedirectBaseURL
             )
         )
     }
 
-    private static func descriptor(
-        id: UUID,
-        displayName: String,
-        endpointHost: String,
-        endpointPath: String,
-        toolNamespace: String,
-        oauthScopes: [String],
-        oauthIssuerHost: String,
-        dataDisclosure: String,
-        redirectURI: URL
-    ) -> MCPServerDescriptor {
-        var endpoint = URLComponents()
-        endpoint.scheme = "https"
-        endpoint.host = endpointHost
-        endpoint.path = endpointPath
+    // MARK: - Descriptor factory
 
-        var issuer = URLComponents()
-        issuer.scheme = "https"
-        issuer.host = oauthIssuerHost
+    private static func makeDescriptor(from spec: MCPServerSpec, redirectURI: URL) throws -> MCPServerDescriptor {
+        var endpointComponents = URLComponents()
+        endpointComponents.scheme = "https"
+        endpointComponents.host = spec.endpointHost
+        endpointComponents.path = spec.endpointPath
+
+        guard let endpointURL = endpointComponents.url else {
+            throw MCPError.malformedMetadata("Could not construct endpoint URL for \(spec.displayName)")
+        }
+
+        var issuerComponents = URLComponents()
+        issuerComponents.scheme = "https"
+        issuerComponents.host = spec.oauthIssuerHost
+
+        guard let issuerURL = issuerComponents.url else {
+            throw MCPError.malformedMetadata("Could not construct OAuth issuer URL for \(spec.displayName)")
+        }
 
         return MCPServerDescriptor(
-            id: id,
-            displayName: displayName,
-            transport: .streamableHTTP(endpoint: endpoint.url!, headers: [:]),
+            id: spec.id,
+            displayName: spec.displayName,
+            transport: .streamableHTTP(endpoint: endpointURL, headers: [:]),
             authorization: .oauth(.init(
                 clientName: "ManifoldKit",
-                scopes: oauthScopes,
+                scopes: spec.oauthScopes,
                 redirectURI: redirectURI,
-                authorizationServerIssuer: issuer.url!
+                authorizationServerIssuer: issuerURL
             )),
-            toolNamespace: toolNamespace,
-            resourceURL: endpoint.url!,
-            dataDisclosure: dataDisclosure
+            toolNamespace: spec.toolNamespace,
+            resourceURL: endpointURL,
+            dataDisclosure: spec.dataDisclosure
         )
     }
+
+    // MARK: - Redirect URI helpers
 
     private static func defaultRedirectURI(toolNamespace: String) -> URL {
         var redirect = URLComponents()
         redirect.scheme = "basechat"
         redirect.host = "oauth"
         redirect.path = "/mcp/\(toolNamespace)/callback"
+        // basechat:// custom-scheme URLComponents always resolves; this is safe.
         return redirect.url!
     }
 
