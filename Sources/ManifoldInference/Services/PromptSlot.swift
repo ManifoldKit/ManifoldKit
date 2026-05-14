@@ -360,15 +360,22 @@ public struct AssembledPrompt: Sendable {
     /// Per-slot token usage keyed by slot id.
     public let budgetBreakdown: [String: Int]
 
+    /// Fraction of the context window consumed: `totalTokens / contextSize`.
+    /// 0.0 when context size is unknown (computed by ``PromptAssembler``
+    /// overloads that receive a `contextSize` or `BackendCapabilities` argument).
+    public let contextUtilization: Double
+
     public init(
         orderedSlots: [ResolvedSlot],
         messages: [(role: String, content: String)],
         totalTokens: Int,
-        budgetBreakdown: [String: Int]
+        budgetBreakdown: [String: Int],
+        contextUtilization: Double = 0.0
     ) {
         self.orderedSlots = orderedSlots
         self.messages = messages
         self.totalTokens = totalTokens
         self.budgetBreakdown = budgetBreakdown
+        self.contextUtilization = contextUtilization
     }
 }
