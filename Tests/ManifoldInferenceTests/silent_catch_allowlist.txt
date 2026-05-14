@@ -40,12 +40,6 @@ ManifoldUI/Views/Chat/AssistantMarkdownView.swift:if let parsed = try? Attribute
 # would terminate the iteration without adding signal.
 ManifoldTools/ReferenceTools/SampleRepoSearchTool.swift:guard let contents = try? String(contentsOf: url, encoding: .utf8) else { continue }
 
-# MCP transport encode/send — fire-and-forget pattern. Encoding failure is
-# swallowed because the next call will retry with a fresh codec, and the
-# caller is the framing layer that has no recovery path.
-ManifoldMCP/InternalMCPSession.swift:guard let payload = try? codec.encode(message) else { return }
-ManifoldMCP/InternalMCPSession.swift:try? await transport.send(payload)
-
 # AVAudioSession deactivation in tear-down. iOS routinely returns
 # `kAudioSessionInactiveError` for sessions that other apps still hold
 # active; that is expected and not actionable.

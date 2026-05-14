@@ -128,12 +128,22 @@ internal actor MCPSession {
         await stateHook.sessionDidSend(message)
     }
 
-    /// Fire-and-forget notification — errors are swallowed so callers can use this from a
-    /// cancellation handler without preventing `CancellationError` from propagating.
+    /// Fire-and-forget notification — errors are logged but do not propagate, so callers can
+    /// use this from a cancellation handler without preventing `CancellationError` from propagating.
     func sendNotificationIgnoringErrors(method: String, params: JSONSchemaValue?) async {
         let message = MCPJSONRPCMessage.notification(method: method, params: params)
-        guard let payload = try? codec.encode(message) else { return }
-        try? await transport.send(payload)
+        let payload: Data
+        do {
+            payload = try codec.encode(message)
+        } catch {
+            Log.inference.error("MCPSession: failed to encode notification '\(method, privacy: .public)': \(error, privacy: .private)")
+            return
+        }
+        do {
+            try await transport.send(payload)
+        } catch {
+            Log.inference.error("MCPSession: failed to send notification '\(method, privacy: .public)': \(error, privacy: .private)")
+        }
     }
 
     func close(reason: MCPDisconnectReason = .requested) async {

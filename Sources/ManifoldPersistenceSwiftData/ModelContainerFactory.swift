@@ -176,7 +176,11 @@ public enum ModelContainerFactory {
         // Sidecars live in the same directory and share the store basename.
         let directory = storeURL.deletingLastPathComponent()
         let baseName = storeURL.lastPathComponent
-        guard let entries = try? fm.contentsOfDirectory(atPath: directory.path) else {
+        let entries: [String]
+        do {
+            entries = try fm.contentsOfDirectory(atPath: directory.path)
+        } catch {
+            Log.persistence.warning("ModelContainerFactory: failed to list sidecar files for store protection: \(error, privacy: .private)")
             return
         }
         for entry in entries where entry != baseName && entry.hasPrefix(baseName) {

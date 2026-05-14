@@ -117,8 +117,14 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         guard GGUFMetadataReader.isValidGGUF(at: url) else { return nil }
 
         let fileManager = FileManager.default
-        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? UInt64 else {
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try fileManager.attributesOfItem(atPath: url.path)
+        } catch {
+            Log.inference.warning("ModelInfo: failed to read file attributes for \(url.lastPathComponent, privacy: .public): \(error, privacy: .private)")
+            return nil
+        }
+        guard let size = attributes[.size] as? UInt64 else {
             return nil
         }
 
@@ -131,12 +137,15 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.benchmarkResult = nil
 
         // Attempt to read GGUF header metadata for template detection.
-        if let metadata = try? GGUFMetadataReader.readMetadata(from: url) {
+        do {
+            let metadata = try GGUFMetadataReader.readMetadata(from: url)
             self.detectedPromptTemplate = PromptTemplateDetector.detect(from: metadata)
             self.detectedContextLength = metadata.contextLength
             self.modelArchitecture = metadata.generalArchitecture
             self.chatTemplateRaw = metadata.chatTemplate
             self.estimatedKVBytesPerToken = GGUFKVCacheEstimator.estimateBytesPerToken(from: metadata)
+        } catch {
+            Log.inference.warning("ModelInfo: failed to read GGUF metadata from \(url.lastPathComponent, privacy: .public): \(error, privacy: .private)")
         }
 
         // Static tier estimate; may be upgraded by a benchmark result later.
@@ -147,14 +156,18 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         // projector files don't try to find their own companion.
         if !url.lastPathComponent.lowercased().hasPrefix("mmproj") {
             let parentDir = url.deletingLastPathComponent()
-            let candidates = (try? FileManager.default.contentsOfDirectory(
-                at: parentDir,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )) ?? []
-            self.mmprojURL = candidates.first {
-                $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
-                $0.pathExtension.lowercased() == "gguf"
+            do {
+                let candidates = try FileManager.default.contentsOfDirectory(
+                    at: parentDir,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+                self.mmprojURL = candidates.first {
+                    $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
+                    $0.pathExtension.lowercased() == "gguf"
+                }
+            } catch {
+                Log.inference.warning("ModelInfo: failed to scan for mmproj companion in \(parentDir.lastPathComponent, privacy: .public): \(error, privacy: .private)")
             }
         }
     }
@@ -176,11 +189,15 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         let configURL = url.appendingPathComponent("config.json")
         guard fileManager.fileExists(atPath: configURL.path) else { return nil }
 
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            Log.inference.warning("ModelInfo: failed to read MLX model directory \(url.lastPathComponent, privacy: .public): \(error, privacy: .private)")
             return nil
         }
 
@@ -200,9 +217,14 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         }
 
         let totalSize = allFiles.reduce(UInt64(0)) { sum, fileURL in
-            let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-            guard values?.isRegularFile == true else { return sum }
-            return sum + UInt64(values?.fileSize ?? 0)
+            do {
+                let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+                guard values.isRegularFile == true else { return sum }
+                return sum + UInt64(values.fileSize ?? 0)
+            } catch {
+                Log.inference.warning("ModelInfo: failed to read resource values for \(fileURL.lastPathComponent, privacy: .public): \(error, privacy: .private)")
+                return sum
+            }
         }
         let hasSafetensors = allFiles.contains { $0.pathExtension.lowercased() == "safetensors" }
         guard hasSafetensors else { return nil }
@@ -327,12 +349,15 @@ extension ModelInfo {
 
         // Read GGUF header metadata for template detection. mmproj companion scan
         // is skipped — HuggingFace downloads flow file-by-file, not directory-wide.
-        if let metadata = try? GGUFMetadataReader.readMetadata(from: localURL) {
+        do {
+            let metadata = try GGUFMetadataReader.readMetadata(from: localURL)
             self.detectedPromptTemplate = PromptTemplateDetector.detect(from: metadata)
             self.detectedContextLength = metadata.contextLength
             self.modelArchitecture = metadata.generalArchitecture
             self.chatTemplateRaw = metadata.chatTemplate
             self.estimatedKVBytesPerToken = GGUFKVCacheEstimator.estimateBytesPerToken(from: metadata)
+        } catch {
+            Log.inference.warning("ModelInfo: failed to read GGUF metadata from \(localURL.lastPathComponent, privacy: .public): \(error, privacy: .private)")
         }
 
         // Static tier estimate; may be upgraded by a benchmark result later.
