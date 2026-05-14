@@ -175,6 +175,8 @@ Use **Prisma-style Highlights format** (adopted v0.11.2, PR #649): `### Highligh
 
 Workflow: check out the release branch via its worktree, rewrite CHANGELOG.md, amend + force-push, then merge via `gh api -X PUT repos/roryford/ManifoldKit/pulls/<N>/merge -f merge_method=squash`.
 
+`README.md` install-pin examples (`from: "x.y.z"`) are bumped automatically by Release Please via the `extra-files` entry in `release-please-config.json` — do not update them manually between releases.
+
 `changelog-lint` accepts: `^### ` (Prisma subheading) or `^\*\*[^*]+\*\* — ` (legacy bold+em-dash). Rejects any unrewritten `* lowercase` Release Please bullet.
 
 ## PR workflow
