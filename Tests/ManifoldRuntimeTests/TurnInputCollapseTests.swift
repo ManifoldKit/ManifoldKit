@@ -175,6 +175,8 @@ final class TurnInputCollapseTests: XCTestCase {
                 return "loopDetected"
             case .compressionTriggered:
                 return "compressionTriggered"
+            case .historyCompressed:
+                return "historyCompressed"
             case .sessionTouchFailed:
                 return "sessionTouchFailed"
             }

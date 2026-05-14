@@ -72,4 +72,40 @@ public final class PromptContextPipeline: Sendable {
                 rhs.position.sortIndex(messageCount: messageCount)
         }
     }
+
+    /// Budget-aware assembly. Passes each provider a ``ProviderBudget`` with
+    /// `allocated = totalBudget` (the full shared budget, not split per-provider).
+    ///
+    /// This overload is the lightweight path for callers that have a total token
+    /// budget but don't need per-provider weight splitting. Providers that
+    /// override ``PromptContextProvider/contributeSlots(budget:context:)``
+    /// receive the budget and can adjust their output accordingly. Providers
+    /// that use the default implementation receive only the message count,
+    /// identical to ``assemble(messageCount:)``.
+    ///
+    /// For proportional per-provider allocation (weight-split with spillover),
+    /// use ``ContextBudgetPlanner`` directly instead.
+    ///
+    /// - Parameters:
+    ///   - totalBudget: Token cap available to the whole pipeline this turn.
+    ///   - contextSize: Full backend context window (forwarded to ``ProviderBudget``).
+    ///   - context: Turn-level context forwarded verbatim to every provider.
+    /// - Returns: All contributed slots, sorted top-to-bottom.
+    /// - Throws: Whatever a provider throws; assembly aborts on first failure.
+    public func assemble(
+        totalBudget: Int,
+        contextSize: Int,
+        context: TurnContext
+    ) async throws -> [PromptSlot] {
+        var merged: [PromptSlot] = []
+        let budget = ProviderBudget(allocated: totalBudget, totalContextSize: contextSize)
+        for provider in providers {
+            let contribution = try await provider.contributeSlots(budget: budget, context: context)
+            merged.append(contentsOf: contribution)
+        }
+        let mc = context.messageCount
+        return merged.sorted {
+            $0.position.sortIndex(messageCount: mc) < $1.position.sortIndex(messageCount: mc)
+        }
+    }
 }

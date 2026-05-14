@@ -5,31 +5,43 @@ struct ConversationTurnExecutor: Sendable {
     private let persistence: ConversationPersistencePort
     private let inferenceService: InferenceService
     private let pipeline: PromptContextPipeline?
+    private let budgetPlanner: ContextBudgetPlanner?
     private let ragService: RAGService?
     /// Best-effort usage persistence. `nil` when the host did not wire a store.
     private let usageStore: (any UsageStore)?
     private let registry: InFlightStreamRegistry
     private let eventSink: @Sendable (ConversationEvent) -> Void
     private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
+    private let generationHooks: [any GenerationHook]
+    private let compressionPolicy: (any CompressionPolicy)?
+    private let hookTimeout: Duration
 
     init(
         persistence: ConversationPersistencePort,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline?,
+        budgetPlanner: ContextBudgetPlanner?,
         ragService: RAGService?,
         usageStore: (any UsageStore)?,
         registry: InFlightStreamRegistry,
         emit: @escaping @Sendable (ConversationEvent) -> Void,
-        emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
+        emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?,
+        generationHooks: [any GenerationHook] = [],
+        compressionPolicy: (any CompressionPolicy)? = nil,
+        hookTimeout: Duration = .seconds(30)
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
         self.pipeline = pipeline
+        self.budgetPlanner = budgetPlanner
         self.ragService = ragService
         self.usageStore = usageStore
         self.registry = registry
         self.eventSink = emit
         self.emptyResponseObserver = emptyResponseObserver
+        self.generationHooks = generationHooks
+        self.compressionPolicy = compressionPolicy
+        self.hookTimeout = hookTimeout
     }
 
     // MARK: Send flow
@@ -376,8 +388,44 @@ struct ConversationTurnExecutor: Sendable {
         )
         emit(.beforeContextAssembly(prompt: userPrompt, request: request))
 
+        // Build a TurnContext so budget-aware and content-matching providers
+        // can inspect the conversation without each needing a separate fetch.
+        // conversationText is nil on the first turn (empty history) — providers
+        // must treat nil as "no text available" rather than "empty conversation".
+        let conversationText: String? = history.isEmpty ? nil : {
+            let joined = history
+                .compactMap { record -> String? in
+                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
+                    return text.isEmpty ? nil : text
+                }
+                .joined(separator: " ")
+                .lowercased()
+            return joined.isEmpty ? nil : joined
+        }()
+
+        let turnContext = TurnContext(
+            sessionID: sessionID,
+            messageCount: messageCount,
+            conversationText: conversationText,
+            tokenizer: nil  // backends own their tokenizer; providers use HeuristicTokenizer fallback
+        )
+
         var slots: [PromptSlot]
-        if let pipeline {
+        if let budgetPlanner {
+            // Weight-split path: ContextBudgetPlanner handles proportional
+            // allocation across providers with spillover. TurnConfig has no
+            // contextWindowSize today, so we pass 0 (unknown) as contextSize.
+            do {
+                slots = try await budgetPlanner.assemble(
+                    totalBudget: Int.max,
+                    contextSize: 0,
+                    context: turnContext
+                )
+            } catch {
+                emit(.errorRaised(.contextAssembly(error)))
+                return
+            }
+        } else if let pipeline {
             do {
                 slots = try await pipeline.assemble(messageCount: messageCount)
             } catch {
@@ -758,6 +806,77 @@ struct ConversationTurnExecutor: Sendable {
                 )
             }
         }
+
+        // Post-generation hooks: fire and await with a per-hook timeout.
+        // Not called on cancel, error, or empty-response paths (those all
+        // return before reaching this point).
+        if !generationHooks.isEmpty {
+            let completedTurn = CompletedTurn(
+                sessionID: sessionID,
+                assistantMessage: assistantMessage,
+                promptTokens: usage?.promptTokens,
+                completionTokens: usage?.completionTokens
+            )
+            for hook in generationHooks {
+                let hookLabel = "\(type(of: hook))"
+                let timeout = hookTimeout
+                await withHookTimeout(timeout, label: hookLabel) {
+                    await hook.postGeneration(completedTurn)
+                }
+            }
+        }
+
+        // Compression check: ask the policy whether the context is full enough
+        // to warrant compression. Skipped when no token usage is available
+        // (policy can't make a meaningful decision without promptTokens) or
+        // when the backend doesn't report a context size (contextSize == 0).
+        if let compressionPolicy, let promptTokens = usage?.promptTokens {
+            let contextSize = await readContextWindowSize()
+            if contextSize > 0 && compressionPolicy.shouldCompress(promptTokens: promptTokens, contextSize: contextSize) {
+                let history: [ChatMessageRecord]
+                do {
+                    history = try await persistence.fetchMessages(sessionID: sessionID)
+                } catch {
+                    Log.inference.warning("CompressionPolicy: fetchMessages failed, skipping compression: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+
+                // Wrap inferenceService in a Sendable closure so the policy
+                // can call the backend for summarisation without holding a
+                // reference to the executor itself. Uses background priority
+                // so compression doesn't compete with the user's next turn.
+                let generate: @Sendable ([ChatMessageRecord]) async throws -> String = { [inferenceService] messages in
+                    let structured = messages.map { StructuredMessage(role: $0.role.rawValue, parts: $0.contentParts) }
+                    let (_, compressStream) = try await inferenceService.enqueueAsync(
+                        structuredMessages: structured,
+                        priority: .background
+                    )
+                    var result = ""
+                    var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
+                    for try await event in compressStream.events {
+                        if case .appendText(let chunk) = consumer.handle(event) {
+                            result += chunk
+                        }
+                    }
+                    return result
+                }
+
+                do {
+                    let compressed = try await compressionPolicy.compress(
+                        history: history,
+                        sessionID: sessionID,
+                        generate: generate
+                    )
+                    try await persistence.deleteMessages(for: sessionID)
+                    for message in compressed {
+                        try await persistence.insertMessage(message)
+                    }
+                    emit(.historyCompressed(sessionID: sessionID))
+                } catch {
+                    Log.inference.warning("CompressionPolicy.compress failed (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
     }
 
 
@@ -765,6 +884,41 @@ struct ConversationTurnExecutor: Sendable {
 
     private func emit(_ event: ConversationEvent) {
         eventSink(event)
+    }
+
+    /// Reads the backend's context window size from the main actor.
+    /// Returns 0 when unavailable — callers treat 0 as "skip compression".
+    @MainActor
+    private func readContextWindowSize() async -> Int {
+        inferenceService.capabilities?.contextWindowSize ?? 0
+    }
+
+    /// Runs `operation` with a timeout. If the operation doesn't finish within
+    /// `duration`, the operation task is cancelled and a warning is logged.
+    /// The hook receives a Task cancellation signal; it is not forcibly killed.
+    private func withHookTimeout(
+        _ duration: Duration,
+        label: String,
+        operation: @escaping @Sendable () async -> Void
+    ) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await operation()
+            }
+            group.addTask {
+                do {
+                    try await Task.sleep(for: duration)
+                    Log.inference.warning(
+                        "GenerationHook '\(label, privacy: .public)' timed out after \(duration, privacy: .public) and was cancelled"
+                    )
+                } catch {
+                    // Timer was cancelled because operation finished first — no action needed.
+                }
+            }
+            // Wait for whichever finishes first, then cancel the other.
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     private func isCancelled(handle: ConversationStreamHandle) async -> Bool {

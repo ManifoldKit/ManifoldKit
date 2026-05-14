@@ -111,43 +111,71 @@ public final class ConversationRuntime: Sendable {
     ///     to keep the event sequence stable, then enqueues with no extra
     ///     slots. When present, the pipeline is queried before each turn
     ///     and the resulting slots are surfaced via `.contextAssembled`.
+    ///     For proportional per-provider weight splitting, supply a
+    ///     ``ContextBudgetPlanner`` via `budgetPlanner` instead.
+    ///   - budgetPlanner: Optional. When present, takes priority over `pipeline`
+    ///     and performs proportional token-budget allocation with spillover across
+    ///     its registered providers. Use this when different context sources
+    ///     (lore, retrieval, world state) should compete for tokens by weight
+    ///     rather than receiving the full budget each.
     ///   - usageStore: Optional. When provided, a ``TurnUsageRecord`` is
     ///     persisted after each successful generation turn. Recording is
     ///     best-effort — a store failure logs a warning and never aborts
     ///     the turn loop.
+    ///   - generationHooks: Optional list of callbacks invoked after each
+    ///     successful generation turn. Hooks are awaited in order with a
+    ///     per-hook timeout (default 30 s). A hung hook is cancelled and
+    ///     logged — it never blocks the next turn. Hooks do not fire on
+    ///     cancelled, errored, or empty-response turns.
+    ///   - compressionPolicy: Optional. When provided, the runtime calls
+    ///     ``CompressionPolicy/shouldCompress(promptTokens:contextSize:)``
+    ///     after each successful generation turn. When it returns `true`,
+    ///     the runtime compresses history and emits
+    ///     ``ConversationEvent/historyCompressed(sessionID:)``. Compression
+    ///     failures are logged and never abort the turn.
     public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
+        budgetPlanner: ContextBudgetPlanner? = nil,
         ragService: RAGService? = nil,
         auxiliaryInferenceService: InferenceService? = nil,
-        usageStore: (any UsageStore)? = nil
+        usageStore: (any UsageStore)? = nil,
+        generationHooks: [any GenerationHook] = [],
+        compressionPolicy: (any CompressionPolicy)? = nil
     ) {
         self.init(
             messageStore: messageStore,
             sessionStore: sessionStore,
             inferenceService: inferenceService,
             pipeline: pipeline,
+            budgetPlanner: budgetPlanner,
             ragService: ragService,
             auxiliaryInferenceService: auxiliaryInferenceService,
             usageStore: usageStore,
-            emptyResponseObserver: nil
+            emptyResponseObserver: nil,
+            generationHooks: generationHooks,
+            compressionPolicy: compressionPolicy
         )
     }
 
     /// Test-only init that lets the caller observe the empty-assistant drop
-    /// path. Wrapped in `package` so test targets can reach it without
-    /// widening the public surface.
+    /// path and configure the hook timeout. Wrapped in `package` so test
+    /// targets can reach it without widening the public surface.
     package init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
         inferenceService: InferenceService,
         pipeline: PromptContextPipeline? = nil,
+        budgetPlanner: ContextBudgetPlanner? = nil,
         ragService: RAGService? = nil,
         auxiliaryInferenceService: InferenceService? = nil,
         usageStore: (any UsageStore)? = nil,
-        emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?
+        emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?,
+        generationHooks: [any GenerationHook] = [],
+        compressionPolicy: (any CompressionPolicy)? = nil,
+        hookTimeout: Duration = .seconds(30)
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
@@ -163,11 +191,15 @@ public final class ConversationRuntime: Sendable {
             persistence: persistence,
             inferenceService: inferenceService,
             pipeline: pipeline,
+            budgetPlanner: budgetPlanner,
             ragService: ragService,
             usageStore: usageStore,
             registry: registry,
             emit: { continuation.yield($0) },
-            emptyResponseObserver: emptyResponseObserver
+            emptyResponseObserver: emptyResponseObserver,
+            generationHooks: generationHooks,
+            compressionPolicy: compressionPolicy,
+            hookTimeout: hookTimeout
         )
     }
 

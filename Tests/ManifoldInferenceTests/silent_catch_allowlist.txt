@@ -66,3 +66,7 @@ ManifoldServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleV
 ManifoldCloud/ClaudeBackend.swift:} catch {
 ManifoldTools/TranscriptLogger.swift:} catch {
 ManifoldTools/ReferenceTools/NowTool.swift:} catch {
+
+# GenerationHook timeout: the Task.sleep CancellationError fires when the
+# hook finishes before the timer; it is the happy path and warrants no log.
+ManifoldRuntime/Services/ConversationTurnExecutor.swift:} catch {
