@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.25.2](https://github.com/roryford/ManifoldKit/compare/v0.25.1...v0.25.2) — 2026-05-15
+
+### Highlights
+
+**Internal hardening pass — safe to upgrade, no API changes.** Four PRs tightened crash safety and observability in the MCP and cloud backend layers: force-unwraps on static data replaced with throwing constructors, async stream setup migrated to Swift 5.9's `makeStream()` API, and backend error bodies that were previously silently dropped now produce `Log.network.error` entries in Console.
+
+A CI lint gate (`scripts/lint-no-new-force-unwraps.sh`) now fails the build if a new force-unwrap is introduced in `Sources/` outside the reviewed allowlist, so these categories of issue cannot regress.
+
+### Fixes
+
+**MCPCatalog static-data safety** ([#1225](https://github.com/roryford/ManifoldKit/issues/1225)) — `MCPCatalog` previously embedded six `UUID(uuidString:)!` literals and four `url!` force-unwraps spread across duplicated per-server overloads. A typo in a UUID string or a bad `URLComponents` configuration would crash at the point of first property access, with no typed error and no recovery path. The catalog now holds data in a single `MCPServerSpec` value per server; URL construction goes through a throwing factory that produces `MCPError.malformedMetadata` on failure; and a new `MCPCatalogTests` suite validates all entries at CI time. The public API is unchanged.
+
+**AsyncStream continuation safety** ([#1228](https://github.com/roryford/ManifoldKit/issues/1228)) — Five `var continuation: T!` implicit-unwrap-optional declarations in `ManifoldMCP` used the `AsyncThrowingStream { continuation = $0 }` closure pattern, which is safe only because the stdlib calls the closure synchronously — a guarantee the type system cannot enforce. All five sites now use `AsyncStream.makeStream()` / `AsyncThrowingStream.makeStream()`, the Swift 5.9 API that returns the continuation directly without the intermediate optional.
+
+**Cloud backend error visibility** ([#1227](https://github.com/roryford/ManifoldKit/issues/1227)) — `OpenAIBackend`, `OpenAIResponsesBackend`, and `SSECloudBackend` each copy-pasted the same `try? JSONSerialization.jsonObject(...)` block for extracting a human-readable message from an error response body — thirteen sites total. On parse failure the error was silently dropped with no log entry and no diagnostic signal. A shared `parseCloudErrorMessage(from:)` function in `ManifoldCloudCore` now centralises parsing and all call sites that previously swallowed failures now emit `Log.network.error` entries visible in Console.
+
 ## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) — 2026-05-13
 
 ### Highlights
