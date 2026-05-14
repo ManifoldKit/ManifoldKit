@@ -63,11 +63,9 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
 
     init(configuration: MCPTransportConfiguration) {
         self.configuration = configuration
-        var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation!
-        self.incomingMessages = AsyncThrowingStream { continuation in
-            streamContinuation = continuation
-        }
-        self.continuation = streamContinuation
+        let (incomingMessages, continuation) = AsyncThrowingStream.makeStream(of: Data.self, throwing: Error.self)
+        self.incomingMessages = incomingMessages
+        self.continuation = continuation
     }
 
     func start() async throws {
@@ -224,11 +222,9 @@ internal actor MCPStdioTransport: MCPTransport {
         self.command = command
         self.maxMessageBytes = maxMessageBytes
         self.inheritedEnvironment = inheritedEnvironment
-        var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation!
-        self.incomingMessages = AsyncThrowingStream { continuation in
-            streamContinuation = continuation
-        }
-        self.continuation = streamContinuation
+        let (incomingMessages, continuation) = AsyncThrowingStream.makeStream(of: Data.self, throwing: Error.self)
+        self.incomingMessages = incomingMessages
+        self.continuation = continuation
     }
 
     func start() async throws {
