@@ -10,6 +10,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
@@ -25,6 +26,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
@@ -284,6 +286,29 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
         run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+
+      # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
+      # over the four critical modules and verifies each module's line coverage
+      # meets its threshold (set 10pp below the 2026-05-15 baseline).  Runs only
+      # on main-branch pushes so per-PR CI is not slowed by the extra build pass.
+      # The check is informational on first-push; raise thresholds as coverage
+      # improves.  See scripts/check-coverage.sh for threshold values and rationale.
+      - name: Coverage thresholds
+        if: github.ref == 'refs/heads/main'
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          swift test \
+            --filter ManifoldCoreTests \
+            --filter ManifoldRuntimeTests \
+            --filter ManifoldPersistenceSwiftDataTests \
+            --filter ManifoldInferenceTests \
+            --filter ManifoldMCPTests \
+            --disable-default-traits \
+            --traits MCP \
+            --enable-code-coverage \
+            --skip-update
+          scripts/check-coverage.sh
 
       - name: Report SwiftPM debug cache state
         if: always()
