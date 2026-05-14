@@ -5,7 +5,7 @@ import Foundation
 /// Returns nil if the body is not parseable JSON or contains no recognized message field.
 /// The `try?` here is intentional — JSON parse failure means we return nil and the caller
 /// falls back to a generic error message. This is not an error-propagation path.
-func parseCloudErrorMessage(from data: Data) -> String? {
+package func parseCloudErrorMessage(from data: Data) -> String? {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         return nil
     }
@@ -26,7 +26,7 @@ func parseCloudErrorMessage(from data: Data) -> String? {
 }
 
 /// Overload for callers that have the body as a String already.
-func parseCloudErrorMessage(from string: String) -> String? {
+package func parseCloudErrorMessage(from string: String) -> String? {
     guard let data = string.data(using: .utf8) else { return nil }
     return parseCloudErrorMessage(from: data)
 }
