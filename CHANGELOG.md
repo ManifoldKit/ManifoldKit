@@ -1,11 +1,18 @@
 # Changelog
 
-## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) (2026-05-13)
+## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) — 2026-05-13
 
+### Highlights
 
-### Bug Fixes
+**Security patch — upgrade immediately** — three P0 holes closed in `MCPSSRFPolicy`, `GGUFMetadataReader`, and `MCPOAuth` ([#1219](https://github.com/roryford/ManifoldKit/issues/1219)).
 
-* close three P0 security holes in SSRF guard, GGUF parser, and OAuth DCR ([#1219](https://github.com/roryford/ManifoldKit/issues/1219)) ([bd66fe4](https://github.com/roryford/ManifoldKit/commit/bd66fe40d92b124196f7397d713d7981cb75c5c2))
+### Security
+
+**DNS fail-open in SSRF guard** — `MCPSSRFPolicy` and `DNSRebindingGuard` previously returned an empty address list on DNS resolution failure, which let a malicious operator arrange a `SERVFAIL` for the guard's probe while serving a private IP to URLSession's independent resolver query. Both now treat a nil/failed resolution as a block rather than a pass. No API change.
+
+**Unbounded GGUF recursion** — `GGUFMetadataReader` had no depth cap on nested value parsing, making it possible to crash the host process with a crafted `.gguf` file during model validation. Recursion is now capped; files that exceed the limit are rejected with an error rather than parsed.
+
+**RFC 7592 management-token injection** — `MCPOAuth`'s dynamic client registration path forwarded caller-supplied metadata fields without sanitising the `registration_access_token` key, allowing a server to overwrite the management token via a registration response. The field is now stripped before the metadata is stored.
 
 ## [0.25.0](https://github.com/roryford/ManifoldKit/compare/v0.24.0...v0.25.0) — 2026-05-12
 
