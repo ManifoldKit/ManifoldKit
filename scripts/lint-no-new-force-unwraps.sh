@@ -136,20 +136,15 @@ for p in "${ALLOWLIST_PATHS[@]}"; do
     FIND_EXCLUDES+=("!" "-path" "*/$p*")
 done
 
-# Find all .swift files outside allowlisted paths
-mapfile -d '' SWIFT_FILES < <(find "$SOURCES_DIR" -name "*.swift" "${FIND_EXCLUDES[@]}" -print0)
-
-if [ ${#SWIFT_FILES[@]} -eq 0 ]; then
-    echo "No Swift files to check in $SOURCES_DIR (after allowlist exclusions)"
-    exit 0
-fi
-
 # Detect force-unwraps:
 #   - word char or ) followed by !
 #   - exclude: comment-only lines (both // and /// forms — grep output is
 #     "file:line:content" so we match ": *//"), != operators, string/char
 #     literals containing !
-VIOLATIONS=$(printf '%s\0' "${SWIFT_FILES[@]}" | xargs -0 grep -n '[a-zA-Z0-9_)]!' \
+# Note: find -print0 | xargs -0 is used throughout for bash 3.2 compatibility
+# (macOS ships bash 3.2; mapfile requires bash 4+).
+VIOLATIONS=$(find "$SOURCES_DIR" -name "*.swift" "${FIND_EXCLUDES[@]}" -print0 \
+    | xargs -0 grep -n '[a-zA-Z0-9_)]!' \
     | grep -v ':[[:space:]]*//' \
     | grep -v ' != ' \
     | grep -v '"[^"]*!"' \
