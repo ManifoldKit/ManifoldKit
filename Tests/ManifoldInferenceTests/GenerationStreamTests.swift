@@ -156,7 +156,9 @@ final class GenerationStreamTests: XCTestCase {
         } catch {
             // Expected timeout
         }
-        await Task.yield()  // let the @MainActor phase-update task drain
+        // Poll until the @MainActor phase-update task has set .stalled, with a deadline.
+        let deadline = Date().addingTimeInterval(2.0)
+        while stream.phase != .stalled && Date() < deadline { await Task.yield() }
 
         // Sabotage check: removing `setPhase(.stalled)` from the timeout path causes this to fail
         XCTAssertEqual(stream.phase, .stalled)

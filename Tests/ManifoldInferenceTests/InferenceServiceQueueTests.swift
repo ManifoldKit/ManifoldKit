@@ -91,6 +91,24 @@ final class InferenceServiceQueueTests: XCTestCase {
         return (service, mock)
     }
 
+    /// Polls until `condition` is true or the 2-second deadline passes.
+    ///
+    /// Use this instead of bare `await Task.yield()` to wait for state driven
+    /// by the drain `Task` that spawns asynchronously inside `enqueue`.
+    private func waitFor(
+        _ condition: @autoclosure () -> Bool,
+        timeout: TimeInterval = 2.0,
+        description: String = "condition"
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            await Task.yield()
+        }
+        if !condition() {
+            XCTFail("Timed out waiting for \(description)")
+        }
+    }
+
     // MARK: - 1. Single request executes immediately
 
     func test_enqueue_singleRequest_executesImmediately() async throws {
@@ -108,8 +126,8 @@ final class InferenceServiceQueueTests: XCTestCase {
                        "Stream should transition to .connecting immediately when queue is empty")
         XCTAssertTrue(service.isGenerating)
 
-        // Yield a token — need to let the drain Task run first.
-        await Task.yield()
+        // Wait for the drain Task to call generate() so gates[0] is populated.
+        await waitFor(mock.generateCallCount >= 1, description: "generate() called")
         mock.release(at: 0, tokens: ["Hello", " world"])
 
         // Consume the passthrough stream.
@@ -143,8 +161,8 @@ final class InferenceServiceQueueTests: XCTestCase {
         XCTAssertEqual(mock.generateCallCount, 0,
                        "generate() not yet called — drain Task hasn't run")
 
-        // Let the drain Task run and complete the first generation.
-        await Task.yield()
+        // Wait for the drain Task to call generate() for the first request.
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         XCTAssertEqual(mock.generateCallCount, 1, "Only first request should call generate()")
 
         mock.release(at: 0, tokens: ["a"])
@@ -157,8 +175,8 @@ final class InferenceServiceQueueTests: XCTestCase {
         // Second request should now be active.
         XCTAssertEqual(stream2.phase, .connecting)
 
-        // Let the second drain Task run.
-        await Task.yield()
+        // Wait for the drain Task to call generate() for the second request.
+        await waitFor(mock.generateCallCount >= 2, description: "second generate() called")
         XCTAssertEqual(mock.generateCallCount, 2)
         mock.release(at: 1, tokens: ["b"])
 
@@ -185,14 +203,14 @@ final class InferenceServiceQueueTests: XCTestCase {
             priority: .normal
         )
 
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["a"])
         for try await _ in firstStream.events {}
 
         let firstConfig = try XCTUnwrap(mock.receivedConfigs.first)
         XCTAssertFalse(firstConfig.jsonMode)
 
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 2, description: "second generate() called")
         mock.release(at: 1, tokens: ["b"])
         for try await _ in secondStream.events {}
 
@@ -222,7 +240,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         )
 
         // Complete the active request.
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
         mock.release(at: 0, tokens: ["x"])
         for try await _ in streamActive.events {}
         service.generationDidFinish()
@@ -260,7 +278,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         )
 
         // Complete the active request and drain.
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
         mock.release(at: 0)
         for try await _ in streamActive.events {}
         service.generationDidFinish()
@@ -273,7 +291,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         // Release the userInitiated stream and consume it so the auto-drain
         // fires deterministically (consuming the consumer stream waits for the
         // Task's defer block, which calls drainQueue for the next request).
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 2, description: "userInitiated generate() called")
         mock.release(at: 1, tokens: ["tok"])
         for try await _ in streamUi.events {}
 
@@ -281,7 +299,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         XCTAssertEqual(streamBg.phase, .queued, "background should still be queued")
 
         // Same pattern for normal → background.
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 3, description: "normal generate() called")
         mock.release(at: 2, tokens: ["tok"])
         for try await _ in streamNorm.events {}
 
@@ -370,7 +388,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         XCTAssertEqual(stream2.phase, .queued)
 
         // Complete first generation.
-        await Task.yield()
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0)
         for try await _ in stream1.events {}
 
@@ -508,8 +526,8 @@ final class InferenceServiceQueueTests: XCTestCase {
         let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
 
         // The first stream is not consumed, so auto-drain never fires.
-        // Calling drainQueue indirectly via another enqueue should not start second.
-        await Task.yield()
+        // Wait for the first generate() call, then confirm the second has not fired.
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
 
         XCTAssertEqual(mock.generateCallCount, 1,
                        "Only one generate() should have been called")
@@ -572,8 +590,8 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         XCTAssertEqual(stream2.phase, .queued, "Second should start queued")
 
-        // Let the drain Task run and release stream1.
-        await Task.yield()
+        // Wait for the drain Task to call generate() so gates[0] is populated.
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["a"])
 
         // Consume stream1 fully — deliberately do NOT call generationDidFinish().
@@ -617,8 +635,8 @@ final class InferenceServiceQueueTests: XCTestCase {
         XCTAssertFalse(service.hasQueuedRequests,
                        "hasQueuedRequests must not be affected by a non-queued generate()")
 
-        // Clean up: consume both streams and finish the queued request.
-        await Task.yield()
+        // Wait for both generate() calls so both gates are populated before releasing.
+        await waitFor(mock.generateCallCount >= 2, description: "both generate() calls made")
         mock.release(at: 0, tokens: ["queued-tok"])
         mock.release(at: 1, tokens: ["title-tok"])
 
@@ -647,8 +665,8 @@ final class InferenceServiceQueueTests: XCTestCase {
         XCTAssertEqual(stream1.phase, .connecting)
         XCTAssertEqual(stream2.phase, .queued)
 
-        // Let the activeTask start and release stream1.
-        await Task.yield()
+        // Wait for the drain Task to call generate() so gates[0] is populated.
+        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["tok"])
 
         // Consume stream1 without calling generationDidFinish().
@@ -762,8 +780,8 @@ final class InferenceServiceQueueTests: XCTestCase {
             priority: .normal
         )
 
-        // Let the drain Task run so it calls backend.generate() and gates[0] is populated.
-        await Task.yield()
+        // Wait for the drain Task to call generate() so gates[0] is populated.
+        await waitFor(mock.generateCallCount >= 1, description: "generate() called")
 
         // Release one token — this starts the stream flowing before we unload.
         mock.release(at: 0, tokens: ["tok"])
