@@ -15,6 +15,7 @@ on:
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
+      - "scripts/lint-no-new-force-unwraps.sh"
   pull_request:
     branches: [main]
     paths:
@@ -29,6 +30,7 @@ on:
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
+      - "scripts/lint-no-new-force-unwraps.sh"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -178,6 +180,9 @@ jobs:
             exit 1
           fi
           echo "ManifoldUI -> ManifoldPersistenceSwiftData edge is clean."
+
+      - name: Lint — no new force-unwraps in Sources
+        run: bash scripts/lint-no-new-force-unwraps.sh Sources
 
       - name: Lint — Macro plugin builds inside the SwiftPM sandbox
         # SwiftPM compiles macro plugins (`ManifoldMacrosPlugin`) inside a
