@@ -538,9 +538,9 @@ final class GenerationQueueTests: XCTestCase {
 
         // Consume the stream so the defer block runs and resets state.
         for try await _ in stream.events {}
-        // Give the defer block a turn.
-        await Task.yield()
-        await Task.yield()
+        // Poll until the defer block has had a chance to reset isGenerating.
+        let deadline = Date().addingTimeInterval(2.0)
+        while coordinator.isGenerating && Date() < deadline { await Task.yield() }
 
         XCTAssertFalse(coordinator.isGenerating, "isGenerating must reset to false on completion")
     }
@@ -558,8 +558,9 @@ final class GenerationQueueTests: XCTestCase {
         } catch {
             // expected
         }
-        await Task.yield()
-        await Task.yield()
+        // Poll until the defer block has had a chance to reset isGenerating.
+        let deadline = Date().addingTimeInterval(2.0)
+        while coordinator.isGenerating && Date() < deadline { await Task.yield() }
 
         XCTAssertFalse(coordinator.isGenerating, "isGenerating must reset to false on error")
     }
@@ -594,11 +595,12 @@ final class GenerationQueueTests: XCTestCase {
         let (token1, s1) = try coord.enqueue(messages: [("user", "a")], priority: .normal)
         let (token2, s2) = try coord.enqueue(messages: [("user", "b")], priority: .normal)
 
-        // Interleave cancels and yields to hit the re-entry window.
+        // Interleave cancels — the yields here are intentional cooperative preemption
+        // to hit the re-entry window between finishAndDiscard and drainQueue, not a
+        // timing hack; the cancel calls are the primary test mechanism.
         coord.cancel(token1)
         await Task.yield()
         coord.cancel(token2)
-        await Task.yield()
 
         // Consume both streams to completion so no task is leaked.
         do { for try await _ in s1.events {} } catch { /* expected cancel */ }

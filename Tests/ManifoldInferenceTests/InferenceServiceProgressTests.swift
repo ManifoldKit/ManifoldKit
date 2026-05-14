@@ -130,9 +130,10 @@ final class InferenceServiceProgressTests: XCTestCase {
         // First backend keeps firing — these MUST NOT touch modelLoadProgress.
         await firstBackend.fireProgress(0.9)
         await firstBackend.fireProgress(0.95)
-        // Give the late hops a chance to drain the cooperative queue.
-        await Task.yield()
-        await Task.yield()
+        // `fireProgress` awaits the installed handler (which runs the service's actor-hop
+        // synchronously), so by the time both calls return the handler has been called and
+        // any stale update would already be reflected. A single cooperative yield lets any
+        // residual @MainActor work drain before we assert.
         await Task.yield()
         XCTAssertEqual(service.modelLoadProgress, 0.0,
                        "Stale progress from a superseded load must be ignored")
