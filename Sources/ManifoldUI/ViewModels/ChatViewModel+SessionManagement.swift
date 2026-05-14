@@ -10,69 +10,37 @@ extension ChatViewModel {
     public func switchToSession(_ session: ChatSessionRecord) async {
         // Drive the UI back to idle synchronously so the toolbar/stop button
         // observes the transition immediately. The runtime handle and queue
-        // tear-down are awaited via `discardRequests` below before any
+        // tear-down are awaited by `sessionManager.teardown` before any
         // backend mutation runs.
         if isGenerating {
             transitionPhase(to: .idle)
         }
 
-        isRestoringSession = true
-        defer { isRestoringSession = false }
+        sessionManager.isRestoringSession = true
+        defer { sessionManager.isRestoringSession = false }
 
+        // Activate the session record in the controller (sets settings, prompt template,
+        // pinned IDs) and capture what model/endpoint was persisted for this session.
         let selectionState = sessionController.activateSession(session)
 
-        // Discard any queued requests that belong to a different session.
-        // Awaiting here is load-bearing: the call cancels the active turn
-        // (when its session ≠ `session.id`) and drives the task's defer
-        // block to completion before returning. Running the discard
-        // *before* `resetConversation()` / `secureWipe()` keeps those
-        // backend KV-cache mutations from racing the dying turn — a race
-        // that previously left B's first send to land on a half-torn-down
-        // queue and yield zero tokens (issue #965).
-        await inferenceService.discardRequests(notMatching: session.id)
+        // Delegate the teardown sequence to ChatSessionManager:
+        // - Discard inference requests for the prior session (load-bearing await:
+        //   cancels the dying turn before any KV-cache mutation runs — see #965).
+        // - Reset conversation history + KV cache on the active backend.
+        // - Cancel the runtime stream handle (closes bookkeeping before the next
+        //   send registers a new handle).
+        // - Reset tool-approval gate (prevent prior-session approvals from leaking).
+        // - Cancel lingering background tasks.
+        // - Refresh the available endpoint list (required before resolution).
+        // - Resolve the persisted model/endpoint IDs to live registry objects.
+        let teardownResult = await sessionManager.teardown(
+            sessionID: session.id,
+            promptTemplate: sessionController.selectedPromptTemplate,
+            selectionState: selectionState
+        )
 
-        inferenceService.resetConversation()
-        inferenceService.secureWipe()
-        inferenceService.selectedPromptTemplate = sessionController.selectedPromptTemplate
-
-        // Cancel the runtime's stream handle for the prior session if one is
-        // still attached. `discardRequests` made the queue idle; this
-        // closes the runtime-level bookkeeping so the next send opens a
-        // fresh handle. Awaited inline so the runtime registry is fully
-        // torn down before the caller's next send registers a new handle —
-        // a fire-and-forget Task here flaked under heavy parallel load
-        // (issue #965).
-        if let handle = activeConversationStreamHandle {
-            await conversationRuntime.cancel(handle)
-            activeConversationStreamHandle = nil
-        }
-
-        // Clear any still-pending tool approvals and the once-per-session
-        // latch so approvals from the prior session do not leak into this one.
-        toolApprovalGate?.resetForNewSession()
-
-        // Cancel any in-flight post-generation background tasks from the prior session.
-        backgroundTask?.cancel()
-        backgroundTask = nil
-        backgroundTaskError = nil
-
-        await refreshAvailableEndpointsFromStore()
-
-        let resolvedEndpoint = selectionState.selectedEndpointID.flatMap { endpointID in
-            availableEndpoints.first(where: { $0.id == endpointID })
-        }
-        let resolvedModel = selectionState.selectedModelID.flatMap { modelID in
-            availableModels.first(where: { $0.id == modelID })
-        }
-
-        if let resolvedEndpoint {
-            selectedEndpoint = resolvedEndpoint
-        } else if let resolvedModel {
-            selectedModel = resolvedModel
-        } else {
-            selectedModel = nil
-            selectedEndpoint = nil
-        }
+        // Apply the resolved model/endpoint selection (exactly one or neither).
+        sessionManager.applySelection(teardownResult)
 
         showUpgradeHint = false
         inputText = ""
