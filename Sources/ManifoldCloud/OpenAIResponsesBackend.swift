@@ -573,15 +573,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
 
     /// Extracts an error message from a `response.error` payload.
     static func parseErrorMessage(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        if let error = parsed["error"] as? [String: Any],
-           let message = error["message"] as? String {
-            return message
-        }
-        return parsed["message"] as? String
+        parseCloudErrorMessage(from: json)
     }
 
     // MARK: - SSE Payload Handler

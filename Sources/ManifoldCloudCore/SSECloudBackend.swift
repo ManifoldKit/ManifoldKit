@@ -628,16 +628,12 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
 
     /// Extracts an error message from a JSON error response body.
     ///
-    /// The default implementation handles the common `{"error":{"message":"..."}}` format
-    /// used by OpenAI and Anthropic. Subclasses can override for different formats.
+    /// The default implementation delegates to `parseCloudErrorMessage(from:)`, which
+    /// handles the common `{"error":{"message":"..."}}` format used by OpenAI and Anthropic,
+    /// as well as flat `{"message":"..."}` and `{"detail":"..."}` shapes.
+    /// Subclasses can override for provider-specific formats.
     open func extractErrorMessage(from body: String) -> String? {
-        guard let data = body.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = parsed["error"] as? [String: Any],
-              let message = error["message"] as? String else {
-            return nil
-        }
-        return message
+        parseCloudErrorMessage(from: body)
     }
 
     // MARK: - State Mutation Helpers (for subclass use)
