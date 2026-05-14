@@ -3,6 +3,7 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -36,6 +37,16 @@ import ManifoldTestSupport
 /// `#if` condition, so the PR-merge sequence is "D lands → capability
 /// flips → these tests go green" without a follow-up patch.
 final class OllamaAdversarialJSONTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     /// Probe for whether tool-call emission is wired yet.
     ///

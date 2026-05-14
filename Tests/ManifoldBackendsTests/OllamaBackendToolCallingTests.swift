@@ -3,6 +3,7 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -27,6 +28,16 @@ import ManifoldTestSupport
 ///   emissions.
 @MainActor
 final class OllamaBackendToolCallingTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     // MARK: - Fixtures
 

@@ -4,6 +4,7 @@ import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 
 /// Grounds audit claim #4 ("raw image bytes live in `MessagePart.image`,
 /// re-encoded every turn") with a measurement.
@@ -49,12 +50,14 @@ final class CloudImageEncodeCountTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
         counter = EncodeCounter()
         let counter = counter!
         CloudImageEncoding.encodeHook = { counter.increment() }
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
         // Reset before nilling out the local ref so a leftover hook from a
         // prior failure cannot leak into the next test in the same process.
         CloudImageEncoding.encodeHook = nil

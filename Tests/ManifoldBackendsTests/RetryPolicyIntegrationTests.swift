@@ -5,6 +5,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
+@testable import ManifoldCloudCore
 
 /// Integration tests verifying that `withExponentialBackoff` retries rate-limited
 /// requests end-to-end through a real `URLSession` + `MockURLProtocol` stack.
@@ -21,6 +22,7 @@ final class RetryPolicyIntegrationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
         baseURL = URL(string: "https://retry-\(UUID().uuidString).test")!
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
@@ -30,6 +32,7 @@ final class RetryPolicyIntegrationTests: XCTestCase {
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
         backend = nil
         session = nil
         super.tearDown()

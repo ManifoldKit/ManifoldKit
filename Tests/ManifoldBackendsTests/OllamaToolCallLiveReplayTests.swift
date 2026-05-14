@@ -3,6 +3,7 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -18,6 +19,16 @@ import ManifoldTestSupport
 /// Skipped until Agent D's tool-call parser lands in main — see
 /// ``OllamaAdversarialJSONTests`` for the coordination notes.
 final class OllamaToolCallLiveReplayTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     private var ollamaToolCallingIsWired: Bool {
         OllamaBackend().capabilities.supportsToolCalling

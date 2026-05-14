@@ -4,6 +4,7 @@ import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 
 /// Tests for #20 (part): image content blocks on the Anthropic Messages API.
 ///
@@ -21,6 +22,16 @@ import ManifoldTestSupport
 /// 5. Advertise `supportsVision` based on the configured model name so
 ///    GenerationQueue's pre-flight matches the wire-level behaviour.
 final class ClaudeImageInputTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     // MARK: - Helpers
 

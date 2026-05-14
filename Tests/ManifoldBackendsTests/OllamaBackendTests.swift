@@ -4,6 +4,7 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
@@ -27,6 +28,12 @@ private func ndjsonLine(_ json: String) -> Data {
 
 @Suite("OllamaBackend", .serialized)
 struct OllamaBackendTests {
+
+    init() {
+        // UUID-based test hostnames don't resolve; return a public IP so
+        // DNSRebindingGuard passes for mock endpoints.
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     // MARK: - Setup helpers
 
@@ -1690,6 +1697,10 @@ struct OllamaBackendTests {
 
 @Suite("OllamaModelListService", .serialized)
 struct OllamaModelListServiceTests {
+
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     private func makeService() -> (OllamaModelListService, URL) {
         let session = makeMockSession()

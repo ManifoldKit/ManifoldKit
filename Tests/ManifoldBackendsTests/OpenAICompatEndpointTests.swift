@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
@@ -81,6 +82,10 @@ private func extractBody(from request: URLRequest?) throws -> Data {
 
 @Suite("OpenAI-compat endpoints (Ollama)", .serialized)
 struct OpenAICompatEndpointTests {
+
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     // =========================================================================
     // MARK: - Ollama Streaming

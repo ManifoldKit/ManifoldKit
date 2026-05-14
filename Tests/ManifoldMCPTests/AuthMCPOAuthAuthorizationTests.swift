@@ -5,9 +5,18 @@ import XCTest
 import ManifoldTestSupport
 
 final class AuthMCPOAuthAuthorizationTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // resource.example.com and auth.example.com don't resolve in test environments.
+        // Return a safe public IP so the SSRF guard passes and tests exercise OAuth logic.
+        MCPSSRFPolicy._resolverForTesting = { _ in ["93.184.216.34"] }
+        MCPSSRFPolicy._synchronousResolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
     override func tearDown() {
         MockURLProtocol.reset()
         MCPSSRFPolicy._resolverForTesting = nil
+        MCPSSRFPolicy._synchronousResolverForTesting = nil
         MCPURLSessionFactory.networkDisabled = false
         super.tearDown()
     }

@@ -4,6 +4,7 @@ import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 
 /// Tests for #604: structured multi-turn replay against the Anthropic
 /// Messages API. ``ClaudeBackend`` must:
@@ -16,6 +17,16 @@ import ManifoldTestSupport
 /// 3. Drop signature-less thinking blocks from the replay payload (sending
 ///    a blank signature would 400 the request).
 final class ClaudeStructuredReplayTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     // MARK: - Helpers
 

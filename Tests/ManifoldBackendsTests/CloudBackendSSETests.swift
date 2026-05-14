@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
@@ -29,6 +30,10 @@ private let sseDone = Data("data: [DONE]\n\n".utf8)
 
 @Suite("Claude Backend SSE E2E", .serialized)
 struct ClaudeBackendSSETests {
+
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     // MARK: - Helpers
 

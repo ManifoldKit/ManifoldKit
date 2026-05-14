@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -89,6 +90,12 @@ private final class TestExtractEventsBackend: SSECloudBackend, @unchecked Sendab
 
 @Suite("SSEPayloadHandler.extractEvents routing", .serialized)
 struct SSEExtractEventsTests {
+
+    init() {
+        // UUID-based test hostnames don't resolve; return a public IP so
+        // DNSRebindingGuard passes for mock endpoints.
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     private func makeBackend(handler: any SSEPayloadHandler) -> (TestExtractEventsBackend, URL) {
         let session = makeMockSession()

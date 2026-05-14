@@ -21,6 +21,7 @@ final class ClaudePromptCacheTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
         mockURL = URL(string: "https://claude-cache-\(UUID().uuidString).test")!
         messagesURL = mockURL.appendingPathComponent("v1/messages")
         let config = URLSessionConfiguration.ephemeral
@@ -29,6 +30,7 @@ final class ClaudePromptCacheTests: XCTestCase {
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
         if let url = messagesURL {
             MockURLProtocol.unstub(url: url)
         }

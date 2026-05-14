@@ -3,6 +3,7 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -27,6 +28,7 @@ final class OpenAIResponsesBackendToolCallingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
         mockURL = URL(string: "https://openai-responses-tools-\(UUID().uuidString).test")!
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
@@ -34,6 +36,7 @@ final class OpenAIResponsesBackendToolCallingTests: XCTestCase {
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
         if let url = mockURL {
             MockURLProtocol.unstub(url: url.appendingPathComponent("v1/responses"))
         }

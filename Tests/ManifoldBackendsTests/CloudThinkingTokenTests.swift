@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -55,6 +56,10 @@ private func categorise(_ event: GenerationEvent) -> EventCategory? {
 
 @Suite("Claude extended thinking", .serialized)
 struct ClaudeExtendedThinkingTests {
+
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     private func makeBackend() -> (ClaudeBackend, URL) {
         let session = makeMockSession()
@@ -204,6 +209,10 @@ struct ClaudeExtendedThinkingTests {
 
 @Suite("OpenAI reasoning delta", .serialized)
 struct OpenAIReasoningTests {
+
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
 
     private func makeBackend() -> (OpenAIBackend, URL) {
         let session = makeMockSession()

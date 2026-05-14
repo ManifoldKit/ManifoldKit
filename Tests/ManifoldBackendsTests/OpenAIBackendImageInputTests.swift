@@ -4,6 +4,7 @@ import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 
 /// Tests for #943 (part of #20): `image_url` content parts on the OpenAI
 /// Chat Completions API.
@@ -24,6 +25,16 @@ import ManifoldTestSupport
 /// 5. Conform to ``StructuredHistoryReceiver`` so the coordinator routes
 ///    `MessagePart.image` parts to it.
 final class OpenAIBackendImageInputTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     // MARK: - Helpers
 

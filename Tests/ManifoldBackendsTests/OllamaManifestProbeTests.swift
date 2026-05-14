@@ -2,6 +2,7 @@
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+@testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
 
@@ -11,6 +12,16 @@ import ManifoldTestSupport
 /// the manifest now also carries the model's real context window and the
 /// auto-detected ``ThinkingMarkers``.
 final class OllamaManifestProbeTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
+    override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
+        super.tearDown()
+    }
 
     private func makeMockSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral

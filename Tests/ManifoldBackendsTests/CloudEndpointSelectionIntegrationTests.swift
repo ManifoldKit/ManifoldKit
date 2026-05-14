@@ -2,6 +2,7 @@
 import XCTest
 import SwiftData
 @testable import ManifoldBackends
+@testable import ManifoldCloudCore
 // ChatViewModel and SessionManagerViewModel live in ManifoldUI; testable import
 // is needed to exercise the endpoint selection → load → generate pipeline that
 // wires cloud backends through InferenceService.
@@ -34,6 +35,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
 
         container = try makeInMemoryContainer()
         context = container.mainContext
@@ -58,6 +60,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     }
 
     override func tearDown() {
+        DNSRebindingGuard._resolverForTesting = nil
         vm = nil
         sessionManager = nil
         cloudSession = nil

@@ -163,6 +163,10 @@ struct CloudErrorSanitizerTests {
 @Suite("CloudErrorSanitizer E2E (SSECloudBackend)", .serialized)
 struct CloudErrorSanitizerE2ETests {
 
+    init() {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+    }
+
     private func makeMockSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
