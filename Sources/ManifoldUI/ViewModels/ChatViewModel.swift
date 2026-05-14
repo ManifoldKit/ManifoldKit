@@ -81,6 +81,13 @@ public final class ChatViewModel {
 
     let sessionController: SessionController
 
+    // MARK: - Session Manager
+
+    /// Coordinates session-switching teardown (inference cancellation,
+    /// runtime handle release, tool-approval reset, model/endpoint resolution).
+    /// Extracted from `ChatViewModel+SessionManagement.swift` in #1221 phase 1.
+    let sessionManager: ChatSessionManager
+
     var persistence: (any SessionStore & MessageStore)? {
         get { sessionController.persistence }
         set { sessionController.persistence = newValue }
@@ -645,7 +652,15 @@ public final class ChatViewModel {
     var backgroundTask: Task<Void, Never>?
     var lastPressureLevel: MemoryPressureLevel = .nominal
     private var isSynchronizingSelection = false
-    var isRestoringSession = false
+
+    /// Forwarded to ``ChatSessionManager/isRestoringSession`` so that
+    /// `ModelLoadCoordinator` can read and write it through the same path
+    /// as before extraction. All writes route through `sessionManager` to
+    /// keep the observable state in one place.
+    var isRestoringSession: Bool {
+        get { sessionManager.isRestoringSession }
+        set { sessionManager.isRestoringSession = newValue }
+    }
 
     /// Cached per-message token counts keyed by message ID, to avoid recalculating all messages.
     @ObservationIgnored
@@ -760,6 +775,7 @@ public final class ChatViewModel {
         self.toolApprovalGate = toolApprovalGate
         self.userDefaults = userDefaults
         self.sessionController = SessionController(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
+        self.sessionManager = ChatSessionManager()
         self.modelRegistry = ModelRegistry(
             inferenceService: inferenceService,
             modelStorage: modelStorage
@@ -812,6 +828,7 @@ public final class ChatViewModel {
 
         startRuntimeEventDrain()
         installRegistryObservation()
+        installSessionManagerClosures()
     }
 
     deinit {
