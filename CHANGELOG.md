@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.25.2](https://github.com/roryford/ManifoldKit/compare/v0.25.1...v0.25.2) (2026-05-14)
+
+
+### Bug Fixes
+
+* **cloud:** extract shared error-body parser, add logging to silent error paths ([#1227](https://github.com/roryford/ManifoldKit/issues/1227)) ([95b4778](https://github.com/roryford/ManifoldKit/commit/95b47782e71985c1de1c9cd051a9e45008055670))
+* **mcp:** eliminate force-unwraps in MCPCatalog static data ([#1225](https://github.com/roryford/ManifoldKit/issues/1225)) ([a7abc91](https://github.com/roryford/ManifoldKit/commit/a7abc9192566c24b810d502134eaefea7680c622))
+* **mcp:** replace Continuation! pattern with AsyncStream.makeStream() ([#1228](https://github.com/roryford/ManifoldKit/issues/1228)) ([784b4d6](https://github.com/roryford/ManifoldKit/commit/784b4d68489e2a453e5960c00afccd64828ca223))
+
 ## [0.25.1](https://github.com/roryford/ManifoldKit/compare/v0.25.0...v0.25.1) — 2026-05-13
 
 ### Highlights
