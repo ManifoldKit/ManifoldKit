@@ -90,11 +90,15 @@ public final class ModelStorageService: @unchecked Sendable {
     public func discoverModels() -> [ModelInfo] {
         let directory = modelsDirectory
 
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            Log.inference.warning("ModelStorageService: failed to read models directory: \(error, privacy: .private)")
             return []
         }
 
@@ -130,11 +134,17 @@ public final class ModelStorageService: @unchecked Sendable {
             // and look one level deeper. We only recurse one level — anything beyond
             // that is out of scope for this layout convention.
             let namespace = url.lastPathComponent
-            guard let nestedContents = try? fileManager.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+            let nestedContents: [URL]
+            do {
+                nestedContents = try fileManager.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
+            } catch {
+                Log.inference.warning("ModelStorageService: failed to read namespace directory '\(namespace, privacy: .public)': \(error, privacy: .private)")
+                continue
+            }
 
             for nestedURL in nestedContents {
                 var nestedIsDir: ObjCBool = false
@@ -159,11 +169,15 @@ public final class ModelStorageService: @unchecked Sendable {
     public func discoverImageModels(in rootDirectory: URL? = nil) -> [ImageModelInfo] {
         let root = rootDirectory ?? modelsDirectory
 
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        let contents: [URL]
+        do {
+            contents = try fileManager.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            Log.inference.warning("ModelStorageService: failed to read image models directory: \(error, privacy: .private)")
             return []
         }
 

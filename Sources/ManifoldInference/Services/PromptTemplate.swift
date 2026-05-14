@@ -339,21 +339,31 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// Serialises a `ToolDefinition` to the JSON string placed after `<|tool>`.
-    /// Returns `nil` when serialisation fails (the tool is silently skipped).
+    /// Returns `nil` when serialisation fails; the caller is responsible for logging the skip.
     private func toolDeclarationBlock(for tool: ToolDefinition) -> String? {
-        guard let paramsData   = try? JSONEncoder().encode(tool.parameters),
-              let paramsObject = try? JSONSerialization.jsonObject(with: paramsData)
-        else { return nil }
+        let paramsData: Data
+        let paramsObject: Any
+        do {
+            paramsData = try JSONEncoder().encode(tool.parameters)
+            paramsObject = try JSONSerialization.jsonObject(with: paramsData)
+        } catch {
+            Log.prompt.warning("PromptTemplate: failed to encode parameters for tool '\(tool.name, privacy: .public)': \(error, privacy: .private)")
+            return nil
+        }
 
         let dict: [String: Any] = [
             "name":        tool.name,
             "description": tool.description,
             "parameters":  paramsObject
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: .sortedKeys),
-              let str  = String(data: data, encoding: .utf8)
-        else { return nil }
-        return str
+        do {
+            let data = try JSONSerialization.data(withJSONObject: dict, options: .sortedKeys)
+            guard let str = String(data: data, encoding: .utf8) else { return nil }
+            return str
+        } catch {
+            Log.prompt.warning("PromptTemplate: failed to serialize tool declaration for '\(tool.name, privacy: .public)': \(error, privacy: .private)")
+            return nil
+        }
     }
 
     // MARK: - Phi
