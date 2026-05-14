@@ -50,7 +50,32 @@ final class FoundationBackendUnitTests: XCTestCase {
         guard ready else {
             throw XCTSkip("Apple Intelligence not ready — ensure it is enabled and downloaded in System Settings > Apple Intelligence & Siri")
         }
-        backend = FoundationBackend()
+        let freshBackend = FoundationBackend()
+        backend = freshBackend
+        // Register an async teardown block that stops and awaits any in-flight
+        // generation Task before ARC releases the backend.
+        //
+        // Without this, tests that call generate() without draining the resulting
+        // stream (e.g. test_loadModel_doesNotRetainProbeSessionHistory) leave a
+        // Task alive that holds a strong local reference to the FoundationBackend
+        // and its LanguageModelSession.  When the NEXT test's setUp calls
+        // probeIsReady() the system still sees an active session from the prior
+        // test, which can cause the probe to return false and the test to throw
+        // XCTSkip even on hardware that has Apple Intelligence available.
+        //
+        // FoundationBackend is @unchecked Sendable, so the direct capture is safe.
+        addTeardownBlock {
+            // Cancel any in-flight generation task and release the
+            // LanguageModelSession.  unloadModel() calls stopGeneration() which:
+            //   1. Synchronously sets _isGenerating = false and session = nil
+            //   2. Cancels the generation Task so its async body exits soon
+            // The async body holds a local strong reference to activeSession; it
+            // will release it once it observes Task.isCancelled. Yielding once
+            // gives the task a chance to run its cancellation path before the
+            // next test's setUp allocates another session. #1115.
+            freshBackend.unloadModel()
+            await Task.yield()
+        }
     }
 
     override func tearDown() {
