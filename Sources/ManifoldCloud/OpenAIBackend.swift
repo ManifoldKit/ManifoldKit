@@ -60,22 +60,16 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // Adapter capabilities mirror what `OpenAIBackend.capabilities`
         // would resolve for the default model name (`gpt-4o-mini`). The
         // adapter's `requestBuilder` is a no-op placeholder — the
-        // backend still drives `buildRequest` directly until Phase
-        // 2/B/iii inverts the call. Storing the adapter here is what
-        // satisfies the cross-backend audit and gives the runtime
-        // re-routing a stable composition root to consume next.
+        // backend's `buildRequest` override is the canonical request
+        // builder, and the adapter-routed path below threads it through
+        // the routing's `buildRequest` closure (which forwards to
+        // `self.buildRequest`). The adapter itself remains the
+        // composition root the cross-backend audit recognises.
         self.adapter = OpenAIAdapter(
             capabilities: Self.defaultAdapterCapabilities,
             requestBuilder: { _, _, _, _ in
-                // Unreachable today — the backend's own buildRequest
-                // is the live path. Throws if a future code path
-                // bypasses the backend and tries to drive the adapter
-                // standalone, which would skip the stateful pieces
-                // (tool-aware history snapshot/clear, structured
-                // history vision pre-flight) that still live on the
-                // backend.
                 throw CloudBackendError.invalidURL(
-                    "OpenAIAdapter.requestBuilder is not yet the live path; call OpenAIBackend.buildRequest until Phase 2/B/iii."
+                    "OpenAIAdapter.requestBuilder is not the live path; the OpenAIBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
                 )
             }
         )
@@ -84,6 +78,40 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             urlSession: urlSession ?? URLSessionProvider.pinned,
             payloadHandler: CloudPayloadHandler.openAI
         )
+
+        // Phase 2/B/iii/δ — install adapter routing so the stream loop
+        // runs in `SSECloudBackend.parseResponseStreamRouted` and event
+        // extraction is driven by a fresh per-stream
+        // `OpenAIStreamEventExtractor`. This is the inversion the
+        // staged Phase 2/B preamble set up: the backend body stops
+        // overriding `parseResponseStream` and becomes a thin host
+        // around the adapter + extractor.
+        //
+        // The routing's `buildRequest` closure forwards to
+        // `self.buildRequest` (captured weakly) so all the stateful
+        // pieces — tool-aware-history snapshot/clear, structured-history
+        // vision pre-flight, manifest-gated parameter gating, just-in-
+        // time keychain key resolution — keep running on the backend
+        // where they own their state.
+        let weakSelfBox = WeakBackendBox(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelfBox.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            },
+            streamConsumerFactory: { OpenAIStreamEventExtractor() }
+        )
+        self.configure(adapterRouting: routing)
     }
 
     /// Static adapter capabilities used at init time. Mirrors the dynamic
@@ -364,268 +392,15 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     }
 
     // MARK: - Stream Parsing
-
-    /// Parses OpenAI Chat Completions SSE with reasoning-model support.
-    ///
-    /// OpenAI-compatible reasoning models (o1/o3, DeepSeek R1, xAI Grok
-    /// reasoning, hosted Qwen reasoning) expose chain-of-thought text alongside
-    /// visible content via one of two Chat Completions delta shapes:
-    ///
-    /// ```json
-    /// {"choices":[{"delta":{"reasoning_content":"..."}}]}   // DeepSeek / compat
-    /// {"choices":[{"delta":{"reasoning":"..."}}]}           // OpenAI-native
-    /// ```
-    ///
-    /// We route reasoning fragments to ``GenerationEvent/thinkingToken(_:)``
-    /// and emit a single ``GenerationEvent/thinkingComplete`` on the first
-    /// transition from reasoning to visible `content` (or on stream end if
-    /// reasoning never handed off to content — truncated upstream). Streams
-    /// from non-reasoning models (plain gpt-4o-mini, etc.) never observe a
-    /// reasoning chunk and therefore never fire `.thinkingComplete`.
-    public override func parseResponseStream(
-        bytes: URLSession.AsyncBytes,
-        config: GenerationConfig,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) async throws {
-        let tokenStream = SSEStreamParser.parse(bytes: bytes, limits: effectiveSSEStreamLimits)
-        var state = ChatCompletionsStreamState()
-
-        do {
-            for try await payload in tokenStream {
-                if Task.isCancelled { break }
-                let outcome = processPayload(payload, state: &state, continuation: continuation)
-                if outcome == .breakLoop { break }
-                if outcome == .continueLoop { continue }
-                if let error = extractStreamError(from: payload) {
-                    throw error
-                }
-            }
-        } catch {
-            // Close any open thinking block before rethrowing so consumers
-            // see a clean handoff and don't hang in a thinking-only state.
-            state.thinking.flushIfOpen(into: continuation)
-            throw error
-        }
-
-        state.thinking.flushIfOpen(into: continuation)
-        // Stream end fallback: if the upstream closed without a `finish_reason`
-        // (some compat servers omit it), emit any buffered tool calls now so
-        // the orchestrator can dispatch them. On cancellation we deliberately
-        // skip this — dropping the consumer mid-stream must not produce
-        // phantom `.toolCall` events.
-        if !Task.isCancelled {
-            finaliseToolCalls(state: &state, continuation: continuation)
-        }
-    }
-
-    // MARK: - Stream Processing Steps
-
-    /// Per-payload processing state for the Chat Completions stream loop.
-    ///
-    /// Carries the thinking-block flag, the streaming tool-call accumulator,
-    /// and the one-shot finalisation flag so each step function can advance
-    /// the same conversation without binding to local closures.
-    struct ChatCompletionsStreamState {
-        var thinking = ThinkingBlockManager()
-        let toolAccumulator = StreamingToolCallAccumulator()
-        // Tracks whether we've finalised tool calls already (for non-streaming
-        // whole responses delivered as a single chunk, where `finish_reason`
-        // and the final `tool_calls[]` arrive in the same payload).
-        var finalisedToolCalls = false
-    }
-
-    /// Per-payload outcome that lets the outer loop honour the `continue` /
-    /// `break` semantics that the original monolithic implementation
-    /// expressed inline.
-    enum PayloadOutcome {
-        case proceed
-        case continueLoop
-        case breakLoop
-    }
-
-    private func processPayload(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) -> PayloadOutcome {
-        if processPrefillProgress(payload, continuation: continuation) {
-            return .continueLoop
-        }
-        processReasoning(payload, state: &state, continuation: continuation)
-        processVisibleContent(payload, state: &state, continuation: continuation)
-        processToolDeltas(payload, state: &state, continuation: continuation)
-        processWholeToolCalls(payload, state: &state, continuation: continuation)
-        processUsage(payload, continuation: continuation)
-        processFinishReason(payload, state: &state, continuation: continuation)
-        if isStreamEnd(payload) {
-            state.thinking.flushIfOpen(into: continuation)
-            return .breakLoop
-        }
-        return .proceed
-    }
-
-    private func processPrefillProgress(
-        _ payload: String,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) -> Bool {
-        guard let progress = Self.parsePrefillProgress(from: payload) else { return false }
-        continuation.yield(.prefillProgress(
-            nPast: progress.nPast,
-            nTotal: progress.nTotal,
-            tokensPerSecond: progress.tokensPerSecond
-        ))
-        return true
-    }
-
-    /// Reasoning delta: emit as thinkingToken, keep the block open. A single
-    /// chunk may legally carry both reasoning and content on some providers,
-    /// so the caller still runs the visible-content step after this.
-    private func processReasoning(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard let reasoning = Self.parseReasoningDelta(from: payload) else { return }
-        continuation.yield(.thinkingToken(reasoning))
-        state.thinking.open()
-    }
-
-    /// Visible content delta: close thinking first so consumers see a clean
-    /// handoff before the first visible token.
-    private func processVisibleContent(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard let token = extractToken(from: payload) else { return }
-        state.thinking.flushIfOpen(into: continuation)
-        continuation.yield(.token(token))
-    }
-
-    /// Tool-call deltas (streaming) — keyed by `index`. The first delta for
-    /// each `index` carries `id` + `function.name`; subsequent deltas carry
-    /// `function.arguments` fragments. Some compat servers do not re-emit
-    /// `id` on later deltas, so we sticky-buffer it.
-    private func processToolDeltas(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        for delta in Self.parseToolCallDeltas(from: payload) {
-            emitToolDelta(delta, state: &state, continuation: continuation)
-        }
-    }
-
-    private func emitToolDelta(
-        _ delta: ToolCallDelta,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        let key = "\(delta.index)"
-        let isNew = state.toolAccumulator.upsert(
-            key: key,
-            id: delta.id,
-            name: delta.name,
-            argumentsDelta: delta.argumentsDelta
-        )
-        if isNew {
-            state.thinking.flushIfOpen(into: continuation)
-        }
-        // Emit `.toolCallStart` once we have both an id and a name.
-        if let entry = state.toolAccumulator.entriesByKey[key],
-           !entry.started, !entry.name.isEmpty {
-            let resolvedId = state.toolAccumulator.resolvedId(forKey: key)
-            continuation.yield(.toolCallStart(callId: resolvedId, name: entry.name))
-            state.toolAccumulator.markStarted(key: key)
-        }
-        // Stream argument fragments under the resolved (sticky) id.
-        if let fragment = delta.argumentsDelta, !fragment.isEmpty {
-            let resolvedId = state.toolAccumulator.resolvedId(forKey: key)
-            continuation.yield(.toolCallArgumentsDelta(callId: resolvedId, textDelta: fragment))
-        }
-    }
-
-    /// Non-streaming whole-message tool_calls (`message.tool_calls[]`).
-    /// Skipped once the streaming path has already finalised, to avoid double
-    /// emission when both shapes appear in the same response.
-    private func processWholeToolCalls(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard !state.finalisedToolCalls else { return }
-        let wholeCalls = Self.parseWholeToolCalls(from: payload)
-        guard !wholeCalls.isEmpty else { return }
-        state.thinking.flushIfOpen(into: continuation)
-        for call in wholeCalls {
-            emitWholeToolCall(call, state: &state, continuation: continuation)
-        }
-    }
-
-    private func emitWholeToolCall(
-        _ call: WholeToolCall,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        let key = call.id.isEmpty ? UUID().uuidString : call.id
-        state.toolAccumulator.upsert(
-            key: key,
-            id: call.id,
-            name: call.name,
-            argumentsDelta: call.arguments
-        )
-        let resolvedId = state.toolAccumulator.resolvedId(forKey: key)
-        continuation.yield(.toolCallStart(callId: resolvedId, name: call.name))
-        state.toolAccumulator.markStarted(key: key)
-        if !call.arguments.isEmpty {
-            continuation.yield(.toolCallArgumentsDelta(
-                callId: resolvedId,
-                textDelta: call.arguments
-            ))
-        }
-    }
-
-    private func processUsage(
-        _ payload: String,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard let usage = extractUsage(from: payload) else { return }
-        handleUsage(usage)
-        if let prompt = usage.promptTokens,
-           let completion = usage.completionTokens {
-            continuation.yield(.usage(prompt: prompt, completion: completion))
-        }
-    }
-
-    /// `finish_reason: "tool_calls"` finalises any buffered streaming tool
-    /// calls. When the assistant turn ends with `stop` we still flush any
-    /// accumulated tool calls so callers in the non-stream path see a uniform
-    /// shape.
-    private func processFinishReason(
-        _ payload: String,
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard let reason = Self.parseFinishReason(from: payload) else { return }
-        if reason == "tool_calls" || !state.toolAccumulator.entriesByKey.isEmpty {
-            finaliseToolCalls(state: &state, continuation: continuation)
-        }
-    }
-
-    private func finaliseToolCalls(
-        state: inout ChatCompletionsStreamState,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) {
-        guard !state.finalisedToolCalls else { return }
-        state.finalisedToolCalls = true
-        for entry in state.toolAccumulator.finalizedEntries() {
-            continuation.yield(.toolCall(ToolCall(
-                id: entry.callId,
-                toolName: entry.name,
-                arguments: entry.arguments
-            )))
-        }
-    }
+    //
+    // Phase 2/B/iii/δ deleted the inline `parseResponseStream` override and
+    // its `process*` step cluster. The adapter routing installed at
+    // `init(urlSession:)` time threads stream parsing through
+    // `SSECloudBackend.parseResponseStreamRouted`, which drives a fresh
+    // `OpenAIStreamEventExtractor` per generation. The extractor (shipped
+    // in #1269) owns the per-stream state — open-thinking flag, index-
+    // keyed tool-call delta buffer, once-only finalisation guard — that
+    // previously lived in `ChatCompletionsStreamState` on this class.
 
     // MARK: - SSE Payload Handler
 
@@ -843,6 +618,14 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         )
     }
 
+}
+
+/// Sendable weak reference used by the routing closure to call back into
+/// the backend's `buildRequest` without retaining `self`. Matches the
+/// `WeakBox` pattern used inside `SSECloudBackend.generate`.
+private final class WeakBackendBox: @unchecked Sendable {
+    weak var value: OpenAIBackend?
+    init(_ value: OpenAIBackend) { self.value = value }
 }
 
 #endif
