@@ -91,6 +91,31 @@ final class PrivateIPClassifierTests: XCTestCase {
         XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("192.168.255.255"), .privateHost)
     }
 
+    // MARK: - classifyIPLiteral: CGNAT / Shared Address Space (RFC 6598)
+
+    func test_cgnat_100_64_0_1_isPrivate() {
+        // 100.64.0.1 is inside the RFC 6598 Shared Address Space (100.64.0.0/10).
+        // Carrier-grade NAT and cloud-internal infrastructure use this range;
+        // it must not be reachable from production network calls.
+        // Sabotage: removing the 100.64/10 check from classifyIPv4 would return nil here.
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("100.64.0.1"), .privateHost)
+    }
+
+    func test_cgnat_100_127_255_255_isPrivate() {
+        // Last address in the 100.64.0.0/10 block.
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("100.127.255.255"), .privateHost)
+    }
+
+    func test_cgnat_boundary_100_63_255_255_isNil() {
+        // 100.63.x.x is just outside the block and must be allowed.
+        XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("100.63.255.255"))
+    }
+
+    func test_cgnat_boundary_100_128_0_0_isNil() {
+        // 100.128.x.x is just outside the block and must be allowed.
+        XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("100.128.0.0"))
+    }
+
     // MARK: - classifyIPLiteral: Link-Local
 
     func test_linkLocal_169_254_0_0_isLinkLocal() {

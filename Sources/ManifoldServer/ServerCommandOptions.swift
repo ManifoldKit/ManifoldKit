@@ -9,7 +9,7 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
     @Option(help: "Port to bind.")
     internal var port = 8080
 
-    @Option(help: "API key required by the server for incoming requests.")
+    @Option(help: "API key required by the server for incoming requests. Omitting this option allows unauthenticated access from any process on the bound interface.")
     internal var apiKey: String?
 
     @Option(help: "Maximum number of concurrent generation requests.")
@@ -58,6 +58,9 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
         }
         guard parallel > 0 else {
             throw ValidationError("--parallel must be greater than zero")
+        }
+        if apiKey == nil || apiKey?.isEmpty == true {
+            fputs("warning: ManifoldServer started without --api-key; any process on \(host) can invoke inference without credentials\n", stderr)
         }
         if unsafeCORS, corsOrigin != nil {
             throw ValidationError("--unsafe-cors cannot be combined with --cors-origin")

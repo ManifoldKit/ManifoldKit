@@ -5,8 +5,17 @@ import ManifoldInference
 // MARK: - MCPSSRFPolicy
 
 internal enum MCPSSRFPolicy {
-    nonisolated(unsafe) static var _resolverForTesting: ((String) async -> [String]?)? = nil
-    nonisolated(unsafe) static var _synchronousResolverForTesting: ((String) -> [String]?)? = nil
+    private static let overrideLock = NSLock()
+    nonisolated(unsafe) private static var _resolverForTesting_storage: ((String) async -> [String]?)? = nil
+    static var _resolverForTesting: ((String) async -> [String]?)? {
+        get { overrideLock.withLock { _resolverForTesting_storage } }
+        set { overrideLock.withLock { _resolverForTesting_storage = newValue } }
+    }
+    nonisolated(unsafe) private static var _synchronousResolverForTesting_storage: ((String) -> [String]?)? = nil
+    static var _synchronousResolverForTesting: ((String) -> [String]?)? {
+        get { overrideLock.withLock { _synchronousResolverForTesting_storage } }
+        set { overrideLock.withLock { _synchronousResolverForTesting_storage = newValue } }
+    }
 
     static func validateTransportURL(_ url: URL) throws {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {

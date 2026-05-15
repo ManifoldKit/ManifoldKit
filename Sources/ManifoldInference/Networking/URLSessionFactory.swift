@@ -52,6 +52,7 @@ public enum URLSessionFactory {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = defaultRequestTimeout
         config.timeoutIntervalForResource = resourceTimeout
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,
@@ -83,6 +84,7 @@ public enum URLSessionFactory {
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,

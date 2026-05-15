@@ -196,7 +196,7 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
             }
         }
 
-        Log.network.error("Certificate pin mismatch for \(host). No certificate in chain matched any of \(expectedPins.count) pins. Seen hashes: \(seenHashes.joined(separator: ", "))")
+        Log.network.error("Certificate pin mismatch for \(host, privacy: .public). No certificate in chain matched any of \(expectedPins.count) pins. Seen hashes: \(seenHashes.joined(separator: ", "), privacy: .public)")
         completionHandler(.cancelAuthenticationChallenge, nil)
     }
 

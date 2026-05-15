@@ -75,8 +75,16 @@ public enum HttpGetFixtureTool {
                 )
             }
 
+            guard url.scheme?.lowercased() == "https" else {
+                return ToolResult(
+                    callId: "",
+                    content: "Only HTTPS URLs are permitted when real network is enabled.",
+                    errorKind: .permissionDenied
+                )
+            }
+
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let (data, response) = try await URLSessionFactory.ephemeral().data(from: url)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let body = String(data: data, encoding: .utf8) ?? ""
                 return encode(Result(url: args.url, status: status, body: body))
