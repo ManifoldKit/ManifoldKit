@@ -57,18 +57,37 @@ public struct CloudAdapterRouting: Sendable {
         _ config: GenerationConfig
     ) throws -> URLRequest
 
+    /// Optional factory for a stateful per-stream event consumer.
+    ///
+    /// When non-nil, `SSECloudBackend.parseResponseStreamRouted` invokes
+    /// this factory at stream open and drives the resulting consumer with
+    /// each decoded frame payload (`consume(payload:)`) followed by a
+    /// single terminal `finish(cancelled:)`. The consumer takes over event
+    /// emission entirely — neither ``payloadHandler/extractEvents(from:)``
+    /// nor the envelope's thinking-handoff bookkeeping run on this path,
+    /// because both responsibilities belong to the consumer.
+    ///
+    /// When nil (default), the envelope falls back to the stateless
+    /// per-frame projection through ``payloadHandler``. The OpenAI Chat
+    /// Completions backend is the first migration onto this seam (Phase
+    /// 2/B/iii/δ); Claude, OpenAI Responses, and Ollama keep their inline
+    /// stream loops until Phase 3.
+    public let streamConsumerFactory: (@Sendable () -> any CloudStreamEventConsumer)?
+
     public init(
         payloadHandler: any SSEPayloadHandler,
         framedTransport: any FramedTransport,
         streamFinalizer: any StreamFinalizer,
         errorBodyDecoder: any ErrorBodyDecoder,
-        buildRequest: @escaping @Sendable (String, String?, GenerationConfig) throws -> URLRequest
+        buildRequest: @escaping @Sendable (String, String?, GenerationConfig) throws -> URLRequest,
+        streamConsumerFactory: (@Sendable () -> any CloudStreamEventConsumer)? = nil
     ) {
         self.payloadHandler = payloadHandler
         self.framedTransport = framedTransport
         self.streamFinalizer = streamFinalizer
         self.errorBodyDecoder = errorBodyDecoder
         self.buildRequest = buildRequest
+        self.streamConsumerFactory = streamConsumerFactory
     }
 }
 #endif

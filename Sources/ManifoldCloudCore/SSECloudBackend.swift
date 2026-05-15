@@ -597,76 +597,124 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     ) async throws {
         let handler = routing.payloadHandler
         let finalizer = routing.streamFinalizer
+        let consumer = routing.streamConsumerFactory?()
         var wasThinking = false
+        var streamEnded = false
+        var threwMidStream: Error?
 
-        for await frame in routing.framedTransport.frames(from: bytes) {
-            if Task.isCancelled { break }
+        do {
+            for await frame in routing.framedTransport.frames(from: bytes) {
+                if Task.isCancelled { break }
 
-            // Decode the frame as UTF-8 for the payload handler API, which
-            // operates on `String`. `FramedTransport` ships `Data` so binary
-            // bytes survive transport intact; the handler chooses how to
-            // interpret. Empty / non-UTF-8 frames skip event extraction
-            // but still get inspected by the finalizer below in case the
-            // termination signal is binary.
-            let payload = String(data: frame, encoding: .utf8) ?? ""
+                // Decode the frame as UTF-8 for the payload handler API, which
+                // operates on `String`. `FramedTransport` ships `Data` so binary
+                // bytes survive transport intact; the handler chooses how to
+                // interpret. Empty / non-UTF-8 frames skip event extraction
+                // but still get inspected by the finalizer below in case the
+                // termination signal is binary.
+                let payload = String(data: frame, encoding: .utf8) ?? ""
 
-            if !payload.isEmpty {
-                for event in handler.extractEvents(from: payload) {
-                    switch event {
-                    case .thinkingToken:
-                        wasThinking = true
-                        continuation.yield(event)
-                    case .thinkingComplete:
-                        wasThinking = false
-                        continuation.yield(event)
-                    case .token:
-                        if wasThinking {
-                            continuation.yield(.thinkingComplete)
-                            wasThinking = false
+                if !payload.isEmpty {
+                    if let consumer {
+                        // Consumer-driven path: the consumer owns the full
+                        // event vocabulary (tokens, reasoning handoff, tool
+                        // calls, usage, prefill progress, finish-reason
+                        // drains). The envelope only forwards what the
+                        // consumer emits and still consults the handler for
+                        // in-stream errors + the finalizer/isStreamEnd
+                        // termination signals.
+                        for event in consumer.consume(payload: payload) {
+                            // Mirror the usage event back into envelope
+                            // bookkeeping so `lastUsage` stays accurate for
+                            // hosts that read it post-stream.
+                            if case .usage(let prompt, let completion) = event {
+                                handleUsage((promptTokens: prompt, completionTokens: completion))
+                            }
+                            continuation.yield(event)
                         }
-                        continuation.yield(event)
-                    default:
-                        continuation.yield(event)
+                    } else {
+                        for event in handler.extractEvents(from: payload) {
+                            switch event {
+                            case .thinkingToken:
+                                wasThinking = true
+                                continuation.yield(event)
+                            case .thinkingComplete:
+                                wasThinking = false
+                                continuation.yield(event)
+                            case .token:
+                                if wasThinking {
+                                    continuation.yield(.thinkingComplete)
+                                    wasThinking = false
+                                }
+                                continuation.yield(event)
+                            default:
+                                continuation.yield(event)
+                            }
+                        }
+
+                        if let usage = handler.extractUsage(from: payload) {
+                            handleUsage(usage)
+                            if let prompt = usage.promptTokens,
+                               let completion = usage.completionTokens {
+                                continuation.yield(.usage(prompt: prompt, completion: completion))
+                            }
+                        }
+                    }
+
+                    if let error = handler.extractStreamError(from: payload) {
+                        throw error
                     }
                 }
 
-                if let usage = handler.extractUsage(from: payload) {
-                    handleUsage(usage)
-                    if let prompt = usage.promptTokens,
+                // Finalizer takes precedence over the handler's `isStreamEnd`
+                // boolean — it's the richer signal (carries usage + stop
+                // reason on the terminal frame).
+                if case .streamComplete(let usage, _) = finalizer.finalize(frame: frame) {
+                    // On the consumer-driven path the consumer has already
+                    // emitted any payload-carried `.usage` event; the
+                    // finalizer signal is only used to break the loop. On
+                    // the legacy path the finalizer carries the canonical
+                    // terminal usage payload (Claude's split counts), so we
+                    // mirror it through `handleUsage` and yield once.
+                    if consumer == nil,
+                       let usage,
+                       let prompt = usage.promptTokens,
                        let completion = usage.completionTokens {
+                        handleUsage((promptTokens: prompt, completionTokens: completion))
                         continuation.yield(.usage(prompt: prompt, completion: completion))
                     }
+                    streamEnded = true
+                    break
                 }
 
-                if let error = handler.extractStreamError(from: payload) {
-                    throw error
+                // Fall back to the handler's stream-end boolean for
+                // backends whose finalizer isn't authoritative on every
+                // frame (e.g. providers where the stop sentinel is the
+                // SSE `[DONE]` marker rather than a JSON field).
+                if !payload.isEmpty, handler.isStreamEnd(payload) {
+                    streamEnded = true
+                    break
                 }
             }
+        } catch {
+            threwMidStream = error
+        }
 
-            // Finalizer takes precedence over the handler's `isStreamEnd`
-            // boolean — it's the richer signal (carries usage + stop
-            // reason on the terminal frame).
-            if case .streamComplete(let usage, _) = finalizer.finalize(frame: frame) {
-                if let usage,
-                   let prompt = usage.promptTokens,
-                   let completion = usage.completionTokens {
-                    // Bridge the finalizer's `TokenUsage` shape into
-                    // `handleUsage` so subclasses that override usage
-                    // merging (Claude's split prompt/completion) still see
-                    // the terminal payload.
-                    handleUsage((promptTokens: prompt, completionTokens: completion))
-                    continuation.yield(.usage(prompt: prompt, completion: completion))
-                }
-                break
+        // Flush the consumer regardless of how the loop exited. On natural
+        // termination this yields any open `.thinkingComplete` and tool
+        // calls upstream never accompanied with an explicit
+        // `finish_reason`. On cancellation / mid-stream error we still
+        // flush thinking but suppress phantom tool calls so the consumer
+        // doesn't synthesise events the model never committed to.
+        if let consumer {
+            let cancelled = Task.isCancelled || threwMidStream != nil || !streamEnded
+            for event in consumer.finish(cancelled: cancelled) {
+                continuation.yield(event)
             }
+        }
 
-            // Fall back to the handler's stream-end boolean for
-            // backends whose finalizer isn't authoritative on every
-            // frame (e.g. providers where the stop sentinel is the
-            // SSE `[DONE]` marker rather than a JSON field).
-            if !payload.isEmpty, handler.isStreamEnd(payload) {
-                break
-            }
+        if let threwMidStream {
+            throw threwMidStream
         }
     }
 

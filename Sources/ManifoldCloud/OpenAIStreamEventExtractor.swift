@@ -37,7 +37,7 @@ import ManifoldCloudCore
 /// ``OpenAIBackend``'s `processPayload` cluster one-for-one. The parity
 /// test (`OpenAIStreamEventExtractorParityTests`) drives both paths through
 /// the on-disk fixtures and asserts equal event sequences.
-public final class OpenAIStreamEventExtractor {
+public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchecked Sendable {
 
     private var thinking = ThinkingBlockManager()
     private let toolAccumulator = StreamingArgumentAccumulator()

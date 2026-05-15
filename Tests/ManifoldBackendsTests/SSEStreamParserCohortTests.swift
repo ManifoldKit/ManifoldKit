@@ -86,16 +86,12 @@ final class SSEStreamParserCohortTests: XCTestCase {
     }
 
     // MARK: - OpenAIBackend.ChatCompletionsStreamState
-
-    func test_chatCompletionsStreamState_initialFlagsAreClean() {
-        let state = OpenAIBackend.ChatCompletionsStreamState()
-        XCTAssertFalse(state.finalisedToolCalls)
-        // Tool accumulator must start empty so the per-payload step can rely
-        // on `entriesByKey.isEmpty` as a "no streamed deltas seen" signal
-        // when `finish_reason` arrives in the same payload as a whole-call
-        // shape.
-        XCTAssertTrue(state.toolAccumulator.entriesByKey.isEmpty)
-    }
+    //
+    // Removed in Phase 2/B/iii/δ: the inline stream-state struct was deleted
+    // along with the `processPayload` cluster. Per-stream state now lives on
+    // `OpenAIStreamEventExtractor`, whose initial-state invariants are
+    // covered by `OpenAIStreamEventExtractorTests`
+    // (`test_extractor_isFreshPerInstance_finalisationGuardDoesNotLeakAcrossStreams`).
 }
 
 extension OpenAIResponsesBackend.ResponsesEventKind: Equatable {}
