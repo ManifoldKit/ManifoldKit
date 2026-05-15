@@ -13,11 +13,45 @@ import ManifoldInference
 /// `generate`, KV-cache snapshot capture) shares the single-threaded GPU
 /// scheduler with the rest of the MLX runtime.
 @MainActor
-struct MLXGenerationDriver {
+struct MLXGenerationDriver: LocalInferenceAdapter {
 
     private static let logger = Logger(
         subsystem: ManifoldConfiguration.shared.logSubsystem,
         category: "inference"
+    )
+
+    // MARK: - LocalInferenceAdapter conformance
+
+    /// `nonisolated` so cross-backend drift guards can introspect the
+    /// composed witnesses from any actor without hopping onto the main
+    /// actor. The values are immutable, so this is race-free by
+    /// construction.
+    nonisolated let adapterName: String = "mlx.generation"
+    nonisolated let toolCallShape: any LocalToolCallShape = InlineXMLToolCallMarkers()
+    nonisolated let thinkingMarkerStrategy: LocalThinkingMarkerStrategy = .eagerWhenMarkersPresent
+    /// MLX's static capability shape published for drift-guard probing.
+    /// Mirrors `MLXBackend.capabilities` once a model is loaded; the
+    /// driver-level snapshot uses the conservative 8 k context fallback
+    /// (the backend overrides this from the loaded manifest at runtime).
+    nonisolated let declaredCapabilities: BackendCapabilities = BackendCapabilities(
+        supportedParameters: [
+            .temperature, .topP, .topK, .repeatPenalty,
+            .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+        ],
+        maxContextTokens: 8192,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: true,
+        supportsStructuredOutput: false,
+        supportsNativeJSONMode: false,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: true,
+        memoryStrategy: .resident,
+        maxOutputTokens: 4096,
+        supportsStreaming: true,
+        isRemote: false,
+        supportsThinking: true,
+        sharesMLXProcessResources: true
     )
 
     /// Outcome of a `run(...)` call.
