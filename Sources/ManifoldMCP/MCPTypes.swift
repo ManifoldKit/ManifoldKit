@@ -10,6 +10,9 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     public let toolNamespace: String?
     public let resourceURL: URL?
     public let initializationTimeout: Duration
+    /// Per-server override for the request timeout used by `MCPSession`.
+    /// When `nil`, the value from `MCPClientConfiguration.requestTimeout` is used.
+    public var requestTimeout: Duration?
     public let dataDisclosure: String
     public let toolFilter: MCPToolFilter
     public let approvalPolicy: MCPApprovalPolicy
@@ -22,6 +25,7 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         toolNamespace: String? = nil,
         resourceURL: URL? = nil,
         initializationTimeout: Duration = .seconds(30),
+        requestTimeout: Duration? = nil,
         dataDisclosure: String,
         toolFilter: MCPToolFilter = .allowAll,
         approvalPolicy: MCPApprovalPolicy = .perCall
@@ -33,6 +37,7 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.toolNamespace = toolNamespace
         self.resourceURL = resourceURL
         self.initializationTimeout = initializationTimeout
+        self.requestTimeout = requestTimeout
         self.dataDisclosure = dataDisclosure
         self.toolFilter = toolFilter
         self.approvalPolicy = approvalPolicy

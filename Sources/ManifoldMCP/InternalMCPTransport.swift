@@ -90,7 +90,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         let (bytes, response) = try await configuration.session().bytes(
             for: request,
             delegate: MCPRedirectCapDelegate(
-                maxRedirects: nil,
+                maxRedirects: 3,
                 validator: MCPSSRFPolicy.validateTransportRedirectURL
             )
         )
@@ -162,7 +162,7 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
         let (data, response) = try await configuration.session().data(
             for: request,
             delegate: MCPRedirectCapDelegate(
-                maxRedirects: nil,
+                maxRedirects: 3,
                 validator: MCPSSRFPolicy.validateTransportRedirectURL
             )
         )

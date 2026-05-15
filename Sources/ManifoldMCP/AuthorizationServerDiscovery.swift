@@ -74,7 +74,7 @@ struct AuthorizationServerDiscovery {
             let (data, response) = try await sessionProvider().data(
                 for: URLRequest(url: resourceMetadataURL),
                 delegate: MCPRedirectCapDelegate(
-                    maxRedirects: nil,
+                    maxRedirects: 3,
                     validator: MCPSSRFPolicy.validateOAuthRedirectURL
                 )
             )
