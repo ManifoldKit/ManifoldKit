@@ -1,0 +1,6 @@
+data: {"id":"chatcmpl-fixture-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-fixture-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":48,"total_tokens":60}}
+
+data: [DONE]
+

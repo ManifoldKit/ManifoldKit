@@ -1,0 +1,8 @@
+{
+  "model": "gpt-4o-mini-fixture",
+  "messages": [
+    { "role": "user", "content": "Count tokens please." }
+  ],
+  "stream": true,
+  "stream_options": { "include_usage": true }
+}

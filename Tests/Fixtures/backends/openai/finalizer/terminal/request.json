@@ -1,0 +1,7 @@
+{
+  "model": "gpt-4o-mini-fixture",
+  "messages": [
+    { "role": "user", "content": "Done." }
+  ],
+  "stream": true
+}

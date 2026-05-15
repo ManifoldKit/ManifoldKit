@@ -23,6 +23,28 @@ import ManifoldCloudCore
 /// ```
 public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
 
+    // MARK: - Adapter composition (Phase 2/B/ii)
+    //
+    // `OpenAIBackend` composes a `CloudHTTPProviderAdapter` (specifically
+    // `OpenAIAdapter`) so the cross-backend audit
+    // (`CloudSeamUsageAuditTest`) recognises it as on the unified-adapter
+    // path. The adapter holds the seven per-provider divergences described
+    // in the audit (message encoding, payload handling, framing
+    // transport, stream finalization, tool-call shape, image input shape,
+    // structured-output shape, tool-result encoding, prompt-cache shape,
+    // error-body decoding) as composable witnesses.
+    //
+    // **Routing status — staged**: the adapter is *exposed* through this
+    // property and consulted by the audit; the existing
+    // `parseResponseStream` / `buildRequest` paths still drive
+    // generation directly. Phase 2/B/iii will invert the call: the
+    // backend body becomes a thin host that asks the adapter for the
+    // framing transport and stream finalizer rather than running the
+    // SSE loop inline. We split the inversion out of this PR to keep
+    // the behavioural-parity diff reviewable — the adapter wiring lands
+    // here, the runtime re-routing lands next.
+    public let adapter: any CloudHTTPProviderAdapter
+
     // MARK: - Init
 
     /// Creates an OpenAI-compatible backend.
@@ -35,12 +57,57 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
     /// that surfaces the kill-switch as a recoverable error.
     public init(urlSession: URLSession? = nil) {
+        // Adapter capabilities mirror what `OpenAIBackend.capabilities`
+        // would resolve for the default model name (`gpt-4o-mini`). The
+        // adapter's `requestBuilder` is a no-op placeholder — the
+        // backend still drives `buildRequest` directly until Phase
+        // 2/B/iii inverts the call. Storing the adapter here is what
+        // satisfies the cross-backend audit and gives the runtime
+        // re-routing a stable composition root to consume next.
+        self.adapter = OpenAIAdapter(
+            capabilities: Self.defaultAdapterCapabilities,
+            requestBuilder: { _, _, _, _ in
+                // Unreachable today — the backend's own buildRequest
+                // is the live path. Throws if a future code path
+                // bypasses the backend and tries to drive the adapter
+                // standalone, which would skip the stateful pieces
+                // (tool-aware history snapshot/clear, structured
+                // history vision pre-flight) that still live on the
+                // backend.
+                throw CloudBackendError.invalidURL(
+                    "OpenAIAdapter.requestBuilder is not yet the live path; call OpenAIBackend.buildRequest until Phase 2/B/iii."
+                )
+            }
+        )
         super.init(
             defaultModelName: "gpt-4o-mini",
             urlSession: urlSession ?? URLSessionProvider.pinned,
             payloadHandler: CloudPayloadHandler.openAI
         )
     }
+
+    /// Static adapter capabilities used at init time. Mirrors the dynamic
+    /// `capabilities` property's values for `gpt-4o-mini` so the adapter
+    /// composition is valid immediately. The dynamic property remains the
+    /// authoritative source once a real `modelName` is configured.
+    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP],
+        maxContextTokens: 128_000,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: true,
+        supportsStructuredOutput: true,
+        supportsNativeJSONMode: true,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false,
+        memoryStrategy: .external,
+        maxOutputTokens: 16_384,
+        supportsStreaming: true,
+        isRemote: true,
+        supportsVision: true,
+        streamsToolCallArguments: true,
+        supportsParallelToolCalls: true
+    )
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
