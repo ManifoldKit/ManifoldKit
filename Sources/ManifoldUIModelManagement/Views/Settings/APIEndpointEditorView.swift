@@ -221,7 +221,11 @@ public struct APIEndpointEditorView: View {
             } catch {
                 // Best-effort cleanup of the just-stored Keychain item if the
                 // row insert fails — leaves no orphan.
-                try? KeychainService.delete(account: newRecord.keychainAccount)
+                do {
+                    try KeychainService.delete(account: newRecord.keychainAccount)
+                } catch {
+                    Log.security.warning("Keychain cleanup failed after endpoint save error: \(error.localizedDescription, privacy: .public)")
+                }
                 validationError = error.localizedDescription.isEmpty
                     ? "Failed to save the endpoint configuration."
                     : error.localizedDescription

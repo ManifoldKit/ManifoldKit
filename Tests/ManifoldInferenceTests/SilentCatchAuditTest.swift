@@ -94,9 +94,6 @@ final class SilentCatchAuditTest: XCTestCase {
         // CancellationError, which is intentional.
         "await Task.sleep",
 
-        // Best-effort keychain cleanup on delete.
-        "KeychainService.delete",
-
         // GGUF metadata read at trust boundary.
         "GGUFMetadataReader.readMetadata",
 
