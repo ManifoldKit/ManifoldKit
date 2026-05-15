@@ -208,7 +208,11 @@ public struct RemoteServerConfigSheet: View {
         } catch {
             // Best-effort Keychain cleanup if the row insert fails.
             if !trimmedKey.isEmpty {
-                try? KeychainService.delete(account: record.keychainAccount)
+                do {
+                    try KeychainService.delete(account: record.keychainAccount)
+                } catch {
+                    Log.security.warning("Keychain cleanup failed after endpoint save error: \(error.localizedDescription, privacy: .public)")
+                }
             }
             errorMessage = error.localizedDescription.isEmpty
                 ? "Failed to save the server configuration."
