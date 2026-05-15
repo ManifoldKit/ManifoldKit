@@ -174,7 +174,7 @@ extension ChatViewModel {
                 break
             case .contextAssembly(let underlying):
                 surfaceError(underlying, kind: .generation)
-            case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured:
+            case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured, .messageTooLarge:
                 errorMessage = error.localizedDescription
             }
             if case .cancelled = error {

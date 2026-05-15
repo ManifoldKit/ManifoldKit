@@ -57,6 +57,16 @@ struct ConversationTurnExecutor: Sendable {
     ) async throws -> ConversationStreamHandle {
         let handle = ConversationStreamHandle()
 
+        // Reject messages that exceed the configured byte limit before any
+        // SwiftData work happens. A very large payload can OOM constrained
+        // iOS devices during UTF-8 encoding and SwiftData serialisation;
+        // rejecting here is cheaper and surfaces a typed error the caller
+        // can present to the user.
+        let sizeLimit = ManifoldConfiguration.shared.maxUserMessageBytes
+        guard text.utf8.count <= sizeLimit else {
+            throw ConversationError.messageTooLarge(limit: sizeLimit)
+        }
+
         // Persist the user message synchronously so the caller observes
         // ordering (`messageInserted(user)` before `processTurn` returns) —
         // the stream task fires off after this point. Persistence failures

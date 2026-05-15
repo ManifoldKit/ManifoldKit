@@ -158,10 +158,13 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
             return true
         }
         let string = String(String.UnicodeScalarView(filtered))
-        if string.count <= limit {
+        // Compare and truncate by UTF-8 byte count, not grapheme clusters, so
+        // multi-byte characters (CJK, emoji) can't be used to smuggle oversized
+        // payloads past a grapheme-cluster limit check.
+        if string.utf8.count <= limit {
             return string
         }
-        return String(string.prefix(limit))
+        return String(bytes: Array(string.utf8.prefix(limit)), encoding: .utf8) ?? String(string.prefix(limit / 4))
     }
 
     private static func jsonString(from value: JSONSchemaValue) -> String {

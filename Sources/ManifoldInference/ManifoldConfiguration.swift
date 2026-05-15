@@ -93,6 +93,23 @@ public struct ManifoldConfiguration: Sendable {
     /// Defaults to `false` for conservative rollout.
     public var useSecureEnclave: Bool
 
+    /// Maximum UTF-8 byte length of a user message. Messages exceeding this are rejected
+    /// before SwiftData insertion to prevent OOM on constrained iOS devices.
+    public var maxUserMessageBytes: Int = 500_000        // 500 KB
+
+    /// Maximum UTF-8 byte length of the RAG query string passed to the embedding backend.
+    /// Truncated (not rejected) to avoid embedding runaway on long messages.
+    public var maxRAGQueryBytes: Int = 8_000             // 8 KB
+
+    /// Maximum UTF-8 byte length of an MCP tool name received from a server.
+    public var maxMCPToolNameBytes: Int = 256
+
+    /// Maximum UTF-8 byte length of an MCP tool description received from a server.
+    public var maxMCPToolDescriptionBytes: Int = 4_096   // 4 KB
+
+    /// Maximum HTTP request body size accepted by ManifoldServer.
+    public var maxServerRequestBodyBytes: Int = 4_194_304 // 4 MB
+
     /// Controls how ``PinnedSessionDelegate`` treats custom hosts that have no
     /// pins configured in ``PinnedSessionDelegate/pinnedHosts``.
     ///
