@@ -1,0 +1,14 @@
+data: {"type":"message_start","message":{"id":"msg_fixture_tools","role":"assistant","model":"claude-sonnet-fixture","usage":{"input_tokens":42,"output_tokens":0}}}
+
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_fixture_001","name":"get_weather","input":{}}}
+
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"city\":"}}
+
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Paris\"}"}}
+
+data: {"type":"content_block_stop","index":0}
+
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":18}}
+
+data: {"type":"message_stop"}
+

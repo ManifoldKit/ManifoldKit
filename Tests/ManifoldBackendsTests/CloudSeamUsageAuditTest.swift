@@ -29,8 +29,6 @@ final class CloudSeamUsageAuditTest: XCTestCase {
     /// inline rationale; removing a file from the set means it now
     /// composes `CloudHTTPProviderAdapter`.
     private static let legacyPathAllowlist: Set<String> = [
-        // TODO(phase-3): migrate to ClaudeAdapter (round-trips thinking signatures).
-        "ClaudeBackend.swift",
     ]
 
     func test_everyCloudBackend_eitherComposesAdapter_orIsAllowlistedWithTODO() throws {

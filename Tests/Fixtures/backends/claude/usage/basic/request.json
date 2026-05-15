@@ -1,0 +1,10 @@
+{
+  "model": "claude-sonnet-fixture",
+  "max_tokens": 2048,
+  "messages": [
+    { "role": "user", "content": "Count to 2." }
+  ],
+  "stream": true,
+  "temperature": 1.0,
+  "top_p": 1.0
+}
