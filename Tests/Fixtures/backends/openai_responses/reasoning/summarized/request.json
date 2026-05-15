@@ -1,0 +1,11 @@
+{
+  "model": "gpt-5-fixture",
+  "input": [
+    {"role": "user", "content": "Hard question"}
+  ],
+  "stream": true,
+  "temperature": 1.0,
+  "top_p": 1.0,
+  "max_output_tokens": 2048,
+  "reasoning": {"effort": "medium"}
+}

@@ -1,0 +1,22 @@
+{
+  "model": "gpt-5-fixture",
+  "input": [
+    {"role": "user", "content": "Weather in Paris?"}
+  ],
+  "stream": true,
+  "temperature": 1.0,
+  "top_p": 1.0,
+  "max_output_tokens": 2048,
+  "tools": [
+    {
+      "type": "function",
+      "name": "get_weather",
+      "description": "Get current weather",
+      "parameters": {
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"]
+      }
+    }
+  ]
+}

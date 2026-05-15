@@ -599,7 +599,6 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         let finalizer = routing.streamFinalizer
         let consumer = routing.streamConsumerFactory?()
         var wasThinking = false
-        var streamEnded = false
         var threwMidStream: Error?
 
         do {
@@ -683,7 +682,6 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                         handleUsage((promptTokens: prompt, completionTokens: completion))
                         continuation.yield(.usage(prompt: prompt, completion: completion))
                     }
-                    streamEnded = true
                     break
                 }
 
@@ -692,7 +690,6 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 // frame (e.g. providers where the stop sentinel is the
                 // SSE `[DONE]` marker rather than a JSON field).
                 if !payload.isEmpty, handler.isStreamEnd(payload) {
-                    streamEnded = true
                     break
                 }
             }
@@ -703,11 +700,15 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         // Flush the consumer regardless of how the loop exited. On natural
         // termination this yields any open `.thinkingComplete` and tool
         // calls upstream never accompanied with an explicit
-        // `finish_reason`. On cancellation / mid-stream error we still
-        // flush thinking but suppress phantom tool calls so the consumer
-        // doesn't synthesise events the model never committed to.
+        // `finish_reason` / `response.completed`. On cancellation /
+        // mid-stream error we still flush thinking but suppress phantom
+        // tool calls so the consumer doesn't synthesise events the model
+        // never committed to. Reaching stream-end *without* a finalizer
+        // signal (e.g. Responses provider truncated before
+        // `response.completed`) is a natural termination — fall through
+        // to the consumer's flush rather than treating it as cancellation.
         if let consumer {
-            let cancelled = Task.isCancelled || threwMidStream != nil || !streamEnded
+            let cancelled = Task.isCancelled || threwMidStream != nil
             for event in consumer.finish(cancelled: cancelled) {
                 continuation.yield(event)
             }

@@ -54,6 +54,17 @@ import ManifoldCloudCore
 /// ```
 public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
 
+    // MARK: - Adapter composition (Phase 3/Responses)
+    //
+    // `OpenAIResponsesBackend` composes a ``CloudHTTPProviderAdapter``
+    // (specifically ``OpenAIResponsesAdapter``) so the cross-backend
+    // audit (`CloudSeamUsageAuditTest`) recognises it as on the unified
+    // adapter path. The adapter holds the per-provider divergences as
+    // composable witnesses (item-id tool-call shape, function-call-item
+    // tool-result encoding, named-SSE framing, `response.completed`
+    // finalizer; everything else mirrors Chat Completions).
+    public let adapter: any CloudHTTPProviderAdapter
+
     // MARK: - Init
 
     /// Creates an OpenAI Responses-API backend.
@@ -61,17 +72,78 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     /// - Parameter urlSession: Custom URLSession. Pass `nil` to use the
     ///   default pinned session.
     public init(urlSession: URLSession? = nil) {
+        self.adapter = OpenAIResponsesAdapter(
+            capabilities: Self.defaultAdapterCapabilities,
+            requestBuilder: { _, _, _, _ in
+                throw CloudBackendError.invalidURL(
+                    "OpenAIResponsesAdapter.requestBuilder is not the live path; the OpenAIResponsesBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
+                )
+            }
+        )
         super.init(
             defaultModelName: "gpt-5",
             urlSession: urlSession ?? URLSessionProvider.pinned,
-            // The payload handler classifies `data:` payloads for the named-
-            // event SSE stream. This backend overrides `parseResponseStream`
-            // to dispatch on `event:` names, but routes the per-payload
-            // reasoning / text classification through the handler so the
-            // mapping lives in one place — see `OpenAIResponsesPayloadHandler`.
+            // Payload handler classifies wrapped `NamedSSETransport`
+            // envelopes for in-stream error surfacing
+            // (`response.error`); event extraction itself is driven by
+            // ``OpenAIResponsesStreamEventExtractor`` via the routing's
+            // `streamConsumerFactory`.
             payloadHandler: CloudPayloadHandler.openAIResponses
         )
+
+        // Phase 3/Responses — install adapter routing so the stream loop
+        // runs in `SSECloudBackend.parseResponseStreamRouted` and event
+        // extraction is driven by a fresh per-stream
+        // `OpenAIResponsesStreamEventExtractor`. The previous inline
+        // `parseResponseStream(bytes:config:continuation:)` override is
+        // deleted; the routing carries the same per-stream state — open
+        // thinking flag, item-id → call-id accumulator, once-only
+        // finalisation guard — that previously lived as locals in the
+        // inline loop.
+        let weakSelfBox = WeakBackendBox(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelfBox.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            },
+            streamConsumerFactory: { OpenAIResponsesStreamEventExtractor() }
+        )
+        self.configure(adapterRouting: routing)
     }
+
+    /// Static adapter capabilities used at init time. Mirrors the dynamic
+    /// `capabilities` property's values for `gpt-5` so the adapter
+    /// composition is valid immediately; the dynamic property remains
+    /// authoritative once a real `modelName` is configured.
+    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP],
+        maxContextTokens: 200_000,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: true,
+        supportsStructuredOutput: true,
+        supportsNativeJSONMode: false,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false,
+        memoryStrategy: .external,
+        maxOutputTokens: 16_384,
+        supportsStreaming: true,
+        isRemote: true,
+        supportsThinking: true,
+        supportsVision: false,
+        streamsToolCallArguments: true,
+        supportsParallelToolCalls: true
+    )
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
@@ -227,214 +299,19 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     }
 
     // MARK: - Stream Parsing
-
-    /// Parses the Responses-API named-event SSE stream.
-    ///
-    /// Uses named-event parsing so `event:` and `data:` fields stay paired.
-    public override func parseResponseStream(
-        bytes: URLSession.AsyncBytes,
-        config: GenerationConfig,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) async throws {
-        let limits = effectiveSSEStreamLimits
-        var rateWindowStart = ContinuousClock.now
-        var rateWindowCount = 0
-
-        // Tracks whether any reasoning_summary delta has been emitted on
-        // this stream. We flush a single `.thinkingComplete` on the
-        // transition to visible content so consumers see a clean handoff.
-        var thinking = ThinkingBlockManager()
-
-        // Tool-call accumulator keyed by `item_id` (Responses API's stable
-        // identifier across the streamed deltas of a single function_call).
-        // The accumulator stores the call_id under `entry.id` so we always
-        // emit `.toolCallStart` / `.toolCallArgumentsDelta` / `.toolCall`
-        // with the *call_id* downstream tool dispatch will need.
-        let toolAccumulator = StreamingToolCallAccumulator()
-        var finalisedToolCalls = false
-
-        func finaliseToolCalls() {
-            guard !finalisedToolCalls else { return }
-            finalisedToolCalls = true
-            for entry in toolAccumulator.finalizedEntries() {
-                continuation.yield(.toolCall(ToolCall(
-                    id: entry.callId,
-                    toolName: entry.name,
-                    arguments: entry.arguments
-                )))
-            }
-        }
-
-        // Rate-limits every `data:` line received from the upstream,
-        // regardless of whether we yield a `GenerationEvent` for it. This
-        // closes the DoS hole where a hostile/buggy server could spam
-        // structural events (`response.output_item.added`, etc.) we ignore
-        // and bypass the per-stream cap entirely.
-        func noteDataLineReceived() throws {
-            let now = ContinuousClock.now
-            if now - rateWindowStart >= .seconds(1) {
-                rateWindowStart = now
-                rateWindowCount = 1
-                return
-            }
-            rateWindowCount += 1
-            if rateWindowCount > limits.maxEventsPerSecond {
-                throw SSEStreamError.eventRateExceeded(rateWindowCount)
-            }
-        }
-
-        // Returns `true` if the caller should break out of the byte loop
-        // (terminal event observed).
-        //
-        // The named-event SSE stream from OpenAI's Responses API has a
-        // discrete vocabulary; this routes each event name to a focused
-        // handler so the dispatcher itself stays under the per-method CC
-        // ceiling.
-        func handleEvent(name: String, data: String) throws -> Bool {
-            switch ResponsesEventKind(name: name) {
-            case .reasoningDelta:
-                handleReasoningDelta(data: data, thinking: &thinking)
-                return false
-            case .reasoningDone:
-                thinking.flushIfOpen(into: continuation)
-                return false
-            case .outputTextDelta:
-                handleOutputTextDelta(data: data, thinking: &thinking)
-                return false
-            case .outputItemAdded:
-                handleFunctionCallItemAdded(data: data, thinking: &thinking, accumulator: toolAccumulator)
-                return false
-            case .functionCallArgumentsDelta:
-                handleFunctionCallArgumentsDelta(data: data, accumulator: toolAccumulator)
-                return false
-            case .functionCallArgumentsDone:
-                // No-op here — we batch-emit `.toolCall` from
-                // `response.completed` so multiple parallel calls emit in
-                // insertion order. If `response.completed` never arrives the
-                // outer loop's stream-end fallback finalises calls.
-                return false
-            case .completed:
-                handleCompleted(data: data, thinking: &thinking)
-                finaliseToolCalls()
-                return true
-            case .error:
-                let message = Self.parseErrorMessage(from: data) ?? "unknown error"
-                throw CloudBackendError.serverError(statusCode: 500, message: message)
-            case .unknown:
-                // Unknown event names (e.g. `response.content_part.added`)
-                // are accepted silently — they carry structural metadata we
-                // don't need today.
-                return false
-            }
-        }
-
-        func handleReasoningDelta(data: String, thinking: inout ThinkingBlockManager) {
-            for event in Self.eventsForReasoningDelta(data: data) {
-                continuation.yield(event)
-                if case .thinkingToken = event { thinking.open() }
-            }
-        }
-
-        func handleOutputTextDelta(data: String, thinking: inout ThinkingBlockManager) {
-            let events = Self.eventsForOutputTextDelta(data: data)
-            if !events.isEmpty {
-                thinking.flushIfOpen(into: continuation)
-                for event in events { continuation.yield(event) }
-            }
-        }
-
-        // Function-call lifecycle:
-        //   response.output_item.added (item.type == "function_call")
-        //     → carries item.id, item.call_id, item.name; emit .toolCallStart
-        //   response.function_call_arguments.delta
-        //     → carries item_id + delta; emit .toolCallArgumentsDelta
-        //   response.function_call_arguments.done
-        //     → terminal for one call; we wait for response.completed to
-        //       fire all .toolCall events together so they emit in
-        //       insertion order.
-        //   response.output_item.done (item.type == "function_call")
-        //     → not currently parsed — `response.completed` is the
-        //       authoritative finaliser. If a server stops emitting
-        //       `response.completed`, the stream-end fallback in the
-        //       outer loop still flushes accumulated tool calls.
-        func handleFunctionCallItemAdded(
-            data: String,
-            thinking: inout ThinkingBlockManager,
-            accumulator: StreamingToolCallAccumulator
-        ) {
-            guard let info = Self.parseFunctionCallItem(from: data) else { return }
-            thinking.flushIfOpen(into: continuation)
-            accumulator.upsert(
-                key: info.itemId,
-                id: info.callId,
-                name: info.name,
-                argumentsDelta: nil
-            )
-            guard !info.name.isEmpty else { return }
-            continuation.yield(.toolCallStart(callId: info.callId, name: info.name))
-            accumulator.markStarted(key: info.itemId)
-        }
-
-        func handleFunctionCallArgumentsDelta(
-            data: String,
-            accumulator: StreamingToolCallAccumulator
-        ) {
-            guard let info = Self.parseFunctionCallArgumentsDelta(from: data) else { return }
-            accumulator.upsert(
-                key: info.itemId,
-                id: nil,
-                name: nil,
-                argumentsDelta: info.delta
-            )
-            guard !info.delta.isEmpty else { return }
-            let resolvedId = accumulator.resolvedId(forKey: info.itemId)
-            continuation.yield(.toolCallArgumentsDelta(
-                callId: resolvedId,
-                textDelta: info.delta
-            ))
-        }
-
-        func handleCompleted(data: String, thinking: inout ThinkingBlockManager) {
-            thinking.flushIfOpen(into: continuation)
-            guard let usage = Self.parseUsage(from: data) else { return }
-            handleUsage(usage)
-            if let prompt = usage.promptTokens,
-               let completion = usage.completionTokens {
-                continuation.yield(.usage(prompt: prompt, completion: completion))
-            }
-        }
-
-        do {
-            for try await event in SSEStreamParser.parseNamed(bytes: bytes, limits: limits) {
-                if Task.isCancelled { break }
-
-                // Count each yielded named event against the per-second cap
-                // before we look at the event name — unknown/ignored events
-                // still consume budget.
-                try noteDataLineReceived()
-                guard let name = event.name else { continue }
-                if try handleEvent(name: name, data: event.data) {
-                    break
-                }
-            }
-        } catch {
-            // Close any open thinking block before rethrowing so consumers
-            // don't hang in a thinking-only state on parser failure.
-            thinking.flushIfOpen(into: continuation)
-            throw error
-        }
-
-        thinking.flushIfOpen(into: continuation)
-        // Stream-end fallback for tool calls. If the upstream closed without
-        // a `response.completed` event (rare, but possible on truncation),
-        // emit any buffered tool calls so the orchestrator can dispatch them.
-        // On cancellation we deliberately skip this: dropping the consumer
-        // mid-stream must not produce phantom `.toolCall` events.
-        if !Task.isCancelled {
-            finaliseToolCalls()
-        }
-    }
-
+    //
+    // Phase 3/Responses deleted the inline `parseResponseStream` override
+    // and its `handleEvent` / `handleReasoningDelta` / `handleOutputTextDelta`
+    // / `handleFunctionCallItemAdded` / `handleFunctionCallArgumentsDelta`
+    // / `handleCompleted` cluster. The adapter routing installed at
+    // `init(urlSession:)` time threads stream parsing through
+    // ``SSECloudBackend/parseResponseStreamRouted(routing:bytes:continuation:)``,
+    // which drives a fresh ``OpenAIResponsesStreamEventExtractor`` per
+    // generation. The extractor owns the per-stream state — open
+    // thinking flag, item-id → call-id accumulator, once-only
+    // finalisation guard — that previously lived as locals in the
+    // inline loop.
+    //
     // MARK: - Event Vocabulary
 
     /// Discrete vocabulary of named events the OpenAI Responses API emits
@@ -630,5 +507,13 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
         return [.token(delta)]
     }
+}
+
+/// Sendable weak reference used by the routing closure to call back into
+/// the backend's `buildRequest` without retaining `self`. Mirrors the
+/// `WeakBackendBox` pattern in `OpenAIBackend`.
+private final class WeakBackendBox: @unchecked Sendable {
+    weak var value: OpenAIResponsesBackend?
+    init(_ value: OpenAIResponsesBackend) { self.value = value }
 }
 #endif

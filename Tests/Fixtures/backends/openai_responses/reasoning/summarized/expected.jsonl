@@ -1,0 +1,5 @@
+{"event":"thinkingToken","thinking_text":"Let me"}
+{"event":"thinkingToken","thinking_text":" think..."}
+{"event":"thinkingComplete"}
+{"event":"token","text":"Answer."}
+{"event":"usage","prompt":"5","completion":"3"}

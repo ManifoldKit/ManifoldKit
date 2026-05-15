@@ -1,0 +1,10 @@
+{
+  "model": "gpt-5-fixture",
+  "input": [
+    {"role": "user", "content": "Brief"}
+  ],
+  "stream": true,
+  "temperature": 1.0,
+  "top_p": 1.0,
+  "max_output_tokens": 2048
+}

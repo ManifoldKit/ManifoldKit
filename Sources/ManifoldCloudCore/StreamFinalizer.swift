@@ -123,7 +123,25 @@ public struct OpenAIResponsesEventFinalizer: StreamFinalizer {
     public init() {}
 
     public func finalize(frame: Data) -> StreamTermination? {
-        guard let parsed = try? JSONSerialization.jsonObject(with: frame) as? [String: Any] else {
+        // Adapter-routed Responses streams ship through `NamedSSETransport`,
+        // which wraps each SSE event as `{__event, __data}`. The terminal
+        // signal lives inside the wrapped `__data` string. Inspect the
+        // wrapper first; fall back to the raw frame so legacy callers
+        // (direct SSE bytes) still work.
+        let bodyFrame = NamedSSETransport.unwrapData(frame: frame) ?? frame
+        // On the wrapped path we ALSO require the event name to be the
+        // terminal one — otherwise an intermediate `output_item.added`
+        // event whose item happens to embed a `response` object would
+        // spuriously terminate the stream. Plain (un-wrapped) callers fall
+        // through to the structural usage check below.
+        if let envelope = try? JSONSerialization.jsonObject(with: frame) as? [String: Any],
+           let name = envelope[NamedSSETransport.eventNameKey] as? String,
+           envelope[NamedSSETransport.eventDataKey] is String,
+           name != "response.completed" {
+            return .streamContinue
+        }
+
+        guard let parsed = try? JSONSerialization.jsonObject(with: bodyFrame) as? [String: Any] else {
             return nil
         }
 

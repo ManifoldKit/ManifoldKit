@@ -94,8 +94,14 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
 
     public func extractStreamError(from payload: String) -> Error? {
         switch self {
-        case .openAI, .openAIResponses, .ollama:
+        case .openAI, .ollama:
             return nil
+        case .openAIResponses:
+            // Adapter-routed Responses streams ride `NamedSSETransport`,
+            // which wraps each event as `{__event, __data}`. Surface
+            // `response.error` events as a thrown error so the routed
+            // loop terminates the stream.
+            return OpenAIResponsesPayloadParsing.extractStreamError(from: payload)
         case .claude:
             return ClaudePayloadParsingDispatch.extractStreamError(from: payload)
         }
@@ -179,6 +185,20 @@ enum OpenAIResponsesPayloadParsing {
 
     static func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
         OpenAIResponsesBackend.parseUsage(from: payload)
+    }
+
+    /// Inspects a `NamedSSETransport`-wrapped payload (or a raw event
+    /// data string) for the `response.error` event signature and
+    /// surfaces it as a ``CloudBackendError/serverError`` so the
+    /// adapter-routed stream loop terminates instead of silently
+    /// skipping the event.
+    static func extractStreamError(from payload: String) -> Error? {
+        guard let envelope = NamedSSETransport.unwrap(envelope: payload) else {
+            return nil
+        }
+        guard envelope.name == "response.error" else { return nil }
+        let message = OpenAIResponsesBackend.parseErrorMessage(from: envelope.data) ?? "unknown error"
+        return CloudBackendError.serverError(statusCode: 500, message: message)
     }
 }
 #endif

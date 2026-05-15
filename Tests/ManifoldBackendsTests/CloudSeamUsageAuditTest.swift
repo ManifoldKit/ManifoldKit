@@ -33,8 +33,6 @@ final class CloudSeamUsageAuditTest: XCTestCase {
         "ClaudeBackend.swift",
         // TODO(phase-3): migrate to OllamaAdapter (NDJSON transport + /api/show probe).
         "OllamaBackend.swift",
-        // TODO(phase-3): migrate to OpenAIResponsesAdapter (different StreamFinalizer).
-        "OpenAIResponsesBackend.swift",
     ]
 
     func test_everyCloudBackend_eitherComposesAdapter_orIsAllowlistedWithTODO() throws {

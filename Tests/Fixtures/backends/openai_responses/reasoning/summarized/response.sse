@@ -1,0 +1,15 @@
+event: response.reasoning_summary_text.delta
+data: {"delta":"Let me"}
+
+event: response.reasoning_summary_text.delta
+data: {"delta":" think..."}
+
+event: response.reasoning_summary_text.done
+data: {}
+
+event: response.output_text.delta
+data: {"delta":"Answer."}
+
+event: response.completed
+data: {"response":{"status":"completed","usage":{"input_tokens":5,"output_tokens":3}}}
+

@@ -60,6 +60,13 @@ final class CancellationLivenessContractTest: XCTestCase {
                 || content.contains("Task.checkCancellation()")
                 || content.contains("try Task.checkCancellation")
                 || content.contains("OllamaStreamProcessor")
+                // Adapter-routed backends (`configure(adapterRouting:)`)
+                // delegate cancellation to
+                // `SSECloudBackend.parseResponseStreamRouted`, which is
+                // the envelope's stream loop and contains the
+                // canonical `Task.isCancelled` check. After Phase 3,
+                // every cloud backend reaches this branch.
+                || content.contains("configure(adapterRouting:")
             if !observesCancel {
                 offenders.append(name)
             }

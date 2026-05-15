@@ -122,6 +122,20 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // network boundary; just a type-system seam.
         "ManifoldCloud/CloudHTTPProviderAdapter.swift",
         "ManifoldCloud/OpenAIAdapter.swift",
+        // Phase 2/B/iii/α — adapter routing value type. The
+        // `buildRequest` closure returns a `URLRequest` (security
+        // invariant S1); no `URLSession` is exposed. Same seam as
+        // `CloudHTTPProviderAdapter.swift` above.
+        "ManifoldCloudCore/CloudAdapterRouting.swift",
+        // Phase 3/Responses — named-event SSE transport (preserves
+        // `event:` field through the `Data`-frame contract). Same
+        // `URLSession.AsyncBytes` consumer pattern as the sibling
+        // `SSETransport.swift` / `NDJSONTransport.swift`.
+        "ManifoldCloudCore/NamedSSETransport.swift",
+        // Phase 3/Responses — adapter composition for the OpenAI
+        // Responses API. Same `URLRequest`-only contract as
+        // `OpenAIAdapter.swift` above.
+        "ManifoldCloud/OpenAIResponsesAdapter.swift",
 
         // I1 network seam closure (#1140) — centralised redirect-guard
         // delegate, composite delegate, and seam factory live in
@@ -276,7 +290,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 36,
+            Self.networkIOAllowlist.count, 40,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
