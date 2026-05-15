@@ -104,6 +104,17 @@ public struct ManifoldConfiguration: Sendable {
     /// Maximum HTTP request body size accepted by ManifoldServer.
     public var maxServerRequestBodyBytes: Int = 4_194_304 // 4 MB
 
+    /// Maximum byte length (UTF-8) for an MCP tool name parsed from a server's
+    /// `tools/list` response. Names exceeding this limit are truncated at a UTF-8
+    /// code-unit boundary and a warning is logged. Defends against servers that
+    /// send pathologically long names. (SEC-10)
+    public var maxMCPToolNameBytes: Int = 256
+
+    /// Maximum byte length (UTF-8) for an MCP tool description parsed from a
+    /// server's `tools/list` response. Descriptions exceeding this limit are
+    /// truncated at a UTF-8 code-unit boundary and a warning is logged. (SEC-10)
+    public var maxMCPToolDescriptionBytes: Int = 4_096
+
     /// Controls how ``PinnedSessionDelegate`` treats custom hosts that have no
     /// pins configured in ``PinnedSessionDelegate/pinnedHosts``.
     ///
