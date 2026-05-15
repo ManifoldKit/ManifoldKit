@@ -165,24 +165,6 @@ enum OllamaPayloadParsingDispatch {
     }
 }
 
-enum OpenAIChatCompletionsPayloadParsing {
-    static func extractToken(from payload: String) -> String? {
-        OpenAIBackend.legacyExtractToken(from: payload)
-    }
-
-    static func extractEvents(from payload: String) -> [GenerationEvent] {
-        if let token = extractToken(from: payload) {
-            return [.token(token)]
-        }
-        return []
-    }
-
-    static func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-        guard let usage = OpenAIBackend.legacyExtractUsage(from: payload) else { return nil }
-        return (promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)
-    }
-}
-
 enum OpenAIResponsesPayloadParsing {
     static func extractToken(from payload: String) -> String? {
         OpenAIResponsesBackend.parseDelta(from: payload)
