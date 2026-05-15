@@ -228,6 +228,47 @@ final class InferenceServiceObservationTests: XCTestCase {
         _ = try? await loadTask.value
     }
 
+    func test_waitUntilModelReady_acceptsSyntheticReadinessStream() async {
+        let stream = AsyncStream<ModelLoadReadinessState> { continuation in
+            continuation.yield(.loading(progress: 0.5))
+            Task {
+                await Task.yield()
+                continuation.yield(.ready)
+                continuation.finish()
+            }
+        }
+
+        let ready = await InferenceService.waitUntilModelReady(
+            readinessUpdates: stream,
+            maxPollCount: 300,
+            pollIntervalNanoseconds: 50_000_000
+        )
+
+        XCTAssertTrue(ready)
+    }
+
+    func test_waitUntilModelReady_withSyntheticStreamCancelsPromptly() async {
+        let stream = AsyncStream<ModelLoadReadinessState> { continuation in
+            continuation.yield(.loading(progress: 0.5))
+        }
+        let task = Task {
+            await InferenceService.waitUntilModelReady(
+                readinessUpdates: stream,
+                maxPollCount: 300,
+                pollIntervalNanoseconds: 50_000_000
+            )
+        }
+
+        await Task.yield()
+        let cancelStart = ContinuousClock.now
+        task.cancel()
+        let ready = await task.value
+        let elapsed = ContinuousClock.now - cancelStart
+
+        XCTAssertFalse(ready)
+        XCTAssertLessThan(elapsed, .milliseconds(500))
+    }
+
     // MARK: - Helpers
 
     private func makeModelInfo() -> ModelInfo {

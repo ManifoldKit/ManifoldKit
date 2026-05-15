@@ -222,9 +222,37 @@ public final class InferenceService {
             pollIntervalNanoseconds: pollIntervalNanoseconds
         )
 
-        return await withTaskGroup(of: Bool.self) { group in
+        return await Self.waitUntilModelReady(
+            readinessUpdates: modelLoadReadinessUpdates(),
+            timeoutNanoseconds: timeoutNanoseconds
+        )
+    }
+
+    /// Waits for a supplied readiness stream to report that the model is ready.
+    ///
+    /// This overload is useful for hosts and tests that want the same generic
+    /// readiness semantics as ``waitUntilModelReady(maxPollCount:pollIntervalNanoseconds:)``
+    /// while injecting a synthetic stream at the Manifold boundary.
+    public nonisolated static func waitUntilModelReady(
+        readinessUpdates updates: AsyncStream<ModelLoadReadinessState>,
+        maxPollCount: Int = 300,
+        pollIntervalNanoseconds: UInt64 = 50_000_000
+    ) async -> Bool {
+        await waitUntilModelReady(
+            readinessUpdates: updates,
+            timeoutNanoseconds: modelReadyTimeoutNanoseconds(
+                maxPollCount: maxPollCount,
+                pollIntervalNanoseconds: pollIntervalNanoseconds
+            )
+        )
+    }
+
+    private nonisolated static func waitUntilModelReady(
+        readinessUpdates updates: AsyncStream<ModelLoadReadinessState>,
+        timeoutNanoseconds: UInt64
+    ) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
             group.addTask {
-                let updates = await self.modelLoadReadinessUpdates()
                 for await state in updates {
                     if Task.isCancelled { return false }
                     switch state {
