@@ -132,7 +132,7 @@ final class CompressionPolicyTests: XCTestCase {
             self.counter = CallCounter()
         }
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             guard contextSize > 0 else { return false }
             return true
         }
@@ -155,7 +155,7 @@ final class CompressionPolicyTests: XCTestCase {
             self.counter = CallCounter()
         }
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             false
         }
 
@@ -173,7 +173,7 @@ final class CompressionPolicyTests: XCTestCase {
     struct FailingCompressPolicy: CompressionPolicy {
         struct CompressionError: Error {}
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             contextSize > 0
         }
 
@@ -189,7 +189,7 @@ final class CompressionPolicyTests: XCTestCase {
     /// Policy that returns an empty array from `compress` — simulates a policy
     /// that mistakenly returns nothing. The runtime must not delete all messages.
     struct EmptyReturnCompressPolicy: CompressionPolicy {
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             contextSize > 0
         }
 
@@ -478,7 +478,7 @@ final class CompressionPolicyTests: XCTestCase {
         // The store must be replaced with the same content — same count, same
         // contents (different record IDs because the runtime re-inserts).
         struct IdentityCompressPolicy: CompressionPolicy {
-            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
                 contextSize > 0
             }
 
@@ -537,7 +537,7 @@ final class CompressionPolicyTests: XCTestCase {
         struct CapturingPolicy: CompressionPolicy {
             let capture: HistoryCapture
 
-            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
                 contextSize > 0
             }
 
@@ -586,6 +586,76 @@ final class CompressionPolicyTests: XCTestCase {
             userMessages.isEmpty,
             "History passed to compress() must include the user message that triggered the turn"
         )
+    }
+
+    // MARK: - Test 6b: executor passes correct contextUtilization value
+
+    func test_shouldCompress_receivesCorrectContextUtilization() async throws {
+        // The executor must pass Double(promptTokens) / Double(contextSize) as
+        // contextUtilization. A capturing policy records the value so we can
+        // assert it matches the backend-reported token counts.
+        actor UtilizationCapture {
+            private(set) var received: Double?
+            func record(_ value: Double) { received = value }
+        }
+        let capture = UtilizationCapture()
+
+        struct CapturingUtilizationPolicy: CompressionPolicy {
+            let capture: UtilizationCapture
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+                Task { await capture.record(contextUtilization) }
+                return false
+            }
+            func compress(history: [ChatMessageRecord], sessionID: UUID,
+                          generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] { history }
+        }
+
+        // UsageReportingBackend emits promptTokens=50, contextSize=1024 (see makeMockWithUsage + UsageReportingBackend.lastUsage).
+        let backend = makeMockWithUsage(tokensToYield: ["hi"])
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: CapturingUtilizationPolicy(capture: capture)
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "ping", attachments: []),
+            config: TurnConfig()
+        ))
+        try await Task.sleep(for: .milliseconds(300))
+
+        let utilization = await capture.received
+        XCTAssertNotNil(utilization, "shouldCompress must be called with contextUtilization")
+        if let u = utilization {
+            // promptTokens=50, contextSize=1024 → 50.0/1024.0 ≈ 0.04883
+            let expected = 50.0 / 1024.0
+            XCTAssertEqual(u, expected, accuracy: 0.001, "contextUtilization must equal promptTokens / contextSize")
+        }
+    }
+
+    // MARK: - Test 6: memory-kind round-trip through in-memory store
+
+    func test_policy_memoryKindRoundTrips() async throws {
+        // Records compressed with kind: .memory("summary") must survive a store
+        // insert → fetch cycle with their kind intact.
+        let store = RuntimeMessageStore()
+        let sessionID = UUID()
+        let summary = ChatMessageRecord(
+            role: .system,
+            content: "A summary of earlier events",
+            sessionID: sessionID,
+            kind: .memory("summary")
+        )
+        try await store.insertMessage(summary)
+        let fetched = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertEqual(fetched[0].kind, .memory("summary"))
+        XCTAssertFalse(fetched[0].kind.isUserVisible, "memory kind must not be user-visible")
+        XCTAssertTrue(fetched[0].kind.isWireVisible, "memory kind must be wire-visible")
     }
 
     // MARK: - Test 10: old messages are removed after compression

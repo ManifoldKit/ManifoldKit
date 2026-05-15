@@ -475,9 +475,15 @@ struct ConversationTurnExecutor: Sendable {
 
         let composedSystemPrompt = composeSystemPrompt(config.systemPrompt, slots: slots)
 
-        let structuredHistory: [StructuredMessage] = history.map { record in
-            StructuredMessage(role: record.role.rawValue, parts: record.contentParts)
-        }
+        // kind.backendRole == nil means use record.role directly (.chat case);
+        // non-chat kinds supply a fixed role. Records with isWireVisible == false
+        // are filtered out before this map runs.
+        let structuredHistory: [StructuredMessage] = history
+            .filter { $0.kind.isWireVisible }
+            .map { record in
+                let role = record.kind.backendRole ?? record.role
+                return StructuredMessage(role: role.rawValue, parts: record.contentParts)
+            }
 
         // Forward the registered tool surface so the backend's GenerationConfig
         // gets `tools = registry.advertisedDefinitions` (legacy parity with
@@ -832,7 +838,8 @@ struct ConversationTurnExecutor: Sendable {
         // when the backend doesn't report a context size (contextSize == 0).
         if let compressionPolicy, let promptTokens = usage?.promptTokens {
             let contextSize = await readContextWindowSize()
-            if contextSize > 0 && compressionPolicy.shouldCompress(promptTokens: promptTokens, contextSize: contextSize) {
+            let contextUtilization = contextSize > 0 ? Double(promptTokens) / Double(contextSize) : 0
+            if contextSize > 0 && compressionPolicy.shouldCompress(promptTokens: promptTokens, contextSize: contextSize, contextUtilization: contextUtilization) {
                 let history: [ChatMessageRecord]
                 do {
                     history = try await persistence.fetchMessages(sessionID: sessionID)
@@ -846,7 +853,12 @@ struct ConversationTurnExecutor: Sendable {
                 // reference to the executor itself. Uses background priority
                 // so compression doesn't compete with the user's next turn.
                 let generate: @Sendable ([ChatMessageRecord]) async throws -> String = { [inferenceService] messages in
-                    let structured = messages.map { StructuredMessage(role: $0.role.rawValue, parts: $0.contentParts) }
+                    let structured = messages
+                        .filter { $0.kind.isWireVisible }
+                        .map { record -> StructuredMessage in
+                            let role = record.kind.backendRole ?? record.role
+                            return StructuredMessage(role: role.rawValue, parts: record.contentParts)
+                        }
                     let (token, compressStream) = try await inferenceService.enqueueAsync(
                         structuredMessages: structured,
                         priority: .background

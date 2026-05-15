@@ -53,6 +53,10 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
 }
 
 /// Delivery state used by chat UI affordances for user-authored messages.
+///
+/// Transient UI delivery state. Intentionally not persisted — it is
+/// reset on every app launch and is not load-bearing for any backend or
+/// export path.
 public enum MessageStatus: String, Codable, Hashable, Sendable {
     case sending
     case sent
@@ -60,6 +64,11 @@ public enum MessageStatus: String, Codable, Hashable, Sendable {
 }
 
 /// Plain-data snapshot of a chat message for use across persistence boundaries.
+///
+/// > Note: This type is intentionally named `ChatMessageRecord` rather than
+/// > `MessageRecord`. A rename would be a large semver hit requiring all
+/// > downstream consumers to update their source. The name is stable across
+/// > the v0.x series; a rename (if ever) would ship as a v1.0 breaking change.
 public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     public var id: UUID
     public var role: MessageRole
@@ -68,8 +77,13 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     public var sessionID: UUID
     public var promptTokens: Int?
     public var completionTokens: Int?
-    /// Transient UI delivery state. Persistence intentionally omits this value
-    /// so adding message status does not require a SwiftData schema migration.
+    /// Semantic kind of this record. Orthogonal to ``role``.
+    /// Backends only see role; export, UI, and persistence switch on kind.
+    /// Defaults to ``MessageKind/chat`` so existing call sites compile unchanged.
+    public var kind: MessageKind
+    /// Transient UI delivery state. Persistence intentionally omits this value —
+    /// it is reset on every app launch and is not load-bearing for any backend
+    /// or export path.
     public var status: MessageStatus?
     /// Provenance of any RAG passages injected into the prompt for this turn.
     ///
@@ -79,10 +93,9 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     /// the assistant bubble. `nil` when the turn was not RAG-augmented; an
     /// empty array signals "RAG ran but no passages scored above zero".
     ///
-    /// > Note: Phase 2 keeps citations transient — they live on the in-memory
-    /// > record but are NOT persisted across app launches. Cross-session
-    /// > persistence is a deliberate Phase-3 follow-up so we don't have to
-    /// > bump the SwiftData schema.
+    /// Persisted as of SchemaV7 (`citationsJSON` column on `ChatMessage`).
+    /// `nil` when the turn was not RAG-augmented; an empty array signals
+    /// "RAG ran but no passages scored above zero".
     public var citations: [Citation]?
 
     /// Concatenated text parts for backward compatibility.
@@ -108,6 +121,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         sessionID: UUID,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
+        kind: MessageKind = .chat,
         status: MessageStatus? = nil,
         citations: [Citation]? = nil
     ) {
@@ -118,6 +132,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.kind = kind
         self.status = status
         self.citations = citations
     }
@@ -131,6 +146,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         sessionID: UUID,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
+        kind: MessageKind = .chat,
         status: MessageStatus? = nil,
         citations: [Citation]? = nil
     ) {
@@ -141,6 +157,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.sessionID = sessionID
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.kind = kind
         self.status = status
         self.citations = citations
     }

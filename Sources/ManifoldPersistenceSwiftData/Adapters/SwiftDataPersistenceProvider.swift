@@ -162,6 +162,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         message.timestamp = record.timestamp
         message.promptTokens = record.promptTokens
         message.completionTokens = record.completionTokens
+        message.kind = record.kind
+        message.citations = record.citations
         modelContext.insert(message)
         try modelContext.save()
         await fireMessageHooks(record)
@@ -174,6 +176,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         message.contentParts = record.contentParts
         message.promptTokens = record.promptTokens
         message.completionTokens = record.completionTokens
+        message.kind = record.kind
+        message.citations = record.citations
         try modelContext.save()
         await fireMessageHooks(record)
     }
@@ -289,7 +293,9 @@ extension ChatMessage {
             timestamp: timestamp,
             sessionID: sessionID,
             promptTokens: promptTokens,
-            completionTokens: completionTokens
+            completionTokens: completionTokens,
+            kind: kind,
+            citations: citations
         )
     }
 }

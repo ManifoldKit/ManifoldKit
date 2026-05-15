@@ -185,6 +185,42 @@ final class ChatExportServiceTests: XCTestCase {
         XCTAssertFalse(result.isEmpty, "Export should return non-empty output even with null bytes in content")
     }
 
+    // MARK: - MessageKind export filtering
+
+    func test_export_memoryKind_excludedFromPlainText() {
+        let messages = [
+            makeMessage(role: .user, content: "Hello"),
+            ChatMessageRecord(role: .system, content: "A summary", sessionID: sessionID, kind: .memory("summary")),
+            makeMessage(role: .assistant, content: "Hi!")
+        ]
+        let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .plainText)
+        XCTAssertFalse(result.contains("A summary"), "memory-kind records must not appear in plain text exports")
+        XCTAssertTrue(result.contains("User: Hello"))
+        XCTAssertTrue(result.contains("Assistant: Hi!"))
+    }
+
+    func test_export_memoryKind_excludedFromMarkdown() {
+        let messages = [
+            makeMessage(role: .user, content: "Tell me something"),
+            ChatMessageRecord(role: .system, content: "Compressed memory", sessionID: sessionID, kind: .memory("memory")),
+            makeMessage(role: .assistant, content: "Sure!")
+        ]
+        let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .markdown)
+        XCTAssertFalse(result.contains("Compressed memory"), "memory-kind records must not appear in markdown exports")
+        XCTAssertTrue(result.contains("Tell me something"))
+        XCTAssertTrue(result.contains("Sure!"))
+    }
+
+    func test_export_chatKind_includedInExports() {
+        let messages = [
+            ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, kind: .chat),
+            ChatMessageRecord(role: .assistant, content: "Hi!", sessionID: sessionID, kind: .chat)
+        ]
+        let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .plainText)
+        XCTAssertTrue(result.contains("User: Hello"), "chat-kind user records must appear in exports")
+        XCTAssertTrue(result.contains("Assistant: Hi!"), "chat-kind assistant records must appear in exports")
+    }
+
     func test_export_emptySessionTitle_usesDefault() {
         let result = ChatExportService.export(
             messages: [],

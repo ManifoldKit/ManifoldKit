@@ -41,7 +41,11 @@ public enum ChatExportService {
         lines.append("Exported from \(ManifoldConfiguration.shared.appName): \(formattedDate())")
         lines.append("")
 
-        for message in messages where message.role != .system {
+        // isUserVisible covers the kind axis; the role guard preserves the pre-V7
+        // behaviour for .chat-kind system-role records that haven't been migrated
+        // to kind: .memory(...) yet. New callers should use kind: .memory for
+        // all system-prompt-like records.
+        for message in messages where message.kind.isUserVisible && message.role != .system {
             let role = message.role == .user ? "User" : "Assistant"
             lines.append("\(role): \(message.content)")
             lines.append("")
@@ -61,7 +65,7 @@ public enum ChatExportService {
         lines.append("---")
         lines.append("")
 
-        for message in messages where message.role != .system {
+        for message in messages where message.kind.isUserVisible && message.role != .system {
             let role = message.role == .user ? "User" : "Assistant"
             lines.append("**\(role):**")
             lines.append("")

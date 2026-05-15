@@ -42,8 +42,10 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertTrue(ids.contains(ObjectIdentifier(ManifoldSchemaV4.ModelBenchmarkCache.self)))
     }
 
-    func test_publicTypealiases_matchV4ModelTypes() {
-        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV4.ChatMessage.self))
+    func test_publicTypealiases_matchCurrentSchemaModelTypes() {
+        // ChatMessage now points to ManifoldSchemaV7.ChatMessage (adds kindRaw/citationsJSON).
+        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV7.ChatMessage.self))
+        // Other model types remain at V4.
         XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV4.ChatSession.self))
         XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(ManifoldSchemaV4.SamplerPreset.self))
         XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(ManifoldSchemaV4.APIEndpoint.self))
@@ -73,8 +75,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV6() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV6.self))
+    func test_containerFactory_currentSchema_isV7() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV7.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {
@@ -152,7 +154,9 @@ final class SchemaMigrationTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let nestedMessage = ManifoldSchemaV4.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
+        // Use the V7 class (the current schema's ChatMessage type) so the
+        // SwiftData schema validator finds all required columns (kindRaw etc.).
+        let nestedMessage = ManifoldSchemaV7.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
         context.insert(nestedMessage)
         try context.save()
         let nestedMessageID = nestedMessage.id
