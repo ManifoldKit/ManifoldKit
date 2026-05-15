@@ -1,0 +1,9 @@
+event: response.output_text.delta
+data: {"delta":"Hello"}
+
+event: response.output_text.delta
+data: {"delta":" world"}
+
+event: response.completed
+data: {"response":{"status":"completed","usage":{"input_tokens":4,"output_tokens":2}}}
+

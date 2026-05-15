@@ -1,0 +1,12 @@
+event: response.output_item.added
+data: {"output_index":0,"item":{"type":"function_call","id":"item_fixture_001","call_id":"call_fixture_001","name":"get_weather","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"item_id":"item_fixture_001","output_index":0,"delta":"{\"city\":\"Paris\"}"}
+
+event: response.function_call_arguments.done
+data: {"item_id":"item_fixture_001"}
+
+event: response.completed
+data: {"response":{"status":"completed","usage":{"input_tokens":12,"output_tokens":7}}}
+

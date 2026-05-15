@@ -70,7 +70,50 @@ final class InferenceBackendContractTests: XCTestCase {
         )
     )
 
-    private static let participants: [Participant] = [openAIParticipant]
+    /// OpenAI Responses API participant (Phase 3/Responses). Routes
+    /// through ``CloudPayloadHandler/openAIResponses`` for the
+    /// extractEvents surface — for the Responses wire shape that means
+    /// the stateless `delta` fallback projection (the named-dispatch
+    /// path runs through `OpenAIResponsesStreamEventExtractor`, covered
+    /// by its own parity suite). The contract scenarios here exercise
+    /// usage extraction and finalizer detection, which the stateless
+    /// handler covers end-to-end. Tool-call and structured-output
+    /// witness shapes are asserted via the witness label below.
+    private static let openAIResponsesParticipant = Participant(
+        label: "openai.responses",
+        fixtureDirectory: "openai_responses",
+        handler: .openAIResponses,
+        finalizer: OpenAIResponsesEventFinalizer(),
+        capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP],
+            maxContextTokens: 200_000,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: true,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            // The Responses extractor emits `.usage` from
+            // `response.completed` payloads. The stateless handler in
+            // this suite reads from the same payload shape, so usage
+            // extraction lights up.
+            supportsTokenCounting: true,
+            memoryStrategy: .external,
+            maxOutputTokens: 16_384,
+            supportsStreaming: true,
+            isRemote: true,
+            supportsKVCachePersistence: false,
+            supportsGrammarConstrainedSampling: false,
+            supportsThinking: true,
+            supportsVision: false,
+            streamsToolCallArguments: true,
+            supportsParallelToolCalls: true,
+            supportsGuidedStructuredOutput: true,
+            sharesMLXProcessResources: false
+        )
+    )
+
+    private static let participants: [Participant] = [openAIParticipant, openAIResponsesParticipant]
 
     // MARK: - Scenarios (capability-gated)
 
@@ -123,6 +166,9 @@ final class InferenceBackendContractTests: XCTestCase {
             case "openai.chat_completions":
                 let shape = OpenAIDeltaToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai.delta")
+            case "openai.responses":
+                let shape = OpenAIResponsesItemIdToolCalls()
+                XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
             default:
                 XCTFail("[\(p.label)] no witness shape assertion declared")
             }
