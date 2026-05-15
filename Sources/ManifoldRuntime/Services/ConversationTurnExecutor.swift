@@ -15,6 +15,7 @@ struct ConversationTurnExecutor: Sendable {
     private let generationHooks: [any GenerationHook]
     private let compressionPolicy: (any CompressionPolicy)?
     private let hookTimeout: Duration
+    private let historyAssembler: HistoryAssembler
 
     init(
         persistence: ConversationPersistencePort,
@@ -28,7 +29,8 @@ struct ConversationTurnExecutor: Sendable {
         emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
-        hookTimeout: Duration = .seconds(30)
+        hookTimeout: Duration = .seconds(30),
+        historyProviders: [any HistoryProvider] = []
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
@@ -42,6 +44,7 @@ struct ConversationTurnExecutor: Sendable {
         self.generationHooks = generationHooks
         self.compressionPolicy = compressionPolicy
         self.hookTimeout = hookTimeout
+        self.historyAssembler = HistoryAssembler(providers: historyProviders)
     }
 
     // MARK: Send flow
@@ -104,9 +107,18 @@ struct ConversationTurnExecutor: Sendable {
             // messages for enqueueAsync. By the time we get here, the
             // user message we just inserted is in the store
             // (insertMessage awaited above).
-            let history: [ChatMessageRecord]
+            var history: [ChatMessageRecord]
             do {
                 history = try await persistence.fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            do {
+                history = try await historyAssembler.assemble(
+                    history: history,
+                    context: makeTurnContext(sessionID: sessionID, history: history)
+                )
             } catch {
                 emit(.errorRaised(.persistence(error)))
                 return
@@ -155,9 +167,18 @@ struct ConversationTurnExecutor: Sendable {
         Task.detached { [self] in
             // Fetch history after deletion — the removed assistant message
             // is gone, so context assembly starts from the last user turn.
-            let postHistory: [ChatMessageRecord]
+            var postHistory: [ChatMessageRecord]
             do {
                 postHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            do {
+                postHistory = try await historyAssembler.assemble(
+                    history: postHistory,
+                    context: makeTurnContext(sessionID: sessionID, history: postHistory)
+                )
             } catch {
                 emit(.errorRaised(.persistence(error)))
                 return
@@ -234,9 +255,18 @@ struct ConversationTurnExecutor: Sendable {
             // the updated message and removed trailing messages are
             // already committed to the store before the detached task
             // runs.
-            let postHistory: [ChatMessageRecord]
+            var postHistory: [ChatMessageRecord]
             do {
                 postHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            do {
+                postHistory = try await historyAssembler.assemble(
+                    history: postHistory,
+                    context: makeTurnContext(sessionID: sessionID, history: postHistory)
+                )
             } catch {
                 emit(.errorRaised(.persistence(error)))
                 return
@@ -342,9 +372,18 @@ struct ConversationTurnExecutor: Sendable {
         Task.detached { [self] in
             // Re-fetch from the new session so the history reflects the
             // persisted copies with their new IDs and sessionID.
-            let history: [ChatMessageRecord]
+            var history: [ChatMessageRecord]
             do {
                 history = try await persistence.fetchMessages(sessionID: newSessionID)
+            } catch {
+                emit(.errorRaised(.persistence(error)))
+                return
+            }
+            do {
+                history = try await historyAssembler.assemble(
+                    history: history,
+                    context: makeTurnContext(sessionID: newSessionID, history: history)
+                )
             } catch {
                 emit(.errorRaised(.persistence(error)))
                 return
@@ -917,6 +956,25 @@ struct ConversationTurnExecutor: Sendable {
 
     private func emit(_ event: ConversationEvent) {
         eventSink(event)
+    }
+
+    private func makeTurnContext(sessionID: UUID, history: [ChatMessageRecord]) -> TurnContext {
+        let conversationText: String? = history.isEmpty ? nil : {
+            let joined = history
+                .compactMap { record -> String? in
+                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
+                    return text.isEmpty ? nil : text
+                }
+                .joined(separator: " ")
+                .lowercased()
+            return joined.isEmpty ? nil : joined
+        }()
+        return TurnContext(
+            sessionID: sessionID,
+            messageCount: history.count,
+            conversationText: conversationText,
+            tokenizer: nil
+        )
     }
 
     /// Reads the backend's context window size from the main actor.
