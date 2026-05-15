@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.26.0](https://github.com/roryford/ManifoldKit/compare/v0.25.2...v0.26.0) (2026-05-15)
+
+
+### Features
+
+* GenerationHook + CompressionPolicy for post-generation extensibility ([37df683](https://github.com/roryford/ManifoldKit/commit/37df683a3ecb28eedbc59ee7436882bd6e9c8a6e))
+* TurnContext + budget-aware PromptContextPipeline ([2e93fcf](https://github.com/roryford/ManifoldKit/commit/2e93fcf472f55041a4832c75314a24e27262ba2d))
+
+
+### Bug Fixes
+
+* replace silent try? with do/catch logging in MCP, Inference, Persistence ([#1230](https://github.com/roryford/ManifoldKit/issues/1230)) ([234687a](https://github.com/roryford/ManifoldKit/commit/234687a734cc592fa2a9d2fb919e7ddbca10bc17))
+* **test:** resolve cross-test state leakage in FoundationBackend and LlamaBackend test suites ([#1233](https://github.com/roryford/ManifoldKit/issues/1233)) ([740b02f](https://github.com/roryford/ManifoldKit/commit/740b02f1e29aac8593def678771515cfb5f74cf2))
+
 ## [0.25.2](https://github.com/roryford/ManifoldKit/compare/v0.25.1...v0.25.2) — 2026-05-15
 
 ### Highlights
