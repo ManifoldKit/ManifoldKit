@@ -46,7 +46,7 @@ public struct OpenAIAdapter: CloudHTTPProviderAdapter {
         capabilities: BackendCapabilities,
         messageEncoder: CloudMessageEncoder = .openAI,
         payloadHandler: CloudPayloadHandler = .openAI,
-        framedTransport: any FramedTransport,
+        framedTransport: any FramedTransport = SSETransport(),
         streamFinalizer: any StreamFinalizer = OpenAIDoneSentinelFinalizer(),
         requestBuilder: @escaping @Sendable (String, String?, GenerationConfig, [StructuredMessage]) throws -> URLRequest
     ) {
