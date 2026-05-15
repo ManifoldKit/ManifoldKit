@@ -128,7 +128,7 @@ public final class ConversationRuntime: Sendable {
     ///     logged — it never blocks the next turn. Hooks do not fire on
     ///     cancelled, errored, or empty-response turns.
     ///   - compressionPolicy: Optional. When provided, the runtime calls
-    ///     ``CompressionPolicy/shouldCompress(promptTokens:contextSize:)``
+    ///     ``CompressionPolicy/shouldCompress(promptTokens:contextSize:contextUtilization:)``
     ///     after each successful generation turn. When it returns `true`,
     ///     the runtime compresses history and emits
     ///     ``ConversationEvent/historyCompressed(sessionID:)``. Compression

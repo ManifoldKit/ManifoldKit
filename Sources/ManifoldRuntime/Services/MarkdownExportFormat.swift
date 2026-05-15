@@ -52,12 +52,11 @@ public struct MarkdownExportFormat: ConversationExportFormat {
         lines.append("---")
         lines.append("")
 
-        // Skip system prompts (privacy) and messages whose only parts are
-        // `.thinking` / `.toolCall` / non-text — `ChatMessageRecord.content`
-        // joins text parts only, so without the `hasVisibleContent` filter
-        // a thinking-only assistant turn would render as an empty
-        // `**Assistant:**` block.
-        for message in messages where message.role != .system && message.hasVisibleContent {
+        // Skip non-user-visible kinds (memory, annotation, toolResult, custom) and
+        // messages whose only parts are `.thinking` / `.toolCall` / non-text.
+        // The role guard preserves pre-V7 behaviour for .chat-kind system records;
+        // new code should tag system-prompt-like records with kind: .memory.
+        for message in messages where message.kind.isUserVisible && message.role != .system && message.hasVisibleContent {
             let role = message.role == .user ? "User" : "Assistant"
             lines.append("**\(role):**")
             lines.append("")

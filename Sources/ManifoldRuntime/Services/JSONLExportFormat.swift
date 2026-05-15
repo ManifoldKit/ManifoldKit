@@ -46,12 +46,11 @@ public struct JSONLExportFormat: ConversationExportFormat {
         iso.formatOptions = [.withInternetDateTime]
 
         var data = Data()
-        // `ChatMessageRecord.content` only joins `.text` parts — thinking-only
-        // and tool-call-only messages would otherwise serialise as
-        // `"content":""`, which is misleading for downstream JSONL consumers
-        // (training pipelines especially). Skip them; expanding the wire
-        // shape to encode non-text parts is a follow-up.
-        for message in messages where message.hasVisibleContent {
+        // Filter to user-visible kinds only (`.chat`), then skip thinking-only
+        // and tool-call-only messages. Non-user-visible kinds (memory, annotation,
+        // toolResult, custom) are excluded so JSONL output stays clean for
+        // training-data pipelines that don't expect internal memory records.
+        for message in messages where message.kind.isUserVisible && message.hasVisibleContent {
             let line = Line(
                 role: message.role.rawValue,
                 content: message.content,

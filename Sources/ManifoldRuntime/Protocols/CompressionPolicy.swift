@@ -3,13 +3,28 @@ import ManifoldInference
 
 /// Decides when and how to compress conversation history.
 ///
-/// The runtime calls ``shouldCompress(promptTokens:contextSize:)`` after each
-/// successful generation turn (after hooks). When it returns `true`, the runtime
-/// calls ``compress(history:sessionID:generate:)``, replaces the stored
+/// The runtime calls ``shouldCompress(promptTokens:contextSize:contextUtilization:)``
+/// after each successful generation turn (after hooks). When it returns `true`, the
+/// runtime calls ``compress(history:sessionID:generate:)``, replaces the stored
 /// messages with the result, and emits ``ConversationEvent/historyCompressed(sessionID:)``.
 ///
 /// Compression failures are logged and do not abort the turn — the existing
 /// history is preserved.
+///
+/// ## v0.26.0 Migration
+///
+/// The `shouldCompress` signature gained a `contextUtilization` parameter in v0.26.0.
+/// Update your conformance from:
+/// ```swift
+/// func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool
+/// ```
+/// to:
+/// ```swift
+/// func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool
+/// ```
+/// Also update `compress(...)` return values to use `kind: .memory("summary")` instead of
+/// `role: .system` for summary records — kind-aware filtering keeps them off
+/// user-facing exports automatically.
 ///
 /// ## Example
 ///
@@ -17,9 +32,9 @@ import ManifoldInference
 /// struct ThresholdCompressionPolicy: CompressionPolicy {
 ///     let threshold: Double
 ///
-///     func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+///     func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
 ///         guard contextSize > 0 else { return false }
-///         return Double(promptTokens) / Double(contextSize) >= threshold
+///         return contextUtilization >= threshold
 ///     }
 ///
 ///     func compress(history: [ChatMessageRecord], sessionID: UUID,
@@ -27,7 +42,13 @@ import ManifoldInference
 ///         // Build a summarisation prompt from old messages, call generate(),
 ///         // return summary + recent messages
 ///         let summary = try await generate(history)
-///         let summaryMessage = ChatMessageRecord(role: .assistant, content: summary, sessionID: sessionID)
+///         // Use kind: .memory so summary records don't appear in user-facing exports.
+///         let summaryMessage = ChatMessageRecord(
+///             role: .system,
+///             content: summary,
+///             sessionID: sessionID,
+///             kind: .memory("summary")
+///         )
 ///         return [summaryMessage]
 ///     }
 /// }
@@ -38,7 +59,8 @@ public protocol CompressionPolicy: Sendable {
     /// - Parameters:
     ///   - promptTokens: Tokens consumed by the last prompt (history + slots).
     ///   - contextSize: Backend context window size. 0 when unknown; treat as "skip compression".
-    func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool
+    ///   - contextUtilization: `promptTokens / contextSize`. 0.0 when contextSize is 0.
+    func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool
 
     /// Compresses message history and returns the replacement record set.
     ///

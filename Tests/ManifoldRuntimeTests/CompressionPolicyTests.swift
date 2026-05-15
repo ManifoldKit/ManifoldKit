@@ -132,7 +132,7 @@ final class CompressionPolicyTests: XCTestCase {
             self.counter = CallCounter()
         }
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             guard contextSize > 0 else { return false }
             return true
         }
@@ -155,7 +155,7 @@ final class CompressionPolicyTests: XCTestCase {
             self.counter = CallCounter()
         }
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             false
         }
 
@@ -173,7 +173,7 @@ final class CompressionPolicyTests: XCTestCase {
     struct FailingCompressPolicy: CompressionPolicy {
         struct CompressionError: Error {}
 
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             contextSize > 0
         }
 
@@ -189,7 +189,7 @@ final class CompressionPolicyTests: XCTestCase {
     /// Policy that returns an empty array from `compress` — simulates a policy
     /// that mistakenly returns nothing. The runtime must not delete all messages.
     struct EmptyReturnCompressPolicy: CompressionPolicy {
-        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
             contextSize > 0
         }
 
@@ -478,7 +478,7 @@ final class CompressionPolicyTests: XCTestCase {
         // The store must be replaced with the same content — same count, same
         // contents (different record IDs because the runtime re-inserts).
         struct IdentityCompressPolicy: CompressionPolicy {
-            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
                 contextSize > 0
             }
 
@@ -537,7 +537,7 @@ final class CompressionPolicyTests: XCTestCase {
         struct CapturingPolicy: CompressionPolicy {
             let capture: HistoryCapture
 
-            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
                 contextSize > 0
             }
 
@@ -586,6 +586,27 @@ final class CompressionPolicyTests: XCTestCase {
             userMessages.isEmpty,
             "History passed to compress() must include the user message that triggered the turn"
         )
+    }
+
+    // MARK: - Test 6: memory-kind round-trip through in-memory store
+
+    func test_policy_memoryKindRoundTrips() async throws {
+        // Records compressed with kind: .memory("summary") must survive a store
+        // insert → fetch cycle with their kind intact.
+        let store = RuntimeMessageStore()
+        let sessionID = UUID()
+        let summary = ChatMessageRecord(
+            role: .system,
+            content: "A summary of earlier events",
+            sessionID: sessionID,
+            kind: .memory("summary")
+        )
+        try await store.insertMessage(summary)
+        let fetched = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertEqual(fetched[0].kind, .memory("summary"))
+        XCTAssertFalse(fetched[0].kind.isUserVisible, "memory kind must not be user-visible")
+        XCTAssertTrue(fetched[0].kind.isWireVisible, "memory kind must be wire-visible")
     }
 
     // MARK: - Test 10: old messages are removed after compression

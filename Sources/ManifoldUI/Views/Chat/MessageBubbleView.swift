@@ -17,23 +17,42 @@ public struct MessageBubbleView: View {
     public let isPinned: Bool
     public let linkPreviewProvider: LinkPreviewProvider?
 
+    /// Optional renderer for non-user-visible kind records. When `nil` (the default),
+    /// records with `kind.isUserVisible == false` render as `EmptyView`. Hosts can
+    /// supply a closure here (via ``ChatView``) to render memory or annotation bubbles.
+    public let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     public init(
         message: ChatMessageRecord,
         isStreaming: Bool,
         isPinned: Bool = false,
-        linkPreviewProvider: LinkPreviewProvider? = nil
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        customKindRenderer: ((ChatMessageRecord) -> AnyView)? = nil
     ) {
         self.message = message
         self.isStreaming = isStreaming
         self.isPinned = isPinned
         self.linkPreviewProvider = linkPreviewProvider
+        self.customKindRenderer = customKindRenderer
     }
 
     // MARK: - Body
 
     public var body: some View {
+        // Non-user-visible kinds (memory, annotation, toolResult, custom) are
+        // hidden by default. Hosts can supply a customKindRenderer to override.
+        if message.kind.isUserVisible {
+            chatBubble
+        } else if let renderer = customKindRenderer {
+            renderer(message)
+        }
+        // else: EmptyView is the implicit fallthrough in a @ViewBuilder body.
+    }
+
+    @ViewBuilder
+    private var chatBubble: some View {
         HStack {
             if message.role == .user { Spacer(minLength: spacerMinLength) }
 

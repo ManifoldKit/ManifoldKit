@@ -298,6 +298,10 @@ public struct PromptSlot: Identifiable, Sendable {
     /// Human-readable display name for prompt inspector UI.
     public var label: String
 
+    /// ID of the ``ChatMessageRecord`` this slot was derived from, if any.
+    /// `nil` for synthesized or static slots.
+    public var sourceRecordID: UUID?
+
     public init(
         id: String,
         content: String,
@@ -305,7 +309,8 @@ public struct PromptSlot: Identifiable, Sendable {
         role: PromptSlotRole = .userInstruction,
         tokenBudget: Int? = nil,
         isEnabled: Bool = true,
-        label: String
+        label: String,
+        sourceRecordID: UUID? = nil
     ) {
         if case .atDepth(let n) = position {
             precondition(n >= 0, "PromptSlotPosition.atDepth depth must be >= 0; got \(n)")
@@ -317,6 +322,7 @@ public struct PromptSlot: Identifiable, Sendable {
         self.tokenBudget = tokenBudget
         self.isEnabled = isEnabled
         self.label = label
+        self.sourceRecordID = sourceRecordID
     }
 }
 

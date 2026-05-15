@@ -60,6 +60,10 @@ public struct ChatView<APIConfig: View>: View {
     /// or content.
     private let contextMenuItemsBuilder: ((ChatMessageRecord) -> AnyView)?
 
+    /// Optional renderer for non-user-visible kind records. By default these are hidden.
+    /// Hosts supply this to render memory bubbles, annotation labels, or other internal records.
+    private let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+
     public init(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
@@ -71,6 +75,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = nil
+        self.customKindRenderer = nil
     }
 
     public init<ComposerAccessory: View>(
@@ -85,6 +90,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = nil
+        self.customKindRenderer = nil
     }
 
     /// Creates a ``ChatView`` with a host-supplied empty-state view rendered
@@ -104,6 +110,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = nil
+        self.customKindRenderer = nil
     }
 
     public init<EmptyContent: View, ComposerAccessory: View>(
@@ -119,6 +126,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = nil
+        self.customKindRenderer = nil
     }
 
     /// Creates a ``ChatView`` with host-supplied extra items appended to each
@@ -141,6 +149,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+        self.customKindRenderer = nil
     }
 
     public init<ExtraItems: View, ComposerAccessory: View>(
@@ -156,6 +165,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+        self.customKindRenderer = nil
     }
 
     public init<EmptyContent: View, ExtraItems: View>(
@@ -171,6 +181,7 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = nil
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+        self.customKindRenderer = nil
     }
 
     public init<EmptyContent: View, ExtraItems: View, ComposerAccessory: View>(
@@ -187,6 +198,31 @@ public struct ChatView<APIConfig: View>: View {
         self.composerAccessoryBuilder = { AnyView(composerAccessory()) }
         self.linkPreviewProvider = linkPreviewProvider
         self.contextMenuItemsBuilder = { message in AnyView(contextMenuItems(message)) }
+        self.customKindRenderer = nil
+    }
+
+    /// Creates a ``ChatView`` with a ``customKindRenderer`` for non-user-visible records.
+    ///
+    /// By default, records with `kind.isUserVisible == false` (memory, annotation,
+    /// toolResult, custom) are hidden. Supply this overload to render them as custom
+    /// views — e.g. a collapsible "Memory updated" banner above compression summaries.
+    ///
+    /// - Parameters:
+    ///   - customKindRenderer: Invoked for each record whose `kind.isUserVisible == false`.
+    ///     Return `AnyView(EmptyView())` to hide specific kinds selectively.
+    public init<KindView: View>(
+        showModelManagement: Binding<Bool>,
+        linkPreviewProvider: LinkPreviewProvider? = nil,
+        @ViewBuilder customKindRenderer: @escaping (ChatMessageRecord) -> KindView,
+        @ViewBuilder apiConfiguration: @escaping () -> APIConfig
+    ) {
+        self._showModelManagement = showModelManagement
+        self.customEmptyPlaceholder = nil
+        self.apiConfigurationBuilder = apiConfiguration
+        self.composerAccessoryBuilder = nil
+        self.linkPreviewProvider = linkPreviewProvider
+        self.contextMenuItemsBuilder = nil
+        self.customKindRenderer = { message in AnyView(customKindRenderer(message)) }
     }
 
     /// Creates a ``ChatView`` without an API-configuration surface.
@@ -647,7 +683,8 @@ public struct ChatView<APIConfig: View>: View {
                             message: message,
                             isStreaming: isMessageStreaming(message),
                             isPinned: viewModel.isMessagePinned(id: message.id),
-                            linkPreviewProvider: linkPreviewProvider
+                            linkPreviewProvider: linkPreviewProvider,
+                            customKindRenderer: customKindRenderer
                         )
                         if let contextMenuItemsBuilder {
                             bubble
