@@ -195,7 +195,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         // Tools — same `[{type:"function", function:{...}}]` envelope as Chat
         // Completions, plus the matching `tool_choice` policy.
         if !config.tools.isEmpty {
-            body["tools"] = config.tools.map(OpenAIToolEncoding.encodeToolDefinition)
+            body["tools"] = CloudMessageEncoder.openAIResponses.encodeTools(config.tools)
             OpenAIToolEncoding.applyToolChoice(config.toolChoice, into: &body)
         }
 

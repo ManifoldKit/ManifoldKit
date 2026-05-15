@@ -207,7 +207,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                     "Model \"\(modelName)\" does not support image input. Switch to a vision-capable OpenAI model (gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-4.1, o1, o3) and retry."
                 )
             }
-            messages.append(contentsOf: structured.map(Self.encodeChatCompletionsContent(for:)))
+            messages.append(contentsOf: structured.map { CloudMessageEncoder.openAI.encodeStructuredMessageContent(for: $0) })
         } else if let history = conversationHistory {
             // Reasoning-model asymmetry: OpenAI-compatible providers (DeepSeek,
             // o-series, hosted Qwen reasoning) deliver chain-of-thought via
@@ -271,7 +271,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // applied via the shared encoding helper so the same logic powers
         // ``OpenAIResponsesBackend``.
         if !config.tools.isEmpty {
-            body["tools"] = config.tools.map(OpenAIToolEncoding.encodeToolDefinition)
+            body["tools"] = CloudMessageEncoder.openAI.encodeTools(config.tools)
             OpenAIToolEncoding.applyToolChoice(config.toolChoice, into: &body)
         }
 
@@ -558,52 +558,6 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                 arguments: entry.arguments
             )))
         }
-    }
-
-    // MARK: - Structured Content Encoding
-
-    /// Encodes one ``StructuredMessage`` as a Chat Completions
-    /// `messages[]` entry.
-    ///
-    /// - Text-only turns collapse to a plain string `content` to keep the
-    ///   wire shape minimal — every existing OpenAI-compatible compat
-    ///   server (Ollama, LM Studio, etc.) accepts both shapes and the
-    ///   string form is the lower-friction default.
-    /// - Image-bearing turns emit a structured `content[]` array with one
-    ///   `text` part (when present) followed by `image_url` parts for each
-    ///   image. The text-first ordering matches OpenAI's vision examples in
-    ///   the docs and keeps the prompt visible at the top of the array.
-    /// - Non-`user` roles (assistant, system, tool) collapse to plain
-    ///   string content. The model never emits `image_url` parts on
-    ///   assistant turns, and the persisted-row case where an assistant row
-    ///   somehow carries an image is rare enough that dropping the image
-    ///   silently — rather than emitting an `image_url` part the API will
-    ///   reject — is the safer choice.
-    static func encodeChatCompletionsContent(for message: StructuredMessage) -> [String: Any] {
-        let hasImage = message.parts.contains { part in
-            if case .image = part { return true }
-            return false
-        }
-        guard message.role == "user", hasImage else {
-            return ["role": message.role, "content": message.textContent]
-        }
-
-        var contentParts: [[String: Any]] = []
-        let text = message.textContent
-        if !text.isEmpty {
-            contentParts.append(["type": "text", "text": text])
-        }
-        for part in message.parts {
-            if case .image(let data, let mimeType, _) = part {
-                contentParts.append([
-                    "type": "image_url",
-                    "image_url": [
-                        "url": CloudImageEncoding.dataURI(data: data, mimeType: mimeType),
-                    ] as [String: Any],
-                ])
-            }
-        }
-        return ["role": "user", "content": contentParts]
     }
 
     // MARK: - SSE Payload Handler

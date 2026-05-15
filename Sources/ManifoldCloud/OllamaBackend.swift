@@ -291,7 +291,13 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             return snapshot
         }
         if let toolHistory = snapshotToolHistory {
-            messages.append(contentsOf: toolHistory.map(OllamaMessageEncoder.encodeToolAwareEntry))
+            messages.append(contentsOf: CloudMessageEncoder.ollama.encodeMessages(
+                systemPrompt: nil,
+                prompt: "",
+                structuredHistory: nil,
+                toolAwareHistory: toolHistory,
+                plainHistory: nil
+            ))
         } else if let history = conversationHistory {
             messages.append(contentsOf: history.map { ["role": $0.role, "content": $0.content] })
         } else {
@@ -379,8 +385,8 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         // are passed through as literal strings; `.tool(name:)` produces the
         // function-selection object Ollama expects for forced selection.
         if !config.tools.isEmpty {
-            body["tools"] = config.tools.map(OllamaMessageEncoder.encodeToolDefinition)
-            OllamaMessageEncoder.applyToolChoice(config.toolChoice, into: &body)
+            body["tools"] = CloudMessageEncoder.ollama.encodeTools(config.tools)
+            CloudMessageEncoder.ollamaApplyToolChoice(config.toolChoice, into: &body)
         }
 
         var request = URLRequest(url: chatURL)
