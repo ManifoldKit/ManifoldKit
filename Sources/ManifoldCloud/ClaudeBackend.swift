@@ -11,6 +11,28 @@ import ManifoldCloudCore
 /// and authentication via `x-api-key` header.
 public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
 
+    // MARK: - Adapter composition (Phase 3/Claude)
+    //
+    // `ClaudeBackend` composes a `CloudHTTPProviderAdapter` (specifically
+    // `ClaudeAdapter`) so the cross-backend audit (`CloudSeamUsageAuditTest`)
+    // recognises it as on the unified-adapter path. The adapter holds the
+    // per-provider divergences identified by the cross-backend audit
+    // (message encoding, payload handling, framing transport, stream
+    // finalization, tool-call shape, image input shape, structured-output
+    // shape, tool-result encoding, prompt-cache shape, error-body decoding)
+    // as composable witnesses.
+    //
+    // **Routing status — staged**: the adapter is *exposed* through this
+    // property and consulted by the audit; `parseResponseStream` still runs
+    // inline because the Claude wire shape needs the per-stream
+    // `ClaudeStreamEventExtractor` to surface tool_use blocks,
+    // `thinkingSignature`, and the open-thinking handoff — wiring that
+    // through `CloudAdapterRouting.streamConsumerFactory` is the Phase
+    // 3/Claude follow-up. The routing nevertheless installs the
+    // `errorBodyDecoder` so non-2xx body decoding goes through the
+    // adapter witness today.
+    public let adapter: any CloudHTTPProviderAdapter
+
     // MARK: - Init
 
     /// Creates a Claude backend.
@@ -23,12 +45,84 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
     /// that surfaces the kill-switch as a recoverable error.
     public init(urlSession: URLSession? = nil) {
+        // Adapter capabilities mirror the dynamic `capabilities` property
+        // for the default model (`claude-sonnet-4-20250514`) so the adapter
+        // composition is valid immediately. The adapter's `requestBuilder`
+        // is a no-op placeholder — the backend's `buildRequest` override is
+        // the canonical request builder (it owns tool-aware history
+        // snapshot/clear, structured-history vision pre-flight, per-turn
+        // cache-policy snapshotting, and just-in-time keychain key
+        // resolution), and the adapter-routed path threads it through the
+        // routing's `buildRequest` closure (which forwards to
+        // `self.buildRequest`).
+        self.adapter = ClaudeAdapter(
+            capabilities: Self.defaultAdapterCapabilities,
+            requestBuilder: { _, _, _, _ in
+                throw CloudBackendError.invalidURL(
+                    "ClaudeAdapter.requestBuilder is not the live path; the ClaudeBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
+                )
+            }
+        )
         super.init(
             defaultModelName: "claude-sonnet-4-20250514",
             urlSession: urlSession ?? URLSessionProvider.pinned,
             payloadHandler: CloudPayloadHandler.claude
         )
+
+        // Phase 3/Claude — install adapter routing so non-2xx error-body
+        // decoding goes through the adapter witness. `streamConsumerFactory`
+        // is intentionally `nil` for now: the Claude stream loop still owns
+        // its parser inline (`parseResponseStream` override below) because
+        // the tool_use + signature + whole-message-replay paths haven't
+        // been ported to a `CloudStreamEventConsumer` yet. The follow-up
+        // PR wires `streamConsumerFactory: { ClaudeStreamEventExtractor() }`
+        // and deletes the override, mirroring how Phase 2/B/iii/δ flipped
+        // OpenAI after Phase 2/B/ii installed the adapter.
+        let weakSelfBox = WeakClaudeBackendBox(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelfBox.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            },
+            streamConsumerFactory: nil
+        )
+        self.configure(adapterRouting: routing)
     }
+
+    /// Static adapter capabilities used at init time. Mirrors the dynamic
+    /// `capabilities` property's values for `claude-sonnet-4-20250514` so
+    /// the adapter composition is valid immediately. The dynamic property
+    /// remains the authoritative source once a real `modelName` is
+    /// configured.
+    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP],
+        maxContextTokens: 200_000,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: true,
+        supportsStructuredOutput: true,
+        supportsNativeJSONMode: false,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false,
+        memoryStrategy: .external,
+        maxOutputTokens: 8192,
+        supportsStreaming: true,
+        isRemote: true,
+        supportsThinking: true,
+        supportsVision: true,
+        streamsToolCallArguments: true,
+        supportsParallelToolCalls: true
+    )
 
     // MARK: - Prompt Cache Policy
 
@@ -585,6 +679,14 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         return body
     }
 
+}
+
+/// Sendable weak reference used by the routing closure to call back into
+/// the backend's `buildRequest` without retaining `self`. Matches the
+/// `WeakBackendBox` pattern used by `OpenAIBackend`.
+private final class WeakClaudeBackendBox: @unchecked Sendable {
+    weak var value: ClaudeBackend?
+    init(_ value: ClaudeBackend) { self.value = value }
 }
 #endif
 
