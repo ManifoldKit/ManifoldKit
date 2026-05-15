@@ -103,9 +103,30 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
         appendToolCallEvents(parsed, into: &out)
         if Task.isCancelled { return out }
 
-        appendThinkingEvents(parsed, into: &out)
-        if visibleCapHit { return out }
-        appendContentEvents(parsed, into: &out)
+        // Mid-line cancellation contract (#972): if this line emitted
+        // tool-call events, suppress thinking/content on the same line.
+        // Real Ollama wire frames never mix `tool_calls[]` with visible
+        // `content` or `thinking` on a single NDJSON record — the call
+        // arrives in its own line. A consumer that observes
+        // `.toolCallStart` and calls `stopGeneration()` cannot
+        // deterministically suppress subsequent same-frame events via
+        // `Task.isCancelled` alone (the producer runs synchronously
+        // through one frame's events). Treating a tool-call frame as
+        // tool-call-only is the deterministic guarantee: a malicious or
+        // misbehaving server that crams thinking + content into a
+        // tool-call line cannot leak that data after the consumer
+        // requested cancel. Tests exercising this contract:
+        //   - OllamaBackendToolCallingTests.test_cancellation_midLine_*
+        //   - OllamaStreamEventExtractorTests (covers the legitimate
+        //     production shape — tool_calls in their own line with
+        //     empty content).
+        let emittedToolCalls = !(parsed.toolCalls ?? []).isEmpty
+
+        if !emittedToolCalls {
+            appendThinkingEvents(parsed, into: &out)
+            if visibleCapHit { return out }
+            appendContentEvents(parsed, into: &out)
+        }
 
         if parsed.done {
             appendDoneFlush(into: &out)
