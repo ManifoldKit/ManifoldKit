@@ -643,6 +643,140 @@ final class MCPToolBridgeTests: XCTestCase {
         let names = await MainActor.run { registry.definitions.map(\.name) }
         XCTAssertEqual(names, ["search"])
     }
+
+    // MARK: - SEC-07: MCP tool name / description caps
+
+    /// A tool whose name exceeds `maxMCPToolNameBytes` must be truncated to
+    /// the configured byte limit before the tool is registered.
+    func test_oversizeToolName_isTruncatedAtByteLimit() async throws {
+        let limit = 32 // small limit for the test
+        var config = ManifoldConfiguration.shared
+        config.maxMCPToolNameBytes = limit
+        ManifoldConfiguration.shared = config
+        defer {
+            var restore = ManifoldConfiguration.shared
+            restore.maxMCPToolNameBytes = 256
+            ManifoldConfiguration.shared = restore
+        }
+
+        let longName = String(repeating: "a", count: limit + 50)
+        XCTAssertGreaterThan(longName.utf8.count, limit)
+
+        let source = MCPToolSource(
+            serverID: UUID(),
+            displayName: "Test",
+            capabilities: .init(),
+            toolNamespace: nil,
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall,
+            listTools: {
+                .object([
+                    "tools": .array([
+                        .object([
+                            "name": .string(longName),
+                            "description": .string("a tool"),
+                            "inputSchema": .object(["type": .string("object")]),
+                        ]),
+                    ]),
+                ])
+            },
+            callTool: { _, _ in nil }
+        )
+        let registry = ToolRegistry()
+        await source.register(in: registry)
+
+        let registeredNames = await MainActor.run { registry.definitions.map(\.name) }
+        XCTAssertEqual(registeredNames.count, 1,
+                       "tool must still be registered after name truncation")
+        let registeredNameBytes = registeredNames[0].utf8.count
+        XCTAssertLessThanOrEqual(registeredNameBytes, limit,
+                                 "registered name must be at most \(limit) bytes, got \(registeredNameBytes)")
+
+        // Sabotage: confirm the registered name is shorter than the original.
+        XCTAssertLessThan(registeredNameBytes, longName.utf8.count,
+                          "registered name must be shorter than the oversize input")
+    }
+
+    /// A tool whose description exceeds `maxMCPToolDescriptionBytes` must be
+    /// truncated to the configured byte limit.
+    func test_oversizeToolDescription_isTruncatedAtByteLimit() async throws {
+        let limit = 64
+        var config = ManifoldConfiguration.shared
+        config.maxMCPToolDescriptionBytes = limit
+        ManifoldConfiguration.shared = config
+        defer {
+            var restore = ManifoldConfiguration.shared
+            restore.maxMCPToolDescriptionBytes = 4_096
+            ManifoldConfiguration.shared = restore
+        }
+
+        let longDescription = String(repeating: "b", count: limit + 200)
+        XCTAssertGreaterThan(longDescription.utf8.count, limit)
+
+        let source = MCPToolSource(
+            serverID: UUID(),
+            displayName: "Test",
+            capabilities: .init(),
+            toolNamespace: nil,
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall,
+            listTools: {
+                .object([
+                    "tools": .array([
+                        .object([
+                            "name": .string("tool_a"),
+                            "description": .string(longDescription),
+                            "inputSchema": .object(["type": .string("object")]),
+                        ]),
+                    ]),
+                ])
+            },
+            callTool: { _, _ in nil }
+        )
+        let registry = ToolRegistry()
+        await source.register(in: registry)
+
+        let definitions = await MainActor.run { registry.definitions }
+        XCTAssertEqual(definitions.count, 1)
+        let descriptionBytes = definitions[0].description.utf8.count
+        XCTAssertLessThanOrEqual(descriptionBytes, limit,
+                                 "registered description must be at most \(limit) bytes, got \(descriptionBytes)")
+    }
+
+    /// A tool whose name is exactly at the byte limit must NOT be truncated.
+    func test_toolNameAtByteLimit_isNotTruncated() async throws {
+        let limit = 256
+        let exactName = String(repeating: "z", count: limit)
+        XCTAssertEqual(exactName.utf8.count, limit)
+
+        let source = MCPToolSource(
+            serverID: UUID(),
+            displayName: "Test",
+            capabilities: .init(),
+            toolNamespace: nil,
+            toolFilter: .allowAll,
+            approvalPolicy: .perCall,
+            listTools: {
+                .object([
+                    "tools": .array([
+                        .object([
+                            "name": .string(exactName),
+                            "description": .string("ok"),
+                            "inputSchema": .object(["type": .string("object")]),
+                        ]),
+                    ]),
+                ])
+            },
+            callTool: { _, _ in nil }
+        )
+        let registry = ToolRegistry()
+        await source.register(in: registry)
+
+        let registeredNames = await MainActor.run { registry.definitions.map(\.name) }
+        XCTAssertEqual(registeredNames.count, 1)
+        XCTAssertEqual(registeredNames[0].utf8.count, limit,
+                       "tool name at exact byte limit must not be truncated")
+    }
 }
 
 private func makeSource(

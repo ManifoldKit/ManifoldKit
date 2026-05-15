@@ -229,16 +229,39 @@ public final class MCPToolSource: @unchecked Sendable {
         guard case .array(let toolValues)? = root["tools"] else {
             throw MCPError.malformedMetadata("tools/list response missing tools array")
         }
+        let config = ManifoldConfiguration.shared
         return try toolValues.map { value in
             guard case .object(let object) = value else {
                 throw MCPError.malformedMetadata("tools/list item must be an object")
             }
-            guard case .string(let name)? = object["name"], !name.isEmpty else {
+            guard case .string(let rawName)? = object["name"], !rawName.isEmpty else {
                 throw MCPError.malformedMetadata("tools/list item missing name")
+            }
+            // Cap name and description by UTF-8 byte count before construction
+            // so an adversarial MCP server can't inject unbounded metadata into
+            // the tool registry. Log a warning so operators can detect it.
+            let name: String
+            if rawName.utf8.count > config.maxMCPToolNameBytes {
+                name = String(
+                    bytes: Array(rawName.utf8.prefix(config.maxMCPToolNameBytes)),
+                    encoding: .utf8
+                ) ?? rawName
+                Log.inference.warning("MCPToolSource: tool name truncated from \(rawName.utf8.count) to \(config.maxMCPToolNameBytes) bytes")
+            } else {
+                name = rawName
             }
             let description: String
             if case .string(let rawDescription)? = object["description"] {
-                description = rawDescription
+                if rawDescription.utf8.count > config.maxMCPToolDescriptionBytes {
+                    let truncated = String(
+                        bytes: Array(rawDescription.utf8.prefix(config.maxMCPToolDescriptionBytes)),
+                        encoding: .utf8
+                    ) ?? rawDescription
+                    Log.inference.warning("MCPToolSource: tool description truncated from \(rawDescription.utf8.count) to \(config.maxMCPToolDescriptionBytes) bytes for tool '\(name)'")
+                    description = truncated
+                } else {
+                    description = rawDescription
+                }
             } else {
                 description = "MCP tool '\(name)'"
             }

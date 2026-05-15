@@ -74,6 +74,9 @@ internal struct ServerCommandOptions: ParsableArguments, Sendable {
     }
 
     internal func serverConfiguration() -> ServerConfiguration {
+        // maxServerRequestBodyBytes is not CLI-configurable; it flows from
+        // ManifoldConfiguration.shared so host apps can set it at startup.
+        // The ServerConfiguration default already reads it from there.
         ServerConfiguration(
             host: host,
             port: port,

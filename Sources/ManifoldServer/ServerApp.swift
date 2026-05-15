@@ -4,6 +4,24 @@ import Foundation
 import Hummingbird
 import HTTPTypes
 
+// MARK: - Custom request context with configurable body-size limit
+
+/// A Hummingbird `RequestContext` that enforces the server's configured
+/// maximum upload size. Hummingbird rejects bodies larger than
+/// `maxUploadSize` with HTTP 413 before any handler logic runs.
+internal struct ManifoldServerRequestContext: RequestContext {
+    internal var coreContext: CoreRequestContextStorage
+    internal let maxUploadSize: Int
+
+    internal init(source: Source) {
+        self.coreContext = .init(source: source)
+        // Read the limit once per request from the global configuration. This
+        // avoids threading the value through every handler while still letting
+        // host apps reconfigure it before the first request arrives.
+        self.maxUploadSize = ManifoldConfiguration.shared.maxServerRequestBodyBytes
+    }
+}
+
 internal struct ServerHealth: Codable, Equatable, Sendable {
     internal var status: String
 
@@ -47,7 +65,7 @@ internal struct ServerApp: Sendable {
     internal func health() -> ServerHealth { ServerHealth() }
 
     internal func makeApplication() -> some ApplicationProtocol {
-        let router = Router()
+        let router = Router(context: ManifoldServerRequestContext.self)
         router.add(middleware: corsMiddleware())
 
         router.get("/health") { _, _ in
@@ -109,8 +127,8 @@ internal struct ServerApp: Sendable {
         try await makeApplication().runService()
     }
 
-    private func corsMiddleware() -> CORSMiddleware<BasicRequestContext> {
-        let allowOrigin: CORSMiddleware<BasicRequestContext>.AllowOrigin
+    private func corsMiddleware() -> CORSMiddleware<ManifoldServerRequestContext> {
+        let allowOrigin: CORSMiddleware<ManifoldServerRequestContext>.AllowOrigin
         if configuration.unsafeCORS {
             allowOrigin = .all
         } else if let corsOrigin = configuration.corsOrigin {

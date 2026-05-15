@@ -123,17 +123,31 @@ public actor RAGService {
             return .empty
         }
 
+        // Embedding models can hang or OOM on very long inputs. Truncate to
+        // the configured byte cap before handing off — a shorter query loses
+        // some precision but still produces useful nearest-neighbour results.
+        let cappedQuery: String
+        let maxRAGQueryBytes = ManifoldConfiguration.shared.maxRAGQueryBytes
+        if query.utf8.count > maxRAGQueryBytes {
+            cappedQuery = String(
+                bytes: Array(query.utf8.prefix(maxRAGQueryBytes)),
+                encoding: .utf8
+            ) ?? String(query.prefix(maxRAGQueryBytes / 4))
+        } else {
+            cappedQuery = query
+        }
+
         let hits: [VectorSearchHit]
         if let backend = embeddingBackend, backend.isModelLoaded {
             do {
-                let queryEmbedding = try await backend.embed([query])[0]
+                let queryEmbedding = try await backend.embed([cappedQuery])[0]
                 hits = try await vectorStore.search(embedding: queryEmbedding, limit: limit)
             } catch {
                 Log.inference.warning("RAGService: embedding query failed, falling back to keyword search: \(error.localizedDescription)")
-                hits = try await vectorStore.keywordSearch(query: query, limit: limit)
+                hits = try await vectorStore.keywordSearch(query: cappedQuery, limit: limit)
             }
         } else {
-            hits = try await vectorStore.keywordSearch(query: query, limit: limit)
+            hits = try await vectorStore.keywordSearch(query: cappedQuery, limit: limit)
         }
 
         guard !hits.isEmpty else { return .empty }

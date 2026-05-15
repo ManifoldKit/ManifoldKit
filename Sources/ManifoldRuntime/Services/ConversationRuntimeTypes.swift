@@ -108,6 +108,11 @@ public enum ConversationError: Error, Sendable {
     /// callers that surface persistence-style errors uniformly.
     case providerNotConfigured
 
+    /// The user message exceeded the configured byte limit. The message is
+    /// rejected before SwiftData insertion to prevent OOM on constrained
+    /// iOS devices. The associated value is the limit in bytes.
+    case messageTooLarge(limit: Int)
+
     /// `regenerate` was called when no assistant message exists in the
     /// session. There is nothing to replace — callers should gate the
     /// regenerate action on the presence of at least one assistant message.
@@ -140,6 +145,8 @@ extension ConversationError: LocalizedError {
         switch self {
         case .providerNotConfigured:
             return "ConversationRuntime persistence is not configured."
+        case let .messageTooLarge(limit):
+            return "User message exceeds the \(limit)-byte limit and was rejected."
         case .noAssistantMessageToRegenerate:
             return "No assistant message to regenerate — the conversation has no assistant turn yet."
         case let .messageNotFound(id):

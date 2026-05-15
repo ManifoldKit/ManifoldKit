@@ -53,6 +53,21 @@ private final class FakeEmbeddingBackend: EmbeddingBackend, @unchecked Sendable 
     func unloadModel() { isModelLoaded = false }
 }
 
+/// Records every text passed to `embed(_:)` so tests can inspect whether
+/// the RAG service truncated the query before calling the backend.
+private final class CapturingEmbeddingBackend: EmbeddingBackend, @unchecked Sendable {
+    var isModelLoaded: Bool = true
+    var dimensions: Int = 4
+    var capturedTexts: [String] = []
+
+    func loadModel(from url: URL) async throws { isModelLoaded = true }
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        capturedTexts.append(contentsOf: texts)
+        return texts.map { _ in [1.0, 0.0, 0.0, 0.0] }
+    }
+    func unloadModel() { isModelLoaded = false }
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -231,6 +246,74 @@ final class RAGServiceTests: XCTestCase {
             score: 1.0
         )
         XCTAssertEqual(citation.snippet, "Short.")
+    }
+
+    // MARK: - SEC-02: RAG query size cap
+
+    /// A query longer than maxRAGQueryBytes must be truncated to at most
+    /// maxRAGQueryBytes UTF-8 bytes before hitting the embedding backend.
+    func test_retrieve_oversizeQuery_isTruncatedBeforeEmbedding() async throws {
+        let maxBytes = 8_000
+        var config = ManifoldConfiguration.shared
+        config.maxRAGQueryBytes = maxBytes
+        ManifoldConfiguration.shared = config
+        defer {
+            var restore = ManifoldConfiguration.shared
+            restore.maxRAGQueryBytes = 8_000
+            ManifoldConfiguration.shared = restore
+        }
+
+        // Build a query that is clearly over the limit: 10_000 ASCII bytes.
+        let oversizeQuery = String(repeating: "a", count: 10_000)
+        XCTAssertGreaterThan(oversizeQuery.utf8.count, maxBytes)
+
+        // FakeEmbeddingBackend stores the text it received so we can inspect it.
+        let capturingBackend = CapturingEmbeddingBackend()
+        let vectorStore = FakeVectorStore()
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: capturingBackend
+        )
+
+        _ = try await sut.retrieve(query: oversizeQuery)
+
+        let capturedTexts = capturingBackend.capturedTexts
+        XCTAssertEqual(capturedTexts.count, 1,
+                       "embedding backend must receive exactly one query text")
+        let receivedBytes = capturedTexts[0].utf8.count
+        XCTAssertLessThanOrEqual(receivedBytes, maxBytes,
+                                 "embedded query must be capped at \(maxBytes) bytes, got \(receivedBytes)")
+
+        // Sabotage: confirm the test would fail if truncation weren't applied.
+        XCTAssertLessThan(receivedBytes, oversizeQuery.utf8.count,
+                          "captured query must be shorter than the original oversize input")
+    }
+
+    /// A query at exactly the limit must pass through unchanged.
+    func test_retrieve_atLimitQuery_isNotTruncated() async throws {
+        let maxBytes = 8_000
+        // Construct a query whose UTF-8 length is exactly maxBytes.
+        let exactQuery = String(repeating: "x", count: maxBytes)
+        XCTAssertEqual(exactQuery.utf8.count, maxBytes)
+
+        let capturingBackend = CapturingEmbeddingBackend()
+        let vectorStore = FakeVectorStore()
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: capturingBackend
+        )
+
+        _ = try await sut.retrieve(query: exactQuery)
+
+        let capturedTexts = capturingBackend.capturedTexts
+        guard capturedTexts.count == 1 else {
+            XCTFail("Expected 1 captured text, got \(capturedTexts.count)")
+            return
+        }
+        XCTAssertEqual(capturedTexts[0].utf8.count, maxBytes,
+                       "query at exactly the limit must not be truncated")
     }
 
     func testDeleteDocumentRemovesFromBothStores() async throws {

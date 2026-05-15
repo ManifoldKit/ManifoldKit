@@ -2335,4 +2335,75 @@ final class ConversationRuntimeTests: XCTestCase {
             "If the stream were unbounded the consumer could receive all 501+ events"
         )
     }
+
+    // MARK: - SEC-01: User message size guard
+
+    /// A message that exceeds `maxUserMessageBytes` must be rejected before
+    /// any persistence attempt. The error surfaces as `messageTooLarge`.
+    func test_send_oversizeMessage_throwsMessageTooLarge() async throws {
+        let limit = 512 // use a small limit so the test allocates minimally
+        var config = ManifoldConfiguration.shared
+        config.maxUserMessageBytes = limit
+        ManifoldConfiguration.shared = config
+        defer {
+            var restore = ManifoldConfiguration.shared
+            restore.maxUserMessageBytes = 500_000
+            ManifoldConfiguration.shared = restore
+        }
+
+        // Construct a message that is one byte over the limit.
+        let oversizeText = String(repeating: "a", count: limit + 1)
+        XCTAssertGreaterThan(oversizeText.utf8.count, limit)
+
+        let (runtime, store, _, _) = makeRuntime()
+        let sessionID = UUID()
+
+        do {
+            _ = try await runtime.processTurn(
+                TurnInput(sessionID: sessionID, kind: .send(text: oversizeText))
+            )
+            XCTFail("Expected messageTooLarge to be thrown")
+        } catch ConversationError.messageTooLarge(let reported) {
+            XCTAssertEqual(reported, limit,
+                           "reported limit must match ManifoldConfiguration.maxUserMessageBytes")
+        }
+
+        // No user message must have been persisted — the guard fires before insertion.
+        let persisted = store.messages.values.filter { $0.sessionID == sessionID }
+        XCTAssertTrue(persisted.isEmpty,
+                      "oversize message must not reach SwiftData insertion")
+    }
+
+    /// A message at exactly the byte limit must succeed (not be rejected).
+    func test_send_atLimitMessage_isAccepted() async throws {
+        let limit = 512
+        var config = ManifoldConfiguration.shared
+        config.maxUserMessageBytes = limit
+        ManifoldConfiguration.shared = config
+        defer {
+            var restore = ManifoldConfiguration.shared
+            restore.maxUserMessageBytes = 500_000
+            ManifoldConfiguration.shared = restore
+        }
+
+        let exactText = String(repeating: "a", count: limit)
+        XCTAssertEqual(exactText.utf8.count, limit)
+
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+        let sessionID = UUID()
+
+        let handle = try await runtime.processTurn(
+            TurnInput(sessionID: sessionID, kind: .send(text: exactText))
+        )
+        XCTAssertNotNil(handle, "message at the byte limit must be accepted and return a handle")
+
+        // Allow the stream to settle so the user message persistence is flushed.
+        _ = try await collectUntilStreamFinished(from: runtime)
+
+        let persisted = store.messages.values.filter { $0.sessionID == sessionID && $0.role == .user }
+        XCTAssertEqual(persisted.count, 1,
+                       "user message at the exact limit must be persisted once")
+    }
 }
