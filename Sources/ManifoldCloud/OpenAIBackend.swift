@@ -23,26 +23,31 @@ import ManifoldCloudCore
 /// ```
 public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
 
-    // MARK: - Adapter composition (Phase 2/B/ii)
+    // MARK: - Adapter composition (Phase 2/B/ii) + routing (Phase 2/B/iii/β)
     //
     // `OpenAIBackend` composes a `CloudHTTPProviderAdapter` (specifically
-    // `OpenAIAdapter`) so the cross-backend audit
-    // (`CloudSeamUsageAuditTest`) recognises it as on the unified-adapter
-    // path. The adapter holds the seven per-provider divergences described
-    // in the audit (message encoding, payload handling, framing
-    // transport, stream finalization, tool-call shape, image input shape,
+    // `OpenAIAdapter`) and projects it into a `CloudAdapterRouting` that
+    // the base envelope (`SSECloudBackend`) consumes for request building
+    // and error-body decoding. The adapter holds the per-provider
+    // divergences (message encoding, payload handling, framing transport,
+    // stream finalization, tool-call shape, image input shape,
     // structured-output shape, tool-result encoding, prompt-cache shape,
     // error-body decoding) as composable witnesses.
     //
-    // **Routing status — staged**: the adapter is *exposed* through this
-    // property and consulted by the audit; the existing
-    // `parseResponseStream` / `buildRequest` paths still drive
-    // generation directly. Phase 2/B/iii will invert the call: the
-    // backend body becomes a thin host that asks the adapter for the
-    // framing transport and stream finalizer rather than running the
-    // SSE loop inline. We split the inversion out of this PR to keep
-    // the behavioural-parity diff reviewable — the adapter wiring lands
-    // here, the runtime re-routing lands next.
+    // **Routing status — partial inversion (β)**: as of Phase 2/B/iii/β
+    // request building flows through the routing closure (which forwards
+    // back to this backend's `buildRequest` so per-turn state — tool-aware
+    // history, structured history, vision pre-flight — remains owned by
+    // the backend instance). Error-body decoding flows through the
+    // routing's `errorBodyDecoder`. Stream parsing still uses the
+    // backend's `parseResponseStream(bytes:config:continuation:)` override
+    // because the streaming tool-call accumulator + reasoning/content
+    // interleaving state cannot live on a stateless `SSEPayloadHandler`
+    // value. Lifting that into a stateful per-stream component is
+    // tracked for a follow-up that widens `CloudAdapterRouting` to host
+    // a per-generation stream consumer; until then the routing-aware
+    // base loop is a fallback that subclasses opt out of by overriding
+    // `parseResponseStream`.
     public let adapter: any CloudHTTPProviderAdapter
 
     // MARK: - Init
@@ -58,24 +63,21 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     /// that surfaces the kill-switch as a recoverable error.
     public init(urlSession: URLSession? = nil) {
         // Adapter capabilities mirror what `OpenAIBackend.capabilities`
-        // would resolve for the default model name (`gpt-4o-mini`). The
-        // adapter's `requestBuilder` is a no-op placeholder — the
-        // backend still drives `buildRequest` directly until Phase
-        // 2/B/iii inverts the call. Storing the adapter here is what
-        // satisfies the cross-backend audit and gives the runtime
-        // re-routing a stable composition root to consume next.
+        // would resolve for the default model name (`gpt-4o-mini`).
+        // `requestBuilder` is a placeholder — the live `buildRequest`
+        // closure on the routing (installed below) captures `self` and
+        // dispatches through dynamic dispatch so subclass state (tool-aware
+        // history snapshot/clear, structured history vision pre-flight,
+        // manifest-gated sampling params) is preserved.
         self.adapter = OpenAIAdapter(
             capabilities: Self.defaultAdapterCapabilities,
             requestBuilder: { _, _, _, _ in
-                // Unreachable today — the backend's own buildRequest
-                // is the live path. Throws if a future code path
-                // bypasses the backend and tries to drive the adapter
-                // standalone, which would skip the stateful pieces
-                // (tool-aware history snapshot/clear, structured
-                // history vision pre-flight) that still live on the
-                // backend.
+                // The adapter's `buildRequest` requirement is satisfied by
+                // the routing closure below, not this stub. Routing
+                // captures `self` weakly and forwards to the backend's
+                // own `buildRequest(prompt:systemPrompt:config:)`.
                 throw CloudBackendError.invalidURL(
-                    "OpenAIAdapter.requestBuilder is not yet the live path; call OpenAIBackend.buildRequest until Phase 2/B/iii."
+                    "OpenAIAdapter.requestBuilder is not the live path — request building flows through the CloudAdapterRouting closure bound at init."
                 )
             }
         )
@@ -84,6 +86,29 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             urlSession: urlSession ?? URLSessionProvider.pinned,
             payloadHandler: CloudPayloadHandler.openAI
         )
+        // Install adapter routing so the envelope dispatches request
+        // building and error-body decoding through the adapter's
+        // witnesses. The routing closure captures `self` weakly to avoid
+        // a retain cycle (the backend strongly owns the routing via the
+        // base class's `_adapterRouting` storage).
+        let weakSelf = WeakOpenAIBackend(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelf.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            }
+        )
+        self.configure(adapterRouting: routing)
     }
 
     /// Static adapter capabilities used at init time. Mirrors the dynamic
@@ -843,6 +868,15 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         )
     }
 
+}
+
+/// Sendable weak-reference wrapper used by ``OpenAIBackend`` to capture
+/// itself inside the adapter routing's `buildRequest` closure without
+/// creating a retain cycle. The closure is `@Sendable` so the strong
+/// reference path (`self`) cannot be captured directly.
+private final class WeakOpenAIBackend: @unchecked Sendable {
+    weak var value: OpenAIBackend?
+    init(_ value: OpenAIBackend?) { self.value = value }
 }
 
 #endif
