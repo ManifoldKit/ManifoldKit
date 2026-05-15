@@ -97,12 +97,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldCloud/OpenAIResponsesBackend.swift",
         "ManifoldCloud/OllamaBackend.swift",
         // Extracted from OllamaBackend in #1163 (issue #1113 decomposition):
-        // OllamaModelProbe owns the `/api/show` capability probe;
-        // OllamaStreamProcessor owns the NDJSON byte-stream reader
-        // (`URLSession.AsyncBytes`). Both inherit OllamaBackend's
+        // OllamaModelProbe owns the `/api/show` capability probe. The
+        // OllamaStreamProcessor that previously held the NDJSON byte-stream
+        // reader was deleted in Phase 3/Ollama — its role is now owned by
+        // `NDJSONTransport` (in `ManifoldCloudCore`) plus
+        // `OllamaStreamEventExtractor`. Both inherit OllamaBackend's
         // network-boundary status by extraction — no new network surface.
         "ManifoldCloud/OllamaModelProbe.swift",
-        "ManifoldCloud/OllamaStreamProcessor.swift",
         "ManifoldCloud/OllamaModelListService.swift",
         "ManifoldCloudCore/SSECloudBackend.swift",
         "ManifoldCloudCore/URLSessionProvider.swift",

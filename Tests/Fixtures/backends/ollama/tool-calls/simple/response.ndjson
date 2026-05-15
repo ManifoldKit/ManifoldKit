@@ -1,0 +1,2 @@
+{"model":"llama3.1-fixture","created_at":"2026-05-15T10:00:00Z","message":{"role":"assistant","content":"","tool_calls":[{"id":"call_fixture_001","function":{"name":"get_weather","arguments":{"city":"Paris"}}}]},"done":false}
+{"model":"llama3.1-fixture","created_at":"2026-05-15T10:00:01Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":42,"eval_count":18}

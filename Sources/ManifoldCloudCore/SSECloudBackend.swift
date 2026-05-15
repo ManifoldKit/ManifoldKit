@@ -601,9 +601,49 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         var wasThinking = false
         var threwMidStream: Error?
 
+        // Apply the same DoS guards as the SSE-direct path
+        // (`SSEStreamParser`). Without these the routed transport (e.g.
+        // ``NDJSONTransport``) is bounded only by the transport's own
+        // soft caps, which silently drop frames instead of throwing
+        // ``SSEStreamError`` and ignore the backend's `sseStreamLimits`
+        // override. Closes the Phase 3/Ollama regression where Ollama
+        // stopped honouring `streamTooLarge` / `eventTooLarge` /
+        // `eventRateExceeded`.
+        let limits = effectiveSSEStreamLimits
+        var routedTotalBytes = 0
+        var routedRateWindowStart = ContinuousClock.now
+        var routedRateWindowCount = 0
+        func routedNoteEventYielded() -> SSEStreamError? {
+            let now = ContinuousClock.now
+            if now - routedRateWindowStart >= .seconds(1) {
+                routedRateWindowStart = now
+                routedRateWindowCount = 1
+                return nil
+            }
+            routedRateWindowCount += 1
+            if routedRateWindowCount > limits.maxEventsPerSecond {
+                return .eventRateExceeded(routedRateWindowCount)
+            }
+            return nil
+        }
+
         do {
             for await frame in routing.framedTransport.frames(from: bytes) {
                 if Task.isCancelled { break }
+
+                // Single-frame cap. Mirror SSEStreamError.eventTooLarge so
+                // the existing backend tests + retry UI keep working.
+                if frame.count > limits.maxEventBytes {
+                    throw SSEStreamError.eventTooLarge(frame.count)
+                }
+                // Cumulative cap. `+ 1` accounts for the newline framing
+                // that NDJSON / SSE strip before the frame reaches us, so
+                // the on-the-wire byte count closely matches what the
+                // direct SSE path would see.
+                routedTotalBytes += frame.count + 1
+                if routedTotalBytes > limits.maxTotalBytes {
+                    throw SSEStreamError.streamTooLarge(routedTotalBytes)
+                }
 
                 // Decode the frame as UTF-8 for the payload handler API, which
                 // operates on `String`. `FramedTransport` ships `Data` so binary
@@ -622,12 +662,25 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                         // consumer emits and still consults the handler for
                         // in-stream errors + the finalizer/isStreamEnd
                         // termination signals.
+                        //
+                        // Re-check `Task.isCancelled` between yields so a
+                        // host cancel observed after the first event from a
+                        // multi-event payload (e.g. a single Ollama NDJSON
+                        // line carrying many `tool_calls[]` entries plus
+                        // a thinking + content field) suppresses the
+                        // remaining events on the same line. Mirrors the
+                        // per-yield cancellation contract the legacy
+                        // `OllamaStreamProcessor` implemented inline.
                         for event in consumer.consume(payload: payload) {
+                            if Task.isCancelled { break }
                             // Mirror the usage event back into envelope
                             // bookkeeping so `lastUsage` stays accurate for
                             // hosts that read it post-stream.
                             if case .usage(let prompt, let completion) = event {
                                 handleUsage((promptTokens: prompt, completionTokens: completion))
+                            }
+                            if let rateError = routedNoteEventYielded() {
+                                throw rateError
                             }
                             continuation.yield(event)
                         }

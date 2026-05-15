@@ -27,17 +27,31 @@ final class CancellationLivenessContractTest: XCTestCase {
         "ClaudePayloadParser.swift",
         "ClaudeToolCallAccumulator.swift",
         "OllamaPayloadHandler.swift",
-        "OllamaStreamProcessor.swift",
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",
+        "OllamaStreamEventExtractor.swift",
         "CloudHTTPProviderAdapter.swift",
         "CloudMessageEncoder.swift",
         "CloudPayloadHandler.swift",
         "OpenAIAdapter.swift",
+        "OllamaAdapter.swift",
+        "OpenAIStreamEventExtractor.swift",
         "OpenAIToolEncoding.swift",
         // ManifoldCloudCore is enveloped, audited separately by other guards.
         // The envelope itself (SSECloudBackend.swift) is the canonical
         // cancellation observer.
+    ]
+
+    /// Backend files that have migrated to the adapter-routed path. The
+    /// envelope's `parseResponseStreamRouted` loop in
+    /// ``SSECloudBackend`` owns the `Task.isCancelled` observation for
+    /// these — the per-stream consumer also observes cancellation at
+    /// `consume(payload:)` so phantom tool calls cannot fire mid-cancel.
+    /// Listed explicitly so a regression that removes adapter routing
+    /// from one of these files trips the audit immediately.
+    private static let adapterRoutedBackends: Set<String> = [
+        "OpenAIBackend.swift",
+        "OllamaBackend.swift",
     ]
 
     func test_everyBackend_observesCancellation() throws {
@@ -51,15 +65,24 @@ final class CancellationLivenessContractTest: XCTestCase {
             // Only audit backend-shaped files (those with a stream loop).
             guard name.hasSuffix("Backend.swift") else { continue }
 
+            // Adapter-routed backends delegate the stream loop and its
+            // cancellation observation to `SSECloudBackend.parseResponseStreamRouted`
+            // in `ManifoldCloudCore`. The audit accepts these as having
+            // observed cancellation upstream — `adapterRouting` composition
+            // is the gate.
+            if Self.adapterRoutedBackends.contains(name) {
+                let content = try String(contentsOf: fileURL, encoding: .utf8)
+                if !content.contains("CloudHTTPProviderAdapter")
+                    || !content.contains("configure(adapterRouting") {
+                    offenders.append("\(name) (declared adapter-routed but missing routing wiring)")
+                }
+                continue
+            }
+
             let content = try String(contentsOf: fileURL, encoding: .utf8)
-            // Either direct observation, or composition with a helper whose
-            // body owns the loop's cancellation check (e.g. `OllamaBackend`
-            // delegates to `OllamaStreamProcessor` whose `process` body is
-            // dense with `Task.isCancelled` reads).
             let observesCancel = content.contains("Task.isCancelled")
                 || content.contains("Task.checkCancellation()")
                 || content.contains("try Task.checkCancellation")
-                || content.contains("OllamaStreamProcessor")
                 // Adapter-routed backends (`configure(adapterRouting:)`)
                 // delegate cancellation to
                 // `SSECloudBackend.parseResponseStreamRouted`, which is

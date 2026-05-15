@@ -31,8 +31,6 @@ final class CloudSeamUsageAuditTest: XCTestCase {
     private static let legacyPathAllowlist: Set<String> = [
         // TODO(phase-3): migrate to ClaudeAdapter (round-trips thinking signatures).
         "ClaudeBackend.swift",
-        // TODO(phase-3): migrate to OllamaAdapter (NDJSON transport + /api/show probe).
-        "OllamaBackend.swift",
     ]
 
     func test_everyCloudBackend_eitherComposesAdapter_orIsAllowlistedWithTODO() throws {

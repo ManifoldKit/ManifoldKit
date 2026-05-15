@@ -1,0 +1,16 @@
+{
+  "model": "qwen3-fixture",
+  "messages": [
+    { "role": "user", "content": "Explain briefly." }
+  ],
+  "stream": true,
+  "options": {
+    "temperature": 0.7,
+    "top_p": 1.0,
+    "top_k": 40,
+    "repeat_penalty": 1.1,
+    "num_predict": 4096,
+    "num_ctx": 8192
+  },
+  "keep_alive": "30m"
+}

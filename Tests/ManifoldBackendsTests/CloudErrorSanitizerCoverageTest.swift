@@ -43,13 +43,15 @@ final class CloudErrorSanitizerCoverageTest: XCTestCase {
         "ClaudePayloadParser.swift",
         "ClaudeToolCallAccumulator.swift",
         "OllamaPayloadHandler.swift",
-        "OllamaStreamProcessor.swift",
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",
+        "OllamaStreamEventExtractor.swift",
+        "OllamaAdapter.swift",
         "CloudHTTPProviderAdapter.swift",
         "CloudMessageEncoder.swift",
         "CloudPayloadHandler.swift",
         "OpenAIAdapter.swift",
+        "OpenAIStreamEventExtractor.swift",
         "OpenAIToolEncoding.swift",
     ]
 
