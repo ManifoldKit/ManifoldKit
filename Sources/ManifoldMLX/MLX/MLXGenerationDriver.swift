@@ -2,6 +2,7 @@
 import Foundation
 @preconcurrency import MLX
 import MLXLMCommon
+import MLXRandom
 import os
 import ManifoldInference
 
@@ -59,6 +60,185 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
         /// `true` when the loop completed without throwing and was not cancelled —
         /// callers may snapshot the prompt cache for next-turn reuse.
         let completedNormally: Bool
+    }
+
+    /// Outcome of a `generate(...)` call.
+    ///
+    /// Wraps `RunResult` and surfaces the inputs the backend needs to schedule
+    /// a post-generation prompt-cache snapshot capture. The backend owns the
+    /// snapshot lineage (write-token bookkeeping, install under the state
+    /// lock), so the driver returns the *materials* for the capture rather
+    /// than performing it.
+    struct GenerateResult {
+        let run: RunResult
+        /// Non-nil only when KV-cache reuse was eligible, the run completed
+        /// normally, and a prompt-token array was captured during input
+        /// preparation. The backend reads this to decide whether to fire a
+        /// `MLXPromptCacheCoordinator.makeSnapshotCaptureTask`.
+        let snapshotInputs: MLXPromptCacheCoordinator.SnapshotCaptureInputs?
+    }
+
+    /// High-level orchestrator: encodes chat messages, prepares the model
+    /// input and KV cache (honouring reuse eligibility), seeds the RNG,
+    /// constructs `GenerateParameters`, and drives the token stream via
+    /// ``run(...)``.
+    ///
+    /// This is the entry point the backend calls — `run(...)` stays public
+    /// to the file so the inner token-streaming loop remains independently
+    /// testable, but the backend never has to reach past `generate(...)`.
+    ///
+    /// On the happy path the function yields `.kvCacheReuse` (when a prompt
+    /// prefix was restored) and the full event stream from the inner loop
+    /// into `continuation`. The caller is responsible for `continuation.finish()`
+    /// and `generationStream.setPhase(...)` once the function returns or
+    /// throws. The driver only yields events and updates the "streaming" phase
+    /// on first content (mirrors the previous in-backend behaviour).
+    func generate(
+        prompt: String,
+        systemPrompt: String?,
+        config: GenerationConfig,
+        loadOptions: BackendLoadOptions,
+        container: any MLXModelContainerProtocol,
+        conversationHistory: [(role: String, content: String)],
+        toolAwareHistory: [ToolAwareHistoryEntry]?,
+        structuredHistory: [StructuredMessage]?,
+        dialect: MLXToolDialect,
+        autoDetectedMarkers: ThinkingMarkers?,
+        kvCacheReuseEligible: Bool,
+        pendingSnapshotTask: Task<Void, Never>?,
+        existingSnapshot: MLXPromptCacheCoordinator.Snapshot?,
+        generationStream: GenerationStream,
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
+        yieldHook: (@Sendable () async -> Void)?
+    ) async throws -> GenerateResult {
+        // Seed the MLX global RandomState before constructing GenerateParameters
+        // so the sampler's per-instance `RandomState()` (initialised from the
+        // default state) produces a deterministic token stream. `nil` skips
+        // seeding entirely — the process keeps whatever entropy MLX last picked up.
+        if let seed = config.seed {
+            MLXRandom.seed(seed)
+        }
+
+        // KV cache quantization: nil = library default (FP16). 8 / 4 map to mlx's
+        // explicit kvBits levels. Group size 64 and quantizedKVStart 0 match
+        // mlx-lm Python conventions and have no exposure on the BCK API yet.
+        let kvBits: Int? = {
+            switch loadOptions.kvCacheQuantization {
+            case .f16: return nil
+            case .q8:  return 8
+            case .q4:  return 4
+            }
+        }()
+
+        let generateConfig = GenerateParameters(
+            kvBits: kvBits,
+            temperature: config.temperature,
+            topP: config.topP,
+            topK: Int(config.topK ?? 0),
+            minP: config.minP ?? 0.0,
+            repetitionPenalty: config.repetitionPenalty ?? config.repeatPenalty,
+            repetitionContextSize: config.repetitionContextSize ?? 20,
+            presencePenalty: config.presencePenalty,
+            presenceContextSize: config.presenceContextSize ?? 20,
+            frequencyPenalty: config.frequencyPenalty,
+            frequencyContextSize: config.frequencyContextSize ?? 20,
+            prefillStepSize: loadOptions.prefillBatchSize ?? 512
+        )
+
+        let effectiveSystemPrompt: String? = {
+            if let toolBlock = MLXChatMessageEncoder.buildQwenToolBlock(config: config, dialect: dialect) {
+                return (systemPrompt ?? "") + toolBlock
+            }
+            return systemPrompt
+        }()
+
+        let (chatMessages, messages) = try MLXChatMessageEncoder.buildChatMessages(
+            prompt: prompt,
+            effectiveSystemPrompt: effectiveSystemPrompt,
+            conversationHistory: conversationHistory,
+            toolAwareHistory: toolAwareHistory,
+            structuredHistory: structuredHistory,
+            dialect: dialect
+        )
+
+        let resolvedMarkers = resolveThinkingMarkers(
+            config: config,
+            autoDetected: autoDetectedMarkers
+        )
+
+        // Wait for any pending KV snapshot capture from the previous turn to
+        // complete before we restore from it — otherwise we'd race
+        // `Snapshot` writes against reads.
+        if kvCacheReuseEligible, let pendingSnapshotTask {
+            await pendingSnapshotTask.value
+        }
+        let resolvedSnapshot: MLXPromptCacheCoordinator.Snapshot? =
+            kvCacheReuseEligible ? existingSnapshot : nil
+
+        let prepared = try await MLXPromptCacheCoordinator.prepareInputAndCache(
+            container: container,
+            chatMessages: chatMessages,
+            messages: messages,
+            generateConfig: generateConfig,
+            kvCacheReuseEligible: kvCacheReuseEligible,
+            snapshot: resolvedSnapshot
+        )
+        if prepared.reuseLen > 0 {
+            continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
+        }
+
+        let result = try await run(
+            container: container,
+            generationInput: prepared.generationInput,
+            cache: prepared.cache,
+            generateConfig: generateConfig,
+            config: config,
+            dialect: dialect,
+            markers: resolvedMarkers,
+            generationStream: generationStream,
+            continuation: continuation,
+            yieldHook: yieldHook
+        )
+
+        let snapshotInputs: MLXPromptCacheCoordinator.SnapshotCaptureInputs? =
+            if kvCacheReuseEligible,
+               result.completedNormally,
+               let ids = prepared.promptTokenIds
+            {
+                MLXPromptCacheCoordinator.SnapshotCaptureInputs(
+                    cache: prepared.cache,
+                    promptTokenIds: ids
+                )
+            } else {
+                nil
+            }
+
+        return GenerateResult(run: result, snapshotInputs: snapshotInputs)
+    }
+
+    /// Resolves the active thinking-marker pair from the per-request override
+    /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
+    /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
+    /// neither source supplied markers — both cases keep `ThinkingParser` off.
+    ///
+    /// Lives on the driver because marker resolution is generation-time policy.
+    /// `MLXBackend.resolveThinkingMarkers` forwards to this for source-compat
+    /// with `MLXBackendHelpersTests`.
+    nonisolated static func resolveThinkingMarkers(
+        config: GenerationConfig,
+        autoDetected: ThinkingMarkers?
+    ) -> ThinkingMarkers? {
+        if config.maxThinkingTokens == 0 { return nil }
+        return config.thinkingMarkers ?? autoDetected
+    }
+
+    /// Non-static, `@MainActor` forwarder so call sites already inside the
+    /// driver's actor don't need to qualify the type.
+    func resolveThinkingMarkers(
+        config: GenerationConfig,
+        autoDetected: ThinkingMarkers?
+    ) -> ThinkingMarkers? {
+        Self.resolveThinkingMarkers(config: config, autoDetected: autoDetected)
     }
 
     /// Drives the MLX stream:
