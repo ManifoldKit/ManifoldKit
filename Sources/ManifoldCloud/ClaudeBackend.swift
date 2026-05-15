@@ -22,15 +22,17 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     // shape, tool-result encoding, prompt-cache shape, error-body decoding)
     // as composable witnesses.
     //
-    // **Routing status — staged**: the adapter is *exposed* through this
-    // property and consulted by the audit; `parseResponseStream` still runs
-    // inline because the Claude wire shape needs the per-stream
-    // `ClaudeStreamEventExtractor` to surface tool_use blocks,
-    // `thinkingSignature`, and the open-thinking handoff — wiring that
-    // through `CloudAdapterRouting.streamConsumerFactory` is the Phase
-    // 3/Claude follow-up. The routing nevertheless installs the
-    // `errorBodyDecoder` so non-2xx body decoding goes through the
-    // adapter witness today.
+    // **Routing status — fully flipped (Phase 3/Claude)**: the routing
+    // drives `parseResponseStream` through `SSECloudBackend`'s envelope —
+    // request building delegates back to `buildRequest` (the backend still
+    // owns tool-aware history snapshot/clear, structured-history vision
+    // pre-flight, per-turn cache-policy snapshotting, and just-in-time
+    // keychain key resolution), framing is `SSETransport`, stream
+    // consumption is a fresh-per-stream `ClaudeStreamEventExtractor`,
+    // termination is `ClaudeMessageStopFinalizer`, and non-2xx error
+    // bodies decode through `DefaultErrorBodyDecoder`. The inline
+    // `parseResponseStream` override was removed alongside
+    // `ClaudeToolCallAccumulator`.
     public let adapter: any CloudHTTPProviderAdapter
 
     // MARK: - Init
@@ -69,15 +71,13 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             payloadHandler: CloudPayloadHandler.claude
         )
 
-        // Phase 3/Claude — install adapter routing so non-2xx error-body
-        // decoding goes through the adapter witness. `streamConsumerFactory`
-        // is intentionally `nil` for now: the Claude stream loop still owns
-        // its parser inline (`parseResponseStream` override below) because
-        // the tool_use + signature + whole-message-replay paths haven't
-        // been ported to a `CloudStreamEventConsumer` yet. The follow-up
-        // PR wires `streamConsumerFactory: { ClaudeStreamEventExtractor() }`
-        // and deletes the override, mirroring how Phase 2/B/iii/δ flipped
-        // OpenAI after Phase 2/B/ii installed the adapter.
+        // Phase 3/Claude — install adapter routing and the per-stream
+        // `ClaudeStreamEventExtractor` factory. The envelope
+        // (`SSECloudBackend.parseResponseStreamRouted`) drives event
+        // extraction through a fresh consumer per generation, so tool_use
+        // accumulator state, the open-thinking flag, and split-usage
+        // merging stay isolated. The inline `parseResponseStream`
+        // override has been removed; this is the only live path.
         let weakSelfBox = WeakClaudeBackendBox(self)
         let routing = CloudAdapterRouting(
             payloadHandler: adapter.payloadHandler,
@@ -94,7 +94,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                     config: config
                 )
             },
-            streamConsumerFactory: nil
+            streamConsumerFactory: { ClaudeStreamEventExtractor() }
         )
         self.configure(adapterRouting: routing)
     }
@@ -437,192 +437,25 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     }
 
     /// Claude reports usage split across `message_start` (prompt) and
-    /// `message_delta` (completion), so we merge incrementally.
+    /// `message_delta` (completion). Two arrival shapes are possible:
+    ///   - Routed-consumer path: `ClaudeStreamEventExtractor` merges the
+    ///     two halves and yields a single `.usage(prompt, completion)`
+    ///     event, which the envelope mirrors here with BOTH halves
+    ///     populated.
+    ///   - Legacy non-consumer paths (no streamConsumerFactory installed):
+    ///     each half arrives in a separate call, so we merge incrementally.
+    /// Handle both: when both halves are populated, store them verbatim;
+    /// when only one is, fold it into the previously-seen half.
     public override func handleUsage(_ usage: (promptTokens: Int?, completionTokens: Int?)) {
-        if let promptTokens = usage.promptTokens {
-            lastUsage = (promptTokens: promptTokens, completionTokens: 0)
+        if let prompt = usage.promptTokens, let completion = usage.completionTokens {
+            lastUsage = (promptTokens: prompt, completionTokens: completion)
+        } else if let promptTokens = usage.promptTokens {
+            let existing = lastUsage?.completionTokens ?? 0
+            lastUsage = (promptTokens: promptTokens, completionTokens: existing)
         } else if let completionTokens = usage.completionTokens {
             let existing = lastUsage?.promptTokens ?? 0
             lastUsage = (promptTokens: existing, completionTokens: completionTokens)
         }
-    }
-
-    // MARK: - Stream Parsing
-
-    /// Parses Claude's SSE response with extended-thinking support.
-    ///
-    /// Anthropic interleaves reasoning and visible content via typed content
-    /// blocks. A typical extended-thinking response looks like:
-    ///
-    /// ```
-    /// content_block_start {index:0, content_block:{type:"thinking"}}
-    /// content_block_delta {index:0, delta:{type:"thinking_delta", thinking:"..."}}
-    /// content_block_stop  {index:0}
-    /// content_block_start {index:1, content_block:{type:"text"}}
-    /// content_block_delta {index:1, delta:{type:"text_delta",     text:"..."}}
-    /// content_block_stop  {index:1}
-    /// message_stop
-    /// ```
-    ///
-    /// We route `thinking_delta` chunks to ``GenerationEvent/thinkingToken(_:)``
-    /// and emit a single ``GenerationEvent/thinkingComplete`` exactly once — on
-    /// the first transition from a thinking block to any non-thinking event
-    /// (text block start, token, usage, or terminal stop). Non-reasoning
-    /// responses never fire `.thinkingComplete` because no thinking chunk was
-    /// ever observed.
-    ///
-    /// Anthropic's extended-thinking blocks also carry an opaque
-    /// `signature` — required verbatim on multi-turn replay. We surface it
-    /// as ``GenerationEvent/thinkingSignature(_:)``, captured from either
-    /// the `content_block_start` payload or a nested
-    /// `signature_delta` (the path real production streams use today).
-    /// See #604.
-    public override func parseResponseStream(
-        bytes: URLSession.AsyncBytes,
-        config: GenerationConfig,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) async throws {
-        let tokenStream = SSEStreamParser.parse(bytes: bytes, limits: effectiveSSEStreamLimits)
-
-        // `thinking` flips to open the first time we see a thinking_delta.
-        // It flushes — and fires .thinkingComplete exactly once — the first
-        // time we see anything that clearly isn't thinking anymore.
-        // Signature events bypass open/close entirely.
-        var thinking = ThinkingBlockManager()
-
-        let toolAccumulator = ClaudeToolCallAccumulator()
-
-        do {
-            for try await payload in tokenStream {
-                if Task.isCancelled {
-                    toolAccumulator.markCancelled()
-                    break
-                }
-
-                let eventType = ClaudePayloadParser.parseEventType(from: payload)
-
-                // Thinking-block start: opportunistically capture the signature
-                // if Anthropic shipped one inline on the start event. Real
-                // streams more commonly carry the signature on a later
-                // `signature_delta`, but a couple of beta endpoints attach it
-                // here, and the redundant emission is harmless — UI consumers
-                // overwrite stored signatures rather than appending.
-                if eventType == "content_block_start", let signature = ClaudePayloadParser.parseThinkingBlockStartSignature(from: payload) {
-                    continuation.yield(.thinkingSignature(signature))
-                    continue
-                }
-
-                // tool_use content_block_start — capture id + name and emit
-                // `.toolCallStart`. Anthropic always carries id and name on
-                // the start event itself, so we don't need the accumulator's
-                // lazy-emit pattern.
-                if eventType == "content_block_start", let toolStart = ClaudePayloadParser.parseToolUseBlockStart(from: payload) {
-                    thinking.flushIfOpen(into: continuation)
-                    toolAccumulator.handleToolUseBlockStart(toolStart, continuation: continuation)
-                    continue
-                }
-
-                // input_json_delta — append to the accumulator and emit a
-                // streaming `.toolCallArgumentsDelta` under the resolved call id.
-                if eventType == "content_block_delta", let inputDelta = ClaudePayloadParser.parseInputJSONDelta(from: payload) {
-                    toolAccumulator.handleInputJSONDelta(inputDelta, continuation: continuation)
-                    continue
-                }
-
-                // content_block_stop on a tool_use index — finalize that one
-                // call now so per-block latency is preserved. (Sibling text /
-                // thinking blocks pass through this branch as a no-op.)
-                if eventType == "content_block_stop", let stopIndex = ClaudePayloadParser.parseContentBlockIndex(from: payload),
-                   toolAccumulator.isToolUseIndex(stopIndex) {
-                    toolAccumulator.finalizeToolUse(at: stopIndex, continuation: continuation)
-                    continue
-                }
-
-                // Signature delta inside the thinking block. Primary path
-                // Anthropic uses today for extended-thinking signatures.
-                if eventType == "content_block_delta", let signature = ClaudePayloadParser.parseSignatureDelta(from: payload) {
-                    continuation.yield(.thinkingSignature(signature))
-                    continue
-                }
-
-                // Thinking + plain text deltas: route via the handler's
-                // `extractEvents`, which classifies thinking_delta vs.
-                // text_delta in one place. Tool-use / signature / message_*
-                // shapes return `[]` from the handler and are handled inline
-                // above because they need cross-payload state the handler
-                // cannot model.
-                let payloadEvents = extractEvents(from: payload)
-                for event in payloadEvents {
-                    switch event {
-                    case .thinkingToken:
-                        continuation.yield(event)
-                        thinking.open()
-                    case .token:
-                        thinking.flushIfOpen(into: continuation)
-                        continuation.yield(event)
-                    default:
-                        continuation.yield(event)
-                    }
-                }
-
-                // Non-streaming whole-message tool_use shape. Some callers
-                // (synthesised replay fixtures, future non-streaming endpoint
-                // variants) deliver the entire `content:[]` array on a single
-                // payload. Treat each tool_use block as a uniform start +
-                // single delta + toolCall triple so consumers don't have to
-                // special-case the path.
-                if let wholeCalls = ClaudePayloadParser.parseWholeMessageToolUseBlocks(from: payload), !wholeCalls.isEmpty {
-                    thinking.flushIfOpen(into: continuation)
-                    toolAccumulator.handleWholeMessageToolUseBlocks(wholeCalls, continuation: continuation)
-                    continue
-                }
-
-                if let usage = extractUsage(from: payload) {
-                    handleUsage(usage)
-                    if let prompt = usage.promptTokens,
-                       let completion = usage.completionTokens {
-                        continuation.yield(.usage(prompt: prompt, completion: completion))
-                    }
-                }
-
-                // Log prompt-cache activity from the message_start event so
-                // operators can verify that breakpoints are being hit without
-                // needing a structured extension to TokenUsage.
-                if let cacheUsage = ClaudePayloadParser.parseCacheUsage(from: payload) {
-                    Log.inference.debug(
-                        "Claude prompt cache: creation=\(cacheUsage.cacheCreationInputTokens) read=\(cacheUsage.cacheReadInputTokens)"
-                    )
-                }
-
-                if isStreamEnd(payload) {
-                    thinking.flushIfOpen(into: continuation)
-                    break
-                }
-
-                if let error = extractStreamError(from: payload) {
-                    throw error
-                }
-            }
-        } catch {
-            // Close any open thinking block before rethrowing so consumers
-            // don't hang in a thinking-only state on parser failure.
-            thinking.flushIfOpen(into: continuation)
-            throw error
-        }
-
-        if Task.isCancelled {
-            toolAccumulator.markCancelled()
-        }
-
-        // Safety net: stream ended without a text block or message_stop while
-        // still inside a thinking block (truncated upstream). Close the block
-        // so consumers don't hang in a thinking-only state.
-        thinking.flushIfOpen(into: continuation)
-        // Stream end fallback: if the upstream closed without `message_stop`
-        // (truncated, server hangup), emit any buffered tool calls now so
-        // the orchestrator can still dispatch them. Cancellation suppresses
-        // this branch via ClaudeToolCallAccumulator.
-        toolAccumulator.finalizePendingToolUses(continuation: continuation)
     }
 
     // MARK: - HTTP Status Validation

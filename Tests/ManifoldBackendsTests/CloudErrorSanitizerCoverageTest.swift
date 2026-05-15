@@ -41,7 +41,6 @@ final class CloudErrorSanitizerCoverageTest: XCTestCase {
     /// files do not own the error surface — `SSECloudBackend` does.
     private static let exemptFiles: Set<String> = [
         "ClaudePayloadParser.swift",
-        "ClaudeToolCallAccumulator.swift",
         "OllamaPayloadHandler.swift",
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",

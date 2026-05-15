@@ -74,6 +74,17 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     /// stream (defensive — Anthropic never sends both shapes today).
     private var emittedWholeMessageToolCalls = false
 
+    // Claude splits usage across two frames: `input_tokens` arrives on
+    // `message_start`, `output_tokens` arrives on `message_delta`. The
+    // stateless `extractUsage` surface returns one half at a time
+    // (`(12, nil)` then `(nil, 48)`), so a per-frame gate that requires
+    // both halves would never fire. The extractor merges them so it can
+    // emit a single `.usage(prompt, completion)` event on the
+    // message_delta frame, matching the inline `parseResponseStream`
+    // behaviour the routed path replaces.
+    private var pendingPromptTokens: Int?
+    private var emittedUsage = false
+
     public init() {}
 
     // MARK: - Per-frame event extraction
@@ -180,14 +191,36 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
             }
         }
 
-        // 8. Usage. message_start carries input_tokens; message_delta carries
-        //    output_tokens. The handler returns the partial counts; we yield
-        //    `.usage` only when both halves are present so consumers don't
-        //    see (0, n) or (n, 0).
-        if let usage = CloudPayloadHandler.claude.extractUsage(from: payload),
-           let prompt = usage.promptTokens,
-           let completion = usage.completionTokens {
-            out.append(.usage(prompt: prompt, completion: completion))
+        // 8. Usage. Claude splits the counts across two frames:
+        //    `message_start` carries `input_tokens` (the prompt half) and
+        //    `message_delta` carries `output_tokens` (the completion half).
+        //    `extractUsage` returns each half independently; we merge them
+        //    so consumers see a single `.usage(prompt, completion)` event
+        //    once both halves have arrived. This mirrors the inline
+        //    `ClaudeBackend.parseResponseStream` semantics (which got the
+        //    same merge for free via `SSECloudBackend.handleUsage`'s
+        //    bookkeeping).
+        if let usage = CloudPayloadHandler.claude.extractUsage(from: payload) {
+            if let prompt = usage.promptTokens {
+                pendingPromptTokens = prompt
+            }
+            if let completion = usage.completionTokens,
+               let prompt = pendingPromptTokens,
+               !emittedUsage {
+                out.append(.usage(prompt: prompt, completion: completion))
+                emittedUsage = true
+            }
+        }
+
+        // Prompt-cache hit/creation counts (Anthropic-only; message_start
+        // only). Logged at debug for operator visibility — matches the
+        // inline parser's behaviour and remains side-effect-only (no event
+        // surface today; structured exposure tracked in TokenUsage
+        // extension work).
+        if let cacheUsage = ClaudePayloadParser.parseCacheUsage(from: payload) {
+            Log.inference.debug(
+                "Claude prompt cache: creation=\(cacheUsage.cacheCreationInputTokens) read=\(cacheUsage.cacheReadInputTokens)"
+            )
         }
 
         return out

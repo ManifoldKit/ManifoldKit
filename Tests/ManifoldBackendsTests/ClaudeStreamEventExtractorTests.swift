@@ -118,33 +118,20 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
     // `.usage` only when both halves are positive — the OpenAI extractor's
     // contract.
     //
-    // Today's `extractEvents` for Claude returns no .usage events because
-    // CloudPayloadHandler.claude.extractUsage produces (12, nil) and
-    // (nil, 48) on separate frames. The extractor's behaviour: it gates
-    // .usage on both halves being present, so neither single-frame call
-    // emits .usage. The merging happens at the `SSECloudBackend.handleUsage`
-    // bookkeeping level and the inline `ClaudeBackend.parseResponseStream`
-    // emits `.usage(prompt, completion)` only on the message_delta frame —
-    // but at that point promptTokens is `nil` from the extractor's view
-    // (the per-frame call doesn't see the merged state).
-    //
-    // Mirroring inline behaviour: the inline parser yields `.usage(prompt,
-    // completion)` only when BOTH fields are non-nil. message_start gives
-    // (12, nil) — handler returns (12, nil) — no yield. message_delta gives
-    // (nil, 48) — no yield. So neither path yields `.usage` for the
-    // synthetic split-usage fixture. This is a known divergence between
-    // the wire shape and `.usage` semantics; the merged value lives on
-    // `SSECloudBackend.lastUsage`, not the event stream.
-    //
-    // The assertion is therefore: no .usage events emitted for this
-    // fixture, AND the merged-usage path (driven through the full backend
-    // in the parity test below) yields a `.usage(12, 48)` from
-    // `handleUsage`'s mirrored emission. Today's behaviour preserved.
-    func test_extractor_usageBasic_doesNotEmitPartialUsageEvents() throws {
+    // The extractor merges split usage internally: it stashes the prompt
+    // half from `message_start` and emits a single `.usage(prompt,
+    // completion)` event when the completion half lands on
+    // `message_delta`. This matches what the inline parser used to do via
+    // `SSECloudBackend.handleUsage`'s bookkeeping — the merged value now
+    // reaches consumers as an event, not just as `lastUsage` state.
+    func test_extractor_usageBasic_emitsMergedUsageOnce() throws {
         let events = try driveExtractor(scenario: "usage/basic")
-        let usages = events.filter { if case .usage = $0 { return true } else { return false } }
-        XCTAssertTrue(usages.isEmpty,
-                      "Claude's split usage (input on message_start, output on message_delta) must not produce partial .usage events; merging happens at the envelope")
+        let usages: [(Int, Int)] = events.compactMap { event in
+            if case .usage(let p, let c) = event { return (p, c) } else { return nil }
+        }
+        XCTAssertEqual(usages.count, 1, "expected exactly one merged .usage event, saw \(usages)")
+        XCTAssertEqual(usages.first?.0, 12, "prompt tokens from message_start")
+        XCTAssertEqual(usages.first?.1, 48, "completion tokens from message_delta")
     }
 
     // MARK: - Cross-stream isolation
@@ -248,19 +235,17 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
 /// backend through ``MockURLProtocol``, captures the event stream, and
 /// asserts the extractor's projection matches one-for-one.
 ///
-/// ### Known divergences (documented, not failures)
+/// ### Parity scope
 ///
-/// The inline path mirrors merged usage through `handleUsage` and yields
-/// `.usage(prompt, completion)` once on the `message_delta` frame.
-/// `ClaudeStreamEventExtractor.consume` gates `.usage` on both halves of
-/// the per-frame `extractUsage` result being non-nil, so it never emits
-/// one for the split-usage shape. The parity assertion strips `.usage`
-/// events from both sides so the structural-event sequence (tokens,
-/// thinking, tool calls, signatures, handoff) is what's being compared.
-/// The follow-up PR that flips the routing's `streamConsumerFactory`
-/// also widens the envelope's `handleUsage` mirror so the merged event
-/// still reaches consumers — at that point this parity check tightens
-/// to include `.usage`.
+/// After the Phase 3/Claude flip, `ClaudeBackend` drives its stream
+/// through `SSECloudBackend.parseResponseStreamRouted` with the
+/// extractor as the `streamConsumerFactory`. The "inline" side of this
+/// parity test therefore exercises the same extractor under the
+/// envelope (lifecycle, `finish(cancelled:)` flush from the envelope
+/// epilogue, finalizer-driven termination), while the "widened" side
+/// drives the extractor directly. Equality across the full event
+/// sequence — including `.usage` — confirms the envelope's adaptation
+/// matches the extractor's surface 1:1.
 final class ClaudeStreamEventExtractorParityTests: XCTestCase {
 
     @MainActor
@@ -307,29 +292,13 @@ final class ClaudeStreamEventExtractorParityTests: XCTestCase {
 
         let inlineEvents = try await runInlineBackend(sseText: sseText)
 
-        // Strip events that diverge by known design (see suite-level note):
-        //  - `.usage`: inline path emits merged usage from handleUsage; the
-        //    extractor doesn't because per-frame extractUsage never returns
-        //    both halves on Claude's split-usage shape.
-        //  - `.thinkingSignature`: inline path may emit a duplicate signature
-        //    when the same value appears on both content_block_start AND a
-        //    signature_delta (Anthropic beta endpoints); the extractor
-        //    de-dupes (returns early on the start-event signature so the
-        //    signature_delta is the canonical emission). Filter for parity.
-        let stripUsage: (GenerationEvent) -> Bool = {
-            if case .usage = $0 { return false }
-            return true
-        }
-        let widenedFiltered = widenedEvents.filter(stripUsage)
-        let inlineFiltered = inlineEvents.filter(stripUsage)
-
         XCTAssertEqual(
-            widenedFiltered.map(eventKey),
-            inlineFiltered.map(eventKey),
+            widenedEvents.map(eventKey),
+            inlineEvents.map(eventKey),
             """
             [\(scenario)] event-sequence parity drift.
-              widened : \(widenedFiltered)
-              inline  : \(inlineFiltered)
+              widened : \(widenedEvents)
+              inline  : \(inlineEvents)
             """
         )
     }

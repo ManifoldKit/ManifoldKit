@@ -25,7 +25,6 @@ final class CancellationLivenessContractTest: XCTestCase {
     private static let exemptFiles: Set<String> = [
         // Helper types — no stream loop of their own.
         "ClaudePayloadParser.swift",
-        "ClaudeToolCallAccumulator.swift",
         "OllamaPayloadHandler.swift",
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",

@@ -35,17 +35,18 @@ import ManifoldCloudCore
 /// - Streaming is SSE; termination is signalled by a dedicated
 ///   `message_stop` event — `ClaudeMessageStopFinalizer`.
 ///
-/// ### Routing status — staged (Phase 3/Claude)
+/// ### Routing status — fully flipped (Phase 3/Claude)
 ///
-/// This adapter is installed on `ClaudeBackend` so `CloudSeamUsageAuditTest`
-/// recognises it as on the unified-adapter path. The routing forwards
-/// `buildRequest` back to the backend's `buildRequest` override (which keeps
-/// owning tool-aware-history snapshot/clear, structured-history vision
-/// pre-flight, and per-turn cache-policy snapshotting). Stream parsing
-/// stays on `ClaudeBackend.parseResponseStream` for this PR — the
-/// extractor-driven flip is the Phase 3/Claude follow-up (mirrors how
-/// Phase 2/B/ii shipped composition first and Phase 2/B/iii/δ flipped the
-/// stream path).
+/// `ClaudeBackend` composes this adapter and installs a
+/// `CloudAdapterRouting` whose `streamConsumerFactory` returns a fresh
+/// `ClaudeStreamEventExtractor` per generation. The routing forwards
+/// `buildRequest` back to the backend (which keeps owning tool-aware
+/// history snapshot/clear, structured-history vision pre-flight, and
+/// per-turn cache-policy snapshotting); everything else — payload
+/// extraction, framing, finalization, error-body decoding — is driven by
+/// the adapter's witnesses. The inline `parseResponseStream` override
+/// was removed alongside `ClaudeToolCallAccumulator` (mirrors Phase
+/// 2/B/iii/δ for OpenAI).
 public struct ClaudeAdapter: CloudHTTPProviderAdapter {
 
     public let messageEncoder: CloudMessageEncoder
