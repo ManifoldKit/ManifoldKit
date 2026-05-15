@@ -89,6 +89,7 @@ public enum URLSessionProvider {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }()
 
@@ -134,6 +135,7 @@ public enum URLSessionProvider {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 600
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }()
 

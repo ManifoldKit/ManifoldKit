@@ -7,6 +7,7 @@ internal enum MCPURLSessionFactory {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 600
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
         return URLSession(configuration: configuration)
     }()
 

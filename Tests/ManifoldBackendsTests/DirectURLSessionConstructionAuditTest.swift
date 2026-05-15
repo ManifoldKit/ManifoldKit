@@ -61,6 +61,51 @@ final class DirectURLSessionConstructionAuditTest: XCTestCase {
         "ManifoldTestSupport/",
     ]
 
+    /// Relative paths (under `Sources/`) permitted to reference `URLSession.shared`.
+    /// Keep this empty — production network calls must go through `URLSessionFactory`
+    /// or `URLSessionProvider` so the redirect guard and TLS floor are enforced.
+    private static let sharedSessionAllowlistedPrefixes: [String] = [
+        "ManifoldTestSupport/",
+    ]
+
+    func test_sourcesContainNoURLSessionSharedCalls() throws {
+        let sourcesURL = try Self.locateSourcesDirectory()
+        let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)
+        XCTAssertFalse(swiftFiles.isEmpty, "Sources directory yielded no .swift files — path probably wrong")
+
+        var offenders: [(file: String, line: Int, text: String)] = []
+        for fileURL in swiftFiles {
+            let relativePath = fileURL.path.replacingOccurrences(of: sourcesURL.path + "/", with: "")
+            // Check against shared-session allowlist (prefix-only — no file-level exceptions).
+            let isAllowlisted = Self.sharedSessionAllowlistedPrefixes.contains { relativePath.hasPrefix($0) }
+            if isAllowlisted { continue }
+
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: "\n")
+            for (index, rawLine) in lines.enumerated() {
+                let line = rawLine.trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("//") || line.hasPrefix("///") || line.hasPrefix("*") || line.hasPrefix("*/") {
+                    continue
+                }
+                guard line.contains("URLSession.shared") else { continue }
+                offenders.append((file: relativePath, line: index + 1, text: line))
+            }
+        }
+
+        if !offenders.isEmpty {
+            let formatted = offenders
+                .map { "  \($0.file):\($0.line)  \($0.text)" }
+                .joined(separator: "\n")
+            XCTFail("""
+                URLSession.shared usage found in production sources.
+                Route network calls through URLSessionFactory.ephemeral() or URLSessionProvider
+                so the redirect guard, TLS floor (TLS 1.2+), and SSRF mitigations are enforced.
+
+                \(formatted)
+                """)
+        }
+    }
+
     func test_sourcesContainNoUnauthorisedURLSessionConstruction() throws {
         let sourcesURL = try Self.locateSourcesDirectory()
         let swiftFiles = try Self.enumerateSwiftFiles(under: sourcesURL)

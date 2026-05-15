@@ -113,6 +113,8 @@ package enum PrivateIPClassifier {
         if a == 10 { return .privateHost }                           // 10.0.0.0/8 — RFC1918
         if a == 172 && (16...31).contains(b) { return .privateHost } // 172.16.0.0/12 — RFC1918
         if a == 192 && b == 168 { return .privateHost }              // 192.168.0.0/16 — RFC1918
+        // 100.64.0.0/10 — Shared Address Space (RFC 6598); carrier NAT / cloud-internal
+        if a == 100 && (64...127).contains(b) { return .privateHost }
         if a == 169 && b == 254 { return .linkLocalHost }            // 169.254.0.0/16 — link-local (cloud IMDS)
         if a == 0 { return .multicastReserved }                      // 0.0.0.0/8 — "this host"
         // 127.0.0.0/8 — loopback (full /8, including 127.0.0.1).
