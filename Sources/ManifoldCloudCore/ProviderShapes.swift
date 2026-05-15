@@ -58,13 +58,6 @@ public struct InlineMarkerToolCalls: ToolCallShape {
     public var shapeName: String { "inline.marker" }
 }
 
-/// OpenAI Responses API item-id shape: tool calls are identified by
-/// `response.output[].id` rather than `delta.tool_calls[].index`.
-public struct OpenAIResponsesItemIdToolCalls: ToolCallShape {
-    public init() {}
-    public var shapeName: String { "openai_responses.item_id" }
-}
-
 // MARK: - Image Input Shape
 
 /// How a provider accepts inbound image attachments.
