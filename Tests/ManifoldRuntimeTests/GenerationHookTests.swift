@@ -56,12 +56,26 @@ final class GenerationHookTests: XCTestCase {
 
     // MARK: - Hook implementations for tests
 
-    /// Hook that records every completed turn it receives.
+    /// Hook that records every completed turn it receives and signals each
+    /// completion so tests can await it deterministically instead of sleeping.
     actor RecordingHook: GenerationHook {
         private(set) var receivedTurns: [CompletedTurn] = []
+        private var continuations: [CheckedContinuation<CompletedTurn, Never>] = []
 
         func postGeneration(_ turn: CompletedTurn) async {
             receivedTurns.append(turn)
+            for continuation in continuations {
+                continuation.resume(returning: turn)
+            }
+            continuations.removeAll()
+        }
+
+        /// Suspends until the next `postGeneration(_:)` call completes and
+        /// returns the `CompletedTurn` that was delivered.
+        func awaitNextTurn() async -> CompletedTurn {
+            await withCheckedContinuation { continuation in
+                continuations.append(continuation)
+            }
         }
     }
 
@@ -161,16 +175,25 @@ final class GenerationHookTests: XCTestCase {
             kind: .send(text: "Hi", attachments: []),
             config: TurnConfig()
         ))
-        _ = try await collectUntilAfterGeneration(from: runtime)
 
-        // Give the hook time to run (it fires after afterGeneration is emitted).
-        try await Task.sleep(for: .milliseconds(200))
+        // Await the hook's own completion signal — deterministic, no sleep needed.
+        // withThrowingTaskGroup bounds the wait so a broken hook doesn't hang CI.
+        let deliveredTurn = try await withThrowingTaskGroup(of: CompletedTurn.self) { group in
+            group.addTask { await hook.awaitNextTurn() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                throw TestError.deadlineElapsed
+            }
+            let turn = try await group.next()!
+            group.cancelAll()
+            return turn
+        }
 
         let turns = await hook.receivedTurns
         XCTAssertEqual(turns.count, 1, "Hook should fire exactly once per successful turn")
-        XCTAssertEqual(turns[0].sessionID, sessionID)
-        XCTAssertEqual(turns[0].assistantMessage.role, .assistant)
-        XCTAssertEqual(turns[0].assistantMessage.content, "Hello world")
+        XCTAssertEqual(deliveredTurn.sessionID, sessionID)
+        XCTAssertEqual(deliveredTurn.assistantMessage.role, .assistant)
+        XCTAssertEqual(deliveredTurn.assistantMessage.content, "Hello world")
     }
 
     // MARK: - Test 2: hook not called on cancel
@@ -279,13 +302,30 @@ final class GenerationHookTests: XCTestCase {
     // MARK: - Test 5: multiple hooks fire in order
 
     func test_multipleHooks_fireInRegistrationOrder() async throws {
-        // Use an actor to collect labels safely across concurrent contexts.
+        // Actor collects labels and signals when the expected count is reached.
         actor OrderRecorder {
             private(set) var labels: [String] = []
-            func record(_ label: String) { labels.append(label) }
+            private var continuations: [CheckedContinuation<[String], Never>] = []
+            private let expectedCount: Int
+
+            init(expectedCount: Int) { self.expectedCount = expectedCount }
+
+            func record(_ label: String) {
+                labels.append(label)
+                if labels.count >= expectedCount {
+                    for c in continuations { c.resume(returning: labels) }
+                    continuations.removeAll()
+                }
+            }
+
+            /// Suspends until `expectedCount` labels have been recorded.
+            func awaitAllLabels() async -> [String] {
+                if labels.count >= expectedCount { return labels }
+                return await withCheckedContinuation { continuations.append($0) }
+            }
         }
 
-        let recorder = OrderRecorder()
+        let recorder = OrderRecorder(expectedCount: 2)
 
         struct LabeledHook: GenerationHook {
             let label: String
@@ -309,10 +349,70 @@ final class GenerationHookTests: XCTestCase {
             kind: .send(text: "Hi", attachments: []),
             config: TurnConfig()
         ))
-        _ = try await collectUntilAfterGeneration(from: runtime)
-        try await Task.sleep(for: .milliseconds(300))
 
-        let labels = await recorder.labels
+        // Await the recorder's deterministic completion signal.
+        let labels = try await withThrowingTaskGroup(of: [String].self) { group in
+            group.addTask { await recorder.awaitAllLabels() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                throw TestError.deadlineElapsed
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+
         XCTAssertEqual(labels, ["A", "B"], "Hooks must fire in registration order")
+    }
+
+    // MARK: - Test 6: first hook passes, second times out — turn still completes
+
+    func test_hooks_secondTimeoutDoesNotPreventTurnCompletion() async throws {
+        // hookA completes immediately; hookB hangs forever. With a short timeout
+        // the runtime must cancel hookB and still complete the turn — hookA's
+        // delivery and the persisted assistant message must be unaffected.
+        let hookA = RecordingHook()
+
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["ok"]
+        mock.isModelLoaded = true
+
+        let inference = InferenceService(backend: mock, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            emptyResponseObserver: nil,
+            generationHooks: [hookA, HangingHook()],
+            compressionPolicy: nil,
+            hookTimeout: .seconds(1)
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig()
+        ))
+
+        // hookA must fire; bound the wait with a deadline.
+        _ = try await withThrowingTaskGroup(of: CompletedTurn.self) { group in
+            group.addTask { await hookA.awaitNextTurn() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                throw TestError.deadlineElapsed
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+
+        let turns = await hookA.receivedTurns
+        XCTAssertEqual(turns.count, 1, "hookA must still receive the turn even when hookB times out")
+
+        // The assistant message must have been persisted before hooks ran.
+        let messages = try await store.fetchMessages(for: sessionID)
+        let assistantMessages = messages.filter { $0.role == .assistant }
+        XCTAssertEqual(assistantMessages.count, 1, "Assistant message must be persisted regardless of hook timeout")
     }
 }

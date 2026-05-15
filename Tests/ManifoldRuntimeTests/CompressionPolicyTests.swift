@@ -55,13 +55,25 @@ final class CompressionPolicyTests: XCTestCase {
 
     /// Wraps MockInferenceBackend and adds a per-turn token-usage emission.
     /// Compression requires non-nil `usage?.promptTokens`, which the standard
-    /// MockInferenceBackend doesn't provide; this shim injects usage events.
+    /// MockInferenceBackend doesn't provide; this shim injects `.usage` events
+    /// into the stream so the runtime's token-usage tracking activates.
+    ///
+    /// `lastUsage` is a computed constant — no state is mutated after init, so
+    /// the `@unchecked Sendable` marker is sound (inner is itself @unchecked Sendable
+    /// and there is no additional mutable state on this type).
     final class UsageReportingBackend: InferenceBackend, TokenUsageProvider, @unchecked Sendable {
         let inner: MockInferenceBackend
-        var lastUsage: (promptTokens: Int, completionTokens: Int)?
 
         init(inner: MockInferenceBackend) {
             self.inner = inner
+        }
+
+        // TokenUsageProvider — the runtime reads this as a fallback when no
+        // in-stream usage event arrived. The injected .usage events below take
+        // precedence via `tokenUsage` in the stream consumer, so this value
+        // is only a safety net.
+        var lastUsage: (promptTokens: Int, completionTokens: Int)? {
+            (50, 10)
         }
 
         var isModelLoaded: Bool {
@@ -79,18 +91,15 @@ final class CompressionPolicyTests: XCTestCase {
 
         func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
             let innerStream = try inner.generate(prompt: prompt, systemPrompt: systemPrompt, config: config)
-            // Wrap the inner stream to inject a usage event before finishing.
-            return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
+            // Inject a usage event after all content tokens so the runtime's
+            // in-stream usage tracking fires (which the compression gate relies on).
+            return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
                 Task {
                     do {
                         for try await event in innerStream.events {
                             continuation.yield(event)
                         }
-                        // Inject usage after all content tokens.
-                        let promptTokens = 50
-                        let completionTokens = 10
-                        continuation.yield(.usage(prompt: promptTokens, completion: completionTokens))
-                        self.lastUsage = (promptTokens, completionTokens)
+                        continuation.yield(.usage(prompt: 50, completion: 10))
                         continuation.finish()
                     } catch {
                         continuation.finish(throwing: error)
@@ -174,6 +183,22 @@ final class CompressionPolicyTests: XCTestCase {
             generate: @Sendable ([ChatMessageRecord]) async throws -> String
         ) async throws -> [ChatMessageRecord] {
             throw CompressionError()
+        }
+    }
+
+    /// Policy that returns an empty array from `compress` — simulates a policy
+    /// that mistakenly returns nothing. The runtime must not delete all messages.
+    struct EmptyReturnCompressPolicy: CompressionPolicy {
+        func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+            contextSize > 0
+        }
+
+        func compress(
+            history: [ChatMessageRecord],
+            sessionID: UUID,
+            generate: @Sendable ([ChatMessageRecord]) async throws -> String
+        ) async throws -> [ChatMessageRecord] {
+            return []  // Intentionally returns nothing — should be treated as an error.
         }
     }
 
@@ -375,7 +400,42 @@ final class CompressionPolicyTests: XCTestCase {
         XCTAssertFalse(compressed, "historyCompressed must not emit when compression throws")
     }
 
-    // MARK: - Test 5: policy skipped when contextSize is 0
+    // MARK: - Test 5 (new): empty compress() result does not delete all messages
+
+    func test_policy_emptyCompressResultPreservesExistingHistory() async throws {
+        // If a policy returns an empty array from compress(), the runtime must
+        // NOT delete all messages. The conversation history must be preserved
+        // and historyCompressed must not fire.
+        let backend = makeMockWithUsage(tokensToYield: ["ok"])
+        let policy = EmptyReturnCompressPolicy()
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: policy
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilStreamFinished(from: runtime)
+        // Give the compression path time to run (or not run).
+        try await Task.sleep(for: .milliseconds(300))
+
+        let remaining = try await store.fetchMessages(for: sessionID)
+        // The original user + assistant messages must still be in the store.
+        XCTAssertGreaterThan(
+            remaining.count,
+            0,
+            "Empty compress() result must not wipe the store; existing history must be preserved"
+        )
+    }
+
+    // MARK: - Test 7: policy skipped when contextSize is 0
 
     func test_policy_skippedWhenContextSizeIsZero() async throws {
         // Backend with contextWindowSize = 0.
@@ -409,5 +469,160 @@ final class CompressionPolicyTests: XCTestCase {
 
         let callCount = await policy.counter.count
         XCTAssertEqual(callCount, 0, "compress() must not be called when contextSize is 0")
+    }
+
+    // MARK: - Test 8: no-op compression (same history returned) does not clear the store
+
+    func test_policy_noOpCompressionPreservesHistory() async throws {
+        // A policy that returns the full history unchanged is a valid no-op.
+        // The store must be replaced with the same content — same count, same
+        // contents (different record IDs because the runtime re-inserts).
+        struct IdentityCompressPolicy: CompressionPolicy {
+            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+                contextSize > 0
+            }
+
+            func compress(
+                history: [ChatMessageRecord],
+                sessionID: UUID,
+                generate: @Sendable ([ChatMessageRecord]) async throws -> String
+            ) async throws -> [ChatMessageRecord] {
+                // Return history with fresh IDs + same sessionID so they can
+                // be re-inserted (store rejects duplicates for existing IDs).
+                return history.map {
+                    ChatMessageRecord(role: $0.role, content: $0.content, sessionID: $0.sessionID)
+                }
+            }
+        }
+
+        let backend = makeMockWithUsage(tokensToYield: ["response"])
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: IdentityCompressPolicy()
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hi", attachments: []),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+        try await Task.sleep(for: .milliseconds(200))
+
+        // The store should still have the compressed history (same count as pre-
+        // compression: user + assistant = 2).
+        let remaining = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(remaining.count, 2, "No-op compression must preserve message count")
+        XCTAssertTrue(remaining.contains { $0.role == .user }, "User message must be preserved")
+        XCTAssertTrue(remaining.contains { $0.role == .assistant }, "Assistant message must be preserved")
+    }
+
+    // MARK: - Test 9: generate closure receives post-turn history
+
+    func test_policy_generateClosureReceivesPostTurnHistory() async throws {
+        // After the turn completes (user + assistant persisted), the runtime
+        // fetches fresh history before calling compress(). The history passed
+        // to compress() must include the just-inserted assistant message.
+        actor HistoryCapture {
+            private(set) var capturedHistory: [ChatMessageRecord]?
+            func capture(_ history: [ChatMessageRecord]) { capturedHistory = history }
+        }
+
+        let capture = HistoryCapture()
+
+        struct CapturingPolicy: CompressionPolicy {
+            let capture: HistoryCapture
+
+            func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+                contextSize > 0
+            }
+
+            func compress(
+                history: [ChatMessageRecord],
+                sessionID: UUID,
+                generate: @Sendable ([ChatMessageRecord]) async throws -> String
+            ) async throws -> [ChatMessageRecord] {
+                await capture.capture(history)
+                // Return the same history (re-wrapped with fresh IDs).
+                return history.map {
+                    ChatMessageRecord(role: $0.role, content: $0.content, sessionID: $0.sessionID)
+                }
+            }
+        }
+
+        let backend = makeMockWithUsage(tokensToYield: ["assistant reply"])
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: CapturingPolicy(capture: capture)
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hello there", attachments: []),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+        try await Task.sleep(for: .milliseconds(200))
+
+        let history = await capture.capturedHistory
+        XCTAssertNotNil(history, "compress() must receive history")
+        // The history passed to compress() must include the assistant message
+        // that was just generated — it is the post-turn snapshot.
+        let assistantMessages = history?.filter { $0.role == .assistant } ?? []
+        XCTAssertFalse(
+            assistantMessages.isEmpty,
+            "History passed to compress() must include the assistant message from the completed turn"
+        )
+        let userMessages = history?.filter { $0.role == .user } ?? []
+        XCTAssertFalse(
+            userMessages.isEmpty,
+            "History passed to compress() must include the user message that triggered the turn"
+        )
+    }
+
+    // MARK: - Test 10: old messages are removed after compression
+
+    func test_policy_oldMessagesRemovedAfterCompression() async throws {
+        // After compression, the original user and assistant messages must no
+        // longer exist in the store — only the compressed replacement remains.
+        let summaryContent = "Compressed summary"
+        let backend = makeMockWithUsage(tokensToYield: ["original response"])
+        backend.inner.tokensToYieldPerTurn = [["original response"], [summaryContent]]
+
+        let policy = AlwaysCompressPolicy(summaryContent: summaryContent)
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: policy
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Original user message", attachments: []),
+            config: TurnConfig()
+        ))
+        _ = try await drainUntilHistoryCompressed(from: runtime)
+        try await Task.sleep(for: .milliseconds(300))
+
+        let remaining = try await store.fetchMessages(for: sessionID)
+        // Old user message must be gone.
+        XCTAssertFalse(
+            remaining.contains { $0.role == .user },
+            "Original user messages must be removed after bulk-replace compression"
+        )
+        // Only the summary (assistant role) must remain.
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining[0].content, summaryContent)
     }
 }
