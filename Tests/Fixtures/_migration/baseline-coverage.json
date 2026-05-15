@@ -1,0 +1,6 @@
+{
+  "_comment": "Placeholder. Real capture deferred to Phase 1b — see README.md in this directory. CoverageRegressionGateTest skips when this file lacks the 'files' key.",
+  "captured_at": null,
+  "swift_version": null,
+  "files": {}
+}
