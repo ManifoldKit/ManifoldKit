@@ -69,7 +69,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
             // to dispatch on `event:` names, but routes the per-payload
             // reasoning / text classification through the handler so the
             // mapping lives in one place — see `OpenAIResponsesPayloadHandler`.
-            payloadHandler: OpenAIResponsesPayloadHandler()
+            payloadHandler: CloudPayloadHandler.openAIResponses
         )
     }
 
@@ -599,28 +599,18 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     ///   use ``OpenAIResponsesBackend/eventsForReasoningDelta(data:)``
     ///   and ``OpenAIResponsesBackend/eventsForOutputTextDelta(data:)``
     ///   helpers, which are what the dispatcher itself calls.
+    /// Thin shim retained so `OpenAIResponsesPayloadHandlerTests` (until it
+    /// migrates to the unified contract suite in Phase 2) keeps compiling.
+    /// New call sites use ``CloudPayloadHandler/openAIResponses`` directly.
     struct OpenAIResponsesPayloadHandler: SSEPayloadHandler {
-        func extractToken(from payload: String) -> String? {
-            OpenAIResponsesBackend.parseDelta(from: payload)
-        }
-
-        /// Default `extractEvents` returns `.token(...)` for any payload
-        /// carrying a `delta` field. The named-event dispatcher overrides
-        /// this classification when it knows the surrounding `event:` is
-        /// a reasoning event — see the helpers in
-        /// ``OpenAIResponsesBackend``.
-        func extractEvents(from payload: String) -> [GenerationEvent] {
-            if let delta = OpenAIResponsesBackend.parseDelta(from: payload), !delta.isEmpty {
-                return [.token(delta)]
-            }
-            return []
-        }
-
+        private let inner: CloudPayloadHandler = .openAIResponses
+        func extractToken(from payload: String) -> String? { inner.extractToken(from: payload) }
+        func extractEvents(from payload: String) -> [GenerationEvent] { inner.extractEvents(from: payload) }
         func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-            OpenAIResponsesBackend.parseUsage(from: payload)
+            inner.extractUsage(from: payload)
         }
-        func isStreamEnd(_ payload: String) -> Bool { false }
-        func extractStreamError(from payload: String) -> Error? { nil }
+        func isStreamEnd(_ payload: String) -> Bool { inner.isStreamEnd(payload) }
+        func extractStreamError(from payload: String) -> Error? { inner.extractStreamError(from: payload) }
     }
 
     // MARK: - Per-event-name classification helpers

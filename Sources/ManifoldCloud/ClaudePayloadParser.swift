@@ -211,31 +211,31 @@ enum ClaudePayloadParser {
     }
 }
 
+/// Thin shim retained so the existing replay-test surface
+/// (`SSEPayloadReplayTests`) keeps compiling unchanged. New call sites use
+/// ``CloudPayloadHandler/claude`` directly. Phase 2 deletes this shim once
+/// the replay tests migrate onto `CloudPayloadHandlerContractTests`.
 struct ClaudePayloadHandler: SSEPayloadHandler {
+    private let inner: CloudPayloadHandler = .claude
+
     func extractToken(from payload: String) -> String? {
-        ClaudePayloadParser.parseToken(from: payload)
+        inner.extractToken(from: payload)
     }
 
     func extractEvents(from payload: String) -> [GenerationEvent] {
-        if let thinking = ClaudePayloadParser.parseThinkingDelta(from: payload) {
-            return [.thinkingToken(thinking)]
-        }
-        if let token = ClaudePayloadParser.parseToken(from: payload) {
-            return [.token(token)]
-        }
-        return []
+        inner.extractEvents(from: payload)
     }
 
     func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-        ClaudePayloadParser.parseUsage(from: payload)
+        inner.extractUsage(from: payload)
     }
 
     func isStreamEnd(_ payload: String) -> Bool {
-        ClaudePayloadParser.parseIsStreamEnd(payload)
+        inner.isStreamEnd(payload)
     }
 
     func extractStreamError(from payload: String) -> Error? {
-        ClaudePayloadParser.parseStreamError(from: payload)
+        inner.extractStreamError(from: payload)
     }
 }
 #endif

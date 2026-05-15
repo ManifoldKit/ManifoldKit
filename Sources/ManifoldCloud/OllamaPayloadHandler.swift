@@ -150,55 +150,33 @@ enum OllamaPayloadParser {
 /// per-payload contract even when the production backend bypasses
 /// ``SSEStreamParser/streamEvents(from:using:limits:)`` for the byte
 /// loop.
+/// Thin shim retained for the existing `OllamaBackendTests` references
+/// (`OllamaPayloadHandler()` direct instantiation). New call sites use
+/// ``CloudPayloadHandler/ollama`` directly. Phase 2 deletes this shim when
+/// the dedicated tests migrate onto the unified contract suite.
 struct OllamaPayloadHandler: SSEPayloadHandler {
+    private let inner: CloudPayloadHandler = .ollama
+
     init() {}
 
     func extractToken(from payload: String) -> String? {
-        OllamaPayloadParser.extractToken(from: payload)
+        inner.extractToken(from: payload)
     }
 
-    /// Maps a single Ollama NDJSON line to the visible-text /
-    /// reasoning-text events it carries.
-    ///
-    /// Emission order matches the on-the-wire field order: any
-    /// `message.thinking` (or top-level `thinking`) on the line emits
-    /// `.thinkingToken` first, then any `message.content` (or top-level
-    /// `response`) emits `.token`.
-    ///
-    /// Tool calls, `done`-line bookkeeping, the per-stream visible /
-    /// thinking caps, and the inline `<think>` fallback all live in the
-    /// stateful byte loop because they require cross-payload state a
-    /// handler cannot model.
     func extractEvents(from payload: String) -> [GenerationEvent] {
-        guard let parsed = OllamaPayloadParser.parseLine(payload) else { return [] }
-        var events: [GenerationEvent] = []
-        if let thinking = parsed.thinking, !thinking.isEmpty {
-            events.append(.thinkingToken(thinking))
-        }
-        if let content = parsed.content, !content.isEmpty {
-            events.append(.token(content))
-        }
-        return events
+        inner.extractEvents(from: payload)
     }
 
-    /// Extracts Ollama's per-turn usage from a single NDJSON payload.
-    ///
-    /// Ollama's documented API places `eval_count` (completion tokens) and
-    /// `prompt_eval_count` (prompt tokens) on the terminal `"done":true`
-    /// line. Returns `nil` when neither field is present so partial/running
-    /// lines don't pollute a consumer that expects "final usage only".
     func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-        guard let parsed = OllamaPayloadParser.parseLine(payload) else { return nil }
-        guard parsed.evalCount != nil || parsed.promptEvalCount != nil else {
-            return nil
-        }
-        return (
-            promptTokens: parsed.promptEvalCount,
-            completionTokens: parsed.evalCount
-        )
+        inner.extractUsage(from: payload)
     }
 
-    func isStreamEnd(_ payload: String) -> Bool { false }
-    func extractStreamError(from payload: String) -> Error? { nil }
+    func isStreamEnd(_ payload: String) -> Bool {
+        inner.isStreamEnd(payload)
+    }
+
+    func extractStreamError(from payload: String) -> Error? {
+        inner.extractStreamError(from: payload)
+    }
 }
 #endif
