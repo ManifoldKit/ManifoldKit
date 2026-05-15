@@ -131,7 +131,8 @@ final class InferenceBackendContractTests: XCTestCase {
             supportsParallelToolCalls: true,
             supportsGuidedStructuredOutput: true,
             sharesMLXProcessResources: false
-        )
+        ),
+        wireFormat: .sse
     )
 
     #if Ollama
@@ -207,7 +208,8 @@ final class InferenceBackendContractTests: XCTestCase {
             supportsParallelToolCalls: true,
             supportsGuidedStructuredOutput: false,
             sharesMLXProcessResources: false
-        )
+        ),
+        wireFormat: .sse
     )
 
     private static let participants: [Participant] = {
