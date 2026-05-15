@@ -504,6 +504,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .contextAssembled(slots: []),
             .afterGeneration(messageID: UUID(), finalText: ""),
             .compressionTriggered(removed: [], reason: .manual),
+            .historyCompressed(sessionID: UUID()),
             .toolCallRequested(ToolCall(id: "", toolName: "", arguments: "")),
             .toolCallApproved(""),
             .toolCallCompleted("", ToolResult(callId: "", content: ""))
@@ -517,13 +518,13 @@ final class ImageGenerationRuntimeTests: XCTestCase {
                  .thinkingStarted, .thinkingUpdated, .thinkingFinalized,
                  .loopDetected, .streamFinished, .errorRaised, .sessionTouchFailed,
                  .beforeContextAssembly, .contextAssembled, .afterGeneration,
-                 .compressionTriggered, .toolCallRequested, .toolCallApproved,
+                 .compressionTriggered, .historyCompressed, .toolCallRequested, .toolCallApproved,
                  .toolCallCompleted:
                 continue
             }
         }
         // Pin the exact case count as a runtime assertion too — the
         // sample list is the source of truth.
-        XCTAssertEqual(samples.count, 21, "ConversationEvent case count drifted — image-side cases may have leaked in")
+        XCTAssertEqual(samples.count, 22, "ConversationEvent case count drifted — image-side cases may have leaked in")
     }
 }

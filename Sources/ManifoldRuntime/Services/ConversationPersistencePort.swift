@@ -26,6 +26,11 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
+    func deleteMessages(for sessionID: UUID) async throws {
+        try await messageStore.deleteMessages(for: sessionID)
+    }
+
+    @MainActor
     func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
         try await messageStore.fetchMessages(for: sessionID)
     }

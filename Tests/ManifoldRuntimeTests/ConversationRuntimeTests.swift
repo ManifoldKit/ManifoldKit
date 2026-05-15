@@ -1177,6 +1177,7 @@ final class ConversationRuntimeTests: XCTestCase {
         case .contextAssembled: return "contextAssembled"
         case .afterGeneration: return "afterGeneration"
         case .compressionTriggered: return "compressionTriggered"
+        case .historyCompressed: return "historyCompressed"
         case .toolCallRequested: return "toolCallRequested"
         case .toolCallApproved: return "toolCallApproved"
         case .toolCallCompleted: return "toolCallCompleted"
