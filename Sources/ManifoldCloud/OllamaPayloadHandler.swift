@@ -1,5 +1,6 @@
 #if Ollama
 import Foundation
+import os
 import ManifoldInference
 import ManifoldCloudCore
 
@@ -63,7 +64,7 @@ enum OllamaPayloadParser {
             content = message["content"] as? String
             thinking = message["thinking"] as? String
             if let rawCalls = message["tool_calls"] as? [[String: Any]], !rawCalls.isEmpty {
-                toolCalls = rawCalls.compactMap(OllamaMessageEncoder.decodeToolCall)
+                toolCalls = rawCalls.compactMap(OllamaPayloadParser.decodeToolCall)
                 if toolCalls?.isEmpty == true { toolCalls = nil }
             }
         }
@@ -129,6 +130,83 @@ enum OllamaPayloadParser {
             return nil
         }
         return thinking
+    }
+
+    /// Decodes one `tool_calls[]` entry from a parsed NDJSON line.
+    ///
+    /// Ollama's streaming format follows the OpenAI shape:
+    /// `{id, type: "function", function: {name, arguments}}`. The `arguments`
+    /// field is sometimes a JSON string (the documented wire shape) and
+    /// sometimes a pre-parsed dictionary (observed on some Ollama builds);
+    /// the decoder handles both and always produces a ``ToolCall`` whose
+    /// `arguments` property is a valid JSON string.
+    ///
+    /// `id` is optional on the wire — some Ollama builds omit it for the
+    /// first tool call in a turn. Synthesise a deterministic fallback from
+    /// the tool name plus a counter suffix when absent so downstream
+    /// call/result pairing still works.
+    ///
+    /// Inlined from the former `OllamaMessageEncoder.decodeToolCall` as
+    /// part of Phase 1b/B — parser helpers now co-locate with the parser
+    /// rather than the encoder.
+    static func decodeToolCall(_ raw: [String: Any]) -> ToolCall? {
+        // Two observed shapes on the wire:
+        //   A) {id, type: "function", function: {name, arguments}}  — documented
+        //   B) {id, name, arguments}                                 — some 0.3.x builds
+        // Prefer the nested `function` envelope; fall back to the flat shape
+        // when it's absent so lenient Ollama forks still produce tool events.
+        let nameSource: [String: Any]
+        if let function = raw["function"] as? [String: Any] {
+            nameSource = function
+        } else {
+            nameSource = raw
+        }
+        guard let name = nameSource["name"] as? String, !name.isEmpty else {
+            return nil
+        }
+
+        let id: String
+        if let wireId = raw["id"] as? String, !wireId.isEmpty {
+            id = wireId
+        } else {
+            // Deterministic fallback: ids are only used for id→result pairing
+            // inside one turn, so a name-based placeholder is sufficient.
+            id = "ollama-\(name)-\(UUID().uuidString.prefix(8))"
+        }
+
+        let argumentsString: String
+        if let raw = nameSource["arguments"] as? String {
+            argumentsString = raw
+        } else if let dict = nameSource["arguments"] as? [String: Any] {
+            argumentsString = serialiseArgumentDictionary(dict)
+        } else {
+            argumentsString = "{}"
+        }
+
+        return ToolCall(id: id, toolName: name, arguments: argumentsString)
+    }
+
+    /// Serialise an already-parsed arguments dictionary to a JSON string,
+    /// normalising Ollama builds that emit structured `arguments` instead of
+    /// the documented stringified form. Falls back to `"{}"` when
+    /// serialisation fails so ``ToolCall/arguments`` always contains valid
+    /// JSON the registry can decode.
+    static func serialiseArgumentDictionary(_ dict: [String: Any]) -> String {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: dict)
+            if let text = String(data: data, encoding: .utf8) {
+                return text
+            }
+            Log.inference.warning(
+                "OllamaPayloadParser: tool arguments dictionary serialised to non-UTF8 bytes — substituting empty object."
+            )
+            return "{}"
+        } catch {
+            Log.inference.warning(
+                "OllamaPayloadParser: failed to serialise parsed tool arguments — substituting empty object. error=\(error.localizedDescription, privacy: .public)"
+            )
+            return "{}"
+        }
     }
 }
 

@@ -213,7 +213,13 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         //   4. prompt-only single user turn.
         let chatMessages: [[String: Any]]
         if let toolHistory = snapshotToolHistory, !toolHistory.isEmpty {
-            chatMessages = toolHistory.map(ClaudeMessageEncoder.encodeToolAwareEntry)
+            chatMessages = CloudMessageEncoder.claude.encodeMessages(
+                systemPrompt: nil,
+                prompt: "",
+                structuredHistory: nil,
+                toolAwareHistory: toolHistory,
+                plainHistory: nil
+            )
         } else if let structured = structuredHistory, !structured.isEmpty {
             // Per-turn image cap: Anthropic rejects more than 5 inline
             // base64 images on a single turn. Validate before serialising
@@ -239,7 +245,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                     "Model \"\(modelName)\" does not support image input. Switch to a Claude 3, 3.5, 3.7, or 4 family model and retry."
                 )
             }
-            chatMessages = structured.map(ClaudeMessageEncoder.encodeMessageContent(for:))
+            chatMessages = structured.map { CloudMessageEncoder.claude.encodeStructuredMessageContent(for: $0) }
         } else if let history = conversationHistory {
             chatMessages = history.map { ["role": $0.role, "content": $0.content] }
         } else {
@@ -296,7 +302,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // Anthropic's side; the framework-level `.none` suppresses the
         // tools field entirely so the model has nothing to call.
         if !config.tools.isEmpty, config.toolChoice != .none {
-            var toolEntries = config.tools.map(ClaudeMessageEncoder.encodeToolDefinition)
+            var toolEntries = CloudMessageEncoder.claude.encodeTools(config.tools)
             // Tag the last tool entry with cache_control when automatic so
             // Anthropic caches the entire system+tools prefix. The breakpoint
             // applies to the last block in the tagged sequence — tagging every

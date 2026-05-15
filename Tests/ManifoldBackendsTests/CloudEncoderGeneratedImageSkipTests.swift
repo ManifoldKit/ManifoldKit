@@ -64,7 +64,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = ClaudeMessageEncoder.encodeMessageContent(for: message)
+        let encoded = CloudMessageEncoder.claude.encodeStructuredMessageContent(for: message)
 
         // The user turn carries an input image, so content must be a
         // structured array — that's the path that loops over parts.
@@ -97,7 +97,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = ClaudeMessageEncoder.encodeMessageContent(for: message)
+        let encoded = CloudMessageEncoder.claude.encodeStructuredMessageContent(for: message)
 
         XCTAssertEqual(encoded["content"] as? String, "hello",
             "Image-less user turn (input-image-wise) must collapse to plain string content")
@@ -115,7 +115,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = OpenAIBackend.encodeChatCompletionsContent(for: message)
+        let encoded = CloudMessageEncoder.openAI.encodeStructuredMessageContent(for: message)
 
         // Image-bearing user turn → structured content[].
         let parts = try XCTUnwrap(encoded["content"] as? [[String: Any]],
@@ -141,7 +141,7 @@ final class CloudEncoderGeneratedImageSkipTests: XCTestCase {
             generatedImagePart(),
         ])
 
-        let encoded = OpenAIBackend.encodeChatCompletionsContent(for: message)
+        let encoded = CloudMessageEncoder.openAI.encodeStructuredMessageContent(for: message)
 
         XCTAssertEqual(encoded["content"] as? String, "hello",
             "Image-less user turn must collapse to plain string content")
