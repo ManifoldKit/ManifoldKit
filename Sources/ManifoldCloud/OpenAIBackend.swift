@@ -94,9 +94,20 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // time keychain key resolution — keep running on the backend
         // where they own their state.
         let weakSelfBox = WeakBackendBox(self)
+        // Override the adapter's default `SSETransport()` (which snapshots
+        // ManifoldConfiguration.shared.sseStreamLimits at adapter init) with
+        // one that reads `effectiveSSEStreamLimits` live on every stream.
+        // Per-instance overrides set via `backend.sseStreamLimits = ...`
+        // (tests, hosts with tighter caps) reach the routed parser this way
+        // — without this seam they only flowed through the legacy
+        // `parseResponseStream` path and silently bypassed the routed one.
+        let liveLimitsTransport = SSETransport(limitsProvider: { [weakSelfBox] in
+            weakSelfBox.value?.effectiveSSEStreamLimits
+                ?? ManifoldConfiguration.shared.sseStreamLimits
+        })
         let routing = CloudAdapterRouting(
             payloadHandler: adapter.payloadHandler,
-            framedTransport: adapter.framedTransport,
+            framedTransport: liveLimitsTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
             buildRequest: { prompt, systemPrompt, config in
