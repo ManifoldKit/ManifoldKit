@@ -36,6 +36,11 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
+    func deleteMessages(for sessionID: UUID) async throws {
+        try await messageStore.deleteMessages(for: sessionID)
+    }
+
+    @MainActor
     func insertSession(_ session: ChatSessionRecord) async throws {
         guard let sessionStore else { return }
         try await sessionStore.insertSession(session)

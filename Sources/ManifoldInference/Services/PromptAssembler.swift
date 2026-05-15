@@ -126,11 +126,17 @@ public enum PromptAssembler {
         // 6. Build the final message list, inserting history-positioned slots
         let finalMessages = insertSlotsIntoHistory(slots: sortedSlots, messages: trimmedMessages)
 
+        let totalTokens = totalSlotTokens + messageTokens
+        let contextUtilization = contextSize > 0
+            ? min(1.0, Double(totalTokens) / Double(contextSize))
+            : 0.0
+
         return AssembledPrompt(
             orderedSlots: sortedSlots,
             messages: finalMessages,
-            totalTokens: totalSlotTokens + messageTokens,
-            budgetBreakdown: budgetBreakdown
+            totalTokens: totalTokens,
+            budgetBreakdown: budgetBreakdown,
+            contextUtilization: contextUtilization
         )
     }
 

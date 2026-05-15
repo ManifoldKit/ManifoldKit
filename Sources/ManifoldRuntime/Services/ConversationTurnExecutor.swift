@@ -847,16 +847,27 @@ struct ConversationTurnExecutor: Sendable {
                 // so compression doesn't compete with the user's next turn.
                 let generate: @Sendable ([ChatMessageRecord]) async throws -> String = { [inferenceService] messages in
                     let structured = messages.map { StructuredMessage(role: $0.role.rawValue, parts: $0.contentParts) }
-                    let (_, compressStream) = try await inferenceService.enqueueAsync(
+                    let (token, compressStream) = try await inferenceService.enqueueAsync(
                         structuredMessages: structured,
                         priority: .background
                     )
                     var result = ""
                     var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
-                    for try await event in compressStream.events {
-                        if case .appendText(let chunk) = consumer.handle(event) {
-                            result += chunk
+                    do {
+                        for try await event in compressStream.events {
+                            // Propagate parent-task cancellation into the
+                            // backend stream so we don't keep draining after
+                            // the runtime has moved on.
+                            try Task.checkCancellation()
+                            if case .appendText(let chunk) = consumer.handle(event) {
+                                result += chunk
+                            }
                         }
+                    } catch {
+                        // Cancel the backend token on any exit (cancellation or
+                        // inference error) so the backend doesn't keep running.
+                        await inferenceService.cancelAsync(token)
+                        throw error
                     }
                     return result
                 }
@@ -867,6 +878,16 @@ struct ConversationTurnExecutor: Sendable {
                         sessionID: sessionID,
                         generate: generate
                     )
+                    // Guard against an empty result — deleting all messages
+                    // without re-inserting anything would silently wipe the
+                    // conversation. Treat this as a policy error; preserve the
+                    // existing history rather than destroying it.
+                    guard !compressed.isEmpty else {
+                        Log.inference.warning(
+                            "CompressionPolicy.compress returned empty history (sessionID=\(sessionID, privacy: .private)); skipping replacement to preserve existing messages"
+                        )
+                        return
+                    }
                     try await persistence.deleteMessages(for: sessionID)
                     for message in compressed {
                         try await persistence.insertMessage(message)
