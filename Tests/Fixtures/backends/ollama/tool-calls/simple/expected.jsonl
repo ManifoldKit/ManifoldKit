@@ -1,0 +1,4 @@
+{"event":"toolCallStart","callId":"call_fixture_001","name":"get_weather"}
+{"event":"toolCallArgumentsDelta","callId":"call_fixture_001","arguments_contains":"Paris"}
+{"event":"toolCall","callId":"call_fixture_001","name":"get_weather","arguments_contains":"Paris"}
+{"event":"usage","prompt":42,"completion":18}

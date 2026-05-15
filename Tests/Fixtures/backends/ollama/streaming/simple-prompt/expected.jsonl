@@ -1,0 +1,3 @@
+{"event":"token","text":"Hello"}
+{"event":"token","text":" world"}
+{"event":"usage","prompt":7,"completion":2}

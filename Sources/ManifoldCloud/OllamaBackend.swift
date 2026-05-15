@@ -23,6 +23,25 @@ import ManifoldCloudCore
 /// ```
 public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
 
+    // MARK: - Adapter composition (Phase 3/Ollama)
+    //
+    // `OllamaBackend` composes ``OllamaAdapter`` so the cross-backend audit
+    // (`CloudSeamUsageAuditTest`) recognises it as on the unified-adapter
+    // path. The adapter holds the eight per-provider divergences
+    // (NDJSON framing transport, OllamaDoneFlagFinalizer, OllamaWholeToolCalls,
+    // OllamaImagesField, OllamaFormatField, OllamaToolResult, NoPromptCache,
+    // OllamaErrorBodyDecoder). Stream parsing now runs in
+    // `SSECloudBackend.parseResponseStreamRouted` and event extraction is
+    // driven by a fresh per-stream ``OllamaStreamEventExtractor`` whose
+    // factory pulls the active ``GenerationConfig`` + auto-detected
+    // thinking markers from a state-lock-guarded snapshot stashed by
+    // the override of `parseResponseStream(bytes:config:continuation:)`.
+    //
+    // The runtime capability probe (`/api/show`) stays on `loadModel`
+    // where it owns the manifest lifecycle — it's not part of the
+    // standard `CloudHTTPProviderAdapter` surface.
+    public let adapter: any CloudHTTPProviderAdapter
+
     /// How long Ollama should keep the model loaded in VRAM after a request.
     /// Default is "30m" (30 minutes). Ollama's own default is "5m".
     public var keepAlive: String = "30m"
@@ -76,6 +95,14 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// Guarded by `stateLock`.
     private var _manifest: ModelManifest?
 
+    /// Snapshot of the active ``GenerationConfig`` for the current generation,
+    /// stashed by ``parseResponseStream(bytes:config:continuation:)`` so the
+    /// adapter routing's `streamConsumerFactory` (which receives no
+    /// parameters) can construct an ``OllamaStreamEventExtractor`` honouring
+    /// the per-call thinking/visible caps and the per-request thinking
+    /// markers override. Read-once per stream open. Guarded by `stateLock`.
+    private var _pendingStreamConfig: GenerationConfig?
+
     /// Public accessor for the manifest captured at the most recent
     /// successful load. Returns `nil` before any load. Used by the
     /// conformance harness to assert the cross-backend invariant that
@@ -96,11 +123,120 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// that surfaces the kill-switch as a recoverable error.
     @available(*, deprecated, message: "OllamaBackend remains available; this is a build-mode migration notice. Before the next major, add the `Ollama` trait to package dependencies or register via DefaultBackends.register(_:); see README 'Build modes' and #714.")
     public init(urlSession: URLSession? = nil) {
+        // Adapter capabilities mirror what `OllamaBackend.capabilities`
+        // resolves before any /api/show probe has run. The dynamic
+        // `capabilities` property remains the authoritative source once
+        // `loadModel` has populated `_manifest`. The adapter's
+        // `requestBuilder` closure is a no-op placeholder — `buildRequest`
+        // is the canonical request builder and the adapter-routed path
+        // below threads it through the routing's `buildRequest` closure.
+        self.adapter = OllamaAdapter(
+            capabilities: Self.defaultAdapterCapabilities,
+            requestBuilder: { _, _, _, _ in
+                throw CloudBackendError.invalidURL(
+                    "OllamaAdapter.requestBuilder is not the live path; the OllamaBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
+                )
+            }
+        )
         super.init(
             defaultModelName: "llama3.2",
             urlSession: urlSession ?? URLSessionProvider.unpinned,
             payloadHandler: CloudPayloadHandler.ollama
         )
+
+        // Phase 3/Ollama — install adapter routing so the stream loop runs
+        // in `SSECloudBackend.parseResponseStreamRouted` driving a fresh
+        // per-stream `OllamaStreamEventExtractor`. The routing's
+        // `buildRequest` closure forwards to `self.buildRequest` (weakly
+        // captured) so the tool-aware-history snapshot/clear, the
+        // num_ctx + thinking-budget arithmetic, the manifest-gated
+        // parameter gating, and the keep_alive plumbing all keep running
+        // on the backend where they own their state.
+        //
+        // The `streamConsumerFactory` reads `_pendingStreamConfig` plus
+        // the auto-detected thinking markers under the state lock so each
+        // generation gets an extractor with the live caps/markers. The
+        // snapshot is set by the `parseResponseStream(bytes:config:
+        // continuation:)` override below immediately before super
+        // routes — the order is guaranteed because `super` invokes the
+        // factory synchronously at stream open.
+        let weakSelfBox = WeakOllamaBackendBox(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelfBox.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            },
+            streamConsumerFactory: {
+                guard let backend = weakSelfBox.value else {
+                    // The backend deallocated between request dispatch and
+                    // stream open. Return a no-op-ish consumer using
+                    // defaults so the routed loop can complete cleanly
+                    // rather than crashing on a forced unwrap.
+                    return OllamaStreamEventExtractor(
+                        config: GenerationConfig(),
+                        autoDetectedMarkers: nil
+                    )
+                }
+                let (config, markers) = backend.snapshotForExtractor()
+                return OllamaStreamEventExtractor(
+                    config: config,
+                    autoDetectedMarkers: markers
+                )
+            }
+        )
+        self.configure(adapterRouting: routing)
+    }
+
+    /// Static adapter capabilities used at init time. Mirrors the dynamic
+    /// `capabilities` property's pre-probe values so the adapter
+    /// composition is valid immediately. The dynamic property remains the
+    /// authoritative source once a real `modelName` is loaded.
+    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
+        supportedParameters: [
+            .temperature, .topP, .topK, .repeatPenalty,
+            .minP, .presencePenalty, .frequencyPenalty,
+        ],
+        maxContextTokens: 128_000,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true,
+        supportsToolCalling: true,
+        supportsStructuredOutput: false,
+        supportsNativeJSONMode: true,
+        cancellationStyle: .cooperative,
+        supportsTokenCounting: false,
+        memoryStrategy: .external,
+        maxOutputTokens: 128_000,
+        supportsStreaming: true,
+        isRemote: true,
+        supportsThinking: false,
+        streamsToolCallArguments: false,
+        supportsParallelToolCalls: true
+    )
+
+    /// Reads the snapshot the `parseResponseStream` override stashed
+    /// immediately before delegating to super, plus the auto-detected
+    /// thinking markers captured at load time. Falls back to a default
+    /// config if no snapshot has been stashed (shouldn't happen on the
+    /// production path; defensive against a future refactor that calls
+    /// the routing's factory outside the stream-open path).
+    fileprivate func snapshotForExtractor() -> (GenerationConfig, ThinkingMarkers?) {
+        withStateLock {
+            let config = _pendingStreamConfig ?? GenerationConfig()
+            // Clear after read — the snapshot is one-shot, mirroring
+            // `toolAwareHistory`'s snapshot-and-clear pattern below.
+            _pendingStreamConfig = nil
+            return (config, _autoDetectedThinkingMarkers)
+        }
     }
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
@@ -400,27 +536,37 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     }
 
     // MARK: - NDJSON Stream Parsing
-
+    //
+    // Phase 3/Ollama deleted the inline `OllamaStreamProcessor` parser. The
+    // adapter routing installed at `init` time threads stream parsing
+    // through `SSECloudBackend.parseResponseStreamRouted`, which drives a
+    // fresh `OllamaStreamEventExtractor` per generation (NDJSON via
+    // `NDJSONTransport`, termination via `OllamaDoneFlagFinalizer`,
+    // per-stream state owned by the extractor). The override below
+    // exists only to stash the active `GenerationConfig` into the
+    // state-lock-guarded snapshot the routing's `streamConsumerFactory`
+    // pulls — the `CloudStreamEventConsumer` protocol receives no
+    // parameters by design, so this is how Ollama's per-call thinking and
+    // visible caps reach the extractor.
+    //
     // TODO: (#189) Detect Ollama model-loading state and set GenerationStream
     // phase to .loading. Requires the monitoring task pattern from
     // GenerationStream to detect the pre-first-token stall that indicates
-    // Ollama is loading the model into VRAM. The stall detection at
-    // timeout/2 partially addresses this by showing .stalled.
+    // Ollama is loading the model into VRAM.
 
-    /// Parses Ollama's NDJSON response format instead of SSE.
     public override func parseResponseStream(
         bytes: URLSession.AsyncBytes,
         config: GenerationConfig,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
     ) async throws {
-        var processor = OllamaStreamProcessor(
-            limits: effectiveSSEStreamLimits,
-            config: config,
-            autoDetectedThinkingMarkers: withStateLock { _autoDetectedThinkingMarkers },
-            continuation: continuation,
-            handleUsage: { [weak self] usage in self?.handleUsage(usage) }
-        )
-        try await processor.parse(bytes: bytes)
+        // Stash the config snapshot so the routing's
+        // `streamConsumerFactory` can construct an extractor with the
+        // live caps + per-request thinking-markers override. The factory
+        // is invoked synchronously at stream open inside super's
+        // adapter-routed loop; the snapshot is read-once-and-cleared in
+        // `snapshotForExtractor()`.
+        withStateLock { _pendingStreamConfig = config }
+        try await super.parseResponseStream(bytes: bytes, config: config, continuation: continuation)
     }
 
     // MARK: - HTTP Status Validation
@@ -468,10 +614,20 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         withStateLock {
             _manifest = nil
             _autoDetectedThinkingMarkers = nil
+            _pendingStreamConfig = nil
         }
         isThinkingModel = false
         super.unloadModel()
     }
+}
+
+/// Sendable weak reference used by the routing closure to call back into
+/// the backend's `buildRequest` and `snapshotForExtractor()` without
+/// retaining `self`. Matches the `WeakBackendBox` pattern in
+/// `OpenAIBackend.swift`.
+private final class WeakOllamaBackendBox: @unchecked Sendable {
+    weak var value: OllamaBackend?
+    init(_ value: OllamaBackend) { self.value = value }
 }
 #endif
 

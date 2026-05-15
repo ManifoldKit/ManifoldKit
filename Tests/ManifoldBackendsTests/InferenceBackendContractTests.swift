@@ -1,4 +1,4 @@
-#if CloudSaaS
+#if CloudSaaS || Ollama
 import XCTest
 @testable import ManifoldCloud
 @testable import ManifoldCloudCore
@@ -35,8 +35,27 @@ final class InferenceBackendContractTests: XCTestCase {
         let handler: CloudPayloadHandler
         let finalizer: any StreamFinalizer
         let capabilities: BackendCapabilities
+        /// Wire format used by this participant's `response.<ext>` fixture.
+        /// SSE participants ship `response.sse` (with `data:` prefix);
+        /// NDJSON participants ship `response.ndjson` (one JSON object per
+        /// line, no prefix). Encoded as an enum so the loader picks the
+        /// right framing convention.
+        let wireFormat: WireFormat
+
+        enum WireFormat {
+            case sse
+            case ndjson
+
+            var fileName: String {
+                switch self {
+                case .sse: return "response.sse"
+                case .ndjson: return "response.ndjson"
+                }
+            }
+        }
     }
 
+    #if CloudSaaS
     private static let openAIParticipant = Participant(
         label: "openai.chat_completions",
         fixtureDirectory: "openai",
@@ -67,8 +86,10 @@ final class InferenceBackendContractTests: XCTestCase {
             supportsParallelToolCalls: true,
             supportsGuidedStructuredOutput: true,
             sharesMLXProcessResources: false
-        )
+        ),
+        wireFormat: .sse
     )
+    #endif
 
     /// OpenAI Responses API participant (Phase 3/Responses). Routes
     /// through ``CloudPayloadHandler/openAIResponses`` for the
@@ -113,7 +134,54 @@ final class InferenceBackendContractTests: XCTestCase {
         )
     )
 
-    private static let participants: [Participant] = [openAIParticipant, openAIResponsesParticipant]
+    #if Ollama
+    private static let ollamaParticipant = Participant(
+        label: "ollama.chat",
+        fixtureDirectory: "ollama",
+        handler: .ollama,
+        finalizer: OllamaDoneFlagFinalizer(),
+        // Synthetic capability set mirroring `OllamaBackend.capabilities`'s
+        // pre-probe defaults. Vision is gated separately on the wire
+        // (Ollama's `images[]` field is message-level base-64, not a
+        // content part) and is not exercised by the current fixture corpus.
+        capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .topK, .repeatPenalty],
+            maxContextTokens: 128_000,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: true,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: true,
+            memoryStrategy: .external,
+            maxOutputTokens: 128_000,
+            supportsStreaming: true,
+            isRemote: true,
+            supportsKVCachePersistence: false,
+            supportsGrammarConstrainedSampling: false,
+            supportsThinking: false,
+            supportsVision: false,
+            streamsToolCallArguments: false,
+            supportsParallelToolCalls: true,
+            supportsGuidedStructuredOutput: false,
+            sharesMLXProcessResources: false
+        ),
+        wireFormat: .ndjson
+    )
+    #endif
+
+    private static let participants: [Participant] = {
+        var list: [Participant] = []
+        #if CloudSaaS
+        list.append(openAIParticipant)
+        list.append(openAIResponsesParticipant)
+        #endif
+        #if Ollama
+        list.append(ollamaParticipant)
+        #endif
+        return list
+    }()
 
     // MARK: - Scenarios (capability-gated)
 
@@ -161,7 +229,7 @@ final class InferenceBackendContractTests: XCTestCase {
         for p in Self.participants where p.capabilities.supportsToolCalling {
             // Verify the fixture exists; gives the future runtime test a
             // concrete file to load without re-deriving paths.
-            _ = try fixtureURL(for: p, scenario: "tool-calls/simple", file: "response.sse")
+            _ = try fixtureURL(for: p, scenario: "tool-calls/simple", file: p.wireFormat.fileName)
             switch p.label {
             case "openai.chat_completions":
                 let shape = OpenAIDeltaToolCalls()
@@ -169,6 +237,9 @@ final class InferenceBackendContractTests: XCTestCase {
             case "openai.responses":
                 let shape = OpenAIResponsesItemIdToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
+            case "ollama.chat":
+                let shape = OllamaWholeToolCalls()
+                XCTAssertEqual(shape.shapeName, "ollama.whole")
             default:
                 XCTFail("[\(p.label)] no witness shape assertion declared")
             }
@@ -201,19 +272,24 @@ final class InferenceBackendContractTests: XCTestCase {
     /// the per-payload handler API consumes after the SSE transport has
     /// parsed framing.
     private func loadPayloads(participant: Participant, scenario: String) throws -> [String] {
-        let url = try fixtureURL(for: participant, scenario: scenario, file: "response.sse")
+        let url = try fixtureURL(for: participant, scenario: scenario, file: participant.wireFormat.fileName)
         let raw = try String(contentsOf: url, encoding: .utf8)
-        var payloads: [String] = []
-        for line in raw.components(separatedBy: "\n") {
-            // SSE event payload lines start with `data: `. We strip the
-            // prefix and skip the `[DONE]` sentinel — finalization is
-            // tested separately via the `StreamFinalizer` API.
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst("data: ".count))
-            if payload == "[DONE]" { continue }
-            payloads.append(payload)
+        switch participant.wireFormat {
+        case .sse:
+            var payloads: [String] = []
+            for line in raw.components(separatedBy: "\n") {
+                // SSE event payload lines start with `data: `. Strip the
+                // prefix and skip the `[DONE]` sentinel.
+                guard line.hasPrefix("data: ") else { continue }
+                let payload = String(line.dropFirst("data: ".count))
+                if payload == "[DONE]" { continue }
+                payloads.append(payload)
+            }
+            return payloads
+        case .ndjson:
+            // NDJSON: one JSON object per line, no prefix, no sentinel.
+            return raw.components(separatedBy: "\n").filter { !$0.isEmpty }
         }
-        return payloads
     }
 
     private func fixtureURL(
