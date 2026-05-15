@@ -191,8 +191,8 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
     // MARK: - Authorization code flow
 
     private func performAuthorizationCodeFlow(metadata: OAuthAuthorizationServerMetadata) async throws -> MCPOAuthTokens {
-        let state = randomBase64URL(byteCount: 32)
-        let verifierRaw = randomBase64URL(byteCount: 48)
+        let state = try randomBase64URL(byteCount: 32)
+        let verifierRaw = try randomBase64URL(byteCount: 48)
         var verifier = PKCEVerifier(data: Data(verifierRaw.utf8))
         defer { verifier.zero() }
 
@@ -404,9 +404,9 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
         return expiresAt <= currentDate().addingTimeInterval(30)
     }
 
-    private func randomBase64URL(byteCount: Int) -> String {
+    private func randomBase64URL(byteCount: Int) throws -> String {
         let generated = random()
-        let randomData = generated.isEmpty ? OAuthSecurity.secureRandomData(length: byteCount) : generated
+        let randomData = generated.isEmpty ? try OAuthSecurity.secureRandomData(length: byteCount) : generated
         return OAuthSecurity.base64URL(randomData)
     }
 

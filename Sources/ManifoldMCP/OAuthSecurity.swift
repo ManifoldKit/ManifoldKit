@@ -186,13 +186,15 @@ enum OAuthSecurity {
         return base64URL(Data(digest))
     }
 
-    static func secureRandomData(length: Int) -> Data {
+    static func secureRandomData(length: Int) throws -> Data {
         var bytes = [UInt8](repeating: 0, count: length)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        if status == errSecSuccess {
-            return Data(bytes)
+        guard status == errSecSuccess else {
+            throw MCPError.authorizationFailed(
+                "CSPRNG unavailable (OSStatus \(status)) — cannot generate PKCE verifier securely"
+            )
         }
-        return Data(UUID().uuidString.utf8)
+        return Data(bytes)
     }
 
     private static func urlEncode(_ value: String) -> String {

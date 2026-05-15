@@ -27,8 +27,11 @@ import ManifoldInference
 /// The ``events`` stream is constructed once per runtime instance and is
 /// single-consumer. Callers either iterate it directly (tests) or install
 /// an adapter that drains it into observable state
-/// (`ChatViewModel`-shaped consumers). The stream is unbounded — adapters
-/// must drain it on a long-lived task or the buffer grows.
+/// (`ChatViewModel`-shaped consumers). The stream is capped at 500 buffered
+/// events using `.bufferingOldest` — when a slow consumer falls behind,
+/// already-arrived events are preserved and the newest unprocessed arrivals
+/// are dropped. Adapters must drain the stream on a long-lived task to
+/// avoid hitting the cap during normal operation.
 ///
 /// ## Turn entry points
 ///
@@ -66,7 +69,10 @@ public final class ConversationRuntime: Sendable {
     // MARK: Event stream
 
     /// Lifecycle event stream. Single-consumer by design — see the type
-    /// docs.
+    /// docs. Capped at 500 buffered events: when a slow consumer falls
+    /// behind, the oldest unprocessed events are preserved and the newest
+    /// arrivals are dropped. This prevents unbounded memory growth when the
+    /// consumer stalls (e.g. app backgrounded during a long generation).
     public let events: AsyncStream<ConversationEvent>
     private let continuation: AsyncStream<ConversationEvent>.Continuation
 
@@ -193,7 +199,7 @@ public final class ConversationRuntime: Sendable {
             sessionStore: sessionStore
         )
         var cap: AsyncStream<ConversationEvent>.Continuation!
-        self.events = AsyncStream(bufferingPolicy: .unbounded) { cap = $0 }
+        self.events = AsyncStream(bufferingPolicy: .bufferingOldest(500)) { cap = $0 }
         let continuation = cap!
         self.continuation = continuation
         self.executor = ConversationTurnExecutor(

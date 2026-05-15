@@ -154,17 +154,15 @@ public final class MCPToolSource: @unchecked Sendable {
         await storage.invalidateApprovals(toolName: toolName)
     }
 
-    public func close() async {
-        await MainActor.run {
-            for (key, registry) in registeredRegistries {
-                let names = registeredNamesByRegistry[key] ?? []
-                for name in names {
-                    registry.unregister(name: name)
-                }
+    @MainActor public func close() async {
+        for (key, registry) in registeredRegistries {
+            let names = registeredNamesByRegistry[key] ?? []
+            for name in names {
+                registry.unregister(name: name)
             }
-            registeredRegistries.removeAll()
-            registeredNamesByRegistry.removeAll()
         }
+        registeredRegistries.removeAll()
+        registeredNamesByRegistry.removeAll()
         await storage.removeAll()
     }
 

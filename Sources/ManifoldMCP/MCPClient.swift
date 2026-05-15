@@ -1,6 +1,11 @@
 import Foundation
 import ManifoldInference
 
+// @unchecked Sendable: `client` is a weak var (mutable reference).
+// Thread safety is guaranteed by MCPSession's actor isolation upstream —
+// sessionDidReceive is only ever called from MCPSession's internal receiveTask,
+// which is serialised by the actor. Concurrent access to `client` is therefore
+// impossible in practice.
 private final class MCPClientSessionHook: MCPSessionStateHook, @unchecked Sendable {
     weak var client: MCPClient?
     let serverID: UUID

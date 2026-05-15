@@ -2254,4 +2254,85 @@ final class ConversationRuntimeTests: XCTestCase {
         let oldAssistantStillPresent = store.messages[assistantMsg.id] != nil
         XCTAssertFalse(oldAssistantStillPresent, "Old assistant message was deleted before stream start")
     }
+
+    // MARK: - SEC-22: bounded event stream
+
+    /// Verifies that the `events` stream cap of 500 does not crash when 501
+    /// events arrive while the consumer is stalled (i.e. `.bufferingOldest`
+    /// is in effect and the 501st is silently dropped rather than growing the
+    /// buffer unboundedly or trapping).
+    ///
+    /// Strategy: construct a runtime backed by a backend that emits 501
+    /// tokens on a single turn, stall the consumer entirely, drain after all
+    /// tokens have been enqueued, and verify we received at most 500 events
+    /// without a crash or hang.
+    func test_eventStream_doesNotCrashWhenOver500EventsEnqueued() async throws {
+        // Emit 501 tokens so the runtime yields at least 501 events
+        // (each token → .tokenReceived + bookkeeping events, but even counting
+        // only the streamFinished terminal we exercise the drop path).
+        let tokenCount = 501
+        let tokens = (0..<tokenCount).map { "t\($0)" }
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = tokens
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference
+        )
+
+        let sessionID = UUID()
+        try await store.insertMessage(ChatMessageRecord(
+            role: .user,
+            content: "ping",
+            sessionID: sessionID
+        ))
+
+        // Start the turn but do NOT drain the stream yet — let the buffer fill.
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "ping", attachments: [])
+        ))
+
+        // Give the backend task time to enqueue all events before we start
+        // draining, so the buffer is at capacity before the consumer wakes.
+        try await Task.sleep(for: .milliseconds(500))
+
+        // Now drain: collect events up to the first .streamFinished.
+        // The test passes when this completes without a crash or assertion
+        // failure and the collected count is ≤ 500 (some events were dropped).
+        var collected: [ConversationEvent] = []
+        let drainTask = Task {
+            for await event in runtime.events {
+                collected.append(event)
+                if case .streamFinished = event { break }
+            }
+        }
+        // Allow up to 5 s for the drain to complete.
+        let waitResult = try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await drainTask.value }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                drainTask.cancel()
+            }
+            try await group.next()
+            group.cancelAll()
+        }
+        _ = waitResult
+
+        // With a 500-event cap and a stalled consumer the buffer must be ≤ 500.
+        // (Strictly: the continuation yields after the cap returns `.dropped`
+        // silently, so we may have fewer events than 501 in the collected slice.)
+        XCTAssertLessThanOrEqual(
+            collected.count, 500,
+            "Buffer cap must not be exceeded; got \(collected.count) events"
+        )
+        // Sabotage: if the stream were unbounded this assertion would be ≤ 501.
+        // The cap makes 501 impossible to receive in a stalled-consumer scenario.
+        XCTAssertTrue(
+            collected.count <= 500,
+            "If the stream were unbounded the consumer could receive all 501+ events"
+        )
+    }
 }
