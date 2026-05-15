@@ -30,7 +30,7 @@ permissions:
 jobs:
   security-audits:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -70,17 +70,17 @@ jobs:
           git diff --exit-code Package.resolved || \
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
 
-      # Two default-trait audits batched into one swift-test invocation so the
-      # SwiftPM build graph + test-bundle link is paid once instead of twice.
-      # Mirrors the mega-batch shape from ci.yml's `Test — XCTest suites` step.
-      # The CloudSaaS pinned-session audit below stays separate — its trait
-      # change forces a fresh resolve and can't share a build with these.
-      # Saves ~150s on every PR (Lever B of #953).
-      - name: Test — Traffic boundary + MCP hardening audits (batched)
+      # MCP hardening audit — fast per-PR gate for the MCP security surface.
+      # TrafficBoundaryAuditTest is intentionally excluded here: its source-tree
+      # walk is slow and it already runs in nightly-slow-tests.yml where the
+      # RUN_SLOW_TESTS=1 flag enables it. Keeping it in per-PR security-gates
+      # caused 45-min cold-build timeouts (nightly coverage is sufficient for
+      # traffic-boundary violations). The CloudSaaS pinned-session audit below
+      # stays separate — its trait change forces a fresh resolve.
+      - name: Test — MCP hardening audit
         env:
-          RUN_SLOW_TESTS: "1"
-          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-and-mcp-hardening.log
-        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --filter "ManifoldMCPTests.MCPHardeningTests" --disable-default-traits --traits MCP --skip-update --min-passed 2
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-hardening.log
+        run: scripts/test.sh --filter "ManifoldMCPTests.MCPHardeningTests" --disable-default-traits --traits MCP --skip-update --min-passed 1
 
       - name: Test — PinnedSessionDelegateTests (CloudSaaS)
         env:
