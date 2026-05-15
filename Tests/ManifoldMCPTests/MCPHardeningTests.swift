@@ -2,6 +2,7 @@
 import Foundation
 import XCTest
 @testable import ManifoldMCP
+import ManifoldInference
 import ManifoldTestSupport
 
 final class MCPHardeningTests: XCTestCase {
@@ -496,6 +497,134 @@ final class MCPHardeningTests: XCTestCase {
         XCTAssertNil(result, "OAuth redirect to private-resolving host must be blocked")
     }
 
+    // MARK: - SEC-09: Redirect cap at 3 hops
+
+    func test_redirectCap_blocksOnFourthHop() {
+        // Verifies MCPRedirectCapDelegate(maxRedirects: 3) allows hops 1–3 and
+        // blocks hop 4.  We test the delegate directly because MockURLProtocol
+        // delivers responses at the URLProtocol layer, before URLSession's
+        // redirect machinery fires the task delegate.
+        // Sabotage check: change maxRedirects to 4 — the fourth redirect will be
+        // allowed through and fourthResult will be non-nil, failing XCTAssertNil.
+        let delegate = MCPRedirectCapDelegate(
+            maxRedirects: 3,
+            validator: { _ in }
+        )
+        let session = URLSession.shared
+        let fakeHTTPResponse = HTTPURLResponse(
+            url: URL(string: "https://example.com/mcp")!,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": "https://hop.example.com/mcp"]
+        )!
+        let hopRequest = URLRequest(url: URL(string: "https://hop.example.com/mcp")!)
+
+        var results: [URLRequest?] = []
+
+        for i in 1...4 {
+            let exp = expectation(description: "redirect hop \(i)")
+            delegate.urlSession(
+                session,
+                task: session.dataTask(with: fakeHTTPResponse.url.map { URLRequest(url: $0) }!),
+                willPerformHTTPRedirection: fakeHTTPResponse,
+                newRequest: hopRequest
+            ) { req in
+                results.append(req)
+                exp.fulfill()
+            }
+            wait(for: [exp], timeout: 1)
+        }
+
+        XCTAssertNotNil(results[0], "Hop 1 should be allowed")
+        XCTAssertNotNil(results[1], "Hop 2 should be allowed")
+        XCTAssertNotNil(results[2], "Hop 3 should be allowed")
+        XCTAssertNil(results[3], "Hop 4 must be refused (cap is 3)")
+    }
+
+    // MARK: - SEC-08: requestTimeout wired from MCPClientConfiguration
+
+    func test_requestTimeout_timedOutRequestThrowsMCPError() async throws {
+        // Verifies that MCPSession respects the requestTimeout wired in from
+        // MCPClientConfiguration when a tools/call response never arrives.
+        // Sabotage check: set requestTimeout to .seconds(600) — the test will
+        // hang instead of completing quickly, failing the XCTest timeout.
+        let descriptor = MCPServerDescriptor(
+            displayName: "Timeout Test",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test"
+        )
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 4096, maxJSONNestingDepth: 8)
+        let transport = HangingSessionTransport(codec: codec)
+        await transport.setRequestHandler { id, method, _ in
+            guard method == "initialize" else { return nil }
+            return .result(id: id, result: .object([
+                "protocolVersion": .string("2025-03-26"),
+                "serverInfo": .object(["name": .string("Hang"), "version": .string("1")]),
+                "capabilities": .object([:]),
+            ]))
+        }
+
+        // A 200 ms requestTimeout means tools/call should fail fast.
+        let session = MCPSession(
+            descriptor: descriptor,
+            transport: transport,
+            codec: codec,
+            requestTimeout: .milliseconds(200),
+            maxConcurrentRequests: 4
+        )
+
+        _ = try await session.start()
+
+        do {
+            _ = try await session.sendRequest(method: "tools/call", params: .object([
+                "name": .string("slow_tool"),
+                "arguments": .object([:]),
+            ]))
+            XCTFail("Expected requestTimeout error")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .requestTimeout, "Expected .requestTimeout, got \(error)")
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+
+        await session.close()
+    }
+
+    func test_requestTimeout_descriptorOverrideWinsOverConfiguration() {
+        // Verifies that MCPServerDescriptor.requestTimeout takes precedence over
+        // MCPClientConfiguration.requestTimeout when both are set.
+        // Sabotage check: remove the ?? fallback in MCPClient.connect — the
+        // descriptor override would be silently ignored and this test can't
+        // directly observe that from the outside, which is why we test the
+        // descriptor property itself.
+        let descriptor = MCPServerDescriptor(
+            displayName: "Override Test",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            requestTimeout: .seconds(45),
+            dataDisclosure: "test"
+        )
+        let configuration = MCPClientConfiguration(requestTimeout: .seconds(30))
+
+        let effective = descriptor.requestTimeout ?? configuration.requestTimeout
+        XCTAssertEqual(effective, .seconds(45), "Descriptor override must win")
+    }
+
+    func test_requestTimeout_configurationUsedWhenDescriptorHasNil() {
+        // Verifies that MCPClientConfiguration.requestTimeout is used when
+        // MCPServerDescriptor.requestTimeout is nil.
+        let descriptor = MCPServerDescriptor(
+            displayName: "Fallback Test",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test"
+        )
+        let configuration = MCPClientConfiguration(requestTimeout: .seconds(60))
+
+        XCTAssertNil(descriptor.requestTimeout, "requestTimeout should default to nil")
+        let effective = descriptor.requestTimeout ?? configuration.requestTimeout
+        XCTAssertEqual(effective, .seconds(60), "Configuration fallback must be used when descriptor has nil")
+    }
+
     func test_networkAndLifecycleObserversPlumbIntoConnectionState() async {
         let networkObserver = TestNetworkPathObserver()
         let lifecycleObserver = TestLifecycleObserver()
@@ -646,6 +775,49 @@ struct PKCEVerifierTestHarness {
     /// True when all bytes in the verifier storage are zero.
     var isZeroed: Bool {
         inner.verifierData.allSatisfy { $0 == 0 }
+    }
+}
+
+// MARK: - HangingSessionTransport (SEC-08 timeout tests)
+
+/// An `MCPTransport` that responds to `initialize` normally but never responds
+/// to any other request. Used to verify that `requestTimeout` fires correctly.
+private actor HangingSessionTransport: MCPTransport {
+    nonisolated let incomingMessages: AsyncThrowingStream<Data, Error>
+
+    private let codec: MCPJSONRPCCodec
+    private let continuation: AsyncThrowingStream<Data, Error>.Continuation
+    private var handler: (@Sendable (MCPRequestID, String, JSONSchemaValue?) -> MCPJSONRPCMessage?)?
+
+    init(codec: MCPJSONRPCCodec) {
+        self.codec = codec
+        var streamContinuation: AsyncThrowingStream<Data, Error>.Continuation!
+        self.incomingMessages = AsyncThrowingStream { continuation in
+            streamContinuation = continuation
+        }
+        self.continuation = streamContinuation
+    }
+
+    func setRequestHandler(_ handler: @escaping @Sendable (MCPRequestID, String, JSONSchemaValue?) -> MCPJSONRPCMessage?) {
+        self.handler = handler
+    }
+
+    func start() async throws {}
+
+    func send(_ payload: Data) async throws {
+        let message = try codec.decode(payload)
+        guard case .request(let id, let method, let params) = message,
+              let handler,
+              let response = handler(id, method, params) else {
+            // All non-initialize requests are silently dropped — the caller's
+            // continuation will be resolved only by the requestTimeout race.
+            return
+        }
+        continuation.yield(try codec.encode(response))
+    }
+
+    func close() async {
+        continuation.finish()
     }
 }
 

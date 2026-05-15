@@ -84,7 +84,7 @@ public actor MCPClient {
                     maxMessageBytes: configuration.maxMessageBytes,
                     maxJSONNestingDepth: configuration.maxJSONNestingDepth
                 ),
-                requestTimeout: descriptor.initializationTimeout,
+                requestTimeout: descriptor.requestTimeout ?? configuration.requestTimeout,
                 maxConcurrentRequests: configuration.maxConcurrentRequestsPerSession,
                 stateHook: stateHook
             )
