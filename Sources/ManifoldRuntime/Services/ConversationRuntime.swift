@@ -133,6 +133,12 @@ public final class ConversationRuntime: Sendable {
     ///     the runtime compresses history and emits
     ///     ``ConversationEvent/historyCompressed(sessionID:)``. Compression
     ///     failures are logged and never abort the turn.
+    ///   - historyProviders: Optional list of ``HistoryProvider`` conformances
+    ///     applied to the fetched history before context assembly. Providers are
+    ///     applied in registration order; each sees the history as augmented by
+    ///     all preceding providers. A throwing provider aborts the current turn
+    ///     with a ``ConversationError/persistence(_:)`` error. Defaults to `[]`
+    ///     so existing call sites compile unchanged.
     public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
@@ -143,7 +149,8 @@ public final class ConversationRuntime: Sendable {
         auxiliaryInferenceService: InferenceService? = nil,
         usageStore: (any UsageStore)? = nil,
         generationHooks: [any GenerationHook] = [],
-        compressionPolicy: (any CompressionPolicy)? = nil
+        compressionPolicy: (any CompressionPolicy)? = nil,
+        historyProviders: [any HistoryProvider] = []
     ) {
         self.init(
             messageStore: messageStore,
@@ -156,7 +163,8 @@ public final class ConversationRuntime: Sendable {
             usageStore: usageStore,
             emptyResponseObserver: nil,
             generationHooks: generationHooks,
-            compressionPolicy: compressionPolicy
+            compressionPolicy: compressionPolicy,
+            historyProviders: historyProviders
         )
     }
 
@@ -175,7 +183,8 @@ public final class ConversationRuntime: Sendable {
         emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
-        hookTimeout: Duration = .seconds(30)
+        hookTimeout: Duration = .seconds(30),
+        historyProviders: [any HistoryProvider] = []
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
@@ -199,7 +208,8 @@ public final class ConversationRuntime: Sendable {
             emptyResponseObserver: emptyResponseObserver,
             generationHooks: generationHooks,
             compressionPolicy: compressionPolicy,
-            hookTimeout: hookTimeout
+            hookTimeout: hookTimeout,
+            historyProviders: historyProviders
         )
     }
 
