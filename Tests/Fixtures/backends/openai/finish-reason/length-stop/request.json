@@ -1,0 +1,9 @@
+{
+  "model": "gpt-4o-mini-fixture",
+  "messages": [
+    { "role": "user", "content": "Generate a long answer." }
+  ],
+  "stream": true,
+  "stream_options": { "include_usage": true },
+  "max_tokens": 2
+}
