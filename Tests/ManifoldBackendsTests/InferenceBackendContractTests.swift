@@ -6,27 +6,32 @@ import XCTest
 
 /// Parameterised contract suite over every cloud backend.
 ///
-/// Phase 2/B/i ships the scaffold and one OpenAI participant. Each scenario
-/// is capability-gated: assertions only run for backends whose
-/// `BackendCapabilities` claim the relevant feature. As Phase 3 lands the
-/// remaining adapters, each backend is added to `participants` and the
-/// existing scenarios light up automatically.
+/// Phase 2/B/i shipped the scaffold with inline fixtures. Phase 2/B/ii
+/// (this PR) replaces the inline payloads with on-disk fixtures under
+/// `Tests/Fixtures/backends/<provider>/<scenario>/{request.json,
+/// response.sse, expected.jsonl}`. The on-disk format is what
+/// `scripts/record-fixture.sh` will write when capturing against a live
+/// endpoint, so the recording workflow now has a stable target. Each
+/// fixture is also scanned by `FixtureRedactionAuditTest` so credentials
+/// cannot leak in.
 ///
-/// Fixtures live under `Tests/Fixtures/backends/<provider>/...` and are
-/// validated by `FixtureRedactionAuditTest`. Phase 2/B/i uses inline
-/// fixtures so the scaffold is runnable before the recording-from-live
-/// workflow is bedded in (a `scripts/record-fixture.sh` capture against
-/// a real OpenAI endpoint is the follow-up step that converts these
-/// inline fixtures to on-disk ones).
+/// Each scenario is capability-gated: assertions only run for backends
+/// whose `BackendCapabilities` claim the relevant feature. As Phase 3
+/// lands the remaining adapters, each backend is added to `participants`
+/// (with its own fixture tree) and the existing scenarios light up
+/// automatically.
 final class InferenceBackendContractTests: XCTestCase {
 
     // MARK: - Participants
 
     /// Static description of one backend's contract surface. The handler
     /// is the canonical surface for per-payload classification; the
-    /// finalizer for stream-termination semantics.
+    /// finalizer for stream-termination semantics. `fixtureDirectory` is
+    /// the on-disk subdirectory under `Tests/Fixtures/backends/` that
+    /// holds this participant's scenario corpus.
     struct Participant {
         let label: String
+        let fixtureDirectory: String
         let handler: CloudPayloadHandler
         let finalizer: any StreamFinalizer
         let capabilities: BackendCapabilities
@@ -34,6 +39,7 @@ final class InferenceBackendContractTests: XCTestCase {
 
     private static let openAIParticipant = Participant(
         label: "openai.chat_completions",
+        fixtureDirectory: "openai",
         handler: .openAI,
         finalizer: OpenAIDoneSentinelFinalizer(),
         // Synthetic capability set: matches what `OpenAIBackend` advertises
@@ -68,26 +74,35 @@ final class InferenceBackendContractTests: XCTestCase {
 
     // MARK: - Scenarios (capability-gated)
 
-    func test_streaming_simplePrompt_emitsTokenInOrder() {
+    func test_streaming_simplePrompt_emitsTokenInOrder() throws {
         for p in Self.participants where p.capabilities.supportsStreaming {
-            let payload = inlineFixture_streamingSimplePrompt(for: p)
-            let events = p.handler.extractEvents(from: payload)
-            XCTAssertFalse(events.isEmpty, "[\(p.label)] expected at least one event")
-            if case .token(let text) = events.first {
-                XCTAssertFalse(text.isEmpty, "[\(p.label)] first token was empty")
-            } else {
-                XCTFail("[\(p.label)] expected first event to be .token, got \(String(describing: events.first))")
+            let payloads = try loadPayloads(participant: p, scenario: "streaming/simple-prompt")
+            var emitted: [GenerationEvent] = []
+            for payload in payloads {
+                emitted.append(contentsOf: p.handler.extractEvents(from: payload))
             }
+            XCTAssertFalse(emitted.isEmpty, "[\(p.label)] expected at least one event")
+            // Compare against the on-disk expected projection.
+            let fixture = try fixtureURL(for: p, scenario: "streaming/simple-prompt", file: "expected.jsonl")
+            XCTAssertEventsMatch(actual: emitted, fixtureURL: fixture)
         }
     }
 
-    func test_usage_basic_extractsPromptAndCompletionTokens() {
+    func test_usage_basic_extractsPromptAndCompletionTokens() throws {
         for p in Self.participants where p.capabilities.supportsTokenCounting {
-            let payload = inlineFixture_usageBasic(for: p)
-            let usage = p.handler.extractUsage(from: payload)
-            XCTAssertNotNil(usage, "[\(p.label)] expected usage struct")
-            XCTAssertGreaterThan(usage?.promptTokens ?? 0, 0, "[\(p.label)] promptTokens")
-            XCTAssertGreaterThan(usage?.completionTokens ?? 0, 0, "[\(p.label)] completionTokens")
+            let payloads = try loadPayloads(participant: p, scenario: "usage/basic")
+            // Find the payload that carries usage; the handler API exposes
+            // usage extraction per-frame.
+            var observed: (promptTokens: Int?, completionTokens: Int?)?
+            for payload in payloads {
+                if let u = p.handler.extractUsage(from: payload) {
+                    observed = u
+                    break
+                }
+            }
+            XCTAssertNotNil(observed, "[\(p.label)] expected usage struct")
+            XCTAssertGreaterThan(observed?.promptTokens ?? 0, 0, "[\(p.label)] promptTokens")
+            XCTAssertGreaterThan(observed?.completionTokens ?? 0, 0, "[\(p.label)] completionTokens")
         }
     }
 
@@ -95,14 +110,15 @@ final class InferenceBackendContractTests: XCTestCase {
     /// not in the per-payload handler. The Phase 2/B/ii widen of
     /// `SSECloudBackend` to consume the adapter will hoist that logic into
     /// the `ToolCallShape` witness so this scenario can assert at the
-    /// handler level. Until then we assert only that the witness label is
-    /// the expected shape — a structural contract on the adapter's
-    /// composition rather than a per-payload behavioural assertion.
-    func test_toolCalls_simple_witnessShapeIsDeclared() {
+    /// handler level. Until then we assert that:
+    ///   (a) the adapter's witness label is the expected shape, and
+    ///   (b) the fixture corpus carries a `tool-calls/simple/` directory so
+    ///       a future runtime test has a concrete capture to replay.
+    func test_toolCalls_simple_witnessShapeIsDeclared() throws {
         for p in Self.participants where p.capabilities.supportsToolCalling {
-            // The adapter's `toolCallShape` is the contract; the actual
-            // per-payload extraction lives on the backend until Phase
-            // 2/B/ii.
+            // Verify the fixture exists; gives the future runtime test a
+            // concrete file to load without re-deriving paths.
+            _ = try fixtureURL(for: p, scenario: "tool-calls/simple", file: "response.sse")
             switch p.label {
             case "openai.chat_completions":
                 let shape = OpenAIDeltaToolCalls()
@@ -113,57 +129,77 @@ final class InferenceBackendContractTests: XCTestCase {
         }
     }
 
-    func test_finalizer_recognizesTerminalFrame() {
+    func test_finalizer_recognizesTerminalFrame() throws {
         for p in Self.participants {
-            let payload = inlineFixture_terminalFrame(for: p)
-            let signal = p.finalizer.finalize(frame: Data(payload.utf8))
-            guard case .streamComplete = signal else {
-                XCTFail("[\(p.label)] finalizer failed to recognise terminal frame: \(String(describing: signal))")
-                continue
+            let payloads = try loadPayloads(participant: p, scenario: "usage/basic")
+            // The terminal frame of the `usage/basic` scenario carries both
+            // `finish_reason` and `usage`; either signals completion to the
+            // OpenAI finalizer.
+            var sawComplete = false
+            for payload in payloads {
+                guard let data = payload.data(using: .utf8) else { continue }
+                if case .streamComplete = p.finalizer.finalize(frame: data) {
+                    sawComplete = true
+                    break
+                }
             }
+            XCTAssertTrue(sawComplete, "[\(p.label)] finalizer failed to recognise a terminal frame in the `usage/basic` corpus")
         }
     }
 
-    // MARK: - Inline fixtures
-    //
-    // Per-participant payload shapes. Phase 2/B/ii will replace these with
-    // on-disk fixtures recorded against a real provider; for now they keep
-    // the scaffold runnable and exercise the parameterised structure.
+    // MARK: - Fixture loading
 
-    private func inlineFixture_streamingSimplePrompt(for p: Participant) -> String {
-        switch p.label {
-        case "openai.chat_completions":
-            return #"{"choices":[{"delta":{"content":"Hello"}}]}"#
-        default:
-            return ""
+    /// Reads `response.sse` from the participant's scenario directory and
+    /// returns the JSON payload strings (one per `data: …` line, skipping
+    /// the `[DONE]` sentinel and any blank lines). This is the same shape
+    /// the per-payload handler API consumes after the SSE transport has
+    /// parsed framing.
+    private func loadPayloads(participant: Participant, scenario: String) throws -> [String] {
+        let url = try fixtureURL(for: participant, scenario: scenario, file: "response.sse")
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        var payloads: [String] = []
+        for line in raw.components(separatedBy: "\n") {
+            // SSE event payload lines start with `data: `. We strip the
+            // prefix and skip the `[DONE]` sentinel — finalization is
+            // tested separately via the `StreamFinalizer` API.
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst("data: ".count))
+            if payload == "[DONE]" { continue }
+            payloads.append(payload)
         }
+        return payloads
     }
 
-    private func inlineFixture_usageBasic(for p: Participant) -> String {
-        switch p.label {
-        case "openai.chat_completions":
-            return #"{"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":48,"total_tokens":60}}"#
-        default:
-            return ""
-        }
+    private func fixtureURL(
+        for participant: Participant,
+        scenario: String,
+        file: String,
+        filePath: StaticString = #filePath
+    ) throws -> URL {
+        let root = try Self.locateFixturesRoot(filePath: filePath)
+        return root
+            .appendingPathComponent("backends")
+            .appendingPathComponent(participant.fixtureDirectory)
+            .appendingPathComponent(scenario)
+            .appendingPathComponent(file)
     }
 
-    private func inlineFixture_toolCallSimple(for p: Participant) -> String {
-        switch p.label {
-        case "openai.chat_completions":
-            return #"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_abc","function":{"name":"get_weather","arguments":"{\"city\":\"SF\"}"}}]}}]}"#
-        default:
-            return ""
+    /// Walks up from `#filePath` until a `Tests/Fixtures/` directory is
+    /// found. Mirrors the upwalk pattern used by other audit tests so
+    /// invocation works regardless of cwd.
+    private static func locateFixturesRoot(filePath: StaticString) throws -> URL {
+        var dir = URL(fileURLWithPath: "\(filePath)").deletingLastPathComponent()
+        while dir.path != "/" {
+            let candidate = dir.appendingPathComponent("Tests/Fixtures")
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDir), isDir.boolValue {
+                return candidate
+            }
+            dir.deleteLastPathComponent()
         }
-    }
-
-    private func inlineFixture_terminalFrame(for p: Participant) -> String {
-        switch p.label {
-        case "openai.chat_completions":
-            return #"{"choices":[{"finish_reason":"stop","delta":{}}]}"#
-        default:
-            return ""
-        }
+        throw NSError(domain: "InferenceBackendContractTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Could not locate Tests/Fixtures/ from #filePath"
+        ])
     }
 }
 #endif
