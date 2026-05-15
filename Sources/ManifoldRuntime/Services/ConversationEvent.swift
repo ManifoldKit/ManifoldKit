@@ -153,6 +153,14 @@ public enum ConversationEvent: Sendable {
     /// through the runtime.
     case compressionTriggered(removed: [ChatMessageRecord.ID], reason: CompressionReason)
 
+    /// Emitted when ``CompressionPolicy`` has replaced the session's message
+    /// history with a compressed version. Consumers that cache the message
+    /// list should invalidate their cache on this event.
+    ///
+    /// This case is emitted by the ``ConversationTurnExecutor`` inline
+    /// compression path introduced alongside ``CompressionPolicy``.
+    case historyCompressed(sessionID: UUID)
+
     // MARK: Tool calls
 
     /// The model requested a tool invocation. Adapters that gate tools

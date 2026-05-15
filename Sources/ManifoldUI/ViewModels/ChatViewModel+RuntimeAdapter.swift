@@ -276,7 +276,7 @@ extension ChatViewModel {
 
         case .beforeContextAssembly, .contextAssembled, .afterGeneration,
              .sessionTouchFailed,
-             .compressionTriggered, .toolCallApproved:
+             .compressionTriggered, .historyCompressed, .toolCallApproved:
             // These are observational or reserved for future sub-flows.
             // No ChatViewModel state mutation is needed here yet.
             break

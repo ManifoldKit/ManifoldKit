@@ -59,7 +59,14 @@ public struct ContextBudgetPlanner: Sendable {
 
         for entry in entries {
             let share = entry.budgetWeight / safeTotal
-            let planned = min(remainingBudget, Int(Double(totalBudget) * share))
+            // Guard against Int overflow when totalBudget is Int.max (the
+            // "no budget cap" sentinel). Double(Int.max) rounds up to 2^63,
+            // and Int(2^63) traps. Clamp the intermediate Double to
+            // Double(Int.max - 1) before converting so the result is always
+            // representable regardless of share or totalBudget magnitude.
+            let rawShare = Double(totalBudget) * share
+            let safePlanned = rawShare >= Double(Int.max) ? Int.max : Int(rawShare)
+            let planned = min(remainingBudget, safePlanned)
             let budget = ProviderBudget(allocated: max(0, planned), totalContextSize: contextSize)
 
             let slots = try await entry.provider.contributeSlots(budget: budget, context: context)
