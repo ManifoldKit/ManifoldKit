@@ -16,6 +16,7 @@ public enum MessageKind: Hashable, Sendable {
     /// exists now to avoid a second breaking enum change.
     case toolResult(callID: String)
     /// Escape hatch for host-defined kinds not covered by the named cases.
+    /// Sent to the backend as a `system`-role message when `isWireVisible` is `true`.
     case custom(String)
 }
 

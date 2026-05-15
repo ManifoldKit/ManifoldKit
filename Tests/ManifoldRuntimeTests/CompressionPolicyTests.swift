@@ -588,6 +588,55 @@ final class CompressionPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Test 6b: executor passes correct contextUtilization value
+
+    func test_shouldCompress_receivesCorrectContextUtilization() async throws {
+        // The executor must pass Double(promptTokens) / Double(contextSize) as
+        // contextUtilization. A capturing policy records the value so we can
+        // assert it matches the backend-reported token counts.
+        actor UtilizationCapture {
+            private(set) var received: Double?
+            func record(_ value: Double) { received = value }
+        }
+        let capture = UtilizationCapture()
+
+        struct CapturingUtilizationPolicy: CompressionPolicy {
+            let capture: UtilizationCapture
+            func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+                Task { await capture.record(contextUtilization) }
+                return false
+            }
+            func compress(history: [ChatMessageRecord], sessionID: UUID,
+                          generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] { history }
+        }
+
+        // UsageReportingBackend emits promptTokens=50, contextSize=1024 (see makeMockWithUsage + UsageReportingBackend.lastUsage).
+        let backend = makeMockWithUsage(tokensToYield: ["hi"])
+        let inference = InferenceService(backend: backend, name: "Mock")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            compressionPolicy: CapturingUtilizationPolicy(capture: capture)
+        )
+
+        let sessionID = UUID()
+        _ = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "ping", attachments: []),
+            config: TurnConfig()
+        ))
+        try await Task.sleep(for: .milliseconds(300))
+
+        let utilization = await capture.received
+        XCTAssertNotNil(utilization, "shouldCompress must be called with contextUtilization")
+        if let u = utilization {
+            // promptTokens=50, contextSize=1024 → 50.0/1024.0 ≈ 0.04883
+            let expected = 50.0 / 1024.0
+            XCTAssertEqual(u, expected, accuracy: 0.001, "contextUtilization must equal promptTokens / contextSize")
+        }
+    }
+
     // MARK: - Test 6: memory-kind round-trip through in-memory store
 
     func test_policy_memoryKindRoundTrips() async throws {
