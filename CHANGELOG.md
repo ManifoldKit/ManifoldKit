@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.27.0](https://github.com/roryford/ManifoldKit/compare/v0.26.0...v0.27.0) — 2026-05-15
+
+### Highlights
+
+#### `MessageKind` — orthogonal record provenance axis ([a285baf](https://github.com/roryford/ManifoldKit/commit/a285baf6a17669a50677164143a4268b2bfa3c0b))
+
+`ChatMessageRecord` gains a `kind: MessageKind` property (default `.chat`) that is orthogonal to `MessageRole`. Backends continue to see only role; the persistence, export, and UI layers switch on kind. This eliminates the previous pattern of overloading `role: .system` to carry non-chat records such as compression summaries, and closes the implicit wire-contract where `record.role.rawValue` was stringified directly onto the backend payload.
+
+`MessageKind` has five cases: `.chat` (ordinary turns), `.memory(String)` (compression briefs), `.annotation(String)`, `.toolResult(callID:)` (reserved for tool-result wiring), and `.custom(String)`. Two shared predicates — `isUserVisible` and `isWireVisible` — let `ChatExportService`, `ManifoldUI`, and the turn executor apply a consistent filtering rule from one place. `kind.backendRole` makes the wire mapping explicit: unknown or mismatched kinds are a compile error, not a silent garbage-role on the wire.
+
+```swift
+// Compression policy now produces .memory records, not role-overloaded system messages.
+struct SummaryPolicy: CompressionPolicy {
+    func shouldCompress(promptTokens: Int, contextSize: Int, contextUtilization: Double) -> Bool {
+        contextUtilization >= 0.80
+    }
+
+    func compress(history: [ChatMessageRecord], sessionID: UUID,
+                  generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] {
+        let summary = try await generate(Array(history.dropLast(4)))
+        let brief = ChatMessageRecord(
+            role: .system,
+            content: summary,
+            sessionID: sessionID,
+            kind: .memory("summary")   // ← persisted as a memory record, not a system turn
+        )
+        return [brief] + history.suffix(4)
+    }
+}
+```
+
+SchemaV7 is a lightweight migration that adds `kindRaw` (default `"chat"`) and `citationsJSON` (previously transient) to the `ChatMessage` SwiftData model. Existing stores migrate automatically with no data loss.
+
+`ManifoldUI`'s `ChatView` gains a `customKindRenderer` hook so apps can opt in to rendering non-chat records (e.g. a memory-brief card) rather than relying on the default hide behaviour.
+
+**Breaking changes:**
+- `CompressionPolicy.shouldCompress(promptTokens:contextSize:)` is now `shouldCompress(promptTokens:contextSize:contextUtilization:)`. Add the third parameter — it receives `Double(promptTokens) / Double(contextSize)` pre-computed. Existing implementations that ignore the value can accept and discard it.
+- `CompressionPolicy.compress(...)` return values should use `kind: .memory(...)` instead of `role: .system` for summary records. The old shape still compiles and works at runtime; the kind will default to `.chat`, which means the record will appear in exports and the chat UI. Adopt `kind: .memory` to get the correct hide-by-default behaviour.
+
+#### `HistoryProvider` — pre-generation record injection ([2acdd46](https://github.com/roryford/ManifoldKit/commit/2acdd46c50dbd4794f7bd6be692b0be87b62b164))
+
+A new `HistoryAssembly` pipeline stage sits between `MessageStore.fetchMessages` and the turn executor's structured-message mapping. Apps register `HistoryProvider` conformances to inject additional `ChatMessageRecord`s — such as `.memory`-kind compression briefs retrieved from a store — at controlled positions in the history array before each generation turn.
+
+Providers return `[HistoryContribution]` rather than mutating the array directly. Each contribution declares a `HistoryInsertionPosition`: `.head`, `.tail`, `.atDepth(n)` (mirrors `PromptSlotPosition.atDepth`), `.beforeRecord(id)`, or `.afterRecord(id)`. A debug-mode `assert` validates that the relative chronological order of `.chat`-kind user/assistant records is preserved after all providers have been applied.
+
+```swift
+struct MemoryNodeProvider: HistoryProvider {
+    let store: MyMemoryStore
+
+    func contribute(
+        history: [ChatMessageRecord],
+        context: TurnContext
+    ) async throws -> [HistoryContribution] {
+        let briefs = try await store.fetchBriefs(sessionID: context.sessionID)
+        return briefs.map { brief in
+            HistoryContribution(
+                record: ChatMessageRecord(role: .system, content: brief.text,
+                                          sessionID: context.sessionID, kind: .memory("summary")),
+                position: .atDepth(brief.depth)
+            )
+        }
+    }
+}
+
+let runtime = ConversationRuntime(
+    messageStore: store,
+    inferenceService: service,
+    historyProviders: [MemoryNodeProvider(store: memoryStore)],
+    generationHooks: [MyExtractionHook()]
+)
+```
+
+Providers run before `ContextBudgetPlanner` windowing so depth-positioned injections are meaningful. Multiple providers are applied in registration order; each sees the previous provider's output. A throwing provider aborts the turn with a `.persistence` error.
+
 ## [0.26.0](https://github.com/roryford/ManifoldKit/compare/v0.25.2...v0.26.0) — 2026-05-15
 
 ### Highlights
