@@ -257,7 +257,7 @@ public final class MCPToolSource: @unchecked Sendable {
                         bytes: Array(rawDescription.utf8.prefix(config.maxMCPToolDescriptionBytes)),
                         encoding: .utf8
                     ) ?? rawDescription
-                    Log.inference.warning("MCPToolSource: tool description truncated from \(rawDescription.utf8.count) to \(config.maxMCPToolDescriptionBytes) bytes for tool '\(name)'")
+                    Log.inference.warning("MCPToolSource: tool description truncated from \(rawDescription.utf8.count) to \(config.maxMCPToolDescriptionBytes) bytes for tool '\(name, privacy: .public)'")
                     description = truncated
                 } else {
                     description = rawDescription
@@ -348,8 +348,17 @@ private actor MCPToolSourceStorage {
         callTool: (@Sendable (_ toolName: String, _ arguments: JSONSchemaValue) async throws -> JSONSchemaValue?)?
     ) async -> MCPToolRefreshDelta {
         if approvalPolicy == .persistentForTool {
-            let persisted = await MCPPersistentToolApprovalStore.shared.approvedToolNames(for: serverID)
-            approvedToolNames.formUnion(persisted)
+            // Reload persisted approvals from UserDefaults at each replaceTools call
+            // so a newly-created storage actor picks up approvals from prior app
+            // sessions. We check every incoming tool so freshly-reconnected servers
+            // inherit durable approvals without requiring a re-prompt.
+            let store = MCPPersistentToolApprovalStore.shared
+            for tool in tools {
+                let stableKey = stableToolKey(for: tool.namespacedName)
+                if store.isApproved(serverID: serverID, toolName: stableKey) {
+                    approvedToolNames.insert(stableKey)
+                }
+            }
         }
 
         let previousExecutors = executorsByStableKey
@@ -416,10 +425,10 @@ private actor MCPToolSourceStorage {
             case .persistentForTool:
                 approvedToolNames.subtract(updatedKeys)
                 approvedToolNames.subtract(removedKeys)
-                await MCPPersistentToolApprovalStore.shared.revoke(
-                    toolNames: Array(updatedKeys.union(removedKeys)),
-                    for: serverID
-                )
+                let store = MCPPersistentToolApprovalStore.shared
+                for toolName in updatedKeys.union(removedKeys) {
+                    store.revoke(serverID: serverID, toolName: toolName)
+                }
             }
         }
 
@@ -457,7 +466,7 @@ private actor MCPToolSourceStorage {
                 let stableName = stableToolKey(for: toolName)
                 approvedToolNames.insert(stableName)
                 if approvalPolicy == .persistentForTool {
-                    await MCPPersistentToolApprovalStore.shared.markApproved(toolName: stableName, for: serverID)
+                    MCPPersistentToolApprovalStore.shared.approve(serverID: serverID, toolName: stableName)
                 }
             }
         }
@@ -477,12 +486,12 @@ private actor MCPToolSourceStorage {
                 let stableName = stableToolKey(for: toolName)
                 approvedToolNames.remove(stableName)
                 if approvalPolicy == .persistentForTool {
-                    await MCPPersistentToolApprovalStore.shared.revoke(toolName: stableName, for: serverID)
+                    MCPPersistentToolApprovalStore.shared.revoke(serverID: serverID, toolName: stableName)
                 }
             } else {
                 approvedToolNames.removeAll()
                 if approvalPolicy == .persistentForTool {
-                    await MCPPersistentToolApprovalStore.shared.revokeAll(for: serverID)
+                    MCPPersistentToolApprovalStore.shared.revokeAll(serverID: serverID)
                 }
             }
         }
@@ -517,31 +526,47 @@ private actor MCPToolSourceStorage {
     }
 }
 
-private actor MCPPersistentToolApprovalStore {
-    static let shared = MCPPersistentToolApprovalStore()
+// Internal so tests can instantiate directly with an isolated UserDefaults suite.
+//
+// Not an actor: UserDefaults is internally thread-safe (CFPreferences-backed), so
+// there is no shared mutable state here that requires actor isolation. Making this
+// a struct with @unchecked Sendable lets callers construct instances without
+// crossing Swift 6 region-isolation boundaries — which actor inits would require
+// for a non-Sendable UserDefaults argument.
+internal struct MCPPersistentToolApprovalStore: @unchecked Sendable {
+    static let shared = MCPPersistentToolApprovalStore(defaults: .standard)
 
-    private var approvedByServer: [UUID: Set<String>] = [:]
+    private let defaults: UserDefaults
+    private static let keyPrefix = "com.manifoldkit.mcp.tool.approval."
 
-    func approvedToolNames(for serverID: UUID) -> Set<String> {
-        approvedByServer[serverID, default: []]
+    // No default value for `defaults` — call site must supply explicitly.
+    // Do NOT add `= .standard` here; injected UserDefaults required for
+    // parallel-test isolation per CLAUDE.md convention (cf. #734, #761).
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
     }
 
-    func markApproved(toolName: String, for serverID: UUID) {
-        approvedByServer[serverID, default: []].insert(toolName)
+    func isApproved(serverID: UUID, toolName: String) -> Bool {
+        defaults.bool(forKey: key(serverID, toolName))
     }
 
-    func revoke(toolName: String, for serverID: UUID) {
-        approvedByServer[serverID, default: []].remove(toolName)
+    func approve(serverID: UUID, toolName: String) {
+        defaults.set(true, forKey: key(serverID, toolName))
     }
 
-    func revoke(toolNames: [String], for serverID: UUID) {
-        for name in toolNames {
-            approvedByServer[serverID, default: []].remove(name)
+    func revoke(serverID: UUID, toolName: String) {
+        defaults.removeObject(forKey: key(serverID, toolName))
+    }
+
+    func revokeAll(serverID: UUID) {
+        let prefix = "\(Self.keyPrefix)\(serverID.uuidString.lowercased())."
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            defaults.removeObject(forKey: key)
         }
     }
 
-    func revokeAll(for serverID: UUID) {
-        approvedByServer[serverID] = []
+    private func key(_ serverID: UUID, _ toolName: String) -> String {
+        "\(Self.keyPrefix)\(serverID.uuidString.lowercased()).\(toolName)"
     }
 }
 
