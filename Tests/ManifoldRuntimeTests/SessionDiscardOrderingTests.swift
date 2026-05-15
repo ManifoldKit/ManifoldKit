@@ -15,6 +15,15 @@ import ManifoldTestSupport
 @MainActor
 final class SessionDiscardOrderingTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        // 50-cycle stress test — too slow for per-PR CI. Nightly sets RUN_SLOW_TESTS=1.
+        try? XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_SLOW_TESTS"] == "1",
+            "Stress test — set RUN_SLOW_TESTS=1 to run (nightly CI)"
+        )
+    }
+
     /// In-memory MessageStore mirror of the fake used by ConversationRuntimeTests.
     /// Re-stated here to keep this file self-contained — these stress tests
     /// drive thousands of writes and benefit from a fixture they own.

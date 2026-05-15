@@ -91,6 +91,8 @@ jobs:
             --disable-default-traits --skip-update --min-passed 1
           scripts/test.sh --filter "ManifoldRuntimeTests.SoakRunnerTests" \
             --disable-default-traits --skip-update --min-passed 1
+          scripts/test.sh --filter "ManifoldRuntimeTests.SessionDiscardOrderingTests" \
+            --disable-default-traits --skip-update --min-passed 1
 
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so

@@ -397,9 +397,14 @@ final class MCPHardeningTests: XCTestCase {
         // We test MCPRedirectCapDelegate directly because MockURLProtocol delivers
         // responses at the URLProtocol layer before URLSession's redirect machinery
         // fires the task delegate.
+        //
+        // MCPRedirectCapDelegate calls completionHandler synchronously, so no
+        // XCTestExpectation is needed. Using wait(for:timeout:) inside
+        // invokeWithAsynchronousWait (XCTest 16 / macOS 26) causes a run-loop
+        // deadlock — the timeout never fires.
 
         let delegate = MCPRedirectCapDelegate()
-        let session = URLSession.shared
+        let session = makeSyncSafeSession()
         let fakeHTTPResponse = HTTPURLResponse(
             url: URL(string: "https://auth.example.com/token")!,
             statusCode: 302,
@@ -412,29 +417,19 @@ final class MCPHardeningTests: XCTestCase {
         var firstResult: URLRequest?
         var secondResult: URLRequest?
 
-        let exp1 = expectation(description: "first redirect callback")
         delegate.urlSession(
             session,
             task: session.dataTask(with: URLRequest(url: URL(string: "https://auth.example.com/token")!)),
             willPerformHTTPRedirection: fakeHTTPResponse,
             newRequest: firstRequest
-        ) { req in
-            firstResult = req
-            exp1.fulfill()
-        }
-        wait(for: [exp1], timeout: 1)
+        ) { req in firstResult = req }
 
-        let exp2 = expectation(description: "second redirect callback")
         delegate.urlSession(
             session,
             task: session.dataTask(with: URLRequest(url: URL(string: "https://redirect1.example.com/token")!)),
             willPerformHTTPRedirection: fakeHTTPResponse,
             newRequest: secondRequest
-        ) { req in
-            secondResult = req
-            exp2.fulfill()
-        }
-        wait(for: [exp2], timeout: 1)
+        ) { req in secondResult = req }
 
         // First redirect is allowed.
         XCTAssertNotNil(firstResult, "First redirect should be followed")
@@ -447,7 +442,7 @@ final class MCPHardeningTests: XCTestCase {
             maxRedirects: nil,
             validator: MCPSSRFPolicy.validateTransportRedirectURL
         )
-        let session = URLSession.shared
+        let session = makeSyncSafeSession()
         let fakeHTTPResponse = HTTPURLResponse(
             url: URL(string: "https://api.example.com/mcp")!,
             statusCode: 302,
@@ -457,23 +452,19 @@ final class MCPHardeningTests: XCTestCase {
         let blockedRequest = URLRequest(url: URL(string: "https://192.168.1.20/mcp")!)
         var result: URLRequest?
 
-        let exp = expectation(description: "redirect validation callback")
         delegate.urlSession(
             session,
             task: session.dataTask(with: URLRequest(url: URL(string: "https://api.example.com/mcp")!)),
             willPerformHTTPRedirection: fakeHTTPResponse,
             newRequest: blockedRequest
-        ) { request in
-            result = request
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 1)
+        ) { request in result = request }
+
         XCTAssertNil(result, "Redirect to private-resolving host must be blocked")
     }
 
     func test_ssrf_redirect_validation_blocksOAuthDestination() {
         let delegate = MCPRedirectCapDelegate(validator: MCPSSRFPolicy.validateOAuthRedirectURL)
-        let session = URLSession.shared
+        let session = makeSyncSafeSession()
         let fakeHTTPResponse = HTTPURLResponse(
             url: URL(string: "https://auth.example.com/token")!,
             statusCode: 302,
@@ -483,17 +474,13 @@ final class MCPHardeningTests: XCTestCase {
         let blockedRequest = URLRequest(url: URL(string: "https://[fd00::1]/token")!)
         var result: URLRequest?
 
-        let exp = expectation(description: "oauth redirect validation callback")
         delegate.urlSession(
             session,
             task: session.dataTask(with: URLRequest(url: URL(string: "https://auth.example.com/token")!)),
             willPerformHTTPRedirection: fakeHTTPResponse,
             newRequest: blockedRequest
-        ) { request in
-            result = request
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 1)
+        ) { request in result = request }
+
         XCTAssertNil(result, "OAuth redirect to private-resolving host must be blocked")
     }
 
@@ -510,7 +497,7 @@ final class MCPHardeningTests: XCTestCase {
             maxRedirects: 3,
             validator: { _ in }
         )
-        let session = URLSession.shared
+        let session = makeSyncSafeSession()
         let fakeHTTPResponse = HTTPURLResponse(
             url: URL(string: "https://example.com/mcp")!,
             statusCode: 302,
@@ -521,18 +508,13 @@ final class MCPHardeningTests: XCTestCase {
 
         var results: [URLRequest?] = []
 
-        for i in 1...4 {
-            let exp = expectation(description: "redirect hop \(i)")
+        for _ in 1...4 {
             delegate.urlSession(
                 session,
                 task: session.dataTask(with: fakeHTTPResponse.url.map { URLRequest(url: $0) }!),
                 willPerformHTTPRedirection: fakeHTTPResponse,
                 newRequest: hopRequest
-            ) { req in
-                results.append(req)
-                exp.fulfill()
-            }
-            wait(for: [exp], timeout: 1)
+            ) { req in results.append(req) }
         }
 
         XCTAssertNotNil(results[0], "Hop 1 should be allowed")
@@ -682,6 +664,18 @@ final class MCPHardeningTests: XCTestCase {
         return URLSession(configuration: configuration)
     }
 
+    /// Returns a URLSession backed by `AlwaysInterceptURLProtocol` so that
+    /// `dataTask(with:)` never triggers real CFNetwork initialization.
+    /// Use this in synchronous delegation tests — `MCPRedirectCapDelegate` calls
+    /// its completionHandler synchronously, so no XCTestExpectation is needed and
+    /// `wait(for:timeout:)` must not be called (it deadlocks inside
+    /// XCTest 16's `invokeWithAsynchronousWait` on macOS 26).
+    private func makeSyncSafeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AlwaysInterceptURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
     private func makeDescriptor(issuer: URL?) -> MCPAuthorizationDescriptor.OAuthDescriptor {
         MCPAuthorizationDescriptor.OAuthDescriptor(
             clientName: "ManifoldKit",
@@ -827,5 +821,20 @@ private actor HangingSessionTransport: MCPTransport {
 /// through `MCPOAuthAuthorization` (which is an actor requiring async context).
 func bearerRedactedForTest(_ data: Data) -> String {
     mcpBearerRedacted(data)
+}
+
+// MARK: - AlwaysInterceptURLProtocol
+
+/// A URLProtocol that always claims to handle any request. Used in tests that
+/// call URLSession.dataTask(with:) only to get a task *handle* for a delegate
+/// method — never actually resuming the task. Using this prevents real CFNetwork
+/// initialization which on macOS 26 blocks the run loop during wait(for:timeout:).
+private final class AlwaysInterceptURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
+    }
+    override func stopLoading() {}
 }
 #endif

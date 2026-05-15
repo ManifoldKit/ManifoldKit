@@ -42,7 +42,11 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .claude:
             return ClaudePayloadParsingDispatch.extractToken(from: payload)
         case .ollama:
+            #if Ollama
             return OllamaPayloadParsingDispatch.extractToken(from: payload)
+            #else
+            return nil
+            #endif
         }
     }
 
@@ -55,7 +59,11 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .claude:
             return ClaudePayloadParsingDispatch.extractEvents(from: payload)
         case .ollama:
+            #if Ollama
             return OllamaPayloadParsingDispatch.extractEvents(from: payload)
+            #else
+            return []
+            #endif
         }
     }
 
@@ -68,7 +76,11 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .claude:
             return ClaudePayloadParsingDispatch.extractUsage(from: payload)
         case .ollama:
+            #if Ollama
             return OllamaPayloadParsingDispatch.extractUsage(from: payload)
+            #else
+            return nil
+            #endif
         }
     }
 
@@ -142,6 +154,7 @@ enum ClaudePayloadParsingDispatch {
     }
 }
 
+#if Ollama
 enum OllamaPayloadParsingDispatch {
     static func extractToken(from payload: String) -> String? {
         OllamaPayloadParser.extractToken(from: payload)
@@ -170,6 +183,7 @@ enum OllamaPayloadParsingDispatch {
         )
     }
 }
+#endif
 
 enum OpenAIResponsesPayloadParsing {
     static func extractToken(from payload: String) -> String? {

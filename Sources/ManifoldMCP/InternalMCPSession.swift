@@ -1,5 +1,6 @@
 import Foundation
 import ManifoldInference
+import os
 
 internal enum MCPSessionState: Sendable, Equatable {
     case idle
@@ -250,20 +251,40 @@ internal actor MCPSession {
         _ timeout: Duration,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw MCPError.requestTimeout
+        // Use unstructured tasks so the timeout race doesn't wait for the operation
+        // task to drain. withThrowingTaskGroup waits for ALL child tasks on exit;
+        // if the operation is suspended in withCheckedThrowingContinuation (awaiting
+        // a server response that never arrives), Swift 6.2 does not automatically
+        // resume it with CancellationError, causing an indefinite hang.
+        try await withCheckedThrowingContinuation { continuation in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+
+            func tryResume(_ body: @Sendable () -> Void) {
+                let shouldResume = resumed.withLock { flag -> Bool in
+                    guard !flag else { return false }
+                    flag = true
+                    return true
+                }
+                if shouldResume { body() }
             }
 
-            guard let result = try await group.next() else {
-                throw MCPError.requestTimeout
+            Task {
+                do {
+                    let value = try await operation()
+                    tryResume { continuation.resume(returning: value) }
+                } catch {
+                    tryResume { continuation.resume(throwing: error) }
+                }
             }
-            group.cancelAll()
-            return result
+
+            Task {
+                do {
+                    try await Task.sleep(for: timeout)
+                } catch {
+                    return
+                }
+                tryResume { continuation.resume(throwing: MCPError.requestTimeout) }
+            }
         }
     }
 }

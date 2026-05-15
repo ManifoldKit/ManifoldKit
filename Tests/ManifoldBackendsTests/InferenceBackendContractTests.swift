@@ -131,7 +131,8 @@ final class InferenceBackendContractTests: XCTestCase {
             supportsParallelToolCalls: true,
             supportsGuidedStructuredOutput: true,
             sharesMLXProcessResources: false
-        )
+        ),
+        wireFormat: .sse
     )
 
     #if Ollama
@@ -207,7 +208,8 @@ final class InferenceBackendContractTests: XCTestCase {
             supportsParallelToolCalls: true,
             supportsGuidedStructuredOutput: false,
             sharesMLXProcessResources: false
-        )
+        ),
+        wireFormat: .sse
     )
 
     private static let participants: [Participant] = {
@@ -277,9 +279,11 @@ final class InferenceBackendContractTests: XCTestCase {
             case "openai.responses":
                 let shape = OpenAIResponsesItemIdToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
+            #if Ollama
             case "ollama.chat":
                 let shape = OllamaWholeToolCalls()
                 XCTAssertEqual(shape.shapeName, "ollama.whole")
+            #endif
             case "anthropic.messages":
                 let shape = AnthropicBlockToolCalls()
                 XCTAssertEqual(shape.shapeName, "anthropic.block")

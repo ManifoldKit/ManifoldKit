@@ -68,6 +68,7 @@ final class SwiftTestingAuditTest: XCTestCase {
         "ManifoldBackendsTests/OllamaBackendTests.swift",
         "ManifoldBackendsTests/OpenAICompatEndpointTests.swift",
         "ManifoldBackendsTests/SecureBytesTests.swift",
+        "ManifoldBackendsTests/SSECloudBackendAdapterRoutingTests.swift",
         "ManifoldBackendsTests/SSEExtractEventsTests.swift",
     ]
 

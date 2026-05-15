@@ -75,15 +75,20 @@ final class WithTimeoutTests: XCTestCase {
     // MARK: - Non-cancellation-aware hang
 
     func test_withTimeout_throwsOnNonCancellationAwareHang() async {
-        // withCheckedContinuation never resumes unless the caller explicitly does
-        // so — it does not unblock on Task cancellation. This simulates operations
-        // like UIToolApprovalGate.awaitDecision that wait on external state.
-        let timeout: Duration = .seconds(1)
+        // Use a DispatchSemaphore to model a gate that doesn't check Swift
+        // cancellation (e.g. UIToolApprovalGate.awaitDecision awaiting user input).
+        // The latch is signalled 1.5 s from now so the continuation eventually
+        // resumes — preventing a permanently-leaked Task that would block the
+        // test process from exiting cleanly (manifests as an 11-min CI hang).
+        let latch = DispatchSemaphore(value: 0)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { latch.signal() }
 
+        let timeout: Duration = .seconds(1)
         do {
             _ = try await withTimeout(timeout) {
-                try await withCheckedThrowingContinuation { (_: CheckedContinuation<Int, Error>) in
-                    // Intentionally never resume — models a gate awaiting user input.
+                await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
+                    latch.wait()       // blocks until latch fires (~1.5 s from now)
+                    cont.resume(returning: 0)
                 }
             }
             XCTFail("Expected TimeoutError.timedOut but operation returned a value")
