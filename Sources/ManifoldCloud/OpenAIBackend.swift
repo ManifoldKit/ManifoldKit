@@ -66,7 +66,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // `self.buildRequest`). The adapter itself remains the
         // composition root the cross-backend audit recognises.
         self.adapter = OpenAIAdapter(
-            capabilities: Self.defaultAdapterCapabilities,
+            capabilities: Self.capabilities(forModelName: "gpt-4o-mini", contextWindow: nil),
             requestBuilder: { _, _, _, _ in
                 throw CloudBackendError.invalidURL(
                     "OpenAIAdapter.requestBuilder is not the live path; the OpenAIBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
@@ -114,28 +114,46 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         self.configure(adapterRouting: routing)
     }
 
-    /// Static adapter capabilities used at init time. Mirrors the dynamic
-    /// `capabilities` property's values for `gpt-4o-mini` so the adapter
-    /// composition is valid immediately. The dynamic property remains the
-    /// authoritative source once a real `modelName` is configured.
-    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
-        supportedParameters: [.temperature, .topP],
-        maxContextTokens: 128_000,
-        requiresPromptTemplate: false,
-        supportsSystemPrompt: true,
-        supportsToolCalling: true,
-        supportsStructuredOutput: true,
-        supportsNativeJSONMode: true,
-        cancellationStyle: .cooperative,
-        supportsTokenCounting: false,
-        memoryStrategy: .external,
-        maxOutputTokens: 16_384,
-        supportsStreaming: true,
-        isRemote: true,
-        supportsVision: true,
-        streamsToolCallArguments: true,
-        supportsParallelToolCalls: true
-    )
+    /// Single source of truth for the OpenAI Chat Completions
+    /// `BackendCapabilities` value. Keyed on `modelName` so vision support
+    /// can flip per-model; an explicit `contextWindow` override threads in
+    /// the manifest-resolved value when the dynamic property runs.
+    private static func capabilities(
+        forModelName modelName: String,
+        contextWindow: Int?
+    ) -> BackendCapabilities {
+        BackendCapabilities(
+            supportedParameters: [.temperature, .topP],
+            maxContextTokens: Int32(contextWindow ?? 128_000),
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            // Chat Completions tool calling: the request encodes BCK
+            // ``ToolDefinition``s into OpenAI's `tools[]` envelope, the
+            // streaming response delivers `tool_calls[]` deltas keyed by
+            // `index`, and the backend buffers them so consumers see a clean
+            // `.toolCallStart` → N×`.toolCallArgumentsDelta` → `.toolCall`
+            // sequence per call.
+            supportsToolCalling: true,
+            supportsStructuredOutput: true,
+            supportsNativeJSONMode: true,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 16_384,
+            supportsStreaming: true,
+            isRemote: true,
+            // Vision support is gated on the configured model name. OpenAI's
+            // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
+            // accept `image_url` content parts; older completions-only models
+            // do not. ``GenerationQueue``'s pre-flight reads this flag and
+            // rejects image attachments before we ever build a request, so a
+            // non-vision model surfaces a clear local error rather than a 400
+            // from upstream.
+            supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
+            streamsToolCallArguments: true,
+            supportsParallelToolCalls: true
+        )
+    }
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
@@ -167,40 +185,14 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     }
 
     public override var capabilities: BackendCapabilities {
-        // Derive the wire-relevant context window from the manifest produced
-        // at loadModel-time; fall back to OpenAI's mainstream 128k when the
-        // host configured a model name we don't recognise.
-        let resolvedContext = Int32(manifest?.contextWindow ?? 128_000)
-        return BackendCapabilities(
-            supportedParameters: [.temperature, .topP],
-            maxContextTokens: resolvedContext,
-            requiresPromptTemplate: false,
-            supportsSystemPrompt: true,
-            // Chat Completions tool calling: the request encodes BCK
-            // ``ToolDefinition``s into OpenAI's `tools[]` envelope, the
-            // streaming response delivers `tool_calls[]` deltas keyed by
-            // `index`, and the backend buffers them so consumers see a clean
-            // `.toolCallStart` → N×`.toolCallArgumentsDelta` → `.toolCall`
-            // sequence per call.
-            supportsToolCalling: true,
-            supportsStructuredOutput: true,
-            supportsNativeJSONMode: true,
-            cancellationStyle: .cooperative,
-            supportsTokenCounting: false,
-            memoryStrategy: .external,
-            maxOutputTokens: 16_384,
-            supportsStreaming: true,
-            isRemote: true,
-            // Vision support is gated on the configured model name. OpenAI's
-            // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
-            // accept `image_url` content parts; older completions-only models
-            // do not. ``GenerationQueue``'s pre-flight reads this flag
-            // and rejects image attachments before we ever build a request,
-            // so a non-vision model surfaces a clear local error rather than
-            // a 400 from upstream.
-            supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
-            streamsToolCallArguments: true,
-            supportsParallelToolCalls: true
+        // Single factory call so the init-time adapter capabilities and the
+        // dynamic capabilities can't drift. Context window is resolved from
+        // the manifest produced at loadModel-time; the factory falls back to
+        // OpenAI's mainstream 128k when the configured model name doesn't
+        // prefix-match the manifest table.
+        Self.capabilities(
+            forModelName: modelName,
+            contextWindow: manifest?.contextWindow
         )
     }
 
