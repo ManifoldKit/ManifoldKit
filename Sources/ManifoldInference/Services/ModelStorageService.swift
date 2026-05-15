@@ -215,17 +215,34 @@ public final class ModelStorageService: @unchecked Sendable {
     /// Copies a model file into the models directory.
     ///
     /// Used for Mac drag-and-drop import. Returns the destination URL.
+    ///
+    /// Validates the filename and resolves symlinks before checking containment
+    /// so a crafted symlink or path-traversal component cannot escape the models
+    /// directory boundary.
     @discardableResult
     public func importModel(from sourceURL: URL) throws -> URL {
-        try ensureModelsDirectory()
-        let destination = modelsDirectory.appendingPathComponent(sourceURL.lastPathComponent)
-
-        if fileManager.fileExists(atPath: destination.path) {
-            try fileManager.removeItem(at: destination)
+        let fileName = sourceURL.lastPathComponent
+        guard !fileName.isEmpty else {
+            throw HuggingFaceError.invalidDownloadedFile(
+                reason: "Cannot import a URL with an empty last path component"
+            )
         }
-        try fileManager.copyItem(at: sourceURL, to: destination)
-        Log.download.info("Imported model: \(sourceURL.lastPathComponent)")
-        return destination
+        try DownloadableModel.validate(fileName: fileName)
+        try ensureModelsDirectory()
+        let destination = modelsDirectory.appendingPathComponent(fileName)
+        let resolvedDest = destination.resolvingSymlinksInPath()
+        let resolvedBase = modelsDirectory.resolvingSymlinksInPath()
+        guard resolvedDest.path.hasPrefix(resolvedBase.path + "/") else {
+            throw HuggingFaceError.invalidDownloadedFile(
+                reason: "Import path escapes models directory: \(fileName)"
+            )
+        }
+        if fileManager.fileExists(atPath: resolvedDest.path) {
+            try fileManager.removeItem(at: resolvedDest)
+        }
+        try fileManager.copyItem(at: sourceURL, to: resolvedDest)
+        Log.download.info("Imported model: \(fileName, privacy: .public)")
+        return resolvedDest
     }
 
     // MARK: - Disk Space

@@ -737,8 +737,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Validate that the resolved destination stays within the staging directory to
         // prevent path-traversal attacks via crafted relative paths from remote metadata.
         let destination = snapshot.stagingDirectory.appendingPathComponent(relativePath)
-        let resolvedDestination = destination.standardized
-        let resolvedStaging = snapshot.stagingDirectory.standardized
+        let resolvedDestination = destination.resolvingSymlinksInPath()
+        let resolvedStaging = snapshot.stagingDirectory.resolvingSymlinksInPath()
         guard resolvedDestination.path.hasPrefix(resolvedStaging.path + "/") else {
             try? FileManager.default.removeItem(at: tempURL)
             throw HuggingFaceError.invalidDownloadedFile(reason: "Snapshot file path escapes staging directory: \(relativePath)")
@@ -787,8 +787,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
         let finalFileName = packageModel?.fileName ?? snapshot.stagingDirectory.lastPathComponent
         let finalURL = storageService.modelsDirectory.appendingPathComponent(finalFileName)
-        let resolvedFinalURL = finalURL.standardized
-        let resolvedModelsDir = storageService.modelsDirectory.standardized
+        let resolvedFinalURL = finalURL.resolvingSymlinksInPath()
+        let resolvedModelsDir = storageService.modelsDirectory.resolvingSymlinksInPath()
         guard resolvedFinalURL.path.hasPrefix(resolvedModelsDir.path + "/") else {
             throw HuggingFaceError.invalidDownloadedFile(reason: "Model filename escapes models directory: \(finalFileName)")
         }

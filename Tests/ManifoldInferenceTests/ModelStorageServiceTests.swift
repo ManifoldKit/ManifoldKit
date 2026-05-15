@@ -530,6 +530,37 @@ final class ModelStorageServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - importModel path-safety (SEC-03)
+
+    func test_importModel_throwsForEmptyLastPathComponent() throws {
+        // A URL with no path component (e.g. "file://") produces an empty
+        // lastPathComponent — importModel must reject it before touching the
+        // filesystem so no file lands at an unvalidated destination.
+        let emptyComponentURL = URL(string: "file://")!
+        XCTAssertThrowsError(try service.importModel(from: emptyComponentURL)) { error in
+            guard let hfError = error as? HuggingFaceError,
+                  case .invalidDownloadedFile = hfError else {
+                XCTFail("Expected HuggingFaceError.invalidDownloadedFile for empty component, got \(error)")
+                return
+            }
+        }
+    }
+
+    func test_importModel_throwsForPathTraversalFilename() throws {
+        // A URL whose lastPathComponent is ".." must be rejected by
+        // DownloadableModel.validate before any filesystem access. This prevents
+        // a crafted drag-and-drop import from escaping the models directory.
+        // URL(string:) does not normalize ".." in the path, so lastPathComponent
+        // is the literal string "..".
+        let traversalURL = URL(string: "file:///tmp/models/..")!
+        XCTAssertThrowsError(try service.importModel(from: traversalURL)) { error in
+            // validate(fileName:) throws FileNameError.pathTraversal (internal type),
+            // not HuggingFaceError — any thrown error satisfies the contract.
+            // The important guarantee is that no file is written.
+            _ = error
+        }
+    }
+
     // MARK: - availableDiskSpace
 
     func test_availableDiskSpace_returnsNonZero() {
