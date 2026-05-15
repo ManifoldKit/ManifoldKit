@@ -101,12 +101,6 @@ public struct ManifoldConfiguration: Sendable {
     /// Truncated (not rejected) to avoid embedding runaway on long messages.
     public var maxRAGQueryBytes: Int = 8_000             // 8 KB
 
-    /// Maximum UTF-8 byte length of an MCP tool name received from a server.
-    public var maxMCPToolNameBytes: Int = 256
-
-    /// Maximum UTF-8 byte length of an MCP tool description received from a server.
-    public var maxMCPToolDescriptionBytes: Int = 4_096   // 4 KB
-
     /// Maximum HTTP request body size accepted by ManifoldServer.
     public var maxServerRequestBodyBytes: Int = 4_194_304 // 4 MB
 

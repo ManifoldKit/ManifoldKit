@@ -6,12 +6,42 @@ import ManifoldInference
 /// Base class for cloud inference backends that stream responses via Server-Sent Events.
 ///
 /// Centralises the stream lifecycle, task management, exponential backoff retry,
-/// SSE parsing, and thread-safe state management that OpenAI and Claude
-/// backends share. Concrete backends supply API-specific request building,
-/// capability declarations, and an ``SSEPayloadHandler`` for token extraction.
+/// framing, and thread-safe state management that OpenAI, Claude, OpenAI
+/// Responses, and Ollama backends share.
+///
+/// ### Dual-path behavior
+///
+/// `SSECloudBackend` supports two routing modes:
+///
+/// 1. **Legacy path** (no adapter routing configured): concrete subclasses
+///    override `buildRequest`, `parseResponseStream`, `extractErrorMessage`
+///    and the base class wires `SSEStreamParser` directly. The subclass-
+///    injected ``payloadHandler`` (set at init) drives event extraction.
+///    All shipping backends are on this path today.
+///
+/// 2. **Adapter-routed path** (``adapterRouting`` configured via
+///    ``configure(adapterRouting:)``): the envelope delegates
+///    request building to ``CloudAdapterRouting/buildRequest``, framing to
+///    ``CloudAdapterRouting/framedTransport``, event extraction to the
+///    routing's ``CloudAdapterRouting/payloadHandler``, stream finalization
+///    to ``CloudAdapterRouting/streamFinalizer``, and error-body decoding
+///    to ``CloudAdapterRouting/errorBodyDecoder``. Subclasses become thin
+///    hosts that compose an adapter, project it into a routing, and stop
+///    branching on the provider.
+///
+/// The two paths coexist by design — Phase 2/B widens the envelope; later
+/// phases migrate each backend onto the new path one PR at a time. The
+/// legacy hooks (`buildRequest`, `parseResponseStream`, etc.) remain on
+/// the class for source compatibility.
+///
+/// ### Concurrency
 ///
 /// Thread safety uses `NSLock` (via ``withStateLock(_:)``) rather than
-/// `@unchecked Sendable` on each subclass individually.
+/// `@unchecked Sendable` on each subclass individually. The
+/// `@unchecked Sendable` here is an *envelope* guarantee: the base class
+/// serialises access to mutable state under the state lock. Adapters
+/// composed into this envelope must not propagate the unchecked label —
+/// they are value types and Sendable by virtue of their stored witnesses.
 open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Lock
@@ -100,7 +130,28 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     ///
     /// Injected at initialisation so the compiler enforces its presence — no
     /// runtime crash for forgotten overrides.
+    ///
+    /// > Note: When ``adapterRouting`` is configured, the adapter-routed
+    /// > path uses ``CloudAdapterRouting/payloadHandler`` instead. This
+    /// > property remains the legacy-path default so existing subclasses
+    /// > continue to compile and run unchanged.
     public let payloadHandler: any SSEPayloadHandler
+
+    private var _adapterRouting: CloudAdapterRouting?
+
+    /// Adapter routing for backends composed via `CloudHTTPProviderAdapter`.
+    ///
+    /// When non-nil, ``generate(prompt:systemPrompt:config:)`` routes
+    /// request building, framing, payload handling, stream finalization,
+    /// and error-body decoding through the routing's witnesses instead of
+    /// the legacy subclass-override path.
+    ///
+    /// Setter goes through the state lock so the value-type swap is
+    /// observed atomically across the generation pipeline.
+    public var adapterRouting: CloudAdapterRouting? {
+        get { withStateLock { _adapterRouting } }
+        set { withStateLock { _adapterRouting = newValue } }
+    }
 
     /// The retry strategy used for HTTP connection failures. Defaults to
     /// ``ExponentialBackoffStrategy`` with standard settings. Inject a
@@ -281,6 +332,15 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         configure(baseURL: baseURL, apiKey: nil, modelName: modelName)
     }
 
+    /// Installs adapter routing for the backend.
+    ///
+    /// After this call, ``generate(prompt:systemPrompt:config:)`` routes
+    /// through the supplied routing's witnesses instead of the legacy
+    /// subclass-override path. Pass `nil` to revert to the legacy path.
+    public func configure(adapterRouting routing: CloudAdapterRouting?) {
+        withStateLock { _adapterRouting = routing }
+    }
+
     /// Retrieves the API key from Keychain or ephemeral storage.
     public func resolveAPIKey() -> String? {
         let (account, ephemeral) = withStateLock { (_keychainAccount, _ephemeralAPIKey?.stringValue) }
@@ -364,11 +424,19 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
 
         try validateGenerationConfig(config)
 
-        let request = try buildRequest(
-            prompt: prompt,
-            systemPrompt: systemPrompt,
-            config: config
-        )
+        // Adapter-routed path: delegate request building to the routing's
+        // closure. Legacy path: subclass override of `buildRequest`.
+        let routingSnapshot = withStateLock { _adapterRouting }
+        let request: URLRequest
+        if let routing = routingSnapshot {
+            request = try routing.buildRequest(prompt, systemPrompt, config)
+        } else {
+            request = try buildRequest(
+                prompt: prompt,
+                systemPrompt: systemPrompt,
+                config: config
+            )
+        }
 
         let genID = withStateLock {
             _generationID += 1
@@ -501,7 +569,105 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         config: GenerationConfig,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
     ) async throws {
+        if let routing = withStateLock({ _adapterRouting }) {
+            try await parseResponseStreamRouted(
+                routing: routing,
+                bytes: bytes,
+                continuation: continuation
+            )
+            return
+        }
         try await parseResponseStream(bytes: bytes, continuation: continuation)
+    }
+
+    /// Adapter-routed stream loop. Drives the routing's
+    /// ``CloudAdapterRouting/framedTransport`` to split bytes into frames,
+    /// consults ``CloudAdapterRouting/payloadHandler`` for token / usage /
+    /// error extraction, and lets ``CloudAdapterRouting/streamFinalizer``
+    /// declare termination + carry terminal usage / stop-reason metadata.
+    ///
+    /// Subclasses do not override this — they install a routing via
+    /// ``configure(adapterRouting:)`` instead. The method is `private`
+    /// because the public hook is `parseResponseStream(bytes:config:continuation:)`,
+    /// which dispatches into here when a routing is configured.
+    private func parseResponseStreamRouted(
+        routing: CloudAdapterRouting,
+        bytes: URLSession.AsyncBytes,
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+    ) async throws {
+        let handler = routing.payloadHandler
+        let finalizer = routing.streamFinalizer
+        var wasThinking = false
+
+        for await frame in routing.framedTransport.frames(from: bytes) {
+            if Task.isCancelled { break }
+
+            // Decode the frame as UTF-8 for the payload handler API, which
+            // operates on `String`. `FramedTransport` ships `Data` so binary
+            // bytes survive transport intact; the handler chooses how to
+            // interpret. Empty / non-UTF-8 frames skip event extraction
+            // but still get inspected by the finalizer below in case the
+            // termination signal is binary.
+            let payload = String(data: frame, encoding: .utf8) ?? ""
+
+            if !payload.isEmpty {
+                for event in handler.extractEvents(from: payload) {
+                    switch event {
+                    case .thinkingToken:
+                        wasThinking = true
+                        continuation.yield(event)
+                    case .thinkingComplete:
+                        wasThinking = false
+                        continuation.yield(event)
+                    case .token:
+                        if wasThinking {
+                            continuation.yield(.thinkingComplete)
+                            wasThinking = false
+                        }
+                        continuation.yield(event)
+                    default:
+                        continuation.yield(event)
+                    }
+                }
+
+                if let usage = handler.extractUsage(from: payload) {
+                    handleUsage(usage)
+                    if let prompt = usage.promptTokens,
+                       let completion = usage.completionTokens {
+                        continuation.yield(.usage(prompt: prompt, completion: completion))
+                    }
+                }
+
+                if let error = handler.extractStreamError(from: payload) {
+                    throw error
+                }
+            }
+
+            // Finalizer takes precedence over the handler's `isStreamEnd`
+            // boolean — it's the richer signal (carries usage + stop
+            // reason on the terminal frame).
+            if case .streamComplete(let usage, _) = finalizer.finalize(frame: frame) {
+                if let usage,
+                   let prompt = usage.promptTokens,
+                   let completion = usage.completionTokens {
+                    // Bridge the finalizer's `TokenUsage` shape into
+                    // `handleUsage` so subclasses that override usage
+                    // merging (Claude's split prompt/completion) still see
+                    // the terminal payload.
+                    handleUsage((promptTokens: prompt, completionTokens: completion))
+                    continuation.yield(.usage(prompt: prompt, completion: completion))
+                }
+                break
+            }
+
+            // Fall back to the handler's stream-end boolean for
+            // backends whose finalizer isn't authoritative on every
+            // frame (e.g. providers where the stop sentinel is the
+            // SSE `[DONE]` marker rather than a JSON field).
+            if !payload.isEmpty, handler.isStreamEnd(payload) {
+                break
+            }
+        }
     }
 
     /// Legacy overload retained for backward compatibility with subclasses
@@ -633,7 +799,10 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// as well as flat `{"message":"..."}` and `{"detail":"..."}` shapes.
     /// Subclasses can override for provider-specific formats.
     open func extractErrorMessage(from body: String) -> String? {
-        parseCloudErrorMessage(from: body)
+        if let decoder = withStateLock({ _adapterRouting?.errorBodyDecoder }) {
+            return decoder.extractMessage(from: body)
+        }
+        return parseCloudErrorMessage(from: body)
     }
 
     // MARK: - State Mutation Helpers (for subclass use)
