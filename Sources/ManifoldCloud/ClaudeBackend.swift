@@ -26,7 +26,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         super.init(
             defaultModelName: "claude-sonnet-4-20250514",
             urlSession: urlSession ?? URLSessionProvider.pinned,
-            payloadHandler: ClaudePayloadHandler()
+            payloadHandler: CloudPayloadHandler.claude
         )
     }
 

@@ -99,7 +99,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         super.init(
             defaultModelName: "llama3.2",
             urlSession: urlSession ?? URLSessionProvider.unpinned,
-            payloadHandler: OllamaPayloadHandler()
+            payloadHandler: CloudPayloadHandler.ollama
         )
     }
 

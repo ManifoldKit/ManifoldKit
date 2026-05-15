@@ -38,7 +38,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         super.init(
             defaultModelName: "gpt-4o-mini",
             urlSession: urlSession ?? URLSessionProvider.pinned,
-            payloadHandler: OpenAIPayloadHandler()
+            payloadHandler: CloudPayloadHandler.openAI
         )
     }
 
@@ -563,18 +563,23 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     // MARK: - SSE Payload Handler
 
     /// OpenAI-specific SSE payload interpreter for use with `SSEStreamParser.streamTokens`.
-    static let payloadHandler = OpenAIPayloadHandler()
+    ///
+    /// Retained as a deprecated alias so external subclasses keep compiling.
+    /// New call sites use ``CloudPayloadHandler/openAI``, which dispatches
+    /// through ``legacyExtractToken(from:)`` / ``legacyExtractUsage(from:)``
+    /// below.
+    static let payloadHandler: any SSEPayloadHandler = CloudPayloadHandler.openAI
 
-    struct OpenAIPayloadHandler: SSEPayloadHandler {
-        func extractToken(from payload: String) -> String? {
-            OpenAIBackend.parseToken(from: payload)
-        }
-        func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-            guard let usage = OpenAIBackend.parseUsage(from: payload) else { return nil }
-            return (promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)
-        }
-        func isStreamEnd(_ payload: String) -> Bool { false }
-        func extractStreamError(from payload: String) -> Error? { nil }
+    /// Internal seam used by ``CloudPayloadHandler/openAI`` to read tokens
+    /// without exposing the originally-private parser.
+    static func legacyExtractToken(from payload: String) -> String? {
+        parseToken(from: payload)
+    }
+
+    /// Internal seam used by ``CloudPayloadHandler/openAI`` to read usage
+    /// without exposing the originally-private parser.
+    static func legacyExtractUsage(from payload: String) -> (promptTokens: Int, completionTokens: Int)? {
+        parseUsage(from: payload)
     }
 
     // MARK: - JSON Parsing
