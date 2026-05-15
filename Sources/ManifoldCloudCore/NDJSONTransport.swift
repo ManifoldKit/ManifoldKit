@@ -1,5 +1,6 @@
 #if Ollama || CloudSaaS
 import Foundation
+import ManifoldInference
 
 /// `FramedTransport` over newline-delimited JSON.
 ///
@@ -67,7 +68,9 @@ public struct NDJSONTransport: FramedTransport {
                     }
                 } catch {
                     // Transport error surfaces as stream termination per
-                    // the `FramedTransport` contract.
+                    // the `FramedTransport` contract. Log at debug so the
+                    // diagnostic signal is preserved.
+                    Log.network.debug("NDJSONTransport: byte stream terminated with \(error.localizedDescription, privacy: .public)")
                 }
                 continuation.finish()
             }

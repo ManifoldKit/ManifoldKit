@@ -45,7 +45,10 @@ public struct SSETransport: FramedTransport {
                     // SSEStreamError surfaces as stream termination per the
                     // `FramedTransport` contract; envelope-level error
                     // observation reads transport errors off the byte stream
-                    // separately.
+                    // separately. Log at debug so the diagnostic signal is
+                    // preserved without forcing every transport-level hiccup
+                    // to bubble up as a top-level error.
+                    Log.network.debug("SSETransport: parser terminated with \(error.localizedDescription, privacy: .public)")
                 }
                 continuation.finish()
             }
