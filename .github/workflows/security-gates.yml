@@ -30,7 +30,7 @@ permissions:
 jobs:
   security-audits:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout

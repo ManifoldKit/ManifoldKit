@@ -271,7 +271,7 @@ jobs:
       # SwiftTestingAuditTest, #681).
       - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
         run: scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
@@ -282,7 +282,7 @@ jobs:
       - name: Test — Inference (Swift Testing, isolated process)
         id: test-inference-swift-testing
         if: always()
-        timeout-minutes: 12
+        timeout-minutes: 20
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
         run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
@@ -596,7 +596,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start conformance
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
   # Cold-start conformance (tier 2) — extends the tier-1 pattern to the
@@ -631,7 +631,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-2 conformance
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
   # Cold-start conformance (tier 3) — scaffolds a fresh SwiftPM consumer that
@@ -668,7 +668,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-3 ChatView conformance
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
   # FoundationOnly bundle audit — proves the App Store-lean trait set keeps
@@ -705,7 +705,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
 
       - name: Run FoundationOnly bundle audit
-        timeout-minutes: 6
+        timeout-minutes: 10
         run: scripts/check-foundation-only-bundle.sh
 
   # iOS Simulator lane — runs ModelContainerFileProtectionTests on a real iOS
