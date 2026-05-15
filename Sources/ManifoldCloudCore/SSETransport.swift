@@ -21,15 +21,38 @@ import ManifoldInference
 /// > directly. Phase 2/B/ii will route the envelope through the adapter's
 /// > `framedTransport`.
 public struct SSETransport: FramedTransport {
-    private let limits: SSEStreamLimits
+    /// Resolves the `SSEStreamLimits` to apply for a given `frames(...)` call.
+    ///
+    /// A closure rather than a stored value is what lets per-instance host
+    /// overrides on ``SSECloudBackend/sseStreamLimits`` reach the
+    /// adapter-routed path. The legacy path reads `effectiveSSEStreamLimits`
+    /// live on every generation; mirroring that here removes the silent
+    /// divergence between the two paths.
+    private let limitsProvider: @Sendable () -> SSEStreamLimits
 
+    /// Construct a transport that resolves limits live from a host-supplied
+    /// provider on each stream. Pass a closure that reads the host's
+    /// per-instance override (e.g. `{ [weak backend] in
+    /// backend?.effectiveSSEStreamLimits ?? .init() }`) so test overrides
+    /// to `SSECloudBackend.sseStreamLimits` flow through to the parser.
+    public init(limitsProvider: @escaping @Sendable () -> SSEStreamLimits) {
+        self.limitsProvider = limitsProvider
+    }
+
+    /// Fixed-limits convenience initializer. Defaults to the
+    /// `ManifoldConfiguration.shared.sseStreamLimits` snapshot at construction
+    /// time. Use the `limitsProvider:` initializer when the limits source
+    /// can change after construction — that's the only shape that lets a
+    /// host's per-instance override reach the framed transport.
     public init(limits: SSEStreamLimits = ManifoldConfiguration.shared.sseStreamLimits) {
-        self.limits = limits
+        self.limitsProvider = { limits }
     }
 
     public func frames(from bytes: URLSession.AsyncBytes) -> AsyncStream<Data> {
-        // Capture limits into the Sendable closure context.
-        let limits = self.limits
+        // Resolve limits once per stream — matches the legacy path's
+        // semantics, where `effectiveSSEStreamLimits` is read at the
+        // top of each `parseResponseStream` invocation.
+        let limits = self.limitsProvider()
         return AsyncStream<Data> { continuation in
             let task = Task {
                 let parsed = SSEStreamParser.parse(bytes: bytes, limits: limits)

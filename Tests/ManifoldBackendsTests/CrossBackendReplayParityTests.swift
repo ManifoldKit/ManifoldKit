@@ -60,7 +60,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
     func test_openai_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "openai_tool_call.json")
 
-        let calls = OpenAIBackend.parseWholeToolCalls(from: json)
+        let calls = OpenAIChatCompletionsPayloadParsing.parseWholeToolCalls(from: json)
 
         XCTAssertEqual(calls.count, 1, "expected exactly one tool call in OpenAI fixture")
         let call = try XCTUnwrap(calls.first)
@@ -131,7 +131,7 @@ final class CrossBackendReplayParityTests: XCTestCase {
     func test_allVendors_argumentParity_cityDublin() throws {
         // OpenAI
         let openAIJson = try loadFixture(named: "openai_tool_call.json")
-        let openAICalls = OpenAIBackend.parseWholeToolCalls(from: openAIJson)
+        let openAICalls = OpenAIChatCompletionsPayloadParsing.parseWholeToolCalls(from: openAIJson)
         let openAIArgs = try parseArgs(try XCTUnwrap(openAICalls.first).arguments)
 
         // Anthropic

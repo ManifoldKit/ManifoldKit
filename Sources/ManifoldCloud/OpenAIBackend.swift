@@ -66,7 +66,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // `self.buildRequest`). The adapter itself remains the
         // composition root the cross-backend audit recognises.
         self.adapter = OpenAIAdapter(
-            capabilities: Self.defaultAdapterCapabilities,
+            capabilities: Self.capabilities(forModelName: "gpt-4o-mini", contextWindow: nil),
             requestBuilder: { _, _, _, _ in
                 throw CloudBackendError.invalidURL(
                     "OpenAIAdapter.requestBuilder is not the live path; the OpenAIBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
@@ -94,9 +94,20 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         // time keychain key resolution — keep running on the backend
         // where they own their state.
         let weakSelfBox = WeakBackendBox(self)
+        // Override the adapter's default `SSETransport()` (which snapshots
+        // ManifoldConfiguration.shared.sseStreamLimits at adapter init) with
+        // one that reads `effectiveSSEStreamLimits` live on every stream.
+        // Per-instance overrides set via `backend.sseStreamLimits = ...`
+        // (tests, hosts with tighter caps) reach the routed parser this way
+        // — without this seam they only flowed through the legacy
+        // `parseResponseStream` path and silently bypassed the routed one.
+        let liveLimitsTransport = SSETransport(limitsProvider: { [weakSelfBox] in
+            weakSelfBox.value?.effectiveSSEStreamLimits
+                ?? ManifoldConfiguration.shared.sseStreamLimits
+        })
         let routing = CloudAdapterRouting(
             payloadHandler: adapter.payloadHandler,
-            framedTransport: adapter.framedTransport,
+            framedTransport: liveLimitsTransport,
             streamFinalizer: adapter.streamFinalizer,
             errorBodyDecoder: adapter.errorBodyDecoder,
             buildRequest: { prompt, systemPrompt, config in
@@ -114,28 +125,46 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         self.configure(adapterRouting: routing)
     }
 
-    /// Static adapter capabilities used at init time. Mirrors the dynamic
-    /// `capabilities` property's values for `gpt-4o-mini` so the adapter
-    /// composition is valid immediately. The dynamic property remains the
-    /// authoritative source once a real `modelName` is configured.
-    private static let defaultAdapterCapabilities: BackendCapabilities = BackendCapabilities(
-        supportedParameters: [.temperature, .topP],
-        maxContextTokens: 128_000,
-        requiresPromptTemplate: false,
-        supportsSystemPrompt: true,
-        supportsToolCalling: true,
-        supportsStructuredOutput: true,
-        supportsNativeJSONMode: true,
-        cancellationStyle: .cooperative,
-        supportsTokenCounting: false,
-        memoryStrategy: .external,
-        maxOutputTokens: 16_384,
-        supportsStreaming: true,
-        isRemote: true,
-        supportsVision: true,
-        streamsToolCallArguments: true,
-        supportsParallelToolCalls: true
-    )
+    /// Single source of truth for the OpenAI Chat Completions
+    /// `BackendCapabilities` value. Keyed on `modelName` so vision support
+    /// can flip per-model; an explicit `contextWindow` override threads in
+    /// the manifest-resolved value when the dynamic property runs.
+    private static func capabilities(
+        forModelName modelName: String,
+        contextWindow: Int?
+    ) -> BackendCapabilities {
+        BackendCapabilities(
+            supportedParameters: [.temperature, .topP],
+            maxContextTokens: Int32(contextWindow ?? 128_000),
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            // Chat Completions tool calling: the request encodes BCK
+            // ``ToolDefinition``s into OpenAI's `tools[]` envelope, the
+            // streaming response delivers `tool_calls[]` deltas keyed by
+            // `index`, and the backend buffers them so consumers see a clean
+            // `.toolCallStart` → N×`.toolCallArgumentsDelta` → `.toolCall`
+            // sequence per call.
+            supportsToolCalling: true,
+            supportsStructuredOutput: true,
+            supportsNativeJSONMode: true,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 16_384,
+            supportsStreaming: true,
+            isRemote: true,
+            // Vision support is gated on the configured model name. OpenAI's
+            // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
+            // accept `image_url` content parts; older completions-only models
+            // do not. ``GenerationQueue``'s pre-flight reads this flag and
+            // rejects image attachments before we ever build a request, so a
+            // non-vision model surfaces a clear local error rather than a 400
+            // from upstream.
+            supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
+            streamsToolCallArguments: true,
+            supportsParallelToolCalls: true
+        )
+    }
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
@@ -167,40 +196,14 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     }
 
     public override var capabilities: BackendCapabilities {
-        // Derive the wire-relevant context window from the manifest produced
-        // at loadModel-time; fall back to OpenAI's mainstream 128k when the
-        // host configured a model name we don't recognise.
-        let resolvedContext = Int32(manifest?.contextWindow ?? 128_000)
-        return BackendCapabilities(
-            supportedParameters: [.temperature, .topP],
-            maxContextTokens: resolvedContext,
-            requiresPromptTemplate: false,
-            supportsSystemPrompt: true,
-            // Chat Completions tool calling: the request encodes BCK
-            // ``ToolDefinition``s into OpenAI's `tools[]` envelope, the
-            // streaming response delivers `tool_calls[]` deltas keyed by
-            // `index`, and the backend buffers them so consumers see a clean
-            // `.toolCallStart` → N×`.toolCallArgumentsDelta` → `.toolCall`
-            // sequence per call.
-            supportsToolCalling: true,
-            supportsStructuredOutput: true,
-            supportsNativeJSONMode: true,
-            cancellationStyle: .cooperative,
-            supportsTokenCounting: false,
-            memoryStrategy: .external,
-            maxOutputTokens: 16_384,
-            supportsStreaming: true,
-            isRemote: true,
-            // Vision support is gated on the configured model name. OpenAI's
-            // vision-capable families (gpt-4o*, gpt-4-turbo, gpt-4.1, o1, o3)
-            // accept `image_url` content parts; older completions-only models
-            // do not. ``GenerationQueue``'s pre-flight reads this flag
-            // and rejects image attachments before we ever build a request,
-            // so a non-vision model surfaces a clear local error rather than
-            // a 400 from upstream.
-            supportsVision: BackendVisionCapability.openAIChatCompletionsSupportsImageInput(modelName: modelName),
-            streamsToolCallArguments: true,
-            supportsParallelToolCalls: true
+        // Single factory call so the init-time adapter capabilities and the
+        // dynamic capabilities can't drift. Context window is resolved from
+        // the manifest produced at loadModel-time; the factory falls back to
+        // OpenAI's mainstream 128k when the configured model name doesn't
+        // prefix-match the manifest table.
+        Self.capabilities(
+            forModelName: modelName,
+            contextWindow: manifest?.contextWindow
         )
     }
 
@@ -403,220 +406,15 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     // previously lived in `ChatCompletionsStreamState` on this class.
 
     // MARK: - SSE Payload Handler
+    //
+    // The OpenAI Chat Completions wire-shape parsers used to live here as
+    // static methods on the backend. Phase 2 post-merge cleanup moved them
+    // to `OpenAIChatCompletionsPayloadParsing.swift` so the wire vocabulary
+    // sits next to the stream consumer (`OpenAIStreamEventExtractor`) that
+    // owns the cross-frame state. This backend's responsibility is request
+    // building and lifecycle — payload parsing is no longer mixed in here.
 
-    /// OpenAI-specific SSE payload interpreter for use with `SSEStreamParser.streamTokens`.
-    ///
-    /// Retained as a deprecated alias so external subclasses keep compiling.
-    /// New call sites use ``CloudPayloadHandler/openAI``, which dispatches
-    /// through ``legacyExtractToken(from:)`` / ``legacyExtractUsage(from:)``
-    /// below.
     static let payloadHandler: any SSEPayloadHandler = CloudPayloadHandler.openAI
-
-    /// Internal seam used by ``CloudPayloadHandler/openAI`` to read tokens
-    /// without exposing the originally-private parser.
-    static func legacyExtractToken(from payload: String) -> String? {
-        parseToken(from: payload)
-    }
-
-    /// Internal seam used by ``CloudPayloadHandler/openAI`` to read usage
-    /// without exposing the originally-private parser.
-    static func legacyExtractUsage(from payload: String) -> (promptTokens: Int, completionTokens: Int)? {
-        parseUsage(from: payload)
-    }
-
-    // MARK: - JSON Parsing
-
-    /// Extracts the content token from an OpenAI streaming response chunk.
-    ///
-    /// Expected format:
-    /// ```json
-    /// {"choices":[{"delta":{"content":"token"}}]}
-    /// ```
-    private static func parseToken(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any],
-              let content = delta["content"] as? String else {
-            return nil
-        }
-        return content
-    }
-
-    /// Extracts reasoning text from an OpenAI-compatible Chat Completions delta.
-    ///
-    /// Two shapes are recognised:
-    /// ```json
-    /// {"choices":[{"delta":{"reasoning_content":"..."}}]}
-    /// {"choices":[{"delta":{"reasoning":"..."}}]}
-    /// ```
-    /// The `reasoning_content` field is used by DeepSeek R1 and by OpenAI-
-    /// compatible hosts that mirror DeepSeek's convention; `reasoning` is used
-    /// by some newer OpenAI-hosted reasoning deployments. Anything else —
-    /// including plain `content` — returns `nil` so the caller can fall back
-    /// to the standard token extractor.
-    static func parseReasoningDelta(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any] else {
-            return nil
-        }
-        if let content = delta["reasoning_content"] as? String, !content.isEmpty {
-            return content
-        }
-        if let content = delta["reasoning"] as? String, !content.isEmpty {
-            return content
-        }
-        return nil
-    }
-
-    // MARK: - Tool-call delta parsing
-
-    /// Decoded shape of one streaming `tool_calls[]` entry inside a `delta`.
-    struct ToolCallDelta {
-        let index: Int
-        let id: String?
-        let name: String?
-        let argumentsDelta: String?
-    }
-
-    /// Decoded shape of one whole `message.tool_calls[]` entry (non-streaming
-    /// path or compat servers that deliver completed calls in a single chunk).
-    struct WholeToolCall {
-        let id: String
-        let name: String
-        let arguments: String
-    }
-
-    /// Parses `choices[0].delta.tool_calls[]` from a streaming chunk.
-    ///
-    /// Each entry carries an `index` (required), an `id` and `function.name`
-    /// (typically only on the first delta for that index), and a
-    /// `function.arguments` fragment (typically on subsequent deltas).
-    /// Compat servers vary on whether `id` is repeated; the accumulator
-    /// handles that by stickying the first non-empty value seen per index.
-    static func parseToolCallDeltas(from json: String) -> [ToolCallDelta] {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let delta = firstChoice["delta"] as? [String: Any],
-              let rawCalls = delta["tool_calls"] as? [[String: Any]] else {
-            return []
-        }
-
-        var result: [ToolCallDelta] = []
-        for raw in rawCalls {
-            guard let index = raw["index"] as? Int else { continue }
-            let id = raw["id"] as? String
-            let function = raw["function"] as? [String: Any]
-            let name = function?["name"] as? String
-            let argumentsDelta = function?["arguments"] as? String
-            result.append(ToolCallDelta(
-                index: index,
-                id: id,
-                name: name,
-                argumentsDelta: argumentsDelta
-            ))
-        }
-        return result
-    }
-
-    /// Parses a whole `choices[0].message.tool_calls[]` array from a
-    /// non-streaming response chunk.
-    static func parseWholeToolCalls(from json: String) -> [WholeToolCall] {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let message = firstChoice["message"] as? [String: Any],
-              let rawCalls = message["tool_calls"] as? [[String: Any]] else {
-            return []
-        }
-        var result: [WholeToolCall] = []
-        for raw in rawCalls {
-            guard let function = raw["function"] as? [String: Any],
-                  let name = function["name"] as? String,
-                  !name.isEmpty else {
-                continue
-            }
-            let id = (raw["id"] as? String) ?? ""
-            let arguments = (function["arguments"] as? String) ?? "{}"
-            result.append(WholeToolCall(id: id, name: name, arguments: arguments))
-        }
-        return result
-    }
-
-    /// Parses `choices[0].finish_reason` (e.g. `"stop"`, `"tool_calls"`).
-    static func parseFinishReason(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = parsed["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let reason = firstChoice["finish_reason"] as? String,
-              !reason.isEmpty else {
-            return nil
-        }
-        return reason
-    }
-
-    /// Extracts token usage from an OpenAI streaming response chunk.
-    ///
-    /// The final chunk includes usage when `stream_options.include_usage` is set:
-    /// ```json
-    /// {"choices":[...],"usage":{"prompt_tokens":25,"completion_tokens":100,"total_tokens":125}}
-    /// ```
-    private static func parseUsage(from json: String) -> (promptTokens: Int, completionTokens: Int)? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let usage = parsed["usage"] as? [String: Any],
-              let prompt = usage["prompt_tokens"] as? Int,
-              let completion = usage["completion_tokens"] as? Int else {
-            return nil
-        }
-        return (prompt, completion)
-    }
-
-    struct PrefillProgress {
-        let nPast: Int
-        let nTotal: Int
-        let tokensPerSecond: Double
-    }
-
-    static func parsePrefillProgress(from json: String) -> PrefillProgress? {
-        guard let data = json.data(using: .utf8) else {
-            return nil
-        }
-        let parsed: [String: Any]
-        do {
-            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
-            }
-            parsed = object
-        } catch {
-            return nil
-        }
-        guard let nPast = parsed["n_past"] as? Int,
-              let nTotal = parsed["n_total"] as? Int else {
-            return nil
-        }
-        let tokensPerSecond: Double
-        if let value = parsed["tokens_per_second"] as? Double {
-            tokensPerSecond = value
-        } else if let value = parsed["tokens_per_second"] as? Int {
-            tokensPerSecond = Double(value)
-        } else {
-            return nil
-        }
-        return PrefillProgress(
-            nPast: nPast,
-            nTotal: nTotal,
-            tokensPerSecond: tokensPerSecond
-        )
-    }
 
 }
 

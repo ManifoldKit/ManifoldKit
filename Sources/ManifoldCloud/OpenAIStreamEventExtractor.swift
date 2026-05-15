@@ -67,7 +67,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
     public func consume(payload: String) -> [GenerationEvent] {
         var out: [GenerationEvent] = []
 
-        if let progress = OpenAIBackend.parsePrefillProgress(from: payload) {
+        if let progress = OpenAIChatCompletionsPayloadParsing.parsePrefillProgress(from: payload) {
             out.append(.prefillProgress(
                 nPast: progress.nPast,
                 nTotal: progress.nTotal,
@@ -76,7 +76,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
             return out
         }
 
-        if let reasoning = OpenAIBackend.parseReasoningDelta(from: payload) {
+        if let reasoning = OpenAIChatCompletionsPayloadParsing.parseReasoningDelta(from: payload) {
             out.append(.thinkingToken(reasoning))
             thinking.open()
         }
@@ -86,7 +86,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
             out.append(.token(token))
         }
 
-        for delta in OpenAIBackend.parseToolCallDeltas(from: payload) {
+        for delta in OpenAIChatCompletionsPayloadParsing.parseToolCallDeltas(from: payload) {
             let key = "\(delta.index)"
             let isNew = toolAccumulator.upsert(
                 key: key,
@@ -110,7 +110,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
         }
 
         if !finalisedToolCalls {
-            let wholeCalls = OpenAIBackend.parseWholeToolCalls(from: payload)
+            let wholeCalls = OpenAIChatCompletionsPayloadParsing.parseWholeToolCalls(from: payload)
             if !wholeCalls.isEmpty {
                 flushThinking(into: &out)
                 for call in wholeCalls {
@@ -140,7 +140,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
             out.append(.usage(prompt: prompt, completion: completion))
         }
 
-        if let reason = OpenAIBackend.parseFinishReason(from: payload) {
+        if let reason = OpenAIChatCompletionsPayloadParsing.parseFinishReason(from: payload) {
             if reason == "tool_calls" || !toolAccumulator.entriesByKey.isEmpty {
                 appendFinalisedToolCalls(into: &out)
             }
