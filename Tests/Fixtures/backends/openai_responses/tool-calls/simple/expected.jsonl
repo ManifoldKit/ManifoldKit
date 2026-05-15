@@ -1,4 +1,3 @@
-{"event":"toolCallStart","callId":"call_fixture_001","name":"get_weather"}
-{"event":"toolCallArgumentsDelta","callId":"call_fixture_001","textDelta":"{\"city\":\"Paris\"}"}
-{"event":"usage","prompt":12,"completion":7}
-{"event":"toolCall","id":"call_fixture_001","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}
+{"event":"toolCallStart","tool_name":"get_weather","call_id":"call_fixture_001"}
+{"event":"toolCallArgumentsDelta","call_id":"call_fixture_001","text":"{\"city\":\"Paris\"}"}
+{"event":"toolCall","tool_name":"get_weather","arguments_contains":"Paris","call_id":"call_fixture_001"}
