@@ -1,18 +1,60 @@
 # Changelog
 
-## [0.26.0](https://github.com/roryford/ManifoldKit/compare/v0.25.2...v0.26.0) (2026-05-15)
+## [0.26.0](https://github.com/roryford/ManifoldKit/compare/v0.25.2...v0.26.0) — 2026-05-15
 
+### Highlights
 
-### Features
+#### Budget-aware context injection pipeline ([2e93fcf](https://github.com/roryford/ManifoldKit/commit/2e93fcf472f55041a4832c75314a24e27262ba2d))
 
-* GenerationHook + CompressionPolicy for post-generation extensibility ([37df683](https://github.com/roryford/ManifoldKit/commit/37df683a3ecb28eedbc59ee7436882bd6e9c8a6e))
-* TurnContext + budget-aware PromptContextPipeline ([2e93fcf](https://github.com/roryford/ManifoldKit/commit/2e93fcf472f55041a4832c75314a24e27262ba2d))
+`PromptContextProvider` gains a `contributeSlots(budget:context:)` method that receives a `ProviderBudget` (token allocation) and a `TurnContext` (session ID, message count, lowercased conversation text, optional tokenizer). The default implementation delegates to the existing `contributeSlots(messageCount:)` path, so all existing conformers compile without changes. Apps that do keyword matching or relevance scoring — like a lorebook or entity-graph provider — override the new method to select only slots that fit their allocation.
 
+`ContextBudgetPlanner` pairs each provider with a relative `budgetWeight` and splits the total token budget proportionally, with spillover: unused tokens from one provider roll to the next in registration order. `PromptContextPipeline` gains a matching `assemble(totalBudget:contextSize:context:)` overload for callers that want the advisory-budget path without weight splitting.
 
-### Bug Fixes
+```swift
+let planner = ContextBudgetPlanner(entries: [
+    ContextBudgetEntry(provider: entityGraphProvider, budgetWeight: 0.6),
+    ContextBudgetEntry(provider: lorebookProvider,    budgetWeight: 0.4),
+])
+// 60 % / 40 % split of the allocated window; unused tokens spill forward.
+let slots = try await planner.assemble(
+    totalBudget: contextSize / 4,
+    contextSize: contextSize,
+    context: turnContext
+)
+```
 
-* replace silent try? with do/catch logging in MCP, Inference, Persistence ([#1230](https://github.com/roryford/ManifoldKit/issues/1230)) ([234687a](https://github.com/roryford/ManifoldKit/commit/234687a734cc592fa2a9d2fb919e7ddbca10bc17))
-* **test:** resolve cross-test state leakage in FoundationBackend and LlamaBackend test suites ([#1233](https://github.com/roryford/ManifoldKit/issues/1233)) ([740b02f](https://github.com/roryford/ManifoldKit/commit/740b02f1e29aac8593def678771515cfb5f74cf2))
+#### Post-generation hooks and history compression ([37df683](https://github.com/roryford/ManifoldKit/commit/37df683a3ecb28eedbc59ee7436882bd6e9c8a6e))
+
+`GenerationHook` is a new protocol whose `postGeneration(_:)` method is awaited by `ConversationRuntime` after every successful turn, before the next turn starts. Each hook receives a `CompletedTurn` value (session ID, persisted assistant message, prompt and completion token counts). Hooks are awaited with a configurable timeout (default 30 s); a hung hook logs a warning and is skipped rather than blocking the turn loop. Register hooks to drive extraction, indexing, or analytics pipelines without building a parallel turn executor.
+
+`CompressionPolicy` is a companion protocol for history compression. `shouldCompress(promptTokens:contextSize:)` is called post-hooks; when it returns `true`, `compress(history:sessionID:generate:)` receives the full message history and a `generate` closure backed by the active inference service. The compressed replacement history is bulk-written to `MessageStore` and a `ConversationEvent.historyCompressed(sessionID:)` event is emitted. `AssembledPrompt` now carries a `contextUtilization: Double` field so policies can base their threshold on the fraction of the context window consumed.
+
+```swift
+struct ThresholdPolicy: CompressionPolicy {
+    func shouldCompress(promptTokens: Int, contextSize: Int) -> Bool {
+        contextSize > 0 && Double(promptTokens) / Double(contextSize) >= 0.80
+    }
+
+    func compress(history: [ChatMessageRecord], sessionID: UUID,
+                  generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] {
+        let summary = try await generate(history.dropLast(4) + [summaryRequestMessage])
+        return [summaryRecord(summary, sessionID: sessionID)] + history.suffix(4)
+    }
+}
+
+let runtime = ConversationRuntime(
+    messageStore: store,
+    inferenceService: service,
+    generationHooks: [MyExtractionHook()],
+    compressionPolicy: ThresholdPolicy()
+)
+```
+
+### Fixes
+
+**Silent error suppression removed from MCP, Inference, and Persistence** ([#1230](https://github.com/roryford/ManifoldKit/issues/1230)) — Thirteen `try?` call sites across `ManifoldMCP`, `ManifoldInference`, and `ManifoldPersistenceSwiftData` that silently dropped errors in propagation paths have been replaced with `do/catch` blocks that emit `Log.*` entries. Errors are now observable in Console and crash reporters without changing any public API behaviour.
+
+**Cross-test state isolation in FoundationBackend and LlamaBackend suites** ([#1233](https://github.com/roryford/ManifoldKit/issues/1233)) — Shared mutable state in `FoundationBackend` and `LlamaBackend` test suites caused intermittent failures when tests ran in parallel. Affected suites now own independent instances; no production code was changed.
 
 ## [0.25.2](https://github.com/roryford/ManifoldKit/compare/v0.25.1...v0.25.2) — 2026-05-15
 
