@@ -9,9 +9,8 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 import MLXVLM
-import MLXRandom
 import MLXHuggingFace
-import Tokenizers
+import Tokenizers // required by the #huggingFaceTokenizerLoader macro expansion
 import os
 import ManifoldInference
 
@@ -195,16 +194,20 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         self.enableKVCacheReuse = enableKVCacheReuse
     }
 
-    /// Resolves the active thinking-marker pair from the per-request override
-    /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
-    /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
-    /// neither source supplied markers — both cases keep `ThinkingParser` off.
+    /// Forwards to `MLXGenerationDriver.resolveThinkingMarkers(...)`.
+    ///
+    /// The canonical implementation moved into the driver as part of Phase
+    /// 2.5/β. This forwarder is retained for source-compat with
+    /// `MLXBackendHelpersTests`, which exercises marker-resolution policy
+    /// through the backend's surface.
     static func resolveThinkingMarkers(
         config: GenerationConfig,
         autoDetected: ThinkingMarkers?
     ) -> ThinkingMarkers? {
-        if config.maxThinkingTokens == 0 { return nil }
-        return config.thinkingMarkers ?? autoDetected
+        MLXGenerationDriver.resolveThinkingMarkers(
+            config: config,
+            autoDetected: autoDetected
+        )
     }
 
     // MARK: - Model Lifecycle
@@ -339,15 +342,12 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         systemPrompt: String?,
         config: GenerationConfig
     ) throws -> GenerationStream {
-        let (
-            modelContainer,
-            pendingSnapshotTask,
-            kvCacheReuseEligible
-        ): (
-            any MLXModelContainerProtocol,
-            Task<Void, Never>?,
-            Bool
-        ) = try withStateLock {
+        // Single critical section: validate, flip `_isGenerating`, and
+        // snapshot every input the driver needs. The driver runs without
+        // touching backend state — so once we leave the lock, the driver call
+        // is decoupled from `setLoadOptions` / `setConversationHistory` /
+        // `setToolAwareHistory` racing in.
+        let snapshot: GenerationCallSnapshot = try withStateLock {
             guard _isModelLoaded, let container = _modelContainer else {
                 throw InferenceError.inferenceFailure("No model loaded")
             }
@@ -355,74 +355,20 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 throw InferenceError.alreadyGenerating
             }
             _isGenerating = true
-            return (container, _promptCacheState.pendingSnapshotTask, _kvCacheReuseEligible)
+            return GenerationCallSnapshot(
+                container: container,
+                loadOptions: _loadOptions,
+                conversationHistory: _conversationHistory,
+                toolAwareHistory: _toolAwareHistory,
+                structuredHistory: _structuredHistory,
+                dialect: _dialect,
+                autoDetectedMarkers: _autoDetectedThinkingMarkers,
+                kvCacheReuseEligible: _kvCacheReuseEligible,
+                pendingSnapshotTask: _promptCacheState.pendingSnapshotTask,
+                existingPromptCacheSnapshot: _promptCacheState.snapshot
+            )
         }
         Self.logger.debug("MLX generate started")
-
-        // Seed the MLX global RandomState before constructing GenerateParameters so the
-        // sampler's per-instance `RandomState()` (initialised from the default state)
-        // produces a deterministic token stream. `nil` skips seeding entirely — the
-        // process keeps whatever entropy MLX last picked up.
-        if let seed = config.seed {
-            MLXRandom.seed(seed)
-        }
-
-        // Snapshot load options under the lock — same pattern as the prompt-cache
-        // snapshot. Per-generation reads stay coherent even if `setLoadOptions(_:)`
-        // is called mid-flight from another actor.
-        let loadOptions = withStateLock { _loadOptions }
-        // KV cache quantization: nil = library default (FP16). 8 / 4 map to mlx's
-        // explicit kvBits levels. Group size 64 and quantizedKVStart 0 match mlx-lm
-        // Python conventions and have no exposure on the BCK API yet.
-        let kvBits: Int? = {
-            switch loadOptions.kvCacheQuantization {
-            case .f16: return nil
-            case .q8:  return 8
-            case .q4:  return 4
-            }
-        }()
-
-        // Honour `config.minP` and `config.repetitionPenalty` when set; fall back to the
-        // upstream defaults / `repeatPenalty` for callers that haven't migrated to the
-        // explicit knobs yet. `nil` on a context-size knob falls through to upstream's
-        // own default (20 in mlx-swift-lm) by passing the upstream default explicitly.
-        let generateConfig = GenerateParameters(
-            kvBits: kvBits,
-            temperature: config.temperature,
-            topP: config.topP,
-            topK: Int(config.topK ?? 0),
-            minP: config.minP ?? 0.0,
-            repetitionPenalty: config.repetitionPenalty ?? config.repeatPenalty,
-            repetitionContextSize: config.repetitionContextSize ?? 20,
-            presencePenalty: config.presencePenalty,
-            presenceContextSize: config.presenceContextSize ?? 20,
-            frequencyPenalty: config.frequencyPenalty,
-            frequencyContextSize: config.frequencyContextSize ?? 20,
-            prefillStepSize: loadOptions.prefillBatchSize ?? 512
-        )
-
-        // Build messages in chat format, using full conversation history when available
-        // so multi-turn exchanges retain context. Falls back to the bare prompt when
-        // setConversationHistory has not been called (e.g. direct unit-test calls).
-        let (conversationHistory, toolAwareHistory, structuredHistory, dialect, autoDetectedMarkers) = withStateLock {
-            (_conversationHistory, _toolAwareHistory, _structuredHistory, _dialect, _autoDetectedThinkingMarkers)
-        }
-
-        let effectiveSystemPrompt: String? = {
-            if let toolBlock = MLXChatMessageEncoder.buildQwenToolBlock(config: config, dialect: dialect) {
-                return (systemPrompt ?? "") + toolBlock
-            }
-            return systemPrompt
-        }()
-
-        let (chatMessages, messages) = try MLXChatMessageEncoder.buildChatMessages(
-            prompt: prompt,
-            effectiveSystemPrompt: effectiveSystemPrompt,
-            conversationHistory: conversationHistory,
-            toolAwareHistory: toolAwareHistory,
-            structuredHistory: structuredHistory,
-            dialect: dialect
-        )
 
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: GenerationEvent.self)
         let generationStream = GenerationStream(stream)
@@ -433,61 +379,31 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             }
 
             do {
-                let resolvedMarkers = Self.resolveThinkingMarkers(
-                    config: config,
-                    autoDetected: autoDetectedMarkers
-                )
-
-                if kvCacheReuseEligible, let pendingSnapshotTask {
-                    await pendingSnapshotTask.value
-                }
-                let resolvedSnapshot: MLXPromptCacheCoordinator.Snapshot? =
-                    if kvCacheReuseEligible, let self {
-                        self.withStateLock { self._promptCacheState.snapshot }
-                    } else {
-                        nil
-                    }
-                let prepared = try await MLXPromptCacheCoordinator.prepareInputAndCache(
-                    container: modelContainer,
-                    chatMessages: chatMessages,
-                    messages: messages,
-                    generateConfig: generateConfig,
-                    kvCacheReuseEligible: kvCacheReuseEligible,
-                    snapshot: resolvedSnapshot
-                )
-                if prepared.reuseLen > 0 {
-                    continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
-                }
-
                 let driver = MLXGenerationDriver()
-                let result = try await driver.run(
-                    container: modelContainer,
-                    generationInput: prepared.generationInput,
-                    cache: prepared.cache,
-                    generateConfig: generateConfig,
+                let result = try await driver.generate(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
                     config: config,
-                    dialect: dialect,
-                    markers: resolvedMarkers,
+                    loadOptions: snapshot.loadOptions,
+                    container: snapshot.container,
+                    conversationHistory: snapshot.conversationHistory,
+                    toolAwareHistory: snapshot.toolAwareHistory,
+                    structuredHistory: snapshot.structuredHistory,
+                    dialect: snapshot.dialect,
+                    autoDetectedMarkers: snapshot.autoDetectedMarkers,
+                    kvCacheReuseEligible: snapshot.kvCacheReuseEligible,
+                    pendingSnapshotTask: snapshot.pendingSnapshotTask,
+                    existingSnapshot: snapshot.existingPromptCacheSnapshot,
                     generationStream: generationStream,
                     continuation: continuation,
                     yieldHook: MLXBackend._yieldHookForTesting
                 )
 
-                let snapshotInputs: MLXPromptCacheCoordinator.SnapshotCaptureInputs? =
-                    if kvCacheReuseEligible, result.completedNormally, let ids = prepared.promptTokenIds {
-                        MLXPromptCacheCoordinator.SnapshotCaptureInputs(
-                            cache: prepared.cache,
-                            promptTokenIds: ids
-                        )
-                    } else {
-                        nil
-                    }
-
                 if let self {
                     self.withStateLock { self._isGenerating = false }
                 }
                 generationStream.setPhase(.done)
-                if let self, let snapshotInputs {
+                if let self, let snapshotInputs = result.snapshotInputs {
                     self.scheduleSnapshotCaptureLocked(
                         cache: snapshotInputs.cache,
                         promptTokenIds: snapshotInputs.promptTokenIds
@@ -518,6 +434,22 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
 
         return generationStream
+    }
+
+    /// Coherent per-call snapshot of every piece of backend state the driver
+    /// reads. Captured under `stateLock` so the driver's view stays consistent
+    /// even if a `set*History` / `setLoadOptions` call lands mid-stream.
+    private struct GenerationCallSnapshot {
+        let container: any MLXModelContainerProtocol
+        let loadOptions: BackendLoadOptions
+        let conversationHistory: [(role: String, content: String)]
+        let toolAwareHistory: [ToolAwareHistoryEntry]?
+        let structuredHistory: [StructuredMessage]?
+        let dialect: MLXToolDialect
+        let autoDetectedMarkers: ThinkingMarkers?
+        let kvCacheReuseEligible: Bool
+        let pendingSnapshotTask: Task<Void, Never>?
+        let existingPromptCacheSnapshot: MLXPromptCacheCoordinator.Snapshot?
     }
 
     /// Schedules an off-main capture of the prompt KV cache for next-turn reuse.
