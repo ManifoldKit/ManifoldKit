@@ -29,3 +29,7 @@ xcuserdata/
 !.claude/settings.json
 tmp/
 .worktrees/
+# Security audit artefacts — must never be committed; contain detailed
+# vulnerability maps with file paths and line numbers.
+SECURITY_REMEDIATION_PLAN*.md
+SECURITY_AUDIT*.md
