@@ -1,0 +1,4 @@
+{"event":"toolCallStart","tool_name":"get_weather","call_id":"toolu_fixture_001"}
+{"event":"toolCallArgumentsDelta","call_id":"toolu_fixture_001","text":"{\"city\":"}
+{"event":"toolCallArgumentsDelta","call_id":"toolu_fixture_001","text":"\"Paris\"}"}
+{"event":"toolCall","tool_name":"get_weather","arguments_contains":"Paris","call_id":"toolu_fixture_001"}

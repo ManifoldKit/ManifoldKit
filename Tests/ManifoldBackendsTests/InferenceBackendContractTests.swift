@@ -171,11 +171,51 @@ final class InferenceBackendContractTests: XCTestCase {
     )
     #endif
 
+    private static let claudeParticipant = Participant(
+        label: "anthropic.messages",
+        fixtureDirectory: "claude",
+        handler: .claude,
+        finalizer: ClaudeMessageStopFinalizer(),
+        // Synthetic capability set matching what `ClaudeBackend` advertises
+        // for a streaming + tools + extended-thinking model. Claude reports
+        // usage split across `message_start` (prompt) and `message_delta`
+        // (completion), so the contract test's per-frame `extractUsage`
+        // walk would only see one half at a time — `supportsTokenCounting`
+        // is false here so the `usage/basic` scenario skips that assertion
+        // and runs only the finalizer + streaming checks against the same
+        // fixture. The `ClaudeStreamEventExtractor` parity tests cover the
+        // merged-usage emission separately.
+        capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP],
+            maxContextTokens: 200_000,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: true,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 8192,
+            supportsStreaming: true,
+            isRemote: true,
+            supportsKVCachePersistence: false,
+            supportsGrammarConstrainedSampling: false,
+            supportsThinking: true,
+            supportsVision: true,
+            streamsToolCallArguments: true,
+            supportsParallelToolCalls: true,
+            supportsGuidedStructuredOutput: false,
+            sharesMLXProcessResources: false
+        )
+    )
+
     private static let participants: [Participant] = {
         var list: [Participant] = []
         #if CloudSaaS
         list.append(openAIParticipant)
         list.append(openAIResponsesParticipant)
+        list.append(claudeParticipant)
         #endif
         #if Ollama
         list.append(ollamaParticipant)
@@ -240,6 +280,9 @@ final class InferenceBackendContractTests: XCTestCase {
             case "ollama.chat":
                 let shape = OllamaWholeToolCalls()
                 XCTAssertEqual(shape.shapeName, "ollama.whole")
+            case "anthropic.messages":
+                let shape = AnthropicBlockToolCalls()
+                XCTAssertEqual(shape.shapeName, "anthropic.block")
             default:
                 XCTFail("[\(p.label)] no witness shape assertion declared")
             }

@@ -1,0 +1,21 @@
+{
+  "model": "claude-sonnet-fixture",
+  "max_tokens": 2048,
+  "messages": [
+    { "role": "user", "content": "What's the weather in Paris?" }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get current weather for a city",
+      "input_schema": {
+        "type": "object",
+        "properties": { "city": { "type": "string" } },
+        "required": ["city"]
+      }
+    }
+  ],
+  "stream": true,
+  "temperature": 1.0,
+  "top_p": 1.0
+}
