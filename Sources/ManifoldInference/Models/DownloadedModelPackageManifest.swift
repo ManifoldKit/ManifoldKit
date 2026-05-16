@@ -15,6 +15,10 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
     public let format: ImageModelFormat?
     public let huggingFaceRepoID: String?
     public let files: [String]
+    /// Numeric precision of the on-disk weights for diffusion packages. Optional
+    /// so pre-fp16-detection manifests still decode; missing → consumers should
+    /// treat as full-precision.
+    public let variant: PrecisionVariant?
 
     public init(
         packageKind: ModelPackageKind,
@@ -22,7 +26,8 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         displayName: String,
         format: ImageModelFormat? = nil,
         huggingFaceRepoID: String? = nil,
-        files: [String]
+        files: [String],
+        variant: PrecisionVariant? = nil
     ) {
         self.packageKind = packageKind
         self.id = id
@@ -30,6 +35,7 @@ public struct DownloadedModelPackageManifest: Codable, Hashable, Sendable {
         self.format = format
         self.huggingFaceRepoID = huggingFaceRepoID
         self.files = files
+        self.variant = variant
     }
 }
 
