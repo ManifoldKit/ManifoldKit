@@ -18,9 +18,10 @@ import ManifoldTestSupport
 @MainActor
 final class SoakRunnerTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
-        try? XCTSkipUnless(
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // `try?` here would swallow XCTSkip and run the test anyway.
+        try XCTSkipUnless(
             ProcessInfo.processInfo.environment["RUN_OPERATIONAL_TESTS"] == "1",
             "Set RUN_OPERATIONAL_TESTS=1 to run soak tests"
         )

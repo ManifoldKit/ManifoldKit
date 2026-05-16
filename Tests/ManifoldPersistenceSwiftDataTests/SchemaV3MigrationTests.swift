@@ -15,10 +15,11 @@ import ManifoldInference
 /// Gated by `RUN_OPERATIONAL_TESTS=1` to keep per-PR CI fast.
 final class SchemaV3MigrationTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         // Gate: only run in operational CI or locally when opt-in.
-        try? XCTSkipUnless(
+        // `try?` here would swallow XCTSkip and run the test anyway.
+        try XCTSkipUnless(
             ProcessInfo.processInfo.environment["RUN_OPERATIONAL_TESTS"] == "1",
             "Set RUN_OPERATIONAL_TESTS=1 to run migration tests"
         )
