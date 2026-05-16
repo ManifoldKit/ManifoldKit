@@ -307,6 +307,21 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Ownership
+
+public extension ModelInfo {
+    /// `true` when this model is provided by the OS / framework and cannot be
+    /// deleted by the user. Consumer UI hides destructive affordances and
+    /// excludes built-ins from storage accounting.
+    ///
+    /// Currently equivalent to `modelType == .foundation`, but the semantic
+    /// ("the user does not own this file") is the contract consumers should
+    /// branch on, not the format.
+    var isBuiltIn: Bool {
+        modelType == .foundation
+    }
+}
+
 // MARK: - HuggingFace Factory
 
 extension ModelInfo {
