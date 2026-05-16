@@ -215,6 +215,32 @@ public final class SessionManagerViewModel {
         try await service.deleteSession(session.id)
     }
 
+    /// Deletes every persisted session and its messages in a single atomic
+    /// pass.
+    ///
+    /// For consumer surfaces like Settings → "Erase All Chats", GDPR-style
+    /// purges, and account-reset flows. Issuing `deleteSession(_:)` in a
+    /// loop instead is O(N) round-trips, emits N
+    /// ``SessionListEvent/sessionDeleted(_:)`` events the SwiftUI list will
+    /// animate one-by-one, and races mid-iteration mutations (a new session
+    /// created from another scene-phase path can survive the loop). This
+    /// call lowers to a single ``SessionStore/deleteAll()`` transaction at
+    /// the persistence layer and emits one terminal
+    /// `.sessionsLoaded(records: [], …)` event — observable state settles
+    /// to an empty list in a single update.
+    ///
+    /// Also clears ``activeSession`` so a surface re-entering the session
+    /// list after the purge does not retain a stale pointer.
+    ///
+    /// - Throws: ``ChatPersistenceError/providerNotConfigured`` if
+    ///   persistence was never injected, or any storage error raised by the
+    ///   adapter's `deleteAll()`. On throw, observable state is unchanged.
+    public func deleteAllSessions() async throws {
+        let service = try requireService("deleteAllSessions")
+        try await service.deleteAllSessions()
+        activeSession = nil
+    }
+
     /// Renames a session.
     public func renameSession(_ session: ChatSessionRecord, title: String) async throws {
         let service = try requireService("renameSession")

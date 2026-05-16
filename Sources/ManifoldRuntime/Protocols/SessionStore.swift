@@ -60,6 +60,25 @@ public protocol SessionStore: AnyObject, Sendable {
     ///   - Storage errors from the underlying store.
     func deleteSession(_ sessionID: UUID) async throws
 
+    /// Deletes every persisted session and its messages in a single
+    /// transaction.
+    ///
+    /// Consumer apps with a "Erase All Chats" / GDPR purge / account-reset
+    /// flow need an atomic, batch-efficient primitive: iterating
+    /// ``fetchSessions()`` and calling ``deleteSession(_:)`` per id is
+    /// O(N) round-trips, fans out N post-write/event notifications, and
+    /// races mid-iteration mutations from other scene-phase paths. Only the
+    /// persistence layer can give the atomicity guarantee — the surface
+    /// here exists so the lowering happens once, in the adapter.
+    ///
+    /// Implementations that also conform to ``MessageStore`` must purge the
+    /// associated messages in the same transaction so no orphaned messages
+    /// remain post-call. If the underlying write fails, no partial deletion
+    /// should be visible to subsequent fetches.
+    ///
+    /// - Throws: Storage errors from the underlying store.
+    func deleteAll() async throws
+
     /// Fetches all chat sessions sorted by most-recently-updated.
     ///
     /// - Throws: Storage errors from the underlying store.
@@ -103,6 +122,18 @@ extension SessionStore {
     /// hooks inherit this and silently drop the registration. Provisional —
     /// see ``addPostWriteHook(_:)`` doc.
     public func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+
+    /// Default: iterates ``fetchSessions()`` and calls ``deleteSession(_:)``
+    /// per id. **Not** atomic — provided so existing custom in-memory
+    /// conformers (notably small test doubles) keep compiling without
+    /// changing every call site. Storage-backed adapters that own a real
+    /// transaction MUST override and commit one save call so the
+    /// atomicity guarantee documented on the protocol surface holds.
+    public func deleteAll() async throws {
+        for record in try await fetchSessions() {
+            try await deleteSession(record.id)
+        }
+    }
 }
 
 // MARK: - Post-write hooks

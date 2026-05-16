@@ -189,6 +189,30 @@ package final class SessionListService: Sendable {
         await emitFirstPage()
     }
 
+    /// Deletes every persisted session and its messages in a single
+    /// transaction and emits **one** terminal
+    /// `.sessionsLoaded([], hasMore: false, offset: 0)` event so SwiftUI
+    /// lists collapse to empty in a single animation rather than animating
+    /// N row removals.
+    ///
+    /// Lowering choice: reusing `.sessionsLoaded(records: [], …)` rather
+    /// than introducing a new `.allSessionsDeleted` case. The adapter's
+    /// `apply` switch already treats `offset == 0` as a full replace, so a
+    /// terminal empty page is the smallest possible delta — observers that
+    /// only need "settle to empty" get it for free; a hypothetical observer
+    /// that needs to distinguish "we just nuked everything" from "initial
+    /// load returned empty" can be added as a new case in a follow-up
+    /// without breaking source compat here.
+    ///
+    /// Throws: storage errors from ``SessionStore/deleteAll()``. On throw,
+    /// no event is emitted so observable state stays consistent with the
+    /// (unchanged) store.
+    @MainActor
+    package func deleteAllSessions() async throws {
+        try await persistence.deleteAll()
+        emit(.sessionsLoaded([], hasMore: false, offset: 0))
+    }
+
     /// Renames a session and emits `.sessionRenamed` followed by `.sessionsLoaded`.
     @MainActor
     package func renameSession(_ session: ChatSessionRecord, title: String) async throws {

@@ -22,6 +22,7 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
     public var shouldThrowOnInsertMessage: Error?
     public var shouldThrowOnFetchMessages: Error?
     public var shouldThrowOnDeleteMessages: Error?
+    public var shouldThrowOnDeleteAll: Error?
 
     public var insertSessionCallCount = 0
     public var updateSessionCallCount = 0
@@ -34,6 +35,7 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
     public var fetchRecentMessagesCallCount = 0
     public var fetchMessagesBeforeCallCount = 0
     public var deleteMessagesCallCount = 0
+    public var deleteAllCallCount = 0
 
     public init(wrapping wrapped: any SessionStore & MessageStore) {
         self.wrapped = wrapped
@@ -100,5 +102,11 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
         deleteMessagesCallCount += 1
         if let error = shouldThrowOnDeleteMessages { throw error }
         try await wrapped.deleteMessages(for: sessionID)
+    }
+
+    public func deleteAll() async throws {
+        deleteAllCallCount += 1
+        if let error = shouldThrowOnDeleteAll { throw error }
+        try await wrapped.deleteAll()
     }
 }

@@ -90,6 +90,30 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         try modelContext.save()
     }
 
+    public func deleteAll() async throws {
+        // Atomic bulk purge: stage every ChatMessage and ChatSession delete
+        // against the in-memory context, then issue a single `save()`. If
+        // SwiftData throws on save, the unsaved deletes never reach the
+        // store — subsequent fetches observe the pre-call state. A loop of
+        // per-row `delete + save` would not give that property: a failure
+        // mid-loop would leave the prefix already committed.
+        //
+        // Messages are deleted first so that even if the schema is later
+        // extended with a cascade rule, the explicit message purge guarantees
+        // no orphaned ChatMessage rows can survive — `sessionID` is a UUID
+        // foreign key (no SwiftData relationship), so an implicit cascade is
+        // not available today.
+        let messages = try modelContext.fetch(FetchDescriptor<ChatMessage>())
+        for message in messages {
+            modelContext.delete(message)
+        }
+        let sessions = try modelContext.fetch(FetchDescriptor<ChatSession>())
+        for session in sessions {
+            modelContext.delete(session)
+        }
+        try modelContext.save()
+    }
+
     public func fetchSessions() async throws -> [ChatSessionRecord] {
         let descriptor = FetchDescriptor<ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
