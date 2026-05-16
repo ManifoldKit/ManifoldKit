@@ -104,12 +104,11 @@ final class EndpointStoreContractTests: XCTestCase {
 
     // MARK: - EndpointStoreError
 
-    func test_endpointStoreError_errorDescription_includesUUID() {
+    func test_endpointStoreError_errorDescription_includesUUID() throws {
         let id = UUID()
         let error = EndpointStoreError.endpointNotFound(id)
-        let message = try? XCTUnwrap(error.errorDescription)
-        XCTAssertNotNil(message)
-        XCTAssertTrue(message!.contains(id.uuidString))
+        let message = try XCTUnwrap(error.errorDescription)
+        XCTAssertTrue(message.contains(id.uuidString))
     }
 
     func test_endpointStoreError_equatable_byUUID() {
