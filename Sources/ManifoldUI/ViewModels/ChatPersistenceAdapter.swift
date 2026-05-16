@@ -17,8 +17,11 @@ final class ChatPersistenceAdapter {
 
     let sessionController: SessionController
 
-    /// Fires once when `configure(persistence:)` is called with a valid store.
-    /// `ChatViewModel` installs a closure here to rebuild the default runtime.
+    /// Fires every time `configure(persistence:)` is called with a valid
+    /// store. `ChatViewModel` installs a closure here to rebuild the default
+    /// runtime against the new store; rebuilds are idempotent and gated by
+    /// `ChatViewModel.replaceDefaultRuntime(with:)` so hosts that supplied
+    /// their own runtime at construction are never affected.
     var onPersistenceConfigured: (@MainActor (any SessionStore & MessageStore) -> Void)?
 
     init(selectedPromptTemplate: PromptTemplate = .chatML) {

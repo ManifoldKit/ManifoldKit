@@ -98,8 +98,22 @@ final class ChatPersistenceAdapterTests: XCTestCase {
         let vm = ChatViewModel(inferenceService: service)
         XCTAssertNil(vm.persistenceAdapter.sessionController.persistence)
 
-        vm.configure(persistence: provider())
+        // Override the adapter's wiring closure to observe whether
+        // `configure(persistence:)` reaches the adapter's
+        // `onPersistenceConfigured` contract — not just sets a property the
+        // call literally just set. We rebind the closure to one we control,
+        // confirm it fires with the exact store identity, then exercise
+        // `configure` and assert on both signals.
+        var observedStore: (any SessionStore & MessageStore)?
+        vm.persistenceAdapter.onPersistenceConfigured = { store in
+            observedStore = store
+        }
+
+        let p = provider()
+        vm.configure(persistence: p)
 
         XCTAssertNotNil(vm.persistenceAdapter.sessionController.persistence)
+        XCTAssertNotNil(observedStore, "onPersistenceConfigured should fire from configure(persistence:)")
+        XCTAssertTrue(observedStore === p, "closure should receive the same store identity")
     }
 }
