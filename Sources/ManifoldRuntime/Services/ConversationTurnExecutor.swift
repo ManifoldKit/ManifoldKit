@@ -112,6 +112,10 @@ struct ConversationTurnExecutor: Sendable {
         // strongly for the duration of the turn — releases via the
         // registry when the turn ends.
         Task.detached { [self] in
+            // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
+            for hook in generationHooks {
+                await hook.willBeginTurn(sessionID: sessionID)
+            }
             // Fetch history first — one store fetch covers both the
             // message count for context assembly and the structured
             // messages for enqueueAsync. By the time we get here, the
@@ -175,6 +179,10 @@ struct ConversationTurnExecutor: Sendable {
         emit(.messageRemoved(messageID: lastAssistant.id))
 
         Task.detached { [self] in
+            // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
+            for hook in generationHooks {
+                await hook.willBeginTurn(sessionID: sessionID)
+            }
             // Fetch history after deletion — the removed assistant message
             // is gone, so context assembly starts from the last user turn.
             var postHistory: [ChatMessageRecord]
@@ -261,6 +269,10 @@ struct ConversationTurnExecutor: Sendable {
 
         let handle = ConversationStreamHandle()
         Task.detached { [self] in
+            // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
+            for hook in generationHooks {
+                await hook.willBeginTurn(sessionID: sessionID)
+            }
             // Fetch history fresh after the synchronous edit + deletion —
             // the updated message and removed trailing messages are
             // already committed to the store before the detached task
