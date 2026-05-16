@@ -66,14 +66,11 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
     func test_transitionPhase_rejectIllegalTransition_doesNotCallCallback() {
         let coord = makeSilentCoordinator()
-        // Machine starts at .idle; streaming → idle is fine but idle → streaming
-        // is not legal (must go through waitingForFirstToken first).
-        // Actually idle → streaming is a state machine rejected path.
+        // Machine starts at .idle; idle → streaming is illegal (must go
+        // through .waitingForFirstToken first), so the callback must not fire.
         var callbackCount = 0
         coord.onTransitionPhase = { _ in callbackCount += 1; return true }
 
-        // streaming → idle would be valid but streaming is not the current state.
-        // idle → streaming is illegal per the state machine.
         coord.transitionPhase(to: .streaming)
 
         XCTAssertEqual(callbackCount, 0, "Illegal transition must not invoke onTransitionPhase")

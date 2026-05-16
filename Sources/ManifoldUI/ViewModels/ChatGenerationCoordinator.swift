@@ -35,7 +35,7 @@ final class ChatGenerationCoordinator {
     var onSetLastTurnState: (ChatViewModel.TurnState) -> Void = { _ in }
 
     /// Writes `ChatViewModel.backgroundTaskError`.
-    var onSetBackgroundTaskError: ((Error)?) -> Void = { _ in }
+    var onSetBackgroundTaskError: (Error?) -> Void = { _ in }
 
     /// Writes `ChatViewModel.messageIDsWithStreamingThinking`.
     var onSetMessageIDsWithStreamingThinking: (Set<UUID>) -> Void = { _ in }
@@ -198,6 +198,9 @@ final class ChatGenerationCoordinator {
         // task gets an immediate scheduling opportunity on the same actor.
         await Task.yield()
         while activeConversationStreamHandle != nil {
+            // TODO: replace busy-poll with a continuation-based seam signaled
+            // from the `streamFinished` handler. Safe today thanks to the 2s
+            // timeout in the awaitStreamCompletion test.
             // Sleep rather than yield so concurrent callers don't starve the
             // runtime event drain task that clears the handle.
             try? await Task.sleep(for: .milliseconds(1))
@@ -268,14 +271,13 @@ final class ChatGenerationCoordinator {
                 record.status = .sent
             }
             let messages = currentMessages()
-            if let idx = messages.firstIndex(where: { $0.id == record.id }) {
+            if messages.contains(where: { $0.id == record.id }) {
                 _ = mutateMessage(record.id) { msg in
                     msg.timestamp = record.timestamp
                     msg.promptTokens = record.promptTokens
                     msg.completionTokens = record.completionTokens
                     msg.status = record.status
                 }
-                _ = idx // suppress unused-variable warning
             } else {
                 appendMessage(record)
             }

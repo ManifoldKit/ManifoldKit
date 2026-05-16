@@ -258,6 +258,7 @@ final class ChatSessionManagerTests: XCTestCase {
             )
         )
         // Reaching this line is the assertion — no crash occurred.
+        XCTAssertTrue(true, "teardown completed without crashing")
     }
 
     func test_applySelection_whenBothClosuresNil_doesNotCrash() {
@@ -268,6 +269,7 @@ final class ChatSessionManagerTests: XCTestCase {
             resolvedModel: nil, resolvedEndpoint: nil
         ))
         // Reaching this line is the assertion — no crash occurred.
+        XCTAssertTrue(true, "applySelection completed without crashing")
     }
 
     // MARK: - closure forwarding
