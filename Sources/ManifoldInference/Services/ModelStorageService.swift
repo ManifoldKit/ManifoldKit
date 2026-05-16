@@ -301,7 +301,8 @@ public final class ModelStorageService: @unchecked Sendable {
             directoryURL: directory,
             format: format,
             fileSize: packageSize(at: directory, files: manifest.files),
-            huggingFaceRepoID: manifest.huggingFaceRepoID
+            huggingFaceRepoID: manifest.huggingFaceRepoID,
+            variant: manifest.variant ?? .fullPrecision
         )
     }
 

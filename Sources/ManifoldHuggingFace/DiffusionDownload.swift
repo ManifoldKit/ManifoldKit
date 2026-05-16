@@ -87,6 +87,7 @@ public extension HuggingFaceService {
         from repoID: String,
         to destinationDirectory: URL,
         displayName: String? = nil,
+        preferFP16: Bool = true,
         urlSession: URLSession? = nil,
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
@@ -113,6 +114,7 @@ public extension HuggingFaceService {
                 to: destinationDirectory,
                 stagingDirectory: stagingDirectory,
                 displayName: resolvedDisplayName,
+                preferFP16: preferFP16,
                 using: session,
                 progress: progress
             )
@@ -131,6 +133,7 @@ public extension HuggingFaceService {
         to destinationDirectory: URL,
         stagingDirectory: URL,
         displayName resolvedDisplayName: String,
+        preferFP16: Bool,
         using session: URLSession,
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
@@ -148,10 +151,24 @@ public extension HuggingFaceService {
         // 2. Resolve submodules.
         let manifest = try parseDiffusionManifest(at: manifestLocalURL)
 
-        // 3. Plan the file list.
+        // 3. Plan the file list. Probe fp16 availability first when the
+        // caller hasn't opted out; the plan builder substitutes the
+        // `.fp16.safetensors` filename per weight file when present and
+        // records which variant was picked overall.
+        let fp16Available: Set<String>
+        if preferFP16 {
+            fp16Available = await probeFP16Availability(
+                repoID: repoID,
+                candidates: Self.candidateWeightPaths(for: manifest),
+                using: session
+            )
+        } else {
+            fp16Available = []
+        }
         let plan = try buildDiffusionDownloadPlan(
             manifest: manifest,
-            destinationDirectory: stagingDirectory
+            destinationDirectory: stagingDirectory,
+            fp16AvailablePaths: fp16Available
         )
 
         // 4. Download each file sequentially with summed progress.
@@ -230,10 +247,11 @@ public extension HuggingFaceService {
             directoryURL: destinationDirectory,
             format: format,
             fileSize: totalBytes,
-            huggingFaceRepoID: repoID
+            huggingFaceRepoID: repoID,
+            variant: plan.variant
         )
 
-        Log.download.info("Writing package manifest")
+        Log.download.info("Writing package manifest (variant=\(info.variant.rawValue, privacy: .public))")
         try writePackageManifest(
             for: info,
             files: ["model_index.json"] + plan.items.map(\.relativePath),
@@ -259,7 +277,8 @@ public extension HuggingFaceService {
             displayName: info.name,
             format: info.format,
             huggingFaceRepoID: info.huggingFaceRepoID,
-            files: files.sorted()
+            files: files.sorted(),
+            variant: info.variant
         )
         let data = try JSONEncoder().encode(manifest)
         try data.write(
@@ -317,11 +336,71 @@ public extension HuggingFaceService {
 
     struct DiffusionDownloadPlan: Sendable {
         let items: [DiffusionDownloadItem]
+        /// Variant chosen across the whole package. `.fp16` whenever **any**
+        /// weight file was substituted with its `.fp16.safetensors` sibling
+        /// — diffusion runtimes load the package as a unit, so the variant
+        /// reported in metadata reflects the precision that's actually on
+        /// disk for the bulk weights (UNet + VAE + text encoder(s)). A
+        /// partial fp16 set still saves substantial bytes, so we report fp16
+        /// rather than papering over the mix as full-precision.
+        let variant: PrecisionVariant
+    }
+
+    /// Pure detection rule for fp16 vs full-precision selection.
+    ///
+    /// Returns `.fp16` if **any** of `weightPaths` has a `.fp16.safetensors`
+    /// sibling in `fp16Available`. Otherwise `.fullPrecision`. The rule
+    /// stays deliberately permissive: even a partial fp16 set (e.g. UNet
+    /// only, no VAE fp16) is worth labelling as fp16 so consumers can see
+    /// "this package isn't pure fp32" without re-walking the directory.
+    internal static func selectVariant(
+        weightPaths: [String],
+        fp16Available: Set<String>
+    ) -> PrecisionVariant {
+        for path in weightPaths {
+            if fp16Available.contains(fp16Path(for: path)) {
+                return .fp16
+            }
+        }
+        return .fullPrecision
+    }
+
+    /// Maps a full-precision weight path (`unet/diffusion_pytorch_model.safetensors`)
+    /// to its fp16 sibling (`unet/diffusion_pytorch_model.fp16.safetensors`).
+    /// Leaves the path unchanged if it doesn't end in `.safetensors` or
+    /// already has the `.fp16` infix.
+    internal static func fp16Path(for path: String) -> String {
+        let suffix = ".safetensors"
+        let fp16Suffix = ".fp16.safetensors"
+        guard path.hasSuffix(suffix), !path.hasSuffix(fp16Suffix) else { return path }
+        let base = String(path.dropLast(suffix.count))
+        return base + fp16Suffix
+    }
+
+    /// Lists every full-precision weight path the planner would consider for
+    /// a given manifest. Used both for fp16 HEAD-probing and as input to
+    /// ``selectVariant(weightPaths:fp16Available:)`` in tests.
+    internal static func candidateWeightPaths(for manifest: DiffusionManifest) -> [String] {
+        var paths: [String] = []
+        if manifest.submodules.contains("transformer") {
+            paths.append("transformer/diffusion_pytorch_model.safetensors")
+        }
+        if manifest.submodules.contains("unet") {
+            paths.append("unet/diffusion_pytorch_model.safetensors")
+        }
+        if manifest.submodules.contains("vae") {
+            paths.append("vae/diffusion_pytorch_model.safetensors")
+        }
+        for name in ["text_encoder", "text_encoder_2"] where manifest.submodules.contains(name) {
+            paths.append("\(name)/model.safetensors")
+        }
+        return paths
     }
 
     private func buildDiffusionDownloadPlan(
         manifest: DiffusionManifest,
-        destinationDirectory: URL
+        destinationDirectory: URL,
+        fp16AvailablePaths: Set<String>
     ) throws -> DiffusionDownloadPlan {
         let isFlux = manifest.submodules.contains("transformer")
         // Require the denoiser submodule appropriate for each pipeline family,
@@ -338,13 +417,15 @@ public extension HuggingFaceService {
         items.append(contentsOf: try plan(
             submodule: requiredDenoiser,
             weights: "diffusion_pytorch_model.safetensors",
-            destinationDirectory: destinationDirectory
+            destinationDirectory: destinationDirectory,
+            fp16AvailablePaths: fp16AvailablePaths
         ))
 
         items.append(contentsOf: try plan(
             submodule: "vae",
             weights: "diffusion_pytorch_model.safetensors",
-            destinationDirectory: destinationDirectory
+            destinationDirectory: destinationDirectory,
+            fp16AvailablePaths: fp16AvailablePaths
         ))
 
         // Text encoder(s).
@@ -352,7 +433,8 @@ public extension HuggingFaceService {
             items.append(contentsOf: try plan(
                 submodule: name,
                 weights: "model.safetensors",
-                destinationDirectory: destinationDirectory
+                destinationDirectory: destinationDirectory,
+                fp16AvailablePaths: fp16AvailablePaths
             ))
         }
 
@@ -384,17 +466,29 @@ public extension HuggingFaceService {
             ))
         }
 
-        return DiffusionDownloadPlan(items: items)
+        let variant = Self.selectVariant(
+            weightPaths: Self.candidateWeightPaths(for: manifest),
+            fp16Available: fp16AvailablePaths
+        )
+        return DiffusionDownloadPlan(items: items, variant: variant)
     }
 
     private func plan(
         submodule: String,
         weights: String,
-        destinationDirectory: URL
+        destinationDirectory: URL,
+        fp16AvailablePaths: Set<String>
     ) throws -> [DiffusionDownloadItem] {
         try assertSafePathComponent(submodule)
         try assertSafePathComponent(weights)
         let dir = destinationDirectory.appendingPathComponent(submodule, isDirectory: true)
+        let fullPrecisionRelative = "\(submodule)/\(weights)"
+        let fp16Relative = Self.fp16Path(for: fullPrecisionRelative)
+        let useFP16 = fp16Relative != fullPrecisionRelative
+            && fp16AvailablePaths.contains(fp16Relative)
+        let chosenRelative = useFP16 ? fp16Relative : fullPrecisionRelative
+        let chosenFileName = (chosenRelative as NSString).lastPathComponent
+        try assertSafePathComponent(chosenFileName)
         return [
             DiffusionDownloadItem(
                 relativePath: "\(submodule)/config.json",
@@ -402,11 +496,55 @@ public extension HuggingFaceService {
                 role: .submoduleConfig
             ),
             DiffusionDownloadItem(
-                relativePath: "\(submodule)/\(weights)",
-                localURL: dir.appendingPathComponent(weights),
+                relativePath: chosenRelative,
+                localURL: dir.appendingPathComponent(chosenFileName),
                 role: .weights
             ),
         ]
+    }
+
+    /// HEAD-probes each candidate fp16 path in parallel and returns the set
+    /// of paths the remote actually serves. A 200 means "fetch the fp16
+    /// variant", anything else (404 / 403 / transport failure) falls back
+    /// to full-precision for that file.
+    ///
+    /// Probing in parallel keeps the cost flat (one round-trip per request,
+    /// concurrent over the same session) instead of additive on top of the
+    /// download itself. Failures are absorbed silently — the variant
+    /// selection is best-effort and we'd rather fall back to fp32 than
+    /// abort the install over a network blip on a probe.
+    private func probeFP16Availability(
+        repoID: String,
+        candidates: [String],
+        using session: URLSession
+    ) async -> Set<String> {
+        guard !candidates.isEmpty else { return [] }
+        return await withTaskGroup(of: String?.self) { group in
+            for fullPath in candidates {
+                let fp16Relative = Self.fp16Path(for: fullPath)
+                guard fp16Relative != fullPath else { continue }
+                let url = downloadURL(repoID: repoID, filePath: fp16Relative)
+                group.addTask {
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "HEAD"
+                    do {
+                        let (_, response) = try await session.data(for: request)
+                        if let http = response as? HTTPURLResponse,
+                           (200..<300).contains(http.statusCode) {
+                            return fp16Relative
+                        }
+                    } catch {
+                        Log.network.debug("fp16 probe failed for \(fp16Relative, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    }
+                    return nil
+                }
+            }
+            var found: Set<String> = []
+            for await result in group {
+                if let path = result { found.insert(path) }
+            }
+            return found
+        }
     }
 
     // MARK: - Path-traversal hygiene

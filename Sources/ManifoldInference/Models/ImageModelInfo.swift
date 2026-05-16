@@ -43,13 +43,21 @@ public struct ImageModelInfo: Codable, Hashable, Identifiable, Sendable {
     /// update flow.
     public let huggingFaceRepoID: String?
 
+    /// Numeric precision of the weights actually on disk. Set by the
+    /// downloader when it picks an fp16 vs full-precision variant for a
+    /// diffusion package; defaults to ``PrecisionVariant/fullPrecision``
+    /// for locally-discovered models and any package whose manifest
+    /// pre-dates fp16 detection.
+    public let variant: PrecisionVariant
+
     public init(
         id: String,
         name: String,
         directoryURL: URL,
         format: ImageModelFormat,
         fileSize: Int64,
-        huggingFaceRepoID: String? = nil
+        huggingFaceRepoID: String? = nil,
+        variant: PrecisionVariant = .fullPrecision
     ) {
         self.id = id
         self.name = name
@@ -57,6 +65,24 @@ public struct ImageModelInfo: Codable, Hashable, Identifiable, Sendable {
         self.format = format
         self.fileSize = fileSize
         self.huggingFaceRepoID = huggingFaceRepoID
+        self.variant = variant
+    }
+
+    // Custom decoder so packages downloaded before fp16 detection (no
+    // `variant` key on disk) continue to decode as `.fullPrecision`.
+    private enum CodingKeys: String, CodingKey {
+        case id, name, directoryURL, format, fileSize, huggingFaceRepoID, variant
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.directoryURL = try container.decode(URL.self, forKey: .directoryURL)
+        self.format = try container.decode(ImageModelFormat.self, forKey: .format)
+        self.fileSize = try container.decode(Int64.self, forKey: .fileSize)
+        self.huggingFaceRepoID = try container.decodeIfPresent(String.self, forKey: .huggingFaceRepoID)
+        self.variant = try container.decodeIfPresent(PrecisionVariant.self, forKey: .variant) ?? .fullPrecision
     }
 
     /// Human-readable file size (e.g. `"4.2 GB"`).
