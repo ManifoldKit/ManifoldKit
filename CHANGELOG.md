@@ -1,5 +1,94 @@
 # Changelog
 
+## [0.28.0](https://github.com/roryford/ManifoldKit/compare/v0.27.0...v0.28.0) — 2026-05-16
+
+### Highlights
+
+#### Pre-turn hooks, app-data on turn context, and richer compression events ([cb99eb6](https://github.com/roryford/ManifoldKit/commit/cb99eb6070050df919bace75765097f009f79ca1), [25979f5](https://github.com/roryford/ManifoldKit/commit/25979f596f60c8d224aa9cd0ec058497e9aa1f6b), [ed45267](https://github.com/roryford/ManifoldKit/commit/ed45267ecbac37adaf670951d0656414d54dff5b))
+
+Three coordinated additions extend the `GenerationHook` / `CompressionPolicy` extensibility surface introduced in 0.26.0.
+
+`GenerationHook.willBeginTurn(sessionID:)` is a new optional pre-turn callback that fires at the start of every turn's detached task, before history fetch and context assembly. The default implementation is a no-op so existing conformances compile unchanged. Use it to cancel in-flight work from a prior turn, prime telemetry, or invalidate caches keyed on session before the next prompt assembly runs.
+
+`TurnContext` and `CompletedTurn` gain an `appData: (any Sendable)?` payload. A new `turnContextProvider: @Sendable (UUID) -> (any Sendable)?` closure on `ConversationRuntime` is invoked once per turn before context assembly; the returned value flows through to every `GenerationHook` via `CompletedTurn.appData` without needing a side channel. Apps can thread per-turn metadata — feature flags, A/B cohort, theme — into hooks without subclassing or shared mutable state.
+
+`historyCompressed` events now carry the full set of `insertedRecords` produced by the compression policy, and `CompressionPolicy` gains a `postCompress(insertedRecords:context:)` callback so policies can observe the records they emitted (e.g. to persist a side-store, fire analytics, or update a memory graph).
+
+```swift
+let runtime = ConversationRuntime(
+    messageStore: store,
+    inferenceService: service,
+    generationHooks: [MyHook()],
+    turnContextProvider: { sessionID in
+        AppData(flags: store.flags(for: sessionID), cohort: store.cohort(for: sessionID))
+    }
+)
+
+struct MyHook: GenerationHook {
+    func willBeginTurn(sessionID: UUID) async {
+        // Pre-turn: cancel a still-running tool call from the previous turn.
+        await toolCoordinator.cancelInFlight(for: sessionID)
+    }
+
+    func postGeneration(_ turn: CompletedTurn) async {
+        if let data = turn.appData as? AppData {
+            telemetry.record(turn: turn, cohort: data.cohort)
+        }
+    }
+}
+```
+
+#### `ModelLoadPlan.estimate` — pre-download fit verdict ([e3caa3f](https://github.com/roryford/ManifoldKit/commit/e3caa3f77368f85ea5e56b1f24e2caf00a778f40))
+
+`ModelLoadPlan` gains a static `estimate(modelInfo:availableMemoryMB:)` that returns a `FitVerdict` (`.fits`, `.tight`, `.unsafe`) for a model that has not yet been downloaded. Apps can call it from the download UI to warn the user *before* a multi-gigabyte pull lands on a device that cannot load it. The verdict reuses the same memory-budget math that `ModelLoadPlan.makePlan` runs at load time, so the pre-download answer matches the actual gate.
+
+```swift
+let verdict = ModelLoadPlan.estimate(
+    modelInfo: candidate,
+    availableMemoryMB: HardwareInfo.availableMemoryMB()
+)
+switch verdict {
+case .fits:    download(candidate)
+case .tight:   confirmTightFit(candidate)   // 80–95 % of available
+case .unsafe:  presentUpgradePrompt()        // would not load
+}
+```
+
+#### Security hardening pass ([#1252](https://github.com/roryford/ManifoldKit/issues/1252), [#1253](https://github.com/roryford/ManifoldKit/issues/1253), [#1254](https://github.com/roryford/ManifoldKit/issues/1254), [#1255](https://github.com/roryford/ManifoldKit/issues/1255), [#1256](https://github.com/roryford/ManifoldKit/issues/1256), [#1258](https://github.com/roryford/ManifoldKit/issues/1258), [#1250](https://github.com/roryford/ManifoldKit/issues/1250))
+
+A multi-PR sweep tightens trust boundaries across the framework.
+
+- **Network.** `URLSession` configurations floor TLS at 1.2, reject the CGNAT range (`100.64.0.0/10`) and link-local addresses in addition to RFC 1918, refuse non-`https` schemes for cloud endpoints, and annotate every outbound request with a `ManifoldKit/<version>` user agent. The SSRF lock applies to MCP redirect resolution, not just initial requests.
+- **Keychain.** `update` calls enforce `kSecAttrAccessible: .afterFirstUnlockThisDeviceOnly`; `delete` errors propagate instead of being swallowed.
+- **Inputs.** User messages, RAG queries, MCP tool name / description metadata, and server request bodies are all bounded with explicit byte caps. `importModel` validates the filename and resolves symlinks before its containment check.
+- **MCP.** `MCPToolSource.close` is `@MainActor`, the event stream is bounded (no more unbounded buffer growth on a misbehaving server), CSPRNG calls throw on failure instead of returning zero bytes, redirect chains are capped at three hops, and `requestTimeout` is actually wired through to the underlying session.
+- **Supply chain.** Curated GGUF entries must declare `expectedSHA256`; a new checksum-audit test fails CI if any curated model lacks one, and the model browser shows an "unverified" indicator for entries without a checksum.
+
+### Features
+
+- `ModelRegistry.selectModel(_:)` — programmatic selection hook point with validation; returns `false` for unknown models, accepts `nil` and `.builtInFoundation` unconditionally ([#1312](https://github.com/roryford/ManifoldKit/issues/1312))
+- `HuggingFaceService.probe()` — credential-free connectivity check, suitable for an "online?" indicator before opening the model browser ([#1306](https://github.com/roryford/ManifoldKit/issues/1306))
+- `ModelInfo.isBuiltIn` accessor for distinguishing OS-provided models from downloaded ones ([#1304](https://github.com/roryford/ManifoldKit/issues/1304))
+- `MCPPersistentToolApprovalStore` is now actually persistent — previously backed by an in-memory dictionary ([#1257](https://github.com/roryford/ManifoldKit/issues/1257))
+- Cross-backend test-infra Phase 1a: baseline gates + fixture comparator for cross-backend conformance ([#1246](https://github.com/roryford/ManifoldKit/issues/1246))
+
+### Fixes
+
+- `GenerationHookWillBeginTurnTests` was deadlocking every CI run (race between the detached pre-turn hook and `withCheckedContinuation`, then a non-cancellable task-group hang) — recording hook now buffers pre-fired events ([#1322](https://github.com/roryford/ManifoldKit/issues/1322))
+- `scripts/check-coverage.sh` failed on bash 3.2 (the default on macOS GitHub runners) — rewritten without associative arrays ([#1323](https://github.com/roryford/ManifoldKit/issues/1323))
+- `SessionDiscardOrderingTests` skip now actually takes effect ([#1307](https://github.com/roryford/ManifoldKit/issues/1307))
+- Gate `CloudSaaS`-only types behind `#if CloudSaaS` in Ollama-only build configurations ([2a36a3e](https://github.com/roryford/ManifoldKit/commit/2a36a3e28742cec2921ad454d9a9d289ef00d699))
+- README install pin updated to match `version.txt` ([#1263](https://github.com/roryford/ManifoldKit/issues/1263))
+- CI step timeouts plus pre-existing test failures uncovered by the security-hardening sweep ([b659f6f](https://github.com/roryford/ManifoldKit/commit/b659f6f234e622554998b0f775d1d826ac93bfd1))
+
+### Breaking changes
+
+- **Phase 5 — deprecated cloud helpers removed.** `SaaSCloudBackend`, `AnyCloudBackend`, and the `AuditSabotageSuite` are gone. Migrate to the per-provider adapters (`OpenAIChatAdapter`, `OpenAIResponsesAdapter`, `ClaudeAdapter`, `OllamaAdapter`) that shipped in 0.27.0. ([#1290](https://github.com/roryford/ManifoldKit/issues/1290))
+
+### Performance
+
+- Per-test execution-time cap — a hung test now fails fast (~3 min) instead of starving the 30-minute CI job ([#1311](https://github.com/roryford/ManifoldKit/issues/1311))
+
 ## [0.27.0](https://github.com/roryford/ManifoldKit/compare/v0.26.0...v0.27.0) — 2026-05-15
 
 ### Highlights
