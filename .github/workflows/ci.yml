@@ -571,19 +571,41 @@ jobs:
   # in-tree tests miss (Package.swift link shape, public registration / load /
   # generate APIs, GenerationStream consumption pattern, swift-tools-version
   # floor). See scripts/cold-start-conformance.sh for the full rationale.
+  #
+  # Runs on PRs only when the public consumer surface could have shifted —
+  # `Package.swift`, `Package.resolved`, or the gate script itself. The full
+  # nightly-slow-tests workflow runs it unconditionally every day so we still
+  # catch silent breaks introduced via Sources-only edits that wiggle a public
+  # symbol downstream-visible. Per `[[feedback_ci_path_filter_self_validation]]`
+  # the script's own path is in the filter so script-only PRs still trigger.
   cold-start:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-conformance.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -596,6 +618,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
@@ -606,19 +629,37 @@ jobs:
   # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
   # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
   # Tier-3 (ChatView composition) runs in its own job below.
+  #
+  # Same per-PR gating as `cold-start` above: only fires on Package.swift /
+  # Package.resolved / script edits; nightly runs it unconditionally.
   cold-start-tier2:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-tier2-bootstrap.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -631,6 +672,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-2 conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
@@ -643,19 +685,36 @@ jobs:
   # tiers miss: treating view models as Combine ObservableObjects and forgetting
   # the ChatView API-configuration builder. See scripts/cold-start-tier3-chatview.sh
   # for the full rationale.
+  #
+  # Same per-PR gating as the other cold-start jobs; nightly runs it daily.
   cold-start-tier3:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-tier3-chatview.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -668,6 +727,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-3 ChatView conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
@@ -676,19 +736,40 @@ jobs:
   # `swift build --traits FoundationOnly` invocation, no `swift test`, so the
   # job is cheap. See scripts/check-foundation-only-bundle.sh for the gate
   # logic and docs/AppStoreSubmission.md for the rationale.
+  #
+  # Per-PR gating: only fires when Package.swift / Package.resolved, the gate
+  # script, or anything in Sources/ManifoldFoundation/** changes (the only
+  # target whose code can flip the FoundationOnly bundle composition).
+  # Nightly runs it unconditionally every day.
   foundation-only-build:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect foundation-only-relevant changes
+        id: foundation-only-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            foundation-only:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'Sources/ManifoldFoundation/**'
+              - 'scripts/check-foundation-only-bundle.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: actions/cache@v5
         with:
           # FoundationOnly resolves a much smaller dep graph than the default
@@ -705,6 +786,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
 
       - name: Run FoundationOnly bundle audit
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         timeout-minutes: 10
         run: scripts/check-foundation-only-bundle.sh
 
