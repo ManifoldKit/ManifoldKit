@@ -85,7 +85,7 @@ extension SessionManagerViewModel {
     }
 }
 
-extension ChatViewModel {
+extension ChatPersistenceAdapter {
     func requirePersistence(
         _ context: @autoclosure () -> String,
         fileID: StaticString = #fileID,
@@ -108,5 +108,23 @@ extension ChatViewModel {
             return nil
         }
         return persistence
+    }
+}
+
+extension ChatViewModel {
+    func requirePersistence(
+        _ context: @autoclosure () -> String,
+        fileID: StaticString = #fileID,
+        line: UInt = #line
+    ) throws -> any SessionStore & MessageStore {
+        try persistenceAdapter.requirePersistence(context(), fileID: fileID, line: line)
+    }
+
+    func persistenceOrLog(
+        _ context: @autoclosure () -> String,
+        fileID: StaticString = #fileID,
+        line: UInt = #line
+    ) -> (any SessionStore & MessageStore)? {
+        persistenceAdapter.persistenceOrLog(context(), fileID: fileID, line: line)
     }
 }

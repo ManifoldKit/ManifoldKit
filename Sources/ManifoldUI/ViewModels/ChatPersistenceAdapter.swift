@@ -1,0 +1,151 @@
+import Foundation
+import Observation
+import ManifoldRuntime
+import ManifoldInference
+
+/// Encapsulates persistence I/O that was previously scattered across
+/// `ChatViewModel` and `ChatViewModel+Persistence.swift`.
+///
+/// Owns the `SessionController` and forwards all message and session
+/// operations through it. The `onPersistenceConfigured` closure lets
+/// `ChatViewModel` rebuild its `ConversationRuntime` when persistence
+/// arrives late — a common pattern when hosts wire storage after
+/// construction rather than via `ManifoldBootstrap`.
+@Observable
+@MainActor
+final class ChatPersistenceAdapter {
+
+    let sessionController: SessionController
+
+    /// Fires once when `configure(persistence:)` is called with a valid store.
+    /// `ChatViewModel` installs a closure here to rebuild the default runtime.
+    var onPersistenceConfigured: (@MainActor (any SessionStore & MessageStore) -> Void)?
+
+    init(selectedPromptTemplate: PromptTemplate = .chatML) {
+        self.sessionController = SessionController(selectedPromptTemplate: selectedPromptTemplate)
+    }
+
+    // MARK: - Forwarded SessionController surface
+
+    var persistence: (any SessionStore & MessageStore)? {
+        get { sessionController.persistence }
+        set { sessionController.persistence = newValue }
+    }
+
+    var activeSession: ChatSessionRecord? {
+        get { sessionController.activeSession }
+        set { sessionController.activeSession = newValue }
+    }
+
+    var activeSessionID: UUID? {
+        sessionController.activeSessionID
+    }
+
+    var messages: [ChatMessageRecord] {
+        get { sessionController.messages }
+        set { sessionController.messages = newValue }
+    }
+
+    var systemPrompt: String {
+        get { sessionController.systemPrompt }
+        set { sessionController.systemPrompt = newValue }
+    }
+
+    var temperature: Float {
+        get { sessionController.temperature }
+        set { sessionController.temperature = newValue }
+    }
+
+    var topP: Float {
+        get { sessionController.topP }
+        set { sessionController.topP = newValue }
+    }
+
+    var repeatPenalty: Float {
+        get { sessionController.repeatPenalty }
+        set { sessionController.repeatPenalty = newValue }
+    }
+
+    var selectedPromptTemplate: PromptTemplate {
+        get { sessionController.selectedPromptTemplate }
+        set { sessionController.selectedPromptTemplate = newValue }
+    }
+
+    var pinnedMessageIDs: Set<UUID> {
+        get { sessionController.pinnedMessageIDs }
+        set { sessionController.pinnedMessageIDs = newValue }
+    }
+
+    var hasOlderMessages: Bool {
+        get { sessionController.hasOlderMessages }
+        set { sessionController.hasOlderMessages = newValue }
+    }
+
+    var isLoadingOlderMessages: Bool {
+        get { sessionController.isLoadingOlderMessages }
+        set { sessionController.isLoadingOlderMessages = newValue }
+    }
+
+    // MARK: - Configure
+
+    func configure(persistence: any SessionStore & MessageStore) {
+        sessionController.configure(persistence: persistence)
+        onPersistenceConfigured?(persistence)
+    }
+
+    // MARK: - Session operations
+
+    @discardableResult
+    func activateSession(_ session: ChatSessionRecord) -> SessionController.SessionSelectionState {
+        sessionController.activateSession(session)
+    }
+
+    func saveSettingsToSession(
+        selectedModelID: UUID?,
+        selectedEndpointID: UUID?
+    ) async throws {
+        try await sessionController.saveSettingsToSession(
+            selectedModelID: selectedModelID,
+            selectedEndpointID: selectedEndpointID
+        )
+    }
+
+    func touchActiveSessionUpdatedAt(_ date: Date = Date()) async throws {
+        try await sessionController.touchActiveSessionUpdatedAt(date)
+    }
+
+    /// Inserts a new session into persistence. Callers in the ingest paths use
+    /// this instead of unwrapping `persistenceOrLog` themselves, so the guard
+    /// and error type stay in one place.
+    func insertSession(_ session: ChatSessionRecord) async throws {
+        let persistence = try requirePersistence("insertSession")
+        try await persistence.insertSession(session)
+    }
+
+    // MARK: - Message I/O
+
+    func loadMessages() async {
+        await sessionController.loadMessages()
+    }
+
+    @discardableResult
+    func loadOlderMessages() async -> UUID? {
+        await sessionController.loadOlderMessages()
+    }
+
+    func saveMessage(_ message: ChatMessageRecord) async throws {
+        try await sessionController.saveMessage(message)
+    }
+
+    func updateMessage(_ message: ChatMessageRecord) async throws {
+        try await sessionController.updateMessage(message)
+    }
+
+    func deleteMessage(_ message: ChatMessageRecord) async throws {
+        try await sessionController.deleteMessage(message)
+    }
+
+    func deleteMessages(for sessionID: UUID) async throws {
+        try await sessionController.deleteMessages(for: sessionID)
+    }
+}

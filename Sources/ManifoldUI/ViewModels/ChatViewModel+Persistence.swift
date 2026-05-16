@@ -8,7 +8,7 @@ extension ChatViewModel {
 
     /// Loads the most recent page of messages for the active session.
     func loadMessages() async {
-        await sessionController.loadMessages()
+        await persistenceAdapter.loadMessages()
     }
 
     /// Loads the next page of older messages and prepends them.
@@ -17,7 +17,7 @@ extension ChatViewModel {
     /// so the caller can restore scroll position to it after the prepend.
     @discardableResult
     public func loadOlderMessages() async -> UUID? {
-        await sessionController.loadOlderMessages()
+        await persistenceAdapter.loadOlderMessages()
     }
 
     /// Persists a message via the persistence provider.
@@ -28,21 +28,21 @@ extension ChatViewModel {
     /// `generateIntoMessage`). Treat it as an upsert at the view-model boundary so
     /// callers do not need to coordinate insert vs. update ownership.
     func saveMessage(_ message: ChatMessageRecord) async throws {
-        try await sessionController.saveMessage(message)
+        try await persistenceAdapter.saveMessage(message)
     }
 
     /// Updates an existing message via the persistence provider.
     func updateMessage(_ message: ChatMessageRecord) async throws {
-        try await sessionController.updateMessage(message)
+        try await persistenceAdapter.updateMessage(message)
     }
 
     /// Deletes a message via the persistence provider.
     func deleteMessage(_ message: ChatMessageRecord) async throws {
-        try await sessionController.deleteMessage(message)
+        try await persistenceAdapter.deleteMessage(message)
     }
 
     /// Deletes all messages for a session via the persistence provider.
     func deleteMessages(for sessionID: UUID) async throws {
-        try await sessionController.deleteMessages(for: sessionID)
+        try await persistenceAdapter.deleteMessages(for: sessionID)
     }
 }

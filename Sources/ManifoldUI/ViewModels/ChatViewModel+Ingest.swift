@@ -37,8 +37,6 @@ extension ChatViewModel {
             "ChatViewModel.ingest source=\(String(describing: payload.source), privacy: .public) prompt chars=\(payload.prompt.count, privacy: .public)"
         )
 
-        guard let persistence = persistenceOrLog("ingest") else { return }
-
         // Create and activate a fresh session so the ingested prompt starts
         // its own conversation rather than landing in whichever chat was
         // last viewed. Mirrors the SessionManagerViewModel path but stays
@@ -46,7 +44,7 @@ extension ChatViewModel {
         // deep-link) can still handoff cleanly.
         let session = ChatSessionRecord(title: "New Chat")
         do {
-            try await persistence.insertSession(session)
+            try await persistenceAdapter.insertSession(session)
         } catch {
             Log.persistence.error("ChatViewModel.ingest failed to insert session: \(error.localizedDescription)")
             surfaceError(error, kind: .persistence)
