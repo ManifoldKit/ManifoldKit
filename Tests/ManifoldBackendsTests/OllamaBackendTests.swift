@@ -529,13 +529,13 @@ struct OllamaBackendTests {
 
     /// Ollama's final chunk carries per-call usage — `prompt_eval_count`
     /// (prompt tokens) and `eval_count` (completion tokens). The
-    /// ``OllamaPayloadHandler.extractUsage`` hook surfaces both so
+    /// ``CloudPayloadHandler/ollama`` `extractUsage` hook surfaces both so
     /// `TokenUsageProvider` consumers see exact counts. Closes #508.
     ///
     /// Sabotage check (verified locally): reverting `extractUsage` to return
     /// `nil` fails both assertions.
     @Test func payloadHandler_extractUsage_parsesDoneLineCounts() {
-        let handler = OllamaPayloadHandler()
+        let handler: CloudPayloadHandler = .ollama
         let json = #"{"model":"llama3.2","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":42,"eval_count":17,"eval_duration":1500000000,"total_duration":2200000000}"#
         let usage = try? #require(handler.extractUsage(from: json))
         #expect(usage?.promptTokens == 42)
@@ -547,7 +547,7 @@ struct OllamaBackendTests {
     /// tuple (which would overwrite a prior prompt count with 0 on Claude's
     /// split-usage path). Pins the "missing fields → nil" contract.
     @Test func payloadHandler_extractUsage_nonUsageLine_returnsNil() {
-        let handler = OllamaPayloadHandler()
+        let handler: CloudPayloadHandler = .ollama
         let midLine = #"{"model":"llama3.2","message":{"role":"assistant","content":"hi"},"done":false}"#
         #expect(handler.extractUsage(from: midLine) == nil)
 
