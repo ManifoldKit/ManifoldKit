@@ -10,6 +10,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
@@ -26,6 +27,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
@@ -269,12 +271,20 @@ jobs:
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
+      # Wrapped in scripts/ci-test-with-watchdog.sh so a hung test aborts the
+      # *test* (with a SIGABRT backtrace identifying it) instead of silently
+      # starving the 30-min job step. Without the watchdog, every push to main
+      # for the past week has burned 60 wall-clock minutes (30-min kill on
+      # this step + 30-min kill on the Swift Testing step below) with zero
+      # diagnostic signal about which test stalled. See the script header for
+      # the design rationale.
       - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -285,7 +295,8 @@ jobs:
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
-        run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
       # over the four critical modules and verifies each module's line coverage
