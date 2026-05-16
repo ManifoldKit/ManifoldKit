@@ -973,7 +973,8 @@ struct ConversationTurnExecutor: Sendable {
                     for message in compressed {
                         try await persistence.insertMessage(message)
                     }
-                    emit(.historyCompressed(sessionID: sessionID))
+                    emit(.historyCompressed(sessionID: sessionID, insertedRecords: compressed))
+                    await compressionPolicy.postCompress(sessionID: sessionID, insertedRecords: compressed)
                 } catch {
                     Log.inference.warning("CompressionPolicy.compress failed (sessionID=\(sessionID, privacy: .private)): \(error.localizedDescription, privacy: .public)")
                 }

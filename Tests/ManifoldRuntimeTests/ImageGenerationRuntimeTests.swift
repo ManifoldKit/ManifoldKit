@@ -504,7 +504,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .contextAssembled(slots: []),
             .afterGeneration(messageID: UUID(), finalText: ""),
             .compressionTriggered(removed: [], reason: .manual),
-            .historyCompressed(sessionID: UUID()),
+            .historyCompressed(sessionID: UUID(), insertedRecords: []),
             .toolCallRequested(ToolCall(id: "", toolName: "", arguments: "")),
             .toolCallApproved(""),
             .toolCallCompleted("", ToolResult(callId: "", content: ""))
