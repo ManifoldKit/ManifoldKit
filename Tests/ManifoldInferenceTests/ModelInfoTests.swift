@@ -326,4 +326,30 @@ final class ModelInfoTests: XCTestCase {
 
         XCTAssertEqual(model?.name, "phi 3 mini 4bit")
     }
+
+    // MARK: - isBuiltIn
+
+    func test_isBuiltIn_trueForBuiltInFoundation() {
+        XCTAssertTrue(ModelInfo.builtInFoundation.isBuiltIn)
+    }
+
+    func test_isBuiltIn_falseForGGUFModel() throws {
+        let fileURL = tempDirectory.appendingPathComponent("user-model.gguf")
+        try writeGGUFFixture(at: fileURL, totalSize: 256)
+
+        let model = try XCTUnwrap(ModelInfo(ggufURL: fileURL))
+
+        XCTAssertFalse(model.isBuiltIn)
+    }
+
+    func test_isBuiltIn_falseForMLXModel() throws {
+        let mlxDir = tempDirectory.appendingPathComponent("user-mlx-model")
+        try FileManager.default.createDirectory(at: mlxDir, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: mlxDir.appendingPathComponent("config.json"))
+        try Data(repeating: 0x00, count: 1).write(to: mlxDir.appendingPathComponent("model.safetensors"))
+
+        let model = try XCTUnwrap(ModelInfo(mlxDirectory: mlxDir))
+
+        XCTAssertFalse(model.isBuiltIn)
+    }
 }
