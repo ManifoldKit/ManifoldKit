@@ -13,7 +13,7 @@ import ManifoldTestSupport
 /// Closes the per-handler half of #604 (Claude reasoning event preservation).
 final class ClaudePayloadHandlerTests: XCTestCase {
 
-    private let handler = ClaudePayloadHandler()
+    private let handler: CloudPayloadHandler = .claude
 
     // MARK: - thinking_delta classification
 
