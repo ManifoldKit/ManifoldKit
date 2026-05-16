@@ -17,6 +17,19 @@ import ManifoldTestSupport
 /// cancellation) live in ``LocalBackendContractTests`` and are gated behind
 /// `RUN_SLOW_TESTS=1` so they only execute in the nightly tier where macOS 26
 /// / iOS 26 and Apple Intelligence are present.
+///
+/// ## macOS 15 / CI safety
+///
+/// `@available(macOS 26, iOS 26, *)` on the class declaration is NOT enforced
+/// by XCTest — the ObjC runtime discovers test methods regardless of OS
+/// availability annotations (see ``FoundationBackendUnitTests`` for the same
+/// pattern). The `setUp()` override below throws `XCTSkip` on macOS < 26 so
+/// that `FoundationBackend()` — which references `FoundationModels` types — is
+/// never instantiated on a runner that doesn't have the framework at runtime.
+/// Without this guard the CI lane (macOS 15, Xcode 26 SDK) would attempt to
+/// call `FoundationBackend.generate()` before the system model is available,
+/// producing a SIGABRT from the `FoundationModels` framework asserting
+/// internal preconditions.
 @available(macOS 26, iOS 26, *)
 @MainActor
 final class FoundationBackendContractTests: XCTestCase,
@@ -31,6 +44,17 @@ final class FoundationBackendContractTests: XCTestCase,
     override class func setUp() {
         super.setUp()
         BackendContractChecks.resetCapabilityClaims()
+    }
+
+    // XCTest bypasses Swift @available on test classes (ObjC runtime discovery).
+    // Throw XCTSkip here so no FoundationModels API is touched on macOS 15 CI.
+    override func setUp() async throws {
+        try await super.setUp()
+        guard ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
+        ) else {
+            throw XCTSkip("FoundationModels requires macOS 26 / iOS 26")
+        }
     }
 
     // MARK: - Universal invariants
