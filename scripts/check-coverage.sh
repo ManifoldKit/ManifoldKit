@@ -32,12 +32,11 @@ PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PACKAGE_DIR"
 
 # ── Thresholds (integer percent) ─────────────────────────────────────────────
-declare -A THRESHOLDS=(
-  [ManifoldInference]=74
-  [ManifoldRuntime]=74
-  [ManifoldPersistenceSwiftData]=74
-  [ManifoldMCP]=75
-)
+# Parallel arrays instead of `declare -A` — bash 3.2 (the default on macOS
+# GitHub runners) parses `[ManifoldInference]=74` as arithmetic indexing and
+# fails under `set -u` with "ManifoldInference: unbound variable".
+MODULES=(ManifoldInference ManifoldRuntime ManifoldPersistenceSwiftData ManifoldMCP)
+THRESHOLDS=(74 74 74 75)
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 PROFDATA_ARG=""
@@ -120,9 +119,9 @@ REPORT=$(xcrun llvm-cov report \
 #   Executed  Lines  MissedLines  Cover%  Branches  MissedBranches  Cover%
 # We sum Lines ($8) and MissedLines ($9) per source directory prefix.
 
-declare -A COV_PERCENT
+COV_RESULTS=()
 
-for module in "${!THRESHOLDS[@]}"; do
+for module in "${MODULES[@]}"; do
   result=$(printf '%s\n' "$REPORT" | awk -v mod="${module}/" '
     $1 ~ "^" mod {
       total  += $8
@@ -137,7 +136,7 @@ for module in "${!THRESHOLDS[@]}"; do
       }
     }
   ')
-  COV_PERCENT[$module]="$result"
+  COV_RESULTS+=("$result")
 done
 
 # ── Print summary table ───────────────────────────────────────────────────────
@@ -151,9 +150,13 @@ echo "  ────────────────────────
 FAILED=0
 FAILED_MODULES=()
 
-for module in $(printf '%s\n' "${!THRESHOLDS[@]}" | sort); do
-  threshold=${THRESHOLDS[$module]}
-  data=${COV_PERCENT[$module]}
+# Build sorted index list so output matches the previous alphabetical order.
+SORTED_INDEXES=$(for i in "${!MODULES[@]}"; do printf '%s\t%d\n' "${MODULES[$i]}" "$i"; done | sort | awk '{print $2}')
+
+for i in $SORTED_INDEXES; do
+  module=${MODULES[$i]}
+  threshold=${THRESHOLDS[$i]}
+  data=${COV_RESULTS[$i]}
   pct=$(echo "$data" | awk '{print $1}')
   covered=$(echo "$data" | awk '{print $2}')
   total=$(echo "$data" | awk '{print $3}')
