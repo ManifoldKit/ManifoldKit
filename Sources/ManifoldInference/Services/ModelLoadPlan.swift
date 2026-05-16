@@ -392,8 +392,9 @@ public struct ModelLoadPlan: Sendable {
     ///   `.foundation` → `.external` via ``systemManaged(requestedContextSize:)``.
     ///
     /// The returned `ModelLoadPlan` carries the same `Outcome.verdict` / `reasons` shape as the
-    /// post-load path; UI badges can render `.allow` / `.clampContext` (synonymous with `.allow`
-    /// when `reasons` contains a clamp) / `.deny` directly off `verdict`.
+    /// post-load path; UI badges can render `.allow` / `.warn` / `.deny` directly off `verdict`,
+    /// and inspect `reasons` for clamp annotations (`.memoryCeilingReached`,
+    /// `.absoluteCeilingReached`) which can co-occur with `.allow`.
     public static func estimate(
         for model: DownloadableModel,
         requestedContextSize: Int,
