@@ -133,6 +133,102 @@ final class ModelRegistryTests: XCTestCase {
         XCTAssertNil(registry.selectedModel)
     }
 
+    // MARK: - selectModel(_:)
+
+    func test_selectModel_acceptsKnownModel_andMutates() throws {
+        try createFakeGgufFile(named: "selectable.gguf")
+
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try registry.refresh()
+
+        guard let known = registry.availableModels.first(where: { $0.fileName == "selectable.gguf" }) else {
+            return XCTFail("Pre-condition: model file should be discoverable")
+        }
+
+        let accepted = registry.selectModel(known)
+
+        XCTAssertTrue(accepted, "selectModel should return true for a known model")
+        XCTAssertEqual(registry.selectedModel?.id, known.id)
+    }
+
+    func test_selectModel_rejectsUnknownModel_andPreservesPriorSelection() throws {
+        try createFakeGgufFile(named: "known.gguf")
+
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try registry.refresh()
+
+        guard let known = registry.availableModels.first(where: { $0.fileName == "known.gguf" }) else {
+            return XCTFail("Pre-condition: model file should be discoverable")
+        }
+        registry.selectedModel = known
+
+        // Construct a ModelInfo that doesn't exist in availableModels — point
+        // ggufURL at a file that was never registered.
+        let strayURL = modelsDirectory.appendingPathComponent("never-registered.gguf")
+        var stray = Data([0x47, 0x47, 0x55, 0x46])
+        stray.append(Data(repeating: 0xBB, count: 4092))
+        try stray.write(to: strayURL)
+        guard let unknown = ModelInfo(ggufURL: strayURL) else {
+            return XCTFail("Pre-condition: ModelInfo should construct from a GGUF-prefixed file")
+        }
+        // The stray file lives in the same directory, so refresh would include
+        // it — we deliberately don't refresh, so availableModels still lists
+        // only `known`.
+        XCTAssertFalse(
+            registry.availableModels.contains(where: { $0.id == unknown.id }),
+            "Pre-condition: unknown model must not be in availableModels"
+        )
+
+        let accepted = registry.selectModel(unknown)
+
+        XCTAssertFalse(accepted, "selectModel should return false for an unknown model")
+        XCTAssertEqual(
+            registry.selectedModel?.id,
+            known.id,
+            "Rejected selection must leave the prior selectedModel in place"
+        )
+    }
+
+    func test_selectModel_acceptsNil_andClears() throws {
+        try createFakeGgufFile(named: "to-clear.gguf")
+
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try registry.refresh()
+        registry.selectedModel = registry.availableModels.first
+
+        let accepted = registry.selectModel(nil)
+
+        XCTAssertTrue(accepted, "selectModel(nil) is always accepted")
+        XCTAssertNil(registry.selectedModel)
+    }
+
+    func test_selectModel_acceptsBuiltInFoundation_evenWhenNotInAvailableModels() {
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+
+        // availableModels is empty — no refresh, no foundation provider.
+        XCTAssertTrue(registry.availableModels.isEmpty)
+
+        let accepted = registry.selectModel(.builtInFoundation)
+
+        XCTAssertTrue(
+            accepted,
+            "builtInFoundation must be accepted regardless of availableModels"
+        )
+        XCTAssertEqual(registry.selectedModel?.id, ModelInfo.builtInFoundation.id)
+    }
+
     // MARK: - compatibility(for:)
 
     func test_compatibility_forwardsToInferenceService() {

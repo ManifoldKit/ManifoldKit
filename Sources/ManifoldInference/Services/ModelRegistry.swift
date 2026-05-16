@@ -96,6 +96,38 @@ public final class ModelRegistry {
         }
     }
 
+    // MARK: - Selection
+
+    /// Canonical programmatic entry point for changing ``selectedModel``.
+    ///
+    /// Equivalent to assigning `selectedModel = model`, plus validation: the
+    /// supplied model must already be in ``availableModels`` (or be
+    /// ``ModelInfo/builtInFoundation``, which is always accepted because hosts
+    /// may select it before a `refresh()` has populated the Foundation entry).
+    /// `nil` is always accepted and clears the current selection.
+    ///
+    /// - Returns: `true` when the selection was accepted (and applied);
+    ///   `false` when `model` is unknown to the registry — in which case the
+    ///   previous selection is left in place.
+    ///
+    /// `selectedModel` remains writable so SwiftUI two-way bindings keep
+    /// working; `selectModel(_:)` is the hook site for future logging,
+    /// telemetry, and auto-load wiring.
+    @discardableResult
+    public func selectModel(_ model: ModelInfo?) -> Bool {
+        // Hook site for future logging / validation / auto-load wiring.
+        guard let model else {
+            selectedModel = nil
+            return true
+        }
+        if model.id == ModelInfo.builtInFoundation.id
+            || availableModels.contains(where: { $0.id == model.id }) {
+            selectedModel = model
+            return true
+        }
+        return false
+    }
+
     // MARK: - Compatibility
 
     /// Reports whether the supplied local model type has a registered backend.
