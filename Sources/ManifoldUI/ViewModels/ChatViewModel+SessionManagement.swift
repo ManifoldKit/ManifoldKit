@@ -21,7 +21,7 @@ extension ChatViewModel {
 
         // Activate the session record in the controller (sets settings, prompt template,
         // pinned IDs) and capture what model/endpoint was persisted for this session.
-        let selectionState = sessionController.activateSession(session)
+        let selectionState = persistenceAdapter.activateSession(session)
 
         // Delegate the teardown sequence to ChatSessionManager:
         // - Discard inference requests for the prior session (load-bearing await:
@@ -35,7 +35,7 @@ extension ChatViewModel {
         // - Resolve the persisted model/endpoint IDs to live registry objects.
         let teardownResult = await sessionManager.teardown(
             sessionID: session.id,
-            promptTemplate: sessionController.selectedPromptTemplate,
+            promptTemplate: persistenceAdapter.selectedPromptTemplate,
             selectionState: selectionState
         )
 
@@ -52,7 +52,7 @@ extension ChatViewModel {
 
     /// Saves the current generation settings back to the active session.
     func saveSettingsToSession() async throws {
-        try await sessionController.saveSettingsToSession(
+        try await persistenceAdapter.saveSettingsToSession(
             selectedModelID: selectedModel?.id,
             selectedEndpointID: selectedEndpoint?.id
         )

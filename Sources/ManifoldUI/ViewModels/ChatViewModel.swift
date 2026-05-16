@@ -79,7 +79,7 @@ public final class ChatViewModel {
 
     // MARK: - Persistence
 
-    let sessionController: SessionController
+    let persistenceAdapter: ChatPersistenceAdapter
 
     // MARK: - Session Manager
 
@@ -96,8 +96,8 @@ public final class ChatViewModel {
     let generationCoordinator: ChatGenerationCoordinator
 
     var persistence: (any SessionStore & MessageStore)? {
-        get { sessionController.persistence }
-        set { sessionController.persistence = newValue }
+        get { persistenceAdapter.persistence }
+        set { persistenceAdapter.persistence = newValue }
     }
 
     var endpointStore: (any EndpointStore)?
@@ -106,12 +106,12 @@ public final class ChatViewModel {
 
     /// The currently active chat session. Set via `switchToSession(_:)`.
     public var activeSession: ChatSessionRecord? {
-        get { sessionController.activeSession }
-        set { sessionController.activeSession = newValue }
+        get { persistenceAdapter.activeSession }
+        set { persistenceAdapter.activeSession = newValue }
     }
 
     /// The session ID for the active session, or `nil` if no session is selected.
-    var activeSessionID: UUID? { sessionController.activeSessionID }
+    var activeSessionID: UUID? { persistenceAdapter.activeSessionID }
 
     /// Called when a session might need its title auto-generated.
     /// Set by the view layer to connect to SessionManagerViewModel.
@@ -219,8 +219,8 @@ public final class ChatViewModel {
 
     /// Ordered messages for the active session.
     public internal(set) var messages: [ChatMessageRecord] {
-        get { sessionController.messages }
-        set { sessionController.messages = newValue }
+        get { persistenceAdapter.messages }
+        set { persistenceAdapter.messages = newValue }
     }
 
     /// One-shot command consumed by ``ChatView`` to bring a message into view.
@@ -237,8 +237,8 @@ public final class ChatViewModel {
 
     /// Editable system prompt prepended to every generation.
     public var systemPrompt: String {
-        get { sessionController.systemPrompt }
-        set { sessionController.systemPrompt = newValue }
+        get { persistenceAdapter.systemPrompt }
+        set { persistenceAdapter.systemPrompt = newValue }
     }
 
     /// The current phase of backend activity, driving all status indicators.
@@ -343,23 +343,23 @@ public final class ChatViewModel {
     /// Populated from ``ChatSessionRecord/pinnedMessageIDs`` when switching
     /// sessions. Persisted back to the session on changes.
     public internal(set) var pinnedMessageIDs: Set<UUID> {
-        get { sessionController.pinnedMessageIDs }
-        set { sessionController.pinnedMessageIDs = newValue }
+        get { persistenceAdapter.pinnedMessageIDs }
+        set { persistenceAdapter.pinnedMessageIDs = newValue }
     }
 
     // MARK: - Generation Settings
 
     public var temperature: Float {
-        get { sessionController.temperature }
-        set { sessionController.temperature = newValue }
+        get { persistenceAdapter.temperature }
+        set { persistenceAdapter.temperature = newValue }
     }
     public var topP: Float {
-        get { sessionController.topP }
-        set { sessionController.topP = newValue }
+        get { persistenceAdapter.topP }
+        set { persistenceAdapter.topP = newValue }
     }
     public var repeatPenalty: Float {
-        get { sessionController.repeatPenalty }
-        set { sessionController.repeatPenalty = newValue }
+        get { persistenceAdapter.repeatPenalty }
+        set { persistenceAdapter.repeatPenalty = newValue }
     }
     /// Cap on visible response tokens for each generation.
     ///
@@ -441,9 +441,9 @@ public final class ChatViewModel {
 
     /// Prompt template for GGUF backends. Ignored by MLX/Foundation.
     public var selectedPromptTemplate: PromptTemplate {
-        get { sessionController.selectedPromptTemplate }
+        get { persistenceAdapter.selectedPromptTemplate }
         set {
-            sessionController.selectedPromptTemplate = newValue
+            persistenceAdapter.selectedPromptTemplate = newValue
             inferenceService.selectedPromptTemplate = newValue
         }
     }
@@ -727,14 +727,14 @@ public final class ChatViewModel {
 
     /// Whether older messages are available to load above the current page.
     public internal(set) var hasOlderMessages: Bool {
-        get { sessionController.hasOlderMessages }
-        set { sessionController.hasOlderMessages = newValue }
+        get { persistenceAdapter.hasOlderMessages }
+        set { persistenceAdapter.hasOlderMessages = newValue }
     }
 
     /// Whether a page of older messages is currently being fetched.
     public internal(set) var isLoadingOlderMessages: Bool {
-        get { sessionController.isLoadingOlderMessages }
-        set { sessionController.isLoadingOlderMessages = newValue }
+        get { persistenceAdapter.isLoadingOlderMessages }
+        set { persistenceAdapter.isLoadingOlderMessages = newValue }
     }
 
     // MARK: - Initialisation
@@ -773,7 +773,7 @@ public final class ChatViewModel {
         self.memoryPressure = memoryPressure
         self.toolApprovalGate = toolApprovalGate
         self.userDefaults = userDefaults
-        self.sessionController = SessionController(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
+        self.persistenceAdapter = ChatPersistenceAdapter(selectedPromptTemplate: inferenceService.selectedPromptTemplate)
         self.sessionManager = ChatSessionManager()
         self.modelRegistry = ModelRegistry(
             inferenceService: inferenceService,
@@ -831,6 +831,7 @@ public final class ChatViewModel {
         installRegistryObservation()
         installSessionManagerClosures()
         installGenerationCoordinatorClosures()
+        installPersistenceAdapterClosures()
         genCoordinator.startRuntimeEventDrain()
     }
 
@@ -876,15 +877,7 @@ public final class ChatViewModel {
     /// for message persistence and replacing it would silently shadow the
     /// host's setup.
     public func configure(persistence: any SessionStore & MessageStore) {
-        sessionController.configure(persistence: persistence)
-        if generationCoordinator.ownsDefaultRuntime {
-            let newRuntime = ConversationRuntime(
-                messageStore: persistence,
-                sessionStore: persistence,
-                inferenceService: inferenceService
-            )
-            generationCoordinator.replaceRuntime(newRuntime)
-        }
+        persistenceAdapter.configure(persistence: persistence)
     }
 
     public func configure(endpointStore: any EndpointStore) {

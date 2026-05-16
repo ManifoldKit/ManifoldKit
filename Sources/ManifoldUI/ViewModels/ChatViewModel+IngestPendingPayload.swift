@@ -187,8 +187,6 @@ extension ChatViewModel {
         _ payload: PendingPayload,
         preset: IngestionPreset?
     ) async {
-        guard let persistence = persistenceOrLog("ingestPendingPayload(.newSession)") else { return }
-
         // Pre-resolve the system prompt so the new session is inserted
         // with the preset already applied — avoids a second persistence
         // write when the only change is the system prompt.
@@ -197,7 +195,7 @@ extension ChatViewModel {
             systemPrompt: preset?.systemPrompt ?? ""
         )
         do {
-            try await persistence.insertSession(session)
+            try await persistenceAdapter.insertSession(session)
         } catch {
             Log.persistence.error(
                 "ChatViewModel.ingestPendingPayload failed to insert session: \(error.localizedDescription)"
