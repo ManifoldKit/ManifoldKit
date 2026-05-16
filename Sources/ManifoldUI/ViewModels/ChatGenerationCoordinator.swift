@@ -194,15 +194,13 @@ final class ChatGenerationCoordinator {
 
     /// Suspends until `activeConversationStreamHandle` becomes `nil`.
     func awaitStreamCompletion() async {
+        // Yield once before entering the sleep loop so the runtime event drain
+        // task gets an immediate scheduling opportunity on the same actor.
         await Task.yield()
-        var ticks = 0
         while activeConversationStreamHandle != nil {
-            await Task.yield()
-            ticks += 1
-            if ticks > 8 {
-                // Allowlist: ChatGenerationCoordinator.swift:try? await Task.sleep(...)
-                try? await Task.sleep(for: .milliseconds(1))
-            }
+            // Sleep rather than yield so concurrent callers don't starve the
+            // runtime event drain task that clears the handle.
+            try? await Task.sleep(for: .milliseconds(1))
         }
     }
 
