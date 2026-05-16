@@ -20,16 +20,24 @@ public struct TurnContext: Sendable {
     /// Tokenizer for cost estimation. Nil falls back to ``HeuristicTokenizer``
     /// inside ``ContextBudgetPlanner``.
     public let tokenizer: (any TokenizerProvider)?
+    /// Opaque host-app payload attached by ``ConversationRuntime/turnContextProvider``.
+    /// Nil when no provider is registered or when the provider returns nil for
+    /// this session. The value is passed through to ``CompletedTurn/appData``
+    /// so ``GenerationHook`` implementations can read it without a side-channel
+    /// registry.
+    public var appData: (any Sendable)?
 
     public init(
         sessionID: UUID,
         messageCount: Int,
         conversationText: String? = nil,
-        tokenizer: (any TokenizerProvider)? = nil
+        tokenizer: (any TokenizerProvider)? = nil,
+        appData: (any Sendable)? = nil
     ) {
         self.sessionID = sessionID
         self.messageCount = messageCount
         self.conversationText = conversationText
         self.tokenizer = tokenizer
+        self.appData = appData
     }
 }

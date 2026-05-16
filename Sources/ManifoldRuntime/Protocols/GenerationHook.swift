@@ -7,17 +7,24 @@ public struct CompletedTurn: Sendable {
     public let assistantMessage: ChatMessageRecord
     public let promptTokens: Int?
     public let completionTokens: Int?
+    /// Opaque host-app payload sourced from ``ConversationRuntime/turnContextProvider``.
+    /// Nil when no provider is registered or when the provider returns nil for
+    /// this session. Mirrors ``TurnContext/appData`` so hooks can act on
+    /// per-session app state without a separate registry.
+    public let appData: (any Sendable)?
 
     public init(
         sessionID: UUID,
         assistantMessage: ChatMessageRecord,
         promptTokens: Int?,
-        completionTokens: Int?
+        completionTokens: Int?,
+        appData: (any Sendable)? = nil
     ) {
         self.sessionID = sessionID
         self.assistantMessage = assistantMessage
         self.promptTokens = promptTokens
         self.completionTokens = completionTokens
+        self.appData = appData
     }
 }
 
