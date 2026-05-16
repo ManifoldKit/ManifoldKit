@@ -235,7 +235,7 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
     // MARK: - 10. cancelBackgroundTask stops running task
 
-    func test_cancelBackgroundTask_stopsRunningTask() async {
+    func test_cancelBackgroundTask_stopsRunningTask() async throws {
         let coord = makeSilentCoordinator()
 
         let reached = ActorBox<Bool>(false)
@@ -249,7 +249,19 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.runPostGenerationTasks(message: msg, session: session)
         let inflight = coord.backgroundTask
         coord.cancelBackgroundTask()
-        await inflight?.value
+
+        // Give cancellation time to propagate before awaiting the task — without
+        // this yield the await can race with the CancellationError delivery.
+        await Task.yield()
+
+        // Bound the wait: if cancellation doesn't propagate the test fails rather
+        // than hanging for the full 10-second SlowPostTask delay.
+        let cancelExp = expectation(description: "inflight task completes after cancellation")
+        Task {
+            await inflight?.value
+            cancelExp.fulfill()
+        }
+        await fulfillment(of: [cancelExp], timeout: 3)
 
         XCTAssertNil(coord.backgroundTask, "backgroundTask must be nil after cancelBackgroundTask")
     }
@@ -261,18 +273,20 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
         coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
 
-        let awaiter = Task {
+        // Bound the wait so a scheduler-starvation bug fails fast instead of
+        // hanging the entire CI run (awaitStreamCompletion polls with Task.yield).
+        let exp = expectation(description: "awaitStreamCompletion returns")
+        let awaiter = Task { @MainActor in
             await coord.awaitStreamCompletion()
+            exp.fulfill()
         }
 
-        // Clear the handle asynchronously.
-        Task {
-            await Task.yield()
-            coord.activeConversationStreamHandle = nil
-        }
+        // Clear the handle after one cooperative-scheduler turn.
+        await Task.yield()
+        coord.activeConversationStreamHandle = nil
 
-        // If this hangs, the test times out (XCTest default timeout).
-        await awaiter.value
+        await fulfillment(of: [exp], timeout: 2)
+        _ = awaiter  // keep the task alive until the expectation is met
         XCTAssertNil(coord.activeConversationStreamHandle)
     }
 
