@@ -10,6 +10,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
@@ -26,6 +27,7 @@ on:
       - "Package.resolved"
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
+      - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/ci-normalize-swiftpm-debug-cache.sh"
@@ -269,12 +271,20 @@ jobs:
       # Swift Testing must stay isolated — mixing XCTest + Swift Testing in one
       # swift test process triggers a libmalloc double-free SIGABRT (see
       # SwiftTestingAuditTest, #681).
+      # Wrapped in scripts/ci-test-with-watchdog.sh so a hung test aborts the
+      # *test* (with a SIGABRT backtrace identifying it) instead of silently
+      # starving the 30-min job step. Without the watchdog, every push to main
+      # for the past week has burned 60 wall-clock minutes (30-min kill on
+      # this step + 30-min kill on the Swift Testing step below) with zero
+      # diagnostic signal about which test stalled. See the script header for
+      # the design rationale.
       - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
-        run: scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -285,7 +295,8 @@ jobs:
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
-        run: scripts/test.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
       # over the four critical modules and verifies each module's line coverage
@@ -571,19 +582,41 @@ jobs:
   # in-tree tests miss (Package.swift link shape, public registration / load /
   # generate APIs, GenerationStream consumption pattern, swift-tools-version
   # floor). See scripts/cold-start-conformance.sh for the full rationale.
+  #
+  # Runs on PRs only when the public consumer surface could have shifted —
+  # `Package.swift`, `Package.resolved`, or the gate script itself. The full
+  # nightly-slow-tests workflow runs it unconditionally every day so we still
+  # catch silent breaks introduced via Sources-only edits that wiggle a public
+  # symbol downstream-visible. Per `[[feedback_ci_path_filter_self_validation]]`
+  # the script's own path is in the filter so script-only PRs still trigger.
   cold-start:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-conformance.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -596,6 +629,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
@@ -606,19 +640,37 @@ jobs:
   # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
   # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
   # Tier-3 (ChatView composition) runs in its own job below.
+  #
+  # Same per-PR gating as `cold-start` above: only fires on Package.swift /
+  # Package.resolved / script edits; nightly runs it unconditionally.
   cold-start-tier2:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-tier2-bootstrap.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -631,6 +683,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-2 conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
@@ -643,19 +696,36 @@ jobs:
   # tiers miss: treating view models as Combine ObservableObjects and forgetting
   # the ChatView API-configuration builder. See scripts/cold-start-tier3-chatview.sh
   # for the full rationale.
+  #
+  # Same per-PR gating as the other cold-start jobs; nightly runs it daily.
   cold-start-tier3:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect cold-start-relevant changes
+        id: cold-start-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-tier3-chatview.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -668,6 +738,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-3 ChatView conformance
+        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
@@ -676,19 +747,40 @@ jobs:
   # `swift build --traits FoundationOnly` invocation, no `swift test`, so the
   # job is cheap. See scripts/check-foundation-only-bundle.sh for the gate
   # logic and docs/AppStoreSubmission.md for the rationale.
+  #
+  # Per-PR gating: only fires when Package.swift / Package.resolved, the gate
+  # script, or anything in Sources/ManifoldFoundation/** changes (the only
+  # target whose code can flip the FoundationOnly bundle composition).
+  # Nightly runs it unconditionally every day.
   foundation-only-build:
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Detect foundation-only-relevant changes
+        id: foundation-only-changed
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            foundation-only:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'Sources/ManifoldFoundation/**'
+              - 'scripts/check-foundation-only-bundle.sh'
+              - '.github/workflows/ci.yml'
 
       - name: Select Xcode
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: actions/cache@v5
         with:
           # FoundationOnly resolves a much smaller dep graph than the default
@@ -705,6 +797,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
 
       - name: Run FoundationOnly bundle audit
+        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         timeout-minutes: 10
         run: scripts/check-foundation-only-bundle.sh
 

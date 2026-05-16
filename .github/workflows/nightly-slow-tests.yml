@@ -125,3 +125,127 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # Cold-start conformance gates (tier 1/2/3) and the FoundationOnly bundle
+  # audit. These were per-PR gates in ci.yml until they were carved out here:
+  # they very rarely fail (they exercise stable package-graph + public-surface
+  # shape) and added ~9 min of 10×-billed macOS wall-clock to every PR. ci.yml
+  # still runs them on PRs that actually touch Package.swift / Package.resolved
+  # / the gate scripts / Sources/ManifoldFoundation; this nightly job re-runs
+  # them unconditionally so we still catch Sources-only regressions that wiggle
+  # a public symbol downstream-visible.
+  cold-start:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start conformance
+        timeout-minutes: 10
+        run: scripts/cold-start-conformance.sh
+
+  cold-start-tier2:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start tier-2 conformance
+        timeout-minutes: 10
+        run: scripts/cold-start-tier2-bootstrap.sh
+
+  cold-start-tier3:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start tier-3 ChatView conformance
+        timeout-minutes: 10
+        run: bash scripts/cold-start-tier3-chatview.sh
+
+  foundation-only-build:
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+
+      - name: Run FoundationOnly bundle audit
+        timeout-minutes: 10
+        run: scripts/check-foundation-only-bundle.sh
