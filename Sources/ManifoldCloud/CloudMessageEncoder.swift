@@ -119,7 +119,11 @@ public enum CloudMessageEncoder: Sendable {
         guard !tools.isEmpty else { return [] }
         switch self {
         case .openAI, .openAIResponses:
+            #if CloudSaaS
             return tools.map(OpenAIToolEncoding.encodeToolDefinition)
+            #else
+            return []
+            #endif
         case .claude:
             #if CloudSaaS
             return tools.map(Self.claudeEncodeToolDefinition)
@@ -254,9 +258,17 @@ public enum CloudMessageEncoder: Sendable {
     private func encodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [[String: Any]] {
         switch self {
         case .openAI:
+            #if CloudSaaS
             return [OpenAIToolEncoding.encodeChatCompletionsEntry(entry)]
+            #else
+            return [["role": entry.role, "content": entry.content]]
+            #endif
         case .openAIResponses:
+            #if CloudSaaS
             return OpenAIToolEncoding.encodeResponsesEntries(entry)
+            #else
+            return [["role": entry.role, "content": entry.content]]
+            #endif
         case .claude:
             #if CloudSaaS
             return [Self.claudeEncodeToolAwareEntry(entry)]

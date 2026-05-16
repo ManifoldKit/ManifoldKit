@@ -137,6 +137,13 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // Responses API. Same `URLRequest`-only contract as
         // `OpenAIAdapter.swift` above.
         "ManifoldCloud/OpenAIResponsesAdapter.swift",
+        // Phase 3/Ollama — adapter composition for the Ollama NDJSON path.
+        // Same `URLRequest`-only contract (security invariant S1); no
+        // `URLSession` is exposed.
+        "ManifoldCloud/OllamaAdapter.swift",
+        // Phase 3/Claude — adapter composition for the Anthropic Claude path.
+        // Same `URLRequest`-only contract as `OpenAIAdapter.swift` above.
+        "ManifoldCloud/ClaudeAdapter.swift",
 
         // I1 network seam closure (#1140) — centralised redirect-guard
         // delegate, composite delegate, and seam factory live in
