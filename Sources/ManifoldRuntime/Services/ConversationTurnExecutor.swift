@@ -16,6 +16,11 @@ struct ConversationTurnExecutor: Sendable {
     private let compressionPolicy: (any CompressionPolicy)?
     private let hookTimeout: Duration
     private let historyAssembler: HistoryAssembler
+    /// Optional provider that attaches host-app data to each turn. Called with
+    /// the session UUID before context assembly; the returned value is stored on
+    /// ``TurnContext/appData`` and forwarded to ``CompletedTurn/appData`` so
+    /// ``GenerationHook`` implementations receive it without a side-channel.
+    private let turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
 
     init(
         persistence: ConversationPersistencePort,
@@ -30,7 +35,8 @@ struct ConversationTurnExecutor: Sendable {
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
-        historyProviders: [any HistoryProvider] = []
+        historyProviders: [any HistoryProvider] = [],
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
@@ -45,6 +51,7 @@ struct ConversationTurnExecutor: Sendable {
         self.compressionPolicy = compressionPolicy
         self.hookTimeout = hookTimeout
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
+        self.turnContextProvider = turnContextProvider
     }
 
     // MARK: Send flow
@@ -882,7 +889,8 @@ struct ConversationTurnExecutor: Sendable {
                 sessionID: sessionID,
                 assistantMessage: assistantMessage,
                 promptTokens: usage?.promptTokens,
-                completionTokens: usage?.completionTokens
+                completionTokens: usage?.completionTokens,
+                appData: turnContextProvider?(sessionID)
             )
             for hook in generationHooks {
                 let hookLabel = "\(type(of: hook))"
@@ -991,12 +999,14 @@ struct ConversationTurnExecutor: Sendable {
                 .lowercased()
             return joined.isEmpty ? nil : joined
         }()
-        return TurnContext(
+        var context = TurnContext(
             sessionID: sessionID,
             messageCount: history.count,
             conversationText: conversationText,
             tokenizer: nil
         )
+        context.appData = turnContextProvider?(sessionID)
+        return context
     }
 
     /// Reads the backend's context window size from the main actor.
