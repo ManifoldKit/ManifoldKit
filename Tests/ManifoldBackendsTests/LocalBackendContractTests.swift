@@ -1,6 +1,9 @@
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
+#if MLX
+@testable import ManifoldMLX
+#endif
 
 /// Parameterised contract suite for local inference backends.
 ///
@@ -37,6 +40,11 @@ final class LocalBackendContractTests: XCTestCase {
     /// backend that has already been loaded (or is pre-loaded, like
     /// ``MockInferenceBackend``).
     ///
+    /// When `requiresSlowTests` is `true`, scenarios that call `generate()`
+    /// skip themselves unless the `RUN_SLOW_TESTS=1` environment variable is
+    /// set. This keeps the per-PR CI lane fast by deferring hardware-gated
+    /// generation assertions to the nightly tier.
+    ///
     /// Marked `@unchecked Sendable` because the factory closure captures
     /// backend construction state. All captured types (MockInferenceBackend,
     /// stdlib values) are safe to construct on any thread.
@@ -44,6 +52,10 @@ final class LocalBackendContractTests: XCTestCase {
         let label: String
         let fixtureDirectory: String
         let capabilities: BackendCapabilities
+        /// When `true`, generation scenarios skip unless `RUN_SLOW_TESTS=1`.
+        /// Set for local backends that require real hardware and a model file
+        /// (MLX, Llama). `false` for scripted mocks.
+        let requiresSlowTests: Bool
         /// Factory that returns a backend ready to serve `generate()`.
         /// For ``MockInferenceBackend``, `isModelLoaded` is set to `true` by
         /// calling `loadModel()` inside this factory before returning.
@@ -69,6 +81,7 @@ final class LocalBackendContractTests: XCTestCase {
             supportsStreaming: true,
             isRemote: false
         ),
+        requiresSlowTests: false,
         makeBackend: {
             let backend = MockInferenceBackend()
             // MockInferenceBackend.loadModel only throws when shouldThrowOnLoad
@@ -87,16 +100,68 @@ final class LocalBackendContractTests: XCTestCase {
         }
     )
 
+    // MARK: - MLX participant
+
+    #if MLX
+    /// MLX participant for the contract suite.
+    ///
+    /// The `makeBackend` factory creates an `MLXBackend` in its initial
+    /// unconfigured state — no real model is loaded. This is intentional:
+    /// the `isGenerating == false on init` invariant and the
+    /// `capabilities` snapshot checks do not require a model. Scenarios
+    /// that call `generate()` are gated behind `RUN_SLOW_TESTS=1` so they
+    /// only run in the nightly tier where a real model is present.
+    ///
+    /// `MLXBackend.capabilities` before any `loadModel` call falls back to
+    /// the 8192-token conservative context default, which is reflected in the
+    /// participant's `capabilities` snapshot below.
+    private static let mlxParticipant = LocalParticipant(
+        label: "mlx.backend",
+        fixtureDirectory: "mlx",
+        capabilities: BackendCapabilities(
+            supportedParameters: [
+                .temperature, .topP, .topK, .repeatPenalty,
+                .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+            ],
+            maxContextTokens: 8192,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: true,
+            memoryStrategy: .resident,
+            maxOutputTokens: 4096,
+            supportsStreaming: true,
+            isRemote: false,
+            supportsKVCachePersistence: false,
+            supportsThinking: true,
+            supportsVision: false,
+            sharesMLXProcessResources: true
+        ),
+        requiresSlowTests: true,
+        makeBackend: {
+            // No model loaded — factory returns the backend in its zero state.
+            // Tests that exercise generate() must gate themselves behind
+            // RUN_SLOW_TESTS=1 and Metal availability (see the scenario methods).
+            MLXBackend()
+        }
+    )
+    #endif
+
     /// All participants registered for this suite.
     ///
-    /// Extend this list when adding MLX / Llama / Foundation participants.
-    /// Gate each additional entry with `#if MLX`, `#if Llama`, or
+    /// Extend this list when adding Llama / Foundation participants.
+    /// Gate each additional entry with `#if Llama`, or
     /// `#available(macOS 26, iOS 26, *)` as appropriate — the outer file has
     /// no trait guard, so per-participant guards are the only safe seam.
     private static var participants: [LocalParticipant] {
         var list: [LocalParticipant] = []
         list.append(mockParticipant)
-        // MLX participant: #if MLX — follow-up PR
+        #if MLX
+        list.append(mlxParticipant)
+        #endif
         // Llama participant: #if Llama — follow-up PR
         // Foundation participant: #available(macOS 26, iOS 26, *) — follow-up PR
         return list
@@ -108,10 +173,17 @@ final class LocalBackendContractTests: XCTestCase {
     /// events, and compares them against the on-disk `expected.jsonl` fixture.
     ///
     /// Runs for every participant whose capabilities claim
-    /// `supportsStreaming == true`. All registered participants in this PR
-    /// claim streaming.
+    /// `supportsStreaming == true`. Hardware-gated participants (MLX, Llama)
+    /// skip when `RUN_SLOW_TESTS != 1` or Metal is unavailable.
     func test_generate_simplePrompt_emitsTokensInOrder() async throws {
         for p in Self.participants where p.capabilities.supportsStreaming {
+            if p.requiresSlowTests {
+                try XCTSkipIf(
+                    ProcessInfo.processInfo.environment["RUN_SLOW_TESTS"] != "1",
+                    "[\(p.label)] contract scenarios require a real model — set RUN_SLOW_TESTS=1 and ensure a model is present"
+                )
+                try XCTSkipIf(isSimulator(), "[\(p.label)] Metal unavailable in simulator")
+            }
             let backend = await p.makeBackend()
             let stream = try backend.generate(
                 prompt: "Hello",
@@ -135,8 +207,19 @@ final class LocalBackendContractTests: XCTestCase {
     /// The mock sets `isGenerating = false` at the end of its emission task,
     /// before finishing the stream. This test drains the full stream and then
     /// asserts the flag.
+    ///
+    /// Hardware-gated participants (MLX, Llama) skip when `RUN_SLOW_TESTS != 1`
+    /// or Metal is unavailable, because they require a loaded model to call
+    /// `generate()` successfully.
     func test_generate_stopsGenerating_afterStreamEnd() async throws {
         for p in Self.participants where p.capabilities.supportsStreaming {
+            if p.requiresSlowTests {
+                try XCTSkipIf(
+                    ProcessInfo.processInfo.environment["RUN_SLOW_TESTS"] != "1",
+                    "[\(p.label)] contract scenarios require a real model — set RUN_SLOW_TESTS=1 and ensure a model is present"
+                )
+                try XCTSkipIf(isSimulator(), "[\(p.label)] Metal unavailable in simulator")
+            }
             let backend = await p.makeBackend()
             let stream = try backend.generate(
                 prompt: "ping",
@@ -207,6 +290,19 @@ final class LocalBackendContractTests: XCTestCase {
             20,
             "cancel mid-stream must halt emission before all 20 tokens are yielded"
         )
+    }
+
+    // MARK: - Hardware helpers
+
+    /// Returns `true` when running inside the iOS/macOS Simulator, where Metal
+    /// (and therefore MLX / Llama) is unavailable. Matches the check used by
+    /// ``AllBackendsAcceptPlanTests`` and ``LocalBackendRealDriverCoverageTest``.
+    private func isSimulator() -> Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return false
+        #endif
     }
 
     // MARK: - Fixture loading
