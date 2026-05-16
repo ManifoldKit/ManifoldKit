@@ -1,14 +1,12 @@
 name: Release Provenance Rehearsal (read-only)
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/release-provenance.yml"
-      - ".github/workflows/release-provenance-rehearsal.yml"
-      - "scripts/generate-sbom.sh"
-      - "scripts/check-swift-toolchain.sh"
-      - "Package.swift"
-      - "Package.resolved"
+  # Rehearsal is a dry-run of release-provenance.yml. It does not need to gate
+  # every PR — a weekly cron + manual dispatch is enough to catch breakage
+  # before the next tagged release. Per-PR runs added ~macos-15 minutes of
+  # 10×-billed CI to every change for no signal on the vast majority of PRs.
+  schedule:
+    - cron: "0 12 * * 1" # Mondays 12:00 UTC
   workflow_dispatch:
 
 permissions:
