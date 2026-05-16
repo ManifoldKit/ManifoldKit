@@ -38,9 +38,17 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .openAI:
             return OpenAIChatCompletionsPayloadParsing.extractToken(from: payload)
         case .openAIResponses:
+            #if CloudSaaS
             return OpenAIResponsesPayloadParsing.extractToken(from: payload)
+            #else
+            return nil
+            #endif
         case .claude:
+            #if CloudSaaS
             return ClaudePayloadParsingDispatch.extractToken(from: payload)
+            #else
+            return nil
+            #endif
         case .ollama:
             #if Ollama
             return OllamaPayloadParsingDispatch.extractToken(from: payload)
@@ -55,9 +63,17 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .openAI:
             return OpenAIChatCompletionsPayloadParsing.extractEvents(from: payload)
         case .openAIResponses:
+            #if CloudSaaS
             return OpenAIResponsesPayloadParsing.extractEvents(from: payload)
+            #else
+            return []
+            #endif
         case .claude:
+            #if CloudSaaS
             return ClaudePayloadParsingDispatch.extractEvents(from: payload)
+            #else
+            return []
+            #endif
         case .ollama:
             #if Ollama
             return OllamaPayloadParsingDispatch.extractEvents(from: payload)
@@ -72,9 +88,17 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .openAI:
             return OpenAIChatCompletionsPayloadParsing.extractUsage(from: payload)
         case .openAIResponses:
+            #if CloudSaaS
             return OpenAIResponsesPayloadParsing.extractUsage(from: payload)
+            #else
+            return nil
+            #endif
         case .claude:
+            #if CloudSaaS
             return ClaudePayloadParsingDispatch.extractUsage(from: payload)
+            #else
+            return nil
+            #endif
         case .ollama:
             #if Ollama
             return OllamaPayloadParsingDispatch.extractUsage(from: payload)
@@ -94,7 +118,11 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
             // Phase 2.
             return false
         case .claude:
+            #if CloudSaaS
             return ClaudePayloadParsingDispatch.isStreamEnd(payload)
+            #else
+            return false
+            #endif
         case .ollama:
             // Ollama signals termination via the `"done":true` flag, but
             // the existing backend stream loop reads that field directly
@@ -109,13 +137,21 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
         case .openAI, .ollama:
             return nil
         case .openAIResponses:
+            #if CloudSaaS
             // Adapter-routed Responses streams ride `NamedSSETransport`,
             // which wraps each event as `{__event, __data}`. Surface
             // `response.error` events as a thrown error so the routed
             // loop terminates the stream.
             return OpenAIResponsesPayloadParsing.extractStreamError(from: payload)
+            #else
+            return nil
+            #endif
         case .claude:
+            #if CloudSaaS
             return ClaudePayloadParsingDispatch.extractStreamError(from: payload)
+            #else
+            return nil
+            #endif
         }
     }
 }
@@ -126,6 +162,7 @@ public enum CloudPayloadHandler: Sendable, SSEPayloadHandler {
 // Once Phase 2 lifts the parser internals into the adapter composition,
 // these shims will collapse into the enum's `switch` arms directly.
 
+#if CloudSaaS
 enum ClaudePayloadParsingDispatch {
     static func extractToken(from payload: String) -> String? {
         ClaudePayloadParser.parseToken(from: payload)
@@ -153,6 +190,7 @@ enum ClaudePayloadParsingDispatch {
         ClaudePayloadParser.parseStreamError(from: payload)
     }
 }
+#endif
 
 #if Ollama
 enum OllamaPayloadParsingDispatch {
@@ -185,6 +223,7 @@ enum OllamaPayloadParsingDispatch {
 }
 #endif
 
+#if CloudSaaS
 enum OpenAIResponsesPayloadParsing {
     static func extractToken(from payload: String) -> String? {
         OpenAIResponsesBackend.parseDelta(from: payload)
@@ -215,4 +254,5 @@ enum OpenAIResponsesPayloadParsing {
         return CloudBackendError.serverError(statusCode: 500, message: message)
     }
 }
-#endif
+#endif // CloudSaaS
+#endif // Ollama || CloudSaaS
