@@ -153,6 +153,12 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldInference/Networking/CompositeURLSessionDelegate.swift",
         "ManifoldInference/Networking/URLSessionFactory.swift",
 
+        // HuggingFace reachability probe (#1296). Single `GET` to
+        // `https://huggingface.co/api/models?limit=1` routed through
+        // `URLSessionFactory.ephemeral` (already on this list); no auth,
+        // bounded by caller timeout, body discarded.
+        "ManifoldInference/Services/HuggingFaceProbe.swift",
+
         // Model download path — HuggingFace GGUF/MLX downloads.
         "ManifoldHuggingFace/BackgroundDownloadManager.swift",
         "ManifoldHuggingFace/BackgroundDownloadManager+URLSessionDelegate.swift",
@@ -211,6 +217,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldRuntime/Models/APIEndpointValidationReason.swift",
         // Provider enum exposes default base URLs as static data.
         "ManifoldInference/Models/APIProvider.swift",
+        // HuggingFace reachability probe (#1296) — embeds the canonical
+        // `https://huggingface.co/api/models?limit=1` probe URL as a static
+        // `defaultURL`. No other hostnames; never composed at runtime.
+        "ManifoldInference/Services/HuggingFaceProbe.swift",
     ]
 
     /// Files where `Process(` is approved. Other C-interop / dynamic-
@@ -298,7 +308,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 40,
+            Self.networkIOAllowlist.count, 41,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
