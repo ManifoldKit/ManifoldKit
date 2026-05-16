@@ -276,9 +276,11 @@ final class InferenceBackendContractTests: XCTestCase {
             case "openai.chat_completions":
                 let shape = OpenAIDeltaToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai.delta")
+            #if CloudSaaS
             case "openai.responses":
                 let shape = OpenAIResponsesItemIdToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
+            #endif
             #if Ollama
             case "ollama.chat":
                 let shape = OllamaWholeToolCalls()
