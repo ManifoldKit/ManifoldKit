@@ -243,4 +243,67 @@ final class ChatSessionManagerTests: XCTestCase {
         XCTAssertNil(m)
         XCTAssertNil(e)
     }
+
+    // MARK: - nil-closure safety
+
+    func test_teardown_nilClosures_doesNotCrash() async {
+        // A manager with no closures wired must not crash during teardown —
+        // optional chaining on each closure is the contract.
+        let mgr = ChatSessionManager()
+        _ = await mgr.teardown(
+            sessionID: UUID(),
+            promptTemplate: .chatML,
+            selectionState: SessionController.SessionSelectionState(
+                selectedModelID: nil, selectedEndpointID: nil
+            )
+        )
+        // Reaching this line is the assertion — no crash occurred.
+    }
+
+    func test_applySelection_whenBothClosuresNil_doesNotCrash() {
+        // applySelection must not crash when neither applyModelSelection nor
+        // applyEndpointSelection has been wired — closures are optional.
+        let mgr = ChatSessionManager()
+        mgr.applySelection(ChatSessionManager.TeardownResult(
+            resolvedModel: nil, resolvedEndpoint: nil
+        ))
+        // Reaching this line is the assertion — no crash occurred.
+    }
+
+    // MARK: - closure forwarding
+
+    func test_teardown_promptTemplateForwardedToApplyPromptTemplateClosure() async {
+        let mgr = silentMgr()
+        var receivedTemplate: PromptTemplate?
+        mgr.applyPromptTemplate = { receivedTemplate = $0 }
+
+        _ = await mgr.teardown(
+            sessionID: UUID(),
+            promptTemplate: .chatML,
+            selectionState: SessionController.SessionSelectionState(
+                selectedModelID: nil, selectedEndpointID: nil
+            )
+        )
+
+        XCTAssertEqual(receivedTemplate, .chatML,
+            "teardown must forward the supplied promptTemplate to applyPromptTemplate")
+    }
+
+    func test_teardown_sessionIDForwardedToDiscardRequestsClosure() async {
+        let mgr = silentMgr()
+        let expectedID = UUID()
+        var receivedID: UUID?
+        mgr.discardRequests = { receivedID = $0 }
+
+        _ = await mgr.teardown(
+            sessionID: expectedID,
+            promptTemplate: .chatML,
+            selectionState: SessionController.SessionSelectionState(
+                selectedModelID: nil, selectedEndpointID: nil
+            )
+        )
+
+        XCTAssertEqual(receivedID, expectedID,
+            "teardown must forward the supplied sessionID to discardRequests")
+    }
 }
