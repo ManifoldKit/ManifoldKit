@@ -38,12 +38,3 @@ extension ChatViewModel {
         generationCoordinator.runPostGenerationTasks(message: message, session: session)
     }
 }
-
-private extension ChatViewModel {
-    func markMostRecentUserMessageFailed() {
-        guard let idx = messages.lastIndex(where: { $0.role == .user && $0.sessionID == activeSessionID }) else {
-            return
-        }
-        messages[idx].status = .failed
-    }
-}
