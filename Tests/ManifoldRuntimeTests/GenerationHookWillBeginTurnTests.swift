@@ -65,31 +65,47 @@ final class GenerationHookWillBeginTurnTests: XCTestCase {
         }
 
         private(set) var calls: [Call] = []
+        private var pendingWillBegin: [UUID] = []
+        private var pendingPostGen: [CompletedTurn] = []
         private var willBeginContinuations: [CheckedContinuation<UUID, Never>] = []
         private var postGenContinuations: [CheckedContinuation<CompletedTurn, Never>] = []
 
         func willBeginTurn(sessionID: UUID) async {
             calls.append(.willBeginTurn(sessionID))
-            for continuation in willBeginContinuations {
+            if willBeginContinuations.isEmpty {
+                // No awaiter yet — buffer so a later awaitNext call resolves immediately.
+                // Without this, the detached pre-turn hook fires before the test
+                // re-suspends, the continuation is registered too late, and
+                // withCheckedContinuation hangs forever.
+                pendingWillBegin.append(sessionID)
+            } else {
+                let continuation = willBeginContinuations.removeFirst()
                 continuation.resume(returning: sessionID)
             }
-            willBeginContinuations.removeAll()
         }
 
         func postGeneration(_ turn: CompletedTurn) async {
             calls.append(.postGeneration(turn.sessionID))
-            for continuation in postGenContinuations {
+            if postGenContinuations.isEmpty {
+                pendingPostGen.append(turn)
+            } else {
+                let continuation = postGenContinuations.removeFirst()
                 continuation.resume(returning: turn)
             }
-            postGenContinuations.removeAll()
         }
 
         func awaitNextWillBeginTurn() async -> UUID {
-            await withCheckedContinuation { willBeginContinuations.append($0) }
+            if !pendingWillBegin.isEmpty {
+                return pendingWillBegin.removeFirst()
+            }
+            return await withCheckedContinuation { willBeginContinuations.append($0) }
         }
 
         func awaitNextPostGeneration() async -> CompletedTurn {
-            await withCheckedContinuation { postGenContinuations.append($0) }
+            if !pendingPostGen.isEmpty {
+                return pendingPostGen.removeFirst()
+            }
+            return await withCheckedContinuation { postGenContinuations.append($0) }
         }
     }
 
@@ -230,26 +246,19 @@ final class GenerationHookWillBeginTurnTests: XCTestCase {
             config: TurnConfig()
         ))
 
-        // Wait for the second willBeginTurn to arrive — it fires at the start
-        // of the regenerate flow's detached task, before history fetch.
-        let callsBefore = await hook.calls
-        let priorWillBeginCount = callsBefore.filter {
-            if case .willBeginTurn = $0 { return true }
-            return false
-        }.count
-
-        // Wait for the second willBeginTurn (regenerate flow).
-        _ = try await withDeadline { await hook.awaitNextWillBeginTurn() }
+        // Drain events for the regenerate turn so its detached task fully runs
+        // (firing the second willBeginTurn at the start, postGeneration at the end).
+        _ = try await collectUntilAfterGeneration(from: runtime)
 
         let calls = await hook.calls
         let willBeginCalls = calls.filter {
             if case .willBeginTurn(let id) = $0 { return id == sessionID }
             return false
         }
-        XCTAssertGreaterThan(
+        XCTAssertEqual(
             willBeginCalls.count,
-            priorWillBeginCount,
-            "willBeginTurn must fire again on the regenerate flow"
+            2,
+            "willBeginTurn must fire once per turn — send + regenerate"
         )
     }
 
