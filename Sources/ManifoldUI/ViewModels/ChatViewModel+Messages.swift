@@ -436,4 +436,34 @@ extension ChatViewModel {
     func clearDraftAttachments() {
         draftAttachments.removeAll()
     }
+
+    // MARK: - Public staged-attachment surface (issue #1302)
+
+    /// Image / vision parts currently staged for the next user turn.
+    ///
+    /// Mirrors the array the bundled ``ChatInputBar`` mutates internally so
+    /// hosts building custom composers can read the same source of truth.
+    public var stagedAttachments: [MessagePart] { draftAttachments }
+
+    /// Appends an attachment to the next user turn.
+    ///
+    /// Routes through the same internal path the bundled ``ChatInputBar``
+    /// uses (``stageDraftAttachment(_:)``) so image-placeholder generation
+    /// — and any other side effects added to that path in the future —
+    /// fire identically for host-supplied composers.
+    public func stageAttachment(_ part: MessagePart) {
+        stageDraftAttachment(part)
+    }
+
+    /// Removes a previously staged attachment by index. No-op when the
+    /// index is out of range so callers driving from indeterminate UI
+    /// state (drag sources, async pickers) do not have to pre-validate.
+    public func removeStagedAttachment(at index: Int) {
+        removeDraftAttachment(id: index)
+    }
+
+    /// Clears all staged attachments without sending the turn.
+    public func clearStagedAttachments() {
+        clearDraftAttachments()
+    }
 }
