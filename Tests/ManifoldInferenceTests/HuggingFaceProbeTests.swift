@@ -113,8 +113,33 @@ final class HuggingFaceProbeTests: XCTestCase {
         // upper bound to absorb CI jitter without making the test flaky.
         let latencySeconds = Double(result.latency.components.seconds)
             + Double(result.latency.components.attoseconds) / 1e18
-        XCTAssertGreaterThanOrEqual(latencySeconds, timeout * 0.5)
+        // Lower bound must actually prove the wall-clock cap fired (not that
+        // an unrelated transport failure raced through faster). A latency
+        // well below `timeout` would indicate the sleep branch lost to an
+        // immediate error rather than the wedged-byte path.
+        XCTAssertGreaterThanOrEqual(latencySeconds, timeout * 0.9)
         XCTAssertLessThan(latencySeconds, timeout + 2.0)
+    }
+
+    /// Sabotage-resistant: even when the underlying `URLError` carries
+    /// identifying detail in `userInfo` (failing URL, hostname), the bucketed
+    /// `failureReason` must not echo any of it back to callers.
+    func test_sanitise_dropsURLErrorUserInfo() {
+        let leakedURL = URL(string: "https://leaked-host-\(UUID().uuidString).example/secret/path?token=AKIA42")!
+        let err = URLError(
+            .cannotConnectToHost,
+            userInfo: [
+                NSURLErrorFailingURLErrorKey: leakedURL,
+                NSURLErrorFailingURLStringErrorKey: leakedURL.absoluteString,
+                NSLocalizedDescriptionKey: "Could not connect to \(leakedURL.host!)"
+            ]
+        )
+        let reason = HuggingFaceProbe.sanitise(urlError: err)
+        XCTAssertEqual(reason, "Cannot connect to host")
+        XCTAssertFalse(reason.contains("leaked-host"))
+        XCTAssertFalse(reason.contains("token"))
+        XCTAssertFalse(reason.contains("AKIA42"))
+        XCTAssertFalse(reason.contains(".example"))
     }
 
     func test_sanitise_bucketsDNSAndTLSErrors() {

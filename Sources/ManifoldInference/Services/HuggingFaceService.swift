@@ -39,9 +39,12 @@ public extension HuggingFaceServiceProtocol {
     /// Bounded reachability check against the HuggingFace Hub.
     ///
     /// Issues a `GET https://huggingface.co/api/models?limit=1` (the smallest
-    /// JSON HF will return) through the same redirect-guarded
+    /// JSON HF will return) through the redirect-guarded
     /// ``URLSessionFactory/ephemeral(hopCap:resourceTimeout:additionalDataDelegate:)``
-    /// pipeline that `searchModels` uses. HEAD was rejected by `huggingface.co`
+    /// pipeline. Note: the concrete `searchModels` implementation goes through
+    /// the vendored `HubClient` SDK and does **not** share this session — the
+    /// probe is deliberately lower-level so a reachability check cannot
+    /// regress along with SDK upgrades. HEAD was rejected by `huggingface.co`
     /// during prototyping (returns 405 on `/api/models`), so a minimal GET is
     /// used instead — the response body is read into memory but discarded.
     ///
