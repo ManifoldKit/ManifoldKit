@@ -15,10 +15,11 @@ import ManifoldTestSupport
 @MainActor
 final class SessionDiscardOrderingTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         // 50-cycle stress test — too slow for per-PR CI. Nightly sets RUN_SLOW_TESTS=1.
-        try? XCTSkipUnless(
+        // `try?` here would swallow XCTSkip and run the test anyway, stalling CI.
+        try XCTSkipUnless(
             ProcessInfo.processInfo.environment["RUN_SLOW_TESTS"] == "1",
             "Stress test — set RUN_SLOW_TESTS=1 to run (nightly CI)"
         )
