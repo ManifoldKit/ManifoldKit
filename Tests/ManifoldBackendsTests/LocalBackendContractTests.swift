@@ -4,6 +4,12 @@ import ManifoldTestSupport
 #if MLX
 @testable import ManifoldMLX
 #endif
+#if Llama
+@testable import ManifoldLlama
+#endif
+#if canImport(FoundationModels)
+@testable import ManifoldFoundation
+#endif
 
 /// Parameterised contract suite for local inference backends.
 ///
@@ -100,6 +106,103 @@ final class LocalBackendContractTests: XCTestCase {
         }
     )
 
+    // MARK: - Llama participant
+
+    #if Llama
+    /// Llama participant for the contract suite.
+    ///
+    /// The `makeBackend` factory creates a `LlamaBackend` in its initial
+    /// unconfigured state — no model loaded and no `llama_backend_init` call
+    /// triggered. This is intentional: the `isGenerating == false on init`
+    /// invariant and the `capabilities` snapshot checks do not require a model.
+    /// Scenarios that call `generate()` are gated behind `RUN_SLOW_TESTS=1` and
+    /// a Metal-availability check.
+    ///
+    /// The `maxContextTokens: 4096` value mirrors the default `_effectiveContextSize`
+    /// set at `LlamaBackend.init()` before any model is loaded.
+    private static let llamaParticipant = LocalParticipant(
+        label: "llama.backend",
+        fixtureDirectory: "llama",
+        capabilities: BackendCapabilities(
+            supportedParameters: [
+                .temperature, .topP, .topK, .repeatPenalty,
+                .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
+                .llamaDRY, .llamaXTC, .llamaMirostatV2,
+            ],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: true,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .explicit,
+            supportsTokenCounting: true,
+            memoryStrategy: .mappable,
+            maxOutputTokens: 4096,
+            supportsStreaming: true,
+            isRemote: false,
+            supportsKVCachePersistence: true,
+            supportsGrammarConstrainedSampling: true,
+            supportsThinking: true,
+            supportsVision: false
+        ),
+        requiresSlowTests: true,
+        makeBackend: {
+            // No model loaded — factory returns the backend in its zero state.
+            // Tests that exercise generate() must gate themselves behind
+            // RUN_SLOW_TESTS=1 and Metal availability (see the scenario methods).
+            LlamaBackend()
+        }
+    )
+    #endif
+
+    // MARK: - Foundation participant
+
+    #if canImport(FoundationModels)
+    /// Foundation participant for the contract suite.
+    ///
+    /// Gated by `#if canImport(FoundationModels)` (always true on macOS 26+
+    /// / iOS 26+ where the framework ships) and `#available(macOS 26, iOS 26, *)`
+    /// inside the participant factory. The `makeBackend` factory creates a
+    /// `FoundationBackend` in its initial unconfigured state — no session created.
+    /// This is intentional: the pre-load invariants and the `capabilities` snapshot
+    /// do not require a live session.
+    ///
+    /// Scenarios that call `generate()` are gated behind `RUN_SLOW_TESTS=1` and
+    /// an `#available` check, so they only run on nightly infrastructure where
+    /// macOS 26 / iOS 26 and Apple Intelligence are present.
+    @available(macOS 26, iOS 26, *)
+    private static let foundationParticipant = LocalParticipant(
+        label: "foundation.backend",
+        fixtureDirectory: "foundation",
+        capabilities: BackendCapabilities(
+            supportedParameters: [.temperature],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            supportsNativeJSONMode: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false,
+            memoryStrategy: .external,
+            maxOutputTokens: 4096,
+            supportsStreaming: true,
+            isRemote: false,
+            supportsVision: false,
+            streamsToolCallArguments: false,
+            supportsGuidedStructuredOutput: true
+        ),
+        requiresSlowTests: true,
+        makeBackend: {
+            // No session created — factory returns the backend in its zero state.
+            // Tests that exercise generate() must gate themselves behind
+            // RUN_SLOW_TESTS=1 and availability checks.
+            FoundationBackend()
+        }
+    )
+    #endif
+
     // MARK: - MLX participant
 
     #if MLX
@@ -162,8 +265,14 @@ final class LocalBackendContractTests: XCTestCase {
         #if MLX
         list.append(mlxParticipant)
         #endif
-        // Llama participant: #if Llama — follow-up PR
-        // Foundation participant: #available(macOS 26, iOS 26, *) — follow-up PR
+        #if Llama
+        list.append(llamaParticipant)
+        #endif
+        #if canImport(FoundationModels)
+        if #available(macOS 26, iOS 26, *) {
+            list.append(foundationParticipant)
+        }
+        #endif
         return list
     }
 

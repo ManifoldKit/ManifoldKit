@@ -1,0 +1,33 @@
+# Llama backend fixtures
+
+Llama generates non-deterministic token streams because output depends on the
+specific GGUF model, Metal GPU scheduler, and sampler settings. Fixtures for
+the `LocalBackendContractTests` Llama participant are captured via
+`scripts/record-fixture.sh` on a specific model against Apple Silicon hardware
+and committed to this directory.
+
+## Capturing fixtures
+
+Run the following with `RUN_SLOW_TESTS=1` set and a GGUF model available at
+the path your test expects:
+
+```
+RUN_SLOW_TESTS=1 scripts/record-fixture.sh llama streaming/simple-prompt
+```
+
+The script calls `generate(prompt: "Hello", systemPrompt: nil, config: GenerationConfig())`
+through the backend and serialises each `GenerationEvent` as a JSON line into
+`streaming/simple-prompt/expected.jsonl`. Example output (model-dependent):
+
+```jsonl
+{"event":"token","text":"Hello"}
+{"event":"token","text":"!"}
+{"event":"token","text":" How"}
+```
+
+## Nightly tier
+
+The Llama contract participant skips generation scenarios unless
+`RUN_SLOW_TESTS=1` is set in the environment. Per-PR CI does not set this
+variable, so these fixtures are only required in the nightly tier where a
+real GGUF model and Apple Silicon hardware are present.
