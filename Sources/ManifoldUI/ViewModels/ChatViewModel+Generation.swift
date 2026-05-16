@@ -36,46 +36,12 @@ extension ChatViewModel {
     /// Suspends until the runtime stream associated with the most recent
     /// send/regenerate/edit call terminates.
     ///
-    /// `sendMessage()` / `regenerate()` / `edit()` use this so callers that
-    /// `await` them observe the same end-of-turn state the legacy in-process
-    /// orchestrator delivered.
-    ///
-    /// The runtime's `streamFinished` event flips ``isGenerating`` to `false`
-    /// AND clears ``activeConversationStreamHandle`` via the drain task. We
-    /// suspend on `activeConversationStreamHandle == nil` rather than on
-    /// `isGenerating` because the drain task may not have processed
-    /// `streamStarted` (which flips `isGenerating` to `true`) by the time
-    /// this helper runs — a stale-`isGenerating == false` snapshot would
-    /// otherwise let the helper return before any tokens stream in.
+    /// Delegates to ``ChatGenerationCoordinator/awaitStreamCompletion()`` which
+    /// polls `activeConversationStreamHandle` on the coordinator. Using the
+    /// coordinator's handle avoids a stale-read of a forwarding computed property
+    /// before the drain task has processed `streamStarted`.
     func awaitStreamCompletion() async {
-        // Yield once so any synchronously-emitted events from the runtime's
-        // `send` / `regenerate` / `edit` setup phase can be drained before we
-        // start polling. Without this, `messageInserted(user)` lands but the
-        // detached generation `Task` has not yet emitted `streamStarted`, and
-        // the early-exit below would let `sendMessage()` return before the
-        // turn even begins.
-        await Task.yield()
-        // The stream task on the runtime side is detached, so events arrive
-        // on MainActor as the drain task picks them up. A tight `Task.yield`
-        // loop lets the drain pump until the handle clears, without an
-        // arbitrary timeout (mock-backed unit tests finish in milliseconds;
-        // production-style streams take seconds — both terminate via the
-        // same handle-cleared signal).
-        var ticks = 0
-        while activeConversationStreamHandle != nil {
-            await Task.yield()
-            ticks += 1
-            // Sleep on a backoff rather than busy-spinning when the
-            // generation actually takes time (e.g. a slow mock). 1 ms after
-            // the first 8 yields is small enough to round-trip mock tokens
-            // and large enough to keep CPU off the floor on long runs.
-            if ticks > 8 {
-                // Cancellation here just exits the polling loop; the turn's own
-                // cancel runs through the runtime stream. Allowlist:
-                // ChatViewModel+Generation.swift:try? await Task.sleep(...)
-                try? await Task.sleep(for: .milliseconds(1))
-            }
-        }
+        await generationCoordinator.awaitStreamCompletion()
     }
 
     /// Substitutes `{{key}}` tokens in `text` with values from `context`.

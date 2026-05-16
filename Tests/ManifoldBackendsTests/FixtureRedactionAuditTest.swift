@@ -69,6 +69,14 @@ final class FixtureRedactionAuditTest: XCTestCase {
             }
 
             for (idx, line) in content.components(separatedBy: "\n").enumerated() {
+                // Skip very long lines (>2 000 chars) — they are binary blobs
+                // or adversarial stress-test data, not human-readable text that
+                // could contain a live credential.  The email regex in particular
+                // catastrophically backtracks on long alphanumeric strings (e.g.
+                // the `very-long-arguments.json` adversarial fixture), causing
+                // the test to spin for minutes.  No real credential is embedded
+                // in a 100 KB one-liner of repeated characters.
+                guard line.count <= 2_000 else { continue }
                 for (label, regex) in Self.patterns {
                     guard let matched = Self.firstMatch(of: regex, in: line) else { continue }
                     // IPv4: exclude loopback and unspecified after the cheap

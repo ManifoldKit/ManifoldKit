@@ -88,6 +88,13 @@ public final class ChatViewModel {
     /// Extracted from `ChatViewModel+SessionManagement.swift` in #1221 phase 1.
     let sessionManager: ChatSessionManager
 
+    // MARK: - Generation Coordinator
+
+    /// Owns the streaming/generation lifecycle (event drain, stream handle,
+    /// post-generation tasks, phase-state machine). Extracted from
+    /// `ChatViewModel` in phase 2 of #1221.
+    let generationCoordinator: ChatGenerationCoordinator
+
     var persistence: (any SessionStore & MessageStore)? {
         get { sessionController.persistence }
         set { sessionController.persistence = newValue }
@@ -243,7 +250,11 @@ public final class ChatViewModel {
     /// exhaustive legal-transition coverage.
     public internal(set) var activityPhase: BackendActivityPhase = .idle {
         didSet {
-            phaseMachine = ActivityPhaseStateMachine(phase: activityPhase)
+            // Keep the coordinator's phase machine in sync with direct writes
+            // to `activityPhase` (e.g. test-only assignments, legacy paths).
+            // Production code should always use `transitionPhase(to:)` which
+            // goes through the machine first; this sync is a safety net.
+            generationCoordinator.phaseMachine = ActivityPhaseStateMachine(phase: activityPhase)
             let wasGenerating = oldValue == .waitingForFirstToken || oldValue == .streaming
             let nowGenerating = activityPhase == .waitingForFirstToken || activityPhase == .streaming
             if wasGenerating != nowGenerating {
@@ -265,39 +276,17 @@ public final class ChatViewModel {
     /// - `.failed(error)` — the last turn raised an error or was loop-stopped.
     public internal(set) var lastTurnState: TurnState = .idle
 
-    /// Single source of truth for legal phase transitions. The view model
-    /// never mutates `activityPhase` directly — every production code path
-    /// routes through ``transitionPhase(to:)``.
-    @ObservationIgnored
-    private var phaseMachine = ActivityPhaseStateMachine(phase: .idle)
-
-    /// Attempt to move to `newPhase`. Illegal transitions are logged and
-    /// dropped — callers that know they may lose a race (stale progress
-    /// callbacks, late stall notifications) rely on this to be a no-op.
+    /// Attempt to move to `newPhase`. Forwards through ``generationCoordinator``
+    /// so the ``ActivityPhaseStateMachine`` inside the coordinator validates the
+    /// transition. Illegal transitions are logged and dropped.
     ///
     /// Returns `true` if the phase actually changed, `false` if the
     /// transition was rejected or was a same-phase no-op.
     @discardableResult
     func transitionPhase(to newPhase: BackendActivityPhase) -> Bool {
-        let result = phaseMachine.transition(to: newPhase)
-        switch result {
-        case .applied:
-            activityPhase = phaseMachine.phase
-            return true
-        case .unchanged:
-            return false
-        case .rejected(let from, let to):
-            // Rejected transitions are a defence against bugs *and* a
-            // defence against stale async events. We log at warning level
-            // so CI surfaces unexpected bugs without crashing tests in
-            // debug — per CLAUDE.md, `assertionFailure` is reserved for
-            // conditions with no recovery path, and every rejection here
-            // has an implicit recovery (ignore the event).
-            Log.ui.warning(
-                "ActivityPhaseStateMachine rejected transition: \(String(describing: from)) → \(String(describing: to))"
-            )
-            return false
-        }
+        // The coordinator owns the phase machine; the write-back closure on the
+        // coordinator sets `self.activityPhase` so SwiftUI observation fires.
+        generationCoordinator.transitionPhase(to: newPhase)
     }
 
     /// Whether a model is currently being loaded. Derived from `activityPhase`.
@@ -593,23 +582,44 @@ public final class ChatViewModel {
     /// runtime backed by the configured storage. Hosts using
     /// ``ManifoldBootstrap`` should pass the bootstrap's runtime at
     /// construction and not rely on this rebuild path.
-    private(set) var conversationRuntime: ConversationRuntime
+    /// The single turn-loop owner — forwarded from the coordinator. `private(set)`
+    /// so the Persistence extension can read it to build a new runtime, and the
+    /// generation coordinator stays the exclusive mutator.
+    var conversationRuntime: ConversationRuntime {
+        generationCoordinator.conversationRuntime
+    }
 
-    /// Drain task for the runtime event stream. Cancelled when the runtime
-    /// is replaced or the view model is torn down.
-    @ObservationIgnored
-    private var runtimeEventDrainTask: Task<Void, Never>?
+    /// Forwarding accessor so callers that hold `activeConversationStreamHandle` references
+    /// (tests, Messages extension) continue to compile without changes.
+    var activeConversationStreamHandle: ConversationStreamHandle? {
+        get { generationCoordinator.activeConversationStreamHandle }
+        set { generationCoordinator.activeConversationStreamHandle = newValue }
+    }
 
-    /// `true` while the runtime is the default in-memory one created by the
-    /// initializer (i.e. the host did not pass `conversationRuntime:` at
-    /// construction). ``configure(persistence:)`` uses this flag to decide
-    /// whether to rebuild the runtime against the newly-installed store —
-    /// runtimes the host built explicitly are never replaced.
-    @ObservationIgnored
-    private var ownsDefaultRuntime: Bool = false
+    /// Forwarding accessor — owned by the coordinator.
+    var activeConversationMessageID: UUID? {
+        get { generationCoordinator.activeConversationMessageID }
+        set { generationCoordinator.activeConversationMessageID = newValue }
+    }
 
-    /// Handle to the in-flight ConversationRuntime stream, used to cancel it.
-    var activeConversationStreamHandle: ConversationStreamHandle?
+    /// Forwarding accessor — owned by the coordinator.
+    var activeGenerationToken: InferenceService.GenerationRequestToken? {
+        get { generationCoordinator.activeGenerationToken }
+        set { generationCoordinator.activeGenerationToken = newValue }
+    }
+
+    /// Forwarding accessor — owned by the coordinator.
+    var generationTask: Task<Void, Never>? {
+        get { generationCoordinator.generationTask }
+        set { generationCoordinator.generationTask = newValue }
+    }
+
+    /// Forwarding accessor — owned by the coordinator. Tests read this to
+    /// await in-flight post-generation tasks.
+    var backgroundTask: Task<Void, Never>? {
+        get { generationCoordinator.backgroundTask }
+        set { generationCoordinator.backgroundTask = newValue }
+    }
 
     @ObservationIgnored
     var endpointRefreshTask: Task<Void, Never>?
@@ -637,19 +647,8 @@ public final class ChatViewModel {
     /// generations. Driven by the `ImageGenerationRuntime` event drain.
     public internal(set) var imageGenerationProgress: [UUID: ImageGenerationProgress] = [:]
 
-    /// The assistant `messageID` carried by the most-recent `streamStarted`
-    /// event. Used by ``ChatViewModel/handle(runtimeEvent:)`` to gate
-    /// terminal events against the active turn — late events from a
-    /// previously-cancelled turn (after `switchToSession`) carry a
-    /// different messageID and must not clobber the new turn's handle.
-    var activeConversationMessageID: UUID?
-
     // MARK: - Private State
 
-    /// Token for the currently active generation request, if any.
-    var activeGenerationToken: InferenceService.GenerationRequestToken?
-    var generationTask: Task<Void, Never>?
-    var backgroundTask: Task<Void, Never>?
     var lastPressureLevel: MemoryPressureLevel = .nominal
     private var isSynchronizingSelection = false
 
@@ -793,8 +792,11 @@ public final class ChatViewModel {
                 inferenceService: inferenceService
             )
         }
-        self.conversationRuntime = resolvedRuntime
-        self.ownsDefaultRuntime = (conversationRuntime == nil)
+        let genCoordinator = ChatGenerationCoordinator(
+            conversationRuntime: resolvedRuntime,
+            ownsDefaultRuntime: (conversationRuntime == nil)
+        )
+        self.generationCoordinator = genCoordinator
 
         let firstRunKey = "\(ManifoldConfiguration.shared.bundleIdentifier).hasCompletedFirstLaunch"
         self.isFirstRun = !userDefaults.bool(forKey: firstRunKey)
@@ -826,13 +828,13 @@ public final class ChatViewModel {
             self?.loadPlanEnvironment ?? .current
         }
 
-        startRuntimeEventDrain()
         installRegistryObservation()
         installSessionManagerClosures()
+        installGenerationCoordinatorClosures()
+        genCoordinator.startRuntimeEventDrain()
     }
 
     deinit {
-        runtimeEventDrainTask?.cancel()
         imageRuntimeEventDrainTask?.cancel()
         endpointRefreshTask?.cancel()
     }
@@ -857,25 +859,6 @@ public final class ChatViewModel {
         }
     }
 
-    /// Cancels the existing event drain (if any) and starts a fresh one for
-    /// ``conversationRuntime``. Called from the initializer and from
-    /// ``configure(persistence:)`` when the runtime is rebuilt.
-    private func startRuntimeEventDrain() {
-        runtimeEventDrainTask?.cancel()
-        let runtime = conversationRuntime
-        // `[weak self]` plus a per-iteration `guard let self` — hoisting the
-        // `guard` outside the `for-await` upgrades `self` to strong for the
-        // task's lifetime, which retains the view model until the runtime's
-        // continuation finishes (i.e. forever in normal use). Re-checking
-        // each iteration lets the view model deallocate between events.
-        runtimeEventDrainTask = Task { [weak self] in
-            for await event in runtime.events {
-                guard let self else { return }
-                await self.handle(runtimeEvent: event)
-            }
-        }
-    }
-
     /// Injects the persistence stores. Call once after the storage backend is
     /// available, or prefer ``configure(runtime:)`` when bootstrapping through
     /// ``ManifoldRuntime``.
@@ -894,13 +877,13 @@ public final class ChatViewModel {
     /// host's setup.
     public func configure(persistence: any SessionStore & MessageStore) {
         sessionController.configure(persistence: persistence)
-        if ownsDefaultRuntime {
-            conversationRuntime = ConversationRuntime(
+        if generationCoordinator.ownsDefaultRuntime {
+            let newRuntime = ConversationRuntime(
                 messageStore: persistence,
                 sessionStore: persistence,
                 inferenceService: inferenceService
             )
-            startRuntimeEventDrain()
+            generationCoordinator.replaceRuntime(newRuntime)
         }
     }
 

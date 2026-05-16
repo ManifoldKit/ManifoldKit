@@ -234,20 +234,21 @@ extension ChatViewModel {
         // (clearing `activeConversationStreamHandle`) and how persistence of
         // the partial reply happens. Do NOT clear the handle here; let the
         // drain task clear it when the cancellation has fully propagated.
-        transitionPhase(to: .idle)
+        //
         // Always forward to the backend — call sites like memory-pressure
         // handlers and scenePhase teardown invoke this defensively even
         // when no generation is active. A no-op stop on an idle backend is
         // safe; conversely, dropping the call risks orphaning a
         // mid-flight inference if the runtime's handle bookkeeping raced.
+        transitionPhase(to: .idle)
         inferenceService.stopGeneration()
-        guard let handle = activeConversationStreamHandle else {
+        guard let handle = generationCoordinator.activeConversationStreamHandle else {
             Log.ui.debug("stopGeneration called with no active runtime stream — backend stopped anyway")
             return
         }
-        let runtime = conversationRuntime
+        let rt = conversationRuntime
         Task {
-            await runtime.cancel(handle)
+            await rt.cancel(handle)
         }
         Log.ui.debug("Generation stopped by user")
     }
@@ -312,8 +313,7 @@ extension ChatViewModel {
         inferenceService.secureWipe()
 
         // Cancel any in-flight post-generation background tasks.
-        backgroundTask?.cancel()
-        backgroundTask = nil
+        generationCoordinator.cancelBackgroundTask()
 
         guard let activeSessionID else {
             messages.removeAll()
