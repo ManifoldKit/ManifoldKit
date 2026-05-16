@@ -1009,6 +1009,225 @@ final class ModelLoadPlanTests: XCTestCase {
         XCTAssertEqual(inferred.inputs, explicit.inputs)
         XCTAssertEqual(inferred.inputs.memoryStrategy, .resident)
     }
+
+    // MARK: - estimate(for: DownloadableModel) — pre-download fit verdict
+
+    /// Helper: build a `DownloadableModel` for fit tests without going through the
+    /// curated catalogue. Filename is `.gguf` by default so quantization extraction
+    /// has a real input shape, even though `estimate(...)` ignores it.
+    private func makeDownloadable(
+        sizeBytes: UInt64,
+        modelType: ModelType = .gguf,
+        fileName: String = "test-Q4_K_M.gguf"
+    ) -> DownloadableModel {
+        DownloadableModel(
+            repoID: "test/repo",
+            fileName: fileName,
+            displayName: "Test Model",
+            modelType: modelType,
+            sizeBytes: sizeBytes
+        )
+    }
+
+    /// Small GGUF model on a 16 GB device with ample free memory → `.allow`, no clamp.
+    func test_estimate_smallModel_amplyMemory_allows() {
+        let oneGBLocal = oneGB
+        let model = makeDownloadable(sizeBytes: 2 * oneGBLocal)
+        let twelveGB = 12 * oneGBLocal
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { twelveGB },
+            physicalMemoryBytes: 16 * oneGBLocal
+        )
+        let plan = ModelLoadPlan.estimate(
+            for: model,
+            requestedContextSize: 4096,
+            environment: env
+        )
+
+        XCTAssertEqual(plan.verdict, .allow)
+        XCTAssertEqual(plan.effectiveContextSize, 4096, "Ample memory must not clamp the requested context.")
+        // Strategy must come from the format → .gguf maps to .mappable.
+        XCTAssertEqual(plan.inputs.memoryStrategy, .mappable)
+        // No clamp reasons expected when nothing was tightened.
+        XCTAssertFalse(plan.reasons.contains { reason in
+            if case .memoryCeilingReached = reason { return true }
+            if case .absoluteCeilingReached = reason { return true }
+            return false
+        })
+    }
+
+    /// Tight memory → memory-derived ceiling tightens context below the request.
+    /// We pick numbers where the memory ceiling is well below 4096 tokens so the
+    /// clamp is visible and the verdict can still come out `.allow` (resident is small).
+    func test_estimate_clampsContext_whenMemoryTight() {
+        // 4 GB mappable file → residentBudget = min(1 GB, 1 GB) = 1 GB.
+        // available = 2 GB, headroom 0.40 → reserveAfterHeadroom = 1.2 GB.
+        // kvBudget = 1.2 GB − 1 GB = 0.2 GB; / 8 KB = ~26214 tokens (still > 4096).
+        // Force a tighter clamp by squeezing available further.
+        let model = makeDownloadable(sizeBytes: 4 * oneGB)
+        let available: UInt64 = 1_800_000_000  // 1.8 GB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { available },
+            physicalMemoryBytes: 16 * oneGB
+        )
+        let plan = ModelLoadPlan.estimate(
+            for: model,
+            requestedContextSize: 8192,
+            environment: env
+        )
+
+        XCTAssertLessThan(plan.effectiveContextSize, 8192,
+                          "Tight memory must clamp effective context below the request.")
+        XCTAssertTrue(plan.reasons.contains { reason in
+            if case .memoryCeilingReached = reason { return true }
+            return false
+        }, "A memory clamp must produce a .memoryCeilingReached reason. Got: \(plan.reasons)")
+    }
+
+    /// Oversized model (40 GB on 8 GB available) → `.deny` with an insufficient-resident
+    /// reason from the impossible-fit guard.
+    func test_estimate_oversized_denies_withMemoryReason() {
+        let oneGBLocal = oneGB
+        let model = makeDownloadable(sizeBytes: 40 * oneGBLocal)
+        let eightGB = 8 * oneGBLocal
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { eightGB },
+            physicalMemoryBytes: 16 * oneGBLocal
+        )
+        let plan = ModelLoadPlan.estimate(
+            for: model,
+            requestedContextSize: 4096,
+            environment: env
+        )
+
+        XCTAssertEqual(plan.verdict, .deny)
+        XCTAssertTrue(plan.reasons.contains { reason in
+            if case .insufficientResident = reason { return true }
+            if case .insufficientKVCache = reason { return true }
+            return false
+        }, "Oversized denies must surface a memory-headroom reason. Got: \(plan.reasons)")
+    }
+
+    /// KV-cache fallback path: manifest has no arch hints, so estimate must use the
+    /// legacy 8 KB/token fallback. Verify by computing the expected outcome with that
+    /// exact constant and comparing verdict + total bytes.
+    func test_estimate_kvFallback_usesLegacy8KBPerToken() {
+        let model = makeDownloadable(sizeBytes: 4 * oneGB)
+        let available: UInt64 = 8 * oneGB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { available },
+            physicalMemoryBytes: 16 * oneGB
+        )
+        let plan = ModelLoadPlan.estimate(
+            for: model,
+            requestedContextSize: 4096,
+            environment: env
+        )
+
+        let expected = expectedOutcome(
+            modelFileSize: 4 * oneGB,
+            strategy: .mappable,
+            requested: 4096,
+            trained: nil,
+            kvBytesPerToken: 8_192,  // legacy fallback — what estimate() must use
+            available: available
+        )
+
+        XCTAssertEqual(plan.inputs.kvBytesPerToken, 8_192,
+                       "estimate() must populate kvBytesPerToken with the legacy 8 KB fallback for manifest-only inputs.")
+        XCTAssertEqual(plan.verdict, expected.verdict)
+        XCTAssertEqual(plan.effectiveContextSize, expected.effective)
+        XCTAssertEqual(plan.outcome.totalEstimatedBytes, expected.total)
+    }
+
+    /// `.foundation` short-circuit: estimate() returns the systemManaged stub regardless
+    /// of sizeBytes / environment.
+    func test_estimate_foundation_returnsSystemManaged() {
+        let model = makeDownloadable(sizeBytes: 0, modelType: .foundation, fileName: "apple-foundation")
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { 0 },
+            physicalMemoryBytes: 0
+        )
+        let plan = ModelLoadPlan.estimate(for: model, requestedContextSize: 4096, environment: env)
+        let expected = ModelLoadPlan.systemManaged(requestedContextSize: 4096)
+
+        XCTAssertEqual(plan.verdict, .allow)
+        XCTAssertEqual(plan.outcome, expected.outcome)
+        XCTAssertEqual(plan.inputs, expected.inputs)
+    }
+
+    /// `.mlx` modelType must pick the `.resident` strategy (mirrors the ModelInfo overload).
+    func test_estimate_mlx_usesResidentStrategy() {
+        let oneGBLocal = oneGB
+        let model = makeDownloadable(sizeBytes: 2 * oneGBLocal, modelType: .mlx, fileName: "mlx-community/Test-4bit")
+        let twelveGB = 12 * oneGBLocal
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { twelveGB },
+            physicalMemoryBytes: 16 * oneGBLocal
+        )
+        let plan = ModelLoadPlan.estimate(for: model, requestedContextSize: 4096, environment: env)
+
+        XCTAssertEqual(plan.inputs.memoryStrategy, .resident)
+    }
+
+    /// Verdict-parity sanity: a `DownloadableModel` and a same-sized GGUF `ModelInfo`
+    /// (no detected KV/token, no trained-context length) must agree on the allow/deny
+    /// verdict. `estimate(...)` may differ on the clamped context value because it
+    /// lacks the on-disk trained-context length, but the top-level fit decision must
+    /// match for inputs that don't depend on that field.
+    func test_estimate_verdictParity_withComputeForModelInfo_allow() {
+        let fileSize: UInt64 = 4 * oneGB
+        let available: UInt64 = 12 * oneGB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { available },
+            physicalMemoryBytes: 16 * oneGB
+        )
+
+        let dl = makeDownloadable(sizeBytes: fileSize)
+        let mi = ModelInfo(
+            name: "parity",
+            fileName: "parity.gguf",
+            url: URL(fileURLWithPath: "/tmp/parity.gguf"),
+            fileSize: fileSize,
+            modelType: .gguf,
+            detectedContextLength: nil,        // match estimate()'s manifest blindness
+            estimatedKVBytesPerToken: nil      // forces legacy 8 KB fallback in compute()
+        )
+
+        let estimatePlan = ModelLoadPlan.estimate(for: dl, requestedContextSize: 4096, environment: env)
+        let computePlan = ModelLoadPlan.compute(for: mi, requestedContextSize: 4096, environment: env)
+
+        XCTAssertEqual(estimatePlan.verdict, computePlan.verdict)
+        XCTAssertEqual(estimatePlan.verdict, .allow)
+    }
+
+    /// Verdict-parity sanity at the deny end: an oversized model must deny via both
+    /// entry points, regardless of clamp-value differences.
+    func test_estimate_verdictParity_withComputeForModelInfo_deny() {
+        let fileSize: UInt64 = 40 * oneGB
+        let available: UInt64 = 8 * oneGB
+        let env = ModelLoadPlan.Environment(
+            availableMemoryBytes: { available },
+            physicalMemoryBytes: 16 * oneGB
+        )
+
+        let dl = makeDownloadable(sizeBytes: fileSize)
+        let mi = ModelInfo(
+            name: "parity-big",
+            fileName: "parity-big.gguf",
+            url: URL(fileURLWithPath: "/tmp/parity-big.gguf"),
+            fileSize: fileSize,
+            modelType: .gguf,
+            detectedContextLength: nil,
+            estimatedKVBytesPerToken: nil
+        )
+
+        let estimatePlan = ModelLoadPlan.estimate(for: dl, requestedContextSize: 4096, environment: env)
+        let computePlan = ModelLoadPlan.compute(for: mi, requestedContextSize: 4096, environment: env)
+
+        XCTAssertEqual(estimatePlan.verdict, .deny)
+        XCTAssertEqual(estimatePlan.verdict, computePlan.verdict)
+    }
 }
 
 // MARK: - Convenience accessor (test-scoped, avoids repeating `plan.outcome.totalEstimatedBytes`)

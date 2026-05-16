@@ -371,6 +371,77 @@ public struct ModelLoadPlan: Sendable {
         }
     }
 
+    /// Pre-flight fit verdict for a `DownloadableModel` (browse-time, pre-download).
+    ///
+    /// Unlike ``compute(for:requestedContextSize:environment:absoluteContextCeiling:headroomFraction:)``
+    /// which consumes an on-disk ``ModelInfo`` (with GGUF metadata, detected context length,
+    /// arch-derived KV/token), this overload only has the manifest-level fields a HuggingFace
+    /// listing exposes: ``DownloadableModel/sizeBytes``, ``DownloadableModel/modelType``, and a
+    /// quantization tag extracted from the filename. That means:
+    ///
+    /// - The trained-context ceiling is unknown — only the absolute ceiling and memory ceiling
+    ///   apply, so the clamp result can be *larger* than the post-download `compute(...)` would
+    ///   produce (the post-load path will tighten it once GGUF metadata is read).
+    /// - KV-bytes-per-token uses the conservative legacy 8 KB/token fallback
+    ///   (``GGUFKVCacheEstimator/legacyFallbackBytesPerToken``). Real architectures with grouped-
+    ///   query attention or small head dimensions are typically *cheaper* per token, so the
+    ///   estimate is at least as conservative as the post-load path for the same `(sizeBytes,
+    ///   strategy, available)` triple.
+    /// - `MemoryStrategy` is derived from ``DownloadableModel/modelType`` the same way the
+    ///   ``ModelInfo``-based overload does: `.gguf` → `.mappable`, `.mlx` → `.resident`,
+    ///   `.foundation` → `.external` via ``systemManaged(requestedContextSize:)``.
+    ///
+    /// The returned `ModelLoadPlan` carries the same `Outcome.verdict` / `reasons` shape as the
+    /// post-load path; UI badges can render `.allow` / `.clampContext` (synonymous with `.allow`
+    /// when `reasons` contains a clamp) / `.deny` directly off `verdict`.
+    public static func estimate(
+        for model: DownloadableModel,
+        requestedContextSize: Int,
+        environment: Environment = .current,
+        absoluteContextCeiling: Int = 128_000,
+        headroomFraction: Double = 0.40
+    ) -> ModelLoadPlan {
+        switch model.modelType {
+        case .foundation:
+            return systemManaged(requestedContextSize: requestedContextSize)
+        case .mlx, .gguf:
+            break
+        }
+
+        let strategy: MemoryStrategy = (model.modelType == .mlx) ? .resident : .mappable
+
+        // Manifests don't expose architecture or attention shape, so we cannot run
+        // `GGUFKVCacheEstimator.estimateBytesPerToken(...)`. Fall back to the legacy
+        // 8 KB/token estimate — conservative vs. real GQA architectures, which keeps
+        // pre-download verdicts at least as strict as the post-load `compute(...)`.
+        let kvBytesPerToken = GGUFKVCacheEstimator.legacyFallbackBytesPerToken
+
+        #if os(iOS) || os(visionOS)
+        // Mirror the iOS jetsam overhead reserve from the ModelInfo-based overload.
+        let appOverhead: UInt64 = environment.physicalMemoryBytes < 12_884_901_888
+            ? 838_860_800   // 800 MiB
+            : 0
+        #else
+        let appOverhead: UInt64 = 0
+        #endif
+
+        let inputs = Inputs(
+            modelFileSize: model.sizeBytes,
+            memoryStrategy: strategy,
+            requestedContextSize: requestedContextSize,
+            // Manifest path: no detected trained-context length. Post-load `compute(...)`
+            // tightens this once the GGUF header is read.
+            trainedContextLength: nil,
+            kvBytesPerToken: kvBytesPerToken,
+            availableMemoryBytes: environment.availableMemoryBytes(),
+            physicalMemoryBytes: environment.physicalMemoryBytes,
+            absoluteContextCeiling: absoluteContextCeiling,
+            headroomFraction: headroomFraction,
+            appOverheadBytes: appOverhead
+        )
+        return compute(inputs: inputs)
+    }
+
     /// For system-managed backends (Apple Foundation Models) where memory is owned
     /// by the OS and there's nothing to estimate. Always allows with stub fields.
     public static func systemManaged(requestedContextSize: Int) -> ModelLoadPlan {
