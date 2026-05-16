@@ -78,4 +78,20 @@ public protocol CompressionPolicy: Sendable {
         sessionID: UUID,
         generate: @Sendable ([ChatMessageRecord]) async throws -> String
     ) async throws -> [ChatMessageRecord]
+
+    /// Called after history has been compressed and the replacement records
+    /// have been persisted. Implementations use this for post-compression
+    /// side effects (e.g. reconciling a knowledge graph with the inserted
+    /// memory records).
+    ///
+    /// The default implementation is a no-op.
+    ///
+    /// - Parameters:
+    ///   - sessionID: The session that was compressed.
+    ///   - insertedRecords: The full replacement record set, in insertion order.
+    func postCompress(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async
+}
+
+extension CompressionPolicy {
+    public func postCompress(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async {}
 }

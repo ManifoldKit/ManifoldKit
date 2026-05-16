@@ -157,9 +157,13 @@ public enum ConversationEvent: Sendable {
     /// history with a compressed version. Consumers that cache the message
     /// list should invalidate their cache on this event.
     ///
+    /// `insertedRecords` contains the full replacement set in insertion order —
+    /// consumers that need to reconcile side-channel data (e.g. knowledge-graph
+    /// nodes) can use these records without re-querying the store.
+    ///
     /// This case is emitted by the ``ConversationTurnExecutor`` inline
     /// compression path introduced alongside ``CompressionPolicy``.
-    case historyCompressed(sessionID: UUID)
+    case historyCompressed(sessionID: UUID, insertedRecords: [ChatMessageRecord])
 
     // MARK: Tool calls
 
