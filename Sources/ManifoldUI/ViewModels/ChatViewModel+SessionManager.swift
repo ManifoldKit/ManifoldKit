@@ -37,11 +37,7 @@ extension ChatViewModel {
         }
 
         mgr.cancelActiveStreamHandle = { [weak self] in
-            guard let self else { return }
-            if let handle = self.activeConversationStreamHandle {
-                await self.conversationRuntime.cancel(handle)
-                self.activeConversationStreamHandle = nil
-            }
+            await self?.generationCoordinator.cancelActiveStreamHandle()
         }
 
         mgr.resetToolApprovals = { [weak self] in
@@ -49,10 +45,7 @@ extension ChatViewModel {
         }
 
         mgr.cancelBackgroundTask = { [weak self] in
-            guard let self else { return }
-            self.backgroundTask?.cancel()
-            self.backgroundTask = nil
-            self.backgroundTaskError = nil
+            self?.generationCoordinator.cancelBackgroundTask()
         }
 
         mgr.refreshAvailableEndpoints = { [weak self] in
