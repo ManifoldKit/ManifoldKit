@@ -18,7 +18,7 @@ final class SessionScriptRunnerTests: XCTestCase {
         return (service, mock)
     }
 
-    func test_sendStep_enqueuesAndCapturesRecord() async {
+    func test_sendStep_enqueuesAndCapturesRecord() async throws {
         let (service, mock) = makeService(replying: ["hello", " there"])
         let runner = SessionScriptRunner(
             service: service,
@@ -33,9 +33,9 @@ final class SessionScriptRunnerTests: XCTestCase {
 
         XCTAssertEqual(capture.steps.count, 1)
         XCTAssertEqual(capture.steps[0].timeline, .executed)
-        let record = try? XCTUnwrap(capture.steps[0].record)
-        XCTAssertEqual(record?.raw, "hello there")
-        XCTAssertEqual(record?.model.id, "mock-1")
+        let record = try XCTUnwrap(capture.steps[0].record)
+        XCTAssertEqual(record.raw, "hello there")
+        XCTAssertEqual(record.model.id, "mock-1")
         XCTAssertEqual(mock.generateCallCount, 1)
     }
 
