@@ -24,8 +24,9 @@ final class CancellationLivenessContractTest: XCTestCase {
     /// Each entry is an inline rationale.
     private static let exemptFiles: Set<String> = [
         // Helper types — no stream loop of their own.
-        "ClaudePayloadParser.swift",
-        "OllamaPayloadHandler.swift",
+        // (ClaudePayloadParser.swift and OllamaPayloadHandler.swift were
+        //  deleted in Phase 5 — their contents moved into the respective
+        //  stream-extractor files.)
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",
         "OllamaStreamEventExtractor.swift",

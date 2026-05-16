@@ -39,9 +39,10 @@ final class CloudErrorSanitizerCoverageTest: XCTestCase {
 
     /// Files exempt from the audit. Adapter / encoder / payload-handler
     /// files do not own the error surface — `SSECloudBackend` does.
+    /// (ClaudePayloadParser.swift and OllamaPayloadHandler.swift were
+    ///  deleted in Phase 5 — their contents moved into the respective
+    ///  stream-extractor files.)
     private static let exemptFiles: Set<String> = [
-        "ClaudePayloadParser.swift",
-        "OllamaPayloadHandler.swift",
         "OllamaModelListService.swift",
         "OllamaModelProbe.swift",
         "OllamaStreamEventExtractor.swift",
