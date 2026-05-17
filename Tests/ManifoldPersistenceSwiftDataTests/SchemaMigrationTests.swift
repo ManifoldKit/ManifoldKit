@@ -43,10 +43,11 @@ final class SchemaMigrationTests: XCTestCase {
     }
 
     func test_publicTypealiases_matchCurrentSchemaModelTypes() {
-        // ChatMessage now points to ManifoldSchemaV7.ChatMessage (adds kindRaw/citationsJSON).
+        // ChatMessage points to ManifoldSchemaV7.ChatMessage (kindRaw/citationsJSON).
         XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV7.ChatMessage.self))
+        // ChatSession is redefined at V8 to carry isPinned/pinnedAt (#1301).
+        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV8.ChatSession.self))
         // Other model types remain at V4.
-        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV4.ChatSession.self))
         XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(ManifoldSchemaV4.SamplerPreset.self))
         XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(ManifoldSchemaV4.APIEndpoint.self))
         XCTAssertEqual(ObjectIdentifier(ModelBenchmarkCache.self), ObjectIdentifier(ManifoldSchemaV4.ModelBenchmarkCache.self))
@@ -75,8 +76,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV7() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV7.self))
+    func test_containerFactory_currentSchema_isV8() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV8.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {
@@ -148,6 +149,55 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNil(migratedPreset.repetitionContextSize)
         XCTAssertNil(migratedPreset.presenceContextSize)
         XCTAssertNil(migratedPreset.frequencyContextSize)
+    }
+
+    // MARK: - V7 -> V8 migration (session-level pinning, #1301)
+
+    /// Boots a store at V7, writes a session, then re-opens with the full
+    /// migration plan. The migrated row must surface with `isPinned = false`
+    /// and `pinnedAt = nil` — the two columns added in V8 default for every
+    /// pre-existing row without touching the persisted data.
+    func test_migrationPlan_v7SessionMigratesToV8WithUnpinnedDefaults() throws {
+        let storeDirectory = try makeStoreDirectory(named: "ManifoldSchemaV7ToV8")
+        let storeURL = storeDirectory.appendingPathComponent("Manifold.sqlite")
+        let sessionID: UUID
+        let pinnedMessageIDs: Set<UUID> = [UUID(), UUID()]
+
+        do {
+            let config = ModelConfiguration(url: storeURL)
+            let container = try ModelContainer(
+                for: Schema(versionedSchema: ManifoldSchemaV7.self),
+                configurations: [config]
+            )
+            let context = ModelContext(container)
+            // V7's ChatSession is still ManifoldSchemaV4.ChatSession (V7
+            // didn't alter the session model). Write through that type so the
+            // store is committed at V7 metadata.
+            let session = ManifoldSchemaV4.ChatSession(title: "Legacy V7 session")
+            session.systemPrompt = "carry forward"
+            session.pinnedMessageIDs = pinnedMessageIDs
+            context.insert(session)
+            try context.save()
+            sessionID = session.id
+        }
+
+        let migratedContainer = try ModelContainerFactory.makeContainer(
+            configurations: [ModelConfiguration(url: storeURL)]
+        )
+        let migratedContext = ModelContext(migratedContainer)
+        let fetched = try migratedContext.fetch(FetchDescriptor<ChatSession>(
+            predicate: #Predicate { $0.id == sessionID }
+        ))
+        XCTAssertEqual(fetched.count, 1)
+        let migrated = try XCTUnwrap(fetched.first)
+        XCTAssertEqual(migrated.title, "Legacy V7 session")
+        XCTAssertEqual(migrated.systemPrompt, "carry forward")
+        XCTAssertEqual(migrated.pinnedMessageIDs, pinnedMessageIDs,
+                       "Pre-existing message pin set must survive the V7→V8 migration")
+        XCTAssertFalse(migrated.isPinned,
+                       "V8 lightweight migration must default isPinned to false for rows written under V7")
+        XCTAssertNil(migrated.pinnedAt,
+                     "pinnedAt must default to nil for rows written under V7")
     }
 
     func test_schemaOwnedModelAndPublicAlias_areInterchangeable() throws {

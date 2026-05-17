@@ -57,6 +57,9 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         session.promptTemplateRawValue = record.promptTemplate?.rawValue
         session.contextSizeOverride = record.contextSizeOverride
         session.pinnedMessageIDsRaw = record.pinnedMessageIDs.isEmpty ? nil : record.pinnedMessageIDs.map(\.uuidString).sorted().joined(separator: ",")
+        session.isPinned = record.isPinned
+        session.pinnedAt = record.pinnedAt
+        session.pinnedSortKey = record.pinnedAt ?? .distantPast
         modelContext.insert(session)
         try modelContext.save()
         await fireSessionHooks(record)
@@ -77,6 +80,9 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         session.promptTemplateRawValue = record.promptTemplate?.rawValue
         session.contextSizeOverride = record.contextSizeOverride
         session.pinnedMessageIDsRaw = record.pinnedMessageIDs.isEmpty ? nil : record.pinnedMessageIDs.map(\.uuidString).sorted().joined(separator: ",")
+        session.isPinned = record.isPinned
+        session.pinnedAt = record.pinnedAt
+        session.pinnedSortKey = record.pinnedAt ?? .distantPast
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -115,15 +121,28 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
     }
 
     public func fetchSessions() async throws -> [ChatSessionRecord] {
+        // Pinned sessions surface above the chronological list (#1301). The
+        // primary key is `isPinned` descending so true sorts above false; the
+        // pinned bucket is then ordered by `pinnedAt` desc (most recently
+        // pinned first), and the unpinned bucket falls back to `updatedAt`
+        // desc — the pre-V8 order. SwiftData applies the secondary keys only
+        // when the primary one ties, so within each bucket the intended
+        // ordering holds.
         let descriptor = FetchDescriptor<ChatSession>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            sortBy: [
+                SortDescriptor(\.pinnedSortKey, order: .reverse),
+                SortDescriptor(\.updatedAt, order: .reverse),
+            ]
         )
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
     public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
         var descriptor = FetchDescriptor<ChatSession>(
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+            sortBy: [
+                SortDescriptor(\.pinnedSortKey, order: .reverse),
+                SortDescriptor(\.updatedAt, order: .reverse),
+            ]
         )
         // SwiftData's fetchOffset/fetchLimit push pagination into the store
         // engine; falling back to fetch-all-then-slice would defeat the

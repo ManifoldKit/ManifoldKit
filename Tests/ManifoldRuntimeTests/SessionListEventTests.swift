@@ -57,6 +57,7 @@ final class SessionListEventTests: XCTestCase {
             .searchResultsChanged(.empty),
             .titleGenerated(session.id, title: "auto"),
             .persistenceFailure(URLError(.cannotOpenFile)),
+            .sessionPinChanged(session.id, isPinned: true),
         ]
 
         for event in probes {
@@ -77,6 +78,9 @@ final class SessionListEventTests: XCTestCase {
                 XCTAssertEqual(title, "auto")
             case let .persistenceFailure(error):
                 XCTAssertTrue(error is URLError)
+            case let .sessionPinChanged(id, isPinned):
+                XCTAssertEqual(id, session.id)
+                XCTAssertTrue(isPinned)
             }
         }
     }

@@ -8,6 +8,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV5.self,
             ManifoldSchemaV6.self,
             ManifoldSchemaV7.self,
+            ManifoldSchemaV8.self,
         ]
     }
 
@@ -19,6 +20,8 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: ManifoldSchemaV5.self, toVersion: ManifoldSchemaV6.self),
             // V7 adds kindRaw (default "chat") and citationsJSON (default nil) to ChatMessage.
             .lightweight(fromVersion: ManifoldSchemaV6.self, toVersion: ManifoldSchemaV7.self),
+            // V8 adds isPinned (default false) and pinnedAt (default nil) to ChatSession.
+            .lightweight(fromVersion: ManifoldSchemaV7.self, toVersion: ManifoldSchemaV8.self),
         ]
     }
 }

@@ -37,6 +37,13 @@ public enum SessionListEvent: Sendable {
     /// An AI title was generated and persisted for a session.
     case titleGenerated(UUID, title: String)
 
+    /// A session's pinned state changed. Carries the resolved boolean so
+    /// observers can update sort/grouping affordances without re-fetching the
+    /// page — the subsequent `.sessionsLoaded` carries the full re-sorted
+    /// list, but `.sessionPinChanged` lets surfaces animate the move
+    /// independently.
+    case sessionPinChanged(UUID, isPinned: Bool)
+
     /// A persistence operation failed in a non-throwing path. Throwing
     /// commands surface their error directly to the caller; this case carries
     /// errors that occur inside event-driven loaders (initial load, next-page,
@@ -211,6 +218,37 @@ package final class SessionListService: Sendable {
     package func deleteAllSessions() async throws {
         try await persistence.deleteAll()
         emit(.sessionsLoaded([], hasMore: false, offset: 0))
+    }
+
+    /// Pins a session to the top of the session list and emits
+    /// `.sessionPinChanged(_, isPinned: true)` followed by `.sessionsLoaded`
+    /// so observers see the re-sorted page.
+    ///
+    /// No-op (no event, no write) when the session is already pinned —
+    /// callers that double-tap a pin affordance do not pay for a redundant
+    /// `pinnedAt` reset, which would otherwise reshuffle the pinned bucket.
+    @MainActor
+    package func pinSession(_ session: ChatSessionRecord) async throws {
+        guard !session.isPinned else { return }
+        var updated = session
+        updated.isPinned = true
+        updated.pinnedAt = Date()
+        try await persistence.updateSession(updated)
+        emit(.sessionPinChanged(session.id, isPinned: true))
+        await emitFirstPage()
+    }
+
+    /// Unpins a session and emits `.sessionPinChanged(_, isPinned: false)`
+    /// followed by `.sessionsLoaded`. No-op when the session is not pinned.
+    @MainActor
+    package func unpinSession(_ session: ChatSessionRecord) async throws {
+        guard session.isPinned else { return }
+        var updated = session
+        updated.isPinned = false
+        updated.pinnedAt = nil
+        try await persistence.updateSession(updated)
+        emit(.sessionPinChanged(session.id, isPinned: false))
+        await emitFirstPage()
     }
 
     /// Renames a session and emits `.sessionRenamed` followed by `.sessionsLoaded`.

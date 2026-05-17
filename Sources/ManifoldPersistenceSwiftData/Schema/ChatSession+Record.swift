@@ -22,7 +22,9 @@ extension ChatSession {
             repeatPenalty: repeatPenalty,
             promptTemplate: promptTemplate,
             contextSizeOverride: contextSizeOverride,
-            pinnedMessageIDs: pinnedMessageIDs
+            pinnedMessageIDs: pinnedMessageIDs,
+            isPinned: isPinned,
+            pinnedAt: pinnedAt
         )
     }
 }
