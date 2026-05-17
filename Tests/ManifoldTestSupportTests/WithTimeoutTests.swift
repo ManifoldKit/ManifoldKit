@@ -77,16 +77,15 @@ final class WithTimeoutTests: XCTestCase {
     func test_withTimeout_throwsOnNonCancellationAwareHang() async {
         // Use a DispatchSemaphore to model a gate that doesn't check Swift
         // cancellation (e.g. UIToolApprovalGate.awaitDecision awaiting user input).
-        // The latch is signalled 100 ms from now — long enough to prove the thread
-        // eventually resumes (preventing a permanently-leaked Task), short enough to
-        // avoid stalling the parallel runner near the CI step-timeout wall. The
-        // previous 1.5 s tail was blocking a cooperative-pool thread for the entire
-        // cleanup window, which caused the last 1-2 queued tests to miss the
-        // 30-minute step cap consistently.
+        // The latch is signalled 1 s from now — long enough to prove the thread
+        // eventually resumes (preventing a permanently-leaked Task) with a 5×
+        // safety margin over the 200 ms timeout so loaded macOS CI runners don't
+        // race the timeout's scheduler hop against the latch fire. An earlier
+        // 100 ms ↔ 50 ms (2×) gap flaked on PR #1337's first CI attempt.
         let latch = DispatchSemaphore(value: 0)
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { latch.signal() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.0) { latch.signal() }
 
-        let timeout: Duration = .milliseconds(50)
+        let timeout: Duration = .milliseconds(200)
         do {
             _ = try await withTimeout(timeout) {
                 await withCheckedContinuation { (cont: CheckedContinuation<Int, Never>) in
