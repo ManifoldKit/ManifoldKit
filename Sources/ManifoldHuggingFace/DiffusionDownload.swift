@@ -138,9 +138,17 @@ public extension HuggingFaceService {
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
 
+        // Adopt Hub's `<root>/models/<org>/<name>` directory convention so
+        // `HubApi.localRepoLocation` (used by mlx-swift-examples StableDiffusion)
+        // resolves files without a bridging symlink. The package-readiness
+        // manifest still lives at the staging/destination root — only the
+        // snapshot files relocate.
+        let hubLeafStaging = try Self.hubLeafDirectory(in: stagingDirectory, repoID: repoID)
+        try FileManager.default.createDirectory(at: hubLeafStaging, withIntermediateDirectories: true)
+
         // 1. Fetch manifest.
         let manifestRemoteURL = downloadURL(repoID: repoID, filePath: "model_index.json")
-        let manifestLocalURL = stagingDirectory.appendingPathComponent("model_index.json")
+        let manifestLocalURL = hubLeafStaging.appendingPathComponent("model_index.json")
         try await downloadFile(
             from: manifestRemoteURL,
             to: manifestLocalURL,
@@ -165,9 +173,16 @@ public extension HuggingFaceService {
         } else {
             fp16Available = []
         }
+        // Plan items resolve their `localURL` against the Hub leaf so the
+        // on-disk layout already matches what `HubApi.localRepoLocation`
+        // expects. `relativePath` stays unprefixed (it's the HF-side
+        // relative path used to fetch each file and to validate the
+        // package); the package-manifest writer below adds the
+        // `models/<repoID>/` prefix so the readiness check at discovery
+        // time finds the files at the correct location.
         let plan = try buildDiffusionDownloadPlan(
             manifest: manifest,
-            destinationDirectory: stagingDirectory,
+            destinationDirectory: hubLeafStaging,
             fp16AvailablePaths: fp16Available
         )
 
@@ -241,10 +256,15 @@ public extension HuggingFaceService {
         let format: ImageModelFormat = manifest.submodules.contains("transformer")
             ? .fluxSchnell : .mlxDiffusion
 
+        // `directoryURL` points at the Hub leaf so backends that resolve
+        // the parent for `HubApi(downloadBase:)` walk a stable three
+        // components up (drop `<name>`, `<org>`, `models`). The package
+        // manifest stays at the package root for discovery.
+        let hubLeafURL = try Self.hubLeafDirectory(in: destinationDirectory, repoID: repoID)
         let info = ImageModelInfo(
             id: repoID,
             name: resolvedDisplayName,
-            directoryURL: destinationDirectory,
+            directoryURL: hubLeafURL,
             format: format,
             fileSize: totalBytes,
             huggingFaceRepoID: repoID,
@@ -252,9 +272,11 @@ public extension HuggingFaceService {
         )
 
         Log.download.info("Writing package manifest (variant=\(info.variant.rawValue, privacy: .public))")
+        let hubPrefix = "models/\(repoID)/"
         try writePackageManifest(
             for: info,
-            files: ["model_index.json"] + plan.items.map(\.relativePath),
+            files: ([ "model_index.json" ] + plan.items.map(\.relativePath))
+                .map { hubPrefix + $0 },
             in: stagingDirectory
         )
         Log.download.info("Moving staging directory to destination")
@@ -264,6 +286,29 @@ public extension HuggingFaceService {
         try FileManager.default.moveItem(at: stagingDirectory, to: destinationDirectory)
         Log.download.info("Install complete")
         return info
+    }
+
+    /// Resolves the `<root>/models/<org>/<name>` path that Hub's
+    /// `localRepoLocation` produces for a given `org/name` repo ID.
+    /// Validates each path component before joining so a hostile repo ID
+    /// cannot escape `root`.
+    internal static func hubLeafDirectory(in root: URL, repoID: String) throws -> URL {
+        let parts = repoID.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2 else {
+            throw HuggingFaceError.invalidDownloadedFile(
+                reason: "Repo ID must be in <org>/<name> form: \"\(repoID)\""
+            )
+        }
+        var url = root.appendingPathComponent("models", isDirectory: true)
+        for part in parts {
+            if part.isEmpty || part == "." || part == ".." || part.contains("\\") || part.hasPrefix(".") {
+                throw HuggingFaceError.invalidDownloadedFile(
+                    reason: "Unsafe path component in repo ID: \"\(part)\""
+                )
+            }
+            url = url.appendingPathComponent(part, isDirectory: true)
+        }
+        return url
     }
 
     private func writePackageManifest(

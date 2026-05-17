@@ -42,14 +42,13 @@ public enum MLXDiffusionError: Error, LocalizedError {
 ///
 /// Other layouts throw ``MLXDiffusionError/unsupportedModelLayout``.
 ///
-/// ## PR 5 ↔ PR 6 alignment note
+/// ## Hub directory convention
 ///
-/// `HuggingFaceService.downloadDiffusionModel` stores weights with a slug-based
-/// directory name (e.g. `stabilityai__sdxl-turbo`). The StableDiffusion library
-/// resolves files via `HubApi.localRepoLocation`, which expects the Hub
-/// convention `<downloadBase>/models/stabilityai/sdxl-turbo`. `loadModel(from:)`
-/// bridges this via a temporary symlink. A follow-up PR can eliminate the
-/// symlink by adopting Hub's directory convention in the download path.
+/// `HuggingFaceService.downloadDiffusionModel` writes snapshots into Hub's
+/// `<root>/models/<org>/<name>` layout (e.g.
+/// `<root>/models/stabilityai/sdxl-turbo/unet/...`). `loadModel(from:)`
+/// derives the Hub `downloadBase` by walking three components up from the
+/// supplied `url` — no bridging symlink is required.
 ///
 /// ## Concurrency
 ///
@@ -97,9 +96,16 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
             throw MLXDiffusionError.insufficientMemory(plan.reasons)
         }
 
-        // Bridge slug-based download path to Hub's expected directory layout.
-        let (hubBase, cleanup) = try Self.makeHubBridge(for: preset, pointing: url)
-        defer { cleanup() }
+        // `url` is the Hub leaf (`.../models/<org>/<name>`). Walk three
+        // components up — `<name>`, `<org>`, `models` — to recover the
+        // `downloadBase` Hub uses to resolve `localRepoLocation`. The
+        // download path already produces this layout (see
+        // `DiffusionDownload.hubLeafDirectory(in:repoID:)`), which is
+        // why no symlink bridge is needed.
+        let hubBase = url
+            .deletingLastPathComponent() // drop <name>
+            .deletingLastPathComponent() // drop <org>
+            .deletingLastPathComponent() // drop "models"
 
         let hub = HubApi(downloadBase: hubBase, useOfflineMode: true)
         guard let generator = try preset.textToImageGenerator(
@@ -259,27 +265,6 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
             targetWidth:  isXL ? 1024 : 512,
             targetHeight: isXL ? 1024 : 512
         )
-    }
-
-    /// Creates a temporary symlink so Hub's path resolution finds the
-    /// weights in our slug-based download directory.
-    ///
-    /// Hub resolves: `<hubBase>/models/<repoID>` where slashes in repoID
-    /// are directory separators. We symlink that path to `modelDir`.
-    private static func makeHubBridge(
-        for preset: StableDiffusionConfiguration,
-        pointing modelDir: URL
-    ) throws -> (hubBase: URL, cleanup: () -> Void) {
-        let tmpBase = FileManager.default.temporaryDirectory
-            .appending(component: "BCKDiffusion-\(UUID().uuidString)")
-        // preset.id e.g. "stabilityai/sdxl-turbo" → two path components
-        let target = tmpBase.appending(component: "models").appending(component: preset.id)
-        try FileManager.default.createDirectory(
-            at: target.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try FileManager.default.createSymbolicLink(at: target, withDestinationURL: modelDir)
-        return (tmpBase, { try? FileManager.default.removeItem(at: tmpBase) })
     }
 
     private static func makeParams(

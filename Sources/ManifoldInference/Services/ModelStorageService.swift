@@ -295,10 +295,29 @@ public final class ModelStorageService: @unchecked Sendable {
         }
 
         guard let format = manifest.format else { return nil }
+        // Diffusion packages adopt Hub's `<root>/models/<org>/<name>` layout
+        // so backends can pass `HubApi(downloadBase:)` without a bridging
+        // symlink. The package readiness manifest stays at the package
+        // root; the `files` paths in it are stored with the
+        // `models/<repoID>/` prefix and verified above. The loaded
+        // `directoryURL` is the Hub leaf so loaders that probe `url/unet`
+        // etc. still work.
+        let directoryURL: URL
+        if let hfRepoID = manifest.huggingFaceRepoID,
+           manifest.files.allSatisfy({ $0.hasPrefix("models/\(hfRepoID)/") }) {
+            directoryURL = directory
+                .appendingPathComponent("models", isDirectory: true)
+                .appendingPathComponent(hfRepoID, isDirectory: true)
+        } else {
+            // Pre-Hub-layout packages: `directoryURL` is the package root.
+            // Kept for forward compatibility if a downstream consumer
+            // writes a manifest without the `models/<repoID>/` prefix.
+            directoryURL = directory
+        }
         return ImageModelInfo(
             id: manifest.id,
             name: manifest.displayName,
-            directoryURL: directory,
+            directoryURL: directoryURL,
             format: format,
             fileSize: packageSize(at: directory, files: manifest.files),
             huggingFaceRepoID: manifest.huggingFaceRepoID,
