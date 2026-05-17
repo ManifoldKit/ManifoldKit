@@ -11,7 +11,6 @@ on:
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
-      - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
@@ -27,7 +26,6 @@ on:
       - ".github/workflows/ci.yml"
       - "scripts/test.sh"
       - "scripts/ci-test-with-watchdog.sh"
-      - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
@@ -280,28 +278,10 @@ jobs:
           STALL_SECONDS: "240"
         run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
-      # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
-      # over the four critical modules and verifies each module's line coverage
-      # meets its threshold (set 10pp below the 2026-05-15 baseline).  Runs only
-      # on main-branch pushes so per-PR CI is not slowed by the extra build pass.
-      # The check is informational on first-push; raise thresholds as coverage
-      # improves.  See scripts/check-coverage.sh for threshold values and rationale.
-      - name: Coverage thresholds
-        if: github.ref == 'refs/heads/main'
-        timeout-minutes: 15
-        run: |
-          set -euo pipefail
-          swift test \
-            --filter ManifoldCoreTests \
-            --filter ManifoldRuntimeTests \
-            --filter ManifoldPersistenceSwiftDataTests \
-            --filter ManifoldInferenceTests \
-            --filter ManifoldMCPTests \
-            --disable-default-traits \
-            --traits MCP \
-            --enable-code-coverage \
-            --skip-update
-          scripts/check-coverage.sh
+      # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
+      # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
+      # macOS-min) per push.  scripts/check-coverage.sh thresholds sit 10pp
+      # below the 2026-05-15 baseline, so a ≤24h detection delay is acceptable.
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
