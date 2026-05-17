@@ -273,18 +273,20 @@ public enum ModelCapabilityProbe {
         card: ModelCardMetadata
     ) -> Bool {
         // README front-matter is the primary signal: `pipeline_tag` or a `tags`
-        // entry containing "code". HF's own taxonomy uses kebab-case
-        // ("text-generation", "code-generation") and lowercases tag values.
-        if let pipeline = card.pipelineTag?.lowercased(),
-           pipeline.contains("code") {
+        // entry containing the "code" / "coding" / "codegen" token. HF's
+        // taxonomy uses kebab-case ("text-generation", "code-generation") and
+        // lowercases tag values. We tokenize on non-alphanumerics so that
+        // "encoder", "encoder-decoder", and similar non-code tokens do NOT
+        // match the bare "code" substring.
+        if let pipeline = card.pipelineTag, pipelineOrTagSuggestsCode(pipeline) {
             return true
         }
-        if card.tags.contains(where: { $0.lowercased().contains("code") }) {
+        if card.tags.contains(where: pipelineOrTagSuggestsCode) {
             return true
         }
         // Fallback: some configs duplicate `tags` as a JSON array. Same rule.
         if let configTags = config["tags"] as? [String],
-           configTags.contains(where: { $0.lowercased().contains("code") }) {
+           configTags.contains(where: pipelineOrTagSuggestsCode) {
             return true
         }
         // Last resort: `architectures` is a JSON array of class names like
@@ -302,6 +304,16 @@ public enum ModelCapabilityProbe {
             }
         }
         return false
+    }
+
+    /// Whole-token match for code-related HF taxonomy values. Splits the raw
+    /// tag/pipeline string on non-alphanumerics so `encoder` (contains "code"
+    /// as a substring) does not register, while `code`, `code-generation`,
+    /// `text-to-code`, and `codegen` do.
+    private static func pipelineOrTagSuggestsCode(_ raw: String) -> Bool {
+        let needles: Set<String> = ["code", "coder", "coding", "codegen"]
+        let tokens = raw.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        return tokens.contains(where: { needles.contains(String($0)) })
     }
 
     private static func inferMultilingual(

@@ -340,6 +340,63 @@ final class ModelCapabilityProbeTests: XCTestCase {
         XCTAssertTrue(caps.supportsCodeGeneration)
     }
 
+    func testProbe_codeGeneration_falseForEncoderTag() throws {
+        // Regression: "encoder" contains "code" as a substring but is NOT a
+        // code-generation signal. Whole-token matching must reject it.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "bert", "max_position_embeddings": 512 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        tags:
+          - encoder
+          - feature-extraction
+        pipeline_tag: feature-extraction
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_falseForEncoderDecoderTag() throws {
+        // Regression: "encoder-decoder" tokenizes to ["encoder", "decoder"];
+        // neither is a code-generation token. Must stay false.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "t5", "max_position_embeddings": 1024 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        tags:
+          - encoder-decoder
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_trueForTextToCodePipeline() throws {
+        // Confirms whole-token matching still accepts hyphenated code tags.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        pipeline_tag: text-to-code
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
     // MARK: - Multilingual inference
 
     func testProbe_multilingual_trueWhenReadmeListsTwoOrMoreLanguages() throws {
