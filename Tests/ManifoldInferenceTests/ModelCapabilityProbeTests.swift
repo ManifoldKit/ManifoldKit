@@ -238,6 +238,266 @@ final class ModelCapabilityProbeTests: XCTestCase {
         }
     }
 
+    // MARK: - Code generation inference
+
+    func testProbe_codeGeneration_defaultsFalseForPlainLLM() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+        XCTAssertFalse(caps.supportsMultilingual)
+    }
+
+    func testProbe_codeGeneration_trueWhenReadmeTagsIncludeCode() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "qwen2", "max_position_embeddings": 32768 }
+        """#, to: dir)
+        // HF coder cards include a `code` (and often `code-generation`) tag.
+        try writeConfig(#"""
+        ---
+        language:
+          - en
+        tags:
+          - code
+          - text-generation
+        pipeline_tag: text-generation
+        ---
+
+        # Qwen2.5-Coder-7B
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_trueWhenPipelineTagContainsCode() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        pipeline_tag: text-to-code
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_trueWhenArchitectureContainsCoder() throws {
+        // Fallback path: no README, but `architectures` advertises a coder class.
+        // Substring is "coder" specifically to avoid matching "decoder".
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        {
+            "model_type": "deepseek",
+            "architectures": ["DeepseekCoderForCausalLM"],
+            "max_position_embeddings": 16384
+        }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_falseForDecoderOnlyArchitecture() throws {
+        // Guard: "decoder" in the class name must NOT trip the "coder" needle.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        {
+            "model_type": "llama",
+            "architectures": ["LlamaDecoderForCausalLM"],
+            "max_position_embeddings": 8192
+        }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_trueFromConfigTags() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        {
+            "model_type": "llama",
+            "tags": ["code-generation"],
+            "max_position_embeddings": 8192
+        }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_falseForEncoderTag() throws {
+        // Regression: "encoder" contains "code" as a substring but is NOT a
+        // code-generation signal. Whole-token matching must reject it.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "bert", "max_position_embeddings": 512 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        tags:
+          - encoder
+          - feature-extraction
+        pipeline_tag: feature-extraction
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_falseForEncoderDecoderTag() throws {
+        // Regression: "encoder-decoder" tokenizes to ["encoder", "decoder"];
+        // neither is a code-generation token. Must stay false.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "t5", "max_position_embeddings": 1024 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        tags:
+          - encoder-decoder
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsCodeGeneration)
+    }
+
+    func testProbe_codeGeneration_trueForTextToCodePipeline() throws {
+        // Confirms whole-token matching still accepts hyphenated code tags.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        pipeline_tag: text-to-code
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsCodeGeneration)
+    }
+
+    // MARK: - Multilingual inference
+
+    func testProbe_multilingual_trueWhenReadmeListsTwoOrMoreLanguages() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        language:
+          - en
+          - fr
+          - de
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsMultilingual)
+    }
+
+    func testProbe_multilingual_falseForSingleLanguage() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        language:
+          - en
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsMultilingual)
+    }
+
+    func testProbe_multilingual_trueFromExplicitTag() throws {
+        // Some HF cards declare `language: multilingual` plus a `multilingual`
+        // tag rather than enumerating every language. Honour the tag.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "xlmr", "max_position_embeddings": 512 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        tags:
+          - multilingual
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsMultilingual)
+    }
+
+    func testProbe_multilingual_trueFromInlineFlowList() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "llama", "max_position_embeddings": 8192 }
+        """#, to: dir)
+        try writeConfig(#"""
+        ---
+        language: [en, es, pt]
+        ---
+        """#, to: dir, named: "README.md")
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsMultilingual)
+    }
+
+    func testProbe_multilingual_falseWhenReadmeMissing() throws {
+        // No README at all and no config-level language array — the probe
+        // must report nothing rather than guessing from `model_type`.
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        { "model_type": "qwen2", "max_position_embeddings": 32768 }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertFalse(caps.supportsMultilingual)
+    }
+
+    func testProbe_multilingual_trueFromConfigLanguageArray() throws {
+        let dir = try makeFixtureDirectory()
+        try writeConfig(#"""
+        {
+            "model_type": "llama",
+            "language": ["en", "fr"],
+            "max_position_embeddings": 8192
+        }
+        """#, to: dir)
+
+        let caps = try ModelCapabilityProbe.probe(modelDirectory: dir)
+
+        XCTAssertTrue(caps.supportsMultilingual)
+    }
+
     func testProbe_throwsWhenConfigIsNotAJSONObject() throws {
         let dir = try makeFixtureDirectory()
         try writeConfig(#"["not", "an", "object"]"#, to: dir)
