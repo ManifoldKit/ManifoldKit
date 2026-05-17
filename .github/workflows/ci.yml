@@ -13,7 +13,6 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
-      - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
@@ -30,7 +29,6 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/check-coverage.sh"
       - "scripts/example-ui-tests.sh"
-      - "scripts/ci-normalize-swiftpm-debug-cache.sh"
       - "scripts/cold-start*.sh"
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
@@ -78,8 +76,6 @@ jobs:
           # Keep dependency material in the broad Package.resolved cache: .build/artifacts
           # holds the prebuilt llama.cpp xcframework (~100 MB, the real win), and
           # .build/checkouts + .build/repositories save the per-dep clone phase.
-          # .build/debug is measured separately below for #953 Lever C so a stale
-          # incremental-build cache cannot evict or destabilize this dependency cache.
           path: |
             .build/artifacts
             .build/checkouts
@@ -89,25 +85,11 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
-      - name: Cache SwiftPM debug build (Lever C spike)
-        id: swiftpm-debug-cache
-        uses: actions/cache@v5
-        with:
-          # Lever C (#953) spike: re-test .build/debug with a narrow content key and
-          # post-restore mtime normalization instead of folding it into the broad
-          # dependency cache above. The key includes package pins, Package.swift,
-          # Sources, and Tests so restored object/module files match the checked-out
-          # content exactly; no restore-keys are used because touching stale objects
-          # newer than changed sources could hide rebuild work. Real evidence still
-          # requires PR/main runs: compare this step's hit state plus the test-step
-          # durations and the final debug-cache size report before deciding whether
-          # to keep or remove the spike.
-          path: .build/debug
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-debug-${{ hashFiles('Package.resolved', 'Package.swift', 'Sources/**/*.swift', 'Tests/**/*.swift') }}
-
-      - name: Normalize SwiftPM debug cache mtimes
-        if: steps.swiftpm-debug-cache.outputs.cache-hit == 'true'
-        run: scripts/ci-normalize-swiftpm-debug-cache.sh .build/debug
+      # .build/debug is intentionally NOT cached. Tried twice (#961, #1045), reverted
+      # twice (#1036, this PR) — measured median 13% worse than no cache because SwiftPM
+      # embeds paths in module fingerprints, making restored objects invalid on miss
+      # while the cache-write cost is paid on every PR. Do not re-attempt without a
+      # materially different strategy (e.g., content-addressed module cache).
 
       - name: Verify Swift toolchain matches Package.swift tools-version
         # The runner's Xcode (pinned above) ships a specific Swift version. If
@@ -320,19 +302,6 @@ jobs:
             --enable-code-coverage \
             --skip-update
           scripts/check-coverage.sh
-
-      - name: Report SwiftPM debug cache state
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "debug-cache-hit=${{ steps.swiftpm-debug-cache.outputs.cache-hit }}"
-          if [ -d .build/debug ]; then
-            du -sh .build/debug || true
-            primary_files=$(find .build/debug -type f \( -name '*.o' -o -name '*.swiftmodule' -o -name '*.swiftdeps' \) -print | wc -l | tr -d ' ')
-            echo "debug-cache-primary-files=${primary_files}"
-          else
-            echo ".build/debug not present"
-          fi
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
