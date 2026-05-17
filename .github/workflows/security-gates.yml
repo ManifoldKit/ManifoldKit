@@ -53,16 +53,8 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
-      - name: Cache SwiftPM debug build
-        id: swiftpm-debug-cache
-        uses: actions/cache@v5
-        with:
-          path: .build/debug
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-debug-${{ hashFiles('Package.resolved', 'Package.swift', 'Sources/**/*.swift', 'Tests/**/*.swift') }}
-
-      - name: Normalize SwiftPM debug cache mtimes
-        if: steps.swiftpm-debug-cache.outputs.cache-hit == 'true'
-        run: scripts/ci-normalize-swiftpm-debug-cache.sh .build/debug
+      # .build/debug is intentionally NOT cached — see ci.yml for evidence
+      # (#961/#1045 tried, #1036/this PR reverted; ~13% worse than no cache).
 
       - name: Validate Package.resolved is up to date
         run: |
