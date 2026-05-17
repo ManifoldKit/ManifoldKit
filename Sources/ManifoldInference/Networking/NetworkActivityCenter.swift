@@ -94,11 +94,12 @@ public struct NetworkActivityToken: Sendable, Hashable {
 /// ## Funnel points
 ///
 /// - ``URLSessionFactory/ephemeral(hopCap:resourceTimeout:additionalDataDelegate:activityCenter:)``
-///   and ``URLSessionFactory/background(identifier:hopCap:additionalDownloadDelegate:activityCenter:)``
-///   wire a tracking delegate that emits begin/end for every data + download
-///   task that flows through the factory.
-/// - `BackgroundDownloadManager` (in `ManifoldHuggingFace`) overrides the
-///   delegate-driven entries with rich per-model download state.
+///   wires a tracking delegate that emits begin/end for every data task
+///   that flows through the factory.
+/// - `BackgroundDownloadManager` (in `ManifoldHuggingFace`) bypasses the
+///   ephemeral data-tracker and posts rich per-model `.downloading` state
+///   directly — its own background `URLSession` already carries the
+///   per-task state needed for bytes/total/throughput.
 /// - `HuggingFaceService` wraps SDK calls that bypass `URLSessionFactory`.
 ///
 /// ## Concurrency
@@ -116,7 +117,7 @@ public final class NetworkActivityCenter {
     /// The reference itself is immutable, so non-isolated callers can read
     /// `.shared` to pass into a factory; every *method* on the returned
     /// instance remains `@MainActor`-isolated.
-    public nonisolated(unsafe) static let shared = NetworkActivityCenter()
+    public nonisolated static let shared = NetworkActivityCenter()
 
     /// Current coalesced activity. ``NetworkActivity/idle`` when no requests
     /// are in flight. When several tasks are active, downloads win over

@@ -30,7 +30,7 @@ final class NetworkActivityCenterTests: XCTestCase {
             redirectGuard: RedirectGuardDelegate(hopCap: 3),
             serverTrustHandler: nil,
             downloadDelegate: nil,
-            dataDelegate: tracker == nil ? nil : nil,
+            dataDelegate: nil,
             ownedDataDelegate: tracker
         )
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
