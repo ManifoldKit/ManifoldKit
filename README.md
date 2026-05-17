@@ -137,7 +137,7 @@ for the full list of dependency rules the lint enforces.
 ### 1. Add the package
 
 ```swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.28.0") // x-release-please-version
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.29.0") // x-release-please-version
 ```
 
 Most apps add a single product — the `ManifoldKit` umbrella, which re-exports
@@ -173,7 +173,7 @@ Pass the matching set as `traits:` on your `.package(...)` entry to lock the con
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.28.0", // x-release-please-version
+    from: "0.29.0", // x-release-please-version
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -199,7 +199,7 @@ Apple Foundation Models.
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.28.0", // x-release-please-version
+    from: "0.29.0", // x-release-please-version
     traits: ["FoundationOnly"]   // overrides the MLX/Llama/HuggingFace defaults
 )
 ```
@@ -216,7 +216,7 @@ Equivalent legacy form (still supported, before the named trait existed):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.28.0", // x-release-please-version
+    from: "0.29.0", // x-release-please-version
     traits: []   // disables MLX, Llama, HuggingFace defaults
 )
 ```
@@ -237,7 +237,7 @@ For example, a cloud-only consumer can keep the chat UI and local-model loaders 
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.28.0", // x-release-please-version
+    from: "0.29.0", // x-release-please-version
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -285,7 +285,7 @@ If you already depend on `ManifoldBackends`, the same data is also available via
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.28.0", // x-release-please-version
+    from: "0.29.0", // x-release-please-version
     traits: [
         .trait(name: "MCP"),
         .trait(name: "MCPBuiltinCatalog"), // optional: only if you use MCPCatalog
@@ -325,7 +325,7 @@ stock `ChatInputBar`.
 ```swift
  .package(
      url: "https://github.com/roryford/ManifoldKit.git",
-     from: "0.28.0", // x-release-please-version
+     from: "0.29.0", // x-release-please-version
      traits: [
          .trait(name: "Voice"),
      ]
@@ -401,7 +401,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
-            from: "0.28.0", // x-release-please-version
+            from: "0.29.0", // x-release-please-version
             traits: [
                 .trait(name: "MLX"),
                 .trait(name: "Llama"),
@@ -1008,7 +1008,7 @@ open ManifoldDemo.xcodeproj
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL `github.com/roryford/BaseChatKit` redirects to `roryford/ManifoldKit`, but for clarity:
 
-- Update SPM dependencies: `.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.28.0")` <!-- x-release-please-version -->
+- Update SPM dependencies: `.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.29.0")` <!-- x-release-please-version -->
 - Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules — `BaseChatInference` → `ManifoldInference`, etc.)
 - Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`
 - **BREAKING — local SwiftData stores reset.** SwiftData persists fully-qualified `@Model` type names; renaming the schema namespace orphans existing on-disk stores. Apps upgrading from 0.19.x will create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.
