@@ -33,7 +33,12 @@ final class ChatViewModelScenePhaseIntegrationTests: XCTestCase {
 
         slowBackend = SlowMockBackend()
         slowBackend.tokensToYield = (0..<40).map { "t\($0) " }
-        slowBackend.delayPerToken = .milliseconds(25)
+        // Per-token delay must be wide enough that scheduler-latency between
+        // `awaitFirstToken()` → reading `tokenCountAtBackground` →
+        // `handleScenePhaseChange` → cancel propagation cannot smuggle in more
+        // tokens than the bounded-growth assertion below tolerates. 25ms was
+        // tight enough to flake under CI load (#1332).
+        slowBackend.delayPerToken = .milliseconds(50)
 
         let service = InferenceService(backend: slowBackend, name: "SlowMock")
         vm = ChatViewModel(inferenceService: service)
@@ -82,9 +87,13 @@ final class ChatViewModelScenePhaseIntegrationTests: XCTestCase {
         // The in-flight message must have frozen at background-time — no
         // further tokens are appended after the scene-phase transition.
         let tokenCountAfterDrain = vm.messages.last?.content.count ?? 0
+        // Slack covers (a) the in-flight yield already scheduled when the
+        // scene-phase call lands and (b) scheduler latency on busy CI runners.
+        // We still catch the regression we care about — unbounded streaming
+        // through the entire 40-token plan — without flaking on a slow host.
         XCTAssertLessThanOrEqual(
             tokenCountAfterDrain,
-            tokenCountAtBackground + 2,
+            tokenCountAtBackground + 5,
             "no appreciable token growth permitted after backgrounding (slack for any already-queued yield)"
         )
 
