@@ -321,6 +321,33 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         Self.logger.info("Foundation backend unloaded")
     }
 
+    /// Asynchronous shutdown that awaits the in-flight generation Task before
+    /// returning. Use in test teardown to deterministically release the
+    /// captured `LanguageModelSession` so the next test's `probeIsReady()`
+    /// doesn't race against a still-live session from the previous test.
+    ///
+    /// `unloadModel()` cancels the generation Task but returns synchronously,
+    /// so the Task body — which holds a local strong reference to the active
+    /// `LanguageModelSession` — may still be running when the next test starts.
+    /// On Apple Intelligence-equipped hosts the next test's `probeIsReady()`
+    /// can observe the prior session as active and skip with "not ready",
+    /// surfacing as the cross-test flake tracked in #1319 / #1115.
+    ///
+    /// One `await Task.yield()` (the previous teardown shape) is not a
+    /// sufficient barrier — `LanguageModelSession.streamResponse` work hops
+    /// off-actor through the system daemon, so a single cooperative yield
+    /// can return before the cancelled body finishes its `defer` block.
+    public func unloadModelAndWait() async {
+        let task = withStateLock { () -> Task<Void, Never>? in
+            let snapshot = generationTask
+            return snapshot
+        }
+        unloadModel()
+        // Awaiting the cancelled Task's value waits for its `defer` block to
+        // run, which is what drops the local `activeSession` strong reference.
+        await task?.value
+    }
+
     // MARK: - Generation
 
     public func generate(

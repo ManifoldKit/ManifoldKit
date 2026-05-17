@@ -141,7 +141,6 @@ This proves the assertion (a) exercises a real production code path, (b) is valu
 ## Special cases
 
 - **MLX integration**: `scripts/test-mlx-integration.sh` — Xcode-only, metallib required. See #986.
-- **Llama isolation**: `scripts/test-llama-isolated.sh` — runs LlamaBackend tests in a separate process to avoid global-init contamination.
 - **MCP E2E**: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — gated env var + trait. The `everything-server` smoke has hung in past runs; filter to the streamable subset.
 - **Ollama**: requires `localhost:11434` and `--traits Ollama`.
 - **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.

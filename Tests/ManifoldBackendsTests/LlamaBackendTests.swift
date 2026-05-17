@@ -689,8 +689,9 @@ final class LlamaBackendTests: XCTestCase {
         // no-op here (nothing is loaded yet) but it awaits the prior test's
         // cleanup chain before we touch llama.cpp, preventing the Metal pipeline
         // from being in a partially-freed state when our first decode begins.
-        // See scripts/test-llama-isolated.sh for the single-process isolation
-        // alternative when accumulated Metal state causes persistent failures.
+        // The `llama_backend_init` cycle that motivated the (now-removed)
+        // `test-llama-isolated.sh` script is fixed at the source by the
+        // process-scoped latch in `LlamaBackendProcessLifecycle` (#1319).
         await backend.unloadAndWait()
 
         try await backend.loadModel(from: modelURL, plan: .testStub(effectiveContextSize: 512))
