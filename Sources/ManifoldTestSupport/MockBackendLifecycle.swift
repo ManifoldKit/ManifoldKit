@@ -86,6 +86,17 @@ package final class MockBackendLifecycle: @unchecked Sendable {
         return generationTask != nil
     }
 
+    /// Test-only: snapshot the currently-recorded task, if any. Tests use
+    /// this to `await task.value` *after* draining the stream, which is a
+    /// real happens-before edge with the task body's last statement
+    /// (`clearTaskIfMatches`). Polling `hasActiveTask` with `Task.sleep`
+    /// races the clearing hop on loaded CI runners — see #1329.
+    package var currentTask: Task<Void, Never>? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return generationTask
+    }
+
     /// Cancels the recorded task and clears the slot. Safe to call from
     /// `deinit` (the lock is released before `task.cancel()` so the task's
     /// own state-flip cannot deadlock).

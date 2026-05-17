@@ -180,24 +180,31 @@ final class MockBackendLifecycleTests: XCTestCase {
     func test_backToBackMakeStream_clearsTaskBetweenRuns() async throws {
         let lifecycle = MockBackendLifecycle()
 
-        // Run #1 — drain to completion.
+        // Run #1 — capture the underlying task from inside `onFinish`,
+        // which runs on the same task hop *before* the body's final
+        // `clearTaskIfMatches` statement. That snapshot lets us
+        // `await task.value` after draining, which is a real
+        // happens-before edge with the clearing hop — replacing the
+        // `Task.sleep` poll that flaked on loaded CI runners (see #1329).
+        let capturedTask = TaskHolder()
         let stream1 = lifecycle.makeStream(
-            onFinish: { },
+            onFinish: { [weak lifecycle] in
+                // Inside `onFinish`, the slot still holds the current
+                // task (the identity-aware clear runs *after* this
+                // callback returns).
+                capturedTask.set(lifecycle?.currentTask)
+            },
             body: { continuation in
                 continuation.yield(.token("a"))
             }
         )
         for try await _ in stream1.events { }
+        let task1 = try XCTUnwrap(
+            capturedTask.value,
+            "Task slot must be populated when onFinish fires"
+        )
+        await task1.value
 
-        // Give the task's completion block a moment to run its
-        // identity-aware clear. (`for try await` returns after
-        // `continuation.finish()`, but the task body's last statement —
-        // `self?.clearTaskIfMatches(t)` — runs immediately after on the
-        // same task hop.)
-        let deadline = ContinuousClock().now.advanced(by: .milliseconds(500))
-        while lifecycle.hasActiveTask && ContinuousClock().now < deadline {
-            try await Task.sleep(for: .milliseconds(5))
-        }
         XCTAssertFalse(
             lifecycle.hasActiveTask,
             "Task slot must be cleared after the body's natural completion"
@@ -248,6 +255,21 @@ private final class AtomicCounter: @unchecked Sendable {
     func increment() {
         lock.lock(); defer { lock.unlock() }
         _value += 1
+    }
+}
+
+/// Box that lets `onFinish` capture the running `Task` so the test body can
+/// `await task.value` deterministically after draining the stream.
+private final class TaskHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: Task<Void, Never>?
+    var value: Task<Void, Never>? {
+        lock.lock(); defer { lock.unlock() }
+        return _value
+    }
+    func set(_ task: Task<Void, Never>?) {
+        lock.lock(); defer { lock.unlock() }
+        _value = task
     }
 }
 
