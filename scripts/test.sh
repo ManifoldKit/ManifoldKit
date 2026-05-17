@@ -26,7 +26,6 @@
 #
 # For ManifoldMLXIntegrationTests, use scripts/test-mlx-integration.sh instead
 # (xcodebuild requires PlistBuddy env injection — see that script's header).
-# For Llama tests with metal-state isolation, use scripts/test-llama-isolated.sh.
 #
 # Output format understood:
 #   XCTest:

@@ -35,7 +35,7 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 - Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
 - MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
-- Llama: use `scripts/test-llama-isolated.sh` when in-process runs accumulate Metal global state
+- Llama: in-process runs are safe — `LlamaBackendProcessLifecycle` latches `llama_backend_init` exactly once per process (was a per-class isolation script pre-#1319)
 - `ManifoldE2ETests`: bare form `swift test --filter ManifoldE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'ManifoldE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
 
 ## Test conventions

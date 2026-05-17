@@ -65,16 +65,22 @@ final class FoundationBackendUnitTests: XCTestCase {
         //
         // FoundationBackend is @unchecked Sendable, so the direct capture is safe.
         addTeardownBlock {
-            // Cancel any in-flight generation task and release the
-            // LanguageModelSession.  unloadModel() calls stopGeneration() which:
-            //   1. Synchronously sets _isGenerating = false and session = nil
-            //   2. Cancels the generation Task so its async body exits soon
-            // The async body holds a local strong reference to activeSession; it
-            // will release it once it observes Task.isCancelled. Yielding once
-            // gives the task a chance to run its cancellation path before the
-            // next test's setUp allocates another session. #1115.
-            freshBackend.unloadModel()
-            await Task.yield()
+            // Cancel any in-flight generation task and await its body, so the
+            // captured strong reference to the active `LanguageModelSession`
+            // is released before the next test's setUp allocates another one.
+            //
+            // The prior shape (`unloadModel()` + `await Task.yield()`) wasn't
+            // a sufficient barrier — `LanguageModelSession.streamResponse`
+            // hops off-actor through the system daemon, so a single
+            // cooperative yield can return while the cancelled body is still
+            // mid-`defer`. The next test's `probeIsReady()` would then see
+            // the prior session as active and skip with "not ready", which
+            // is the cross-test flake tracked in #1319 / #1115.
+            //
+            // `unloadModelAndWait()` awaits the Task value, which only
+            // completes after the body's `defer` block runs and the local
+            // `activeSession` strong reference drops.
+            await freshBackend.unloadModelAndWait()
         }
     }
 

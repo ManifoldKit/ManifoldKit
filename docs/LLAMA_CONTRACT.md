@@ -20,8 +20,8 @@ changes before merging.
 | Attribute | Detail |
 |-----------|--------|
 | Signature | `void llama_backend_init(void)` |
-| Threading | Call exactly once before any other llama.cpp call. `LlamaBackend` enforces this with a process-global reference count and `backendLock`. |
-| Ordering | Must precede all other `llama_*` calls. `llama_backend_free` must be the last call. |
+| Threading | Call exactly once before any other llama.cpp call. `LlamaBackendProcessLifecycle` enforces this with a process-scoped latch (`didInitialize`) guarded by `NSLock`. |
+| Ordering | Must precede all other `llama_*` calls. `llama_backend_free` is intentionally never called — see below. |
 | Limits | Single global call — calling more than once is undefined behaviour in llama.cpp internals (GGML/BLAS global init). |
 | Ownership | Void — no return value to manage. |
 | Failure modes | None exposed; failure inside GGML (e.g., Metal unavailable) is either silently degraded or aborts internally. |
@@ -31,9 +31,9 @@ changes before merging.
 | Attribute | Detail |
 |-----------|--------|
 | Signature | `void llama_backend_free(void)` |
-| Threading | Guarded by `backendLock`; only called when reference count drops to zero. |
-| Ordering | Must be the last llama.cpp call. All contexts and models must already be freed. In `LlamaBackend`, `unloadModel()` spawns a detached cleanup task that awaits the generation task, then calls `llama_free` / `llama_model_free`, and only then calls `releaseBackend()`. This preserves the invariant without blocking the calling thread. |
-| Limits | Symmetric with `llama_backend_init`. |
+| Threading | **Intentionally never called.** Process exit reclaims the GGML globals; calling it ourselves would create a future `llama_backend_init` cycle, which is documented UB. |
+| Ordering | Would have to be the last `llama_*` call. Earlier revisions called this when a retain/release refcount hit zero; in test suites the count routinely dipped to zero between tests, re-entering `llama_backend_init` on the next retain and accumulating GGML/Metal global state across re-inits (the cross-test flakes tracked in #1319 / #1115). The latch in `LlamaBackendProcessLifecycle` ships init exactly once per process and lets the OS reclaim at `exit()`. |
+| Limits | Symmetric with `llama_backend_init` — and that symmetry is the trap. |
 | Ownership | Void. |
 | Failure modes | Calling when contexts or models are still alive can cause GGML internal assertion failures or resource leaks. |
 
