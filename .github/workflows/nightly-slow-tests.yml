@@ -94,6 +94,32 @@ jobs:
           scripts/test.sh --filter "ManifoldRuntimeTests.SessionDiscardOrderingTests" \
             --disable-default-traits --skip-update --min-passed 1
 
+      # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
+      # over the four critical modules and verifies each module's line coverage
+      # meets its threshold (set 10pp below the 2026-05-15 baseline). Moved here
+      # from ci.yml's per-main-push step to reclaim ~130s wall (~22 billed
+      # macOS-min) per push; thresholds are conservative enough that a ≤24h
+      # detection delay is acceptable. See scripts/check-coverage.sh for
+      # threshold values and rationale.
+      - name: Coverage thresholds
+        id: test-coverage-thresholds
+        timeout-minutes: 15
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-coverage-thresholds.log
+        run: |
+          set -euo pipefail
+          swift test \
+            --filter ManifoldCoreTests \
+            --filter ManifoldRuntimeTests \
+            --filter ManifoldPersistenceSwiftDataTests \
+            --filter ManifoldInferenceTests \
+            --filter ManifoldMCPTests \
+            --disable-default-traits \
+            --traits MCP \
+            --enable-code-coverage \
+            --skip-update
+          scripts/check-coverage.sh
+
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so
         # diagnostics from earlier failures are preserved.
@@ -104,6 +130,7 @@ jobs:
           TRAFFIC_BOUNDARY_AUDIT_FAILED: ${{ steps.test-traffic-boundary-audit.outcome == 'failure' }}
           MCP_E2E_SMOKE_FAILED: ${{ steps.test-mcp-e2e-smoke.outcome == 'failure' }}
           OPERATIONAL_FAILED: ${{ steps.test-operational.outcome == 'failure' }}
+          COVERAGE_THRESHOLDS_FAILED: ${{ steps.test-coverage-thresholds.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
           {
@@ -115,6 +142,7 @@ jobs:
             echo "traffic-boundary-audit-failed=${TRAFFIC_BOUNDARY_AUDIT_FAILED}"
             echo "mcp-e2e-smoke-failed=${MCP_E2E_SMOKE_FAILED}"
             echo "operational-failed=${OPERATIONAL_FAILED}"
+            echo "coverage-thresholds-failed=${COVERAGE_THRESHOLDS_FAILED}"
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
