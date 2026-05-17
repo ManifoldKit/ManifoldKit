@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.29.0](https://github.com/roryford/ManifoldKit/compare/v0.28.0...v0.29.0) — 2026-05-17
+
+### Highlights
+
+#### Session-level pinning on `SessionManagerViewModel` ([#1332](https://github.com/roryford/ManifoldKit/issues/1332))
+
+Pinned-session lists ("Pinned" above the chronological list, à la Messages, Slack, Notion) previously required every consumer app to persist its own `Set<UUID>` in `UserDefaults` and reconcile against MK's session list on every load — drifting whenever a session was deleted under MK. ManifoldKit now owns pin state directly. `ChatSessionRecord` carries `isPinned` and `pinnedAt`, `SchemaV8` adds a lightweight migration (existing rows default to unpinned), and `SessionListService` emits a new `.sessionPinChanged` event so list-view bindings stay in sync without polling. The new `pinnedSortKey` mirror column makes `SortDescriptor` work on the `@Model` without reaching outside SwiftData.
+
+```swift
+let manager: SessionManagerViewModel = /* … */
+
+// Pin / unpin.
+try await manager.pinSession(session)
+try await manager.unpinSession(session)
+
+// Pinned-first list for a section header.
+ForEach(manager.pinnedSessions) { session in
+    SessionRow(session)
+}
+```
+
+#### Public `NetworkActivityCenter` — single source of truth for in-flight traffic ([#1331](https://github.com/roryford/ManifoldKit/issues/1331))
+
+Privacy-forward, local-first apps need to display a real "is the framework talking to the network right now?" signal — not infer it from download progress or hand-rolled `URLSession` observers that drift from MK's actual networking. `NetworkActivityCenter` is a public `@Observable @MainActor` funnel that every internal URLSession (HuggingFace browsing, background downloads, cloud transports) reports begin/end pairs to. Each request is counted as a `NetworkActivityToken`; the center exposes `current`, `inFlightCount`, and `activeHosts` as observables plus an `AsyncStream<NetworkActivity>` of state transitions.
+
+```swift
+// Bind to the shared instance from a status pill.
+struct NetworkPill: View {
+    let center = NetworkActivityCenter.shared
+    var body: some View {
+        if center.inFlightCount > 0 {
+            Label("\(center.activeHosts.first ?? "Network")", systemImage: "network")
+        }
+    }
+}
+```
+
+#### `ChatViewModel.stagedAttachments` — public draft-attachment API ([#1326](https://github.com/roryford/ManifoldKit/issues/1326), closes [#1302](https://github.com/roryford/ManifoldKit/issues/1302))
+
+The draft attachment list a user has staged before pressing send is now first-class on `ChatViewModel`. Previously consumers reimplemented this in their view layer and routed it through `sendMessage` themselves; the new API mirrors what MK already does internally and replays it on draft restore so files survive backgrounding.
+
+```swift
+viewModel.stageAttachment(.image(data: imageData, mimeType: "image/png"))
+// `stagedAttachments` is observable — the composer's chip row binds directly.
+viewModel.removeStagedAttachment(at: 0)
+await viewModel.sendMessage()  // sends with staged parts attached
+```
+
+#### `SessionManagerViewModel.deleteAllSessions()` — atomic bulk-delete ([#1325](https://github.com/roryford/ManifoldKit/issues/1325), closes [#1300](https://github.com/roryford/ManifoldKit/issues/1300))
+
+"Clear All Chats" used to require iterating session IDs and issuing N deletes — partial failures left the UI showing ghosts. `deleteAllSessions()` is one atomic SwiftData transaction that either clears every session or rolls back; `SessionListService` emits a single `.sessionsLoaded` event after.
+
+```swift
+try await manager.deleteAllSessions()
+```
+
+#### `ModelCapabilities` gains `supportsCodeGeneration` and `supportsMultilingual` ([#1330](https://github.com/roryford/ManifoldKit/issues/1330), closes [#1298](https://github.com/roryford/ManifoldKit/issues/1298))
+
+Model browsers that show capability badges ("Vision", "Code", "Reasoning", "Multilingual") previously had to hardcode the latter two per backend or guess from display names. `ModelCapabilityProbe` now infers them from the HuggingFace README front-matter (tags, language list, pipeline tag) with `config.json` and `architectures` as fallbacks — and rejects substring traps like `LlamaDecoderForCausalLM` (not code) or `MultiTaskLlama` (not multilingual). Both fields default to `false` for unaffected call sites.
+
+```swift
+let caps = await probe.capabilities(for: modelInfo)
+if caps.supportsCodeGeneration { showBadge(.code) }
+if caps.supportsMultilingual   { showBadge(.multilingual) }
+```
+
+### Features
+
+- **hf:** auto-detect `.fp16.safetensors` variants in the diffusion downloader so half-precision weights are picked over fp32 without manual filename juggling ([#1327](https://github.com/roryford/ManifoldKit/issues/1327), closes [#1316](https://github.com/roryford/ManifoldKit/issues/1316))
+
+### Fixes
+
+- **security:** `PromptTemplate.sanitize` now strips all special tokens regardless of which template is active — previously a switch to a different model could leave the prior model's chat-control tokens un-escaped in user input ([#1334](https://github.com/roryford/ManifoldKit/issues/1334))
+- Deflake `MockBackendLifecycleTests.test_backToBackMakeStream_clearsTaskBetweenRuns` — replaced a `Task.sleep`-poll race with a deterministic `await task.value` happens-before edge on the lifecycle task captured inside `onFinish` ([#1333](https://github.com/roryford/ManifoldKit/issues/1333), closes [#1329](https://github.com/roryford/ManifoldKit/issues/1329))
+- **ci:** Annotate README install pins so release-please auto-bumps them on each release ([#1324](https://github.com/roryford/ManifoldKit/issues/1324))
+
 ## [0.28.0](https://github.com/roryford/ManifoldKit/compare/v0.27.0...v0.28.0) — 2026-05-16
 
 ### Highlights
