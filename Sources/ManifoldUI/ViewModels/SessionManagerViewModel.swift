@@ -190,6 +190,21 @@ public final class SessionManagerViewModel {
                 activeSession?.title = title
             }
 
+        case let .sessionPinChanged(id, isPinned):
+            // The trailing .sessionsLoaded event carries the re-sorted page
+            // so the row moves into its new bucket. Update the local
+            // record's flag synchronously so a SwiftUI surface bound to the
+            // record's `isPinned` reacts in the same tick rather than
+            // waiting on the reload.
+            if let idx = sessions.firstIndex(where: { $0.id == id }) {
+                sessions[idx].isPinned = isPinned
+                sessions[idx].pinnedAt = isPinned ? Date() : nil
+            }
+            if activeSession?.id == id {
+                activeSession?.isPinned = isPinned
+                activeSession?.pinnedAt = isPinned ? Date() : nil
+            }
+
         case .persistenceFailure:
             // Service has already logged; the adapter has nothing to publish.
             // Surface points (banners, retry affordances) wire onto the same
@@ -245,6 +260,50 @@ public final class SessionManagerViewModel {
     public func renameSession(_ session: ChatSessionRecord, title: String) async throws {
         let service = try requireService("renameSession")
         try await service.renameSession(session, title: title)
+    }
+
+    /// Pins a session to the top of the list (#1301).
+    ///
+    /// Consumer apps no longer need to maintain their own `Set<UUID>` of
+    /// pinned IDs in `UserDefaults` — pinned state lives on the session
+    /// record and survives reload, app-group reads, and any future
+    /// export/sync. Idempotent: pinning an already-pinned session is a
+    /// no-op (no `pinnedAt` reshuffle, no event).
+    public func pinSession(_ session: ChatSessionRecord) async throws {
+        let service = try requireService("pinSession")
+        try await service.pinSession(session)
+    }
+
+    /// Unpins a session. Idempotent — no-op when the session is not pinned.
+    public func unpinSession(_ session: ChatSessionRecord) async throws {
+        let service = try requireService("unpinSession")
+        try await service.unpinSession(session)
+    }
+
+    /// Currently loaded pinned sessions, in `pinnedAt`-descending order
+    /// (most recently pinned first). Derived from ``sessions`` so it
+    /// stays in sync with the page state without an extra fetch.
+    ///
+    /// Note: this is the *currently loaded* slice — if pagination has not
+    /// drained every pinned record into ``sessions``, callers that need an
+    /// exhaustive list should fetch a sufficiently large page. With the
+    /// pinned-first sort order applied by the persistence layer, page one
+    /// is guaranteed to surface every pin in any realistic configuration
+    /// (page size 50; pinning >50 sessions is not a real workflow).
+    public var pinnedSessions: [ChatSessionRecord] {
+        sessions
+            .filter(\.isPinned)
+            .sorted { lhs, rhs in
+                // Records with nil pinnedAt are degenerate (isPinned true
+                // without a stamp); place them last so well-formed rows
+                // dominate the visible order.
+                switch (lhs.pinnedAt, rhs.pinnedAt) {
+                case let (l?, r?): return l > r
+                case (_?, nil):    return true
+                case (nil, _?):    return false
+                case (nil, nil):   return lhs.updatedAt > rhs.updatedAt
+                }
+            }
     }
 
     // MARK: - AI auto-rename

@@ -21,6 +21,21 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
     public var contextSizeOverride: Int?
     public var pinnedMessageIDs: Set<UUID>
 
+    /// True when this session is pinned to the top of the session list.
+    ///
+    /// Session-level pinning (added in SchemaV8 / #1301) is a property of the
+    /// session itself rather than of consumer UI state — co-locating it on
+    /// the record keeps pinned state consistent across persistence reads,
+    /// app-group access, and export paths, and removes the consumer-side
+    /// `Set<UUID>` reconciliation race against MK-initiated deletes.
+    public var isPinned: Bool
+
+    /// Timestamp recorded when ``isPinned`` flipped to `true`. Used as the
+    /// stable secondary sort key inside the pinned bucket so the most
+    /// recently pinned session surfaces first. `nil` while ``isPinned`` is
+    /// `false`.
+    public var pinnedAt: Date?
+
     public init(
         id: UUID = UUID(),
         title: String = "New Chat",
@@ -34,7 +49,9 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
         repeatPenalty: Float? = nil,
         promptTemplate: PromptTemplate? = nil,
         contextSizeOverride: Int? = nil,
-        pinnedMessageIDs: Set<UUID> = []
+        pinnedMessageIDs: Set<UUID> = [],
+        isPinned: Bool = false,
+        pinnedAt: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -49,6 +66,8 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
         self.promptTemplate = promptTemplate
         self.contextSizeOverride = contextSizeOverride
         self.pinnedMessageIDs = pinnedMessageIDs
+        self.isPinned = isPinned
+        self.pinnedAt = pinnedAt
     }
 }
 
