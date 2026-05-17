@@ -7,13 +7,42 @@ import os
 /// Concrete `HuggingFaceServiceProtocol` backed by the `swift-huggingface` SDK.
 public final class HuggingFaceService: HuggingFaceServiceProtocol {
     private let hubClient: HubClient
+    private let activityCenter: NetworkActivityCenter
 
     /// Creates a service backed by the given Hugging Face Hub client.
     ///
-    /// - Parameter hubClient: The Hub client used for API requests and repo operations.
-    ///   Defaults to `.default`, which uses the shared Hub configuration.
-    public init(hubClient: HubClient = .default) {
+    /// - Parameters:
+    ///   - hubClient: The Hub client used for API requests and repo operations.
+    ///     Defaults to `.default`, which uses the shared Hub configuration.
+    ///   - activityCenter: Center to notify on metadata fetch start/end so the
+    ///     framework-wide network indicator reflects HF traffic even when the
+    ///     SDK bypasses ``URLSessionFactory``. Defaults to ``NetworkActivityCenter/shared``.
+    public init(
+        hubClient: HubClient = .default,
+        activityCenter: NetworkActivityCenter = .shared
+    ) {
         self.hubClient = hubClient
+        self.activityCenter = activityCenter
+    }
+
+    /// Wraps a `hubClient.*` call with begin/end on the activity center so
+    /// consumer observers see metadata fetches alongside downloads.
+    ///
+    /// Hops to `@MainActor` for both the begin and the end — the center is
+    /// `@MainActor`-isolated and SDK calls happen on whatever context the
+    /// caller is on.
+    private func trackingMetadataFetch<T>(
+        host: String = "huggingface.co",
+        _ body: () async throws -> T
+    ) async rethrows -> T {
+        let center = activityCenter
+        let token = await MainActor.run { center.begin(kind: .metadata, host: host) }
+        defer {
+            // `Task { @MainActor }` is fire-and-forget — token release does
+            // not need to block the caller's return.
+            Task { @MainActor in center.end(token) }
+        }
+        return try await body()
     }
 
     public func searchModels(query: String, limit: Int = 40) async throws -> [DownloadableModel] {
@@ -21,14 +50,16 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
 
         let response: PaginatedResponse<Model>
         do {
-            response = try await hubClient.listModels(
-                search: query,
-                sort: "downloads",
-                direction: .descending,
-                limit: limit,
-                full: true,
-                pipelineTag: "text-generation"
-            )
+            response = try await trackingMetadataFetch {
+                try await hubClient.listModels(
+                    search: query,
+                    sort: "downloads",
+                    direction: .descending,
+                    limit: limit,
+                    full: true,
+                    pipelineTag: "text-generation"
+                )
+            }
         } catch {
             Log.network.error("HuggingFace search failed: \(error.localizedDescription)")
             throw HuggingFaceError.searchFailed(underlying: error)
@@ -41,11 +72,13 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             for model in downloadableRepos {
                 group.addTask {
                     do {
-                        let detailed = try await self.hubClient.getModel(
-                            model.id,
-                            full: true,
-                            filesMetadata: true
-                        )
+                        let detailed = try await self.trackingMetadataFetch {
+                            try await self.hubClient.getModel(
+                                model.id,
+                                full: true,
+                                filesMetadata: true
+                            )
+                        }
                         return self.convertModelToDownloadables(detailed)
                     } catch {
                         Log.network.warning("Failed to fetch details for \(model.id): \(error)")
@@ -77,11 +110,13 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
 
         let model: Model
         do {
-            model = try await hubClient.getModel(
-                repoIdentifier,
-                full: true,
-                filesMetadata: true
-            )
+            model = try await trackingMetadataFetch {
+                try await hubClient.getModel(
+                    repoIdentifier,
+                    full: true,
+                    filesMetadata: true
+                )
+            }
         } catch {
             Log.network.error("Failed to fetch model \(repoID): \(error.localizedDescription)")
             throw HuggingFaceError.modelNotFound(repoID: repoID)
@@ -108,11 +143,13 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             }
             let detailed: Model
             do {
-                detailed = try await hubClient.getModel(
-                    repoIdentifier,
-                    full: true,
-                    filesMetadata: true
-                )
+                detailed = try await trackingMetadataFetch {
+                    try await hubClient.getModel(
+                        repoIdentifier,
+                        full: true,
+                        filesMetadata: true
+                    )
+                }
             } catch {
                 Log.network.error("Failed to fetch MLX snapshot for \(model.repoID): \(error.localizedDescription)")
                 throw HuggingFaceError.modelNotFound(repoID: model.repoID)

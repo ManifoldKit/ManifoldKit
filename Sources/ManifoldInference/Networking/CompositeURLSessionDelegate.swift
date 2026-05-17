@@ -53,16 +53,27 @@ public final class CompositeURLSessionDelegate: NSObject, @unchecked Sendable {
     /// ``downloadDelegate`` but for non-download data tasks.
     public weak var dataDelegate: URLSessionDataDelegate?
 
+    /// Strong reference for delegates the factory creates itself (e.g.
+    /// ``NetworkActivityTrackingDelegate``). External callers continue to
+    /// pass their own delegate via ``dataDelegate`` and own its lifetime.
+    /// The factory wires the same instance into both slots so forwarding
+    /// works through the existing `dataDelegate` plumbing.
+    private let ownedDataDelegate: URLSessionDataDelegate?
+
     public init(
         redirectGuard: RedirectGuardDelegate,
         serverTrustHandler: URLSessionDelegate? = nil,
         downloadDelegate: URLSessionDownloadDelegate? = nil,
-        dataDelegate: URLSessionDataDelegate? = nil
+        dataDelegate: URLSessionDataDelegate? = nil,
+        ownedDataDelegate: URLSessionDataDelegate? = nil
     ) {
         self.redirectGuard = redirectGuard
         self.serverTrustHandler = serverTrustHandler
         self.downloadDelegate = downloadDelegate
-        self.dataDelegate = dataDelegate
+        // Prefer the owned delegate when both are supplied: it sits on top
+        // of the caller's delegate (which it forwards to internally).
+        self.ownedDataDelegate = ownedDataDelegate
+        self.dataDelegate = ownedDataDelegate ?? dataDelegate
     }
 }
 

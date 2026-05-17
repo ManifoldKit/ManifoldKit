@@ -162,6 +162,18 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     @ObservationIgnored
     private let tempScanDirectory: URL
 
+    /// Activity center used to broadcast in-flight download state. Defaults
+    /// to ``NetworkActivityCenter/shared`` so integrators can bind a single
+    /// observable without threading dependencies through their app graph.
+    @ObservationIgnored
+    private let activityCenter: NetworkActivityCenter
+
+    /// Per-model activity tokens. Issued when `startDownload` accepts a new
+    /// transfer and released the moment the model transitions out of an
+    /// active status (completed / failed / cancelled).
+    @ObservationIgnored
+    private var activityTokens: [String: NetworkActivityToken] = [:]
+
     // MARK: - Init
 
     public init(
@@ -169,10 +181,12 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         sessionIdentifier: String? = nil,
         persistenceDirectory: URL? = nil,
         tempScanDirectory: URL? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        activityCenter: NetworkActivityCenter = .shared
     ) {
         self.storageService = storageService
         self._sessionIdentifier = sessionIdentifier ?? Self.sessionIdentifier
+        self.activityCenter = activityCenter
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let resolvedPersistenceDirectory = persistenceDirectory
@@ -229,6 +243,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         let state = DownloadState(model: model)
         activeDownloads[model.id] = state
+        beginActivityIfNeeded(modelID: model.id)
 
         switch plan {
         case .singleFile(let url, let expectedChecksum):
@@ -289,6 +304,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             Log.download.error("Refusing to retry \(id): persisted fileName failed validation: \(error.localizedDescription)")
             activeDownloads[id]?.markFailed(error: "Download metadata is invalid; please re-add the model.")
             removePendingDownload(id: id)
+            endActivityIfNeeded(modelID: id)
             return
         }
 
@@ -306,6 +322,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         // Reset to queued so the UI reflects that a new attempt is underway.
         let state = DownloadState(model: model)
         activeDownloads[model.id] = state
+        beginActivityIfNeeded(modelID: model.id)
 
         let snapshotFiles = decodePendingSnapshotFiles(info["snapshotFiles"], repoID: repoID)
 
@@ -318,6 +335,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             } catch {
                 Log.download.error("Failed to restart snapshot download for \(id): \(error.localizedDescription)")
                 activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
+                endActivityIfNeeded(modelID: model.id)
             }
             return
         }
@@ -374,12 +392,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         guard model.modelType != .mlx || model.packageKind == nil else {
             Log.download.error("Cannot retry snapshot download \(model.id) without persisted package metadata")
             activeDownloads[model.id]?.markFailed(error: "Download metadata is incomplete; please re-add the model.")
+            endActivityIfNeeded(modelID: model.id)
             return
         }
         let url = huggingFaceDownloadURL(repoID: model.repoID, filePath: model.fileName)
         guard url.host == "huggingface.co" else {
             Log.download.error("Failed to build retry URL for \(model.id)")
             activeDownloads[model.id]?.markFailed(error: "Could not construct download URL for retry")
+            endActivityIfNeeded(modelID: model.id)
             return
         }
         do {
@@ -387,6 +407,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         } catch {
             Log.download.error("Failed to start fresh retry download for \(model.id): \(error.localizedDescription)")
             activeDownloads[model.id]?.markFailed(error: error.localizedDescription)
+            endActivityIfNeeded(modelID: model.id)
         }
     }
 
@@ -429,6 +450,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 }
                 self.activeDownloads[id]?.markCancelled()
                 self.removePendingDownload(id: id)
+                self.endActivityIfNeeded(modelID: id)
                 // Mark the snapshot as cancelling rather than removing it immediately.
                 // URLSession delegate callbacks can still arrive after task.cancel() is
                 // called; deferring cleanup here prevents a cancelled download from
@@ -715,6 +737,11 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             bytesDownloaded: totalDownloaded,
             totalBytes: totalExpected
         )
+        updateActivityProgress(
+            modelID: modelID,
+            bytesDownloaded: totalDownloaded,
+            totalBytes: totalExpected
+        )
     }
 
     @MainActor
@@ -806,6 +833,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         activeDownloads[modelID]?.markCompleted(localURL: finalURL)
         removePendingDownload(id: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
+        endActivityIfNeeded(modelID: modelID)
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
@@ -816,6 +844,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 return
             }
             activeDownloads[modelID]?.markFailed(error: error)
+            endActivityIfNeeded(modelID: modelID)
             return
         }
 
@@ -833,6 +862,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
 
         activeDownloads[modelID]?.markFailed(error: error)
+        endActivityIfNeeded(modelID: modelID)
         snapshotDownloads.removeValue(forKey: modelID)
         do {
             try FileManager.default.removeItem(at: snapshot.stagingDirectory)
@@ -975,6 +1005,43 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
     @MainActor internal func consumeResumeData(for id: String) -> Data? {
         pendingStore.consumeResumeData(for: id)
+    }
+
+    // MARK: - NetworkActivityCenter integration
+
+    /// Issues an activity token for `modelID` if one isn't already in flight.
+    /// Idempotent so retries / snapshot fan-out don't double-register.
+    @MainActor
+    internal func beginActivityIfNeeded(modelID: String) {
+        guard activityTokens[modelID] == nil else { return }
+        activityTokens[modelID] = activityCenter.begin(
+            kind: .download(modelID: modelID),
+            host: "huggingface.co"
+        )
+    }
+
+    /// Closes the activity token for `modelID` if one is outstanding. Safe
+    /// to call from every mark-* terminal state — extra calls are no-ops.
+    @MainActor
+    internal func endActivityIfNeeded(modelID: String) {
+        guard let token = activityTokens.removeValue(forKey: modelID) else { return }
+        activityCenter.end(token)
+    }
+
+    /// Forwards progress to the activity center so the public observable
+    /// reports rich download bytes / throughput, not just "data flowing".
+    @MainActor
+    internal func updateActivityProgress(
+        modelID: String,
+        bytesDownloaded: Int64,
+        totalBytes: Int64
+    ) {
+        guard let token = activityTokens[modelID] else { return }
+        activityCenter.updateDownload(
+            token,
+            bytesReceived: bytesDownloaded,
+            totalBytes: totalBytes > 0 ? totalBytes : nil
+        )
     }
 
     internal func migrateFromUserDefaults() {
