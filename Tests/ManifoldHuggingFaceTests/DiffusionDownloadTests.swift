@@ -192,27 +192,34 @@ final class DiffusionDownloadTests: XCTestCase {
 
         XCTAssertEqual(info.format, .mlxDiffusion)
         XCTAssertEqual(info.huggingFaceRepoID, repoID)
-        XCTAssertEqual(info.directoryURL, tempDir)
+        // Hub layout: snapshot files live at `<root>/models/<org>/<name>/...`
+        // (see DiffusionDownload.hubLeafDirectory). `directoryURL` is the
+        // Hub leaf so `MLXDiffusionBackend` can derive `HubApi(downloadBase:)`
+        // by walking three components up without a symlink bridge.
+        let hubLeaf = tempDir
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repoID, isDirectory: true)
+        XCTAssertEqual(info.directoryURL, hubLeaf)
         XCTAssertGreaterThan(info.fileSize, 0)
 
         let fm = FileManager.default
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("model_index.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("unet/config.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("model_index.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("unet/config.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf
             .appendingPathComponent("unet/diffusion_pytorch_model.safetensors").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("vae/config.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("vae/config.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf
             .appendingPathComponent("vae/diffusion_pytorch_model.safetensors").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("text_encoder/config.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("text_encoder/config.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf
             .appendingPathComponent("text_encoder/model.safetensors").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("tokenizer/vocab.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("tokenizer/merges.txt").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("tokenizer/vocab.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("tokenizer/merges.txt").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf
             .appendingPathComponent("scheduler/scheduler_config.json").path))
 
-        XCTAssertFalse(fm.fileExists(atPath: tempDir.appendingPathComponent("text_encoder_2").path))
-        XCTAssertFalse(fm.fileExists(atPath: tempDir.appendingPathComponent("tokenizer_2").path))
+        XCTAssertFalse(fm.fileExists(atPath: hubLeaf.appendingPathComponent("text_encoder_2").path))
+        XCTAssertFalse(fm.fileExists(atPath: hubLeaf.appendingPathComponent("tokenizer_2").path))
 
         XCTAssertGreaterThan(progressEvents.count, 0, "Progress callback should fire at least once")
         let finalEvent = progressEvents.last!
@@ -262,11 +269,14 @@ final class DiffusionDownloadTests: XCTestCase {
         )
 
         XCTAssertEqual(info.format, .mlxDiffusion)
+        let hubLeaf = tempDir
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repoID, isDirectory: true)
         let fm = FileManager.default
-        XCTAssertTrue(fm.fileExists(atPath: tempDir
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf
             .appendingPathComponent("text_encoder_2/model.safetensors").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("tokenizer_2/vocab.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: tempDir.appendingPathComponent("tokenizer_2/merges.txt").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("tokenizer_2/vocab.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: hubLeaf.appendingPathComponent("tokenizer_2/merges.txt").path))
     }
 
     func test_manifestFetchFails_surfacesError() async {

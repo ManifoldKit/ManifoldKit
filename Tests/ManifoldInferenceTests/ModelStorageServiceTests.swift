@@ -93,7 +93,17 @@ final class ModelStorageServiceTests: XCTestCase {
     ) throws -> URL {
         let dir = service.modelsDirectory.appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let files = [
+        // Mirror the on-disk Hub layout produced by
+        // `DiffusionDownload.hubLeafDirectory`: files live under
+        // `<package>/models/<org>/<name>/...`. The package manifest at the
+        // package root lists every file with that prefix so the readiness
+        // check in `ModelStorageService.imageModelInfoIfReady` walks the
+        // correct paths.
+        let repoID = "test-org/\(name)"
+        let hubLeaf = dir
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repoID, isDirectory: true)
+        let unprefixed = [
             "model_index.json",
             "unet/config.json",
             "unet/diffusion_pytorch_model.safetensors",
@@ -103,19 +113,20 @@ final class ModelStorageServiceTests: XCTestCase {
             "text_encoder/model.safetensors",
             "scheduler/scheduler_config.json",
         ]
-        for file in files where file != omitted {
-            let url = dir.appendingPathComponent(file)
+        for file in unprefixed where file != omitted {
+            let url = hubLeaf.appendingPathComponent(file)
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data("x".utf8).write(to: url)
         }
         if writeManifest {
+            let prefixed = unprefixed.map { "models/\(repoID)/" + $0 }
             let manifest = DownloadedModelPackageManifest(
                 packageKind: .diffusion,
-                id: "test-org/\(name)",
+                id: repoID,
                 displayName: "Diffusion \(name)",
                 format: .mlxDiffusion,
-                huggingFaceRepoID: "test-org/\(name)",
-                files: files
+                huggingFaceRepoID: repoID,
+                files: prefixed
             )
             let data = try JSONEncoder().encode(manifest)
             try data.write(to: dir.appendingPathComponent(DownloadedModelPackageManifest.fileName))
@@ -285,14 +296,25 @@ final class ModelStorageServiceTests: XCTestCase {
         )
     }
 
+    /// Maps a package root (the directory `discoverImageModels` iterates over)
+    /// to the Hub leaf URL exposed on the resulting `ImageModelInfo`. Mirrors
+    /// `createDiffusionPackage`'s `models/<repoID>/` layout.
+    private func hubLeafURL(forPackage packageURL: URL) -> URL {
+        let repoID = "test-org/\(packageURL.lastPathComponent)"
+        return packageURL
+            .appendingPathComponent("models", isDirectory: true)
+            .appendingPathComponent(repoID, isDirectory: true)
+    }
+
     func test_discoverImageModels_ignoresPartialPackageWithoutManifest() throws {
         let packageURL = try createDiffusionPackage(writeManifest: false)
+        let expectedDir = hubLeafURL(forPackage: packageURL)
 
         let imageModels = service.discoverImageModels()
 
         XCTAssertNil(
             imageModels.first {
-                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+                $0.directoryURL.standardizedFileURL.path == expectedDir.standardizedFileURL.path
             },
             "Partially downloaded packages without readiness manifests must stay hidden"
         )
@@ -300,12 +322,13 @@ final class ModelStorageServiceTests: XCTestCase {
 
     func test_discoverImageModels_ignoresManifestWhenComponentMissing() throws {
         let packageURL = try createDiffusionPackage(omitFile: "vae/diffusion_pytorch_model.safetensors")
+        let expectedDir = hubLeafURL(forPackage: packageURL)
 
         let imageModels = service.discoverImageModels()
 
         XCTAssertNil(
             imageModels.first {
-                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+                $0.directoryURL.standardizedFileURL.path == expectedDir.standardizedFileURL.path
             },
             "Readiness manifests are atomic: every listed component must exist"
         )
@@ -313,10 +336,11 @@ final class ModelStorageServiceTests: XCTestCase {
 
     func test_discoverImageModels_surfacesCompletePackageAsSingleEntry() throws {
         let packageURL = try createDiffusionPackage(named: "ready-diffusion-\(UUID().uuidString)")
+        let expectedDir = hubLeafURL(forPackage: packageURL)
 
         let imageModels = service.discoverImageModels()
         let match = imageModels.first {
-            $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+            $0.directoryURL.standardizedFileURL.path == expectedDir.standardizedFileURL.path
         }
 
         XCTAssertNotNil(match)
@@ -324,7 +348,7 @@ final class ModelStorageServiceTests: XCTestCase {
         XCTAssertEqual(match?.huggingFaceRepoID, match?.id)
         XCTAssertEqual(
             imageModels.filter {
-                $0.directoryURL.standardizedFileURL.path == packageURL.standardizedFileURL.path
+                $0.directoryURL.standardizedFileURL.path == expectedDir.standardizedFileURL.path
             }.count,
             1,
             "A multi-component package should appear as one logical model"
