@@ -152,6 +152,11 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldInference/Networking/RedirectGuardDelegate.swift",
         "ManifoldInference/Networking/CompositeURLSessionDelegate.swift",
         "ManifoldInference/Networking/URLSessionFactory.swift",
+        // NetworkActivity observable funnel (#1292) — implements
+        // URLSessionDataDelegate so it can record begin/end of every task
+        // that flows through `URLSessionFactory.ephemeral`. No new outbound
+        // calls; this file only *observes* the existing seam.
+        "ManifoldInference/Networking/NetworkActivityTrackingDelegate.swift",
 
         // HuggingFace reachability probe (#1296). Single `GET` to
         // `https://huggingface.co/api/models?limit=1` routed through
@@ -308,7 +313,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 41,
+            Self.networkIOAllowlist.count, 42,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

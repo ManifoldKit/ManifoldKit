@@ -47,17 +47,28 @@ public enum URLSessionFactory {
     public static func ephemeral(
         hopCap: Int = 3,
         resourceTimeout: TimeInterval = defaultResourceTimeout,
-        additionalDataDelegate: URLSessionDataDelegate? = nil
+        additionalDataDelegate: URLSessionDataDelegate? = nil,
+        activityCenter: NetworkActivityCenter? = NetworkActivityCenter.shared
     ) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = defaultRequestTimeout
         config.timeoutIntervalForResource = resourceTimeout
         config.tlsMinimumSupportedProtocolVersion = .TLSv12
+        // Slot the tracking delegate ahead of the caller's data delegate so
+        // every request emits begin/end to the shared activity center. When
+        // `activityCenter` is nil (tests that want to assert *no* tracking)
+        // we skip the wrapper entirely. The tracker is stashed in
+        // ``CompositeURLSessionDelegate/ownedDataDelegate`` so it survives
+        // past `additionalDataDelegate`'s weak reference.
+        let tracker: NetworkActivityTrackingDelegate? = activityCenter.map { center in
+            NetworkActivityTrackingDelegate(center: center, downstream: additionalDataDelegate)
+        }
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,
             downloadDelegate: nil,
-            dataDelegate: additionalDataDelegate
+            dataDelegate: tracker == nil ? additionalDataDelegate : nil,
+            ownedDataDelegate: tracker
         )
         return URLSession(configuration: config, delegate: composite, delegateQueue: nil)
     }

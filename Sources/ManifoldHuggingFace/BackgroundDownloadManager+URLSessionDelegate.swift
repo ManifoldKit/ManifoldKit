@@ -32,6 +32,11 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                     bytesDownloaded: totalBytesWritten,
                     totalBytes: totalBytesExpectedToWrite
                 )
+                self.updateActivityProgress(
+                    modelID: context.modelID,
+                    bytesDownloaded: totalBytesWritten,
+                    totalBytes: totalBytesExpectedToWrite
+                )
             }
         }
     }
@@ -110,6 +115,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
 
                     self.activeDownloads[context.modelID]?.markCompleted(localURL: destination)
                     self.removePendingDownload(id: context.modelID)
+                    self.endActivityIfNeeded(modelID: context.modelID)
                 }
                 self.unregisterActiveTempPath(tempURL)
                 self.removeTaskTracking(taskID: taskID, modelID: context.modelID)
@@ -124,6 +130,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                 } else {
                     self.activeDownloads[context.modelID]?.markFailed(error: error.localizedDescription)
                     self.removePendingDownload(id: context.modelID)
+                    self.endActivityIfNeeded(modelID: context.modelID)
                 }
                 self.unregisterActiveTempPath(tempURL)
                 self.removeTaskTracking(taskID: taskID, modelID: context.modelID)
@@ -168,6 +175,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                 // Pending metadata is removed on cancellation — retryDownload is not
                 // offered for cancelled downloads (only .failed shows a Retry button).
                 self.removePendingDownload(id: context.modelID)
+                self.endActivityIfNeeded(modelID: context.modelID)
             } else {
                 // Persist resume data for single-file downloads so retryDownload(id:) can
                 // resume from where the download stopped rather than restarting from scratch.
@@ -188,6 +196,7 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                     // the model and reach the resume-data path. removePendingDownload is
                     // called only after a successful retry or a fresh-start retry begins.
                     self.activeDownloads[context.modelID]?.markFailed(error: errorDesc)
+                    self.endActivityIfNeeded(modelID: context.modelID)
                 }
             }
             self.removeTaskTracking(taskID: taskID, modelID: context.modelID)
