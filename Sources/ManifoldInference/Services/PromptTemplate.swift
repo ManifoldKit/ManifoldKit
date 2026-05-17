@@ -16,8 +16,8 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
 
     public var id: String { rawValue }
 
-    /// Special tokens for each template format. User content containing these
-    /// tokens is sanitised before interpolation to prevent prompt injection.
+    /// Special tokens for each template format. Documented per-family for reference;
+    /// sanitize() uses allSpecialTokens to block cross-family injection.
     private var specialTokens: [String] {
         switch self {
         case .chatML:
@@ -37,10 +37,18 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// Union of special tokens across all template families. A user message may be
+    /// formatted by one template while containing tokens from another (e.g. ChatML
+    /// tokens in a Llama 3 conversation); stripping only the active template's own
+    /// tokens lets foreign control tokens reach the tokenizer as real delimiters.
+    private static var allSpecialTokens: [String] {
+        PromptTemplate.allCases.flatMap(\.specialTokens)
+    }
+
     /// Strips special tokens from user-controlled text to prevent prompt injection.
     private func sanitize(_ text: String) -> String {
         var result = text
-        for token in specialTokens {
+        for token in PromptTemplate.allSpecialTokens {
             result = result.replacingOccurrences(of: token, with: "")
         }
         return result
