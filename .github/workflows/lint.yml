@@ -256,7 +256,7 @@ jobs:
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets
         if: always()
-        uses: trufflesecurity/trufflehog@v3.95.2
+        uses: trufflesecurity/trufflehog@v3.95.3
         with:
           # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
           # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit
