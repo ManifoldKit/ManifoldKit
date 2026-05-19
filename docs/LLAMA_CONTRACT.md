@@ -1,15 +1,25 @@
 # LlamaSwift xcframework — llama.cpp C API Contract
 
-This document describes every `llama_*` C symbol called by
-`Sources/ManifoldBackends/LlamaBackend.swift`, covering threading
-constraints, ordering invariants, capacity limits, ownership semantics, and
-known failure modes. It is generated from a careful read of both
-`LlamaBackend.swift` and the vendored `docs/vendor/llama.h` (llama.cpp build
-b8772, exposed through `mattt/llama.swift` 2.8772.0).
+This document describes every `llama_*` C symbol called by the `ManifoldLlama`
+target (`Sources/ManifoldLlama/`), covering threading constraints, ordering
+invariants, capacity limits, ownership semantics, and known failure modes. It
+is generated from a careful read of `LlamaBackend.swift`,
+`LlamaGenerationDriver.swift`, `LlamaModelLoader.swift`,
+`LlamaEmbeddingBackend.swift`, and the vendored `docs/vendor/llama.h` (llama.cpp
+build **b9101**, exposed through `mattt/llama.swift` **2.9101.0**).
 
 Use this document when upgrading the xcframework pin: diff `docs/vendor/llama.h`
 against the new version's header, then review every section below for contract
 changes before merging.
+
+## Symbol coverage
+
+`grep llama_ Sources/ManifoldLlama/*.swift | grep -oE "llama_[a-z_]+" | sort -u`
+enumerates **51 distinct symbols**. Section coverage below is grouped by
+subsystem; every called symbol must have a row in one of the tables. The
+"Sampling" section in particular covers the full chain — `dry`, `xtc`,
+`mirostat_v2`, `greedy`, and `grammar` are configurable stages, not legacy
+options.
 
 ---
 
@@ -150,6 +160,16 @@ changes before merging.
 | Ownership | Returns a value. No allocation. |
 | Failure modes | None; but the value directly constrains `llama_decode` — see violation history. |
 
+### Other context/model accessors (compact)
+
+| Symbol | Returns | Threading | Notes |
+|--------|---------|-----------|-------|
+| `llama_n_ctx(ctx)` | `uint32_t` | safe read | Authoritative context size — may differ from `ctxParams.n_ctx`; query rather than assume. |
+| `llama_get_model(ctx)` | `const llama_model *` | safe read | Borrowed pointer back to the owning model; do not free. Used by `LlamaGenerationDriver` to read `n_ctx_train` when configuring DRY. |
+| `llama_model_n_ctx_train(model)` | `int32_t` | safe read | Training-time context size; feeds `DRYSamplerDescriptor`. |
+| `llama_model_n_embd(model)` | `int32_t` | safe read | Embedding dimensionality; used by `LlamaEmbeddingBackend` to size output buffers. |
+| `llama_model_meta_val_str(model, key, buf, len)` | `int32_t` | safe read | Reads GGUF metadata strings (e.g. chat template); negative return signals "key not present" or buffer too small. Caller must retry-on-negative. |
+
 ---
 
 ## Memory / KV Cache
@@ -175,6 +195,17 @@ changes before merging.
 | Limits | When `data = false`, clears metadata (positions, sequence IDs) but not the raw weight buffers — this is what `LlamaBackend` uses. `data = true` also zeros the weight data, which is more expensive. |
 | Ownership | Void. No new allocation. |
 | Failure modes | None; incorrect use (not clearing after cancellation) is a correctness bug, not a crash — see violation history (PR #396). |
+
+### `llama_memory_seq_rm`
+
+| Attribute | Detail |
+|-----------|--------|
+| Signature | `void llama_memory_seq_rm(llama_memory_t mem, llama_seq_id seq_id, llama_pos p0, llama_pos p1)` |
+| Threading | Must not be called concurrently with `llama_decode` on the same context. |
+| Ordering | Used at the start of a generation run when the new prompt shares a prefix of length `reuseLen` with the previous decode (`LlamaBackend.swift:384`). Trims the KV tail past `p0 = reuseLen` so the suffix can be re-decoded starting at the correct position. `p1 = -1` means "to end". |
+| Limits | The reused prefix must be byte-identical to the previously-decoded prompt; otherwise the surviving KV entries are stale and produce garbage logits. The backend recomputes the longest shared prefix per call. |
+| Ownership | Void. |
+| Failure modes | Silent correctness bug if `reuseLen` overstates the shared prefix. See Invariant #3 for the seed-determinism caveat introduced by the partial re-decode path. |
 
 ---
 
@@ -336,7 +367,36 @@ changes before merging.
 | Ordering | Must be called after a successful `llama_decode`. `idx = -1` reads logits from the last token of the most recent decode (used on the first generation iteration); `idx = 0` reads from index 0 of a 1-token batch (used on subsequent iterations). |
 | Limits | `idx` is relative to the logit matrix from the last decode; out-of-range values are undefined behaviour. |
 | Ownership | Returns a `llama_token` (int32). No heap allocation. |
-| Failure modes | Undefined behaviour if `llama_batch.logits[idx]` was `0` during decode (logits not requested for that position). `LlamaBackend` ensures `logits[last_token] = 1` in the prompt chunk and `logits[0] = 1` in every generation batch. |
+| Failure modes | Undefined behaviour if `llama_batch.logits[idx]` was `0` during decode (logits not requested for that position). `LlamaBackend` ensures `logits[last_token] = 1` in the prompt chunk and `logits[0] = 1` in every generation batch. The automatic chain-accept step internally calls `llama_grammar_accept_token` when a grammar sampler is present — this throws `std::runtime_error: Unexpected empty grammar stack` across the C ABI if the grammar stage is mis-ordered relative to the probability filters (see Violation #6). |
+
+### Optional sampler stages (compact)
+
+Stages added to the chain only when the corresponding `GenerationConfig`
+fields request them. Every entry is transferred to the chain by
+`llama_sampler_chain_add` and freed by the chain's `llama_sampler_free`.
+
+| Symbol | Inserted when | Notes |
+|--------|---------------|-------|
+| `llama_sampler_init_grammar(vocab, gbnf, root)` | `config.grammar != nil` | Must come **before** all probability filters (penalties → grammar → …) or `llama_grammar_accept_token` aborts via libc++abi. See Violation #6. |
+| `llama_sampler_init_dry(vocab, n_ctx_train, multiplier, base, allowed_length, penalty_last_n, seq_breakers, n_breakers)` | `DRYSamplerDescriptor` resolves non-nil | DRY repetition penalty; `seq_breakers` is a `withCStringArray`-backed buffer that must outlive the call. |
+| `llama_sampler_init_greedy()` | `config.temperature <= 0.0` | Replaces the entire `temp → xtc → dist` tail. Eliminates seed-dependent tie-breaking on the KV-reuse path (see Invariant #1). |
+| `llama_sampler_init_mirostat_v2(seed, tau, eta)` | `MirostatV2SamplerDescriptor` resolves non-nil | **Replaces** `temp → xtc → dist`; never run alongside them (Invariant #2). |
+| `llama_sampler_init_xtc(probability, threshold, min_keep, seed)` | `XTCSamplerDescriptor` resolves non-nil | Sits between `temp` and `dist` only when Mirostat v2 is inactive. |
+
+---
+
+## GPU Synchronisation
+
+### `llama_synchronize`
+
+| Attribute | Detail |
+|-----------|--------|
+| Signature | `void llama_synchronize(struct llama_context * ctx)` |
+| Threading | Safe to call from any thread that is not concurrently invoking `llama_decode`/`llama_encode` on the same context. |
+| Ordering | Must be called at **every** exit path of a generation run before returning control: normal completion, mid-prompt cancellation, prompt-decode failure, and in-loop decode failure. `LlamaGenerationDriver.swift:377/387/596/637` and `LlamaEmbeddingBackend.swift:169` are the authoritative callsites. |
+| Limits | Blocks the calling thread until the GPU is idle — sub-millisecond when the GPU has already drained, longer when a long command buffer is in flight. |
+| Ownership | Void. |
+| Failure modes | Skipping the call lets Metal command buffers from the previous run overlap with the KV-clear at the start of the next run, tripping `GGML_ASSERT([rsets->data count] == 0)` in `ggml-metal-device.m`. See Violation #5. |
 
 ---
 
@@ -374,6 +434,25 @@ changes before merging.
 | Limits | None. |
 | Ownership | Returns a bool. No allocation. |
 | Failure modes | None; returns `false` for non-EOG tokens including BOS. |
+
+---
+
+## Embedding
+
+`LlamaEmbeddingBackend` runs a separate `llama_context` configured with
+`llama_set_embeddings(ctx, true)`, drives a single `llama_encode` pass, and
+reads pooled or per-token embeddings. None of these symbols are wired
+through the generation backend's state machine — embedding calls bypass
+`stateLock` and the cancellation flag, on the assumption that single-shot
+embedding latency is bounded enough that interruption isn't required.
+
+| Symbol | Notes |
+|--------|-------|
+| `llama_set_embeddings(ctx, bool)` | Toggles embedding output mode on the context. Must be set before `llama_encode`. Toggling between embedding and generation on the same context is supported but unused — the codebase keeps a dedicated context. |
+| `llama_encode(ctx, batch)` | Embedding-mode analogue of `llama_decode`. Returns `0` on success, non-zero on failure. `LlamaEmbeddingBackend.swift:154` falls back to `llama_decode` once if `encode` fails, then surfaces the combined return codes via `NSError`. |
+| `llama_pooling_type(ctx)` | Returns the active pooling strategy (`NONE`, `MEAN`, `CLS`, `LAST`, `RANK`). Drives whether embeddings are read via `llama_get_embeddings_seq` (pooled) or `llama_get_embeddings_ith` + manual reduction. |
+| `llama_get_embeddings_seq(ctx, seq_id)` | Returns a borrowed `const float *` of length `n_embd` for the pooled embedding of `seq_id = 0`. Pointer is invalidated by the next `llama_encode`/`llama_decode`. |
+| `llama_get_embeddings_ith(ctx, i)` | Returns a borrowed `const float *` for the `i`-th token's embedding when pooling is `NONE`. Same invalidation rules. |
 
 ---
 
@@ -438,32 +517,32 @@ to handle the rare case of a context with no memory.
 token of a new generation following any cancellation; "Decode failed during
 generation" error in the `GenerationStream`.
 
-### 4. `cancelled` flag data race between `stopGeneration()` and the decode loop — open in PR #456 (issue #418)
+### 4. `cancelled` flag data race between `stopGeneration()` and the decode loop — fixed in PR #418
 
-**Violation:** `stopped` is a plain `Bool` guarded by `stateLock`. When
-`stopGeneration()` is called from the main actor, it acquires `stateLock` to
-write `cancelled = true`. The decode loop reads `cancelled` via
+**Violation:** `stopped` was a plain `Bool` guarded by `stateLock`. When
+`stopGeneration()` was called from the main actor, it acquired `stateLock` to
+write `cancelled = true`. The decode loop read `cancelled` via
 `withStateLock { self.cancelled }` on a background task. Under Thread Sanitizer
-the ordering guarantee is provided solely by `NSLock`, which TSan does not
+the ordering guarantee was provided solely by `NSLock`, which TSan does not
 always model as a sequentially-consistent barrier. Additionally,
 `stopGeneration()` is documented as safe to call from any thread or actor (e.g.
 a memory-pressure handler), but `NSLock` does not establish the
 sequentially-consistent atomic ordering needed to make that guarantee airtight.
 
-**Planned fix (PR #456, not yet merged as of this writing):** Replace
-`private var cancelled = false` with `private let cancelled = Atomic<Bool>(false)`
-from Swift 6's `Synchronization` stdlib. All reads and writes use
-`.sequentiallyConsistent` ordering, making `stopGeneration()` safe to call from
-any thread without acquiring `stateLock` for the flag itself.
+**Fix:** `private let cancelled = Atomic<Bool>(false)` (Swift 6
+`Synchronization`) at `LlamaBackend.swift:97`. Every read and write uses
+`.sequentiallyConsistent` ordering, making `stopGeneration()` safe to call
+from any thread without acquiring `stateLock` for the flag itself. The
+surrounding state (`generationTask`, `context`, `vocab`) is still guarded by
+`stateLock`; see the startup-race comment at `LlamaBackend.swift:388-392` —
+the lock is held across **both** `Task` creation and `generationTask`
+assignment so `stopGeneration()` cannot observe a window where
+`cancelled == false && isGenerating == false` simultaneously.
 
-**Current mitigation:** All existing reads and writes go through `withStateLock`
-(or hold `stateLock` directly), so the race is not exploitable in practice — the
-lock prevents concurrent access to the flag. TSan warnings remain possible on
-systems where it does not recognise `NSLock` as a synchronisation primitive.
-
-**Detection signal:** Thread Sanitizer reporting a data race on `cancelled`
-between the `stopGeneration()` caller thread and the generation task background
-thread.
+**Detection signal:** Historical TSan reports of a data race on `cancelled`
+between the `stopGeneration()` caller thread and the generation task. Any
+refactor that drops `stateLock` from the startup-race window or replaces
+`Atomic<Bool>` with a plain `Bool` reintroduces this bug.
 
 ### 5. Unsynchronized Metal command buffers between consecutive `generate()` calls — fixed in this PR
 
@@ -498,6 +577,70 @@ a Swift `Fatal error: Index out of range` in `ContiguousArrayBuffer.swift`.
 Regression test: `test_consecutiveGenerateCalls_doesNotCrash` in
 `Tests/ManifoldE2ETests/LlamaE2ETests.swift`.
 
+### 6. Grammar sampler ordered after probability filters — fixed during sampler-chain consolidation
+
+**Violation:** When the GBNF grammar sampler was added to the chain *after*
+`top_k` / `top_p` / `min_p`, the probability filters could narrow the
+candidate pool to a set containing no grammar-valid tokens. Grammar then
+masked every surviving logit to `-inf`, `dist` fell back to a numerical
+default token (e.g. token 365 `(`), and the chain's automatic accept step
+inside `llama_sampler_sample` called `llama_grammar_accept_token`, which
+threw `std::runtime_error: Unexpected empty grammar stack` across the C ABI
+and aborted the process via libc++abi.
+
+**Fix:** Grammar is now inserted into the chain immediately after
+`penalties` and **before** any probability filter
+(`LlamaGenerationDriver.swift:195`):
+
+```
+penalties → grammar → dry → top_k → top_p → min_p → temp → xtc → dist
+```
+
+When Mirostat v2 is active it replaces the `temp → xtc → dist` tail with a
+single `mirostat_v2` step. When `temperature <= 0.0`, the whole post-grammar
+tail collapses to `llama_sampler_init_greedy()` — see Known Invariant #1
+below for why.
+
+**Detection signal:** `libc++abi: terminating with uncaught exception of
+type std::runtime_error: Unexpected empty grammar stack`; regression test
+`test_grammar_cancelCleansTeardown`.
+
+---
+
+## Known Invariants (not historic violations, but easy to break)
+
+### 1. Greedy sampler replaces `dist` when `temperature <= 0.0`
+
+`LlamaGenerationDriver.swift:281` swaps in `llama_sampler_init_greedy()` for
+`temp/xtc/dist` whenever `config.temperature <= 0.0`. Reason: `dist` introduces
+seed-dependent tie-breaking that can produce non-deterministic argmax when
+two logits are numerically equal — which is a realistic case on the KV-reuse
+path (see Invariant #3) because partial re-decodes use a different Metal
+accumulation order than full-batch decodes. Removing the greedy branch
+silently reintroduces seed-dependent non-determinism at temperature 0.
+
+### 2. Mirostat v2 owns the chain tail
+
+When Mirostat v2 is active (`MirostatV2SamplerDescriptor` non-nil), it
+**replaces** the `temp → xtc → dist` tail rather than running alongside
+those stages. Adding any of those stages while Mirostat is active produces
+double-sampling and undefined chain behaviour.
+
+### 3. Prefix KV reuse and seed determinism
+
+`LlamaBackend.swift:384` calls `llama_memory_seq_rm(mem, 0, reuseLen, -1)`
+to trim the KV tail past the longest shared prefix between the new prompt
+and the previous decode. `LlamaGenerationDriver.run` skips
+`llama_memory_clear` when `reuseLen > 0` and emits `.kvCacheReuse`. This is
+prompt caching; it is a correctness-preserving optimisation but **not
+bit-exact** with a clean decode of the same prompt — the Metal accumulation
+order differs, so seeded `dist` sampling can produce different tokens
+between a cold prompt and a partially-reused prompt. Callers that require
+deterministic-per-seed output must either disable prefix reuse at the
+backend (currently not exposed as a knob) or accept that determinism holds
+only across runs with identical reuse boundaries. Temperature-zero callers
+are unaffected because Invariant #1 kicks in.
+
 ---
 
 ## Security
@@ -508,34 +651,50 @@ Regression test: `test_consecutiveGenerateCalls_doesNotCrash` in
 |-----------|--------|
 | CVE | CVE-2026-2069 |
 | Affected symbol | `llama_sampler_init_grammar` → internal `llama_grammar_advance_stack()` |
-| Vulnerability | A buffer overflow in the grammar stack-advance logic allows a crafted GBNF grammar string (or a JSON Schema with certain constructs) to overflow an internal stack buffer, enabling potential arbitrary code execution. |
+| Vulnerability | A buffer overflow in the grammar stack-advance logic allowed a crafted GBNF grammar string (or a JSON Schema with certain constructs) to overflow an internal stack buffer, enabling potential arbitrary code execution. |
 | Fixed in | llama.cpp build **b8774** |
-| Vendored build | **b8772** (via `mattt/llama.swift` 2.8772.0) — **not fixed** |
-| Status | ⚠️ **Unmitigated in the vendored binary.** The fix has not been picked up yet. |
+| Vendored build | **b9101** (via `mattt/llama.swift` 2.9101.0) — **fix is included** |
+| Status | ✅ **Mitigated in the vendored binary.** |
 
-#### Mitigation until the pin is bumped
+#### Defence in depth
 
-`GBNFSchemaPreValidator` (introduced in this codebase alongside issue #609) runs
-before every `llama_sampler_init_grammar` call that is driven by a tool-call
-`ToolDefinition.parameters` schema. It rejects the schema constructs confirmed in
-the CVE proof-of-concept to trigger the overflow:
+`GBNFSchemaPreValidator` (`Sources/ManifoldInference/Services/GBNFSchemaPreValidator.swift`)
+still runs before every `llama_sampler_init_grammar` call driven by a
+tool-call `ToolDefinition.parameters` schema. Its rejection rules are
+**retained post-fix** because they encode GBNF expressiveness limits, not
+just the CVE PoC shapes:
 
-- `anyOf`, `oneOf`, `allOf`, `not` — schema combiners
-- Nullable union types: `"type": ["string", "null"]`
-- `exclusiveMinimum` / `exclusiveMaximum` (Draft 2020-12 integer form)
+- `anyOf`, `oneOf`, `allOf`, `not` — no representation in the GBNF IR; would
+  surface as parse failure or empty-grammar-stack crash even on the patched
+  binary.
+- Nullable union types: `"type": ["string", "null"]` — produce unbounded
+  alternation that overflows the grammar parse stack.
+- `exclusiveMinimum` / `exclusiveMaximum` (Draft 2020-12 integer form) —
+  trigger a type-confusion path in the GBNF numeric rule builder.
 
-**Callers that pass a GBNF string directly via `GenerationConfig.grammar` (not via tool definitions) are not covered by this pre-validator.** Those strings are already validated syntactically by `llama_sampler_init_grammar`'s own GBNF parser, but crafted inputs from untrusted sources could still trigger the overflow. Treat `GenerationConfig.grammar` as a trusted-input field until the pin is bumped.
+Callers that pass a GBNF string directly via `GenerationConfig.grammar` (not
+via tool definitions) are still not covered by the pre-validator. Those
+strings are now safe against the CVE on the b9101 binary, but a malformed
+GBNF can still produce `llama_grammar_accept_token` aborts at sample time
+(see Violation #6).
 
-#### Upgrade procedure for the CVE fix
+#### Upgrade procedure when re-pinning `mattt/llama.swift`
 
-1. Bump `mattt/llama.swift` to a version wrapping build ≥ b8774.
-2. Confirm the xcframework version in `docs/vendor/llama.h` and update this section.
-3. In `GBNFSchemaPreValidator.swift`, flip `CVEAuditRecord.isFixed` to `true` and
-   update `vendoredBuild` to match.
-4. Re-audit the rejection rules in `GBNFSchemaPreValidator.validate(_:path:)` —
-   rules that were solely motivated by the overflow (rather than GBNF expressiveness
-   limits) may be relaxed or removed.
-5. Run `swift test --filter ManifoldBackendsTests --traits Llama` on Apple Silicon.
+1. Bump the `from:` constraint in `Package.swift` and run `swift package
+   resolve`.
+2. Read the `url:` line from the resolved `mattt/llama.swift`
+   `Package.swift` — it points at
+   `llama-b<NNNN>-xcframework.zip` and gives the exact build tag.
+3. Refresh `docs/vendor/llama.h` from the resolved xcframework
+   (`.build/artifacts/llama.swift/llama-cpp/llama.xcframework/macos-arm64_x86_64/llama.framework/Headers/llama.h`).
+   Prepend the four-line `Read-only reference copy.` banner with the new
+   version, build, and `xcframework checksum` from the resolved Package.swift.
+4. In `GBNFSchemaPreValidator.swift`, update `CVEAuditRecord.vendoredBuild`
+   to the new tag. The validation rules stay; they are not CVE-specific.
+5. Diff `docs/vendor/llama.h` against the previous revision and review every
+   changed symbol against the tables above.
+6. Run `swift test --filter ManifoldBackendsTests --traits Llama` on Apple
+   Silicon before opening the PR.
 
 ---
 
@@ -544,7 +703,7 @@ the CVE proof-of-concept to trigger the overflow:
 ### Decision
 
 `LlamaSwift` is consumed as a **pre-built xcframework binary** — specifically
-`llama-b8772-xcframework.zip` distributed from the `ggml-org/llama.cpp` GitHub
+`llama-b9101-xcframework.zip` distributed from the `ggml-org/llama.cpp` GitHub
 releases and wrapped by `mattt/llama.swift`. ManifoldKit does **not** compile
 llama.cpp from source.
 
@@ -577,21 +736,29 @@ The opacity of binary diffs is mitigated by two practices:
 
 ### Upgrade procedure
 
-1. Update the `from:` constraint in `Package.swift` for `mattt/llama.swift`.
-2. Run `swift package resolve` to update `Package.resolved`.
+1. Update the `from:` constraint in `Package.swift` for `mattt/llama.swift`
+   and run `swift package resolve`.
+2. Read the resolved upstream `Package.swift` to find the exact build tag
+   and checksum the wrapper points at:
+   ```
+   curl -s "https://raw.githubusercontent.com/mattt/llama.swift/<tag>/Package.swift" \
+     | grep -E "llama-b[0-9]+|checksum"
+   ```
 3. Copy the new `llama.h` from the resolved xcframework:
    ```
-   find ~/Library/Developer/Xcode/DerivedData -path "*/ManifoldKit*/llama.xcframework/macos-arm64_x86_64*" -name "llama.h" | head -1
+   cp .build/artifacts/llama.swift/llama-cpp/llama.xcframework/macos-arm64_x86_64/llama.framework/Headers/llama.h \
+      docs/vendor/llama.h
    ```
-   Then prepend the read-only header comment (see `docs/vendor/llama.h`) and commit.
+   Then prepend the four-line `Read-only reference copy.` banner referencing
+   the new wrapper version, build tag, and xcframework checksum from step 2.
 4. Diff `docs/vendor/llama.h` against the previous version and review every
    changed symbol against the tables in this document.
-5. Update the pin comment on the `mattt/llama.swift` dependency line in
-   `Package.swift`.
-6. Update the version reference in the read-only header comment in
-   `docs/vendor/llama.h`.
-7. Update every section in this document (`LLAMA_CONTRACT.md`) that references
-   the version number or whose contract has changed according to the `llama.h`
-   diff from step 4. Commit `LLAMA_CONTRACT.md` in the same PR as the pin bump.
-8. Run `swift test --filter ManifoldBackendsTests --traits Llama` locally on
+5. Update `GBNFSchemaPreValidator.cveStatus.vendoredBuild` in
+   `Sources/ManifoldInference/Services/GBNFSchemaPreValidator.swift`. Flip
+   `isFixed`/`fixedAtBuild` only if a new CVE-fix boundary is crossed.
+6. Update every section in this document (`LLAMA_CONTRACT.md`) that
+   references the version number or whose contract has changed according to
+   the `llama.h` diff from step 4. Commit `LLAMA_CONTRACT.md` in the same PR
+   as the pin bump.
+7. Run `swift test --filter ManifoldBackendsTests --traits Llama` locally on
    Apple Silicon before opening the PR.

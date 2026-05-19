@@ -198,12 +198,13 @@ final class GBNFSchemaPreValidatorTests: XCTestCase {
 
     // MARK: - CVE audit record sanity
 
-    func test_cveAuditRecord_isUnfixed() {
+    func test_cveAuditRecord_matchesVendoredPin() {
         let record = GBNFSchemaPreValidator.cveStatus
         XCTAssertEqual(record.cveID, "CVE-2026-2069")
-        XCTAssertFalse(record.isFixed,
-                       "Flip isFixed to true once the xcframework is bumped past b8773")
-        XCTAssertEqual(record.vendoredBuild, "b8772")
+        XCTAssertTrue(record.isFixed,
+                      "Vendored build is past the b8774 fix; if the pin moves back, flip this and re-audit the validator rules.")
+        XCTAssertEqual(record.vendoredBuild, "b9101",
+                       "Bump vendoredBuild whenever mattt/llama.swift is repinned — derive the build tag from the resolved Package.swift's `url:` line.")
         XCTAssertEqual(record.fixedAtBuild,  "b8774")
     }
 }

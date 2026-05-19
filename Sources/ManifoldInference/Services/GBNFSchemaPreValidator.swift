@@ -16,20 +16,19 @@ import Foundation
 ///   integers in Draft 2020-12 trigger a type-confusion path in the GBNF
 ///   numeric rule builder.
 ///
-/// ## CVE-2026-2069
+/// ## CVE-2026-2069 (fixed in the current pin)
 ///
 /// A buffer overflow in `llama_grammar_advance_stack()` was disclosed in
-/// CVE-2026-2069. The fix landed in llama.cpp build b8774. The vendored
-/// xcframework (`mattt/llama.swift` 2.8772.0) wraps build b8772, which
-/// pre-dates the fix.
+/// CVE-2026-2069 and fixed in llama.cpp build b8774. The vendored
+/// xcframework (`mattt/llama.swift` 2.9101.0) wraps build b9101, well past
+/// the fix.
 ///
-/// Until the vendor is bumped past b8773, callers **MUST** gate all GBNF
-/// use behind this pre-validator. The validation rules below reject the
-/// schema shapes that were confirmed to trigger the overflow in the CVE
-/// proof-of-concept.
-///
-/// When the vendor bumps to a post-CVE build (≥ b8774), re-audit the
-/// rules below and remove or relax any that are no longer necessary.
+/// The validation rules below are retained because they reject schema
+/// constructs that exceed GBNF's expressiveness independent of the CVE:
+/// `anyOf`/`oneOf`/`allOf`/`not` have no representation in the GBNF IR,
+/// and nullable union types produce unbounded alternation. Removing them
+/// would surface a different class of llama.cpp crashes (parse failure
+/// or runtime grammar-stack errors) rather than make grammar use safer.
 /// See ``GBNFSchemaPreValidator/cveStatus`` for the pinned audit record.
 public struct GBNFSchemaPreValidator: Sendable {
 
@@ -57,26 +56,30 @@ public struct GBNFSchemaPreValidator: Sendable {
     /// Pinned audit record for CVE-2026-2069 (buffer overflow in
     /// `llama_grammar_advance_stack()`).
     ///
-    /// - `isFixed: false` — `mattt/llama.swift` 2.8772.0 wraps build b8772,
-    ///   which pre-dates the fix that landed in b8774. GBNF callers **MUST**
-    ///   run this pre-validator until the vendor pin is bumped past b8773.
+    /// - `isFixed: true` — `mattt/llama.swift` 2.9101.0 wraps build b9101,
+    ///   327 builds past the b8774 fix.
     ///
     /// ### Updating this record when bumping the `llama.swift` pin
     ///
-    /// 1. Confirm the new xcframework wraps a build ≥ b8774.
-    /// 2. Set `isFixed: true`, update `vendoredBuild`.
-    /// 3. Re-audit the rules in `validate(_:path:)` and remove any that were
-    ///    solely motivated by the overflow rather than GBNF expressiveness.
+    /// 1. Read the `url:` line from the resolved `mattt/llama.swift`
+    ///    `Package.swift` (or the binary's framework metadata) and update
+    ///    `vendoredBuild` to the new build tag.
+    /// 2. If the new build crosses a future CVE-fix boundary, flip
+    ///    `isFixed`/`fixedAtBuild` accordingly.
+    /// 3. The validation rules in `validate(_:path:)` are kept regardless of
+    ///    CVE status — they encode GBNF expressiveness limits, not just the
+    ///    overflow's PoC shapes.
     public static let cveStatus = CVEAuditRecord(
         cveID: "CVE-2026-2069",
-        isFixed: false,
+        isFixed: true,
         fixedAtBuild: "b8774",
-        vendoredBuild: "b8772",
+        vendoredBuild: "b9101",
         note: """
-            Buffer overflow in llama_grammar_advance_stack(). \
-            mattt/llama.swift 2.8772.0 wraps b8772 which pre-dates the fix. \
-            All GBNF grammar use must pass GBNFSchemaPreValidator until \
-            the xcframework is bumped to a build >= b8774.
+            Buffer overflow in llama_grammar_advance_stack(), fixed in b8774. \
+            mattt/llama.swift 2.9101.0 wraps b9101, so the production binary \
+            contains the fix. GBNFSchemaPreValidator remains mandatory for \
+            tool-schema grammars to keep llama.cpp inside its GBNF \
+            expressiveness envelope.
             """
     )
 
