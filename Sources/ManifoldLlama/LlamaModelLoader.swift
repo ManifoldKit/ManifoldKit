@@ -106,23 +106,9 @@ final class LlamaModelLoader: @unchecked Sendable {
         progressHandler: (@Sendable (Double) async -> Void)? = nil
     ) throws -> LoadedResources {
         var modelParams = llama_model_default_params()
-        #if targetEnvironment(simulator)
-        modelParams.n_gpu_layers = 0   // Metal not reliable in simulator
-        #else
-        // Default: offload all layers to Metal. CPU-only is ~8× slower for
-        // even a 4B model (measured 2.28 s vs 0.28 s on `test_countTokens_…`
-        // against Qwen3-4B-Q4_K_M on M5/24 GB).
-        //
-        // Escape hatch for memory-constrained loads of very large MoE models:
-        // when the Metal command-buffer cannot allocate enough partial
-        // weights, set `LLAMA_FORCE_CPU_ONLY=1` to force CPU (mmap-paged)
-        // execution. Documented in `docs/LLAMA_CONTRACT.md`.
-        if ProcessInfo.processInfo.environment["LLAMA_FORCE_CPU_ONLY"] == "1" {
-            modelParams.n_gpu_layers = 0
-        } else {
-            modelParams.n_gpu_layers = 99  // Offload all layers to Metal
-        }
-        #endif
+        // Hardware-selection policy lives in `LlamaSamplingPolicy` so the
+        // generation-load and embedding-load paths cannot drift again.
+        modelParams.n_gpu_layers = LlamaSamplingPolicy.gpuLayerCount()
 
         // Wire up the progress callback when a handler is installed.
         // The C callback fires on the loader thread; we bridge to async by
@@ -170,7 +156,7 @@ final class LlamaModelLoader: @unchecked Sendable {
 
         var ctxParams = llama_context_default_params()
         ctxParams.n_ctx = UInt32(effectiveContextSize)
-        ctxParams.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2)))
+        ctxParams.n_threads = LlamaSamplingPolicy.threadCount()
         ctxParams.n_threads_batch = ctxParams.n_threads
 
         // Apply BackendLoadOptions. Defaults prefer Q8 KV cache and Flash

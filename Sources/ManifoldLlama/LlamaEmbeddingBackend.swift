@@ -403,11 +403,11 @@ public final class LlamaEmbeddingBackend: EmbeddingBackend, @unchecked Sendable 
         defer { embeddingLoadLock.unlock() }
 
         var modelParams = llama_model_default_params()
-        #if targetEnvironment(simulator)
-        modelParams.n_gpu_layers = 0
-        #else
-        modelParams.n_gpu_layers = 99
-        #endif
+        // Shared policy with the generation-load path. This now honors
+        // `LLAMA_FORCE_CPU_ONLY=1` on device (previously generation-only),
+        // letting memory-constrained MoE embedders fall back to CPU instead
+        // of OOMing when the Metal command-buffer can't allocate.
+        modelParams.n_gpu_layers = LlamaSamplingPolicy.gpuLayerCount()
 
         guard let rawModel = llama_model_load_from_file(url.path, modelParams) else {
             throw InferenceError.modelLoadFailed(underlying: NSError(
@@ -446,7 +446,7 @@ public final class LlamaEmbeddingBackend: EmbeddingBackend, @unchecked Sendable 
         ctxParams.n_ctx = UInt32(requestedCtx)
         ctxParams.n_batch = UInt32(requestedCtx)
         ctxParams.n_ubatch = UInt32(requestedCtx)
-        ctxParams.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.processorCount - 2)))
+        ctxParams.n_threads = LlamaSamplingPolicy.threadCount()
         ctxParams.n_threads_batch = ctxParams.n_threads
 
         guard let ctx = llama_init_from_model(rawModel, ctxParams) else {
