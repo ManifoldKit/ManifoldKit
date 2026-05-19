@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.30.0](https://github.com/roryford/ManifoldKit/compare/v0.29.0...v0.30.0) (2026-05-19)
+
+
+### Features
+
+* **hf:** adopt Hub directory convention in diffusion download ([#1338](https://github.com/roryford/ManifoldKit/issues/1338)) ([f747e02](https://github.com/roryford/ManifoldKit/commit/f747e0213f458ee301003302077a6a1398ba5151)), closes [#1315](https://github.com/roryford/ManifoldKit/issues/1315)
+
+
+### Bug Fixes
+
+* eliminate cross-test state leakage in Foundation and Llama backends ([#1337](https://github.com/roryford/ManifoldKit/issues/1337)) ([7e0a2a4](https://github.com/roryford/ManifoldKit/commit/7e0a2a43345d53c98cee038903b59e55113978bc))
+
+
+### Performance Improvements
+
+* **ci:** move coverage threshold check from per-push to nightly ([#1336](https://github.com/roryford/ManifoldKit/issues/1336)) ([65e10c0](https://github.com/roryford/ManifoldKit/commit/65e10c0f3a0e2542899fcb15dd7f8fceefe7d37b))
+* **ci:** revert .build/debug cache spike (round 2) ([#1335](https://github.com/roryford/ManifoldKit/issues/1335)) ([0dd29eb](https://github.com/roryford/ManifoldKit/commit/0dd29eb361b434dbd5e152060811d380968d014e))
+
 ## [0.29.0](https://github.com/roryford/ManifoldKit/compare/v0.28.0...v0.29.0) — 2026-05-17
 
 ### Highlights
