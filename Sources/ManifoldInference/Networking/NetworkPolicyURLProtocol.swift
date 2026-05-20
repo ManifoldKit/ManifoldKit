@@ -62,19 +62,22 @@ final class NetworkPolicyURLProtocol: URLProtocol, @unchecked Sendable {
         // Re-run the check (policy may have changed between canInit and now,
         // though that is extremely unlikely). Regardless, if we reached
         // startLoading it's because canInit said the host is blocked.
-        let url = request.url ?? URL(string: "about:blank")!
         let policy = ManifoldConfiguration.shared.networkPolicy
-        let host = url.host ?? ""
+        let host = request.url?.host ?? ""
 
         let policyError: NetworkPolicyError
-        do {
-            try NetworkPolicyGuard.check(url: url, policy: policy)
-            // Policy changed in the window between canInit and startLoading
-            // (extremely unlikely). Fail closed rather than silently allowing.
-            policyError = NetworkPolicyError.hostNotAllowed(host: host)
-        } catch let e as NetworkPolicyError {
-            policyError = e
-        } catch {
+        if let url = request.url {
+            do {
+                try NetworkPolicyGuard.check(url: url, policy: policy)
+                // Policy changed in the window between canInit and startLoading
+                // (extremely unlikely). Fail closed rather than silently allowing.
+                policyError = NetworkPolicyError.hostNotAllowed(host: host)
+            } catch let e as NetworkPolicyError {
+                policyError = e
+            } catch {
+                policyError = NetworkPolicyError.hostNotAllowed(host: host)
+            }
+        } else {
             policyError = NetworkPolicyError.hostNotAllowed(host: host)
         }
 
