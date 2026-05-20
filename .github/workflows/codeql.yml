@@ -12,14 +12,25 @@ name: CodeQL
 #     finish in <1 min.
 
 on:
+  # Push trigger is path-filtered: ~95 commits/week land on main, but most
+  # are dep bumps, doc updates, or workflow tweaks that don't change any
+  # analyzable code. Filtering to source-changing pushes cuts CodeQL runs
+  # by an estimated 30–50% without losing real coverage. The daily cron
+  # below is the safety net for anything the path filter excludes.
   push:
     branches: [main]
+    paths:
+      - "Sources/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "scripts/**.py"
+      - ".github/workflows/**"
   pull_request:
     branches: [main]
   schedule:
-    # Weekly baseline scan, Mondays 06:00 UTC. Keeps the Security tab fresh
-    # even on quiet weeks.
-    - cron: "0 6 * * 1"
+    # Daily baseline scan at 06:00 UTC. Catches anything the push path
+    # filter excluded and keeps the Security tab fresh.
+    - cron: "0 6 * * *"
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
