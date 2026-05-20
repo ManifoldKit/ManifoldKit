@@ -74,6 +74,18 @@ public final class InferenceService {
     private let lifecycle: ModelLifecycleCoordinator
     private let generation: GenerationQueue
 
+    // MARK: - Memory Pressure Broadcasting
+
+    /// Fan-out broadcaster for memory-pressure and model-lifecycle events.
+    private let pressureBroadcaster = MemoryPressureBroadcaster()
+
+    /// UUID of the most recently successfully loaded model.
+    ///
+    /// Updated immediately after a successful ``loadModel`` commit and cleared on
+    /// ``unloadModel``. Used to populate the `modelID` field of ``MemoryPressureEvent``
+    /// without threading `ModelInfo` all the way through the unload path.
+    private var loadedModelID: UUID?
+
     // MARK: - Public Type Aliases (preserve InferenceService.GenerationRequestToken syntax)
 
     public typealias GenerationRequestToken = ManifoldInference.GenerationRequestToken
@@ -163,6 +175,9 @@ public final class InferenceService {
         ensureProviderWired()
         generation.stopGeneration()
         try await lifecycle.loadModel(from: modelInfo, plan: plan)
+        // Track the loaded model so willUnload/didUnload can carry the same UUID.
+        loadedModelID = modelInfo.id
+        pressureBroadcaster.send(.didReload(modelID: modelInfo.id))
     }
 
     /// Loads a cloud API backend from an `APIEndpointRecord` configuration.
@@ -177,10 +192,36 @@ public final class InferenceService {
     /// Unloads the current model and frees all associated memory.
     ///
     /// Also cancels in-flight generation and preempts outstanding load requests.
+    ///
+    /// Emits ``MemoryPressureEvent/willUnload(modelID:reason:)`` before unloading and
+    /// ``MemoryPressureEvent/didUnload(modelID:reason:)`` after. The default reason is
+    /// ``UnloadReason/userRequested``; call ``unloadModel(reason:)`` from internal paths
+    /// where the trigger is known.
     public func unloadModel() {
+        unloadModel(reason: .userRequested)
+    }
+
+    /// Internal variant of ``unloadModel()`` that carries an explicit ``UnloadReason``
+    /// so pressure-driven unloads emit the correct event label.
+    ///
+    /// Package-visible so ``ChatViewModel`` can specify
+    /// ``UnloadReason/criticalMemoryPressure`` when reacting to OS notifications.
+    package func unloadModel(reason: UnloadReason) {
         ensureProviderWired()
+        guard lifecycle.isModelLoaded else {
+            // Nothing loaded — stop generation for safety but emit no lifecycle events.
+            generation.stopGeneration()
+            lifecycle.unloadModel()
+            return
+        }
+        // Prefer the tracked UUID from the load path; fall back to a synthetic one for
+        // backends installed via the debug init (which bypass loadModel(from:plan:)).
+        let modelID = loadedModelID ?? UUID()
+        pressureBroadcaster.send(.willUnload(modelID: modelID, reason: reason))
         generation.stopGeneration()
         lifecycle.unloadModel()
+        pressureBroadcaster.send(.didUnload(modelID: modelID, reason: reason))
+        loadedModelID = nil
     }
 
     /// Streams primary-model readiness transitions.
@@ -756,6 +797,57 @@ extension InferenceService: GenerationContextProvider {
 extension InferenceService {
     public func registeredBackendSnapshot() -> EnabledBackends {
         lifecycle.registeredBackendSnapshot()
+    }
+}
+
+// MARK: - Memory Pressure Events
+
+extension InferenceService {
+
+    /// A stream of memory-pressure and model-lifecycle events for this service.
+    ///
+    /// Multiple subscribers are supported; each receives an independent copy of
+    /// every event broadcast after the stream is created. Events are buffered up
+    /// to 64 entries per subscriber (newest-only once the buffer is full) so
+    /// slow consumers don't stall the broadcaster.
+    ///
+    /// ```swift
+    /// Task {
+    ///     for await event in inferenceService.memoryPressureEvents() {
+    ///         switch event {
+    ///         case .levelChanged(let level):
+    ///             updateMemoryIndicator(level)
+    ///         case .willUnload(let id, let reason):
+    ///             print("Model \(id) will unload: \(reason)")
+    ///         case .didUnload(let id, _):
+    ///             showReloadBanner()
+    ///         case .didReload(let id):
+    ///             hideReloadBanner()
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Returns: An ``AsyncStream`` that yields ``MemoryPressureEvent`` values
+    ///   until the service is deallocated or the subscriber cancels iteration.
+    public func memoryPressureEvents() -> AsyncStream<MemoryPressureEvent> {
+        pressureBroadcaster.makeStream()
+    }
+
+    /// Notifies the service of an OS memory-pressure level change so a
+    /// ``MemoryPressureEvent/levelChanged(_:)`` event is emitted on all subscribers.
+    ///
+    /// Call this from the memory-pressure monitoring integration point (e.g.,
+    /// ``ChatViewModel/handleMemoryPressure()``) after the OS fires a notification.
+    /// This keeps `InferenceService` decoupled from the OS notification source while
+    /// letting subscribers observe level transitions without polling.
+    ///
+    /// Package-visible — `ManifoldUI` wires this from ``ChatViewModel``; host apps
+    /// that drive their own pressure monitoring should call
+    /// ``InferenceService/memoryPressureEvents()`` and ``ChatViewModel/handleMemoryPressure()``
+    /// rather than calling this directly.
+    package func notifyPressureLevel(_ level: MemoryPressureLevel) {
+        pressureBroadcaster.send(.levelChanged(level))
     }
 }
 
