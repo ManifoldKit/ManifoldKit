@@ -74,6 +74,13 @@ public struct ManifoldConfiguration: Sendable {
     /// namespace independently and don't want their fixtures reaped.
     public var keychainReaperEnabled: Bool
 
+    /// Host allowlist policy applied to every URLSession created by
+    /// ``URLSessionFactory``.
+    ///
+    /// Defaults to ``.unrestricted``. Set at app startup before making any
+    /// network call. See ``NetworkPolicy`` for subdomain semantics.
+    public var networkPolicy: NetworkPolicy
+
     /// Opt-in flag for hardware-backed key wrapping via
     /// ``SecureEnclaveKeyManager``.
     ///
@@ -144,7 +151,8 @@ public struct ManifoldConfiguration: Sendable {
         sseStreamLimits: SSEStreamLimits = .default,
         keychainReaperEnabled: Bool = true,
         customHostTrustPolicy: CustomHostTrustPolicy = .platformDefault,
-        useSecureEnclave: Bool = false
+        useSecureEnclave: Bool = false,
+        networkPolicy: NetworkPolicy = .unrestricted
     ) {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
@@ -155,6 +163,7 @@ public struct ManifoldConfiguration: Sendable {
         self.keychainReaperEnabled = keychainReaperEnabled
         self.customHostTrustPolicy = customHostTrustPolicy
         self.useSecureEnclave = useSecureEnclave
+        self.networkPolicy = networkPolicy
     }
 
     // MARK: - Derived identifiers
@@ -285,6 +294,96 @@ extension ManifoldConfiguration {
             self.showCloudAPIManagement = showCloudAPIManagement
             self.showUpgradeHint = showUpgradeHint
         }
+    }
+}
+
+// MARK: - NetworkPolicy
+
+extension ManifoldConfiguration {
+
+    /// Restricts which remote hosts ManifoldKit sessions are allowed to contact.
+    ///
+    /// Privacy-forward apps that should only ever reach a known set of servers
+    /// (e.g. a single custom endpoint or a closed-garden SaaS provider) can
+    /// set this to `.allowlist` at startup. Every URLSession created by
+    /// ``URLSessionFactory`` will then reject initial requests **and** redirect
+    /// targets whose host is not in the list.
+    ///
+    /// Subdomain semantics: listing `"huggingface.co"` also permits
+    /// `cdn-lfs.huggingface.co` and any other subdomain of that apex.
+    ///
+    /// Localhost addresses (`localhost`, `127.0.0.1`, `::1`) are always
+    /// permitted regardless of policy — they represent locally-served content
+    /// under the app's control.
+    ///
+    /// ## Example: restrict to a single private endpoint
+    ///
+    /// ```swift
+    /// ManifoldConfiguration.shared.networkPolicy = .allowlist(["myapi.example.com"])
+    /// ```
+    public enum NetworkPolicy: Sendable, Equatable {
+
+        /// No host filtering — all outbound hosts are permitted.
+        ///
+        /// This is the default. It preserves the behaviour shipped before
+        /// this API existed so existing integrations are unaffected.
+        case unrestricted
+
+        /// Only hosts that exactly match (or are subdomains of) a listed
+        /// apex host are permitted.
+        ///
+        /// Matching rules:
+        /// - `"example.com"` matches `example.com` and `sub.example.com`.
+        /// - Comparison is case-insensitive.
+        /// - Leading dots in entries are stripped before comparison.
+        case allowlist(Set<String>)
+    }
+
+}
+
+// MARK: - NetworkPolicyError
+
+/// Thrown when a request targets a host that is not in the configured
+/// ``ManifoldConfiguration/NetworkPolicy`` allowlist.
+public enum NetworkPolicyError: Error, Sendable, Equatable {
+
+    /// The request's host is not permitted by the active ``ManifoldConfiguration/NetworkPolicy``.
+    case hostNotAllowed(host: String)
+}
+
+// MARK: - NetworkPolicyGuard
+
+/// Stateless helper that evaluates a URL against the active network policy.
+///
+/// ``URLSessionFactory`` calls ``check(url:)`` before creating tasks and
+/// ``CompositeURLSessionDelegate`` calls it in the redirect callback so
+/// both initial requests and redirect targets are covered.
+public enum NetworkPolicyGuard {
+
+    /// Throws ``NetworkPolicyError/hostNotAllowed(host:)`` when `url`'s host
+    /// is blocked by `policy`.
+    ///
+    /// - Localhost addresses always pass regardless of the configured policy.
+    /// - Host matching is case-insensitive. A listed apex host also permits
+    ///   all of its subdomains (`.hasSuffix("." + apexHost)`).
+    public static func check(url: URL, policy: ManifoldConfiguration.NetworkPolicy) throws {
+        guard case .allowlist(let allowed) = policy else { return }
+
+        // Localhost is always permitted — it is content under the app's control.
+        if PrivateIPClassifier.isLocalhostURL(url) { return }
+
+        let rawHost = url.host?.lowercased() ?? ""
+        // Strip trailing dot from FQDN if present.
+        let host = rawHost.hasSuffix(".") ? String(rawHost.dropLast()) : rawHost
+
+        for entry in allowed {
+            let apex = entry.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            if host == apex || host.hasSuffix("." + apex) {
+                return
+            }
+        }
+
+        throw NetworkPolicyError.hostNotAllowed(host: host)
     }
 }
 

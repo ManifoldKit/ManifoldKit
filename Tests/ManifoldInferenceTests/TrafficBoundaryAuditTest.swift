@@ -84,7 +84,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// usage is approved. These do legitimate network I/O — cloud backends,
     /// the model-download manager, test infra.
     ///
-    /// **Cap: 29 entries.** Adding to this list weakens Rule 1; require
+    /// **Cap: 43 entries.** Adding to this list weakens Rule 1; require
     /// reviewer sign-off and prefer to route new network code through
     /// `URLSessionProvider` (which is itself in this allowlist).
     private static let networkIOAllowlist: Set<String> = [
@@ -157,6 +157,12 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // that flows through `URLSessionFactory.ephemeral`. No new outbound
         // calls; this file only *observes* the existing seam.
         "ManifoldInference/Networking/NetworkActivityTrackingDelegate.swift",
+        // Network policy guard (#1294) — URLProtocol subclass registered on
+        // every URLSessionConfiguration produced by URLSessionFactory. It
+        // intercepts requests *before* socket open and fails blocked hosts
+        // immediately; it never opens connections of its own. Requires
+        // URLRequest in its URLProtocol override signatures.
+        "ManifoldInference/Networking/NetworkPolicyURLProtocol.swift",
 
         // HuggingFace reachability probe (#1296). Single `GET` to
         // `https://huggingface.co/api/models?limit=1` routed through
@@ -313,7 +319,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 42,
+            Self.networkIOAllowlist.count, 43,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

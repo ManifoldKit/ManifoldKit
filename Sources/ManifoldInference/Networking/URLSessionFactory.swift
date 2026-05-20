@@ -54,6 +54,7 @@ public enum URLSessionFactory {
         config.timeoutIntervalForRequest = defaultRequestTimeout
         config.timeoutIntervalForResource = resourceTimeout
         config.tlsMinimumSupportedProtocolVersion = .TLSv12
+        NetworkPolicyURLProtocol.register(in: config)
         // Slot the tracking delegate ahead of the caller's data delegate so
         // every request emits begin/end to the shared activity center. When
         // `activityCenter` is nil (tests that want to assert *no* tracking)
@@ -96,6 +97,7 @@ public enum URLSessionFactory {
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
         config.tlsMinimumSupportedProtocolVersion = .TLSv12
+        NetworkPolicyURLProtocol.register(in: config)
         let composite = CompositeURLSessionDelegate(
             redirectGuard: RedirectGuardDelegate(hopCap: hopCap),
             serverTrustHandler: nil,

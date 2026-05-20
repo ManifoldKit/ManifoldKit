@@ -128,6 +128,22 @@ extension CompositeURLSessionDelegate: URLSessionTaskDelegate {
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
+        // Network-policy check for the redirect *destination* runs before the
+        // redirect guard so an allowlist violation surfaces as a
+        // NetworkPolicyError rather than a generic cancellation.
+        if let url = request.url {
+            let policy = ManifoldConfiguration.shared.networkPolicy
+            do {
+                try NetworkPolicyGuard.check(url: url, policy: policy)
+            } catch {
+                Log.network.error(
+                    "CompositeURLSessionDelegate: blocked redirect to \(url.host ?? "?", privacy: .public) — host not in allowlist"
+                )
+                completionHandler(nil)
+                return
+            }
+        }
+
         // Redirect guard always handles redirects — it owns the policy
         // (hop cap, IP filter, scheme-downgrade reject, header strip).
         redirectGuard.urlSession(
