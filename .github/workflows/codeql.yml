@@ -1,36 +1,26 @@
 name: CodeQL
 
-# Replaces GitHub's "default setup" for code scanning. Default setup's Swift
-# autobuild runs `swift build` with default traits, which fails on this repo
-# because `mlx-swift-lm` (required ≥3.31) and `AnyLanguageModel` (pins
-# mlx-swift-lm <3) only coexist behind trait gates.
+# Code scanning for GitHub Actions workflows and Python scripts.
 #
-# Cost-shape choices:
-#   • Swift legs run on `macos-15` and are EXPENSIVE (~5–10 min × 10× macOS
-#     billing). Restricted to push-on-main + weekly cron, not per-PR.
-#   • actions + python run on `ubuntu-latest` (1× billing) on every PR; both
-#     finish in <1 min.
+# Swift analysis was attempted (#1346, #1347) but dropped: CodeQL's Swift
+# tracer wraps every swiftc invocation, and on this codebase that pushed
+# build times from ~30s (untraced, projected to macos-15) to >30 min,
+# timing out. The tracer overhead compounds badly on projects with many
+# small targets, macros, and trait-gated source. If/when CodeQL Swift
+# improves, this workflow can grow a swift leg back — see git history for
+# the manual-build setup that previously timed out.
+#
+# This workflow runs cheap on ubuntu-latest for both legs.
 
 on:
-  # Push trigger is path-filtered: ~95 commits/week land on main, but most
-  # are dep bumps, doc updates, or workflow tweaks that don't change any
-  # analyzable code. Filtering to source-changing pushes cuts CodeQL runs
-  # by an estimated 30–50% without losing real coverage. The daily cron
-  # below is the safety net for anything the path filter excludes.
   push:
     branches: [main]
-    paths:
-      - "Sources/**"
-      - "Package.swift"
-      - "Package.resolved"
-      - "scripts/**.py"
-      - ".github/workflows/**"
   pull_request:
     branches: [main]
   schedule:
-    # Daily baseline scan at 06:00 UTC. Catches anything the push path
-    # filter excluded and keeps the Security tab fresh.
-    - cron: "0 6 * * *"
+    # Weekly baseline scan, Mondays 06:00 UTC. Keeps the Security tab fresh
+    # even on quiet weeks.
+    - cron: "0 6 * * 1"
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -42,7 +32,7 @@ permissions:
   actions: read
 
 jobs:
-  analyze-fast:
+  analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -63,51 +53,3 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-
-  analyze-swift:
-    name: Analyze (swift)
-    runs-on: macos-15
-    timeout-minutes: 30
-    # Swift CodeQL is too expensive for per-PR. Run on push to main + the
-    # weekly cron only. PR coverage comes from the fast (actions/python) leg.
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-codeql-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-codeql-spm-
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: swift
-          build-mode: manual
-          queries: security-and-quality
-
-      # `--disable-default-traits` matches what scripts/test.sh uses in CI.
-      # Trait-gated source (MLX, Llama, CloudSaaS, etc.) is excluded from the
-      # CodeQL database under this build — most security queries target
-      # patterns (force-unwraps, injection sinks, weak crypto) that don't
-      # require having every trait compiled. If you find Swift findings feel
-      # sparse, escalate to an all-traits build under a second matrix leg.
-      - name: Build Swift (manual mode for CodeQL tracer)
-        run: |
-          swift build --disable-default-traits --skip-update
-
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:swift"
