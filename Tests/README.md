@@ -145,6 +145,86 @@ This proves the assertion (a) exercises a real production code path, (b) is valu
 - **Ollama**: requires `localhost:11434` and `--traits Ollama`.
 - **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.
 
+### Local fixture manifest
+
+Several `ManifoldE2ETests` suites discover their model files through a shared
+JSON manifest rather than probing the environment directly. The manifest lives at:
+
+```
+~/Library/Caches/ManifoldKit/test-models/manifest.json
+```
+
+#### Schema
+
+```json
+{
+  "slots": {
+    "MID_THINKING":  "/path/to/thinking-capable.gguf",
+    "Q8_VARIANT":    "/path/to/embedding.gguf",
+    "MLX_VLM":       "/path/to/vlm-model-directory"
+  }
+}
+```
+
+A slot may be `null` or omitted — the consuming test will skip cleanly.
+
+#### Slot definitions
+
+| Slot | Used by | Required model type |
+|------|---------|---------------------|
+| `MID_THINKING` | `LlamaBackendE2EConformanceTests`, `QualityBaselineTests` (T4.4), `ThroughputBaselineTests` (T4.5), `MLXBackendE2EConformanceTests` | Any GGUF ≥ 50 MB (preferably a Qwen3-class thinking model for the thinking suites) |
+| `Q8_VARIANT` | `LlamaEmbeddingBackendE2EConformanceTests` | Embedding-capable GGUF (e.g. nomic-embed-text-Q8) |
+| `MLX_VLM` | `VisionE2ETests` | MLX model directory with `vision_config` in `config.json` (e.g. LLaVA, Phi-3.5-Vision, Qwen2-VL) |
+
+#### Unlocking `ManifoldE2ETests` locally
+
+With all three slots populated and `MANIFOLD_DISCOVER_LOCAL_MODELS=1` set, the
+E2E suite lifts from the CI baseline (~69 passing) toward the full count. The
+canonical local run:
+
+```bash
+MANIFOLD_DISCOVER_LOCAL_MODELS=1 swift test \
+  --traits Llama,MLX \
+  --filter ManifoldE2ETests
+```
+
+#### Operational tests (T4) — `RUN_OPERATIONAL_TESTS=1`
+
+`QualityBaselineTests` and `ThroughputBaselineTests` require an additional
+environment variable to prevent accidental slow runs:
+
+```bash
+RUN_OPERATIONAL_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
+  swift test --traits Llama --filter ManifoldE2ETests/QualityBaselineTests
+
+RUN_OPERATIONAL_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
+  swift test --traits Llama --filter ManifoldE2ETests/ThroughputBaselineTests
+```
+
+`QualityBaselineTests` writes a character-level baseline file on first run and
+compares against it on subsequent runs. Baseline files live at:
+
+```
+~/Library/Caches/ManifoldKit/test-models/quality/<prompt-hash>.tokenids.json
+```
+
+Delete a baseline file and re-run to record intentional quality changes
+(e.g. after a quantisation or llama.cpp bump).
+
+#### Vision tests — `VisionE2ETests`
+
+`VisionE2ETests` requires the `MLX_VLM` manifest slot and runs inside Xcode
+(Metal shader compilation requires a `.app` bundle — plain `swift test`
+skips cleanly via the `hasMetalDevice` guard). The recommended runner is:
+
+```bash
+# One-time setup — add MLX_VLM slot, then:
+scripts/test-mlx-integration.sh  # wires discovery env vars into .xctestrun
+```
+
+For standalone targeting via Xcode scheme, set `MLX_VLM` in the manifest and
+run the `ManifoldE2ETests` scheme with the `MLX` trait enabled.
+
 ### Cold-start conformance gates
 
 Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this repo via `.package(path:, name: "ManifoldKit", ...)`, and exercise the public surface from outside — catching breakage that in-tree tests miss because the in-tree compiler sees internals the fresh consumer cannot. Each gate's CI job in `.github/workflows/ci.yml` lists its own script path under `paths:` so edits to the gate re-trigger the gate (see `feedback_ci_path_filter_self_validation`).

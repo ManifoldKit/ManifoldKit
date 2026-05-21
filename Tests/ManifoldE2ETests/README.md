@@ -68,6 +68,59 @@ Place an MLX snapshot directory (containing `config.json`, `*.safetensors`, and 
 tokenizer file) under `~/Documents/Models/`. `HardwareRequirements.findMLXModelDirectory()`
 discovers it.
 
+### VLM models (`VisionE2ETests`)
+
+`VisionE2ETests` requires an MLX Vision-Language Model (a model whose `config.json`
+contains a `vision_config` key — e.g. LLaVA, Phi-3.5-Vision, Qwen2-VL). Because
+MLX inference requires Metal shader compilation, these tests cannot run via plain
+`swift test`; they run inside Xcode via `scripts/test-mlx-integration.sh`.
+
+**Setup:**
+
+1. Download an MLX VLM snapshot, e.g. `mlx-community/llava-1.5-7b-hf-4bit`:
+
+   ```bash
+   huggingface-cli download mlx-community/llava-1.5-7b-hf-4bit \
+     --local-dir ~/Documents/Models/llava-1.5-7b-hf-4bit
+   ```
+
+2. Add the `MLX_VLM` slot to the manifest:
+
+   ```bash
+   mkdir -p ~/Library/Caches/ManifoldKit/test-models
+   # Edit manifest.json to add:
+   # { "slots": { "MLX_VLM": "~/Documents/Models/llava-1.5-7b-hf-4bit" } }
+   ```
+
+3. Run via the integration script:
+
+   ```bash
+   scripts/test-mlx-integration.sh
+   ```
+
+The test skips cleanly when the `MLX_VLM` slot is absent, when the directory
+does not satisfy `MLXModelProbe.requiresVLMFactory`, or when no Metal GPU is
+available (headless / SSH sessions).
+
+### Operational tests (`QualityBaselineTests`, `ThroughputBaselineTests`)
+
+Both suites require `RUN_OPERATIONAL_TESTS=1` in addition to the `MID_THINKING`
+manifest slot:
+
+```bash
+# Record quality baseline (first run):
+RUN_OPERATIONAL_TESTS=1 swift test --traits Llama \
+  --filter ManifoldE2ETests/QualityBaselineTests
+
+# Measure throughput:
+RUN_OPERATIONAL_TESTS=1 swift test --traits Llama \
+  --filter ManifoldE2ETests/ThroughputBaselineTests
+```
+
+`QualityBaselineTests` writes a character-level baseline to
+`~/Library/Caches/ManifoldKit/test-models/quality/` on first run.  Re-run to
+compare; delete the file and re-run to record an intentional change.
+
 ### Ollama (`OllamaE2ETests`, `OllamaThinkingE2ETests`, `OllamaToolCallingE2ETests`)
 
 Run Ollama locally:
