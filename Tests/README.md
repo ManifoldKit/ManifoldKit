@@ -78,6 +78,53 @@ scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
 
 If your test hits SwiftData, it's an integration test — name and place it accordingly. Per CLAUDE.md: "Do not mock the persistence layer. Use in-memory SwiftData stores."
 
+## Per-protocol contract mixins
+
+`Sources/ManifoldTestSupport/Contracts/` contains opt-in XCTestCase mixin protocols for the core ManifoldKit protocols. Each file is named `<ProtocolName>Contract.swift`.
+
+| Contract protocol | Validates |
+|---|---|
+| `InferenceBackendContract` | `InferenceBackend` — load/unload cycle, generation, cancellation, capabilities |
+| `EmbeddingBackendContract` | `EmbeddingBackend` — load/unload, `embed()` shape, error on unloaded call |
+| `MessageStoreContract` | `MessageStore` — insert/fetch/update/delete, session isolation, timestamp ordering, pagination |
+| `SessionStoreContract` | `SessionStore` — insert/fetch/update/delete, most-recently-updated ordering, `deleteAll`, pagination |
+| `EndpointStoreContract` | `EndpointStore` — insert/fetch/update/delete, most-recently-created ordering |
+| `SamplerPresetStoreContract` | `SamplerPresetStore` — insert/fetch/delete, most-recently-created ordering |
+| `BenchmarkCacheContract` | `BenchmarkCache` — upsert/fetchAll, replacement semantics, multi-key isolation |
+
+`ManifoldMCPTests/Contracts/MCPToolSourceContractTests.swift` covers `MCPToolSource` behavioral invariants (not a mixin — `ManifoldMCP` is not a dependency of `ManifoldTestSupport`).
+
+`ManifoldBackendsTests/Contracts/URLSessionProviderContractTests.swift` covers `URLSessionProvider` security and configuration invariants (not a mixin — `ManifoldCloudCore` is not a dependency of `ManifoldTestSupport`).
+
+### Adopting a contract mixin
+
+Contract methods are named `assert<Protocol>_<scenario>` rather than `test_*` because XCTest does not discover protocol-extension methods. The concrete subclass calls each helper from a `test_`-prefixed method:
+
+```swift
+// In ManifoldTestSupportTests (or the target that owns the implementation):
+@MainActor
+final class MyMessageStoreContractTests: XCTestCase, MessageStoreContract {
+    func makeMessageStore() -> any MessageStore {
+        MyMessageStore()
+    }
+
+    func test_insertThenFetch() async throws {
+        try await assertMessageStore_insertThenFetchReturnsRecord()
+    }
+}
+```
+
+Reference adopters live alongside their target:
+
+| Adopter file | Target | Contract |
+|---|---|---|
+| `ManifoldTestSupportTests/MockInferenceBackendContractTests.swift` | `ManifoldTestSupportTests` | `InferenceBackendContract` via `MockInferenceBackend` |
+| `ManifoldRuntimeTests/MessageStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `MessageStoreContract` via in-memory double |
+| `ManifoldRuntimeTests/SessionStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `SessionStoreContract` via in-memory double |
+| `ManifoldRuntimeTests/EndpointStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `EndpointStoreContract` via in-memory double |
+| `ManifoldRuntimeTests/SamplerPresetStoreContractAdopterTests.swift` | `ManifoldRuntimeTests` | `SamplerPresetStoreContract` via in-memory double |
+| `ManifoldRuntimeTests/BenchmarkCacheContractAdopterTests.swift` | `ManifoldRuntimeTests` | `BenchmarkCacheContract` via in-memory double |
+
 ## Adding a new backend
 
 1. Implement `InferenceBackend` (and any opt-in protocols) in `Sources/ManifoldBackends/<YourBackend>.swift`.
