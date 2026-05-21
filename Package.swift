@@ -545,7 +545,10 @@ let package = Package(
         // with `swift test --filter ManifoldTestSupportTests`.
         .testTarget(
             name: "ManifoldTestSupportTests",
-            dependencies: ["ManifoldTestSupport"]
+            dependencies: [
+                "ManifoldTestSupport",
+                "ManifoldInference",
+            ]
         ),
         .testTarget(
             name: "ManifoldInferenceTests",
