@@ -2,6 +2,7 @@ import XCTest
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - InMemorySamplerPresetStore (test double for contract adoption)
 

@@ -1,4 +1,3 @@
-#if canImport(XCTest)
 import XCTest
 import ManifoldRuntime
 import ManifoldInference
@@ -164,4 +163,3 @@ extension EndpointStoreContract where Self: XCTestCase {
         }
     }
 }
-#endif

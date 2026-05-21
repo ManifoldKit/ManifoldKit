@@ -2,6 +2,7 @@ import XCTest
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - InMemoryEndpointStore (test double for contract adoption)
 

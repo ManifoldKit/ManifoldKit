@@ -506,6 +506,19 @@ let package = Package(
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
+        // XCTest-dependent protocol contract mixins, kept in a separate target
+        // so that fuzz-chat (an executable) can depend on ManifoldTestSupport
+        // without pulling in XCTest, which is only available inside an xctest
+        // host process and causes a dyld crash at runtime otherwise.
+        .target(
+            name: "ManifoldContractTestSupport",
+            dependencies: [
+                "ManifoldTestSupport",
+                "ManifoldInference",
+                "ManifoldRuntime",
+            ],
+            path: "Sources/ManifoldContractTestSupport"
+        ),
         .testTarget(
             name: "ManifoldCoreTests",
             dependencies: [
@@ -525,6 +538,7 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                "ManifoldContractTestSupport",
             ]
         ),
         // ManifoldPersistenceSwiftData-only tests: SwiftData @Model schema,
@@ -548,6 +562,7 @@ let package = Package(
             dependencies: [
                 "ManifoldTestSupport",
                 "ManifoldInference",
+                "ManifoldContractTestSupport",
             ]
         ),
         .testTarget(

@@ -1,4 +1,3 @@
-#if canImport(XCTest)
 import XCTest
 import ManifoldRuntime
 import ManifoldInference
@@ -138,4 +137,3 @@ extension BenchmarkCacheContract where Self: XCTestCase {
         _ = upper  // suppress unused-variable warning
     }
 }
-#endif

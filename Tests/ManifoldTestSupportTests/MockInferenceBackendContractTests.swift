@@ -1,6 +1,7 @@
 import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - MockInferenceBackendContractTests
 
