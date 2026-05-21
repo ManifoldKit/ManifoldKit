@@ -134,6 +134,7 @@ final class CloudPayloadHandlerContractTests: XCTestCase {
 
     // MARK: - Ollama
 
+#if Ollama
     func test_ollama_extractEvents_chatMessageContent() {
         // `/api/chat` shape: content under `message.content`.
         let payload = #"{"model":"llama3","message":{"role":"assistant","content":"Hi"},"done":false}"#
@@ -171,6 +172,7 @@ final class CloudPayloadHandlerContractTests: XCTestCase {
         let payload = #"{"message":{"content":"streaming"},"done":false}"#
         XCTAssertNil(CloudPayloadHandler.ollama.extractUsage(from: payload))
     }
+#endif
 
     // MARK: - Sabotage-style cross-provider isolation
 
@@ -244,6 +246,7 @@ final class StreamFinalizerContractTests: XCTestCase {
         XCTAssertEqual(f.finalize(frame: frame), .streamContinue)
     }
 
+#if Ollama
     func test_ollamaDoneFlag_doneTrueTerminatesWithUsage() {
         let f = OllamaDoneFlagFinalizer()
         let frame = data(#"{"done":true,"eval_count":50,"prompt_eval_count":10}"#)
@@ -259,13 +262,18 @@ final class StreamFinalizerContractTests: XCTestCase {
         let frame = data(#"{"done":false,"message":{"content":"x"}}"#)
         XCTAssertEqual(f.finalize(frame: frame), .streamContinue)
     }
+#endif
 
     func test_anyFinalizer_malformedJSONReturnsNil() {
         let frame = data("not json")
         XCTAssertNil(OpenAIDoneSentinelFinalizer().finalize(frame: frame))
+#if CloudSaaS
         XCTAssertNil(ClaudeMessageStopFinalizer().finalize(frame: frame))
-        XCTAssertNil(OllamaDoneFlagFinalizer().finalize(frame: frame))
         XCTAssertNil(OpenAIResponsesEventFinalizer().finalize(frame: frame))
+#endif
+#if Ollama
+        XCTAssertNil(OllamaDoneFlagFinalizer().finalize(frame: frame))
+#endif
     }
 }
 #endif
