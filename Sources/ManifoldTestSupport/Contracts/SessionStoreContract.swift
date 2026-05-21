@@ -1,3 +1,4 @@
+#if canImport(XCTest)
 import XCTest
 import ManifoldRuntime
 import ManifoldInference
@@ -223,3 +224,4 @@ extension SessionStoreContract where Self: XCTestCase {
         XCTAssertTrue(pastEnd.isEmpty, file: file, line: line)
     }
 }
+#endif
