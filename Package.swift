@@ -182,10 +182,14 @@ let package = Package(
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
-        // MCP: Model Context Protocol client surface and tool bridge.
+        // MCP: Model Context Protocol client surface, tool bridge, and
+        // MCPHostServer (server-side: expose sessions, messages, and RAG docs
+        // to external MCP clients). ManifoldRuntime is included so
+        // ManifoldMCPHost can accept ConversationRuntime, SessionStore,
+        // MessageStore, and RAGService — none of those pull in SwiftData.
         .target(
             name: "ManifoldMCP",
-            dependencies: ["ManifoldInference"],
+            dependencies: ["ManifoldInference", "ManifoldRuntime"],
             path: "Sources/ManifoldMCP",
             swiftSettings: [
                 .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
@@ -595,6 +599,7 @@ let package = Package(
             dependencies: [
                 .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
                 "ManifoldInference",
+                "ManifoldRuntime",
                 "ManifoldTestSupport",
             ],
             resources: [.copy("Fixtures")],
