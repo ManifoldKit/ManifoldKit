@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.31.0](https://github.com/roryford/ManifoldKit/compare/v0.30.0...v0.31.0) — 2026-05-22
+
+### Highlights
+
+#### MCP host server — expose your app as an MCP endpoint ([#1357](https://github.com/roryford/ManifoldKit/issues/1357))
+
+ManifoldKit previously consumed MCP servers; now it can *be* one. `ManifoldMCPHost` is an opt-in Swift actor that speaks the MCP JSON-RPC protocol over stdio (HTTP/SSE is planned), exposing conversation sessions and RAG documents as browseable resources and providing `list_sessions`, `send_message`, and `search_documents` as callable tools. External agents — Claude Desktop, custom CLI tools, or any MCP-capable client — can connect to a running ManifoldKit app without any additional infrastructure. Wire it up at app launch by passing your `ConversationRuntime` and optional `RAGService`:
+
+```swift
+let host = ManifoldMCPHost(
+    sessionStore: bootstrap.sessionStore,
+    messageStore: bootstrap.messageStore,
+    conversationRuntime: runtime,
+    ragService: ragService
+)
+Task { try await host.run(transport: MCPHostStdioTransport()) }
+```
+
+#### RAG sentence-boundary chunker + `/v1/embeddings` server endpoint ([#1356](https://github.com/roryford/ManifoldKit/issues/1356), [#1355](https://github.com/roryford/ManifoldKit/issues/1355))
+
+`DocumentChunker` now uses `NLTokenizer(.sentence)` to split documents at sentence boundaries before building overlap windows, eliminating mid-sentence cuts that degraded retrieval precision on prose-heavy corpora. The ManifoldServer also gains an OpenAI-compatible `POST /v1/embeddings` endpoint — same auth and error shape as the completions API — so existing tooling that embeds via the OpenAI SDK works against local models with zero changes.
+
+### Features
+
+* **server:** wire GGUF manifest verification into download flow ([#1353](https://github.com/roryford/ManifoldKit/issues/1353))
+* **inference:** add public `MemoryPressureEvent` stream on `InferenceService` ([#1295](https://github.com/roryford/ManifoldKit/issues/1295))
+* **config:** add `ManifoldConfiguration.networkPolicy` host allowlist ([#1294](https://github.com/roryford/ManifoldKit/issues/1294))
+* **mcp:** enforce Foundation Models tool-call cap + settings UI counter ([#1354](https://github.com/roryford/ManifoldKit/issues/1354))
+
+### Fixes
+
+* **tests:** gate Ollama contract tests on `#if Ollama` + restore `Package.resolved` ([fa3a10f](https://github.com/roryford/ManifoldKit/commit/fa3a10f80f081eb61c42cdc22ecc0fedc44dd912))
+
 ## [0.30.0](https://github.com/roryford/ManifoldKit/compare/v0.29.0...v0.30.0) (2026-05-19)
 
 
