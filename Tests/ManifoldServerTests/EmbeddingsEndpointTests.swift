@@ -31,7 +31,6 @@ final class EmbeddingsEndpointTests: XCTestCase {
                 XCTAssertEqual(embedResponse.data[0].object, "embedding")
                 XCTAssertEqual(embedResponse.data[0].index, 0)
                 XCTAssertEqual(embedResponse.data[0].embedding, [0.1, 0.2, 0.3])
-                // SABOTAGE: change data.count assertion to 2 to verify the test catches regressions
             }
         }
     }
@@ -53,8 +52,6 @@ final class EmbeddingsEndpointTests: XCTestCase {
                 XCTAssertEqual(embedResponse.data[0].embedding, [0.1, 0.2])
                 XCTAssertEqual(embedResponse.data[1].embedding, [0.3, 0.4])
                 XCTAssertEqual(embedResponse.data[2].embedding, [0.5, 0.6])
-                // SABOTAGE: swap assertion to embedResponse.data[0].embedding == [0.3, 0.4] to
-                // verify ordering is asserted
             }
         }
     }
@@ -94,7 +91,6 @@ final class EmbeddingsEndpointTests: XCTestCase {
                 )
                 let envelope = try JSONDecoder().decode(ChatCompletionErrorEnvelope.self, from: Data(buffer: response.body))
                 XCTAssertFalse(envelope.error.message.isEmpty)
-                // SABOTAGE: change assertion to .ok to verify the test catches the 503 path
             }
         }
     }
