@@ -513,7 +513,7 @@ final class InferenceServiceTests: XCTestCase {
                         "isGenerating should remain false — generate() no longer sets it")
     }
 
-    func test_generate_streamCompletesNormally_isGeneratingResetByFinish() async throws {
+    func test_generate_streamCompletesNormally_isGeneratingResetByAutoDrain() async throws {
         let mock = MockInferenceBackend()
         mock.isModelLoaded = true
         mock.tokensToYield = ["a", "b"]
@@ -523,9 +523,8 @@ final class InferenceServiceTests: XCTestCase {
 
         for try await _ in stream.events {}
 
-        service.generationDidFinish()
         XCTAssertFalse(service.isGenerating,
-                        "isGenerating should be false after generationDidFinish()")
+                        "isGenerating should be false after the stream terminates (queue auto-drains)")
     }
 
     func test_generate_streamErrorMidStream_isGeneratingManagedByQueue() async throws {

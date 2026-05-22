@@ -359,9 +359,9 @@ final class GenerationExtensionTests: XCTestCase {
         XCTAssertFalse(vm.isGenerating, "isGenerating should be false after stream error")
     }
 
-    // MARK: - 7. generationDidFinish Cleans Up Service State
+    // MARK: - 7. Stream Termination Cleans Up Service State
 
-    func test_generationDidFinish_setsServiceIsGeneratingFalse() async {
+    func test_streamCompletion_setsServiceIsGeneratingFalse() async {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Token"]
         let vm = await makeVM(backend: mock)
@@ -371,11 +371,11 @@ final class GenerationExtensionTests: XCTestCase {
 
         XCTAssertFalse(
             vm.inferenceService.isGenerating,
-            "InferenceService.isGenerating should be false after generation completes (generationDidFinish called)"
+            "InferenceService.isGenerating should be false after generation completes (queue auto-drains)"
         )
     }
 
-    func test_generationDidFinish_calledEvenOnError() async {
+    func test_streamError_clearsIsGenerating() async {
         let mock = MockInferenceBackend()
         mock.shouldThrowOnGenerate = InferenceError.inferenceFailure("fail")
         let vm = await makeVM(backend: mock)

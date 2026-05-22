@@ -64,7 +64,6 @@ public enum ModelLoadReadinessState: Equatable, Sendable {
 /// - **Thermal gating**: `.background` requests are dropped when the device is
 ///   under `.serious` or `.critical` thermal pressure.
 /// - **Auto-drain**: the queue drains automatically when each stream terminates.
-///   `generationDidFinish()` is deprecated and is now a no-op.
 @Observable
 @MainActor
 public final class InferenceService {
@@ -531,9 +530,6 @@ public final class InferenceService {
         ensureProviderWired()
         return generation.hasQueuedRequests
     }
-
-    @available(*, deprecated, message: "Remove calls to generationDidFinish(); the queue auto-drains when the returned stream terminates, and this method is a no-op.")
-    public func generationDidFinish() {}
 
     public func resetConversation() {
         lifecycle.resetConversation()

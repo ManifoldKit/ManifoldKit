@@ -169,10 +169,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         // Consume first stream.
         for try await _ in stream1.events {}
 
-        // Signal the service that generation finished.
-        service.generationDidFinish()
-
-        // Second request should now be active.
+        // Second request should now be active (queue auto-drains on stream terminate).
         XCTAssertEqual(stream2.phase, .connecting)
 
         // Wait for the drain Task to call generate() for the second request.
@@ -243,7 +240,6 @@ final class InferenceServiceQueueTests: XCTestCase {
         await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
         mock.release(at: 0, tokens: ["x"])
         for try await _ in streamActive.events {}
-        service.generationDidFinish()
 
         // userInitiated should run before background.
         XCTAssertEqual(streamUi.phase, .connecting,
@@ -281,7 +277,6 @@ final class InferenceServiceQueueTests: XCTestCase {
         await waitFor(mock.generateCallCount >= 1, description: "active generate() called")
         mock.release(at: 0)
         for try await _ in streamActive.events {}
-        service.generationDidFinish()
 
         // Should drain in priority order: userInitiated first.
         XCTAssertEqual(streamUi.phase, .connecting, "userInitiated should run first")
@@ -375,28 +370,6 @@ final class InferenceServiceQueueTests: XCTestCase {
         // stream1 may not have .failed set (it was active, not queued),
         // but its continuation was finished with an error.
         XCTAssertTrue(isFailed(stream2.phase), "Queued stream should be .failed after stopGeneration")
-    }
-
-    // MARK: - 8. generationDidFinish drains next request
-
-    func test_generationDidFinish_drainsNextRequest() async throws {
-        let (service, mock) = makeService()
-
-        let (_, stream1) = try service.enqueue(messages: [("user", "first")], priority: .normal)
-        let (_, stream2) = try service.enqueue(messages: [("user", "second")], priority: .normal)
-
-        XCTAssertEqual(stream2.phase, .queued)
-
-        // Complete first generation.
-        await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
-        mock.release(at: 0)
-        for try await _ in stream1.events {}
-
-        service.generationDidFinish()
-
-        XCTAssertEqual(stream2.phase, .connecting,
-                       "Second request should start after generationDidFinish()")
-        XCTAssertTrue(service.isGenerating)
     }
 
     // MARK: - 9. discardRequests session mismatch cancels stale
@@ -572,11 +545,10 @@ final class InferenceServiceQueueTests: XCTestCase {
         }
     }
 
-    // MARK: - 17. Queue auto-drains without generationDidFinish()
+    // MARK: - 17. Queue auto-drains on stream terminate
 
-    /// Verifies that the queue drains automatically after stream1 is consumed,
-    /// without any explicit call to generationDidFinish().
-    func test_queue_autoDrains_withoutGenerationDidFinish() async throws {
+    /// Verifies that the queue drains automatically after stream1 is consumed.
+    func test_queue_autoDrains_onStreamTerminate() async throws {
         let (service, mock) = makeService()
 
         let (_, stream1) = try service.enqueue(
@@ -594,14 +566,13 @@ final class InferenceServiceQueueTests: XCTestCase {
         await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["a"])
 
-        // Consume stream1 fully — deliberately do NOT call generationDidFinish().
-        // The queue should auto-drain when the stream terminates.
+        // Consume stream1 fully — the queue should auto-drain when the stream terminates.
         for try await _ in stream1.events {}
 
         // The activeTask's defer fires on the main actor before `for try await`
         // returns, so auto-drain is synchronous from the test's perspective.
         XCTAssertEqual(stream2.phase, .connecting,
-                       "Queue should auto-drain after stream1 is consumed without generationDidFinish()")
+                       "Queue should auto-drain after stream1 is consumed")
         XCTAssertFalse(service.hasQueuedRequests,
                        "Service should report no queued requests after auto-drain")
         XCTAssertTrue(service.isGenerating,
@@ -642,15 +613,13 @@ final class InferenceServiceQueueTests: XCTestCase {
 
         for try await _ in stream1.events {}
         for try await _ in stream2.events {}
-
-        service.generationDidFinish()
     }
 
-    // MARK: - 19. Auto-drain: two requests, no generationDidFinish()
+    // MARK: - 19. Auto-drain: two requests
 
-    /// Enqueues two requests, consumes stream1 without calling generationDidFinish(),
-    /// and verifies that stream2 transitions to .connecting automatically.
-    func test_queueAutoDrains_withoutExplicitGenerationDidFinish() async throws {
+    /// Enqueues two requests, consumes stream1, and verifies that stream2
+    /// transitions to .connecting automatically.
+    func test_queueAutoDrains_withTwoRequests() async throws {
         let (service, mock) = makeService()
 
         let (_, stream1) = try service.enqueue(
@@ -669,7 +638,7 @@ final class InferenceServiceQueueTests: XCTestCase {
         await waitFor(mock.generateCallCount >= 1, description: "first generate() called")
         mock.release(at: 0, tokens: ["tok"])
 
-        // Consume stream1 without calling generationDidFinish().
+        // Consume stream1; the queue should auto-drain on stream terminate.
         var collected: [String] = []
         for try await event in stream1.events {
             if case .token(let text) = event {

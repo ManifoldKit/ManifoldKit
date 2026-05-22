@@ -102,21 +102,6 @@ final class InferenceServiceRegressionLockTests: XCTestCase {
         XCTAssertNil(service.lastTokenUsage)
     }
 
-    // MARK: - generationDidFinish (deprecated no-op)
-
-    func test_generationDidFinish_isNoOp() throws {
-        let mock = GatedMockBackend()
-        let service = InferenceService(backend: mock, name: "Mock")
-        let (_, _) = try service.enqueue(messages: [("user", "hi")])
-
-        // Service should be generating.
-        XCTAssertTrue(service.isGenerating)
-
-        // Calling the deprecated method should be a no-op — state unchanged.
-        service.generationDidFinish()
-        XCTAssertTrue(service.isGenerating, "generationDidFinish() should be a no-op")
-    }
-
     // MARK: - declareSupport accumulation
 
     func test_declareSupport_accumulatesMultipleTypes() {

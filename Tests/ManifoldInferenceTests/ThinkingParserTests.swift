@@ -19,7 +19,7 @@ private func countCompletions(_ events: [GenerationEvent]) -> Int {
 ///
 /// Each test processes one or more chunks and verifies both the visible text
 /// (.token events) and the thinking text (.thinkingToken events) emitted.
-final class ThinkingBlockFilterTests: XCTestCase {
+final class ThinkingParserTests: XCTestCase {
 
     // MARK: - Passthrough (no tags)
 

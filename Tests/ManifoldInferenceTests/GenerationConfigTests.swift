@@ -100,7 +100,6 @@ final class GenerationConfigTests: XCTestCase {
             "temperature": 0.7,
             "topP": 0.9,
             "repeatPenalty": 1.1,
-            "maxTokens": 512,
             "jsonMode": true
         }
         """

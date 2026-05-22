@@ -55,7 +55,7 @@ final class GenerationConfigToolIterationsTests: XCTestCase {
         // Payloads serialised before maxToolIterations was added must still
         // decode with the canonical default.
         let legacy = """
-        {"temperature":0.7,"topP":0.9,"repeatPenalty":1.1,"maxTokens":512,"tools":[],"toolChoice":{"type":"auto"},"jsonMode":false}
+        {"temperature":0.7,"topP":0.9,"repeatPenalty":1.1,"tools":[],"toolChoice":{"type":"auto"},"jsonMode":false}
         """.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: legacy)
@@ -66,7 +66,7 @@ final class GenerationConfigToolIterationsTests: XCTestCase {
     func test_legacyPayload_withZeroField_clampedTo1() throws {
         // Defensive: a persisted zero (e.g. from a pre-release build) should
         // still yield loop-viable semantics after decode.
-        let legacy = #"{"temperature":0.7,"topP":0.9,"repeatPenalty":1.1,"maxTokens":512,"tools":[],"toolChoice":{"type":"auto"},"jsonMode":false,"maxToolIterations":0}"#.data(using: .utf8)!
+        let legacy = #"{"temperature":0.7,"topP":0.9,"repeatPenalty":1.1,"tools":[],"toolChoice":{"type":"auto"},"jsonMode":false,"maxToolIterations":0}"#.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: legacy)
 

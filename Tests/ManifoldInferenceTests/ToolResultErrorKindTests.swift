@@ -98,33 +98,6 @@ final class ToolResultErrorKindTests: XCTestCase {
         XCTAssertTrue(decoded.isError)
     }
 
-    // MARK: - Deprecated initializer
-
-    func test_deprecatedInit_isErrorTrue_mapsToPermanent() {
-        // Intentionally exercise the deprecated initializer. `@available`
-        // deprecation warnings are expected; the initializer is retained for
-        // migration compatibility.
-        @available(*, deprecated)
-        func makeLegacy() -> ToolResult {
-            ToolResult(callId: "c", content: "x", isError: true)
-        }
-
-        let result = makeLegacy()
-        XCTAssertEqual(result.errorKind, .permanent)
-        XCTAssertTrue(result.isError)
-    }
-
-    func test_deprecatedInit_isErrorFalse_mapsToNil() {
-        @available(*, deprecated)
-        func makeLegacy() -> ToolResult {
-            ToolResult(callId: "c", content: "x", isError: false)
-        }
-
-        let result = makeLegacy()
-        XCTAssertNil(result.errorKind)
-        XCTAssertFalse(result.isError)
-    }
-
     // MARK: - Equatable / Hashable
 
     func test_resultsWithDifferentErrorKinds_areNotEqual() {
