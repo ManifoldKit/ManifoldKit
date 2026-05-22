@@ -3,15 +3,21 @@ import XCTest
 
 /// Audits the curated model list for SHA-256 integrity metadata.
 ///
-/// Advisory tier (warning only):
-///   GGUF entries with `expectedSHA256 == nil` are enumerated and printed.
-///   This is intentionally a soft failure until all LFS pointer hashes
-///   are populated — see SEC-14.
-///
 /// Hard gate (XCTFail):
-///   Any populated `expectedSHA256` must be a 64-character lowercase hex
-///   string. An empty string or wrong-length value is silently useless and
-///   would pass validation while providing false confidence.
+///   Every `.gguf` entry in the real `CuratedModel.all` must carry a non-nil,
+///   64-character lowercase hex `expectedSHA256`. The empty-list-by-default
+///   case is the only exempt state — when an app ships an opinionated curated
+///   list, every GGUF entry is a supply-chain trust boundary and missing
+///   integrity metadata is a fail-the-build problem (SEC-14).
+///
+///   Any populated `expectedSHA256` must be 64-char lowercase hex. An empty
+///   string or wrong-length value would silently pass validation while
+///   providing false confidence.
+///
+/// Fixture tier:
+///   The fixture-based tests below exercise the audit FILTER logic itself
+///   (verified vs. unverified, GGUF vs. non-GGUF) with a synthetic
+///   `CuratedModel.all` so the predicate stays correct as the schema evolves.
 final class CuratedModelChecksumAuditTest: XCTestCase {
 
     // MARK: - Fixtures
@@ -72,22 +78,39 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Advisory: list models that still need hashes
+    // MARK: - Hard gate: real curated list must have checksums on every GGUF
 
-    /// This test is currently advisory — it prints models missing checksums
-    /// and will be promoted to a hard XCTFail once all LFS hashes are populated.
-    func test_allCuratedGGUFModelsHaveExpectedSHA256() {
+    /// Inspects the *real* `CuratedModel.all` as captured before setUp installed
+    /// the fixture. The empty default is exempt — apps that ship an opinionated
+    /// curated list MUST include `expectedSHA256` on every `.gguf` entry, or
+    /// CI fails here (SEC-14).
+    func test_realCuratedList_everyGGUFHasExpectedSHA256() {
+        guard !previousAll.isEmpty else {
+            // ManifoldKit ships an empty default list — apps populate it.
+            // Nothing to verify; promoting future additions to fail this gate
+            // is what the assertion below enforces once entries appear.
+            return
+        }
+
+        let missing = previousAll
+            .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
+            .map(\.repoID)
+
+        XCTAssertTrue(
+            missing.isEmpty,
+            "Curated GGUF models are missing expectedSHA256 — populate from the HuggingFace LFS pointer (oid sha256:<hex>): \(missing.joined(separator: ", "))"
+        )
+    }
+
+    // MARK: - Filter logic: confirm verified/unverified classification
+
+    /// Exercises the audit filter against the synthetic fixture installed in
+    /// setUp. Guards the predicate so the hard gate above stays meaningful.
+    func test_auditFilter_classifiesFixtureCorrectly() {
         let missing = CuratedModel.all
             .filter { $0.modelType == .gguf && $0.expectedSHA256 == nil }
             .map(\.repoID)
 
-        if !missing.isEmpty {
-            // Change to XCTFail once all entries have hashes (SEC-14).
-            print("WARNING: curated GGUF models missing expectedSHA256: \(missing.joined(separator: ", "))")
-        }
-
-        // Verify the verified entry is NOT in the missing list — ensuring the
-        // filter only flags genuinely nil entries.
         let missingSet = Set(missing)
         XCTAssertFalse(
             missingSet.contains("example/verified-GGUF"),
@@ -95,7 +118,7 @@ final class CuratedModelChecksumAuditTest: XCTestCase {
         )
         XCTAssertTrue(
             missingSet.contains("example/unverified-GGUF"),
-            "Unverified model must appear in the missing-checksum list — sabotage check"
+            "Unverified model must appear in the missing-checksum list"
         )
     }
 
