@@ -435,6 +435,143 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         }
     }
 
+    // MARK: - Streaming
+
+    /// Streaming dispatch for AppIntents.
+    ///
+    /// When `Intent` adopts ``ProgressReportingAppIntent`` (and its
+    /// ``ProgressReportingAppIntent/supportsProgressReporting`` flag is `true`),
+    /// the executor installs an ``IntentProgressReporter`` into the
+    /// ``IntentProgressReporter/current`` task-local before invoking
+    /// ``AppIntent/perform()``. Progress events the intent emits inside
+    /// `perform()` are forwarded onto the returned stream as
+    /// ``ToolExecutionEvent/progress(message:fraction:)`` chunks; the terminal
+    /// ``ToolExecutionEvent/completed(_:)`` carries the same ``ToolResult``
+    /// the single-shot ``execute(arguments:)`` would have returned.
+    ///
+    /// Intents that do not adopt the progress protocol fall through to the
+    /// default ``ToolExecutor/executeStreaming(arguments:)`` wrapper —
+    /// behaviour is identical to the single-shot path with one terminal
+    /// `.completed` event.
+    ///
+    /// Cancellation: the stream's `onTermination` cancels the wrapping task,
+    /// which propagates into both `perform()` and the reporter drain loop via
+    /// structured concurrency. On cancellation the terminal event is a
+    /// ``ToolResult`` with ``ToolResult/ErrorKind/cancelled``, matching the
+    /// single-shot contract — the stream finishes cleanly, no throw.
+    public func executeStreaming(arguments: JSONSchemaValue) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+        // Fall through to the protocol default when this intent did not opt
+        // into progress reporting. Keeps the streaming path uniform for
+        // callers without paying for a reporter we'd never feed.
+        guard let progressType = Intent.self as? any ProgressReportingAppIntent.Type,
+              progressType.supportsProgressReporting
+        else {
+            return AsyncThrowingStream { continuation in
+                let task = Task {
+                    do {
+                        let result = try await self.execute(arguments: arguments)
+                        continuation.yield(.completed(result))
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+
+        return AsyncThrowingStream { continuation in
+            let reporter = IntentProgressReporter()
+
+            // Drain the reporter's progress stream onto the outer continuation
+            // in a sibling task so the executor can run `perform()` and forward
+            // chunks concurrently. The drain finishes when `reporter.finish()`
+            // closes the underlying AsyncStream, which we call after
+            // `perform()` returns or throws.
+            let drainTask = Task {
+                for await event in reporter.events {
+                    continuation.yield(event)
+                }
+            }
+
+            let workTask = Task {
+                // Install the reporter into the task-local so the running
+                // intent can pull it via `IntentProgressReporter.current`
+                // without a parameter on `perform()`.
+                let result = await IntentProgressReporter.$current.withValue(reporter) {
+                    await self.runStreaming(arguments: arguments)
+                }
+                // Close the progress stream so the drain task exits.
+                await reporter.finish()
+                // Make sure the drain has flushed any in-flight yields before
+                // we emit the terminal event — preserves the documented
+                // ordering invariant (progress events strictly precede
+                // .completed).
+                _ = await drainTask.value
+                continuation.yield(.completed(result))
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                workTask.cancel()
+                drainTask.cancel()
+            }
+        }
+    }
+
+    /// Streaming inner loop — runs the intent, classifies the outcome, and
+    /// returns the terminal ``ToolResult`` the caller will wrap as
+    /// ``ToolExecutionEvent/completed(_:)``.
+    ///
+    /// Factored out so the cancellation/error classification stays in lockstep
+    /// with the single-shot ``execute(arguments:)`` path — both call
+    /// ``serialise(_:)`` and ``looksLikeAuthorizationFailure(_:)`` the same
+    /// way.
+    private func runStreaming(arguments: JSONSchemaValue) async -> ToolResult {
+        do {
+            try Task.checkCancellation()
+
+            let intent: Intent
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let argsData = try encoder.encode(arguments)
+                intent = try decoder.decode(Intent.self, from: argsData)
+            } catch {
+                return ToolResult(
+                    callId: "",
+                    content: "Failed to decode AppIntent arguments: \(error.localizedDescription)",
+                    errorKind: .invalidArguments
+                )
+            }
+
+            try Task.checkCancellation()
+
+            let result = try await intent.perform()
+            try Task.checkCancellation()
+
+            let content = Self.serialise(result)
+            return ToolResult(callId: "", content: content, errorKind: nil)
+        } catch is CancellationError {
+            return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
+        } catch {
+            if Self.looksLikeAuthorizationFailure(error) {
+                return ToolResult(
+                    callId: "",
+                    content: error.localizedDescription,
+                    errorKind: .permissionDenied
+                )
+            }
+            return ToolResult(
+                callId: "",
+                content: error.localizedDescription,
+                errorKind: .permanent
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     /// Tool name derived from the intent's type — `AskManifoldDemoIntent`

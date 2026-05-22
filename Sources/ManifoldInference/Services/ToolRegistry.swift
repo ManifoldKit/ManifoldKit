@@ -391,6 +391,12 @@ public protocol JSONSchemaValidating: Sendable {
         }
 
         // 5. Execute, stamp callId, and apply the size policy.
+        // TODO(streaming): forward `executor.executeStreaming(arguments:)`
+        // progress chunks onto a new `GenerationEvent.toolProgress(...)` so the
+        // orchestrator can surface interim status to UI / the model without
+        // changing the terminal ToolResult contract. Single-shot path stays
+        // unchanged — see ToolExecutionEvent + executeStreaming in
+        // Sources/ManifoldInference/Services/ToolExecutor.swift.
         let outcome: ToolResult
         do {
             let raw = try await executor.execute(arguments: dispatchArguments)

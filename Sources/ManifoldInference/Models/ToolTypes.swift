@@ -371,6 +371,42 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     }
 }
 
+// MARK: - ToolExecutionEvent
+
+/// One element of a ``ToolExecutor/executeStreaming(arguments:)`` stream.
+///
+/// Streaming-aware executors yield zero or more ``progress(message:fraction:)``
+/// chunks for long-running work (downloads, multi-step queries, paginated
+/// fetches), then yield exactly one terminal ``completed(_:)`` carrying the
+/// same ``ToolResult`` a non-streaming `execute(arguments:)` would return.
+///
+/// ## Contract
+///
+/// - **Order**: any number of `.progress` events, followed by exactly one
+///   `.completed`. `.completed` is always last; nothing follows it.
+/// - **Cardinality**: `.completed` appears exactly once per successful stream.
+///   On thrown errors the stream finishes with an error and no `.completed`
+///   is yielded — mirror the single-shot `execute` contract.
+/// - **Sendability**: ``ToolResult`` is `Sendable`, so this enum is `Sendable`
+///   and safe to ferry across actor boundaries inside an `AsyncThrowingStream`.
+///
+/// ``ToolResult/ErrorKind`` is unchanged — streaming is additive on top of the
+/// existing single-shot vocabulary, not a new failure mode.
+public enum ToolExecutionEvent: Sendable {
+
+    /// Interim progress chunk.
+    ///
+    /// - Parameters:
+    ///   - message: Human-readable status (e.g. `"Fetched 12 of 47 records"`).
+    ///   - fraction: Optional 0.0...1.0 completion fraction. `nil` when the
+    ///     work has no known total (open-ended streams, single-step queries
+    ///     that just want to ping liveness).
+    case progress(message: String, fraction: Double?)
+
+    /// Terminal value. Always exactly one per stream, always last.
+    case completed(ToolResult)
+}
+
 // MARK: - ToolChoice
 
 /// Controls how the backend selects which tool to call, if any.
