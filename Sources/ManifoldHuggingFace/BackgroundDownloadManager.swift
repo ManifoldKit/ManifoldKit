@@ -556,6 +556,42 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         )
     }
 
+    // MARK: - GGUF Manifest Verification
+
+    /// Verifier used after a GGUF download completes to check an optional sidecar
+    /// manifest. Exposed as `internal` so tests can inject an accepting verifier.
+    @ObservationIgnored
+    internal var ggufManifestVerifier: GGUFSignedManifestVerifier = GGUFSignedManifestVerifier()
+
+    /// Checks for a sidecar manifest alongside a freshly-downloaded GGUF file.
+    ///
+    /// The sidecar convention: if `<file>.manifest.json` exists next to the
+    /// downloaded GGUF, its contents are treated as a ``GGUFSignedManifest`` and
+    /// the file digest is verified against it. Missing manifests are silently
+    /// skipped so existing downloads without a manifest continue to work.
+    ///
+    /// Call this *after* the GGUF file has been moved to its final destination
+    /// so the file hash is computed against the canonical on-disk bytes.
+    ///
+    /// - Parameter fileURL: Final on-disk URL of the downloaded GGUF.
+    /// - Throws: ``GGUFSignedManifestVerificationError`` when a manifest is present
+    ///   but verification fails (unsigned, signature rejected, digest mismatch, …).
+    internal func verifyGGUFManifestIfPresent(at fileURL: URL) throws {
+        let manifestURL = fileURL.appendingPathExtension("manifest.json")
+        guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+            // No sidecar manifest — skip verification without logging noise.
+            return
+        }
+        let manifestData: Data
+        do {
+            manifestData = try Data(contentsOf: manifestURL)
+        } catch {
+            Log.download.error("Failed to read GGUF manifest at \(manifestURL.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+        try ggufManifestVerifier.verify(fileURL: fileURL, manifestData: manifestData)
+    }
+
     // MARK: - Download Coordination
 
     @MainActor

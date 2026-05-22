@@ -111,6 +111,27 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                     }
 
                     try FileManager.default.moveItem(at: tempURL, to: destination)
+
+                    // Verify against a sidecar manifest when one is present next to the
+                    // destination file. Missing manifests are silently skipped; verification
+                    // failure re-enters the catch block which marks the download failed and
+                    // removes the destination file.
+                    if model.modelType == .gguf {
+                        do {
+                            try self.verifyGGUFManifestIfPresent(at: destination)
+                        } catch {
+                            // The file is already at its final location — remove it before
+                            // surfacing the error so a corrupt/tampered GGUF is never left
+                            // in the models directory.
+                            do {
+                                try FileManager.default.removeItem(at: destination)
+                            } catch let removeError {
+                                Log.download.error("Failed to remove GGUF after manifest verification failure: \(removeError.localizedDescription)")
+                            }
+                            throw error
+                        }
+                    }
+
                     Log.download.info("Download complete: \(model.displayName) → \(destination.lastPathComponent)")
 
                     self.activeDownloads[context.modelID]?.markCompleted(localURL: destination)
