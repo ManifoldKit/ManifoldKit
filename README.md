@@ -10,6 +10,7 @@ Add the package, then drop this into your app entry point. `ManifoldKit.quickSta
 
 ```swift
 import SwiftUI
+import SwiftData
 import ManifoldKit
 import ManifoldUI
 
