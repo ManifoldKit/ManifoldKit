@@ -10,6 +10,7 @@ import ManifoldUI
 @main
 struct MinimalExampleApp: App {
     @State private var result: QuickStartResult?
+    @State private var error: ManifoldKitError?
     @State private var showModelManagement = false
 
     var body: some Scene {
@@ -20,9 +21,14 @@ struct MinimalExampleApp: App {
                 }
                 .environment(result.viewModel)
                 .modelContainer(result.bootstrap.modelContainer)
+            } else if let error {
+                ContentUnavailableView("Failed to start", systemImage: "exclamationmark.triangle", description: Text(error.errorDescription ?? ""))
             } else {
-                ProgressView()
-                    .task { result = try? await ManifoldKit.quickStart() }
+                ProgressView().task {
+                    do { result = try await ManifoldKit.quickStart() }
+                    catch let e as ManifoldKitError { error = e }
+                    catch { self.error = .from(error) }
+                }
             }
         }
     }
