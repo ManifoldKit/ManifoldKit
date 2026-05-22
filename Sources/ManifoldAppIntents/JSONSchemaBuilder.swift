@@ -1,6 +1,10 @@
 import Foundation
 import ManifoldInference
 
+#if canImport(AppIntents)
+import AppIntents
+#endif
+
 // MARK: - IntentEnumParameter
 
 /// Marker protocol enums adopt so the schema builder can enumerate their cases.
@@ -83,7 +87,12 @@ enum JSONSchemaBuilder {
             let name = label.hasPrefix("_") ? String(label.dropFirst()) : label
 
             let (typeSchema, isOptional) = describe(child.value)
-            properties[name] = typeSchema
+            // Decorate the property schema with title- and default-derived
+            // hints sourced from the wrapper's mirror. Done after `describe`
+            // so the inner type-mapping path stays focused on the shape and
+            // optionality of the wrapped value.
+            let decorated = decorate(typeSchema, wrapper: child.value)
+            properties[name] = decorated
             orderedNames.append(name)
             if !isOptional {
                 required.append(name)
@@ -152,6 +161,18 @@ enum JSONSchemaBuilder {
             return (schema, true)
         }
 
+        // Collection unwrap — `[T]` / `Set<T>` become `array` schemas whose
+        // `items` describe the element type. Recursion handles nested
+        // collections and `Optional<[T]>` (the outer `unwrapOptional` strips
+        // the optional first; we land here for the inner array shape).
+        if let element = unwrapCollection(typeName) {
+            let (itemsSchema, _) = mapTypeName(element, original: original)
+            return (.object([
+                "type": .string("array"),
+                "items": itemsSchema,
+            ]), false)
+        }
+
         switch typeName {
         case "Swift.String", "String":
             return (.object(["type": .string("string")]), false)
@@ -198,6 +219,107 @@ enum JSONSchemaBuilder {
         return nil
     }
 
+    /// `Swift.Array<X>` / `Array<X>` / `Swift.Set<X>` / `Set<X>` → `X`,
+    /// otherwise `nil`. Matches the optional-unwrap pattern intentionally so
+    /// both shapes peel one layer at a time and the caller can recurse.
+    private static func unwrapCollection(_ typeName: String) -> String? {
+        let prefixes = [
+            "Swift.Array<", "Array<",
+            "Swift.Set<", "Set<",
+        ]
+        for prefix in prefixes where typeName.hasPrefix(prefix) && typeName.last == ">" {
+            return String(typeName.dropFirst(prefix.count).dropLast())
+        }
+        return nil
+    }
+
+    /// Merges title/default hints from the `IntentParameter<T>` wrapper into
+    /// the per-property schema fragment produced by `mapTypeName`.
+    ///
+    /// `title` is emitted as the JSON-Schema `description` because that's the
+    /// field model contexts reliably read. The `@Parameter(description:)`
+    /// argument is intentionally not used: the AppIntents framework does not
+    /// surface it through reflection on the wrapper (only `title` is exposed
+    /// as a `LocalizedStringResource` child). If a host needs richer copy,
+    /// pass it via `@Parameter(title:)` instead.
+    ///
+    /// `defaultValue` is emitted as JSON-Schema `default` when the wrapper
+    /// carries one. Encoding uses the same ISO-8601 date strategy as
+    /// `AppIntentToolExecutor.execute(arguments:)` so a `Date` default
+    /// round-trips through the same shape the executor decodes.
+    ///
+    /// If reflection can't surface a usable hint, the corresponding field is
+    /// omitted rather than synthesised — an empty `description` or a guessed
+    /// `default` is worse signal than no field at all.
+    private static func decorate(_ schema: JSONSchemaValue, wrapper: Any) -> JSONSchemaValue {
+        guard case .object(var fields) = schema else { return schema }
+
+        let mirror = Mirror(reflecting: wrapper)
+        for child in mirror.children {
+            switch child.label {
+            case "title":
+                if let description = renderTitle(child.value), !description.isEmpty {
+                    fields["description"] = .string(description)
+                }
+            case "defaultValue":
+                if let json = encodeDefault(child.value) {
+                    fields["default"] = json
+                }
+            default:
+                continue
+            }
+        }
+        return .object(fields)
+    }
+
+    /// Renders an AppIntents `LocalizedStringResource` to a plain `String`
+    /// for inclusion in the schema. Returns `nil` if the wrapper hasn't been
+    /// initialised with a title (which would only happen if the property
+    /// wrapper is reconstructed via a path that bypasses `@Parameter(title:)`
+    /// — defensive in case future AppIntents changes alter the layout).
+    private static func renderTitle(_ value: Any) -> String? {
+        #if canImport(AppIntents)
+        if #available(iOS 26, macOS 26, *), let lsr = value as? LocalizedStringResource {
+            return String(localized: lsr)
+        }
+        #endif
+        return nil
+    }
+
+    /// Encodes a wrapper's `defaultValue` storage as a `JSONSchemaValue` so
+    /// it can be embedded in the schema as a `default` field. `defaultValue`
+    /// is always `Optional<T>` in the wrapper's storage — we unwrap, encode
+    /// with the executor's ISO-8601 date strategy, and re-decode into the
+    /// schema value type. Returns `nil` when the wrapper has no default or
+    /// when the value isn't `Encodable` (in which case guessing would
+    /// produce a wrong signal).
+    private static func encodeDefault(_ value: Any) -> JSONSchemaValue? {
+        // The `defaultValue` child is always `Optional<T>`. Mirror it once to
+        // distinguish "no default set" (`.none`) from "default is nil"
+        // (`.some(nil)` — not legal for AppIntents but cheap to handle).
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let unwrapped = mirror.children.first?.value else { return nil }
+            return encodeConcreteDefault(unwrapped)
+        }
+        return encodeConcreteDefault(value)
+    }
+
+    private static func encodeConcreteDefault(_ value: Any) -> JSONSchemaValue? {
+        guard let encodable = value as? any Encodable else { return nil }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        do {
+            let data = try encoder.encode(_EncodableBox(encodable))
+            let decoder = JSONDecoder()
+            return try decoder.decode(JSONSchemaValue.self, from: data)
+        } catch {
+            // A default that doesn't round-trip through JSON has no useful
+            // representation in the schema. Drop it rather than guessing.
+            return nil
+        }
+    }
+
     /// Looks up an `IntentEnumParameter` type by its fully-qualified name and
     /// returns its raw-value cases, or `nil` if no matching type is registered.
     private static func enumCases(forTypeName typeName: String) -> [String]? {
@@ -217,6 +339,19 @@ extension IntentEnumParameter {
     /// Returns every case's raw string value in declaration order.
     static var allCaseRawValues: [String] {
         Self.allCases.map { $0.rawValue }
+    }
+}
+
+/// Local type-erased `Encodable` box used by `encodeConcreteDefault` so we
+/// can call `JSONEncoder().encode(...)` on a value whose concrete type is
+/// only known dynamically. Mirrors `AppIntentToolExecutor.EncodableBox` —
+/// duplicated rather than shared to keep the schema builder free of
+/// executor-internal symbols.
+private struct _EncodableBox: Encodable {
+    let value: any Encodable
+    init(_ value: any Encodable) { self.value = value }
+    func encode(to encoder: Encoder) throws {
+        try value.encode(to: encoder)
     }
 }
 

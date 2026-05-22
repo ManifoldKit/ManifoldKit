@@ -155,13 +155,12 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         } catch is CancellationError {
             return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
         } catch {
-            // The AppIntents framework surfaces authorisation failures via
-            // its own error types. We can't import every concrete
-            // authorisation error symbol across SDK versions, so we sniff
-            // the error description / domain for the canonical
-            // "authorization" / "authorisation" / "permission" / "denied"
-            // tokens and route those to .permissionDenied. Everything else
-            // falls through to .permanent.
+            // Authorisation failures route to .permissionDenied so the
+            // orchestrator can surface a "grant access" prompt instead of a
+            // generic tool-failure message. See `looksLikeAuthorizationFailure`
+            // for the heuristic's full contract; in short, we match on
+            // `NSError.domain` (locale-safe) and avoid sniffing
+            // `localizedDescription` (locale-fragile).
             if Self.looksLikeAuthorizationFailure(error) {
                 return ToolResult(
                     callId: "",
@@ -383,19 +382,55 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         return true
     }
 
-    /// Heuristic match for AppIntents authorisation failures.
+    /// Domain-based heuristic for AppIntents authorisation failures.
+    ///
+    /// We can't import a concrete typed authorisation error from the
+    /// AppIntents framework — neither `AppIntentError`, `IntentError`, nor
+    /// `OpenIntentError` exposes an authorisation case in the public SDK
+    /// surface as of the iOS 26 / macOS 26 release. Until Apple ships a
+    /// stable typed surface, the only locale-safe signal is the `NSError`
+    /// domain.
+    ///
+    /// Two layers, in order:
+    ///   1. Exact-match the known authorisation-shaped domains we ship for.
+    ///      `LAError` (`com.apple.LocalAuthentication`) covers biometric /
+    ///      device-passcode flows. `AppIntentsAuthorizationErrorDomain` is
+    ///      the conventional domain string Apple's auth shim emits and
+    ///      matches our test fixture.
+    ///   2. Substring-match on common authorisation tokens in the domain
+    ///      string (`authorization` / `authorisation` / `permission`). This
+    ///      catches third-party intents that follow the same naming convention
+    ///      without us having to enumerate every framework's domain.
+    ///
+    /// Limits: errors that surface a custom domain unrelated to authorisation
+    /// while carrying an "access denied"-style description in their
+    /// `userInfo` will be classified as `.permanent`, not `.permissionDenied`.
+    /// That's a deliberate trade: domain identity is locale-safe;
+    /// `localizedDescription` is not, and matching English substrings on it
+    /// would have us misclassify any user running with a non-English locale.
     static func looksLikeAuthorizationFailure(_ error: Error) -> Bool {
         let nsError = error as NSError
-        let domain = nsError.domain.lowercased()
-        if domain.contains("authorization") || domain.contains("authorisation") || domain.contains("permission") {
+        let domain = nsError.domain
+
+        // Known authorisation domains — exact match keeps this immune to
+        // domain strings that incidentally contain the same substring (e.g.
+        // a hypothetical "MyApp.PermissionGrantedDomain" that fires on
+        // success).
+        let knownAuthDomains: Set<String> = [
+            "com.apple.LocalAuthentication",         // LAError
+            "AppIntentsAuthorizationErrorDomain",    // AppIntents auth shim convention
+        ]
+        if knownAuthDomains.contains(domain) {
             return true
         }
-        let description = error.localizedDescription.lowercased()
-        return description.contains("not authorized")
-            || description.contains("not authorised")
-            || description.contains("permission denied")
-            || description.contains("authorization required")
-            || description.contains("authorisation required")
+
+        // Domain-substring fallback for third-party domains that follow the
+        // convention (e.g. "com.example.PermissionDeniedError"). Case-
+        // insensitive; UK and US spellings both supported.
+        let lowered = domain.lowercased()
+        return lowered.contains("authorization")
+            || lowered.contains("authorisation")
+            || lowered.contains("permission")
     }
 }
 
