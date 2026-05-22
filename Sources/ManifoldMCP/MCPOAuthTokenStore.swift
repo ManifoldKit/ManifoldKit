@@ -120,87 +120,185 @@ public struct MCPOAuthTokenStore: Sendable {
         accountNamespace: String = "mcp.oauth.server"
     ) -> MCPOAuthTokenStore {
         let accessGroup = configuration.accessGroup
-        let accessibility = configuration.accessibility as String
+        // Access token keeps the caller-supplied class (default AfterFirstUnlockThisDeviceOnly)
+        // so background access-token refresh after device unlock still works.
+        let accessAccessibility = configuration.accessibility as String
+        // Refresh token uses the stricter WhenUnlockedThisDeviceOnly because it is only consumed
+        // during the interactive re-auth flow — compromising it reissues new access tokens.
+        let refreshAccessibility = kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String
 
         return .init(
             read: { serverID in
-                let accountName = keychainAccount(serverID: serverID, namespace: accountNamespace)
-                var query = baseKeychainQuery(serviceName: serviceName, account: accountName, accessGroup: accessGroup)
-                query[kSecReturnData as String] = true
-                query[kSecMatchLimit as String] = kSecMatchLimitOne
+                let accessAccount = keychainAccount(serverID: serverID, namespace: accountNamespace)
+                let refreshAccount = refreshKeychainAccount(serverID: serverID, namespace: accountNamespace)
 
-                var result: AnyObject?
-                let status = SecItemCopyMatching(query as CFDictionary, &result)
-                if status == errSecItemNotFound {
+                guard let accessData = try fetchItem(serviceName: serviceName, account: accessAccount, accessGroup: accessGroup) else {
                     return nil
                 }
-                guard status == errSecSuccess else {
-                    Log.inference.error(
-                        "MCPOAuthTokenStore.keychain read failed: status=\(status, privacy: .public) account=\(accountName, privacy: .private)"
-                    )
-                    throw keychainFailure(action: "read", status: status)
-                }
-                guard let data = result as? Data else {
-                    throw MCPError.authorizationFailed("Failed to decode OAuth tokens in Keychain: unexpected payload")
-                }
+                let accessTokens: MCPOAuthTokens
                 do {
-                    return try JSONDecoder().decode(MCPOAuthTokens.self, from: data)
+                    accessTokens = try JSONDecoder().decode(MCPOAuthTokens.self, from: accessData)
                 } catch {
                     throw MCPError.authorizationFailed("Failed to decode OAuth tokens from Keychain data: \(error.localizedDescription)")
                 }
+
+                // Refresh token lives in a separate Keychain item with stricter accessibility.
+                // Tolerate absence: the device may be locked beyond the refresh item's accessibility class,
+                // or the value was never written. Callers fall back to re-auth in that case.
+                let refreshTokenString: String?
+                if let refreshData = try fetchItem(serviceName: serviceName, account: refreshAccount, accessGroup: accessGroup) {
+                    refreshTokenString = String(data: refreshData, encoding: .utf8)
+                } else {
+                    // Backward compatibility: pre-split format stored refreshToken inside the access blob.
+                    refreshTokenString = accessTokens.refreshToken
+                }
+
+                return MCPOAuthTokens(
+                    accessTokenData: accessTokens.accessTokenData,
+                    refreshToken: refreshTokenString,
+                    expiresAt: accessTokens.expiresAt,
+                    scopes: accessTokens.scopes,
+                    tokenType: accessTokens.tokenType,
+                    issuer: accessTokens.issuer,
+                    subjectIdentifier: accessTokens.subjectIdentifier
+                )
             },
             write: { tokens, serverID in
-                let accountName = keychainAccount(serverID: serverID, namespace: accountNamespace)
-                let encoded: Data
+                let accessAccount = keychainAccount(serverID: serverID, namespace: accountNamespace)
+                let refreshAccount = refreshKeychainAccount(serverID: serverID, namespace: accountNamespace)
+
+                // Persist the access blob without the refresh token so the refresh value never
+                // lives in an item with the looser AfterFirstUnlock class.
+                let accessOnly = MCPOAuthTokens(
+                    accessTokenData: tokens.accessTokenData,
+                    refreshToken: nil,
+                    expiresAt: tokens.expiresAt,
+                    scopes: tokens.scopes,
+                    tokenType: tokens.tokenType,
+                    issuer: tokens.issuer,
+                    subjectIdentifier: tokens.subjectIdentifier
+                )
+                let encodedAccess: Data
                 do {
-                    encoded = try JSONEncoder().encode(tokens)
+                    encodedAccess = try JSONEncoder().encode(accessOnly)
                 } catch {
                     throw MCPError.authorizationFailed("Failed to encode OAuth tokens for persistence: \(error.localizedDescription)")
                 }
 
-                let updateQuery = baseKeychainQuery(serviceName: serviceName, account: accountName, accessGroup: accessGroup)
-                let updateAttributes: [String: Any] = [
-                    kSecValueData as String: encoded,
-                    kSecAttrAccessible as String: accessibility,
-                ]
-                let updateStatus = SecItemUpdate(updateQuery as CFDictionary, updateAttributes as CFDictionary)
-                if updateStatus == errSecSuccess {
-                    return
-                }
-                guard updateStatus == errSecItemNotFound else {
-                    Log.inference.error(
-                        "MCPOAuthTokenStore.keychain update failed: status=\(updateStatus, privacy: .public) account=\(accountName, privacy: .private)"
-                    )
-                    throw keychainFailure(action: "update", status: updateStatus)
-                }
+                try upsertItem(
+                    serviceName: serviceName,
+                    account: accessAccount,
+                    accessGroup: accessGroup,
+                    accessibility: accessAccessibility,
+                    data: encodedAccess
+                )
 
-                var addQuery = baseKeychainQuery(serviceName: serviceName, account: accountName, accessGroup: accessGroup)
-                addQuery[kSecValueData as String] = encoded
-                addQuery[kSecAttrAccessible as String] = accessibility
-                let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-                guard addStatus == errSecSuccess else {
-                    Log.inference.error(
-                        "MCPOAuthTokenStore.keychain add failed: status=\(addStatus, privacy: .public) account=\(accountName, privacy: .private)"
+                if let refresh = tokens.refreshToken, !refresh.isEmpty {
+                    try upsertItem(
+                        serviceName: serviceName,
+                        account: refreshAccount,
+                        accessGroup: accessGroup,
+                        accessibility: refreshAccessibility,
+                        data: Data(refresh.utf8)
                     )
-                    throw keychainFailure(action: "write", status: addStatus)
+                } else {
+                    // No refresh token on this write — purge any prior value rather than leaving it stale.
+                    try deleteItem(serviceName: serviceName, account: refreshAccount, accessGroup: accessGroup)
                 }
             },
             delete: { serverID in
-                let accountName = keychainAccount(serverID: serverID, namespace: accountNamespace)
-                let query = baseKeychainQuery(serviceName: serviceName, account: accountName, accessGroup: accessGroup)
-                let status = SecItemDelete(query as CFDictionary)
-                guard status == errSecSuccess || status == errSecItemNotFound else {
-                    Log.inference.error(
-                        "MCPOAuthTokenStore.keychain delete failed: status=\(status, privacy: .public) account=\(accountName, privacy: .private)"
-                    )
-                    throw keychainFailure(action: "delete", status: status)
-                }
+                let accessAccount = keychainAccount(serverID: serverID, namespace: accountNamespace)
+                let refreshAccount = refreshKeychainAccount(serverID: serverID, namespace: accountNamespace)
+                try deleteItem(serviceName: serviceName, account: accessAccount, accessGroup: accessGroup)
+                try deleteItem(serviceName: serviceName, account: refreshAccount, accessGroup: accessGroup)
             }
         )
     }
 
     private static func keychainAccount(serverID: UUID, namespace: String) -> String {
         "\(namespace).\(serverID.uuidString.lowercased())"
+    }
+
+    /// Deterministic suffix-derived account for the refresh-token Keychain item.
+    /// Kept private; callers interact only via `read`/`write`/`delete`.
+    private static func refreshKeychainAccount(serverID: UUID, namespace: String) -> String {
+        "\(keychainAccount(serverID: serverID, namespace: namespace)).refresh"
+    }
+
+    private static func fetchItem(
+        serviceName: String,
+        account: String,
+        accessGroup: String?
+    ) throws -> Data? {
+        var query = baseKeychainQuery(serviceName: serviceName, account: account, accessGroup: accessGroup)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return nil
+        }
+        guard status == errSecSuccess else {
+            Log.inference.error(
+                "MCPOAuthTokenStore.keychain read failed: status=\(status, privacy: .public) account=\(account, privacy: .private)"
+            )
+            throw keychainFailure(action: "read", status: status)
+        }
+        guard let data = result as? Data else {
+            throw MCPError.authorizationFailed("Failed to decode OAuth tokens in Keychain: unexpected payload")
+        }
+        return data
+    }
+
+    private static func upsertItem(
+        serviceName: String,
+        account: String,
+        accessGroup: String?,
+        accessibility: String,
+        data: Data
+    ) throws {
+        let updateQuery = baseKeychainQuery(serviceName: serviceName, account: account, accessGroup: accessGroup)
+        let updateAttributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: accessibility,
+        ]
+        let updateStatus = SecItemUpdate(updateQuery as CFDictionary, updateAttributes as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return
+        }
+        guard updateStatus == errSecItemNotFound else {
+            Log.inference.error(
+                "MCPOAuthTokenStore.keychain update failed: status=\(updateStatus, privacy: .public) account=\(account, privacy: .private)"
+            )
+            throw keychainFailure(action: "update", status: updateStatus)
+        }
+
+        var addQuery = baseKeychainQuery(serviceName: serviceName, account: account, accessGroup: accessGroup)
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = accessibility
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            Log.inference.error(
+                "MCPOAuthTokenStore.keychain add failed: status=\(addStatus, privacy: .public) account=\(account, privacy: .private)"
+            )
+            throw keychainFailure(action: "write", status: addStatus)
+        }
+    }
+
+    private static func deleteItem(
+        serviceName: String,
+        account: String,
+        accessGroup: String?
+    ) throws {
+        let query = baseKeychainQuery(serviceName: serviceName, account: account, accessGroup: accessGroup)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            Log.inference.error(
+                "MCPOAuthTokenStore.keychain delete failed: status=\(status, privacy: .public) account=\(account, privacy: .private)"
+            )
+            throw keychainFailure(action: "delete", status: status)
+        }
     }
 
     private static func baseKeychainQuery(
