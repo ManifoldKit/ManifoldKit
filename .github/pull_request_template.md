@@ -55,3 +55,11 @@
 - [ ] Public API changes have `///` doc comments
 - [ ] No hardcoded secrets, API keys, or personal data
 - [ ] Breaking change? (if yes, describe migration path below)
+
+## DX checklist
+
+- [ ] Did this change a public API a user might write in their README? If yes, updated the README snippet.
+- [ ] Did this add or change a trait, backend, or capability? If yes, updated `Sources/ManifoldKit/FeatureMatrix.swift` (when present).
+- [ ] Is this a breaking change for an existing consumer? If yes, added a migration note to `CHANGELOG.md` or `docs/`.
+- [ ] Did this change the `quickStart()` path or `MinimalExample`? If yes, the example still compiles and runs end-to-end.
+- [ ] Did this introduce a new public error type or surface? If yes, it conforms to `LocalizedError` with a user-facing `errorDescription`.
