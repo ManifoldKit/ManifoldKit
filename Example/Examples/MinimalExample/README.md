@@ -49,7 +49,7 @@ shape.
 ## What to look at next
 
 - `Sources/ManifoldKit/QuickStart.swift` — what `quickStart()` actually does.
-- `Example/ManifoldDemo/` — the advanced reference app (sessions, model
+- `Example/Advanced/` — the advanced reference app (sessions, model
   management, custom composer accessories, etc.).
 - Drop down to `ManifoldBootstrap.build(...)` directly if you need a custom
   inference service, model container, or non-default backend mix.

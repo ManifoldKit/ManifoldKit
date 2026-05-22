@@ -82,7 +82,7 @@ ManifoldKit follows an **n-1 platform policy**: the current Apple OS release and
   <img src="Example/Screenshots/demo-ios.png" alt="ManifoldKit on iOS — chat conversation on iPhone" width="36%">
 </p>
 
-The full runnable demo lives in [`Example/ManifoldDemo`](Example/ManifoldDemo) (sessions, model management, custom composer accessories). For the minimum-viable shape see [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample).
+Start with [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample) if you're new — it's the canonical Hello World. The full-featured reference app lives at [`Example/Advanced`](Example/Advanced) (sessions, model management, custom composer accessories); open it once the minimal example makes sense.
 
 ## Architecture
 
@@ -270,14 +270,12 @@ SourceKit can retain stale module-not-found diagnostics from a previous trait-se
 
 ## Example App
 
-The full runnable demo is in [`Example/ManifoldDemo`](Example/ManifoldDemo):
+Start with [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample) — the canonical Hello World. The full-featured reference app lives at [`Example/Advanced`](Example/Advanced); open it once the minimal example makes sense.
 
 ```bash
 cd Example
-open ManifoldDemo.xcodeproj
+open Advanced.xcodeproj
 ```
-
-The minimal-viable shape is in [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample).
 
 ## How ManifoldKit compares to AnyLanguageModel
 

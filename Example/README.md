@@ -1,10 +1,10 @@
 # ManifoldKit Examples
 
-## ManifoldDemo (Full Reference App)
+## Advanced (Full Reference App)
 
-The full-featured demo showing all ManifoldKit capabilities working together. This is also the host for UI tests.
+The full-featured demo showing all ManifoldKit capabilities working together. This is also the host for UI tests. Start with `Examples/MinimalExample/` if you're new — open this once the minimal example makes sense.
 
-1. Open `ManifoldDemo.xcodeproj` in Xcode
+1. Open `Advanced.xcodeproj` in Xcode
 2. The project references `ManifoldKit` as a local package from `../../`
 3. Build and run on iOS Simulator or Mac
 
@@ -14,7 +14,7 @@ From the repository root, use the fast rerun loop:
 
 ```bash
 scripts/example-ui-tests.sh build-for-testing
-scripts/example-ui-tests.sh test-without-building -only-testing:ManifoldDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome
 ```
 
 The helper auto-selects an available simulator destination. If you need to pin one manually, inspect `xcrun simctl list devices available` and pass `--destination 'platform=iOS Simulator,id=<SIMULATOR_ID>'`.

@@ -64,7 +64,7 @@
 			containerPortal = D10001000000000000000000 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = C10001000000000000000000;
-			remoteInfo = ManifoldDemo;
+			remoteInfo = Advanced;
 		};
 		C22001000000000000000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -89,9 +89,9 @@
 		F10005000000000000000000 /* ChatEmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEmptyStateView.swift; sourceTree = "<group>"; };
 		F10006000000000000000000 /* ToolApprovalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolApprovalSheet.swift; sourceTree = "<group>"; };
 		F10007000000000000000000 /* ToolPolicyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings/ToolPolicyView.swift; sourceTree = "<group>"; };
-		F10003000000000000000000 /* ManifoldDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ManifoldDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F10003000000000000000000 /* Advanced.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Advanced.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F11001000000000000000000 /* ModelManagementUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagementUITests.swift; sourceTree = "<group>"; };
-		F11002000000000000000000 /* ManifoldDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ManifoldDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F11002000000000000000000 /* AdvancedUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AdvancedUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F11003000000000000000000 /* UITestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestHelpers.swift; sourceTree = "<group>"; };
 		F11004000000000000000000 /* ChatFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFlowUITests.swift; sourceTree = "<group>"; };
 		F11005000000000000000000 /* SessionManagementUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManagementUITests.swift; sourceTree = "<group>"; };
@@ -189,14 +189,14 @@
 		A00001000000000000000000 = {
 			isa = PBXGroup;
 			children = (
-				A00002000000000000000000 /* ManifoldDemo */,
-				A01001000000000000000000 /* ManifoldDemoUITests */,
+				A00002000000000000000000 /* Advanced */,
+				A01001000000000000000000 /* AdvancedUITests */,
 				A00003000000000000000000 /* Products */,
 				A00004000000000000000000 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
-		A00002000000000000000000 /* ManifoldDemo */ = {
+		A00002000000000000000000 /* Advanced */ = {
 			isa = PBXGroup;
 			children = (
 				F10001000000000000000000 /* ManifoldDemoApp.swift */,
@@ -225,7 +225,7 @@
 				F10024000000000000000000 /* DemoNowTool.swift */,
 				A02001000000000000000000 /* Extensions */,
 			);
-			path = ManifoldDemo;
+			path = Advanced;
 			sourceTree = "<group>";
 		};
 		A02001000000000000000000 /* Extensions */ = {
@@ -261,8 +261,8 @@
 		A00003000000000000000000 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F10003000000000000000000 /* ManifoldDemo.app */,
-				F11002000000000000000000 /* ManifoldDemoUITests.xctest */,
+				F10003000000000000000000 /* Advanced.app */,
+				F11002000000000000000000 /* AdvancedUITests.xctest */,
 				F10037000000000000000000 /* ManifoldDemoShareExtension.appex */,
 				F10038000000000000000000 /* ManifoldDemoActionExtension.appex */,
 			);
@@ -276,7 +276,7 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		A01001000000000000000000 /* ManifoldDemoUITests */ = {
+		A01001000000000000000000 /* AdvancedUITests */ = {
 			isa = PBXGroup;
 			children = (
 				F11003000000000000000000 /* UITestHelpers.swift */,
@@ -290,15 +290,15 @@
 				F11010000000000000000000 /* DemoScenarioUITests.swift */,
 				F11011000000000000000000 /* InboundPayloadEnvelopeTests.swift */,
 			);
-			path = ManifoldDemoUITests;
+			path = AdvancedUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C10001000000000000000000 /* ManifoldDemo */ = {
+		C10001000000000000000000 /* Advanced */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E20002000000000000000000 /* Build configuration list for PBXNativeTarget "ManifoldDemo" */;
+			buildConfigurationList = E20002000000000000000000 /* Build configuration list for PBXNativeTarget "Advanced" */;
 			buildPhases = (
 				B10001000000000000000000 /* Sources */,
 				B10002000000000000000000 /* Frameworks */,
@@ -310,7 +310,7 @@
 				D22001000000000000000000 /* PBXTargetDependency */,
 				D23001000000000000000000 /* PBXTargetDependency */,
 			);
-			name = ManifoldDemo;
+			name = Advanced;
 			packageProductDependencies = (
 				F30001000000000000000000 /* ManifoldPersistenceSwiftData */,
 				F30002000000000000000000 /* ManifoldUI */,
@@ -321,8 +321,8 @@
 				F30008000000000000000000 /* ManifoldAppIntents */,
 				F30009000000000000000000 /* ManifoldVoice */,
 			);
-			productName = ManifoldDemo;
-			productReference = F10003000000000000000000 /* ManifoldDemo.app */;
+			productName = Advanced;
+			productReference = F10003000000000000000000 /* Advanced.app */;
 			productType = "com.apple.product-type.application";
 		};
 		C12001000000000000000000 /* ManifoldDemoShareExtension */ = {
@@ -361,9 +361,9 @@
 			productReference = F10038000000000000000000 /* ManifoldDemoActionExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		C11001000000000000000000 /* ManifoldDemoUITests */ = {
+		C11001000000000000000000 /* AdvancedUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E21001000000000000000000 /* Build configuration list for PBXNativeTarget "ManifoldDemoUITests" */;
+			buildConfigurationList = E21001000000000000000000 /* Build configuration list for PBXNativeTarget "AdvancedUITests" */;
 			buildPhases = (
 				B11001000000000000000000 /* Sources */,
 				B11002000000000000000000 /* Frameworks */,
@@ -373,12 +373,12 @@
 			dependencies = (
 				D21001000000000000000000 /* PBXTargetDependency */,
 			);
-			name = ManifoldDemoUITests;
+			name = AdvancedUITests;
 			packageProductDependencies = (
 				F30007000000000000000000 /* ManifoldInference */,
 			);
-			productName = ManifoldDemoUITests;
-			productReference = F11002000000000000000000 /* ManifoldDemoUITests.xctest */;
+			productName = AdvancedUITests;
+			productReference = F11002000000000000000000 /* AdvancedUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -391,7 +391,7 @@
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 2640;
 			};
-			buildConfigurationList = E20001000000000000000000 /* Build configuration list for PBXProject "ManifoldDemo" */;
+			buildConfigurationList = E20001000000000000000000 /* Build configuration list for PBXProject "Advanced" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -407,10 +407,10 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C10001000000000000000000 /* ManifoldDemo */,
+				C10001000000000000000000 /* Advanced */,
 				C12001000000000000000000 /* ManifoldDemoShareExtension */,
 				C13001000000000000000000 /* ManifoldDemoActionExtension */,
-				C11001000000000000000000 /* ManifoldDemoUITests */,
+				C11001000000000000000000 /* AdvancedUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -487,7 +487,7 @@
 /* Begin PBXTargetDependency section */
 		D21001000000000000000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = C10001000000000000000000 /* ManifoldDemo */;
+			target = C10001000000000000000000 /* Advanced */;
 			targetProxy = C21001000000000000000000 /* PBXContainerItemProxy */;
 		};
 		D22001000000000000000000 /* PBXTargetDependency */ = {
@@ -626,13 +626,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = ManifoldDemo/ManifoldDemo.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Advanced/ManifoldDemo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ManifoldDemo/Info.plist;
+				INFOPLIST_FILE = Advanced/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -661,13 +661,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = ManifoldDemo/ManifoldDemo.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Advanced/ManifoldDemo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ManifoldDemo/Info.plist;
+				INFOPLIST_FILE = Advanced/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -708,7 +708,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = ManifoldDemo;
+				TEST_TARGET_NAME = Advanced;
 			};
 			name = Debug;
 		};
@@ -729,19 +729,19 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = ManifoldDemo;
+				TEST_TARGET_NAME = Advanced;
 			};
 			name = Release;
 		};
 		E12001000000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "ManifoldDemo/Extensions/ShareExtension/ShareExtension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "Advanced/Extensions/ShareExtension/ShareExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "ManifoldDemo/Extensions/ShareExtension/ShareExtensionInfo.plist";
+				INFOPLIST_FILE = "Advanced/Extensions/ShareExtension/ShareExtensionInfo.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -762,12 +762,12 @@
 		E12002000000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "ManifoldDemo/Extensions/ShareExtension/ShareExtension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "Advanced/Extensions/ShareExtension/ShareExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "ManifoldDemo/Extensions/ShareExtension/ShareExtensionInfo.plist";
+				INFOPLIST_FILE = "Advanced/Extensions/ShareExtension/ShareExtensionInfo.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -789,12 +789,12 @@
 		E13001000000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "ManifoldDemo/Extensions/ActionExtension/ActionExtension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "Advanced/Extensions/ActionExtension/ActionExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "ManifoldDemo/Extensions/ActionExtension/ActionExtensionInfo.plist";
+				INFOPLIST_FILE = "Advanced/Extensions/ActionExtension/ActionExtensionInfo.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -815,12 +815,12 @@
 		E13002000000000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "ManifoldDemo/Extensions/ActionExtension/ActionExtension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "Advanced/Extensions/ActionExtension/ActionExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "ManifoldDemo/Extensions/ActionExtension/ActionExtensionInfo.plist";
+				INFOPLIST_FILE = "Advanced/Extensions/ActionExtension/ActionExtensionInfo.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -842,7 +842,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		E20001000000000000000000 /* Build configuration list for PBXProject "ManifoldDemo" */ = {
+		E20001000000000000000000 /* Build configuration list for PBXProject "Advanced" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E10001000000000000000000 /* Debug */,
@@ -851,7 +851,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E20002000000000000000000 /* Build configuration list for PBXNativeTarget "ManifoldDemo" */ = {
+		E20002000000000000000000 /* Build configuration list for PBXNativeTarget "Advanced" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E10003000000000000000000 /* Debug */,
@@ -860,7 +860,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E21001000000000000000000 /* Build configuration list for PBXNativeTarget "ManifoldDemoUITests" */ = {
+		E21001000000000000000000 /* Build configuration list for PBXNativeTarget "AdvancedUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E11001000000000000000000 /* Debug */,

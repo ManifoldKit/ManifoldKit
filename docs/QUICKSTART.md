@@ -153,6 +153,6 @@ do {
 
 - [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full trait → backend → capability table.
 - [`Example/Examples/MinimalExample`](../Example/Examples/MinimalExample) — runnable minimum-viable app.
-- [`Example/ManifoldDemo`](../Example/ManifoldDemo) — full reference app with sessions, model management, and a custom composer accessory.
+- [`Example/Advanced`](../Example/Advanced) — full reference app with sessions, model management, and a custom composer accessory.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — architecture invariants and how to add a backend.
 - [CLAUDE.md](../CLAUDE.md) — target layout, dependency rules, and platform policy.
