@@ -14,7 +14,7 @@
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
         { "type": "fix", "section": "Bug Fixes" },
-        { "type": "perf", "section": "Performance" },
+        { "type": "perf", "section": "Performance Improvements" },
         { "type": "dx", "section": "Developer Experience" },
         { "type": "docs", "section": "Documentation" },
         { "type": "test", "section": "Tests" },
