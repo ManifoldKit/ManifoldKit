@@ -152,7 +152,14 @@ public func withRetry<T>(
     }
 
     // Unreachable — the loop is unbounded and exits via return or throw.
-    throw RetryExhaustedError(lastError: CloudBackendError.networkError(underlying: URLError(.unknown)), attempts: 0)
+    // The sentinel uses the unified rim so even this "should never happen"
+    // path produces a user-readable string rather than a CFNetwork code.
+    throw RetryExhaustedError(
+        lastError: CloudBackendError.networkError(
+            underlying: ManifoldKitError.unknown(underlyingDescription: "")
+        ),
+        attempts: 0
+    )
 }
 
 // MARK: - Backward Compatibility

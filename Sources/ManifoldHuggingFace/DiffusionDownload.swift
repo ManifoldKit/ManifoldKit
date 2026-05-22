@@ -684,7 +684,11 @@ public extension HuggingFaceService {
                     }
                     guard let tempURL else {
                         Log.download.error("downloadTask nil tempURL for \(filename, privacy: .public)")
-                        continuation.resume(throwing: HuggingFaceError.downloadFailed(underlying: URLError(.unknown)))
+                        continuation.resume(throwing: HuggingFaceError.downloadFailed(
+                            underlying: ManifoldKitError.unknown(
+                                underlyingDescription: "Download completed without a temporary file"
+                            )
+                        ))
                         return
                     }
                     Log.download.info("downloadTask complete for \(filename, privacy: .public), moving to destination")

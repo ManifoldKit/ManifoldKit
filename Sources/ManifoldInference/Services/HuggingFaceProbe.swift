@@ -129,6 +129,11 @@ public enum HuggingFaceProbe {
     /// trait-gated and not reachable from `ManifoldInference`): never echo
     /// raw URLs, hostnames, tokens, HTML, or stack traces — bucket the error
     /// by code and emit a short, stable label.
+    ///
+    /// Kept distinct from ``ManifoldKitError/errorDescription`` because this
+    /// returns a compact log label ("DNS lookup failed") whereas the rim's
+    /// strings are user-facing sentences. See ``ManifoldKitError/from(_:)``
+    /// for the consumer-presentable mapping.
     static func sanitise(urlError: URLError) -> String {
         switch urlError.code {
         case .timedOut:

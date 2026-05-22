@@ -76,7 +76,11 @@ public enum CloudBackendError: LocalizedError, CategorizedError {
         case .serverError(let code, let message):
             return "Server error (\(code)): \(message)"
         case .networkError(let underlying):
-            return "Network error: \(underlying.localizedDescription)"
+            // Route through the unified rim so consumers see user-readable
+            // strings ("Not connected to the internet.") rather than the raw
+            // `URLError.localizedDescription` ("kCFErrorDomainCFNetwork -1009").
+            return ManifoldKitError.from(underlying).errorDescription
+                ?? "Network error: \(underlying.localizedDescription)"
         case .parseError(let detail):
             return "Failed to parse response: \(detail)"
         case .missingAPIKey:
