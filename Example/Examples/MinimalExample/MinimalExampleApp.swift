@@ -1,108 +1,57 @@
 import SwiftUI
 import SwiftData
-import ManifoldPersistenceSwiftData
-import ManifoldInference
+import ManifoldKit
 import ManifoldUI
-import ManifoldUIModelManagement
-import ManifoldBackends
-#if canImport(ManifoldHuggingFace)
-import ManifoldHuggingFace
-#endif
 
-/// The simplest possible ManifoldKit app with runtime-first bootstrap.
+/// The simplest possible ManifoldKit app.
 ///
-/// This assembles a ``ManifoldBootstrap``, registers the built-in backends,
-/// and presents the standard chat + model-management surfaces.
+/// `ManifoldKit.quickStart()` collapses the historical three-object dance
+/// (`ManifoldBootstrap` + `DefaultBackends.register` + `ChatViewModel`) into
+/// a single async call. Adopters who need a custom inference service, a
+/// custom model container, or non-default backends should drop down to
+/// `ManifoldBootstrap.build` directly — that path is unchanged.
+///
+/// Errors from any step surface as ``ManifoldKitError``.
 @main
 struct MinimalExampleApp: App {
-    private let runtime: ManifoldBootstrap
-    @State private var chatViewModel: ChatViewModel
-    @State private var sessionManager: SessionManagerViewModel
-    @State private var modelManagement: ModelManagementViewModel
-
-    init() {
-        // Building the runtime — and therefore the SwiftData container — in
-        // App.init() is fine here because the Minimal example uses a small
-        // schema. For larger schemas, prefer building the container in a
-        // detached `.task` (see ManifoldDemoApp): SwiftData container setup
-        // (schema compilation + SQLite open) can stall the first frame for
-        // several seconds when done on the main thread.
-        let runtime = try! ManifoldBootstrap(
-            configuration: ManifoldConfiguration(
-                appName: "Minimal Chat",
-                bundleIdentifier: "com.manifoldkit.minimal-example"
-            )
-        )
-        self.runtime = runtime
-
-        DefaultBackends.register(with: runtime.inferenceService)
-
-        let vm = ChatViewModel(
-            inferenceService: runtime.inferenceService,
-            conversationRuntime: runtime.conversationRuntime
-        )
-        vm.foundationModelProvider = {
-            if #available(iOS 26, macOS 26, *) {
-                return FoundationBackend.isAvailable
-            }
-            return false
-        }
-        vm.configure(runtime: runtime)
-        let sessionManager = SessionManagerViewModel()
-        sessionManager.configure(runtime: runtime)
-
-        _chatViewModel = State(initialValue: vm)
-        _sessionManager = State(initialValue: sessionManager)
-        #if canImport(ManifoldHuggingFace)
-        let downloadManager = BackgroundDownloadManager()
-        let huggingFaceService = HuggingFaceService()
-        let modelManagement = ModelManagementViewModel(
-            huggingFaceService: huggingFaceService,
-            downloadManager: downloadManager
-        )
-        #else
-        let modelManagement = ModelManagementViewModel.live()
-        #endif
-        modelManagement.benchmarkCache = runtime.benchmarkCache
-        _modelManagement = State(initialValue: modelManagement)
-    }
+    @State private var result: QuickStartResult?
+    @State private var error: ManifoldKitError?
+    @State private var showModelManagement = false
 
     var body: some Scene {
         WindowGroup {
-            MinimalContentView()
-                .environment(chatViewModel)
-                .environment(sessionManager)
-                .environment(modelManagement)
-                .environment(\.samplerPresetStore, runtime.samplerPresetStore)
-                .environment(\.endpointStore, runtime.endpointStore)
-                .task {
-                    // SwiftData fetches and the initial model load run here
-                    // rather than in App.init(): the @MainActor work below
-                    // touches the persistent store, and doing it during
-                    // initialiser execution stalls the first frame.
-                    await bootstrapInitialSession()
+            if let result {
+                NavigationStack {
+                    ChatView(showModelManagement: $showModelManagement)
                 }
+                .environment(result.viewModel)
+                .modelContainer(result.bootstrap.modelContainer)
+            } else if let error {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error.errorDescription ?? "Unknown error")
+                )
+            } else {
+                ProgressView("Starting…")
+                    .task { await start() }
+            }
         }
-        .modelContainer(runtime.modelContainer)
     }
 
     @MainActor
-    private func bootstrapInitialSession() async {
-        chatViewModel.refreshModels()
-        // Phase 1.0: `configure` no longer auto-loads. Pull the first page
-        // here so an existing-session check sees the persisted list.
-        await sessionManager.loadSessions()
-
-        let initialSession: ChatSessionRecord?
-        if let existing = sessionManager.sessions.first {
-            initialSession = existing
-        } else {
-            initialSession = try? await sessionManager.createSession()
-        }
-        if let initialSession {
-            sessionManager.activeSession = initialSession
-            await chatViewModel.switchToSession(initialSession)
-            chatViewModel.dispatchSelectedLoad()
+    private func start() async {
+        do {
+            result = try await ManifoldKit.quickStart(
+                configuration: ManifoldConfiguration(
+                    appName: "Minimal Chat",
+                    bundleIdentifier: "com.manifoldkit.minimal-example"
+                )
+            )
+        } catch let e as ManifoldKitError {
+            error = e
+        } catch {
+            self.error = .from(error)
         }
     }
 }

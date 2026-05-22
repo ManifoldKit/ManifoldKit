@@ -1,23 +1,49 @@
 # Minimal Example
 
-The simplest possible ManifoldKit app. Demonstrates the bare minimum setup:
+The smallest possible ManifoldKit app — one call to bootstrap, one view.
 
-- Create a `ManifoldBootstrap` at startup
-- Register backends with `DefaultBackends.register(with:)`
-- Configure a `ChatViewModel` and `SessionManagerViewModel` from the runtime
-- Present `ChatView` with environment wiring
+```swift
+import SwiftUI
+import ManifoldKit
+import ManifoldUI
+
+@main
+struct MinimalExampleApp: App {
+    @State private var result: QuickStartResult?
+    @State private var showModelManagement = false
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                NavigationStack {
+                    ChatView(showModelManagement: $showModelManagement)
+                }
+                .environment(result.viewModel)
+                .modelContainer(result.bootstrap.modelContainer)
+            } else {
+                ProgressView()
+                    .task { result = try? await ManifoldKit.quickStart() }
+            }
+        }
+    }
+}
+```
+
+`ManifoldKit.quickStart()` builds the SwiftData container, registers the
+compiled-in backends, and wires up a `ChatViewModel`. Errors surface as
+`ManifoldKitError` — see `MinimalExampleApp.swift` for the explicit handling
+shape.
 
 ## Running
 
-1. Open `ManifoldExamples.xcodeproj` in Xcode
-2. Select the **MinimalExample** scheme
-3. Build and run on iOS Simulator or Mac
+1. From `Example/Examples/`, run `xcodegen` (if you haven't already).
+2. Open `ManifoldExamples.xcodeproj` in Xcode.
+3. Pick the **MinimalExample** scheme and run on Mac or an iOS simulator.
 
-## What to Look At
+## What to look at next
 
-- `MinimalExampleApp.swift` — app entry point and runtime assembly
-- `MinimalContentView.swift` — wraps `ChatView` with the thinnest possible shell
-
-## Next Steps
-
-See the other examples for specific features (narration, remote backends, tool calling, RAG).
+- `Sources/ManifoldKit/QuickStart.swift` — what `quickStart()` actually does.
+- `Example/ManifoldDemo/` — the advanced reference app (sessions, model
+  management, custom composer accessories, etc.).
+- Drop down to `ManifoldBootstrap.build(...)` directly if you need a custom
+  inference service, model container, or non-default backend mix.

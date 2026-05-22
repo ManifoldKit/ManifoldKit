@@ -19,11 +19,9 @@ targets:
       - MinimalExample
     dependencies:
       - package: ManifoldKit
-        product: ManifoldPersistenceSwiftData
+        product: ManifoldKit
       - package: ManifoldKit
         product: ManifoldUI
-      - package: ManifoldKit
-        product: ManifoldBackends
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.manifoldkit.minimal-example

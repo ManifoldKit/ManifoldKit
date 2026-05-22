@@ -7,126 +7,91 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		09C86A21537F0ED2862D66ED /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
-		34606F73E74AAFC63E24F59A /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
-		40C7626D4A44DD1D18F0A1BF /* ManifoldPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = 35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */; };
-		5B0A9E6C1A2B3C4D5E6F7081 /* ManifoldUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */; };
-		6F9A1CA5CA7FF16DB36A5861 /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4C28E08B212DBDD057CE27CF /* ManifoldUI */; };
-		79E6928B6CE7E3461758C5D9 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */; };
-		958FF9C8DBB5C5C151DFF5D7 /* MinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */; };
-		9784B251D853FA597B206D29 /* ManifoldBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 56CCAAB5544541CD79EE64CD /* ManifoldBackends */; };
-		9B8A7C6D5E4F302918273645 /* ManifoldUIModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 6D5E4F302918273645564738 /* ManifoldUIModelManagement */; };
-		A19A3DAEB85A136F8D62D31D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 365ABBF494EF2955A53C327F /* README.md */; };
-		A336FC431FF118C880002B21 /* ManifoldPersistenceSwiftData in Frameworks */ = {isa = PBXBuildFile; productRef = DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */; };
-		A9BB32CEAF191F5FF101B54C /* ManifoldBackends in Frameworks */ = {isa = PBXBuildFile; productRef = 7A5841AF39A6AB3B5022006D /* ManifoldBackends */; };
-		D2930E9046EADB459A40EA45 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 365ABBF494EF2955A53C327F /* README.md */; };
-		EFA072F50C91195B4A338E8C /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5D2764E94034C1EB5E482F75 /* ManifoldUI */; };
+		4D3C850706E8802F450F8C26 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */; };
+		4EBEBAC08E9EE08238D3BB85 /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 07C9B8F142E9995C1EF08253 /* ManifoldKit */; };
+		887949644309FE2DF3B10B3B /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = 6C1F61587777E2E027258989 /* ManifoldUI */; };
+		98509218DEE6BA99E087C18D /* ManifoldKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6CECC027D599FFC52C710341 /* ManifoldKit */; };
+		AC054ED9C7CE70881CAF8B5A /* ManifoldUI in Frameworks */ = {isa = PBXBuildFile; productRef = B2AC4DF189F96757A85D15A9 /* ManifoldUI */; };
+		BC168A0C475876BD4A4188A6 /* MinimalExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */; };
+		C01CDA558D6A24BB8C3A252D /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = B3806787FE090B303F615635 /* README.md */; };
+		D6385FCBE3AC063A57048413 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = B3806787FE090B303F615635 /* README.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0B803E317BA994107EA819AE /* MinimalExample.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0F5292FF1CF8CD14B8E07E9D /* ManifoldKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ManifoldKit; path = ../..; sourceTree = SOURCE_ROOT; };
-		365ABBF494EF2955A53C327F /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		92BE324A993DAA5220792683 /* MinimalExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalContentView.swift; sourceTree = "<group>"; };
-		ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalExampleApp.swift; sourceTree = "<group>"; };
+		1C74D1FF18E0994E77683D4A /* MinimalExample.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		88012A97C303F9C85A16B00C /* MinimalExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MinimalExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MinimalExampleApp.swift; sourceTree = "<group>"; };
+		B3806787FE090B303F615635 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		D8B250A15903E614D6500441 /* agent-a4b4349f3eede6f8b */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-a4b4349f3eede6f8b"; path = ../..; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		015C9298259F064137388FE4 /* Frameworks */ = {
+		490FA3F59F50A5DA110D316C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				40C7626D4A44DD1D18F0A1BF /* ManifoldPersistenceSwiftData in Frameworks */,
-				EFA072F50C91195B4A338E8C /* ManifoldUI in Frameworks */,
-				9784B251D853FA597B206D29 /* ManifoldBackends in Frameworks */,
-				5B0A9E6C1A2B3C4D5E6F7081 /* ManifoldUIModelManagement in Frameworks */,
+				98509218DEE6BA99E087C18D /* ManifoldKit in Frameworks */,
+				887949644309FE2DF3B10B3B /* ManifoldUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		9DAB966B831C7D8FA2F24A98 /* Frameworks */ = {
+		F202F90D5596CC461FCD2785 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A336FC431FF118C880002B21 /* ManifoldPersistenceSwiftData in Frameworks */,
-				6F9A1CA5CA7FF16DB36A5861 /* ManifoldUI in Frameworks */,
-				A9BB32CEAF191F5FF101B54C /* ManifoldBackends in Frameworks */,
-				9B8A7C6D5E4F302918273645 /* ManifoldUIModelManagement in Frameworks */,
+				4EBEBAC08E9EE08238D3BB85 /* ManifoldKit in Frameworks */,
+				AC054ED9C7CE70881CAF8B5A /* ManifoldUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		091468DD26BB7CAAC1DB9424 = {
+		497B212F402BE13398A3435D /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				42DC84986F1D4D965373F51B /* MinimalExample */,
-				E03E0C62E216829522D5D8B5 /* Packages */,
-				38BB536CCAD94BD0FE87DFC6 /* Products */,
+				D8B250A15903E614D6500441 /* agent-a4b4349f3eede6f8b */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		75D9F8ED9BB1C49CF0434438 = {
+			isa = PBXGroup;
+			children = (
+				AA9704F2855B606C906769F9 /* MinimalExample */,
+				497B212F402BE13398A3435D /* Packages */,
+				D489A83B94DC1BD0D6D026F1 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		38BB536CCAD94BD0FE87DFC6 /* Products */ = {
+		AA9704F2855B606C906769F9 /* MinimalExample */ = {
 			isa = PBXGroup;
 			children = (
-				0B803E317BA994107EA819AE /* MinimalExample.app */,
-				92BE324A993DAA5220792683 /* MinimalExample.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		42DC84986F1D4D965373F51B /* MinimalExample */ = {
-			isa = PBXGroup;
-			children = (
-				A37540D69A62A294DAAD7FC1 /* MinimalContentView.swift */,
-				ECA4C42C4D0FB1CD0ECBDA84 /* MinimalExampleApp.swift */,
-				365ABBF494EF2955A53C327F /* README.md */,
+				9AB628E8A481CA1CF863A5DF /* MinimalExampleApp.swift */,
+				B3806787FE090B303F615635 /* README.md */,
 			);
 			path = MinimalExample;
 			sourceTree = "<group>";
 		};
-		E03E0C62E216829522D5D8B5 /* Packages */ = {
+		D489A83B94DC1BD0D6D026F1 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				0F5292FF1CF8CD14B8E07E9D /* ManifoldKit */,
+				1C74D1FF18E0994E77683D4A /* MinimalExample.app */,
+				88012A97C303F9C85A16B00C /* MinimalExample.app */,
 			);
-			name = Packages;
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		089761BD700E47F290C37794 /* MinimalExample_iOS */ = {
+		E5E9FF4635E50D287E9E93BC /* MinimalExample_macOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 082185DE6FA7704817B21C6D /* Build configuration list for PBXNativeTarget "MinimalExample_iOS" */;
+			buildConfigurationList = 64DE611EB8F7EBB77610277B /* Build configuration list for PBXNativeTarget "MinimalExample_macOS" */;
 			buildPhases = (
-				3005C4AD05504348A18E66DE /* Sources */,
-				CB0E10FB70F06B69CBA6AFA6 /* Resources */,
-				9DAB966B831C7D8FA2F24A98 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = MinimalExample_iOS;
-			packageProductDependencies = (
-				DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */,
-				4C28E08B212DBDD057CE27CF /* ManifoldUI */,
-				7A5841AF39A6AB3B5022006D /* ManifoldBackends */,
-				6D5E4F302918273645564738 /* ManifoldUIModelManagement */,
-			);
-			productName = MinimalExample_iOS;
-			productReference = 0B803E317BA994107EA819AE /* MinimalExample.app */;
-			productType = "com.apple.product-type.application";
-		};
-		A0F65594E03C815EB84528A5 /* MinimalExample_macOS */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 2E0408BFF6E87A490B424BB2 /* Build configuration list for PBXNativeTarget "MinimalExample_macOS" */;
-			buildPhases = (
-				510098C91DBEE09F09488F04 /* Sources */,
-				72A8E61D380813E8468E0C8F /* Resources */,
-				015C9298259F064137388FE4 /* Frameworks */,
+				94A243F9C0A6F7CD55EBEAED /* Sources */,
+				7B14F2858724B2BF2909CC55 /* Resources */,
+				F202F90D5596CC461FCD2785 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -134,19 +99,38 @@
 			);
 			name = MinimalExample_macOS;
 			packageProductDependencies = (
-				35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */,
-				5D2764E94034C1EB5E482F75 /* ManifoldUI */,
-				56CCAAB5544541CD79EE64CD /* ManifoldBackends */,
-				1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */,
+				07C9B8F142E9995C1EF08253 /* ManifoldKit */,
+				B2AC4DF189F96757A85D15A9 /* ManifoldUI */,
 			);
 			productName = MinimalExample_macOS;
-			productReference = 92BE324A993DAA5220792683 /* MinimalExample.app */;
+			productReference = 88012A97C303F9C85A16B00C /* MinimalExample.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F4B070DBF9A547870F974788 /* MinimalExample_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 67AD25F81204ED003D86687F /* Build configuration list for PBXNativeTarget "MinimalExample_iOS" */;
+			buildPhases = (
+				810D69A1974E97E1931CDDDD /* Sources */,
+				AB929D7FE5B0BEA63A4C5818 /* Resources */,
+				490FA3F59F50A5DA110D316C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MinimalExample_iOS;
+			packageProductDependencies = (
+				6CECC027D599FFC52C710341 /* ManifoldKit */,
+				6C1F61587777E2E027258989 /* ManifoldUI */,
+			);
+			productName = MinimalExample_iOS;
+			productReference = 1C74D1FF18E0994E77683D4A /* MinimalExample.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		B8622008F22D998CA7C8DE9A /* Project object */ = {
+		29EA20DB9507A059E8E168CF /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
@@ -154,114 +138,69 @@
 				TargetAttributes = {
 				};
 			};
-			buildConfigurationList = 507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "ManifoldExamples" */;
+			buildConfigurationList = D6FF3C6A4FAB5642753D744A /* Build configuration list for PBXProject "ManifoldExamples" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
 				en,
 			);
-			mainGroup = 091468DD26BB7CAAC1DB9424;
+			mainGroup = 75D9F8ED9BB1C49CF0434438;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E1E92C0816C1D3B33B7A189D /* XCLocalSwiftPackageReference "../.." */,
+				2013F4BD7CAAF1145D055CF1 /* XCLocalSwiftPackageReference "../.." */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 38BB536CCAD94BD0FE87DFC6 /* Products */;
+			productRefGroup = D489A83B94DC1BD0D6D026F1 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				089761BD700E47F290C37794 /* MinimalExample_iOS */,
-				A0F65594E03C815EB84528A5 /* MinimalExample_macOS */,
+				F4B070DBF9A547870F974788 /* MinimalExample_iOS */,
+				E5E9FF4635E50D287E9E93BC /* MinimalExample_macOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		72A8E61D380813E8468E0C8F /* Resources */ = {
+		7B14F2858724B2BF2909CC55 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D2930E9046EADB459A40EA45 /* README.md in Resources */,
+				C01CDA558D6A24BB8C3A252D /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CB0E10FB70F06B69CBA6AFA6 /* Resources */ = {
+		AB929D7FE5B0BEA63A4C5818 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A19A3DAEB85A136F8D62D31D /* README.md in Resources */,
+				D6385FCBE3AC063A57048413 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		3005C4AD05504348A18E66DE /* Sources */ = {
+		810D69A1974E97E1931CDDDD /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				958FF9C8DBB5C5C151DFF5D7 /* MinimalContentView.swift in Sources */,
-				09C86A21537F0ED2862D66ED /* MinimalExampleApp.swift in Sources */,
+				BC168A0C475876BD4A4188A6 /* MinimalExampleApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		510098C91DBEE09F09488F04 /* Sources */ = {
+		94A243F9C0A6F7CD55EBEAED /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				34606F73E74AAFC63E24F59A /* MinimalContentView.swift in Sources */,
-				79E6928B6CE7E3461758C5D9 /* MinimalExampleApp.swift in Sources */,
+				4D3C850706E8802F450F8C26 /* MinimalExampleApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		125FD25FB0E801688E5C5454 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
-				PRODUCT_NAME = MinimalExample;
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		60884D0E74614765453DE9CE /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				COMBINE_HIDPI_IMAGES = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
-				PRODUCT_NAME = MinimalExample;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Debug;
-		};
-		6E5B0D378FD8C1A976A31BD6 /* Release */ = {
+		32A1B0688AF9706DCB954677 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -317,7 +256,29 @@
 			};
 			name = Release;
 		};
-		9F6A5672C2DE1BEA2BE47927 /* Debug */ = {
+		40B5C75D3E4AD4C1EA1DAF2A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
+				PRODUCT_NAME = MinimalExample;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4D046BC99E227A174EFD5B75 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -380,7 +341,7 @@
 			};
 			name = Debug;
 		};
-		A8C1DBF0CFE609B166EEF7A0 /* Release */ = {
+		8CCD1B3F62FD3BC970CBBB24 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -401,7 +362,28 @@
 			};
 			name = Release;
 		};
-		E486144CB49497356A2F195A /* Release */ = {
+		96C06021773C98501BD89FC9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.manifoldkit.minimal-example";
+				PRODUCT_NAME = MinimalExample;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		AAA9FDFAB127D71B7988212F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -426,29 +408,29 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		082185DE6FA7704817B21C6D /* Build configuration list for PBXNativeTarget "MinimalExample_iOS" */ = {
+		64DE611EB8F7EBB77610277B /* Build configuration list for PBXNativeTarget "MinimalExample_macOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				125FD25FB0E801688E5C5454 /* Debug */,
-				E486144CB49497356A2F195A /* Release */,
+				96C06021773C98501BD89FC9 /* Debug */,
+				8CCD1B3F62FD3BC970CBBB24 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		2E0408BFF6E87A490B424BB2 /* Build configuration list for PBXNativeTarget "MinimalExample_macOS" */ = {
+		67AD25F81204ED003D86687F /* Build configuration list for PBXNativeTarget "MinimalExample_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				60884D0E74614765453DE9CE /* Debug */,
-				A8C1DBF0CFE609B166EEF7A0 /* Release */,
+				40B5C75D3E4AD4C1EA1DAF2A /* Debug */,
+				AAA9FDFAB127D71B7988212F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		507BF4BDD44480B0FB14C508 /* Build configuration list for PBXProject "ManifoldExamples" */ = {
+		D6FF3C6A4FAB5642753D744A /* Build configuration list for PBXProject "ManifoldExamples" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9F6A5672C2DE1BEA2BE47927 /* Debug */,
-				6E5B0D378FD8C1A976A31BD6 /* Release */,
+				4D046BC99E227A174EFD5B75 /* Debug */,
+				32A1B0688AF9706DCB954677 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -456,46 +438,30 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		E1E92C0816C1D3B33B7A189D /* XCLocalSwiftPackageReference "../.." */ = {
+		2013F4BD7CAAF1145D055CF1 /* XCLocalSwiftPackageReference "../.." */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../..;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		35D03E318932E0724E391E54 /* ManifoldPersistenceSwiftData */ = {
+		07C9B8F142E9995C1EF08253 /* ManifoldKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldPersistenceSwiftData;
+			productName = ManifoldKit;
 		};
-		1A2B3C4D5E6F708192A3B4C5 /* ManifoldUIModelManagement */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldUIModelManagement;
-		};
-		4C28E08B212DBDD057CE27CF /* ManifoldUI */ = {
+		6C1F61587777E2E027258989 /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ManifoldUI;
 		};
-		56CCAAB5544541CD79EE64CD /* ManifoldBackends */ = {
+		6CECC027D599FFC52C710341 /* ManifoldKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldBackends;
+			productName = ManifoldKit;
 		};
-		5D2764E94034C1EB5E482F75 /* ManifoldUI */ = {
+		B2AC4DF189F96757A85D15A9 /* ManifoldUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ManifoldUI;
-		};
-		6D5E4F302918273645564738 /* ManifoldUIModelManagement */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldUIModelManagement;
-		};
-		7A5841AF39A6AB3B5022006D /* ManifoldBackends */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldBackends;
-		};
-		DE250A4FF8082BF6714FE36C /* ManifoldPersistenceSwiftData */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ManifoldPersistenceSwiftData;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = B8622008F22D998CA7C8DE9A /* Project object */;
+	rootObject = 29EA20DB9507A059E8E168CF /* Project object */;
 }
