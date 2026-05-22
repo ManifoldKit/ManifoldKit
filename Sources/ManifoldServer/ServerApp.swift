@@ -107,6 +107,24 @@ internal struct ServerApp: Sendable {
             }
         }
 
+        router.post("/v1/embeddings") { request, context in
+            if let unauthorized = await authorizationFailure(for: request) {
+                return unauthorized
+            }
+            metrics.recordRequestStarted()
+            do {
+                let embedRequest = try await request.decode(as: EmbedRequest.self, context: context)
+                let response = try await embeddingResponse(for: embedRequest)
+                metrics.recordRequestCompleted()
+                return jsonResponse(response)
+            } catch {
+                metrics.recordFailure()
+                metrics.recordRequestCompleted()
+                let envelope = ChatCompletionErrorEnvelope.from(error)
+                return jsonResponse(envelope, status: httpStatus(for: error))
+            }
+        }
+
         if configuration.metricsEnabled {
             router.get("/metrics") { request, _ in
                 if let unauthorized = await authorizationFailure(for: request) {
@@ -290,10 +308,17 @@ internal struct ServerApp: Sendable {
     }
 
     private func httpStatus(for error: Error) -> HTTPResponse.Status {
-        if let serverError = error as? ServerError, case .invalidRequest = serverError {
-            return .badRequest
+        guard let serverError = error as? ServerError else {
+            return .internalServerError
         }
-        return .internalServerError
+        switch serverError {
+        case .invalidRequest:
+            return .badRequest
+        case .backendUnavailable:
+            return .serviceUnavailable
+        case .invalidConfiguration, .notImplemented:
+            return .internalServerError
+        }
     }
 
     private func metricsResponse() -> Response {
