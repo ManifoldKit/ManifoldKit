@@ -206,6 +206,59 @@ struct PhantomStorageIntent: AppIntent, Decodable {
     }
 }
 
+/// Pure-dialog fixture: `ProvidesDialog` with no `ReturnsValue` payload.
+@available(iOS 26, macOS 26, *)
+struct PureDialogIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "PureDialog"
+
+    @Parameter(title: "Subject")
+    var subject: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.subject = try c.decode(String.self, forKey: .subject)
+    }
+
+    private enum CodingKeys: String, CodingKey { case subject }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: IntentDialog(stringLiteral: "Spoken about \(subject)"))
+    }
+}
+
+/// Compound fixture: `ReturnsValue<String> & ProvidesDialog` with the value
+/// distinct from the dialog text, so the two fields are independently
+/// observable.
+@available(iOS 26, macOS 26, *)
+struct CompoundDialogIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "CompoundDialog"
+
+    @Parameter(title: "Topic")
+    var topic: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.topic = try c.decode(String.self, forKey: .topic)
+    }
+
+    private enum CodingKeys: String, CodingKey { case topic }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+        .result(
+            value: "structured-\(topic)",
+            dialog: IntentDialog(stringLiteral: "Spoken-\(topic)")
+        )
+    }
+}
+
 // MARK: - Tests
 
 @available(iOS 26, macOS 26, *)
@@ -387,6 +440,99 @@ final class AppIntentToolExecutorTests: XCTestCase {
         XCTAssertEqual(executor.definition.name, "greeting_intent")
         XCTAssertTrue(executor.requiresApproval, "AppIntent executors require approval by default")
         XCTAssertFalse(executor.supportsConcurrentDispatch, "default sequential dispatch")
+    }
+
+    // MARK: dialog channel
+
+    func testPureDialogIntentSurfacesDialogAndMirrorsIntoContent() async throws {
+        let executor = AppIntentToolExecutor(PureDialogIntent.self)
+        let args = JSONSchemaValue.object(["subject": .string("weather")])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        XCTAssertNotNil(result.dialog, "ProvidesDialog must populate the dialog channel")
+        XCTAssertEqual(
+            result.dialog,
+            "Spoken about weather",
+            "extracted dialog must match the IntentDialog literal, got \(String(describing: result.dialog))"
+        )
+        // Pure-dialog results have no ReturnsValue, so content mirrors the
+        // dialog so the model still sees something useful to read.
+        XCTAssertEqual(
+            result.content,
+            "Spoken about weather",
+            "pure-dialog results mirror the dialog into content; got \(result.content)"
+        )
+    }
+
+    func testCompoundDialogIntentSplitsValueAndDialog() async throws {
+        let executor = AppIntentToolExecutor(CompoundDialogIntent.self)
+        let args = JSONSchemaValue.object(["topic": .string("alpha")])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        XCTAssertEqual(
+            result.dialog,
+            "Spoken-alpha",
+            "dialog channel must carry the spoken text; got \(String(describing: result.dialog))"
+        )
+        // The JSON-encoded ReturnsValue<String> payload contains the
+        // structured value verbatim; ensure it's the model-facing string,
+        // not the dialog.
+        XCTAssertTrue(
+            result.content.contains("structured-alpha"),
+            "content must carry the JSON-encoded ReturnsValue, got \(result.content)"
+        )
+        XCTAssertFalse(
+            result.content.contains("Spoken-alpha"),
+            "dialog text must not leak into content for compound results; got \(result.content)"
+        )
+    }
+
+    func testPlainIntentLeavesDialogNil() async throws {
+        let executor = AppIntentToolExecutor(GreetingIntent.self)
+        let args = JSONSchemaValue.object([
+            "name": .string("Ada"),
+            "greeting": .string("Salut"),
+        ])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        XCTAssertNil(
+            result.dialog,
+            "intents without ProvidesDialog must leave dialog nil; got \(String(describing: result.dialog))"
+        )
+    }
+
+    func testToolResultCodableRoundTripPreservesDialog() throws {
+        let original = ToolResult(
+            callId: "abc",
+            content: "structured",
+            errorKind: nil,
+            dialog: "spoken"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: data)
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.dialog, "spoken")
+    }
+
+    func testToolResultCodableOmitsDialogKeyWhenNil() throws {
+        let result = ToolResult(callId: "abc", content: "structured", errorKind: nil)
+        let data = try JSONEncoder().encode(result)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(
+            json.contains("\"dialog\""),
+            "nil dialog must be omitted by encodeIfPresent to keep the pre-dialog wire shape; got \(json)"
+        )
+        // Sanity: a non-nil dialog DOES appear, proving the assertion above
+        // is meaningful (i.e. the key isn't simply always missing).
+        let withDialog = ToolResult(callId: "abc", content: "structured", errorKind: nil, dialog: "spoken")
+        let dialogJSON = try XCTUnwrap(String(data: JSONEncoder().encode(withDialog), encoding: .utf8))
+        XCTAssertTrue(dialogJSON.contains("\"dialog\""))
     }
 
     func testReadOnlyApprovalPolicyCanOptOutOfPrompt() {

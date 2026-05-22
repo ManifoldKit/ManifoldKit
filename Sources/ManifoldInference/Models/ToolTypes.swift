@@ -174,6 +174,16 @@ public struct ToolCall: Sendable, Codable, Equatable, Hashable {
 /// Feed this back to the backend (e.g. as an additional message in the
 /// conversation history) so the model can incorporate the tool output
 /// into its final response.
+///
+/// ## Dialog channel
+///
+/// ``dialog`` is an optional sidecar string carrying human-facing speech or
+/// display text — typically populated by tool executors bridging AppIntents
+/// that adopt `ProvidesDialog`. It is orthogonal to ``content``: ``content``
+/// is the structured payload the model reads, while ``dialog`` is what the
+/// host UI can speak or render verbatim to the user. Tools that don't
+/// produce a separate dialog leave the field `nil`, and the on-wire JSON
+/// omits the key entirely so existing consumers see no shape change.
 public struct ToolResult: Sendable, Codable, Equatable, Hashable {
 
     /// Categorises why a tool call failed.
@@ -289,22 +299,46 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     /// so the model can reason about the failure and potentially retry.
     public var isError: Bool { errorKind != nil }
 
+    /// Human-facing speech/display text produced by the tool, or `nil` when
+    /// the tool doesn't emit a dialog channel.
+    ///
+    /// Orthogonal to ``content``: ``content`` is the structured payload the
+    /// model reads (typically JSON), while ``dialog`` is the renderable
+    /// string a host UI can speak or display verbatim. The canonical source
+    /// is an AppIntent that adopts `ProvidesDialog` — the executor extracts
+    /// the dialog string into this field and routes the structured value
+    /// (from `ReturnsValue<T>`, when present) into ``content``.
+    ///
+    /// The field is encoded with `encodeIfPresent`, so the JSON for a
+    /// non-dialog tool result is shape-identical to the pre-dialog wire
+    /// format.
+    public let dialog: String?
+
     /// Creates a tool result.
     ///
     /// - Parameters:
     ///   - callId: The ``ToolCall/id`` this result belongs to.
     ///   - content: The tool's output string.
     ///   - errorKind: Failure classification, or `nil` on success. Defaults to `nil`.
-    public init(callId: String, content: String, errorKind: ErrorKind? = nil) {
+    ///   - dialog: Optional human-facing speech/display text, e.g. the
+    ///     resolved string from an AppIntent's `ProvidesDialog` channel.
+    ///     Defaults to `nil`.
+    public init(
+        callId: String,
+        content: String,
+        errorKind: ErrorKind? = nil,
+        dialog: String? = nil
+    ) {
         self.callId = callId
         self.content = content
         self.errorKind = errorKind
+        self.dialog = dialog
     }
 
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case callId, content, errorKind, isError
+        case callId, content, errorKind, isError, dialog
     }
 
     public init(from decoder: Decoder) throws {
@@ -321,6 +355,7 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
         } else {
             errorKind = nil
         }
+        dialog = try c.decodeIfPresent(String.self, forKey: .dialog)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -330,6 +365,9 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
         try c.encodeIfPresent(errorKind, forKey: .errorKind)
         // `isError` is intentionally NOT encoded — it is derived from errorKind
         // and emitting it would put two sources of truth on the wire.
+        // `dialog` uses encodeIfPresent so non-dialog tools emit the exact
+        // pre-dialog JSON shape (no `"dialog"` key at all).
+        try c.encodeIfPresent(dialog, forKey: .dialog)
     }
 }
 
