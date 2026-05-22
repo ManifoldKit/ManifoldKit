@@ -1,0 +1,94 @@
+# Cold-start conformance — tier 4 (human path).
+#
+# Tiers 1, 2, 3 (in ci.yml) scaffold known-good consumers from hand-written
+# code: they prove the *machine* path that a SwiftPM consumer can link
+# ManifoldKit and call its public surface in shapes the maintainers control.
+#
+# Tier 4 follows the *human* path. It treats README.md as the documented
+# onboarding contract and asks: would a person reading the README from line 1
+# reach a working chat? The gate enforces two structural constraints:
+#
+#   1. The FIRST H2 in README.md must be `## Hello World`.
+#   2. The first ```swift fenced block under that heading must compile against
+#      the current ManifoldKit on this branch.
+#
+# Sibling worker W-D-C1 ships a complementary gate that compiles ALL Swift
+# snippets across README + docs. C2 (this workflow) is narrower and stricter:
+# the canonical Hello World leads the README and works.
+#
+# Lives in its own workflow file (not ci.yml) so the human path's onboarding
+# contract is visible in PR checks under its own name and so future README /
+# QuickStart restructure PRs surface the failure mode at a glance.
+#
+# Per `[[feedback_ci_path_filter_self_validation]]`, the script's own path is
+# in the trigger filter so script-only PRs still exercise the gate. The
+# README and Hello World snippet's source dependencies (Sources/ManifoldKit/
+# QuickStart.swift, the umbrella `Exports.swift`, ManifoldUI's public
+# composition surface) are also covered so a backend / UI refactor that
+# breaks the snippet without touching README still fires the gate.
+
+name: cold-start-human
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "Package.swift"
+      - "Package.resolved"
+      - "Sources/ManifoldKit/**"
+      - "Sources/ManifoldInference/**"
+      - "Sources/ManifoldUI/**"
+      - "scripts/cold-start-human.sh"
+      - ".github/workflows/cold-start-human.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "Package.swift"
+      - "Package.resolved"
+      - "Sources/ManifoldKit/**"
+      - "Sources/ManifoldInference/**"
+      - "Sources/ManifoldUI/**"
+      - "scripts/cold-start-human.sh"
+      - ".github/workflows/cold-start-human.yml"
+
+concurrency:
+  group: cold-start-human-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cold-start-human:
+    # Match the macos-15 runner the tier-1/2/3 cold-start jobs use so SwiftPM
+    # cache keys collide and we share the warm checkouts cache.
+    runs-on: macos-15
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run tier-4 human cold-start gate
+        run: bash scripts/cold-start-human.sh
