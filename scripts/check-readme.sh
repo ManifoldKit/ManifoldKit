@@ -48,6 +48,16 @@
 # Usage:
 #   bash scripts/check-readme.sh                          # default (loose) — baseline checks only
 #   MANIFOLDKIT_README_STRICT=1 bash scripts/check-readme.sh   # also enforce structure anchors
+#
+# ── Snippet pre-flight (always on, cheap) ─────────────────────────────────
+#
+# In addition to the API-name lint above, we sanity-check that README.md
+# still contains at least one ```swift fenced block. A future PR that
+# accidentally strips the Hello World (e.g. a bad merge resolution) would
+# satisfy every other check; this is the cheapest possible tripwire for
+# "the canonical snippet vanished". The full compile gate lives in the
+# `.github/workflows/readme-snippets.yml` workflow and invokes
+# `scripts/extract-snippets-test.sh`.
 
 set -euo pipefail
 
@@ -174,6 +184,22 @@ if [[ ${bad_apis} -gt 0 ]]; then
     echo "Found ${bad_apis} reference(s) to deleted public API."
 else
     echo "✓ README contains no references to known-deleted public API."
+fi
+
+# ── Check 3: README contains at least one Swift snippet ──────────────────
+#
+# Cheap structural tripwire — the full compile gate runs in CI via
+# scripts/extract-snippets-test.sh. We just need to fail loudly if the
+# Hello World fence ever disappears.
+echo
+echo "── Check: README contains at least one \`\`\`swift block ──────────────"
+
+# Match opening fence ```swift (case-insensitive), tolerate trailing tags.
+if grep -niE '^```swift([,[:space:]]|$)' "${README_PATH}" > /dev/null 2>&1; then
+    echo "✓ README has at least one Swift fenced block."
+else
+    echo "::error file=README.md::No \`\`\`swift fenced block found. The Hello World snippet must remain in README.md."
+    failures=$((failures + 1))
 fi
 
 # ── Strict-mode checks (opt-in) ────────────────────────────────────────────
