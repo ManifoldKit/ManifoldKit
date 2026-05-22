@@ -154,6 +154,21 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     /// sharing the MLX runtime) sets this to `true`.
     public let sharesMLXProcessResources: Bool
 
+    /// Hard cap on the number of tools that may be advertised to this backend
+    /// in a single generation turn.
+    ///
+    /// When non-`nil`, `ConversationTurnExecutor` truncates the tool list it
+    /// passes to `GenerationConfig.tools` to at most this many entries —
+    /// lexicographic order, so the selection is deterministic. Backends that
+    /// impose no limit leave this `nil`.
+    ///
+    /// ``FoundationBackend`` sets this to `16`: Apple's on-device model
+    /// degrades when the schema catalogue grows too large because it spends
+    /// an increasing share of its context budget re-reading tool definitions
+    /// rather than reasoning. `16` is the empirically-derived ceiling (see
+    /// `MCPToolFilter.foundationModelsToolCap`).
+    public let maxAdvertisedToolCount: Int?
+
     /// Preferred structured-output mechanism implied by this capability set.
     public var preferredStructuredOutputSupport: StructuredOutputSupport {
         if supportsGrammarConstrainedSampling {
@@ -194,7 +209,8 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         streamsToolCallArguments: Bool = false,
         supportsParallelToolCalls: Bool = false,
         supportsGuidedStructuredOutput: Bool = false,
-        sharesMLXProcessResources: Bool = false
+        sharesMLXProcessResources: Bool = false,
+        maxAdvertisedToolCount: Int? = nil
     ) {
         self.supportedParameters = supportedParameters
         self.maxContextTokens = maxContextTokens
@@ -217,6 +233,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         self.supportsParallelToolCalls = supportsParallelToolCalls
         self.supportsGuidedStructuredOutput = supportsGuidedStructuredOutput
         self.sharesMLXProcessResources = sharesMLXProcessResources
+        self.maxAdvertisedToolCount = maxAdvertisedToolCount
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -241,6 +258,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         case supportsParallelToolCalls
         case supportsGuidedStructuredOutput
         case sharesMLXProcessResources
+        case maxAdvertisedToolCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -266,6 +284,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         supportsParallelToolCalls = (try c.decodeIfPresent(Bool.self, forKey: .supportsParallelToolCalls)) ?? false
         supportsGuidedStructuredOutput = (try c.decodeIfPresent(Bool.self, forKey: .supportsGuidedStructuredOutput)) ?? false
         sharesMLXProcessResources = (try c.decodeIfPresent(Bool.self, forKey: .sharesMLXProcessResources)) ?? false
+        maxAdvertisedToolCount = try c.decodeIfPresent(Int.self, forKey: .maxAdvertisedToolCount)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -291,5 +310,6 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
         try c.encode(supportsParallelToolCalls, forKey: .supportsParallelToolCalls)
         try c.encode(supportsGuidedStructuredOutput, forKey: .supportsGuidedStructuredOutput)
         try c.encode(sharesMLXProcessResources, forKey: .sharesMLXProcessResources)
+        try c.encodeIfPresent(maxAdvertisedToolCount, forKey: .maxAdvertisedToolCount)
     }
 }
