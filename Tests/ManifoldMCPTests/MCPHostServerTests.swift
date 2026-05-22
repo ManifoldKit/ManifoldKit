@@ -101,35 +101,24 @@ final class ManifoldMCPHostTests: XCTestCase {
         // response, the XCTAssertNotNil checks above would fail.
     }
 
-    func test_initialize_rejectsUnsupportedProtocolVersion() async throws {
+    func test_initialize_negotiatesVersionWhenClientVersionDiffers() async throws {
+        // MCP spec §2.1: the server SHOULD respond with its supported version
+        // rather than rejecting, allowing the client to decide whether to proceed.
         let (host, _, _) = makeHost()
-        let codec = MCPJSONRPCCodec(maxMessageBytes: 512 * 1024, maxJSONNestingDepth: 32)
-        let transport = LoopbackHostTransport()
-        let id = MCPRequestID.int(1)
-        let request = MCPJSONRPCMessage.request(
-            id: id,
+        let result = try await sendRequest(
             method: "initialize",
-            params: .object(["protocolVersion": .string("1900-01-01")])
+            params: .object(["protocolVersion": .string("1900-01-01")]),
+            to: host
         )
-        let payload = try codec.encode(request)
 
-        let runTask = Task { try await host.run(transport: transport) }
-        await transport.feed(payload)
-        let responseData = await transport.nextResponse(timeout: .seconds(3))
-        runTask.cancel()
-
-        guard let responseData else {
-            XCTFail("No response received")
+        guard case .object(let r) = result else {
+            XCTFail("Expected object result for version negotiation")
             return
         }
-        let response = try codec.decode(responseData)
-        guard case .error(_, let err) = response else {
-            XCTFail("Expected error frame for unsupported protocol version")
-            return
-        }
-        XCTAssertEqual(err.code, -32600)
-        // Sabotage: if we returned a success result instead of an error for
-        // unknown versions, the guard-case .error would fall through and fail.
+        // Server must respond with its own supported version, not the client's.
+        XCTAssertEqual(r["protocolVersion"], .string("2025-03-26"))
+        // Sabotage: if we returned an error frame here, sendRequest would throw
+        // TestMCPError and the guard-case .object would never be reached.
     }
 
     func test_unknownMethod_returnsMethodNotFoundError() async throws {
@@ -330,6 +319,8 @@ final class ManifoldMCPHostTests: XCTestCase {
 // MARK: - Test helpers
 
 /// Simple in-memory SessionStore for test purposes.
+/// @MainActor serialises all mutations; @unchecked Sendable is valid because
+/// the class is globally-actor-isolated and the protocol requires @MainActor.
 @MainActor
 private final class StubSessionStore: SessionStore, @unchecked Sendable {
     private var sessions: [ChatSessionRecord]
@@ -352,6 +343,8 @@ private final class StubSessionStore: SessionStore, @unchecked Sendable {
 }
 
 /// Simple in-memory MessageStore for test purposes.
+/// @MainActor serialises all mutations; @unchecked Sendable is valid because
+/// the class is globally-actor-isolated and the protocol requires @MainActor.
 @MainActor
 private final class StubMessageStore: MessageStore, @unchecked Sendable {
     private var messages: [ChatMessageRecord]

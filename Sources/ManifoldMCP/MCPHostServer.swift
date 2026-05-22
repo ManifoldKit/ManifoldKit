@@ -228,9 +228,13 @@ public actor ManifoldMCPHost {
               case .string(let clientVersion) = p["protocolVersion"] else {
             throw MCPHostError.invalidParams("initialize requires a protocolVersion field")
         }
-        guard clientVersion == configuration.protocolVersion else {
-            throw MCPHostError.unsupportedProtocolVersion(
-                client: clientVersion, server: configuration.protocolVersion
+        // MCP spec §2.1: if the client version does not match, respond with
+        // the server's supported version rather than rejecting outright. The
+        // client then decides whether to proceed or disconnect.
+        if clientVersion != configuration.protocolVersion {
+            let serverVersion = configuration.protocolVersion
+            Log.inference.info(
+                "ManifoldMCPHost: client requested version '\(clientVersion, privacy: .public)'; responding with '\(serverVersion, privacy: .public)'"
             )
         }
 
@@ -604,13 +608,24 @@ public actor ManifoldMCPHost {
         case .number(let v):
             return String(v)
         case .string(let v):
-            // Simple JSON string escaping — replace backslash, quote, and control chars.
-            let escaped = v
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-                .replacingOccurrences(of: "\t", with: "\\t")
+            // JSON string escaping per RFC 8259 §7. Must escape backslash, double-quote,
+            // and all C0 control characters (U+0000–U+001F). The named escapes (\n, \r,
+            // \t) are preferred where they exist; the rest use \uXXXX.
+            var escaped = ""
+            escaped.reserveCapacity(v.utf16.count)
+            for scalar in v.unicodeScalars {
+                switch scalar.value {
+                case 0x5C: escaped += "\\\\"     // backslash
+                case 0x22: escaped += "\\\""     // double-quote
+                case 0x0A: escaped += "\\n"      // newline
+                case 0x0D: escaped += "\\r"      // carriage return
+                case 0x09: escaped += "\\t"      // tab
+                case 0x00...0x1F:                // remaining C0 control characters
+                    escaped += String(format: "\\u%04x", scalar.value)
+                default:
+                    escaped += String(scalar)
+                }
+            }
             return "\"\(escaped)\""
         case .array(let values):
             return "[\(values.map(jsonStringify).joined(separator: ","))]"
@@ -631,7 +646,6 @@ public enum MCPHostError: Error, LocalizedError, Sendable {
     case invalidParams(String)
     case resourceNotFound(String)
     case toolNotFound(String)
-    case unsupportedProtocolVersion(client: String, server: String)
     case internalError(String)
 
     public var errorDescription: String? {
@@ -644,8 +658,6 @@ public enum MCPHostError: Error, LocalizedError, Sendable {
             return "Resource not found: \(uri)"
         case .toolNotFound(let name):
             return "Tool not found: \(name)"
-        case .unsupportedProtocolVersion(let client, let server):
-            return "Unsupported protocol version: client sent '\(client)', server requires '\(server)'"
         case .internalError(let detail):
             return "Internal error: \(detail)"
         }
@@ -658,7 +670,6 @@ public enum MCPHostError: Error, LocalizedError, Sendable {
         case .invalidParams: return -32602
         case .resourceNotFound: return -32001
         case .toolNotFound: return -32002
-        case .unsupportedProtocolVersion: return -32600
         case .internalError: return -32603
         }
     }
