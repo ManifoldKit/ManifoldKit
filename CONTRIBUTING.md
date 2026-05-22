@@ -320,14 +320,17 @@ perf: cache tokenizer lookups in ContextWindowManager
 test: add XCTMeasure baselines for trimMessages hot path
 chore: update mlx-swift-lm to 2.31.0
 docs: clarify TokenizerProvider fallback behaviour
+dx: surface decode errors in the model picker instead of silently failing
 ```
 
-| Type                            | Version bump      |
-|---------------------------------|-------------------|
-| `feat`                          | MINOR (`0.x.0`)   |
-| `fix`                           | PATCH (`0.0.x`)   |
-| `BREAKING CHANGE:` in footer    | MAJOR (`x.0.0`)   |
-| `chore`, `docs`, `test`, `perf` | no release        |
+| Type                                  | Version bump      |
+|---------------------------------------|-------------------|
+| `feat`                                | MINOR (`0.x.0`)   |
+| `fix`                                 | PATCH (`0.0.x`)   |
+| `BREAKING CHANGE:` in footer          | MAJOR (`x.0.0`)   |
+| `chore`, `docs`, `dx`, `test`, `perf` | no release        |
+
+`dx:` is for changes that improve the developer experience of *consuming* ManifoldKit — clearer error messages, better onboarding docs in code, improved log output, simpler default APIs — without shipping new product features (`feat:`) or fixing user-facing bugs (`fix:`). It renders under a dedicated **Developer Experience** section in the changelog so DX work stays visible.
 
 **PR titles are the enforced surface.** All PRs squash-merge, and Release Please reads the squashed PR title rather than the individual commit messages on the branch, so CI lints the *PR title* via [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request). Individual commit messages on a feature branch should follow the same convention as a matter of habit, but they are not linted and can be reworded freely during review.
 
