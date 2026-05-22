@@ -316,7 +316,7 @@ final class ModelManagementUITests: XCTestCase {
     // Example run (native macOS):
     //   scripts/example-ui-tests.sh test-without-building \
     //     --destination 'platform=macOS,arch=arm64' \
-    //     -only-testing:ManifoldDemoUITests/ModelManagementUITests/testSelectingGGUFModelProducesResponse
+    //     -only-testing:AdvancedUITests/ModelManagementUITests/testSelectingGGUFModelProducesResponse
 
     /// Opt-in gate for real-model end-to-end tests.
     ///

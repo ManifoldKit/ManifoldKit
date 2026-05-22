@@ -1,6 +1,6 @@
 import XCTest
 
-/// Shared helpers for all XCUITest suites in ManifoldDemoUITests.
+/// Shared helpers for all XCUITest suites in AdvancedUITests.
 extension XCTestCase {
 
     // MARK: - App Launch

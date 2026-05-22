@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C10001000000000000000000"
-               BuildableName = "ManifoldDemo.app"
-               BlueprintName = "ManifoldDemo"
-               ReferencedContainer = "container:ManifoldDemo.xcodeproj">
+               BuildableName = "Advanced.app"
+               BlueprintName = "Advanced"
+               ReferencedContainer = "container:Advanced.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -35,9 +35,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "C11001000000000000000000"
-               BuildableName = "ManifoldDemoUITests.xctest"
-               BlueprintName = "ManifoldDemoUITests"
-               ReferencedContainer = "container:ManifoldDemo.xcodeproj">
+               BuildableName = "AdvancedUITests.xctest"
+               BlueprintName = "AdvancedUITests"
+               ReferencedContainer = "container:Advanced.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -57,9 +57,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C10001000000000000000000"
-            BuildableName = "ManifoldDemo.app"
-            BlueprintName = "ManifoldDemo"
-            ReferencedContainer = "container:ManifoldDemo.xcodeproj">
+            BuildableName = "Advanced.app"
+            BlueprintName = "Advanced"
+            ReferencedContainer = "container:Advanced.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -74,9 +74,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "C10001000000000000000000"
-            BuildableName = "ManifoldDemo.app"
-            BlueprintName = "ManifoldDemo"
-            ReferencedContainer = "container:ManifoldDemo.xcodeproj">
+            BuildableName = "Advanced.app"
+            BlueprintName = "Advanced"
+            ReferencedContainer = "container:Advanced.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

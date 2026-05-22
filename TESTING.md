@@ -78,7 +78,7 @@ UI automation tests that launch the real Example app in a simulator and drive it
 | `ManifoldTestSupportTests` | Unit | Yes | None | XCTest |
 | `ManifoldE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
 | `ManifoldMLXIntegrationTests` | E2E | No | Apple Silicon + Metal + local MLX model | XCTest |
-| `ManifoldDemoUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
+| `AdvancedUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
 
 ### Running tests
 
@@ -124,14 +124,14 @@ xcodebuild test -scheme ManifoldKit-Package -only-testing ManifoldMLXIntegration
 
 # Example app UI tests (preferred debug loop)
 scripts/example-ui-tests.sh build-for-testing
-scripts/example-ui-tests.sh test-without-building -only-testing:ManifoldDemoUITests/ChatFlowUITests/testEmptyStateShowsWelcome
+scripts/example-ui-tests.sh test-without-building -only-testing:AdvancedUITests/ChatFlowUITests/testEmptyStateShowsWelcome
 
 # Full UI test sweep when you need it
 scripts/example-ui-tests.sh test
 
 # Discover or override the simulator explicitly when needed
 xcrun simctl list devices available
-scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:ManifoldDemoUITests/SettingsUITests
+scripts/example-ui-tests.sh test-without-building --destination 'platform=iOS Simulator,id=<SIMULATOR_ID>' -only-testing:AdvancedUITests/SettingsUITests
 ```
 
 `build-for-testing` is the expensive step. Run it once, then use `test-without-building` with `-only-testing` for targeted reruns while debugging. The helper prefers a booted iPhone simulator, otherwise the first available iPhone simulator, so contributors do not have to keep stale device names in sync.
@@ -611,7 +611,7 @@ Ask these questions in order:
 1. **Can this be tested with just the type and its direct dependencies?** → Unit test in `ManifoldCoreTests`
 2. **Does it need ChatViewModel + SwiftData + a mock backend?** → Integration test in `ManifoldUITests`
 3. **Does it need real (non-mock) components wired together?** → E2E test in `ManifoldE2ETests`
-4. **Does it need the real UI in a simulator?** → XCUITest in `ManifoldDemoUITests`
+4. **Does it need the real UI in a simulator?** → XCUITest in `AdvancedUITests`
 
 ### Test structure template
 

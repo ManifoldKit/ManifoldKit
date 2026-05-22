@@ -1,6 +1,6 @@
 # Share & Action Extension Recipe (App Group handoff)
 
-This guide explains how ManifoldDemo wires a Share Extension and an Action Extension to hand content into a new `ChatViewModel` session without linking ManifoldKit inside the extension.
+This guide explains how the Advanced reference app (`Example/Advanced/`) wires a Share Extension and an Action Extension to hand content into a new `ChatViewModel` session without linking ManifoldKit inside the extension.
 
 ## Architecture overview
 
@@ -12,7 +12,7 @@ This guide explains how ManifoldDemo wires a Share Extension and an Action Exten
            ↑ writes, then completeRequest()
 
 ┌─────────────────────────┐ .onChange(of: scenePhase == .active)
-│  ManifoldDemo (host app) │ ──reads──► PendingSharePayload
+│  Advanced (host app)     │ ──reads──► PendingSharePayload
 │                          │ ──────────► PendingPayload (ManifoldUI)
 │  ChatViewModel           │ ──────────► ingestPendingPayload(_:intent:)
 └─────────────────────────┘
@@ -23,7 +23,7 @@ The key isolation boundary is `PendingSharePayload` — a pure Foundation `Codab
 ## File map
 
 ```
-Example/ManifoldDemo/Extensions/
+Example/Advanced/Extensions/
 ├── PendingSharePayload.swift          # Shared Codable (no ManifoldKit deps)
 ├── ShareExtension/
 │   ├── ShareViewController.swift      # UIViewController principal class
