@@ -169,6 +169,7 @@ jobs:
             fix
             chore
             docs
+            dx
             test
             refactor
             perf
