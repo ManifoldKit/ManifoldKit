@@ -10,6 +10,7 @@ Add the package, then drop this into your app entry point. `ManifoldKit.quickSta
 
 ```swift
 import SwiftUI
+import SwiftData
 import ManifoldKit
 import ManifoldUI
 
@@ -159,7 +160,7 @@ For the full surface (protocols, services, views), browse `Sources/` or read the
 
 Register tools with `ToolRegistry` and pass `toolRegistry.definitions` as `GenerationConfig.tools`:
 
-```swift
+```swift,no-build
 let registry = ToolRegistry()
 registry.register(MyWeatherTool())
 
@@ -173,7 +174,7 @@ let (_, stream) = try inferenceService.enqueue(
 
 ## MCP
 
-```swift
+```swift,no-build
 import ManifoldInference
 import ManifoldMCP
 
@@ -188,7 +189,7 @@ For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), 
 
 Implement `InferenceBackend` and register it. The protocol takes a precomputed `ModelLoadPlan` so the caller's memory-admission verdict and effective context size flow through to the backend instead of being recomputed:
 
-```swift
+```swift,no-build
 class MyBackend: InferenceBackend, @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false
@@ -215,7 +216,7 @@ inferenceService.registerBackendFactory { modelType in
 
 Cloud endpoints flow through storage-neutral `APIEndpointRecord` values. `APIConfigurationView` persists records through the runtime's `EndpointStore`:
 
-```swift
+```swift,no-build
 let endpoint = APIEndpointRecord(
     name: "My OpenAI",
     provider: .openAI,

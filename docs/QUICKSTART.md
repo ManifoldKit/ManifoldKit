@@ -35,6 +35,7 @@ The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, `Mani
 
 ```swift
 import SwiftUI
+import SwiftData
 import ManifoldKit
 import ManifoldUI
 
@@ -99,7 +100,7 @@ See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capabilit
 
 If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()` and depend on just `ManifoldInference` plus the backends you want. Construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your transcript:
 
-```swift
+```swift,no-build
 import ManifoldInference
 import ManifoldBackends
 
@@ -120,7 +121,7 @@ This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph 
 
 `ManifoldKit.quickStart(configuration:)` accepts a `ManifoldConfiguration`. Override the bundle identifier so two ManifoldKit-based apps on the same machine don't collide on the shared SwiftData store path:
 
-```swift
+```swift,no-build
 result = try await ManifoldKit.quickStart(
     configuration: ManifoldConfiguration(
         appName: "My Chat App",
@@ -135,7 +136,7 @@ If you need a custom `ModelContainer` (e.g. for testing, or to attach a second s
 
 Every public throws from the bootstrap path normalises to [`ManifoldKitError`](../Sources/ManifoldInference/ManifoldKitError.swift). Catch it once at the call site and read `errorDescription` for a user-facing string:
 
-```swift
+```swift,no-build
 do {
     result = try await ManifoldKit.quickStart()
 } catch let e as ManifoldKitError {

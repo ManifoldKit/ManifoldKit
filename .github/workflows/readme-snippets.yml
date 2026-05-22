@@ -1,0 +1,94 @@
+name: README Snippets
+
+# Compiles every `swift`-fenced code block in README.md and docs/QUICKSTART.md
+# against the current ManifoldKit package. Catches snippet drift the moment a
+# `feat:` PR renames a public type or removes an initializer that the docs
+# still copy-paste.
+#
+# Wave D-C1 of the DX overhaul. See:
+#   - scripts/extract-snippets.sh        (block extraction + skip policy)
+#   - scripts/extract-snippets-test.sh   (per-snippet swift build scaffold)
+#
+# Discrete workflow (not folded into ci.yml) because the failure mode is
+# orthogonal: README copy-paste correctness has nothing to do with the
+# library's own test suites. Failures on this workflow point the author at
+# the README/QUICKSTART block to fix, not at a Sources/ test target.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      # Any of these can invalidate a snippet:
+      #   - The docs themselves (a new fence may need a no-build tag).
+      #   - The umbrella module's public surface.
+      #   - The Hello World's transitive surface (QuickStart, ManifoldUI types).
+      #   - The scripts the gate runs.
+      - "README.md"
+      - "docs/QUICKSTART.md"
+      - "Sources/ManifoldKit/**"
+      - "Sources/ManifoldUI/**"
+      - "Sources/ManifoldInference/QuickStart*.swift"
+      - "Sources/ManifoldInference/ManifoldKitError.swift"
+      - "Package.swift"
+      - "Package.resolved"
+      - "scripts/extract-snippets.sh"
+      - "scripts/extract-snippets-test.sh"
+      - ".github/workflows/readme-snippets.yml"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "docs/QUICKSTART.md"
+      - "Sources/ManifoldKit/**"
+      - "Sources/ManifoldUI/**"
+      - "Sources/ManifoldInference/QuickStart*.swift"
+      - "Sources/ManifoldInference/ManifoldKitError.swift"
+      - "Package.swift"
+      - "Package.resolved"
+      - "scripts/extract-snippets.sh"
+      - "scripts/extract-snippets-test.sh"
+      - ".github/workflows/readme-snippets.yml"
+
+concurrency:
+  group: readme-snippets-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  readme-snippets:
+    runs-on: macos-15  # matches ci.yml — Apple Silicon arm64 standard runner
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # Same pin as ci.yml — single source of toolchain truth.
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM dependencies
+        # Each per-snippet throwaway package re-resolves the same dependency
+        # set, so caching .build/checkouts + .build/repositories pays for
+        # itself even though the snippet-package's own .build is ephemeral.
+        # We key on Package.resolved exactly like ci.yml.
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-snippets-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-snippets-spm-
+
+      - name: README structure pre-flight
+        # Cheap tripwire — fails fast if the Hello World fence vanished.
+        run: scripts/check-readme.sh
+
+      - name: Compile README + QUICKSTART Swift snippets
+        run: scripts/extract-snippets-test.sh
