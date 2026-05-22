@@ -968,6 +968,17 @@ let package = Package(
                 "ManifoldTestSupport",
             ]
         ),
+        // ManifoldKitTests: tests against the umbrella module's own public
+        // surface. Currently hosts FeatureMatrixTests, which audits the
+        // trait→capability matrix in Sources/ManifoldKit/FeatureMatrix.swift
+        // against the trait list in Package.swift. Trait-free so it runs
+        // under --disable-default-traits.
+        .testTarget(
+            name: "ManifoldKitTests",
+            dependencies: [
+                "ManifoldKit",
+            ]
+        ),
         // Nightly sabotage suite: verifies every file-walking audit test
         // actually catches known violations (the "who watches the watchers"
         // guard). Run with `SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests`.
