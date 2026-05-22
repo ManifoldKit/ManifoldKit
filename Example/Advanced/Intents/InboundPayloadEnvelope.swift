@@ -44,7 +44,7 @@ struct InboundPayloadEnvelope: Codable, Sendable {
 /// The literal values here intentionally mirror ``DemoSharedAppGroup``
 /// (in `Extensions/PendingSharePayload.swift`). They're duplicated rather
 /// than re-exported because this file is also compiled into the
-/// `ManifoldDemoUITests` target, which doesn't link the extension-shared
+/// `AdvancedUITests` target, which doesn't link the extension-shared
 /// `PendingSharePayload.swift`. If you rename either constant, update
 /// the other.
 enum DemoAppGroup {
