@@ -6,12 +6,14 @@ internal enum ServerError: Error, Equatable, Sendable, CustomStringConvertible {
     case invalidConfiguration(String)
     case invalidRequest(message: String, param: String? = nil, code: String? = nil)
     case notImplemented(String)
+    case generationFailed(String)
 
     internal var description: String {
         switch self {
         case .backendUnavailable(let message),
              .invalidConfiguration(let message),
-             .notImplemented(let message):
+             .notImplemented(let message),
+             .generationFailed(let message):
             message
         case .invalidRequest(let message, _, _):
             message
