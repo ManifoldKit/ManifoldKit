@@ -6,7 +6,7 @@ ManifoldKit ships a production-ready chat UI with pluggable inference backends, 
 
 ## Hello World
 
-Add the package, then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one call. Errors surface as [`ManifoldKitError`](Sources/ManifoldInference/Errors/ManifoldKitError.swift).
+Add the package, then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one call. Errors surface as [`ManifoldKitError`](Sources/ManifoldInference/ManifoldKitError.swift).
 
 ```swift
 import SwiftUI
