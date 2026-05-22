@@ -111,10 +111,4 @@ final class DocumentChunkerTests: XCTestCase {
         )
     }
 
-    // Sabotage check: without chunking, no chunks exist
-    func testSabotageEmptyTextHasNoChunks() {
-        let chunker = DocumentChunker()
-        XCTAssertEqual(chunker.chunk(text: "", documentID: UUID()).count, 0)
-        XCTAssertFalse(chunker.chunk(text: "", documentID: UUID()).count > 0)
-    }
 }

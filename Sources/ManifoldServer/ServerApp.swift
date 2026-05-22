@@ -316,7 +316,7 @@ internal struct ServerApp: Sendable {
             return .badRequest
         case .backendUnavailable:
             return .serviceUnavailable
-        case .invalidConfiguration, .notImplemented:
+        case .invalidConfiguration, .notImplemented, .generationFailed:
             return .internalServerError
         }
     }
