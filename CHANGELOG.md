@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.32.0](https://github.com/roryford/ManifoldKit/compare/v0.31.0...v0.32.0) — 2026-05-22
+
+### Highlights
+
+#### `ManifoldKit.quickStart()` — one-call onboarding ([#1369](https://github.com/roryford/ManifoldKit/issues/1369), [#1370](https://github.com/roryford/ManifoldKit/issues/1370), [#1371](https://github.com/roryford/ManifoldKit/issues/1371), [#1372](https://github.com/roryford/ManifoldKit/issues/1372))
+
+Getting from a fresh SwiftUI app to a working chat surface used to require a five-line bootstrap dance — build a progress stream, await the task, register backends, instantiate the view model, wire persistence and endpoint stores. That whole sequence collapses into a single line:
+
+```swift
+let kit = try await ManifoldKit.quickStart()
+```
+
+`QuickStartResult` exposes both the configured `ManifoldBootstrap` and a ready-to-use `ChatViewModel`, so the same call works for "drop in `ChatView`" and "I want the bootstrap, I'll bring my own UI." `MinimalExample` and the top of the README were rewritten around this entry point; the previous demo app moved to `Example/Advanced` as a reference, not the canonical starting point. `docs/QUICKSTART.md` is the new landing page for first-time integrators.
+
+#### Pre-1.0 deprecated API removal ([#1373](https://github.com/roryford/ManifoldKit/issues/1373))
+
+The v1.0 cut list from [#759](https://github.com/roryford/ManifoldKit/issues/759) is done. Five symbols deleted as a single breaking-change PR ahead of the v1.0 tag:
+
+- `InferenceService.generationDidFinish()` — no-op since v0.11.6; the queue auto-drains on stream termination.
+- `GenerationConfig.init(... maxTokens: Int32 ...)` — superseded by the primary init with `maxOutputTokens`.
+- `GenerationConfig.maxTokens` (Int32 computed property + `_legacyMaxTokens` backing field + `CodingKeys.maxTokens` + encode/decode branches). **Wire-format break**: persisted `GenerationConfig` JSON with a top-level `"maxTokens"` key silently drops that value on decode. `maxOutputTokens` has been the canonical knob since v0.7.x.
+- `ToolResult.init(callId:content:isError:)` — superseded by `init(callId:content:errorKind:)`. Migration: `isError: true` → `errorKind: .permanent`; `isError: false` → `errorKind: nil`.
+- `ThinkingBlockFilter` typealias — renamed to `ThinkingParser` (file too: `ThinkingBlockFilterTests.swift` → `ThinkingParserTests.swift`).
+
+Out of scope, intentionally retained: `OllamaBackend` build-mode deprecations (tied to [#714](https://github.com/roryford/ManifoldKit/issues/714)), and newer deprecations on `ConversationRuntime`, MCP OAuth, and the legacy turn-input types — those carry past 1.0.
+
+#### April–May 2026 security audit closed ([#1360](https://github.com/roryford/ManifoldKit/issues/1360), [#1361](https://github.com/roryford/ManifoldKit/issues/1361), [#1368](https://github.com/roryford/ManifoldKit/issues/1368))
+
+The three remaining P0s from the multi-week security audit ship together. **SEC-14** enforces SHA-256 checksums on the curated GGUF catalog so a tampered mirror cannot serve a different-but-valid-magic-bytes weight; **SEC-17** widens the cert-pinning loopback exemption from `127.0.0.1` literal to the full `127.0.0.0/8` block, matching how the OS routes the range; **SEC-26** splits the MCP OAuth refresh token into a separate Keychain item with stricter accessibility (`whenPasscodeSetThisDeviceOnly`) so the long-lived secret can't ride along on an access-token read. Only SEC-16 (DNS TOCTOU on host allowlist) remains deferred.
+
+#### `ManifoldKitError` URL-error unification ([#1362](https://github.com/roryford/ManifoldKit/issues/1362))
+
+`URLError` from any cloud-backend code path now surfaces as a typed `ManifoldKitError` case rather than leaking the underlying Foundation type. Adopters get one error surface to switch on, and the diagnostic payload includes the original `URLError.Code` for callers that still need to branch on transport-layer specifics.
+
+#### DX gated by CI ([#1374](https://github.com/roryford/ManifoldKit/issues/1374), [#1375](https://github.com/roryford/ManifoldKit/issues/1375))
+
+Two new workflows lock the onboarding contract in. `readme-snippets` extracts every fenced `swift` block in `README.md` and `docs/*.md`, drops each into a fresh SwiftPM consumer, and runs `swift build` — any future PR that breaks a documented snippet fails CI. `cold-start-human` asserts the first H2 in `README.md` is `## Hello World` and that the snippet under it compiles end-to-end against the current public API. The first run of both gates immediately caught a real bug: the README's Hello World was missing `import SwiftData`. The intent isn't to police prose — it's to convert documentation drift from an editorial discipline problem into a CI failure.
+
+### Features
+
+* Machine-readable trait→capability feature matrix ([#1366](https://github.com/roryford/ManifoldKit/issues/1366)) — a JSON document at the repo root and a generator script make the trait/capability cross-product introspectable from tooling.
+* Opt-in README anchor checks in `scripts/check-readme.sh` ([#1364](https://github.com/roryford/ManifoldKit/issues/1364)) — guards against link rot when section headings move.
+
+### Developer Experience
+
+* `dx:` conventional commit type with a dedicated changelog section ([#1365](https://github.com/roryford/ManifoldKit/issues/1365)) — surfaces tooling/workflow changes without inflating `feat:` or `chore:` counts.
+* DX checklist added to the PR template ([#1363](https://github.com/roryford/ManifoldKit/issues/1363)) — prompts authors to consider first-time-user impact on every change.
+* README pruning ritual + DX budget ([#1376](https://github.com/roryford/ManifoldKit/issues/1376)) — recurring issue template + a `dx-debt` label + a CONTRIBUTING section that reserves one `dx:` PR per minor cycle for editorial debt, so DX work isn't perpetually deferred to "next sprint."
+
 ## [0.31.0](https://github.com/roryford/ManifoldKit/compare/v0.30.0...v0.31.0) — 2026-05-22
 
 ### Highlights
