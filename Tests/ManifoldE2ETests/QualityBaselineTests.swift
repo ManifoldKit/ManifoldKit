@@ -220,23 +220,26 @@ final class QualityBaselineTests: XCTestCase {
             let totalDivergence = mismatches + lengthDelta
             let threshold = max(1, Int(Double(baseline.count) * 0.05))
 
-            XCTAssertLessThanOrEqual(
-                totalDivergence,
-                threshold,
-                """
-                Quality regression detected for '\(prompt)':
-                  baseline length : \(baseline.count)
-                  fresh length    : \(freshIDs.count)
-                  mismatched bytes: \(mismatches)
-                  length delta    : \(lengthDelta)
-                  total divergence: \(totalDivergence) (threshold: \(threshold))
-                  baseline text   : \(String(bytes: baseline, encoding: .utf8) ?? "<non-UTF8>")
-                  fresh text      : \(responseText)
-                  model           : \(modelURL.lastPathComponent)
-                Delete the baseline file at \(Self.baselineFileURL(forPrompt: prompt).path) \
-                and re-run to re-record if the change is intentional.
-                """
-            )
+            // Pre-compute the diagnostic message to keep the type checker happy.
+            // A direct multi-line interpolation against XCTAssertLessThanOrEqual's
+            // overload set times out the Swift 6 type checker.
+            // (Also: `baseline` is [Int] token IDs — `String(bytes:encoding:)` was a
+            // pre-existing semantic bug. Dropped the "baseline text" line; token-id
+            // counts above already capture the divergence shape.)
+            let baselinePath = Self.baselineFileURL(forPrompt: prompt).path
+            let diagnostic = """
+            Quality regression detected for '\(prompt)':
+              baseline length : \(baseline.count)
+              fresh length    : \(freshIDs.count)
+              mismatched ids  : \(mismatches)
+              length delta    : \(lengthDelta)
+              total divergence: \(totalDivergence) (threshold: \(threshold))
+              fresh text      : \(responseText)
+              model           : \(modelURL.lastPathComponent)
+            Delete the baseline file at \(baselinePath) and re-run to re-record \
+            if the change is intentional.
+            """
+            XCTAssertLessThanOrEqual(totalDivergence, threshold, diagnostic)
         } else {
             // No baseline yet — record this run and ask the developer to
             // commit the baseline file alongside intentional model updates.

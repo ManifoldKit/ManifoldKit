@@ -364,8 +364,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                 dialect: _dialect,
                 autoDetectedMarkers: _autoDetectedThinkingMarkers,
                 kvCacheReuseEligible: _kvCacheReuseEligible,
-                pendingSnapshotTask: _promptCacheState.pendingSnapshotTask,
-                existingPromptCacheSnapshot: _promptCacheState.snapshot
+                pendingSnapshotTask: _promptCacheState.pendingSnapshotTask
             )
         }
         Self.logger.debug("MLX generate started")
@@ -393,7 +392,12 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
                     autoDetectedMarkers: snapshot.autoDetectedMarkers,
                     kvCacheReuseEligible: snapshot.kvCacheReuseEligible,
                     pendingSnapshotTask: snapshot.pendingSnapshotTask,
-                    existingSnapshot: snapshot.existingPromptCacheSnapshot,
+                    // Closure re-reads the snapshot AFTER the driver awaits
+                    // `pendingSnapshotTask`, so we see the value the prior turn's
+                    // snapshot task wrote rather than the nil we'd have captured here.
+                    currentSnapshot: { [weak self] in
+                        self?.withStateLock { self?._promptCacheState.snapshot } ?? nil
+                    },
                     generationStream: generationStream,
                     continuation: continuation,
                     yieldHook: MLXBackend._yieldHookForTesting
@@ -449,7 +453,6 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         let autoDetectedMarkers: ThinkingMarkers?
         let kvCacheReuseEligible: Bool
         let pendingSnapshotTask: Task<Void, Never>?
-        let existingPromptCacheSnapshot: MLXPromptCacheCoordinator.Snapshot?
     }
 
     /// Schedules an off-main capture of the prompt KV cache for next-turn reuse.
