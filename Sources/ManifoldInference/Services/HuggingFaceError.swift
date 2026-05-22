@@ -20,11 +20,17 @@ public enum HuggingFaceError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .searchFailed(let underlying):
-            return "HuggingFace search failed: \(underlying.localizedDescription)"
+            // Route through the unified rim so consumers see user-readable
+            // strings rather than raw CFNetwork codes from URLError.
+            let detail = ManifoldKitError.from(underlying).errorDescription
+                ?? underlying.localizedDescription
+            return "HuggingFace search failed: \(detail)"
         case .modelNotFound(let repoID):
             return "Model not found on HuggingFace: \(repoID)"
         case .downloadFailed(let underlying):
-            return "Download failed: \(underlying.localizedDescription)"
+            let detail = ManifoldKitError.from(underlying).errorDescription
+                ?? underlying.localizedDescription
+            return "Download failed: \(detail)"
         case .networkUnavailable:
             return "No network connection available. Please check your internet connection."
         case .insufficientDiskSpace(let required, let available):

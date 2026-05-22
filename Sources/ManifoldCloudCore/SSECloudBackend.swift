@@ -505,8 +505,14 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                         let (bytes, response) = try await session.bytes(for: attemptRequest)
 
                         guard let httpResponse = response as? HTTPURLResponse else {
+                            // Carry the rim's `serverError(statusCode: 0, ...)`
+                            // shape so the eventual user-facing string is the
+                            // unified "Server returned an unexpected response."
                             throw CloudBackendError.networkError(
-                                underlying: URLError(.badServerResponse)
+                                underlying: ManifoldKitError.serverError(
+                                    statusCode: 0,
+                                    message: "Malformed server response"
+                                )
                             )
                         }
 

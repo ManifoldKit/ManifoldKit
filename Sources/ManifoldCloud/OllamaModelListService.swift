@@ -75,7 +75,12 @@ public final class OllamaModelListService: Sendable {
         let (data, response) = try await urlSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw CloudBackendError.networkError(underlying: URLError(.badServerResponse))
+            throw CloudBackendError.networkError(
+                underlying: ManifoldKitError.serverError(
+                    statusCode: 0,
+                    message: "Malformed server response"
+                )
+            )
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
