@@ -55,6 +55,27 @@ package enum PrivateIPClassifier {
         return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
 
+    /// Returns `true` if `host` is a loopback host string.
+    ///
+    /// Recognises the literal `localhost`, the IPv6 loopback `::1`, and the
+    /// full IPv4 loopback range `127.0.0.0/8` (RFC 1122). Distinct from
+    /// ``isLocalhostURL(_:)``, which intentionally limits to the three canonical
+    /// loopback literals for URL-configuration validation. This helper is for
+    /// trust-decision call sites (e.g. certificate-pinning bypass) where every
+    /// `127.x.x.x` address must be treated as loopback — otherwise hosts like
+    /// `127.0.0.2` slip past a literal allowlist and fall through to platform
+    /// trust [SEC-17].
+    package static func isLoopbackHost(_ host: String) -> Bool {
+        let normalized = host.lowercased()
+        if normalized == "localhost" || normalized == "::1" {
+            return true
+        }
+        if let octets = parseIPv4Literal(normalized), octets[0] == 127 {
+            return true
+        }
+        return false
+    }
+
     // MARK: - IP Literal Classification
 
     /// Classifies an IP literal string as belonging to a blocked address range.

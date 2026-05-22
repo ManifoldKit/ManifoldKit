@@ -107,11 +107,18 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
         _defaultPinsLoaded = false
     }
 
-    /// Hosts that bypass pinning entirely (local development servers).
-    private static let bypassHosts: Set<String> = [
-        "localhost", "127.0.0.1", "::1"
-    ]
-    
+    /// Returns `true` if `host` is a loopback host whose connections bypass
+    /// certificate pinning (local development servers).
+    ///
+    /// Delegates to ``PrivateIPClassifier/isLoopbackHost(_:)`` so the full IPv4
+    /// loopback range `127.0.0.0/8` and IPv6 `::1` are classified semantically
+    /// rather than via a hand-curated literal allowlist. A literal set leaves
+    /// `127.0.0.2` (and the rest of `127.x.x.x`) without pins, falling through
+    /// to platform trust [SEC-17].
+    static func isBypassHost(_ host: String) -> Bool {
+        PrivateIPClassifier.isLoopbackHost(host)
+    }
+
     /// Known production hosts that must have non-empty pin sets configured.
     private static let requiredPinnedHosts: Set<String> = [
         "api.openai.com",
@@ -133,7 +140,7 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
         let host = challenge.protectionSpace.host
 
         // Bypass pinning for localhost / local network servers.
-        if Self.bypassHosts.contains(host) {
+        if Self.isBypassHost(host) {
             completionHandler(.performDefaultHandling, nil)
             return
         }

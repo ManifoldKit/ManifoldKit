@@ -67,6 +67,17 @@ final class PinnedSessionDelegateTests: XCTestCase {
         await verifyBypassHost("::1")
     }
 
+    // SEC-17: full 127.0.0.0/8 (RFC 1122) must bypass pinning, not just 127.0.0.1.
+    // A literal allowlist of {"localhost", "127.0.0.1", "::1"} leaves 127.0.0.2 and
+    // the rest of 127.x.x.x falling through to platform trust.
+    func test_bypassHost_ipv4Loopback_127_0_0_2_returnsDefaultHandling() async {
+        await verifyBypassHost("127.0.0.2")
+    }
+
+    func test_bypassHost_ipv4Loopback_127_255_255_254_returnsDefaultHandling() async {
+        await verifyBypassHost("127.255.255.254")
+    }
+
     // MARK: - Unknown Host (No Pins Configured)
 
     func test_unknownHost_noPins_returnsDefaultHandling() async {
@@ -186,7 +197,7 @@ final class PinnedSessionDelegateTests: XCTestCase {
         ManifoldConfiguration.shared = ManifoldConfiguration(customHostTrustPolicy: .requireExplicitPins)
         defer { ManifoldConfiguration.shared = savedConfig }
 
-        for host in ["localhost", "127.0.0.1", "::1"] {
+        for host in ["localhost", "127.0.0.1", "127.0.0.2", "::1"] {
             let delegate = PinnedSessionDelegate()
             let challenge = makeChallenge(host: host)
 

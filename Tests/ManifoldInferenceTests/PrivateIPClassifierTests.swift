@@ -36,6 +36,55 @@ final class PrivateIPClassifierTests: XCTestCase {
         XCTAssertFalse(PrivateIPClassifier.isLocalhostURL(URL(string: "http://127.0.0.2:8080")!))
     }
 
+    // MARK: - isLoopbackHost (SEC-17)
+
+    func test_isLoopbackHost_localhost_isTrue() {
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("localhost"))
+    }
+
+    func test_isLoopbackHost_127_0_0_1_isTrue() {
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("127.0.0.1"))
+    }
+
+    func test_isLoopbackHost_127_0_0_2_isTrue() {
+        // SEC-17: full 127.0.0.0/8 must be loopback, not just 127.0.0.1.
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("127.0.0.2"))
+    }
+
+    func test_isLoopbackHost_127_255_255_255_isTrue() {
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("127.255.255.255"))
+    }
+
+    func test_isLoopbackHost_ipv6Loopback_isTrue() {
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("::1"))
+    }
+
+    func test_isLoopbackHost_caseInsensitive() {
+        XCTAssertTrue(PrivateIPClassifier.isLoopbackHost("LOCALHOST"))
+    }
+
+    func test_isLoopbackHost_128_0_0_1_isFalse() {
+        // Off-by-one: first non-loopback /8.
+        XCTAssertFalse(PrivateIPClassifier.isLoopbackHost("128.0.0.1"))
+    }
+
+    func test_isLoopbackHost_126_255_255_255_isFalse() {
+        // Off-by-one: last address before loopback /8.
+        XCTAssertFalse(PrivateIPClassifier.isLoopbackHost("126.255.255.255"))
+    }
+
+    func test_isLoopbackHost_privateIP_isFalse() {
+        XCTAssertFalse(PrivateIPClassifier.isLoopbackHost("192.168.1.1"))
+    }
+
+    func test_isLoopbackHost_publicIP_isFalse() {
+        XCTAssertFalse(PrivateIPClassifier.isLoopbackHost("1.1.1.1"))
+    }
+
+    func test_isLoopbackHost_emptyString_isFalse() {
+        XCTAssertFalse(PrivateIPClassifier.isLoopbackHost(""))
+    }
+
     // MARK: - classifyIPLiteral: Allowed Addresses
 
     func test_publicIP_1_1_1_1_isNil() {
