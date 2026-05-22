@@ -173,7 +173,7 @@ final class ToolCallContractTests: XCTestCase {
         // Sabotage check: using `decode` instead of `decodeIfPresent` in init(from:)
         // causes a keyNotFound DecodingError here.
         let legacyJSON = """
-        {"temperature":0.7,"topP":0.9,"repeatPenalty":1.1,"maxTokens":512}
+        {"temperature":0.7,"topP":0.9,"repeatPenalty":1.1}
         """.data(using: .utf8)!
 
         let decoded = try JSONDecoder().decode(GenerationConfig.self, from: legacyJSON)

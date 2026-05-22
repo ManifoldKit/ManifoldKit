@@ -114,7 +114,6 @@ final class InferenceServiceFacadeTests: XCTestCase {
         service.unloadModel()
         service.resetConversation()
         service.stopGeneration()
-        service.generationDidFinish()
     }
 
     // MARK: - Helpers

@@ -7,7 +7,7 @@ import ManifoldTestSupport
 /// Integration tests verifying post-generation queue behavior.
 ///
 /// These tests exercise the InferenceService queue from a consumer's
-/// perspective: enqueue requests, drain them via `generationDidFinish()`,
+/// perspective: enqueue requests, let them auto-drain on stream terminate,
 /// and verify ordering and lifecycle contracts.
 @MainActor
 final class PostGenerationQueueTests: XCTestCase {
@@ -96,14 +96,11 @@ final class PostGenerationQueueTests: XCTestCase {
         await Task.yield()
         mock.release(at: 0, tokens: ["primary-tok"])
 
-        // Consume the primary stream fully.
+        // Consume the primary stream fully — queue auto-drains on stream terminate.
         for try await _ in primaryStream.events {}
 
-        // Signal completion — this is the caller's responsibility.
-        service.generationDidFinish()
-
         XCTAssertFalse(service.isGenerating,
-                       "Service should be idle after generationDidFinish()")
+                       "Service should be idle after stream terminates")
 
         // Now enqueue a background request, simulating a post-generation task.
         let (_, bgStream) = try service.enqueue(
@@ -217,7 +214,6 @@ final class PostGenerationQueueTests: XCTestCase {
         await Task.yield()
         mock.release(at: 0, tokens: ["done"])
         for try await _ in activeStream.events {}
-        service.generationDidFinish()
 
         // The urgent request should be next, not bg1.
         XCTAssertEqual(urgentStream.phase, .connecting,
@@ -235,7 +231,7 @@ final class PostGenerationQueueTests: XCTestCase {
         for try await event in urgentStream.events {
             if case .token(let text) = event { executionOrder.append(text) }
         }
-        service.generationDidFinish()
+
 
         // Drain bg1.
         XCTAssertEqual(bg1Stream.phase, .connecting)
@@ -244,7 +240,7 @@ final class PostGenerationQueueTests: XCTestCase {
         for try await event in bg1Stream.events {
             if case .token(let text) = event { executionOrder.append(text) }
         }
-        service.generationDidFinish()
+
 
         // Drain bg2.
         XCTAssertEqual(bg2Stream.phase, .connecting)
@@ -253,7 +249,7 @@ final class PostGenerationQueueTests: XCTestCase {
         for try await event in bg2Stream.events {
             if case .token(let text) = event { executionOrder.append(text) }
         }
-        service.generationDidFinish()
+
 
         // Drain bg3.
         XCTAssertEqual(bg3Stream.phase, .connecting)
@@ -262,7 +258,7 @@ final class PostGenerationQueueTests: XCTestCase {
         for try await event in bg3Stream.events {
             if case .token(let text) = event { executionOrder.append(text) }
         }
-        service.generationDidFinish()
+
 
         XCTAssertEqual(executionOrder, ["urgent-tok", "bg1-tok", "bg2-tok", "bg3-tok"],
                        "Execution order should be: urgent first, then background in FIFO")

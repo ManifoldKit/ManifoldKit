@@ -79,6 +79,3 @@ public struct ThinkingParser {
     }
 }
 
-@available(*, deprecated, renamed: "ThinkingParser",
-    message: "Use ThinkingParser; process(_:) returns [GenerationEvent] instead of a filtered String.")
-public typealias ThinkingBlockFilter = ThinkingParser

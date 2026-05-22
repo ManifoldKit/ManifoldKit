@@ -89,7 +89,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
             .text("Here is what I generated:"),
             .thinking("Let me think about composition."),
             .toolCall(ToolCall(id: "c1", toolName: "render", arguments: "{}")),
-            .toolResult(ToolResult(callId: "c1", content: "ok", isError: false)),
+            .toolResult(ToolResult(callId: "c1", content: "ok")),
             .image(data: Data([0xFF]), mimeType: "image/jpeg"),
             .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 4, waveform: [0.1, 0.9]),
             .generatedImage(makePayload()),
@@ -129,7 +129,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         XCTAssertNil(MessagePart.image(data: Data(), mimeType: "image/png").generatedImageContent)
         XCTAssertNil(MessagePart.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 1, waveform: nil).generatedImageContent)
         XCTAssertNil(MessagePart.toolCall(ToolCall(id: "c", toolName: "t", arguments: "{}")).generatedImageContent)
-        XCTAssertNil(MessagePart.toolResult(ToolResult(callId: "c", content: "x", isError: false)).generatedImageContent)
+        XCTAssertNil(MessagePart.toolResult(ToolResult(callId: "c", content: "x")).generatedImageContent)
     }
 
     // MARK: - Canonical JSON fixture (hand-written)
@@ -216,7 +216,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
         // hand-written so a renamed key (e.g. `text` → `t`) shows up as a
         // test failure rather than a silent migration.
         let toolCall = ToolCall(id: "c1", toolName: "search", arguments: "{\"q\":\"swift\"}")
-        let toolResult = ToolResult(callId: "c1", content: "ok", isError: false)
+        let toolResult = ToolResult(callId: "c1", content: "ok")
         let toolCallJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolCall), encoding: .utf8))
         let toolResultJSON = try XCTUnwrap(String(data: try JSONEncoder().encode(toolResult), encoding: .utf8))
 

@@ -36,8 +36,7 @@ final class MessagePartToolCasesTests: XCTestCase {
     func test_toolResult_codableRoundtrip_success() throws {
         let result = ToolResult(
             callId: "call_abc123",
-            content: #"{"temp":72}"#,
-            isError: false
+            content: #"{"temp":72}"#
         )
         let part: MessagePart = .toolResult(result)
 
@@ -48,12 +47,11 @@ final class MessagePartToolCasesTests: XCTestCase {
     }
 
     func test_toolResult_codableRoundtrip_errorFlag() throws {
-        // Agent A may later layer structured error kinds on top of isError; the
-        // Bool remains the wire contract and must round-trip faithfully.
+        // ErrorKind round-trips faithfully on the wire.
         let result = ToolResult(
             callId: "call_xyz",
             content: "timeout after 30s",
-            isError: true
+            errorKind: .permanent
         )
         let part: MessagePart = .toolResult(result)
 
@@ -71,7 +69,7 @@ final class MessagePartToolCasesTests: XCTestCase {
             .text("Let me check the weather."),
             .thinking("The user wants the current conditions."),
             .toolCall(ToolCall(id: "c1", toolName: "get_weather", arguments: #"{"city":"Paris"}"#)),
-            .toolResult(ToolResult(callId: "c1", content: #"{"temp":18}"#, isError: false)),
+            .toolResult(ToolResult(callId: "c1", content: #"{"temp":18}"#)),
             .image(data: Data([0xFF, 0xD8, 0xFF, 0xE0]), mimeType: "image/jpeg"),
             .text("It's 18°C in Paris."),
         ]
@@ -95,7 +93,7 @@ final class MessagePartToolCasesTests: XCTestCase {
 
     func test_textContent_returnsNil_forToolResult() {
         let part: MessagePart = .toolResult(
-            ToolResult(callId: "c1", content: "ok", isError: false)
+            ToolResult(callId: "c1", content: "ok")
         )
         XCTAssertNil(part.textContent,
             ".textContent must be nil for .toolResult")
@@ -112,7 +110,7 @@ final class MessagePartToolCasesTests: XCTestCase {
     }
 
     func test_toolResultContent_returnsAssociatedValue() {
-        let result = ToolResult(callId: "c1", content: "42", isError: false)
+        let result = ToolResult(callId: "c1", content: "42")
         let part: MessagePart = .toolResult(result)
 
         XCTAssertEqual(part.toolResultContent, result)

@@ -92,15 +92,6 @@ public struct GenerationConfig: Sendable, Codable {
     public var temperature: Float
     public var topP: Float
     public var repeatPenalty: Float
-    @available(*, deprecated, renamed: "maxOutputTokens", message: "Use maxOutputTokens (Int?) for the generation cap; maxTokens is legacy Int32 Codable compatibility only.")
-    public var maxTokens: Int32 {
-        get { _legacyMaxTokens }
-        set { _legacyMaxTokens = newValue }
-    }
-    /// Backing storage for the deprecated ``maxTokens`` field. Lives separately so the type's
-    /// own initializers and Codable conformance can read/write the legacy value without
-    /// tripping the deprecation warning. See PR #766 follow-up to #747.
-    @usableFromInline internal var _legacyMaxTokens: Int32 = 512
     public var topK: Int32?
     public var typicalP: Float?
 
@@ -320,57 +311,6 @@ public struct GenerationConfig: Sendable, Codable {
     /// per-request payloads; this is a per-request *contract*.
     public var requiredCapabilities: Set<GenerationCapabilityRequirement> = []
 
-    @available(*, deprecated, message: "Drop the maxTokens argument and use the primary GenerationConfig init with maxOutputTokens; this overload only preserves legacy maxTokens storage.")
-    public init(
-        temperature: Float = 0.7,
-        topP: Float = 0.9,
-        repeatPenalty: Float = 1.1,
-        maxTokens: Int32,
-        topK: Int32? = nil,
-        typicalP: Float? = nil,
-        minP: Float? = nil,
-        repetitionPenalty: Float? = nil,
-        seed: UInt64? = nil,
-        maxOutputTokens: Int? = 2048,
-        tools: [ToolDefinition] = [],
-        toolChoice: ToolChoice = .auto,
-        maxThinkingTokens: Int? = nil,
-        jsonMode: Bool = false,
-        streamPrefillProgress: Bool = false,
-        thinkingMarkers: ThinkingMarkers? = nil,
-        maxToolIterations: Int = 10,
-        grammar: String? = nil,
-        structuredOutput: StructuredOutputStrategy? = nil,
-        yieldEveryNTokens: Int = 8,
-        llamaDRY: LlamaDRYSamplerOptions? = nil,
-        llamaXTC: LlamaXTCSamplerOptions? = nil,
-        llamaMirostatV2: LlamaMirostatV2SamplerOptions? = nil
-    ) {
-        self.temperature = temperature
-        self.topP = topP
-        self.repeatPenalty = repeatPenalty
-        self._legacyMaxTokens = maxTokens
-        self.topK = topK
-        self.typicalP = typicalP
-        self.minP = minP
-        self.repetitionPenalty = repetitionPenalty
-        self.seed = seed
-        self.maxOutputTokens = maxOutputTokens
-        self.tools = tools
-        self.toolChoice = toolChoice
-        self.maxThinkingTokens = maxThinkingTokens
-        self.jsonMode = jsonMode
-        self.streamPrefillProgress = streamPrefillProgress
-        self.thinkingMarkers = thinkingMarkers
-        self.maxToolIterations = max(1, maxToolIterations)
-        self.grammar = grammar
-        self.structuredOutput = structuredOutput
-        self.yieldEveryNTokens = yieldEveryNTokens
-        self.llamaDRY = llamaDRY
-        self.llamaXTC = llamaXTC
-        self.llamaMirostatV2 = llamaMirostatV2
-    }
-
     public init(
         temperature: Float = 0.7,
         topP: Float = 0.9,
@@ -434,7 +374,7 @@ public struct GenerationConfig: Sendable, Codable {
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case temperature, topP, repeatPenalty, maxTokens, topK, typicalP, maxOutputTokens
+        case temperature, topP, repeatPenalty, topK, typicalP, maxOutputTokens
         case tools, toolChoice, maxThinkingTokens, maxToolIterations, grammar
         case yieldEveryNTokens
         case streamPrefillProgress
@@ -453,9 +393,6 @@ public struct GenerationConfig: Sendable, Codable {
         temperature = try c.decode(Float.self, forKey: .temperature)
         topP = try c.decode(Float.self, forKey: .topP)
         repeatPenalty = try c.decode(Float.self, forKey: .repeatPenalty)
-        // maxTokens is deprecated; absent from payloads that never encoded it — fall back to 512.
-        // We write to the backing store directly to avoid the deprecation warning on the property.
-        _legacyMaxTokens = (try c.decodeIfPresent(Int32.self, forKey: .maxTokens)) ?? 512
         topK = try c.decodeIfPresent(Int32.self, forKey: .topK)
         typicalP = try c.decodeIfPresent(Float.self, forKey: .typicalP)
         maxOutputTokens = try c.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
@@ -507,8 +444,6 @@ public struct GenerationConfig: Sendable, Codable {
         try c.encode(temperature, forKey: .temperature)
         try c.encode(topP, forKey: .topP)
         try c.encode(repeatPenalty, forKey: .repeatPenalty)
-        // Encode the legacy `maxTokens` wire field for backwards-compatible payloads.
-        try c.encode(_legacyMaxTokens, forKey: .maxTokens)
         try c.encodeIfPresent(topK, forKey: .topK)
         try c.encodeIfPresent(typicalP, forKey: .typicalP)
         try c.encodeIfPresent(maxOutputTokens, forKey: .maxOutputTokens)
