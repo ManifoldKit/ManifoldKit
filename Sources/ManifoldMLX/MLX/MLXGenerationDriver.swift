@@ -106,7 +106,10 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
         autoDetectedMarkers: ThinkingMarkers?,
         kvCacheReuseEligible: Bool,
         pendingSnapshotTask: Task<Void, Never>?,
-        existingSnapshot: MLXPromptCacheCoordinator.Snapshot?,
+        // Re-reading the snapshot AFTER awaiting `pendingSnapshotTask` is load-bearing:
+        // the prior turn's snapshot task writes to backend state, and a value captured
+        // before the await is always stale on second turn. See driver lines 169-174.
+        currentSnapshot: @MainActor @Sendable () -> MLXPromptCacheCoordinator.Snapshot?,
         generationStream: GenerationStream,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
         yieldHook: (@Sendable () async -> Void)?
@@ -168,12 +171,14 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
 
         // Wait for any pending KV snapshot capture from the previous turn to
         // complete before we restore from it — otherwise we'd race
-        // `Snapshot` writes against reads.
+        // `Snapshot` writes against reads. Then re-read the snapshot from
+        // backend state: a value captured before the await is stale because
+        // the snapshot task writes there.
         if kvCacheReuseEligible, let pendingSnapshotTask {
             await pendingSnapshotTask.value
         }
         let resolvedSnapshot: MLXPromptCacheCoordinator.Snapshot? =
-            kvCacheReuseEligible ? existingSnapshot : nil
+            kvCacheReuseEligible ? currentSnapshot() : nil
 
         let prepared = try await MLXPromptCacheCoordinator.prepareInputAndCache(
             container: container,
