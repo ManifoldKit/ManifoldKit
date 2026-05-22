@@ -712,7 +712,10 @@ public extension HuggingFaceService {
                 if let onChunk {
                     // task.progress uses a 0-100 unit scale, not bytes.
                     // Observe countOfBytesReceived directly for real byte counts.
-                    var lastLoggedPct = -10
+                    // KVO callbacks fire on URLSession's delegate queue, not the caller's
+                    // actor, so the throttling counter needs a real lock (CLAUDE.md
+                    // Swift-6 gotcha #2 — @unchecked Sendable is not a fix here).
+                    let lastLoggedPct = OSAllocatedUnfairLock<Int>(initialState: -10)
                     state.setObservation(task.observe(\.countOfBytesReceived) { [weak task] _, _ in
                         guard let task else { return }
                         let received = task.countOfBytesReceived
@@ -721,8 +724,12 @@ public extension HuggingFaceService {
                         let safeExpected: Int64 = expected > 0 ? expected : 0
                         if safeExpected > 0 {
                             let pct = Int(Double(received) / Double(safeExpected) * 100)
-                            if pct >= lastLoggedPct + 10 {
-                                lastLoggedPct = pct
+                            let shouldLog = lastLoggedPct.withLock { current -> Bool in
+                                guard pct >= current + 10 else { return false }
+                                current = pct
+                                return true
+                            }
+                            if shouldLog {
                                 Log.download.debug("\(filename, privacy: .public): \(pct)% (\(received)/\(safeExpected) bytes)")
                             }
                         }
