@@ -20,6 +20,7 @@ you're making and follow the gates listed there. Cross-references point at
 - [Adding a macro](#adding-a-macro)
 - [Adding a setting / configuration flag](#adding-a-setting--configuration-flag)
 - [Commit style](#commit-style)
+- [DX budget](#dx-budget) — one `dx:` PR per minor cycle for DX debt
 - [Pull request process](#pull-request-process)
 - [PR hygiene](#pr-hygiene)
 - [Reporting bugs](#reporting-bugs)
@@ -344,6 +345,35 @@ The trimMessages fallback returned an empty array when the system prompt
 alone exceeded maxTokens. Always return at least the last user message so
 generation has something to work with.
 ```
+
+## DX budget
+
+The project allocates one `dx:`-prefixed PR per minor release cycle exclusively
+for developer-experience debt. This is calendar-driven, not opportunistic — DX
+work loses to feature work every time when it competes for the same slot, so it
+gets its own slot.
+
+What counts:
+
+- Pruning README accretion (target: ≤700 lines; current line count tracked per
+  audit).
+- Updating `docs/QUICKSTART.md` or `docs/FeatureMatrix.md` for clarity.
+- Fixing error messages users see but don't understand.
+- Smoothing rough edges in `Example/Examples/MinimalExample` or
+  `Example/Advanced/`.
+- Reviewing whether new traits or backends need matrix entries (the CI gate
+  enforces *presence*; humans judge accuracy).
+
+What doesn't count:
+
+- Adding new features and labeling them `dx:` to dodge release-note budget —
+  those are `feat:`.
+- Bug fixes — those are `fix:`.
+
+The DX budget issue is filed from the
+[README pruning ritual issue template](.github/ISSUE_TEMPLATE/readme-prune.md)
+at the start of each cycle. Maintainers can pick it up directly or label it
+`good first issue` for community contributors.
 
 ## Pull request process
 
