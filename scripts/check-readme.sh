@@ -26,6 +26,28 @@
 #   chartered to prevent.
 #
 # Exit 0 on success, non-zero on any check failure.
+#
+# ── Strict mode (opt-in) ──────────────────────────────────────────────────
+#
+# Set `MANIFOLDKIT_README_STRICT=1` to additionally enforce the README
+# structure anchors below. These checks are gated because they describe a
+# README layout that is being introduced by a later DX-overhaul worker
+# (W-C-B1a); flipping them on before the new README ships would fail `main`.
+# The follow-up worker that lands the README rewrite will export the var in
+# the relevant CI job. Until then, this lane is opt-in only.
+#
+# Strict-mode checks:
+#   3. README contains a `## Hello World` heading (case-insensitive, also
+#      tolerates `## Hello, World` / `## Hello world`) within the first 250
+#      lines — guards against the quickstart sliding below Architecture.
+#   4. README contains a `## Feature Matrix` heading (case-insensitive)
+#      anywhere, AND within 20 lines of that heading links to
+#      `docs/FeatureMatrix.md` so the section actually routes readers to
+#      the rendered matrix instead of stubbing it inline.
+#
+# Usage:
+#   bash scripts/check-readme.sh                          # default (loose) — baseline checks only
+#   MANIFOLDKIT_README_STRICT=1 bash scripts/check-readme.sh   # also enforce structure anchors
 
 set -euo pipefail
 
@@ -152,6 +174,47 @@ if [[ ${bad_apis} -gt 0 ]]; then
     echo "Found ${bad_apis} reference(s) to deleted public API."
 else
     echo "✓ README contains no references to known-deleted public API."
+fi
+
+# ── Strict-mode checks (opt-in) ────────────────────────────────────────────
+#
+# These checks describe the post-restructure README layout. They are gated
+# behind MANIFOLDKIT_README_STRICT=1 so the baseline lane stays green on the
+# pre-restructure README. The W-C-B1a worker (or its CI follow-up W-D-C1)
+# will flip the env var on in the relevant workflow once the new sections
+# exist. See top-of-file comment for the strict-mode contract.
+if [[ "${MANIFOLDKIT_README_STRICT:-0}" == "1" ]]; then
+    echo
+    echo "── Strict: README structure anchors (MANIFOLDKIT_README_STRICT=1) ───"
+
+    # Check 3: `## Hello World` heading within first 250 lines.
+    # Case-insensitive; tolerate "Hello, World" / "Hello world" variants.
+    hello_line=$(head -n 250 "${README_PATH}" | grep -niE '^## hello[, ]+world\s*$' | head -n 1 || true)
+    if [[ -z "${hello_line}" ]]; then
+        echo "::error file=README.md::Strict mode: missing \`## Hello World\` heading in first 250 lines (tolerant of \`## Hello, World\` / case)."
+        failures=$((failures + 1))
+    else
+        echo "✓ Found Hello World anchor: ${hello_line}"
+    fi
+
+    # Check 4: `## Feature Matrix` heading anywhere, followed within 20 lines
+    # by a link to docs/FeatureMatrix.md. The two-part shape stops a future
+    # PR from satisfying the lint with an empty stub heading.
+    fm_line_no=$(grep -niE '^## feature matrix\s*$' "${README_PATH}" | head -n 1 | cut -d: -f1 || true)
+    if [[ -z "${fm_line_no}" ]]; then
+        echo "::error file=README.md::Strict mode: missing \`## Feature Matrix\` heading."
+        failures=$((failures + 1))
+    else
+        # Window: heading line through heading+20. `sed -n 'A,Bp'` extracts inclusive range.
+        window_end=$((fm_line_no + 20))
+        window=$(sed -n "${fm_line_no},${window_end}p" "${README_PATH}")
+        if printf '%s\n' "${window}" | grep -qF 'docs/FeatureMatrix.md'; then
+            echo "✓ Found Feature Matrix anchor at line ${fm_line_no} with link to docs/FeatureMatrix.md."
+        else
+            echo "::error file=README.md,line=${fm_line_no}::Strict mode: \`## Feature Matrix\` heading must link to \`docs/FeatureMatrix.md\` within 20 lines."
+            failures=$((failures + 1))
+        fi
+    fi
 fi
 
 echo
