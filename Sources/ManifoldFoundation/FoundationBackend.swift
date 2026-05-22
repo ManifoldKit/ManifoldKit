@@ -139,7 +139,14 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // partially-decoded structure but we do not surface name/argument
         // deltas as separate events (parity with MLXBackend's inline parser).
         streamsToolCallArguments: false,
-        supportsGuidedStructuredOutput: true
+        supportsGuidedStructuredOutput: true,
+        // Apple's on-device model degrades sharply once the tool catalogue
+        // exceeds ~16 entries — the schema definitions consume an increasing
+        // fraction of its fixed context budget. Advertising more than 16 tools
+        // would leave less room for user content and reduce reasoning quality.
+        // ConversationTurnExecutor reads this cap and truncates the
+        // `GenerationConfig.tools` list before each turn.
+        maxAdvertisedToolCount: 16
     )
 
     // MARK: - Private

@@ -1053,7 +1053,16 @@ struct ConversationTurnExecutor: Sendable {
     @MainActor
     private func readAdvertisedToolDefinitions() async -> [ToolDefinition] {
         guard let registry = inferenceService.toolRegistry else { return [] }
-        return registry.advertisedDefinitions
+        let definitions = registry.advertisedDefinitions
+        // When the active backend declares a hard cap on how many tools it can
+        // handle per turn, truncate the list before building the GenerationConfig.
+        // The definitions are already sorted alphabetically by ToolRegistry, so
+        // `prefix` always picks the same lexicographically-first N tools —
+        // deterministic ordering keeps the "X of Y tools enabled" UI stable.
+        if let cap = inferenceService.capabilities?.maxAdvertisedToolCount, definitions.count > cap {
+            return Array(definitions.prefix(cap))
+        }
+        return definitions
     }
 
     @MainActor
