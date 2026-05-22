@@ -7,6 +7,68 @@ import AppIntents
 
 #if canImport(AppIntents)
 
+// MARK: - AppEntityResolver
+
+/// Resolves an `AppEntity` identifier into a concrete instance.
+///
+/// Hosts inject a resolver when they expose AppIntents whose parameters are
+/// `AppEntity`-typed. The default resolver, ``DefaultAppEntityResolver``,
+/// dispatches to `EntityType.defaultQuery.entities(for: [id])` which is the
+/// canonical AppIntents lookup path; bespoke hosts (caches, mocks, tests) can
+/// supply their own conformance.
+///
+/// ## Why this exists
+///
+/// `AppEntity` is not generally `Decodable` — the framework loads entities via
+/// `EntityQuery` rather than from JSON. The executor uses the resolver to
+/// translate the model's `{ "id": "<value>" }` argument payload into a real
+/// instance before handing the rest of the JSON to `JSONDecoder`. Resolved
+/// entities arrive at the host intent's `init(from:)` via the decoder's
+/// `userInfo` keyed by ``CodingUserInfoKey/manifoldResolvedEntities``.
+@available(iOS 26, macOS 26, *)
+public protocol AppEntityResolver: Sendable {
+    /// Resolves a single id into an entity, or `nil` when no entity with that
+    /// id exists. Throwing surfaces as ``ToolResult/ErrorKind/permanent``
+    /// (or ``ToolResult/ErrorKind/permissionDenied`` if the existing auth
+    /// heuristic matches).
+    func resolve<E: AppEntity>(_ entityType: E.Type, id: E.ID) async throws -> E?
+}
+
+/// Default resolver that calls `EntityType.defaultQuery.entities(for: [id])`.
+///
+/// This is the right choice for most production intents — `EntityQuery` is the
+/// AppIntents framework's canonical path for id→entity lookup, and hosts that
+/// already model their entities via `AppEntity` will have a working query
+/// installed.
+@available(iOS 26, macOS 26, *)
+public struct DefaultAppEntityResolver: AppEntityResolver {
+    public init() {}
+    public func resolve<E: AppEntity>(_ entityType: E.Type, id: E.ID) async throws -> E? {
+        // `defaultQuery` is the framework-blessed lookup path; a host that
+        // hasn't wired a query will hit a compile-time error here rather than
+        // a confusing runtime failure.
+        let results = try await E.defaultQuery.entities(for: [id])
+        return results.first
+    }
+}
+
+public extension CodingUserInfoKey {
+    /// `[String: any AppEntity]` keyed by `@Parameter` name — populated by the
+    /// executor before invoking `JSONDecoder` so the intent's `init(from:)` can
+    /// pluck resolved entities out of `decoder.userInfo` instead of trying to
+    /// decode them itself.
+    ///
+    /// ```swift
+    /// init(from decoder: Decoder) throws {
+    ///     let c = try decoder.container(keyedBy: CodingKeys.self)
+    ///     self.init()
+    ///     let resolved = decoder.userInfo[.manifoldResolvedEntities] as? [String: Any] ?? [:]
+    ///     if let book = resolved["book"] as? Book { self.book = book }
+    /// }
+    /// ```
+    static let manifoldResolvedEntities = CodingUserInfoKey(rawValue: "com.manifoldkit.appintents.resolvedEntities")!
+}
+
 // MARK: - AppIntentToolExecutor
 
 /// Bridges an AppIntent into ManifoldKit's `ToolExecutor` surface so an
@@ -77,6 +139,15 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
     public let definition: ToolDefinition
     public let requiresApproval: Bool
 
+    /// `@Parameter`-name → `AppEntity` metatype map, captured once at init
+    /// from `JSONSchemaBuilder.analyze(...)`. The executor walks this map per
+    /// dispatch to pre-resolve `{ "id": ... }` payloads before decode.
+    let entityParameters: [String: Any.Type]
+
+    /// Resolver that turns an `AppEntity` id into a concrete instance. Hosts
+    /// can swap this for a cache / mock by passing a custom conformance.
+    let entityResolver: any AppEntityResolver
+
     /// Creates an executor that exposes `intentType` as a model-callable tool.
     ///
     /// - Parameters:
@@ -89,26 +160,53 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
     ///     trigger external side effects. Opt into
     ///     ``ApprovalPolicy/readOnlyAutoApprove`` only for deliberately
     ///     read-only intents.
+    ///   - entityResolver: Resolves `AppEntity` identifier payloads into real
+    ///     instances. Defaults to ``DefaultAppEntityResolver`` which dispatches
+    ///     through `EntityType.defaultQuery`; supply a custom resolver for
+    ///     caches, mocks, or test fixtures.
     public init(
         _ intentType: Intent.Type,
         description: String? = nil,
-        approvalPolicy: ApprovalPolicy = .requiresUserApproval
+        approvalPolicy: ApprovalPolicy = .requiresUserApproval,
+        entityResolver: any AppEntityResolver = DefaultAppEntityResolver()
     ) {
         let toolName = Self.canonicalName(for: intentType)
         let toolDescription = description ?? Self.defaultDescription(for: intentType)
-        let parameters = JSONSchemaBuilder.schema(for: Intent.self) {
+        let analysis = JSONSchemaBuilder.analyze(for: Intent.self) {
             Intent()
         }
         self.requiresApproval = approvalPolicy.requiresApproval
+        self.entityParameters = analysis.entityParameters
+        self.entityResolver = entityResolver
         self.definition = ToolDefinition(
             name: toolName,
             description: toolDescription,
-            parameters: parameters
+            parameters: analysis.schema
         )
     }
 
     public func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
         do {
+            try Task.checkCancellation()
+
+            // Pre-resolve any AppEntity parameters. The synthesised schema
+            // advertises them as `{ "id": ... }` objects, but `AppEntity` is
+            // not generically `Decodable` — we have to translate ids into real
+            // entity instances before `JSONDecoder` runs.
+            let preparedArguments: JSONSchemaValue
+            let resolvedEntities: [String: Any]
+            do {
+                let (args, entities) = try await resolveEntityArguments(arguments)
+                preparedArguments = args
+                resolvedEntities = entities
+            } catch let error as EntityResolutionFailure {
+                return ToolResult(
+                    callId: "",
+                    content: error.message,
+                    errorKind: error.errorKind
+                )
+            }
+
             try Task.checkCancellation()
 
             let intent: Intent
@@ -122,7 +220,17 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
                 encoder.dateEncodingStrategy = .iso8601
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
-                let argsData = try encoder.encode(arguments)
+                // Hand the resolved entities to the host's `init(from:)` via
+                // userInfo — see ``CodingUserInfoKey/manifoldResolvedEntities``.
+                if !resolvedEntities.isEmpty {
+                    // `JSONDecoder.userInfo` values must be Sendable in
+                    // strict-concurrency builds; wrap the heterogeneous
+                    // entity map in a small Sendable box. Entities flow
+                    // synchronously into `init(from:)` on the same actor, so
+                    // `@unchecked Sendable` is safe in this scope.
+                    decoder.userInfo[.manifoldResolvedEntities] = ResolvedEntityBox(values: resolvedEntities)
+                }
+                let argsData = try encoder.encode(preparedArguments)
                 intent = try decoder.decode(Intent.self, from: argsData)
             } catch {
                 return ToolResult(
@@ -173,6 +281,157 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
                 content: error.localizedDescription,
                 errorKind: .permanent
             )
+        }
+    }
+
+    // MARK: - Entity resolution
+
+    /// Failure raised mid-resolution so `execute` can fan it out into a
+    /// classified ``ToolResult`` without entangling the happy path.
+    private struct EntityResolutionFailure: Error {
+        let message: String
+        let errorKind: ToolResult.ErrorKind
+    }
+
+    /// Walks the executor's entity-parameter map and resolves each
+    /// `{ "id": ... }` payload into a real `AppEntity` instance. Returns the
+    /// rewritten arguments (entity sub-objects stripped, since `JSONDecoder`
+    /// can't decode `AppEntity` directly) plus the resolved-entity map keyed
+    /// by parameter name. The intent's `init(from:)` reads the latter via the
+    /// decoder's `userInfo`.
+    private func resolveEntityArguments(
+        _ arguments: JSONSchemaValue
+    ) async throws -> (JSONSchemaValue, [String: Any]) {
+        // Fast path: no entity parameters — skip the rewrite entirely so
+        // existing intents keep their byte-for-byte argument shape.
+        guard !entityParameters.isEmpty else {
+            return (arguments, [:])
+        }
+        guard case .object(var rootObject) = arguments else {
+            return (arguments, [:])
+        }
+        var resolved: [String: Any] = [:]
+        for (paramName, anyType) in entityParameters {
+            // Missing key is fine here — optional entity parameters won't
+            // appear at all when the model elects not to supply them.
+            guard let entry = rootObject[paramName] else { continue }
+            guard case .object(let entryDict) = entry,
+                  let idValue = entryDict["id"]
+            else {
+                throw EntityResolutionFailure(
+                    message: "AppEntity parameter \"\(paramName)\" expects an object with an \"id\" field; got \(entry).",
+                    errorKind: .invalidArguments
+                )
+            }
+            guard let entityType = anyType as? any AppEntity.Type else {
+                // Schema builder shouldn't seed a non-AppEntity here — this
+                // is a defensive guard, not a recovery path.
+                throw EntityResolutionFailure(
+                    message: "Internal error: registered entity type for \"\(paramName)\" is not an AppEntity.",
+                    errorKind: .permanent
+                )
+            }
+            let shortName = String(describing: entityType)
+            let resolvedEntity: Any?
+            do {
+                resolvedEntity = try await Self.resolveEntity(
+                    entityType,
+                    idValue: idValue,
+                    resolver: entityResolver
+                )
+            } catch {
+                if Self.looksLikeAuthorizationFailure(error) {
+                    throw EntityResolutionFailure(
+                        message: error.localizedDescription,
+                        errorKind: .permissionDenied
+                    )
+                }
+                throw EntityResolutionFailure(
+                    message: "Failed to resolve \(shortName): \(error.localizedDescription)",
+                    errorKind: .permanent
+                )
+            }
+            guard let resolvedEntity else {
+                throw EntityResolutionFailure(
+                    message: "No \(shortName) found for id \(Self.describeId(idValue)).",
+                    errorKind: .invalidArguments
+                )
+            }
+            resolved[paramName] = resolvedEntity
+            // Drop the entity sub-object — JSONDecoder must not see it.
+            rootObject.removeValue(forKey: paramName)
+        }
+        return (.object(rootObject), resolved)
+    }
+
+    /// Generic shim: given an existential `any AppEntity.Type` and a JSON id
+    /// value, open the existential into `E: AppEntity`, coerce the id to
+    /// `E.ID`, and call the resolver.
+    private static func resolveEntity(
+        _ entityType: any AppEntity.Type,
+        idValue: JSONSchemaValue,
+        resolver: any AppEntityResolver
+    ) async throws -> Any? {
+        try await _resolve(entityType, idValue: idValue, resolver: resolver)
+    }
+
+    private static func _resolve<E: AppEntity>(
+        _ entityType: E.Type,
+        idValue: JSONSchemaValue,
+        resolver: any AppEntityResolver
+    ) async throws -> E? {
+        // `AppEntity.ID` is only constrained to `Hashable & Sendable` — it is
+        // not guaranteed `Codable`. We coerce manually for the two id shapes
+        // the schema advertises (string + integer); anything else surfaces as
+        // an invalid-arguments failure so the model gets a clear signal.
+        guard let id = coerceID(idValue, to: E.ID.self) else {
+            throw EntityResolutionFailure(
+                message: "Could not coerce id \(describeId(idValue)) to \(E.ID.self).",
+                errorKind: .invalidArguments
+            )
+        }
+        return try await resolver.resolve(entityType, id: id)
+    }
+
+    /// Maps a JSON id payload onto a concrete `E.ID` for the id types we
+    /// support: `String`, `Int`, `Int32`, `Int64`, `UInt`, `UInt32`, `UInt64`,
+    /// and `UUID`. Returns `nil` when the JSON shape doesn't match the target.
+    private static func coerceID<ID>(_ value: JSONSchemaValue, to idType: ID.Type) -> ID? {
+        switch value {
+        case .string(let s):
+            if ID.self == String.self { return s as? ID }
+            if ID.self == UUID.self, let uuid = UUID(uuidString: s) { return uuid as? ID }
+            // Some intents use String-typed ids that happen to arrive as raw
+            // numbers; let the integer branch handle the inverse.
+            return nil
+        case .number(let n):
+            if ID.self == Int.self { return Int(n) as? ID }
+            if ID.self == Int32.self { return Int32(n) as? ID }
+            if ID.self == Int64.self { return Int64(n) as? ID }
+            if ID.self == UInt.self { return UInt(n) as? ID }
+            if ID.self == UInt32.self { return UInt32(n) as? ID }
+            if ID.self == UInt64.self { return UInt64(n) as? ID }
+            if ID.self == Double.self { return n as? ID }
+            // Model sometimes returns an integer-as-number when the id is
+            // actually a string — accept that too.
+            if ID.self == String.self {
+                if n.rounded() == n { return String(Int64(n)) as? ID }
+                return String(n) as? ID
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    /// Compact debug string for the id payload — used in error messages.
+    private static func describeId(_ idValue: JSONSchemaValue) -> String {
+        switch idValue {
+        case .string(let s): "\"\(s)\""
+        case .number(let n): String(n)
+        case .bool(let b): String(b)
+        case .null: "null"
+        case .array, .object: String(describing: idValue)
         }
     }
 
@@ -447,6 +706,38 @@ private extension String {
             output.append(character.lowercased())
         }
         return output
+    }
+}
+
+/// Sendable wrapper around the resolved-entity map handed to the host
+/// intent's `init(from:)` via `decoder.userInfo`. `[String: Any]` is not
+/// generically `Sendable`, but the contents are read synchronously inside
+/// the decoder's call site on the same actor — see ``AppIntentToolExecutor``.
+public struct ResolvedEntityBox: @unchecked Sendable {
+    public let values: [String: Any]
+    public init(values: [String: Any]) { self.values = values }
+    /// Pulls a resolved entity out of the box by `@Parameter` name.
+    public func entity<E>(_ name: String, as type: E.Type = E.self) -> E? {
+        values[name] as? E
+    }
+}
+
+@available(iOS 26, macOS 26, *)
+public extension Decoder {
+    /// Convenience accessor for AppIntents `init(from:)` to read a resolved
+    /// `AppEntity` that the executor staged into `userInfo`.
+    ///
+    /// ```swift
+    /// init(from decoder: Decoder) throws {
+    ///     self.init()
+    ///     if let book: Book = decoder.resolvedAppEntity("book") { self.book = book }
+    /// }
+    /// ```
+    func resolvedAppEntity<E: AppEntity>(_ name: String, as type: E.Type = E.self) -> E? {
+        guard let box = userInfo[.manifoldResolvedEntities] as? ResolvedEntityBox else {
+            return nil
+        }
+        return box.entity(name, as: E.self)
     }
 }
 
