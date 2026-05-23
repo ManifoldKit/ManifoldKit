@@ -90,6 +90,11 @@ new port (into `ManifoldRuntime`) — never to add the reverse import. Reviewers
 will push back on `// swiftlint:disable` style escape hatches in the audit
 allowlists; the cap on each allowlist is intentionally low.
 
+`TrafficBoundaryAuditTest` is one of 19 audit tests in the repo. For the wider
+pattern — how audit tests work, when to add a new one, the sabotage suite that
+keeps them honest, plus DX walkthroughs and cold-start conformance gates — see
+[`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md).
+
 ## Pre-push checklist
 
 **Run before every push.** CI is macOS-only with a 10× billing multiplier; each
