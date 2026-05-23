@@ -507,7 +507,10 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .historyCompressed(sessionID: UUID(), insertedRecords: []),
             .toolCallRequested(ToolCall(id: "", toolName: "", arguments: "")),
             .toolCallApproved(""),
-            .toolCallCompleted("", ToolResult(callId: "", content: ""))
+            .toolCallCompleted("", ToolResult(callId: "", content: "")),
+            .agentHandoff(from: nil, to: UUID()),
+            .skillInvoked(name: "", sessionID: UUID()),
+            .hookFired(event: "", sessionID: UUID())
         ]
         // The exhaustive switch below is the actual test — if any new
         // case landed (e.g. an image-side leak), this fails to compile.
@@ -519,12 +522,14 @@ final class ImageGenerationRuntimeTests: XCTestCase {
                  .loopDetected, .streamFinished, .errorRaised, .sessionTouchFailed,
                  .beforeContextAssembly, .contextAssembled, .afterGeneration,
                  .compressionTriggered, .historyCompressed, .toolCallRequested, .toolCallApproved,
-                 .toolCallCompleted:
+                 .toolCallCompleted,
+                 .agentHandoff, .skillInvoked, .hookFired:
                 continue
             }
         }
         // Pin the exact case count as a runtime assertion too — the
-        // sample list is the source of truth.
-        XCTAssertEqual(samples.count, 22, "ConversationEvent case count drifted — image-side cases may have leaked in")
+        // sample list is the source of truth. W2B added agentHandoff,
+        // skillInvoked, and hookFired (22 → 25).
+        XCTAssertEqual(samples.count, 25, "ConversationEvent case count drifted — image-side cases may have leaked in")
     }
 }

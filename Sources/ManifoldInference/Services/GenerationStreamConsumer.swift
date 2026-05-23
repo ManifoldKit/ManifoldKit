@@ -69,6 +69,14 @@ public struct GenerationStreamConsumer: Sendable {
             // text and tool-result accumulation are driven by the
             // existing `.toolCall` / `.toolResult` events.
             return .ignore
+
+        case .handoffRequested(let handoff):
+            // Multi-agent handoff. The consumer has no text/tool state
+            // mutation to perform — the runtime owns the session-state
+            // swap, boundary message injection, and ConversationEvent
+            // emission upstream. Surfacing it as a typed action lets the
+            // executor pattern-match without re-inspecting raw events.
+            return .recordHandoff(handoff)
         }
     }
 
@@ -105,6 +113,11 @@ public struct GenerationStreamConsumer: Sendable {
         /// The orchestrator stopped the tool-dispatch loop because the
         /// ``GenerationConfig/maxToolIterations`` budget was exhausted.
         case toolLoopLimitReached(iterations: Int)
+        /// The dispatch loop detected an agent handoff. Runtime owns the
+        /// resulting session-state swap; surfacing as an action keeps the
+        /// pattern-match exhaustive without forcing the consumer to know
+        /// about session state.
+        case recordHandoff(AgentHandoff)
         /// The backend reused a KV-cache prefix from the previous turn; no UI action needed.
         case ignore
     }

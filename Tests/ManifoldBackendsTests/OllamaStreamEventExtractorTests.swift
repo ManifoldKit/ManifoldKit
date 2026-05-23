@@ -256,6 +256,7 @@ final class OllamaStreamEventExtractorParityTests: XCTestCase {
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
         case .diagnosticThrottle: return "diagnosticThrottle"
+        case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }
 

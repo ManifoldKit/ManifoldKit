@@ -99,6 +99,16 @@ final class GenerationQueue {
     /// rather than cancelling generation.
     let toolApprovalGate: any ToolApprovalGate
 
+    /// Session-aware handoff detector hook. The runtime sets this so the
+    /// dispatch loop can intercept synthetic `transfer_to_<agent>` tool
+    /// calls without the queue itself learning about ``ChatSessionRecord``.
+    /// The closure receives the in-flight request's `sessionID` (may be
+    /// `nil` for sessionless flows) and the model-emitted ``ToolCall``;
+    /// returning `.handoff(...)` triggers a ``GenerationEvent/handoffRequested(_:)``
+    /// emission and short-circuits regular tool dispatch. `nil` (the
+    /// default) leaves multi-agent behaviour off entirely.
+    var handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
+
     // MARK: - Test Seam
 
     /// Test-only hook invoked alongside `Log.inference.warning` when
@@ -690,6 +700,11 @@ final class GenerationQueue {
             },
             pauseWhileThermalCritical: { [weak self] token in
                 await self?.pauseWhileThermalCritical(token: token)
+            },
+            handoffDetector: handoffDetector.map { detector in
+                { [sessionID = request.sessionID] call in
+                    detector(sessionID, call)
+                }
             }
         )
 

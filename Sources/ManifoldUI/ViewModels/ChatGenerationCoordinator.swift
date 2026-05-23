@@ -448,6 +448,13 @@ final class ChatGenerationCoordinator {
 
         case .historyCompressed:
             break
+
+        case .agentHandoff, .skillInvoked, .hookFired:
+            // Multi-agent + skills + hooks observability cases (W2B/W2C/W3A).
+            // The chat UI coordinator does not render handoff chips today
+            // (W3A picks up MessageBubbleView changes); stay exhaustive
+            // without mutation.
+            break
         }
     }
 

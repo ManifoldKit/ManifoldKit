@@ -179,6 +179,12 @@ final class TurnInputCollapseTests: XCTestCase {
                 return "historyCompressed"
             case .sessionTouchFailed:
                 return "sessionTouchFailed"
+            case .agentHandoff:
+                return "agentHandoff"
+            case .skillInvoked:
+                return "skillInvoked"
+            case .hookFired:
+                return "hookFired"
             }
         }
     }

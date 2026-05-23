@@ -36,6 +36,20 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
     /// `false`.
     public var pinnedAt: Date?
 
+    /// Per-session agent registry (V9 schema). Storage-agnostic snapshot of
+    /// the SwiftData `Agent` rows. Empty when the session is single-agent.
+    public var agents: [Agent]
+
+    /// UUID of the agent currently authoring this session's next turn.
+    /// `nil` when the session has no multi-agent registry. The executor
+    /// re-derives the active system prompt per turn from this ID.
+    public var activeAgentID: UUID?
+
+    /// Sticky scope name while a skill is mid-invocation. Threaded through
+    /// the snapshot so SessionToolSources (Skills, Handoff) can read it
+    /// without a separate persistence fetch. `nil` outside skill scope.
+    public var activeSkillName: String?
+
     public init(
         id: UUID = UUID(),
         title: String = "New Chat",
@@ -51,7 +65,10 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
         contextSizeOverride: Int? = nil,
         pinnedMessageIDs: Set<UUID> = [],
         isPinned: Bool = false,
-        pinnedAt: Date? = nil
+        pinnedAt: Date? = nil,
+        agents: [Agent] = [],
+        activeAgentID: UUID? = nil,
+        activeSkillName: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -68,6 +85,9 @@ public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
         self.pinnedMessageIDs = pinnedMessageIDs
         self.isPinned = isPinned
         self.pinnedAt = pinnedAt
+        self.agents = agents
+        self.activeAgentID = activeAgentID
+        self.activeSkillName = activeSkillName
     }
 }
 
@@ -117,6 +137,12 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
     /// "RAG ran but no passages scored above zero".
     public var citations: [Citation]?
 
+    /// Identity of the agent that authored this message when the session
+    /// has a multi-agent registry. `nil` for messages from single-agent
+    /// sessions or pre-V9 history. UI surfaces fall back to role-based
+    /// rendering when the referenced agent has been removed.
+    public var agentID: UUID?
+
     /// Concatenated text parts for backward compatibility.
     ///
     /// Setting this replaces the entire `contentParts` array with a single `.text` part.
@@ -142,7 +168,8 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         completionTokens: Int? = nil,
         kind: MessageKind = .chat,
         status: MessageStatus? = nil,
-        citations: [Citation]? = nil
+        citations: [Citation]? = nil,
+        agentID: UUID? = nil
     ) {
         self.id = id
         self.role = role
@@ -154,6 +181,7 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.kind = kind
         self.status = status
         self.citations = citations
+        self.agentID = agentID
     }
 
     /// Creates a record from structured content parts.
@@ -167,7 +195,8 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         completionTokens: Int? = nil,
         kind: MessageKind = .chat,
         status: MessageStatus? = nil,
-        citations: [Citation]? = nil
+        citations: [Citation]? = nil,
+        agentID: UUID? = nil
     ) {
         self.id = id
         self.role = role
@@ -179,5 +208,6 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.kind = kind
         self.status = status
         self.citations = citations
+        self.agentID = agentID
     }
 }

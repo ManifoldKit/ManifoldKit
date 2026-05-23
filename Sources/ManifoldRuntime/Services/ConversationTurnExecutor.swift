@@ -524,6 +524,41 @@ struct ConversationTurnExecutor: Sendable {
 
         emit(.contextAssembled(slots: slots))
 
+        // Multi-agent session snapshot. Read once per turn so the active
+        // agent's system prompt, handoff detector, and message tagging all
+        // use the same state — a mid-turn write from another flow can't
+        // partially update us. `sessionRecord` is `nil` for sessionless
+        // flows or hosts without a SessionStore wired in; both paths are
+        // identical to the legacy single-agent surface.
+        var sessionRecord: ChatSessionRecord? = await persistence.fetchSession(sessionID: sessionID)
+        let activeAgent: Agent? = {
+            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
+            return sessionRecord.agents.first(where: { $0.id == activeID })
+        }()
+        let agentSiblings: [Agent] = {
+            guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return [] }
+            return sessionRecord.agents.filter { $0.id != activeID }
+        }()
+
+        // Configure the handoff detector for this turn. The closure is
+        // captured by the GenerationQueue's loop construction; we always
+        // (re)set it so a host that mutates session.agents between turns
+        // sees the new registry on the next call without a clear/reset
+        // dance.
+        if let sessionRecord {
+            await inferenceService.setHandoffDetector { @Sendable callSessionID, call in
+                guard callSessionID == sessionRecord.id else {
+                    // Detector closures live on the queue but loop captures
+                    // a per-request sessionID; mismatches are defensive —
+                    // route through the regular dispatch path.
+                    return .regular(call)
+                }
+                return HandoffDetector.classify(call, in: sessionRecord)
+            }
+        } else {
+            await inferenceService.setHandoffDetector(nil)
+        }
+
         // Build the assistant message slot up front so token deltas can
         // reference its id from the first emitted token.
         //
@@ -535,7 +570,8 @@ struct ConversationTurnExecutor: Sendable {
             role: .assistant,
             content: "",
             sessionID: sessionID,
-            citations: ragCitations.isEmpty ? nil : ragCitations
+            citations: ragCitations.isEmpty ? nil : ragCitations,
+            agentID: activeAgent?.id
         )
         let assistantID = assistantMessage.id
         func writeFinalContent(_ text: String, into message: inout ChatMessageRecord) {
@@ -548,17 +584,53 @@ struct ConversationTurnExecutor: Sendable {
             }
         }
 
-        let composedSystemPrompt = composeSystemPrompt(config.systemPrompt, slots: slots)
+        // Multi-agent: re-derive the active system prompt from the
+        // session's `activeAgentID` per turn (plan §Handoff semantics
+        // option (a)). Prior assistant messages keep their `agentID`
+        // attribution — no history rewrite. The handoff-instructions block
+        // is prepended so weak local models actually trigger transfers
+        // when they're appropriate (plan AI-review fix #2).
+        let basePrompt: String?
+        if let activeAgent {
+            let instructions = HandoffDetector.handoffInstructions(for: activeAgent, siblings: agentSiblings)
+            if instructions.isEmpty {
+                basePrompt = activeAgent.systemPrompt
+            } else {
+                basePrompt = "\(instructions)\n\n\(activeAgent.systemPrompt)"
+            }
+        } else {
+            basePrompt = config.systemPrompt
+        }
+        let composedSystemPrompt = composeSystemPrompt(basePrompt, slots: slots)
 
         // kind.backendRole == nil means use record.role directly (.chat case);
         // non-chat kinds supply a fixed role. Records with isWireVisible == false
         // are filtered out before this map runs.
-        let structuredHistory: [StructuredMessage] = history
+        var structuredHistory: [StructuredMessage] = history
             .filter { $0.kind.isWireVisible }
             .map { record in
                 let role = record.kind.backendRole ?? record.role
                 return StructuredMessage(role: role.rawValue, parts: record.contentParts)
             }
+
+        // Multi-agent boundary message (plan AI-review fix #3). When the
+        // last assistant turn in history was authored by a different agent
+        // than the one about to author this turn, prepend a synthetic
+        // system-role marker so the receiving agent sees an explicit
+        // context-handover boundary instead of "what is this conversation."
+        // Not persisted as a `ChatMessage` — transient per turn.
+        if let activeAgent,
+           let lastAssistant = history.last(where: { $0.role == .assistant }),
+           let previousAgentID = lastAssistant.agentID,
+           previousAgentID != activeAgent.id,
+           let previousAgent = sessionRecord?.agents.first(where: { $0.id == previousAgentID }) {
+            let boundary = HandoffDetector.boundaryMessage(
+                from: previousAgent,
+                to: activeAgent,
+                payload: nil
+            )
+            structuredHistory.append(StructuredMessage(role: "system", parts: [.text(boundary)]))
+        }
 
         // Forward the registered tool surface so the backend's GenerationConfig
         // gets `tools = registry.advertisedDefinitions` (legacy parity with
@@ -691,6 +763,24 @@ struct ConversationTurnExecutor: Sendable {
 
                 case .recordUsage(let prompt, let completion):
                     tokenUsage = (prompt, completion)
+
+                case .recordHandoff(let handoff):
+                    // Persist the active-agent swap and emit the typed
+                    // ConversationEvent so adapters can render a handoff
+                    // chip. The next turn re-derives the system prompt
+                    // from the new activeAgentID and prepends the boundary
+                    // message into structuredHistory.
+                    if var current = sessionRecord {
+                        let previousID = current.activeAgentID
+                        current.activeAgentID = handoff.targetAgentID
+                        _ = await persistence.updateSession(current)
+                        sessionRecord = current
+                        emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
+                    } else {
+                        Log.inference.warning(
+                            "ConversationTurnExecutor: received handoff event but session record was unavailable; agent swap dropped"
+                        )
+                    }
 
                 case .ignore:
                     break

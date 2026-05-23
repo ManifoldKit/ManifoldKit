@@ -41,6 +41,41 @@ struct ConversationPersistencePort: Sendable {
         try await sessionStore.insertSession(session)
     }
 
+    /// Fetches the storage-agnostic record for a single session, or `nil`
+    /// when no session matches. Used by the executor to read multi-agent
+    /// state (`activeAgentID`, `agents`) per turn so handoff detection and
+    /// system-prompt re-derivation can run without coupling to the
+    /// SwiftData adapter.
+    @MainActor
+    func fetchSession(sessionID: UUID) async -> ChatSessionRecord? {
+        guard let sessionStore else { return nil }
+        do {
+            let sessions = try await sessionStore.fetchSessions()
+            return sessions.first(where: { $0.id == sessionID })
+        } catch {
+            Log.persistence.warning(
+                "ConversationRuntime: fetchSession failed: \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
+    /// Best-effort session update. Returns `false` and logs on failure so
+    /// the caller doesn't have to swallow a thrown error inline.
+    @MainActor
+    func updateSession(_ record: ChatSessionRecord) async -> Bool {
+        guard let sessionStore else { return true }
+        do {
+            try await sessionStore.updateSession(record)
+            return true
+        } catch {
+            Log.persistence.warning(
+                "ConversationRuntime: updateSession failed: \(error.localizedDescription)"
+            )
+            return false
+        }
+    }
+
     @MainActor
     func sessionTitle(sessionID: UUID, fallback: String) async -> String {
         guard let sessionStore else { return fallback }
