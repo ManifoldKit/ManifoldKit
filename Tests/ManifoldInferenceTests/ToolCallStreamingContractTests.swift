@@ -509,7 +509,7 @@ final class ToolCallStreamingContractTests: XCTestCase {
 
         let provider = FakeGenerationContextProvider(backend: backend)
         let coordinator = GenerationQueue()
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "go")],

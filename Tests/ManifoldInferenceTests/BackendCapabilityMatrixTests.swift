@@ -18,7 +18,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
         try await super.setUp()
         provider = FakeGenerationContextProvider()
         coordinator = GenerationQueue()
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
     }
 
     override func tearDown() async throws {

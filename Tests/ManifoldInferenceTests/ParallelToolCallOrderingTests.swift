@@ -189,7 +189,7 @@ final class ParallelToolCallOrderingTests: XCTestCase {
         // is package-internal — wire the coordinator directly instead.
         let provider = DirectProvider(backend: backend)
         let coordinator = GenerationQueue(toolRegistry: registry)
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "weather and time in London?")],
@@ -233,11 +233,11 @@ private struct SimpleExecutor: ToolExecutor {
     }
 }
 
-/// Minimal `GenerationContextProvider` that wraps an already-loaded
-/// `MockInferenceBackend`. Avoids the package-internal
-/// `FakeGenerationContextProvider` defined in `GenerationQueueTests`.
+/// Minimal context source that wraps an already-loaded `MockInferenceBackend`.
+/// Avoids the package-internal `FakeGenerationContextProvider` defined in
+/// `GenerationQueueTests`.
 @MainActor
-private final class DirectProvider: GenerationContextProvider {
+private final class DirectProvider {
     private let _backend: MockInferenceBackend
 
     init(backend: MockInferenceBackend) {
@@ -247,4 +247,12 @@ private final class DirectProvider: GenerationContextProvider {
     var currentBackend: (any InferenceBackend)? { _backend }
     var isBackendLoaded: Bool { _backend.isModelLoaded }
     var selectedPromptTemplate: PromptTemplate { .chatML }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { [weak self] in self?._backend },
+            isBackendLoaded: { [weak self] in self?._backend.isModelLoaded ?? false },
+            selectedPromptTemplate: { .chatML }
+        )
+    }
 }

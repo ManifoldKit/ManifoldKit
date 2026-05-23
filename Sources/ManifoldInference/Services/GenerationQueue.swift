@@ -22,7 +22,42 @@ final class GenerationQueue {
 
     // MARK: - Dependencies
 
-    weak var provider: (any GenerationContextProvider)?
+    /// Closure-based seam onto the owning service's backend / template state.
+    ///
+    /// Replaced the former `GenerationContextProvider` protocol (single in-tree
+    /// conformance was `InferenceService`). Closures avoid the protocol surface
+    /// entirely and match the existing pattern used to dissolve
+    /// `ManifoldUI`↔`ManifoldUIModelManagement` cycles. Callers wire these
+    /// after init so retain-cycle risk is on the caller (use `[weak ...]`).
+    var currentBackendProvider: (@MainActor () -> (any InferenceBackend)?)?
+    var isBackendLoadedProvider: (@MainActor () -> Bool)?
+    var selectedPromptTemplateProvider: (@MainActor () -> PromptTemplate)?
+
+    /// Convenience reader — returns the bound backend or `nil` when unwired.
+    var currentBackend: (any InferenceBackend)? { currentBackendProvider?() }
+
+    /// Convenience reader — returns the bound load state or `false` when unwired.
+    var isBackendLoaded: Bool { isBackendLoadedProvider?() ?? false }
+
+    /// Convenience reader — returns the bound template or `.chatML` when unwired.
+    var selectedPromptTemplate: PromptTemplate { selectedPromptTemplateProvider?() ?? .chatML }
+
+    /// Bind the backend-state closures in one call. Inverts the previous
+    /// `coord.provider = self` assignment; the caller decides retain semantics
+    /// via the captures it passes in.
+    func bindContext(
+        currentBackend: @escaping @MainActor () -> (any InferenceBackend)?,
+        isBackendLoaded: @escaping @MainActor () -> Bool,
+        selectedPromptTemplate: @escaping @MainActor () -> PromptTemplate
+    ) {
+        self.currentBackendProvider = currentBackend
+        self.isBackendLoadedProvider = isBackendLoaded
+        self.selectedPromptTemplateProvider = selectedPromptTemplate
+    }
+
+    /// Whether any context closures have been bound. Mirrors the old
+    /// `generation.provider == nil` check the lazy-wiring path used.
+    var hasBoundContext: Bool { currentBackendProvider != nil }
 
     /// Injected reader for the current thermal state.
     ///
@@ -134,7 +169,7 @@ final class GenerationQueue {
     var hasQueuedRequests: Bool { !requestQueue.isEmpty }
 
     var lastTokenUsage: (promptTokens: Int, completionTokens: Int)? {
-        (provider?.currentBackend as? TokenUsageProvider)?.lastUsage
+        (currentBackend as? TokenUsageProvider)?.lastUsage
     }
 
     // MARK: - Initializers
@@ -204,7 +239,7 @@ final class GenerationQueue {
         maxThinkingTokens: Int? = nil,
         jsonMode: Bool = false
     ) throws -> GenerationStream {
-        guard let backend = provider?.currentBackend else {
+        guard let backend = currentBackend else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
@@ -268,7 +303,7 @@ final class GenerationQueue {
         systemPrompt: String?,
         config: GenerationConfig
     ) throws -> GenerationStream {
-        guard let backend = provider?.currentBackend else {
+        guard let backend = currentBackend else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
@@ -340,7 +375,7 @@ final class GenerationQueue {
         if let counter = backend as? TokenCountingBackend,
            backend.capabilities.requiresPromptTemplate {
             let result = try GenerationPreflightTrimmer(
-                promptTemplate: provider?.selectedPromptTemplate ?? .chatML
+                promptTemplate: selectedPromptTemplate
             ).exactPreflightAndTrim(
                 counter: counter,
                 backend: backend,
@@ -365,7 +400,7 @@ final class GenerationQueue {
         let effectiveSystemPrompt: String?
 
         if backend.capabilities.requiresPromptTemplate {
-            let template = provider?.selectedPromptTemplate ?? .chatML
+            let template = selectedPromptTemplate
             if backend.capabilities.supportsToolCalling && !config.tools.isEmpty {
                 assembledPrompt = template.format(messages: flattened, systemPrompt: systemPrompt, tools: config.tools)
             } else {
@@ -444,7 +479,7 @@ final class GenerationQueue {
         priority: GenerationPriority = .normal,
         sessionID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        guard let backend = provider?.currentBackend, provider?.isBackendLoaded == true else {
+        guard let backend = currentBackend, isBackendLoaded else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
         guard requestQueue.count < maxQueueDepth else {
@@ -636,7 +671,7 @@ final class GenerationQueue {
         let loop = GenerationToolDispatchLoop(
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate,
-            currentBackend: { [weak self] in self?.provider?.currentBackend },
+            currentBackend: { [weak self] in self?.currentBackend },
             generateWithConfig: { [weak self] messages, systemPrompt, config in
                 guard let self else {
                     throw InferenceError.inferenceFailure("Generation queue deallocated")
@@ -677,7 +712,7 @@ final class GenerationQueue {
 
     func cancel(_ token: GenerationRequestToken) {
         if activeRequest?.token == token {
-            provider?.currentBackend?.stopGeneration()
+            currentBackend?.stopGeneration()
             activeTask?.cancel()
             activeTask = nil
             activeRequest?.stream.setPhase(.failed("Cancelled"))
@@ -716,7 +751,7 @@ final class GenerationQueue {
     }
 
     func stopGeneration() {
-        provider?.currentBackend?.stopGeneration()
+        currentBackend?.stopGeneration()
         activeTask?.cancel()
         activeTask = nil
         // Don't call `finishAndDiscard` on the active request here: doing

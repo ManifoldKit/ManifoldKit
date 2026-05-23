@@ -9,11 +9,6 @@ import Foundation
 /// This is a low-level boundary primitive. Consumers that need richer aggregate
 /// types (budget accounting, cost tracking) layer those on top in their own
 /// modules — see Fireside's `ContextContribution` for prior art.
-///
-/// > Note: This protocol is distinct from the internal `GenerationContextProvider`,
-/// > which is a `@MainActor`-bound, `AnyObject`-constrained model-state provider
-/// > used by `GenerationQueue` to read backend / template state. The two
-/// > do not overlap and should not be merged.
 public protocol PromptContextProvider: Sendable {
     /// Slots to inject into the next prompt.
     ///

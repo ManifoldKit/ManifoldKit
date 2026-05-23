@@ -110,7 +110,7 @@ final class ToolCancellationContractTests: XCTestCase {
         ]
 
         let coordinator = GenerationQueue(toolRegistry: registry)
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "go")],
