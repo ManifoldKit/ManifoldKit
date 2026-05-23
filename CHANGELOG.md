@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.33.0](https://github.com/roryford/ManifoldKit/compare/v0.32.0...v0.33.0) — 2026-05-23
+
+### Highlights
+
+#### AppIntents v2 — richer schemas, entity parameters, streaming progress, dialog channel ([#1381](https://github.com/roryford/ManifoldKit/issues/1381), [#1383](https://github.com/roryford/ManifoldKit/issues/1383), [#1384](https://github.com/roryford/ManifoldKit/issues/1384), [#1385](https://github.com/roryford/ManifoldKit/issues/1385), [#1388](https://github.com/roryford/ManifoldKit/issues/1388))
+
+ManifoldAppIntents gets a substantial expansion this release. Authoring an intent now supports `AppEntity` parameters for first-class entity resolution by Siri/Shortcuts, richer parameter schemas with locale-safe authorisation prompts, a streaming progress channel that surfaces partial results to the system UI during long-running generations, and a separate `ProvidesDialog` field that decouples the spoken dialog from the rendered view. Together these close the gap with native AppIntents apps and let agents drive chat sessions from outside ManifoldKit.
+
+```swift
+struct AskManifoldIntent: AppIntent {
+    @Parameter(title: "Session") var session: ChatSessionEntity
+    @Parameter(title: "Prompt") var prompt: String
+
+    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
+        let progress = IntentProgressReporter()
+        let answer = try await runtime.send(
+            prompt: prompt,
+            in: session.uuid,
+            progress: progress.publish
+        )
+        return .result(value: answer.text, dialog: IntentDialog(answer.summary))
+    }
+}
+```
+
+#### Test pipeline hardening — trait-combo gate, CI build gate, profile-driven pre-push ([#1382](https://github.com/roryford/ManifoldKit/issues/1382), [#1386](https://github.com/roryford/ManifoldKit/issues/1386), [#1387](https://github.com/roryford/ManifoldKit/issues/1387))
+
+CI runs `--disable-default-traits` and therefore can't compile `#if MLX` / `#if Llama` code; trait-gated bugs lived for weeks before someone happened to run a manual all-traits sweep. PR #1382 unblocks the local sweep itself (KV cache reuse race in `MLXBackend`, stale `Sources/ManifoldBackends/` paths in two memory-pressure tests, a Swift-6 type-checker timeout in `QualityBaselineTests`). PR #1386 ships `scripts/test.sh --profile local|ci|spike` so the pre-push shape is named and stable instead of a 14-flag invocation memorised from CLAUDE.md prose. PR #1387 adds a CI `build-gate` job that runs `swift build --build-tests` first and short-circuits the heavy jobs on compile failures (4-5 min wasted → ~60s), plus a SwiftPM `.build/` cache on the `cold-start-human` job that drops it from 90s cold to 12s warm.
+
+```bash
+# Pre-push, all-traits, Apple Silicon:
+scripts/test.sh --profile local
+
+# Reproduce a CI failure exactly:
+scripts/test.sh --profile ci
+
+# Tight feedback on a single-module change:
+scripts/test.sh --profile spike --spike-module ManifoldRuntimeTests
+```
+
+### Fixes
+
+**`lastLoggedPct` race in DiffusionDownload progress observer** — wrapped the KVO throttling counter in `OSAllocatedUnfairLock<Int>`; the closure observing `task.countOfBytesReceived` fires on URLSession's delegate queue, not the caller's actor, so the captured `var` was racing across threads ([#1377](https://github.com/roryford/ManifoldKit/issues/1377)).
+
 ## [0.32.0](https://github.com/roryford/ManifoldKit/compare/v0.31.0...v0.32.0) — 2026-05-22
 
 ### Highlights
