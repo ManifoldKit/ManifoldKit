@@ -22,6 +22,14 @@ public struct MessageBubbleView: View {
     /// supply a closure here (via ``ChatView``) to render memory or annotation bubbles.
     public let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
 
+    /// The session this message belongs to. Used to resolve ``ChatMessageRecord/agentID``
+    /// against ``ChatSessionRecord/agents`` for per-agent badge rendering. When `nil`
+    /// (or when the message's `agentID` does not resolve), the bubble falls back to
+    /// role-based rendering. This is the architect-flagged dangling-reference path —
+    /// an agent may have been deleted out from under a message that still references
+    /// it, and the UI must not crash or surface "unknown agent" text in that case.
+    public let session: ChatSessionRecord?
+
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     public init(
@@ -29,13 +37,27 @@ public struct MessageBubbleView: View {
         isStreaming: Bool,
         isPinned: Bool = false,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        customKindRenderer: ((ChatMessageRecord) -> AnyView)? = nil
+        customKindRenderer: ((ChatMessageRecord) -> AnyView)? = nil,
+        session: ChatSessionRecord? = nil
     ) {
         self.message = message
         self.isStreaming = isStreaming
         self.isPinned = isPinned
         self.linkPreviewProvider = linkPreviewProvider
         self.customKindRenderer = customKindRenderer
+        self.session = session
+    }
+
+    // MARK: - Agent Resolution
+
+    /// Resolves the message's `agentID` against the supplied session's agent
+    /// registry. Returns `nil` when there is no agentID, no session, or when
+    /// the agent has been deleted from the session (dangling reference).
+    var resolvedAgent: Agent? {
+        guard let agentID = message.agentID,
+              let session
+        else { return nil }
+        return session.agents.first(where: { $0.id == agentID })
     }
 
     // MARK: - Body
@@ -115,6 +137,13 @@ public struct MessageBubbleView: View {
 
     private var assistantBubble: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Per-agent badge when the message attribution resolves to a real
+            // agent in the session registry. When `agentID` is nil OR refers
+            // to a deleted agent, this falls through to the standard role
+            // render — no crash, no "unknown agent" placeholder.
+            if let agent = resolvedAgent {
+                agentBadge(for: agent)
+            }
             // Show the typing placeholder only when there is nothing at all to display
             // (no visible text, no thinking parts). Once a thinking part has been
             // inserted — even as an empty placeholder — render MessagePartsView so
@@ -176,6 +205,42 @@ public struct MessageBubbleView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Agent Badge
+
+    /// Avatar + name pill identifying which agent in the session produced this
+    /// message. Color is derived deterministically from the agent's UUID so two
+    /// different agents look visually distinct without per-agent theming work.
+    @ViewBuilder
+    private func agentBadge(for agent: Agent) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "person.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Self.agentColor(for: agent.id))
+            Text(agent.name)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Agent: \(agent.name)")
+        .accessibilityIdentifier("agent-badge-\(agent.id.uuidString)")
+    }
+
+    /// Deterministic colour derived from a hash of the agent UUID. Cycles
+    /// through a small palette so two different agents look distinct. Pure
+    /// function: same UUID always maps to the same colour across runs.
+    static func agentColor(for id: UUID) -> Color {
+        // Stable palette — keep narrow so contrast against the assistant
+        // bubble background stays acceptable.
+        let palette: [Color] = [.blue, .purple, .orange, .pink, .teal, .indigo, .mint, .brown]
+        var hasher = Hasher()
+        hasher.combine(id)
+        // hasher.finalize() is platform-dependent but stable within a process;
+        // for cross-process determinism we hash the UUID's bytes instead.
+        let bytes = withUnsafeBytes(of: id.uuid) { Array($0) }
+        let sum = bytes.reduce(0) { $0 &+ Int($1) }
+        return palette[abs(sum) % palette.count]
     }
 
     // MARK: - Pin Indicator
