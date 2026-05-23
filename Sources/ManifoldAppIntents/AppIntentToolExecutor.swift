@@ -117,24 +117,10 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
 
     /// Approval policy for AppIntent-backed tools.
     ///
-    /// Use ``requiresUserApproval`` for side-effecting intents (the default),
-    /// and ``readOnlyAutoApprove`` only for deliberately read-only intents.
-    public enum ApprovalPolicy: Sendable {
-        /// Require an explicit ``ToolApprovalGate`` decision per call.
-        case requiresUserApproval
-
-        /// Skip approval prompts for read-only intents that are safe to run.
-        case readOnlyAutoApprove
-
-        var requiresApproval: Bool {
-            switch self {
-            case .requiresUserApproval:
-                true
-            case .readOnlyAutoApprove:
-                false
-            }
-        }
-    }
+    /// This is a typealias for the top-level ``AppIntentApprovalPolicy`` so that
+    /// batch-registration call sites (which can't name a concrete generic
+    /// parameter) and single-executor sites both share one stable type.
+    public typealias ApprovalPolicy = AppIntentApprovalPolicy
 
     public let definition: ToolDefinition
     public let requiresApproval: Bool
