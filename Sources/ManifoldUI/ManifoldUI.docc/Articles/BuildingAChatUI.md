@@ -6,77 +6,135 @@ Compose ManifoldUI components into a multi-session chat application.
 
 This article shows the full layout pattern for an app with a sidebar session list and a main chat area, wired to the two primary view models: ``ChatViewModel`` and ``SessionManagerViewModel``.
 
+The pattern below uses the shipped `ManifoldBootstrap` from `ManifoldPersistenceSwiftData`. `ManifoldBootstrap` conforms to ``ChatRuntimeBootstrap``, so the same value satisfies both view models' bootstrap-wiring entry points — no glue type required.
+
+### The async bootstrap, briefly
+
+`ManifoldBootstrap.build(...)` is the canonical way to construct a runtime. It is **async** and returns a `(progress:, task:)` tuple:
+
+```swift,no-build
+public static func build(
+    configuration: ManifoldConfiguration,
+    inferenceService: InferenceService? = nil,
+    imageGenerationService: ImageGenerationService? = nil,
+    diagnostics: DiagnosticsService = DiagnosticsService(),
+    makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>)
+```
+
+The `progress` stream emits ``ManifoldPersistenceSwiftData/RuntimeBootstrapMilestone`` values (installingConfiguration → resolvingInferenceService → buildingModelContainer → wiringPersistence → complete). Apps that want a launch progress bar consume the stream; the simpler pattern below just drains it and awaits the task.
+
+Because bootstrap is async, **wire it from `.task { }` on the root view, not `App.init()`**. `App.init()` is not an async context, and synchronously blocking on `Task.value` from the main actor will deadlock.
+
 ### App scaffold
 
-Create both view models at the app level and share the same `InferenceService` between them. ``SessionManagerViewModel`` only manages session metadata — it never touches inference directly. ``ChatViewModel`` drives all generation.
+Hold the bootstrap and view models in `@State` on the App, populate them inside `.task { }` on a launch view, then swap to the real chat UI when ready. This is the same shape used by `MinimalExample`.
 
 ```swift,no-build
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldPersistenceSwiftData
 import ManifoldBackends
 import ManifoldUI
+import SwiftData
 import SwiftUI
 
 @main
 struct MyApp: App {
-    let runtime: any ChatRuntimeBootstrap
-    let inferenceService: InferenceService
-    let chatVM: ChatViewModel
-    let sessionVM: SessionManagerViewModel
+    @State private var bootstrap: ManifoldBootstrap?
+    @State private var chatVM: ChatViewModel?
+    @State private var sessionVM: SessionManagerViewModel?
+    @State private var startupError: Error?
 
-    init() {
-        let inferenceService = InferenceService()
-        DefaultBackends.register(with: inferenceService)
-
-        // AppRuntime lives in your app composition root. It may wrap the
-        // shipped SwiftData bootstrap or your own SessionStore/MessageStore.
-        let runtime = AppRuntime.make(inferenceService: inferenceService)
-        self.runtime = runtime
-        self.inferenceService = inferenceService
-
-        let chatVM = ChatViewModel(inferenceService: inferenceService)
-        chatVM.configure(runtime: runtime)
-        chatVM.refreshModels()
-        self.chatVM = chatVM
-
-        let sessionVM = SessionManagerViewModel()
-        sessionVM.configure(runtime: runtime)
-        self.sessionVM = sessionVM
-
-        // Connect session title generation to InferenceService.
-        chatVM.onFirstMessage = { session, firstMessage in
-            Task { @MainActor in
-                await sessionVM.autoRenameSession(
-                    session,
-                    firstMessage: firstMessage,
-                    inferenceService: inferenceService
+    var body: some Scene {
+        WindowGroup {
+            if let bootstrap, let chatVM, let sessionVM {
+                RootView()
+                    .environment(chatVM)
+                    .environment(sessionVM)
+                    .modelContainer(bootstrap.modelContainer)
+            } else if let startupError {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(String(describing: startupError))
                 )
+            } else {
+                ProgressView("Starting…")
+                    .task { await start() }
             }
         }
     }
 
-    var body: some Scene {
-        WindowGroup {
-            RootView()
-                .environment(chatVM)
-                .environment(sessionVM)
-                // `switchToSession(_:)` and `createSession()` are async, so
-                // the initial activation has to run in a task — `App.init()`
-                // is not an async context. `.task` runs once when the root
-                // view first appears.
-                .task {
-                    let initial = sessionVM.sessions.first
-                        ?? (try? await sessionVM.createSession())
-                    if let initial {
-                        sessionVM.activeSession = initial
-                        await chatVM.switchToSession(initial)
-                        chatVM.dispatchSelectedLoad()
-                    }
+    @MainActor
+    private func start() async {
+        do {
+            // 1. Build the shipped bootstrap. The (progress, task) tuple lets
+            //    callers observe milestones; here we just drain progress and
+            //    await the task. Pass an explicit configuration in production
+            //    so two ManifoldKit apps don't collide on the shared store
+            //    path.
+            let (progress, task) = ManifoldBootstrap.build(
+                configuration: ManifoldConfiguration(
+                    appName: "My Chat",
+                    bundleIdentifier: "com.example.mychat"
+                )
+            )
+            for await _ in progress { /* drain milestones */ }
+            let bootstrap = try await task.value
+
+            // 2. Register the compiled-in default backends against the
+            //    bootstrap's shared InferenceService. `ManifoldBootstrap`
+            //    constructs one for you; reuse it so both view models see
+            //    the same backend registry.
+            DefaultBackends.register(with: bootstrap.inferenceService)
+
+            // 3. Build the two view models. `ManifoldBootstrap` conforms to
+            //    `ChatRuntimeBootstrap`, so the same value satisfies both
+            //    `configure(bootstrap:)` calls below.
+            let chatVM = ChatViewModel(
+                inferenceService: bootstrap.inferenceService,
+                conversationRuntime: bootstrap.conversationRuntime
+            )
+            chatVM.configure(bootstrap: bootstrap)
+            chatVM.refreshModels()
+
+            let sessionVM = SessionManagerViewModel()
+            sessionVM.configure(bootstrap: bootstrap)
+
+            // 4. Wire automatic session-title generation from the first
+            //    message of a new chat. `inferenceService` is shared.
+            chatVM.onFirstMessage = { [inferenceService = bootstrap.inferenceService] session, firstMessage in
+                Task { @MainActor in
+                    await sessionVM.autoRenameSession(
+                        session,
+                        firstMessage: firstMessage,
+                        inferenceService: inferenceService
+                    )
                 }
+            }
+
+            // 5. Activate (or create) an initial session so `ChatView`'s
+            //    composer is enabled on first launch.
+            let initial = sessionVM.sessions.first
+                ?? (try? await sessionVM.createSession())
+            if let initial {
+                sessionVM.activeSession = initial
+                await chatVM.switchToSession(initial)
+                chatVM.dispatchSelectedLoad()
+            }
+
+            self.bootstrap = bootstrap
+            self.chatVM = chatVM
+            self.sessionVM = sessionVM
+        } catch {
+            self.startupError = error
         }
     }
 }
 ```
+
+If you only need a single-session chat surface, prefer `ManifoldKit.quickStart()` — it collapses steps 1–5 above (minus the second view model) into one call. Drop into `ManifoldBootstrap.build(...)` directly when you need session management, a custom `InferenceService`, a custom model container, or progress-bar UI driven by ``ManifoldPersistenceSwiftData/RuntimeBootstrapMilestone``.
 
 ### Root layout with NavigationSplitView
 
@@ -106,7 +164,7 @@ struct RootView: View {
 }
 ```
 
-Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore`` ports, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
+Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore`` ports (vended by `bootstrap.persistenceStores`), so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
 
 ### Switching sessions
 
@@ -171,9 +229,9 @@ Tasks run sequentially off `@MainActor`. Errors surface in ``ChatViewModel/backg
 
 ### Migrating from `configure(persistence:)`
 
-Pre-runtime ManifoldKit apps often wired persistence from a root view's `.task` and called `chatViewModel.configure(persistence:)` once stores were available. A ``ChatRuntimeBootstrap`` collapses that into a single bootstrap value in `App.init()` while keeping ManifoldUI behind runtime ports.
+Pre-runtime ManifoldKit apps often wired persistence from a root view's `.task` and called `chatViewModel.configure(persistence:)` once stores were available. Today the bootstrap value carries persistence, the endpoint store, diagnostics, and (optionally) the image-generation runtime — a single `configure(bootstrap:)` call wires all of them.
 
-**Before** — view-lifecycle late-binding:
+**Before** — view-lifecycle late-binding with hand-rolled stores:
 
 ```swift,no-build
 import SwiftUI
@@ -198,49 +256,68 @@ struct LegacyApp: App {
 }
 ```
 
-**After** — runtime-driven bootstrap:
+**After** — runtime-driven bootstrap via `ManifoldBootstrap.build(...)`:
 
 ```swift,no-build
 import SwiftUI
-import ManifoldRuntime
+import SwiftData
 import ManifoldInference
+import ManifoldRuntime
+import ManifoldPersistenceSwiftData
+import ManifoldBackends
 import ManifoldUI
 
 @main
 struct ModernApp: App {
-    private let runtime: any ChatRuntimeBootstrap
-    @State private var chatViewModel: ChatViewModel
-    @State private var sessionManager: SessionManagerViewModel
-
-    init() {
-        let inferenceService = InferenceService()
-        let runtime = AppRuntime.make(inferenceService: inferenceService)
-        self.runtime = runtime
-
-        let chatVM = ChatViewModel(inferenceService: inferenceService)
-        chatVM.configure(runtime: runtime)
-        _chatViewModel = State(initialValue: chatVM)
-
-        let sessionVM = SessionManagerViewModel()
-        sessionVM.configure(runtime: runtime)
-        _sessionManager = State(initialValue: sessionVM)
-    }
+    @State private var bootstrap: ManifoldBootstrap?
+    @State private var chatViewModel: ChatViewModel?
+    @State private var sessionManager: SessionManagerViewModel?
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(chatViewModel)
-                .environment(sessionManager)
+            if let bootstrap, let chatViewModel, let sessionManager {
+                RootView()
+                    .environment(chatViewModel)
+                    .environment(sessionManager)
+                    .modelContainer(bootstrap.modelContainer)
+            } else {
+                ProgressView("Starting…")
+                    .task { await start() }
+            }
         }
+    }
+
+    @MainActor
+    private func start() async {
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "Modern Chat",
+                bundleIdentifier: "com.example.modern"
+            )
+        )
+        for await _ in progress { }
+        guard let bootstrap = try? await task.value else { return }
+        DefaultBackends.register(with: bootstrap.inferenceService)
+
+        let chatVM = ChatViewModel(
+            inferenceService: bootstrap.inferenceService,
+            conversationRuntime: bootstrap.conversationRuntime
+        )
+        chatVM.configure(bootstrap: bootstrap)
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(bootstrap: bootstrap)
+
+        self.bootstrap = bootstrap
+        self.chatViewModel = chatVM
+        self.sessionManager = sessionVM
     }
 }
 ```
 
-Both view models must be configured from the runtime: `ChatViewModel.configure(runtime:)` wires persistence for chat sessions, and `SessionManagerViewModel.configure(runtime:)` wires persistence and diagnostics for the session list. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save. Apps that buffered inbound payloads in `App.init()` for processing once persistence was wired should keep that pattern — the runtime makes persistence available before view rendering, so the buffer can drain immediately on first appearance.
+Both view models must be configured from the bootstrap: ``ChatViewModel/configure(bootstrap:)`` wires persistence, the endpoint store, and (when present) the image-generation runtime. `SessionManagerViewModel.configure(bootstrap:)` wires the same persistence plus diagnostics. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save.
 
-Attach any persistence-specific scene modifiers from the app or persistence target. ManifoldUI only requires the runtime-port values exposed by ``ChatRuntimeBootstrap``.
-
-Keep `configure(persistence:)` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. The shipped SwiftData bootstrap and custom stores both satisfy the same runtime-port boundary.
+Keep ``ChatViewModel/configure(persistence:)`` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. The shipped SwiftData bootstrap and custom stores both satisfy the same runtime-port boundary.
 
 ### Wiring `APIConfigurationView` from `ManifoldUIModelManagement`
 
