@@ -54,7 +54,7 @@ Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disa
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.32.0" // x-release-please-version
+    from: "0.33.0" // x-release-please-version
 )
 ```
 
@@ -286,7 +286,7 @@ AnyLanguageModel is HuggingFace's Swift package — it mirrors Apple's `Foundati
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL redirects, but:
 
-- Update SPM dependencies to `.package(url: "https://github.com/roryford/ManifoldKit.git", ...)` with `from: "0.32.0"` <!-- x-release-please-version -->
+- Update SPM dependencies to `.package(url: "https://github.com/roryford/ManifoldKit.git", ...)` with `from: "0.33.0"` <!-- x-release-please-version -->
 - Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules).
 - Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`.
 - **BREAKING — local SwiftData stores reset.** Apps upgrading from 0.19.x create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.
