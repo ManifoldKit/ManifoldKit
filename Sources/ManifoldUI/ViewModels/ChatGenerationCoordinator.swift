@@ -449,11 +449,19 @@ final class ChatGenerationCoordinator {
         case .historyCompressed:
             break
 
-        case .agentHandoff, .skillInvoked, .hookFired:
-            // Multi-agent + skills + hooks observability cases (W2B/W2C/W3A).
-            // The chat UI coordinator does not render handoff chips today
-            // (W3A picks up MessageBubbleView changes); stay exhaustive
-            // without mutation.
+        case .agentHandoff:
+            // Handoff chips are rendered as a pure function of the persisted
+            // message sequence (see ChatView.handoffChip). The event itself
+            // is observational — no UI mutation here.
+            break
+
+        case .skillInvoked(let name, let sessionID):
+            // v1 has no skill UI; log so the dispatch is visible during
+            // debugging. UI surfaces for skill invocation are deferred.
+            Log.ui.info("Skill invoked: \(name, privacy: .public) (session: \(sessionID.uuidString, privacy: .public))")
+
+        case .hookFired:
+            // Hooks are diagnostic; no UI changes in v1.
             break
         }
     }

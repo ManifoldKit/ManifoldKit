@@ -678,13 +678,22 @@ public struct ChatView<APIConfig: View>: View {
                         emptyPlaceholder
                     }
 
-                    ForEach(viewModel.messages) { message in
+                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                        // Handoff chip rendered above the bubble when the
+                        // preceding message was attributed to a different
+                        // agent. Pure function of persisted attribution —
+                        // decoupled from .agentHandoff event timing so
+                        // scrollback / restored sessions keep their chips.
+                        if let chip = handoffChip(at: index) {
+                            chip
+                        }
                         let bubble = MessageBubbleView(
                             message: message,
                             isStreaming: isMessageStreaming(message),
                             isPinned: viewModel.isMessagePinned(id: message.id),
                             linkPreviewProvider: linkPreviewProvider,
-                            customKindRenderer: customKindRenderer
+                            customKindRenderer: customKindRenderer,
+                            session: viewModel.activeSession
                         )
                         if let contextMenuItemsBuilder {
                             bubble
@@ -853,6 +862,34 @@ public struct ChatView<APIConfig: View>: View {
         viewModel.isGenerating
         && message.role == .assistant
         && message.id == viewModel.messages.last?.id
+    }
+
+    /// Returns a ``HandoffChipView`` when the message at `index` is attributed
+    /// to a different agent than its immediate predecessor. Both sides must
+    /// resolve against the active session's agent registry — when either side
+    /// is `nil`, the previous `agentID` is `nil`, or the agents are equal,
+    /// no chip is rendered.
+    ///
+    /// Pure function of persisted attribution; intentionally not wired to the
+    /// `.agentHandoff` event stream so scrollback and restored sessions keep
+    /// their chips.
+    private func handoffChip(at index: Int) -> HandoffChipView? {
+        guard index > 0,
+              let session = viewModel.activeSession
+        else { return nil }
+        let messages = viewModel.messages
+        guard index < messages.count else { return nil }
+        let current = messages[index]
+        let previous = messages[index - 1]
+        guard let currentAgentID = current.agentID,
+              let previousAgentID = previous.agentID,
+              currentAgentID != previousAgentID
+        else { return nil }
+        let agents = session.agents
+        guard let toAgent = agents.first(where: { $0.id == currentAgentID }),
+              let fromAgent = agents.first(where: { $0.id == previousAgentID })
+        else { return nil }
+        return HandoffChipView(from: fromAgent, to: toAgent, payload: nil)
     }
 
     /// Loads the next page of older messages and scrolls back to the anchor
