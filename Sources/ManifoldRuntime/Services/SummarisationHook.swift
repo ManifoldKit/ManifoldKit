@@ -119,9 +119,11 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
     ///     that the runtime uses so that inserts and deletes are visible to
     ///     subsequent turns.
     ///   - backend: The inference backend used for summarisation calls.
-    ///     Typically the same backend the runtime drives, or the
-    ///     ``ConversationRuntime/auxiliaryInferenceService``'s backend when
-    ///     available.
+    ///     **Pass a dedicated backend — not the same instance the runtime drives.**
+    ///     Backends such as `LlamaBackend` and `MLXBackend` permit only one active
+    ///     `generate()` call at a time; sharing the runtime's backend can corrupt
+    ///     KV-cache state or trigger a single-active-generation contract assertion.
+    ///     Use a separate loaded instance or `ConversationRuntime/auxiliaryInferenceService`.
     ///   - sessionStore: Optional session store for reading `pinnedMessageIDs`.
     ///     When `nil`, the hook treats all messages as unpinned.
     ///   - summariser: The strategy for turning a window of turns into a

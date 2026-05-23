@@ -178,6 +178,30 @@ final class SummarisationHookTests: XCTestCase {
         }
     }
 
+    /// Polls `store.fetchMessages` until at least one `.memory`-kind record
+    /// appears for `sessionID`, or throws `TestDeadline.elapsed` after `deadline`.
+    ///
+    /// The hook runs asynchronously after `afterGeneration` fires, so a fixed
+    /// yield count is non-deterministic under load. Polling the store is the
+    /// authoritative signal that the hook's async work completed.
+    private func waitForMemoryRecord(
+        in store: RuntimeMessageStore,
+        sessionID: UUID,
+        deadline: Duration = .seconds(5)
+    ) async throws {
+        let end = ContinuousClock.now + deadline
+        while ContinuousClock.now < end {
+            let messages = try await store.fetchMessages(for: sessionID)
+            let hasMemory = messages.contains {
+                if case .memory = $0.kind { return true }
+                return false
+            }
+            if hasMemory { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw TestDeadline.elapsed
+    }
+
     private func waitForAfterGeneration(
         on runtime: ConversationRuntime,
         deadline: Duration = .seconds(5)
@@ -249,14 +273,8 @@ final class SummarisationHookTests: XCTestCase {
             config: TurnConfig()
         ))
 
-        // Wait for hook to fire (afterGeneration fires before hooks return).
         try await waitForAfterGeneration(on: runtime)
-
-        // Give the hook's async work a moment to complete.
-        // `afterGeneration` fires before hooks are awaited, so we yield briefly.
-        for _ in 0..<10 {
-            await Task.yield()
-        }
+        try await waitForMemoryRecord(in: store, sessionID: sessionID)
 
         let remaining = try await store.fetchMessages(for: sessionID)
         let memoryMessages = remaining.filter {
@@ -324,7 +342,7 @@ final class SummarisationHookTests: XCTestCase {
         ))
 
         try await waitForAfterGeneration(on: runtime)
-        for _ in 0..<10 { await Task.yield() }
+        try await waitForMemoryRecord(in: store, sessionID: sessionID)
 
         let remaining = try await store.fetchMessages(for: sessionID)
 
@@ -406,7 +424,7 @@ final class SummarisationHookTests: XCTestCase {
         ))
 
         try await waitForAfterGeneration(on: runtime)
-        for _ in 0..<10 { await Task.yield() }
+        try await waitForMemoryRecord(in: store, sessionID: sessionID)
 
         // Verify none of the pinned IDs were passed to the summariser.
         let capturedIDs = Set(await summariser.capturedTurns.map { $0.id })
@@ -476,7 +494,8 @@ final class SummarisationHookTests: XCTestCase {
         ))
 
         try await waitForAfterGeneration(on: runtime)
-        for _ in 0..<10 { await Task.yield() }
+        // Negative assertion — give the hook time to NOT fire, then assert.
+        try await Task.sleep(for: .milliseconds(200))
 
         let remaining = try await store.fetchMessages(for: sessionID)
         let memoryMessages = remaining.filter {
@@ -536,7 +555,8 @@ final class SummarisationHookTests: XCTestCase {
         ))
 
         try await waitForAfterGeneration(on: runtime)
-        for _ in 0..<10 { await Task.yield() }
+        // Negative assertion — give the hook time to NOT write a record, then assert.
+        try await Task.sleep(for: .milliseconds(200))
 
         let remaining = try await store.fetchMessages(for: sessionID)
         let chatMessages = remaining.filter { $0.kind == .chat }
