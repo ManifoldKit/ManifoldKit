@@ -44,6 +44,13 @@ ALLOWLIST_PATHS=(
     "ManifoldRuntime/Services/ConversationRuntime.swift"
     "ManifoldRuntime/Services/ImageGenerationRuntime.swift"
     "ManifoldRuntime/Services/SessionListService.swift"
+    "ManifoldAppIntents/IntentProgressReporter.swift"
+
+    # CodingUserInfoKey(rawValue:)! with a compile-time-constant non-empty
+    # string. Apple documents the initializer as failable only when the raw
+    # value is empty; the recurring pattern across the codebase is a hardcoded
+    # reverse-DNS key (e.g. "com.manifoldkit.appintents.resolvedEntities").
+    "ManifoldAppIntents/AppIntentToolExecutor.swift"
 
     # UUID(uuidString:)! with compile-time constant strings — non-nil by
     # construction (a malformed literal would be caught in dev, not at runtime).
