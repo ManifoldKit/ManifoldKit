@@ -151,6 +151,28 @@ public protocol ToolExecutor: Sendable {
     /// by the orchestrator; aggregate internally and only throw once you
     /// have decided to abandon the buffer.
     func execute(arguments: JSONSchemaValue) async throws -> ToolResult
+
+    /// Streaming variant of ``execute(arguments:)``.
+    ///
+    /// Yields zero or more ``ToolExecutionEvent/progress(message:fraction:)``
+    /// chunks for long-running work, then exactly one
+    /// ``ToolExecutionEvent/completed(_:)`` carrying the same terminal
+    /// ``ToolResult`` that ``execute(arguments:)`` would have returned.
+    ///
+    /// The default implementation in ``ToolExecutor`` wraps
+    /// ``execute(arguments:)`` and yields only the terminal value — so existing
+    /// non-streaming executors do not need to opt in. Executors that can emit
+    /// interim progress override this directly.
+    ///
+    /// ## Cancellation
+    ///
+    /// The stream's `onTermination` cancels the wrapping `Task` so the
+    /// underlying ``execute(arguments:)`` observes cancellation through
+    /// structured concurrency and bails out cooperatively (mirroring the
+    /// single-shot contract — see ``ToolExecutor`` cooperative cancellation
+    /// section). The continuation is finished cleanly with the cancellation
+    /// error; no orphaned task remains.
+    func executeStreaming(arguments: JSONSchemaValue) -> AsyncThrowingStream<ToolExecutionEvent, Error>
 }
 
 extension ToolExecutor {
@@ -161,6 +183,28 @@ extension ToolExecutor {
     /// Default: sequential dispatch. Stateless executors should override
     /// to `true` to opt into parallel batch dispatch.
     public var supportsConcurrentDispatch: Bool { false }
+
+    /// Default streaming implementation: yield the single-shot result as one
+    /// terminal ``ToolExecutionEvent/completed(_:)``.
+    ///
+    /// Non-streaming executors keep their existing
+    /// ``execute(arguments:)`` implementation and inherit this wrapper for
+    /// free. Streaming-aware executors override the method on their concrete
+    /// type.
+    public func executeStreaming(arguments: JSONSchemaValue) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(arguments: arguments)
+                    continuation.yield(.completed(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }
 
 // MARK: - TypedToolExecutor
