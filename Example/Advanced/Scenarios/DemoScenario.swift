@@ -1,5 +1,6 @@
 import Foundation
 import ManifoldInference
+import ManifoldRuntime
 
 /// Declarative description of a tap-to-try demonstration in ManifoldDemo.
 ///
@@ -58,6 +59,21 @@ struct DemoScenario: Identifiable, Sendable {
     /// `nil` for the four P1 scenarios — they share the global demo tool set.
     let configure: (@MainActor @Sendable (ToolRegistry) -> Void)?
 
+    /// Richer configuration entry point that lets a scenario populate the
+    /// per-session tool sources, hook registry, and agent roster the Wave 2
+    /// surfaces introduced. Invoked AFTER ``configure`` so a scenario can do
+    /// both (install variant tool executors AND attach agents) without
+    /// fighting two parallel closures.
+    ///
+    /// The runner constructs a fresh ``DemoScenarioRuntimeContext``, passes
+    /// it `inout`, then applies ``DemoScenarioRuntimeContext/agents`` and
+    /// ``DemoScenarioRuntimeContext/activeAgentID`` to the new session via
+    /// the supplied ``SessionStore``. ``sessionToolSources`` and
+    /// ``hookRegistry`` are observed for the future runtime-rebuild path
+    /// (today the demo shares one runtime across all scenarios — see the
+    /// context type docs).
+    let configureContext: (@MainActor @Sendable (inout DemoScenarioRuntimeContext) -> Void)?
+
     /// Synthetic `transfer_to_<agent>` tool names the scenario is expected to
     /// emit. Asserted loudly by the W3B scripted UITest harness — the demo
     /// fails clearly when a handoff fails to materialise (per plan §Demo
@@ -84,6 +100,7 @@ struct DemoScenario: Identifiable, Sendable {
         autoSend: Bool,
         accessibilityID: String,
         configure: (@MainActor @Sendable (ToolRegistry) -> Void)? = nil,
+        configureContext: (@MainActor @Sendable (inout DemoScenarioRuntimeContext) -> Void)? = nil,
         expectedHandoffs: [String]? = nil,
         minCapableModel: ModelCapabilityTier? = nil
     ) {
@@ -97,6 +114,7 @@ struct DemoScenario: Identifiable, Sendable {
         self.autoSend = autoSend
         self.accessibilityID = accessibilityID
         self.configure = configure
+        self.configureContext = configureContext
         self.expectedHandoffs = expectedHandoffs
         self.minCapableModel = minCapableModel
     }

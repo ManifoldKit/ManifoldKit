@@ -24,9 +24,14 @@ actor RuntimeHandler: AskManifoldHandler {
     }
 
     func ask(_ prompt: String) async throws -> String {
-        let stream = try inferenceService.generate(
-            messages: [(role: "user", content: prompt)]
-        )
+        // `InferenceService` is `@MainActor`-isolated; `generate(messages:)`
+        // returns a `GenerationStream` whose `events` is a Sendable
+        // AsyncSequence. Hop to the main actor to call `generate`, then
+        // consume the stream off-actor.
+        let service = inferenceService
+        let stream = try await MainActor.run {
+            try service.generate(messages: [(role: "user", content: prompt)])
+        }
         var reply = ""
         for try await event in stream.events {
             if case .token(let chunk) = event {
