@@ -53,10 +53,8 @@ public struct ConversationImporter {
     /// - Returns: The session ID. Callers can use it to navigate to the
     ///   newly-imported conversation immediately after import completes.
     /// - Throws: ``ConversationImportWriteError`` when a session or message
-    ///   write fails. The session is written first; if it succeeds and a
-    ///   message write later fails, the session row exists in the store and
-    ///   the caller must decide whether to delete it or surface a partial-
-    ///   import error to the user.
+    ///   write fails. On message-write failure the session row is deleted
+    ///   before rethrowing so the store is left in a consistent state.
     @discardableResult
     public func importConversation(_ imported: ImportedConversation) async throws -> UUID {
         do {
@@ -66,16 +64,27 @@ public struct ConversationImporter {
             throw ConversationImportWriteError.sessionWriteFailed(error.localizedDescription)
         }
 
-        for message in imported.messages {
-            do {
-                try await messageStore.insertMessage(message)
-            } catch {
-                Log.persistence.warning("ConversationImporter: message \(message.id.uuidString) write failed — \(error.localizedDescription)")
-                throw ConversationImportWriteError.messageWriteFailed(
-                    messageID: message.id,
-                    description: error.localizedDescription
-                )
+        do {
+            for message in imported.messages {
+                do {
+                    try await messageStore.insertMessage(message)
+                } catch {
+                    Log.persistence.warning("ConversationImporter: message \(message.id.uuidString) write failed — \(error.localizedDescription)")
+                    throw ConversationImportWriteError.messageWriteFailed(
+                        messageID: message.id,
+                        description: error.localizedDescription
+                    )
+                }
             }
+        } catch {
+            // Roll back the session row so the store is never left with a
+            // session that has no messages due to a mid-loop write failure.
+            do {
+                try await sessionStore.deleteSession(imported.session.id)
+            } catch let rollbackError {
+                Log.persistence.warning("ConversationImporter: rollback of session \(imported.session.id.uuidString) failed — \(rollbackError.localizedDescription)")
+            }
+            throw error
         }
 
         return imported.session.id

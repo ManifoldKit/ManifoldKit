@@ -108,6 +108,11 @@ public struct JSONLImportFormat: ConversationImportFormat {
         // than either alternative, and imports are not hot paths.
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
+        // Fallback for files written by tools that include fractional seconds
+        // (e.g. ".123Z"). ISO8601DateFormatter treats the two option sets as
+        // mutually exclusive — a second formatter is cheaper than a regex strip.
+        let isoFractional = ISO8601DateFormatter()
+        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         guard let text = String(data: data, encoding: .utf8) else {
             // UTF-8 decode failures are rare but possible for files produced by
@@ -130,7 +135,7 @@ public struct JSONLImportFormat: ConversationImportFormat {
         if let firstLine = rawLines.first {
             if let lineData = firstLine.data(using: .utf8),
                let firstObject = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-               firstObject["sessionID"] != nil || (firstObject["role"] == nil && firstObject["title"] != nil) {
+               firstObject["sessionID"] != nil {
                 // This looks like a session envelope — parse it and advance past it.
                 lineIndex = 1
 
@@ -142,7 +147,8 @@ public struct JSONLImportFormat: ConversationImportFormat {
                 }
                 // Accept either "createdAt" or "timestamp" as the session creation date.
                 let dateString = firstObject["createdAt"] as? String ?? firstObject["timestamp"] as? String
-                if let dateString, let date = iso.date(from: dateString) {
+                if let dateString,
+                   let date = iso.date(from: dateString) ?? isoFractional.date(from: dateString) {
                     sessionCreatedAt = date
                     sessionUpdatedAt = date
                 }
@@ -194,7 +200,7 @@ public struct JSONLImportFormat: ConversationImportFormat {
                 Log.persistence.warning("JSONLImportFormat: line \(lineNumber) is missing required 'timestamp' field")
                 throw JSONLImportError.missingField(lineNumber: lineNumber, field: "timestamp")
             }
-            guard let timestamp = iso.date(from: rawTimestamp) else {
+            guard let timestamp = iso.date(from: rawTimestamp) ?? isoFractional.date(from: rawTimestamp) else {
                 Log.persistence.warning("JSONLImportFormat: line \(lineNumber) has unparseable timestamp '\(rawTimestamp, privacy: .public)'")
                 throw JSONLImportError.missingField(lineNumber: lineNumber, field: "timestamp")
             }
