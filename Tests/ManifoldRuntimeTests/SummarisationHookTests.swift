@@ -178,6 +178,27 @@ final class SummarisationHookTests: XCTestCase {
         }
     }
 
+    /// Polls until none of `ids` remain in `store` for `sessionID`, or throws after `deadline`.
+    ///
+    /// Used alongside `waitForMemoryRecord` to confirm the hook's deletion pass
+    /// completed — the hook inserts the summary first then deletes source turns,
+    /// so the memory record appearing is necessary but not sufficient.
+    private func waitForTurnsDeleted(
+        ids: Set<UUID>,
+        in store: RuntimeMessageStore,
+        sessionID: UUID,
+        deadline: Duration = .seconds(5)
+    ) async throws {
+        let end = ContinuousClock.now + deadline
+        while ContinuousClock.now < end {
+            let messages = try await store.fetchMessages(for: sessionID)
+            let remaining = Set(messages.map { $0.id })
+            if ids.isDisjoint(with: remaining) { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw TestDeadline.elapsed
+    }
+
     /// Polls `store.fetchMessages` until at least one `.memory`-kind record
     /// appears for `sessionID`, or throws `TestDeadline.elapsed` after `deadline`.
     ///
@@ -343,6 +364,10 @@ final class SummarisationHookTests: XCTestCase {
 
         try await waitForAfterGeneration(on: runtime)
         try await waitForMemoryRecord(in: store, sessionID: sessionID)
+        // The hook inserts the summary then deletes source turns in a separate
+        // loop — wait for the deletions to complete before asserting absence.
+        let capturedIDs = Set(await summariser.capturedTurns.map { $0.id })
+        try await waitForTurnsDeleted(ids: capturedIDs, in: store, sessionID: sessionID)
 
         let remaining = try await store.fetchMessages(for: sessionID)
 
@@ -359,8 +384,6 @@ final class SummarisationHookTests: XCTestCase {
         XCTAssertLessThan(remaining.count, 9,
             "summarised turns should have been removed; remaining count: \(remaining.count)")
 
-        // The turns the summariser received should no longer be in the store.
-        let capturedIDs = Set(await summariser.capturedTurns.map { $0.id })
         let remainingIDs = Set(remaining.map { $0.id })
         let overlap = capturedIDs.intersection(remainingIDs)
         XCTAssertTrue(overlap.isEmpty,
