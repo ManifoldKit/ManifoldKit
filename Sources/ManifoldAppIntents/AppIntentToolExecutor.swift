@@ -1,5 +1,4 @@
 import Foundation
-import ObjectiveC
 import ManifoldInference
 
 #if canImport(AppIntents)
@@ -271,25 +270,23 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         }
     }
 
-    /// Pulls the dialog string out of an `IntentResult & ProvidesDialog`, or
-    /// returns `nil` when the result doesn't carry a dialog channel.
+    /// Pulls the dialog string out of an `IntentResult & ProvidesDialog` using
+    /// public APIs only. Returns `nil` when the dialog can't be rendered from
+    /// the public surface — pure-dialog intents whose `IntentDialog` storage
+    /// isn't reachable via `CustomStringConvertible` or a public
+    /// `LocalizedStringResource` will fall through to the content mirror.
     ///
-    /// `IntentDialog`'s public surface has shifted across AppIntents SDK
-    /// revisions — earlier versions expose a `full: LocalizedStringResource`,
-    /// newer ones store the resolved string privately and surface it via
-    /// `String(describing:)`. To stay stable across SDK versions we reflect
-    /// on the `IntentDialog` value: if its `Mirror` exposes a child labelled
-    /// `full` whose value is a `LocalizedStringResource`, we resolve it; if
-    /// that child holds a `String` we return it directly; otherwise we fall
-    /// back to `String(describing:)` so something useful still reaches the
-    /// host. The limitation is documented here rather than crashing on a
-    /// missing private field.
+    /// Intentionally does NOT reach into AppIntents framework internals —
+    /// private deferred-localization classes have rearranged twice since
+    /// iOS 16 and are an App Store / privacy-review hazard. If the public
+    /// surface stops yielding the dialog text on a future SDK revision,
+    /// the correct fix is to add a public-API path here, not to reintroduce
+    /// KVC probing against private class names. See PR #1385 for context.
     static func extractDialog(_ result: some IntentResult) -> String? {
-        // `ProvidesDialog` is a marker protocol — it doesn't surface a
-        // typed accessor for the dialog string, and the `IntentResult`
-        // value stores the dialog internally. Reflect on the result to
-        // find a child labelled `dialog` whose value is an `IntentDialog`.
         guard result is any ProvidesDialog else { return nil }
+
+        // Locate the `dialog` child via Mirror — `Mirror` is public stdlib
+        // reflection, not private framework API.
         let mirror = Mirror(reflecting: result)
         var dialogValue: Any?
         for child in mirror.children where child.label == "dialog" {
@@ -311,112 +308,46 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         }
         guard let dialogValue else { return nil }
 
-        // The found value might be `IntentDialog?` (often `Optional<Any>` at
-        // this point). Unwrap one optional layer if needed.
-        let unwrapped = Self.unwrapOptional(dialogValue)
-        guard let dialog = unwrapped else { return nil }
+        // The found value might be `IntentDialog?` (often `Optional<Any>`
+        // at this point). Unwrap one optional layer if needed.
+        guard let dialog = Self.unwrapOptional(dialogValue) else { return nil }
 
-        // `IntentDialog`'s internal layout has shifted between SDK
-        // revisions — earlier builds expose a `full: LocalizedStringResource`
-        // child directly; current builds (iOS 26 / macOS 26) wrap the
-        // resource inside a `storage: .dialog(LNStaticDeferredLocalizedString)`
-        // enum that itself stores a `localizedStringResource`. Walk the
-        // mirror tree until we find any `LocalizedStringResource` and
-        // resolve it via `String(localized:)`.
-        if let resolved = Self.findLocalizedString(in: dialog, depth: 0) {
-            return resolved
+        // Path 1: `IntentDialog` conforms to `CustomStringConvertible` on
+        // current SDKs. Accept the result only when it doesn't look like the
+        // Swift default type-name dump (`IntentDialog(...)`), which would
+        // leak framework chrome into the spoken text.
+        if let convertible = dialog as? CustomStringConvertible {
+            let rendered = convertible.description
+            if Self.looksRenderable(rendered, dialog: dialog) {
+                return rendered
+            }
         }
-        // Stable public fallback when the private storage layout changes
-        // beyond what the recursive walk can decode. Documented limitation:
-        // the resulting string contains additional `IntentDialog(...)`
-        // chrome rather than just the spoken text.
-        return String(describing: dialog)
-    }
 
-    /// Depth-bounded recursive mirror walk that returns the first
-    /// `LocalizedStringResource` (resolved) or bare `String` it finds.
-    /// Bounded to avoid pathological cycles in unknown SDK layouts.
-    ///
-    /// Current iOS 26 / macOS 26 AppIntents wraps the dialog text in a
-    /// private ObjC class (`LNStaticDeferredLocalizedString`) that
-    /// exposes the resource through KVC under the
-    /// `localizedStringResource` key — we probe that path before falling
-    /// back to a Swift-reflection walk for older or future SDK shapes.
-    private static func findLocalizedString(in value: Any, depth: Int) -> String? {
-        if depth > 6 { return nil }
-        if let resource = value as? LocalizedStringResource {
-            return String(localized: resource)
-        }
-        if let str = value as? String, !str.isEmpty {
-            return str
-        }
-        // ObjC bridge: AppIntents' deferred-localized-string holders are
-        // NSObject subclasses with a `localizedStringResource` KVC key, and
-        // the returned `_NSStringLocalizationResource` exposes the actual
-        // Swift `LocalizedStringResource` under the `wrapped` KVC key.
-        if let nsObject = value as? NSObject {
-            // Try known KVC keys first.
-            for key in ["localizedStringResource", "wrapped", "value", "localizedString"] {
-                if nsObject.responds(to: NSSelectorFromString(key)) {
-                    let next = nsObject.value(forKey: key)
-                    if let resource = next as? LocalizedStringResource {
-                        return String(localized: resource)
-                    }
-                    if let next, let found = findLocalizedString(in: next, depth: depth + 1) {
-                        return found
-                    }
-                }
-            }
-            // Last-resort: enumerate ObjC ivars/properties.
-            var count: UInt32 = 0
-            if let propList = class_copyPropertyList(type(of: nsObject), &count) {
-                defer { free(propList) }
-                for i in 0..<Int(count) {
-                    let prop = propList[i]
-                    let name = String(cString: property_getName(prop))
-                    let next = nsObject.value(forKey: name)
-                    if let resource = next as? LocalizedStringResource {
-                        return String(localized: resource)
-                    }
-                    if let next, let found = findLocalizedString(in: next, depth: depth + 1) {
-                        return found
-                    }
-                }
-            }
-            var ivarCount: UInt32 = 0
-            if let ivarList = class_copyIvarList(type(of: nsObject), &ivarCount) {
-                defer { free(ivarList) }
-                for i in 0..<Int(ivarCount) {
-                    guard let namePtr = ivar_getName(ivarList[i]) else { continue }
-                    let name = String(cString: namePtr)
-                    let key = name.hasPrefix("_") ? String(name.dropFirst()) : name
-                    if nsObject.responds(to: NSSelectorFromString(key)) {
-                        let next = nsObject.value(forKey: key)
-                        if let resource = next as? LocalizedStringResource {
-                            return String(localized: resource)
-                        }
-                        if let next, let found = findLocalizedString(in: next, depth: depth + 1) {
-                            return found
-                        }
-                    }
-                }
-            }
-        }
-        let mirror = Mirror(reflecting: value)
-        for child in mirror.children {
+        // Path 2: walk one mirror level looking for a `LocalizedStringResource`
+        // child (public on iOS 16+). Resolve via `String(localized:)`.
+        let dialogMirror = Mirror(reflecting: dialog)
+        for child in dialogMirror.children {
             if let resource = child.value as? LocalizedStringResource {
                 return String(localized: resource)
             }
-            // Prefer a child explicitly labelled `full` if its value is a
-            // plain String — older SDK shape.
-            if child.label == "full", let str = child.value as? String {
-                return str
-            }
-            if let found = findLocalizedString(in: child.value, depth: depth + 1) {
-                return found
-            }
         }
+
         return nil
+    }
+
+    /// Returns `true` when a `String(describing:)` result is plausible spoken
+    /// text — i.e. not the Swift default reflection dump such as
+    /// `IntentDialog(...)` or `Optional(IntentDialog(...))`. The check is
+    /// deliberately conservative: anything that starts with the dialog's type
+    /// name is treated as non-renderable so the caller falls through to the
+    /// `LocalizedStringResource` probe or, ultimately, returns `nil`.
+    private static func looksRenderable(_ rendered: String, dialog: Any) -> Bool {
+        let trimmed = rendered.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return false }
+        let typeName = String(describing: type(of: dialog))
+        if trimmed.hasPrefix(typeName) { return false }
+        if trimmed.hasPrefix("IntentDialog") { return false }
+        return true
     }
 
     /// Peels one layer of `Optional` off an `Any` value via reflection.

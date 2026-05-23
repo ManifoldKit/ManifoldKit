@@ -444,25 +444,39 @@ final class AppIntentToolExecutorTests: XCTestCase {
 
     // MARK: dialog channel
 
-    func testPureDialogIntentSurfacesDialogAndMirrorsIntoContent() async throws {
+    // Documented limitation of the public-API extraction (PR #1385 follow-up):
+    // on iOS 26 / macOS 26 `IntentDialog` stores its text inside a private
+    // `LNStaticDeferredLocalizedString` ObjC class reachable only via KVC,
+    // which we deliberately do not call. `extractDialog` therefore returns
+    // `nil` for these fixtures, and content falls back to the structured
+    // `IntentResultContainer` dump. The next time Apple promotes the dialog
+    // storage to a public surface (e.g. `IntentDialog.full` returning a
+    // `LocalizedStringResource`), these tests should be flipped to assert
+    // the actual spoken text. Tracked in code comments rather than an issue
+    // per CLAUDE.md's "no follow-up issues" hygiene rule.
+
+    func testPureDialogIntentExtractionFallsThroughOnPublicAPI() async throws {
         let executor = AppIntentToolExecutor(PureDialogIntent.self)
         let args = JSONSchemaValue.object(["subject": .string("weather")])
 
         let result = try await executor.execute(arguments: args)
 
         XCTAssertNil(result.errorKind)
-        XCTAssertNotNil(result.dialog, "ProvidesDialog must populate the dialog channel")
-        XCTAssertEqual(
+        // Public-only extraction can't reach `LNStaticDeferredLocalizedString`
+        // storage on iOS 26 / macOS 26 — documented contract is `nil`.
+        XCTAssertNil(
             result.dialog,
-            "Spoken about weather",
-            "extracted dialog must match the IntentDialog literal, got \(String(describing: result.dialog))"
+            "public-API dialog extraction is expected to return nil on iOS 26 / macOS 26; got \(String(describing: result.dialog))"
         )
-        // Pure-dialog results have no ReturnsValue, so content mirrors the
-        // dialog so the model still sees something useful to read.
-        XCTAssertEqual(
-            result.content,
-            "Spoken about weather",
-            "pure-dialog results mirror the dialog into content; got \(result.content)"
+        // With dialog == nil the executor falls through to the structured
+        // serialisation path, which `String(describing:)`s the
+        // `IntentResultContainer`. We assert only that the spoken text
+        // appears *somewhere* in the dump — that proves the IntentDialog
+        // payload survived to the content channel even when extraction
+        // couldn't pluck it out cleanly.
+        XCTAssertTrue(
+            result.content.contains("Spoken about weather"),
+            "pure-dialog content fallback must still surface the IntentDialog text in the structured dump; got \(result.content)"
         )
     }
 
@@ -473,21 +487,18 @@ final class AppIntentToolExecutorTests: XCTestCase {
         let result = try await executor.execute(arguments: args)
 
         XCTAssertNil(result.errorKind)
-        XCTAssertEqual(
+        // Public-only extraction returns nil for the same reason as the
+        // pure-dialog fixture: the IntentDialog storage is private.
+        XCTAssertNil(
             result.dialog,
-            "Spoken-alpha",
-            "dialog channel must carry the spoken text; got \(String(describing: result.dialog))"
+            "public-API dialog extraction is expected to return nil on iOS 26 / macOS 26; got \(String(describing: result.dialog))"
         )
-        // The JSON-encoded ReturnsValue<String> payload contains the
-        // structured value verbatim; ensure it's the model-facing string,
-        // not the dialog.
+        // The ReturnsValue<String> path is independent of dialog extraction
+        // — `extractReturnsValue` reads the public `value` slot via Mirror,
+        // so the JSON-encoded structured value still reaches content.
         XCTAssertTrue(
             result.content.contains("structured-alpha"),
             "content must carry the JSON-encoded ReturnsValue, got \(result.content)"
-        )
-        XCTAssertFalse(
-            result.content.contains("Spoken-alpha"),
-            "dialog text must not leak into content for compound results; got \(result.content)"
         )
     }
 
@@ -533,6 +544,45 @@ final class AppIntentToolExecutorTests: XCTestCase {
         let withDialog = ToolResult(callId: "abc", content: "structured", errorKind: nil, dialog: "spoken")
         let dialogJSON = try XCTUnwrap(String(data: JSONEncoder().encode(withDialog), encoding: .utf8))
         XCTAssertTrue(dialogJSON.contains("\"dialog\""))
+    }
+
+    // MARK: private-API tripwire
+
+    /// Static guard: the executor source file must NOT reference private
+    /// AppIntents framework internals (KVC-based dialog extraction, the
+    /// `LNStaticDeferredLocalizedString` private class, etc.). Reintroducing
+    /// any of these strings would walk back the public-only extraction
+    /// commitment from PR #1385.
+    func testExecutorSourceDoesNotReferencePrivateAppIntentsAPI() throws {
+        // Navigate from this test file's path to the executor source.
+        // `#filePath` is the absolute path under SwiftPM test runs, so this
+        // resolves stably without bundle plumbing.
+        let testFile = URL(fileURLWithPath: #filePath)
+        let executorFile = testFile
+            .deletingLastPathComponent()              // ManifoldAppIntentsTests
+            .deletingLastPathComponent()              // Tests
+            .deletingLastPathComponent()              // package root
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("ManifoldAppIntents")
+            .appendingPathComponent("AppIntentToolExecutor.swift")
+
+        let source: String
+        do {
+            source = try String(contentsOf: executorFile, encoding: .utf8)
+        } catch {
+            // FIXME: if `#filePath` ever stops resolving to a real on-disk
+            // path under SwiftPM test runs, downgrade this to a skipped
+            // diagnostic rather than a flaky failure.
+            throw XCTSkip("could not read executor source at \(executorFile.path): \(error)")
+        }
+
+        let banned = ["LNStatic", "value(forKey:", "valueForKey", "class_copyPropertyList", "class_copyIvarList"]
+        for needle in banned {
+            XCTAssertFalse(
+                source.contains(needle),
+                "AppIntentToolExecutor.swift must not contain \"\(needle)\" — private-API dialog extraction was removed in PR #1385 and must not be reintroduced."
+            )
+        }
     }
 
     func testReadOnlyApprovalPolicyCanOptOutOfPrompt() {
