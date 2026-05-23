@@ -29,6 +29,10 @@ xcuserdata/
 !.claude/settings.json
 tmp/
 .worktrees/
+# DX walkthrough per-run artefacts — large + ephemeral. Keep only the
+# synthesized SUMMARY.md / ROOT_CAUSES.md at the iteration root (those
+# live one level up from run-*/ and are tracked explicitly).
+scripts/dx-walkthrough/runs/*/*/run-*/
 # Security audit artefacts — must never be committed; contain detailed
 # vulnerability maps with file paths and line numbers.
 SECURITY_REMEDIATION_PLAN*.md
