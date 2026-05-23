@@ -50,6 +50,8 @@
 		BF0028000000000000000000 /* ManifoldAppIntents in Frameworks */ = {isa = PBXBuildFile; productRef = F30008000000000000000000 /* ManifoldAppIntents */; };
 		BF0029100000000000000000 /* ManifoldVoice in Frameworks */ = {isa = PBXBuildFile; productRef = F30009000000000000000000 /* ManifoldVoice */; };
 		BF0030000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
+		BF0041000000000000000000 /* RuntimeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10041000000000000000000 /* RuntimeHandler.swift */; };
+		BF0042000000000000000000 /* DemoScenarioRuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10042000000000000000000 /* DemoScenarioRuntimeContext.swift */; };
 		BF0031000000000000000000 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10031000000000000000000 /* ShareViewController.swift */; };
 		BF0032000000000000000000 /* PendingSharePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10030000000000000000000 /* PendingSharePayload.swift */; };
 		BF0033000000000000000000 /* ActionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10034000000000000000000 /* ActionViewController.swift */; };
@@ -120,6 +122,8 @@
 		F10023000000000000000000 /* AppIntentToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentToolsView.swift; sourceTree = "<group>"; };
 		F10024000000000000000000 /* DemoNowTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoNowTool.swift; sourceTree = "<group>"; };
 		F10030000000000000000000 /* PendingSharePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingSharePayload.swift; sourceTree = "<group>"; };
+		F10041000000000000000000 /* RuntimeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Intents/RuntimeHandler.swift; sourceTree = "<group>"; };
+		F10042000000000000000000 /* DemoScenarioRuntimeContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scenarios/DemoScenarioRuntimeContext.swift; sourceTree = "<group>"; };
 		F10031000000000000000000 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		F10032000000000000000000 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		F10033000000000000000000 /* ShareExtensionInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ShareExtensionInfo.plist; sourceTree = "<group>"; };
@@ -223,6 +227,8 @@
 				F10022000000000000000000 /* SetReminderIntent.swift */,
 				F10023000000000000000000 /* AppIntentToolsView.swift */,
 				F10024000000000000000000 /* DemoNowTool.swift */,
+				F10041000000000000000000 /* RuntimeHandler.swift */,
+				F10042000000000000000000 /* DemoScenarioRuntimeContext.swift */,
 				A02001000000000000000000 /* Extensions */,
 			);
 			path = Advanced;
@@ -443,6 +449,8 @@
 				BF0027000000000000000000 /* AppIntentToolsView.swift in Sources */,
 				BF0029000000000000000000 /* DemoNowTool.swift in Sources */,
 				BF0030000000000000000000 /* PendingSharePayload.swift in Sources */,
+				BF0041000000000000000000 /* RuntimeHandler.swift in Sources */,
+				BF0042000000000000000000 /* DemoScenarioRuntimeContext.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -45,6 +45,13 @@ struct DemoContentView: View {
     /// the demo bootstraps without ``RAGConfiguration``.
     let ragService: RAGService?
 
+    /// Optional session store used by ``DemoScenarioRunner`` to persist
+    /// scenario-provided agents/`activeAgentID` onto the freshly-created
+    /// session before the first prompt runs. When `nil`, scenarios that
+    /// populate ``DemoScenarioRuntimeContext/agents`` no-op the persistence
+    /// step (the demo still runs, just without per-agent rendering).
+    var sessionStore: (any SessionStore)?
+
     /// Buffer holding any ``InboundPayload`` that arrived during the
     /// cold-launch window, before the runtime finished bootstrapping.
     /// Drained once the mounted view can safely hand off to `ChatViewModel`.
@@ -411,7 +418,8 @@ struct DemoContentView: View {
                 chat: viewModel,
                 sessions: sessionManager,
                 registry: toolRegistry,
-                sandboxRoot: sandboxRoot
+                sandboxRoot: sandboxRoot,
+                sessionStore: sessionStore
             )
         }
     }

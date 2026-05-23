@@ -18,5 +18,6 @@ Do not edit by hand — re-run the script.
 | `MLX` | Enable the MLX inference backend (requires Apple Silicon) | `localInference`, `mlxBackend`, `visionInput`, `imageGeneration` |
 | `Ollama` | Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major. | `ollama`, `toolCalling`, `embeddings` |
 | `Server` | Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency. | `embeddings` |
+| `Skills` | Enable the ManifoldSkills target: Claude-Code-compatible filesystem skill discovery (~/.claude/skills/<name>/SKILL.md) plus a single `invoke_skill` dispatch tool. macOS-only in v1 — compiles on iOS as a no-op registry. | `toolCalling` |
 | `Tools` | Enable the ManifoldTools end-to-end tool-calling validation harness and its `manifold-tools` CLI. | `toolCalling` |
 | `Voice` | Enable the ManifoldVoice speech I/O spike and voice composer UI. | `voiceIO` |

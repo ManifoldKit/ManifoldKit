@@ -132,6 +132,11 @@ public enum FeatureMatrix {
             unlocks: [.toolCalling]
         ),
         ManifoldTrait(
+            name: "Skills",
+            description: "Enable the ManifoldSkills target: Claude-Code-compatible filesystem skill discovery (~/.claude/skills/<name>/SKILL.md) plus a single `invoke_skill` dispatch tool. macOS-only in v1 — compiles on iOS as a no-op registry.",
+            unlocks: [.toolCalling]
+        ),
+        ManifoldTrait(
             name: "Fuzz",
             description: "Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test.",
             unlocks: []

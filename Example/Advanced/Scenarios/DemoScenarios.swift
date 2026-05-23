@@ -139,6 +139,14 @@ enum DemoScenarios {
     /// and Writer produces the final prose. The `expectedHandoffs` assertion
     /// fires LOUDLY if the model never emits the transfer call — the scripted
     /// UITest path mimics the successful run for deterministic CI.
+    /// Two pinned agent IDs so the `configureContext` closure can install
+    /// a stable roster and so tests can pin the expected `activeAgentID`.
+    /// Using deterministic UUIDs (rather than `UUID()` inside the closure)
+    /// keeps the scenario's behaviour reproducible run-to-run, which is
+    /// important for the scripted UITest path.
+    static let researcherAgentID = UUID(uuidString: "00000000-0000-0000-0000-00000000A001")!
+    static let writerAgentID = UUID(uuidString: "00000000-0000-0000-0000-00000000A002")!
+
     static let handoffResearchWrite = DemoScenario(
         id: "handoff-research-write",
         title: "Handoff: Researcher → Writer",
@@ -154,6 +162,28 @@ enum DemoScenarios {
         autoSend: true,
         accessibilityID: "demo-card-handoff-research-write",
         configure: nil,
+        // Wires the two-agent roster onto the freshly-created session so the
+        // turn loop's HandoffToolSource sees both agents and can synthesise
+        // `transfer_to_writer`. Researcher is active first; the handoff
+        // tool-call flips `activeAgentID` to Writer for the next turn.
+        configureContext: { context in
+            let researcher = Agent(
+                id: researcherAgentID,
+                name: "Researcher",
+                systemPrompt: "You are Researcher. Produce a tight outline, then call `transfer_to_writer` with the outline as the `payload` so Writer can draft prose.",
+                description: "Outlines a topic before handing off to Writer.",
+                allowedToolNames: nil
+            )
+            let writer = Agent(
+                id: writerAgentID,
+                name: "Writer",
+                systemPrompt: "You are Writer. Turn Researcher's outline into three short paragraphs of clear prose.",
+                description: "Drafts prose from an outline.",
+                allowedToolNames: nil
+            )
+            context.agents = [researcher, writer]
+            context.activeAgentID = researcherAgentID
+        },
         expectedHandoffs: ["transfer_to_writer"],
         // 3B-class models cannot reliably emit transfer_to_* on first attempt;
         // gate at .balanced (≈8B+) so the card shows an "install a larger
