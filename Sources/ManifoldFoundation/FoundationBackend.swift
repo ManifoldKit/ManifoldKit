@@ -172,10 +172,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// the same as a `nil` session and creates a fresh `LanguageModelSession`.
     private var _sessionIsClean = true
 
-    /// Determines `SystemLanguageModel` availability. Injected at init so unit
-    /// tests can drive the unavailable branch without a real Apple Intelligence
-    /// entitlement. Production code always uses `SystemAvailabilityProvider.shared`.
-    private let availabilityProvider: any FoundationModelAvailabilityProvider
+    /// Closure that returns the current `SystemLanguageModel.Availability`.
+    /// Injected at init so unit tests can drive the unavailable branch without a
+    /// real Apple Intelligence entitlement. Production uses the system default.
+    private let availabilityResolver: @Sendable () -> SystemLanguageModel.Availability
 
     private func withStateLock<T>(_ body: () throws -> T) rethrows -> T {
         stateLock.lock()
@@ -186,14 +186,14 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     // MARK: - Init
 
     public init() {
-        self.availabilityProvider = SystemAvailabilityProvider.shared
+        self.availabilityResolver = { SystemLanguageModel.default.availability }
     }
 
-    /// Designated init for testing — allows injecting a stub availability provider
+    /// Designated init for testing — allows injecting a stub availability resolver
     /// so the unavailable branch in `loadModel` can be exercised without a real
     /// Apple Intelligence entitlement.
-    init(availabilityProvider: any FoundationModelAvailabilityProvider) {
-        self.availabilityProvider = availabilityProvider
+    init(availabilityResolver: @escaping @Sendable () -> SystemLanguageModel.Availability) {
+        self.availabilityResolver = availabilityResolver
     }
 
     // MARK: - Test-only accessors
@@ -251,10 +251,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     }
 
     /// Whether the system language model is available according to this backend's
-    /// injected availability provider. Equals `FoundationBackend.isAvailable` in
-    /// production; can differ in tests that inject a stub provider.
+    /// injected availability resolver. Equals `FoundationBackend.isAvailable` in
+    /// production; can differ in tests that inject a stub resolver.
     var isAvailableViaProvider: Bool {
-        availabilityProvider.availability == .available
+        availabilityResolver() == .available
     }
 
     /// Probes the model with a minimal request to confirm it can serve inference.
@@ -282,7 +282,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         // Plan is informational for Foundation — the system owns all memory.
         unloadModel()
 
-        guard availabilityProvider.availability == .available else {
+        guard availabilityResolver() == .available else {
             throw InferenceError.inferenceFailure(
                 "Apple Intelligence model is not available on this device"
             )
