@@ -67,7 +67,11 @@ public extension SessionToolSourceContract where Self: XCTestCase {
             )
             XCTFail("Expected resolve(toolName:) to throw for unknown tool \(unknownName)")
         } catch {
-            // Expected — any thrown error satisfies the contract.
+            // Any thrown error satisfies the contract — conformers may throw
+            // their own domain errors and we deliberately don't pin the type.
+            // Reference `error` here so the silent-catch audit can distinguish
+            // intentional contract capture from an accidental swallow.
+            XCTAssertNotNil(error as Error?, "thrown error captured by contract")
         }
     }
 
