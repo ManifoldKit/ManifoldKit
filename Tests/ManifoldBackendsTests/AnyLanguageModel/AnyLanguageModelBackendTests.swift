@@ -3,7 +3,7 @@ import XCTest
 
 #if AnyLanguageModel
 import AnyLanguageModel
-@testable import ManifoldAnyLanguageModelBridge
+@testable import ManifoldBackends
 
 final class AnyLanguageModelBackendTests: XCTestCase {
     func test_generate_streamsTextDeltas() async throws {

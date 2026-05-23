@@ -12,8 +12,10 @@
 //   - `ManifoldVoice` — speech I/O composer (trait `Voice`).
 //   - `ManifoldHuggingFace` — Hub browse/download (default-on under
 //     `HuggingFace`, but exposed only via `ManifoldUIModelManagement` UI hooks).
-//   - `ManifoldTools`, `ManifoldAppIntents`, `ManifoldAnyLanguageModelBridge`,
-//     `ManifoldServer`, `ManifoldFuzz` — specialised opt-in modules.
+//   - `ManifoldTools`, `ManifoldAppIntents`, `ManifoldServer`,
+//     `ManifoldFuzz` — specialised opt-in modules. The AnyLanguageModel
+//     bridge ships inside `ManifoldBackends`, gated by the
+//     `AnyLanguageModel` trait.
 //
 // `ManifoldInference` is re-exported explicitly because consumers who write a
 // custom backend, register a factory, or read `BackendName` need its surface
