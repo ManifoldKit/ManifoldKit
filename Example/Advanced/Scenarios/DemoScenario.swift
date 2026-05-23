@@ -57,4 +57,47 @@ struct DemoScenario: Identifiable, Sendable {
     /// before each scenario, then invokes this closure to install variants.
     /// `nil` for the four P1 scenarios — they share the global demo tool set.
     let configure: (@MainActor @Sendable (ToolRegistry) -> Void)?
+
+    /// Synthetic `transfer_to_<agent>` tool names the scenario is expected to
+    /// emit. Asserted loudly by the W3B scripted UITest harness — the demo
+    /// fails clearly when a handoff fails to materialise (per plan §Demo
+    /// realism / AI reviewer fix #9). `nil` for scenarios that don't exercise
+    /// agent handoffs.
+    let expectedHandoffs: [String]?
+
+    /// Minimum model capability tier under which the scenario produces a
+    /// reliable demonstration. Used by the empty-state card to surface an
+    /// "install a larger model" hint when the active model is below the bar,
+    /// preventing the silent-failure anti-pattern where a small local model
+    /// produces inconsistent output on a flagship-shaped demo. `nil` means
+    /// any tier is fine.
+    let minCapableModel: ModelCapabilityTier?
+
+    init(
+        id: String,
+        title: String,
+        blurb: String,
+        systemImage: String,
+        prompt: String,
+        systemPrompt: String,
+        expectedTools: [String],
+        autoSend: Bool,
+        accessibilityID: String,
+        configure: (@MainActor @Sendable (ToolRegistry) -> Void)? = nil,
+        expectedHandoffs: [String]? = nil,
+        minCapableModel: ModelCapabilityTier? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.blurb = blurb
+        self.systemImage = systemImage
+        self.prompt = prompt
+        self.systemPrompt = systemPrompt
+        self.expectedTools = expectedTools
+        self.autoSend = autoSend
+        self.accessibilityID = accessibilityID
+        self.configure = configure
+        self.expectedHandoffs = expectedHandoffs
+        self.minCapableModel = minCapableModel
+    }
 }

@@ -113,6 +113,49 @@ extension DemoScenarios {
                 ])
             ]
 
+        case skillExplain.id:
+            // The scripted backend emits the `invoke_skill` dispatch tool W2A
+            // ships. The bundled `explain` skill's template gets rendered into
+            // the tool result; the scripted second turn confirms in prose.
+            return [
+                .toolCall(name: "invoke_skill", arguments: #"{"skill_name":"explain","args":"Swift's actor keyword"}"#),
+                .tokens([
+                    "An ", "actor ", "in ", "Swift ", "is ", "a ", "reference ",
+                    "type ", "that ", "protects ", "its ", "mutable ", "state ",
+                    "behind ", "an ", "isolation ", "boundary."
+                ])
+            ]
+
+        case handoffResearchWrite.id:
+            // Researcher emits transfer_to_writer with an outline payload;
+            // under the live runtime path the executor would swap
+            // ChatSession.activeAgentID and Writer's system prompt drives the
+            // next turn. The scripted second turn stands in for Writer.
+            let outline = "1. MCP is a JSON-RPC protocol. 2. Tools/resources are advertised over stdio. 3. Hosts route model tool calls through the server."
+            let payload = "{\"payload\":\"\(outline)\"}"
+            return [
+                .toolCall(name: "transfer_to_writer", arguments: payload),
+                .tokens([
+                    "MCP ", "is ", "a ", "JSON-RPC ", "protocol ", "that ", "lets ",
+                    "hosts ", "advertise ", "tools ", "and ", "resources ", "to ",
+                    "model ", "runtimes."
+                ])
+            ]
+
+        case hookInputSanitize.id:
+            // The user-supplied path is `../../../etc/passwd`. The
+            // `preToolUse` hook in the live runtime rewrites it to a
+            // sandboxed prefix BEFORE the executor sees it — the scripted
+            // backend emits the post-hook path so the UITest can assert the
+            // rendered tool invocation reflects the sanitised target.
+            return [
+                .toolCall(name: "read_file", arguments: #"{"path":"sandbox/etc/passwd"}"#),
+                .tokens([
+                    "The ", "requested ", "path ", "was ", "rewritten ", "to ",
+                    "sandbox/etc/passwd ", "before ", "the ", "tool ", "ran."
+                ])
+            ]
+
         default:
             return fallbackTurns
         }
