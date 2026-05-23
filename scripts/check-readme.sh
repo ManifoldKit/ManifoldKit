@@ -202,6 +202,165 @@ else
     failures=$((failures + 1))
 fi
 
+# ── Check 4: no-build under copy-paste-contract headings ─────────────────
+#
+# `swift,no-build` fenced blocks are skipped by the snippet compile gate
+# (see scripts/extract-snippets.sh:174-180). That's appropriate for
+# genuinely partial illustrations (a method signature, a fragment that
+# references an undefined identifier), but it has been over-applied to
+# copy-paste hello-world snippets — the very snippets readers paste into
+# their own projects. A no-build-tagged copy-paste target can drift
+# indefinitely without CI noticing.
+#
+# This check fails when a `swift,no-build` (or any `swift*no-build*`)
+# fenced block appears under a heading whose text matches one of the
+# "contract" patterns below. These headings advertise "the next code block
+# is copy-pasteable" — they MUST be compilable or moved.
+#
+# See scripts/dx-walkthrough/runs/2026-05-23_v0.33.0/01-chat-cli/ROOT_CAUSES.md
+# for the root-cause analysis that motivated this lint.
+echo
+echo "── Check: no-build blocks under copy-paste-contract headings ────────"
+
+# Case-insensitive heading patterns. Each entry is a POSIX ERE that matches
+# the trimmed heading text (no leading `#`). Keep this list narrow — it
+# describes "contracts" the docs make with readers ("here is a thing to
+# paste").
+contract_heading_patterns=(
+    'quick ?start'
+    'getting started'
+    'hello world'
+    'hello[, ] world'
+    'bring your own'
+    'cli'
+    'headless'
+    'terminal'
+)
+
+# Build a single OR-joined pattern for grep.
+joined_pattern=""
+for p in "${contract_heading_patterns[@]}"; do
+    if [[ -z "${joined_pattern}" ]]; then
+        joined_pattern="${p}"
+    else
+        joined_pattern="${joined_pattern}|${p}"
+    fi
+done
+
+bad_no_build=0
+
+# Walk README.md and docs/QUICKSTART.md. For each file, track the current
+# heading (any `#`-prefixed line). When we encounter a ```swift fence
+# carrying `no-build`, compare the current heading against the contract
+# patterns and emit an error if it matches.
+check_no_build_in() {
+    local file_rel="$1"
+    local file_abs="${REPO_ROOT}/${file_rel}"
+    if [[ ! -f "${file_abs}" ]]; then
+        echo "::warning::${file_rel} not found, skipping no-build heading check."
+        return 0
+    fi
+
+    local current_heading=""
+    local current_heading_line=0
+    local line_no=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line_no=$((line_no + 1))
+        # Match Markdown ATX headings (# .. ######). Strip leading # and spaces.
+        if [[ "$line" =~ ^#{1,6}[[:space:]]+(.+)$ ]]; then
+            current_heading="${BASH_REMATCH[1]}"
+            current_heading_line=$line_no
+            continue
+        fi
+        # Match opening fences like ```swift,no-build or ```swift no-build ...
+        # We're conservative: require the line to start with ```swift and
+        # contain the literal token "no-build" somewhere on the same line.
+        if [[ "$line" =~ ^\`\`\`[Ss]wift ]] && [[ "$line" == *no-build* ]]; then
+            # Check if current heading matches a contract pattern (case-insensitive).
+            if [[ -n "$current_heading" ]]; then
+                heading_lc=$(printf '%s' "$current_heading" | tr '[:upper:]' '[:lower:]')
+                if printf '%s' "$heading_lc" | grep -qE "${joined_pattern}"; then
+                    echo "::error file=${file_rel},line=${line_no}::\`swift,no-build\` block under heading \"${current_heading}\" (line ${current_heading_line}). no-build is for partial illustrations; this section promises copy-pasteable code. Either make the snippet compilable or move it out of this section."
+                    bad_no_build=$((bad_no_build + 1))
+                fi
+            fi
+        fi
+    done < "${file_abs}"
+}
+
+check_no_build_in "README.md"
+check_no_build_in "docs/QUICKSTART.md"
+
+if [[ ${bad_no_build} -gt 0 ]]; then
+    failures=$((failures + 1))
+    echo "Found ${bad_no_build} \`no-build\` block(s) under copy-paste-contract heading(s)."
+else
+    echo "✓ No \`no-build\` blocks under copy-paste-contract headings."
+fi
+
+# ── Check 5: README Swift floor agrees with Package.swift ─────────────────
+#
+# README's "Requirements" section restates the Swift tools-version that
+# consumers must use. There is no test that those agree with the actual
+# `// swift-tools-version:` line in Package.swift, so the two drift
+# (PR #1392 fixed a 6.1 vs `.macOS(.v26)` mismatch). This check extracts
+# both values and fails if the README's stated floor is lower than what
+# Package.swift declares.
+#
+# The check is intentionally lenient on README phrasing: it grabs the first
+# "Swift X.Y" mention inside the Requirements/Installation section (the
+# first 15 lines after the matching heading) and compares it to the
+# Package.swift tools-version. A README that legitimately advertises a
+# higher floor than Package.swift's tools-version (e.g. because consumers
+# need 6.2 for `.macOS(.v26)` even though MK itself ships with 6.1) is
+# still considered consistent.
+echo
+echo "── Check: README Swift floor agrees with Package.swift ──────────────"
+
+PACKAGE_PATH="${REPO_ROOT}/Package.swift"
+if [[ ! -f "${PACKAGE_PATH}" ]]; then
+    echo "::error::Package.swift not found at ${PACKAGE_PATH}"
+    failures=$((failures + 1))
+else
+    pkg_tools_version=$(grep -m1 -E '^//[[:space:]]*swift-tools-version:' "${PACKAGE_PATH}" \
+        | sed -nE 's@^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*@\1@p')
+    if [[ -z "${pkg_tools_version}" ]]; then
+        echo "::error::Could not extract \`// swift-tools-version:\` from Package.swift"
+        failures=$((failures + 1))
+    else
+        # Locate the Requirements heading line. Prefer Requirements; fall back to
+        # Installation/Install. `set -e` + pipefail makes empty grep pipelines
+        # exit nonzero, so each lookup is wrapped in `|| true`.
+        req_line_no=$(grep -niE '^##[[:space:]]+requirements[[:space:]]*$' "${README_PATH}" | head -n 1 | cut -d: -f1 || true)
+        if [[ -z "${req_line_no}" ]]; then
+            req_line_no=$(grep -niE '^##[[:space:]]+(installation|install)[[:space:]]*$' "${README_PATH}" | head -n 1 | cut -d: -f1 || true)
+        fi
+        if [[ -z "${req_line_no}" ]]; then
+            echo "::warning::README has no \`## Requirements\` / \`## Install\` heading; skipping Swift floor agreement check."
+        else
+            window_end=$((req_line_no + 15))
+            # Grab the first "Swift X.Y" mention in the window (case-insensitive,
+            # tolerates trailing `+`). Strips bullet/markup noise via sed.
+            readme_swift=$(sed -n "${req_line_no},${window_end}p" "${README_PATH}" \
+                | grep -iE 'swift[[:space:]]+[0-9]+\.[0-9]+' \
+                | head -n 1 \
+                | sed -nE 's/.*[Ss]wift[[:space:]]+([0-9]+\.[0-9]+).*/\1/p' || true)
+            if [[ -z "${readme_swift}" ]]; then
+                echo "::warning::README \`## Requirements\` section has no \`Swift X.Y\` mention; skipping Swift floor agreement check."
+            else
+                # Compare as floats via awk for portability (no bc dependency).
+                cmp=$(awk -v a="${readme_swift}" -v b="${pkg_tools_version}" 'BEGIN { if (a+0 < b+0) print "lt"; else print "ge" }')
+                if [[ "${cmp}" == "lt" ]]; then
+                    echo "::error file=README.md,line=${req_line_no}::README \`Requirements\` states Swift ${readme_swift} but Package.swift declares swift-tools-version ${pkg_tools_version}. README's stated floor must be >= Package.swift's tools-version."
+                    failures=$((failures + 1))
+                else
+                    echo "✓ README Swift floor (${readme_swift}) >= Package.swift tools-version (${pkg_tools_version})."
+                fi
+            fi
+        fi
+    fi
+fi
+
 # ── Strict-mode checks (opt-in) ────────────────────────────────────────────
 #
 # These checks describe the post-restructure README layout. They are gated
