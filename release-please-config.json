@@ -7,6 +7,14 @@
     {
       "type": "generic",
       "path": "README.md"
+    },
+    {
+      "type": "generic",
+      "path": "docs/QUICKSTART.md"
+    },
+    {
+      "type": "generic",
+      "path": "docs/QUICKSTART-CLI.md"
     }
   ],
   "packages": {

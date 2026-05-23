@@ -1,0 +1,341 @@
+# ManifoldKit CLI / Headless Quickstart
+
+A one-page tutorial for getting from "empty terminal" to "streaming tokens" without SwiftUI. If you're building a CLI, a server, an App Intents extension, a fuzz harness, or any non-SwiftUI consumer, start here.
+
+> **macOS version matters for backend choice.** ManifoldKit officially supports macOS 15+ (its `n-1` floor), but the simplest documented backend — Apple Foundation Models — is macOS 26 / iOS 26 only. The table below maps backend → minimum platform so you don't pick one that won't run.
+>
+> | Backend           | Minimum platform              | Network? | Section            |
+> |-------------------|-------------------------------|----------|--------------------|
+> | Foundation Models | macOS 26 / iOS 26             | No       | [§1](#1-foundation-models-macos-26)         |
+> | Local GGUF (Llama)| macOS 15 / iOS 18 (Apple Silicon) | No       | [§2](#2-local-gguf-via-the-llama-backend-macos-15)         |
+> | Ollama / OpenAI / Anthropic | macOS 15 / iOS 18 | Yes      | [§3](#3-cloud--ollama-via-loadcloudbackend)         |
+>
+> If you're on macOS 15 and want a fully local model, skip directly to [§2](#2-local-gguf-via-the-llama-backend-macos-15). Foundation Models will not load.
+
+Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
+
+---
+
+## 1. Foundation Models (macOS 26)
+
+The smallest possible CLI. No model files to manage, no network calls, no API keys — Foundation Models ships with the OS on macOS 26 / iOS 26. If you're on a current Apple OS and your privacy / latency budget allows the on-device Apple model, this is the fastest path to a working binary.
+
+**`Package.swift`:**
+
+```swift
+// swift-tools-version: 6.2
+import PackageDescription
+
+let package = Package(
+    name: "ChatCLIFoundation",
+    platforms: [.macOS(.v26)],
+    products: [
+        .executable(name: "chat-cli-foundation", targets: ["ChatCLIFoundation"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/roryford/ManifoldKit.git",
+            from: "0.33.0" // x-release-please-version
+        ),
+    ],
+    targets: [
+        .executableTarget(
+            name: "ChatCLIFoundation",
+            dependencies: [
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+            ]
+        ),
+    ]
+)
+```
+
+**`Sources/ChatCLIFoundation/main.swift`:**
+
+```swift
+import Foundation
+import ManifoldInference
+import ManifoldBackends
+
+@main
+@MainActor
+struct ChatCLIFoundation {
+    static func main() async throws {
+        let inference = InferenceService()
+        DefaultBackends.register(with: inference)
+
+        // .builtInFoundation is a sentinel ModelInfo that targets Apple's
+        // on-device Foundation Models. .cloud() is the matching ModelLoadPlan
+        // shape for backends that don't load files off disk.
+        try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
+
+        let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
+        for try await event in stream.events {
+            if case .token(let text) = event {
+                print(text, terminator: "")
+                fflush(stdout)
+            }
+        }
+        print("")
+    }
+}
+```
+
+Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are `@MainActor`-isolated — that's why the example's enclosing scope is annotated `@MainActor`. The compiler will reject a non-`@MainActor` call site with a region-isolation error in Swift 6 mode. (SwiftUI consumers never notice because `App.body` is already on the main actor.)
+
+---
+
+## 2. Local GGUF via the Llama backend (macOS 15+)
+
+This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform.
+
+**Get a model first.** Drop any GGUF file into `~/Documents/Models/`. Good starter picks (small, fast, instruction-tuned):
+
+- [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, decent quality, fastest cold-start
+- [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, better quality
+- Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
+
+**`Package.swift`:**
+
+```swift
+// swift-tools-version: 6.2
+import PackageDescription
+
+let package = Package(
+    name: "ChatCLILlama",
+    platforms: [.macOS(.v15)],
+    products: [
+        .executable(name: "chat-cli-llama", targets: ["ChatCLILlama"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/roryford/ManifoldKit.git",
+            from: "0.33.0" // x-release-please-version
+        ),
+    ],
+    targets: [
+        .executableTarget(
+            name: "ChatCLILlama",
+            dependencies: [
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+            ]
+        ),
+    ]
+)
+```
+
+**`Sources/ChatCLILlama/main.swift`:**
+
+```swift
+import Foundation
+import ManifoldInference
+import ManifoldBackends
+
+@main
+@MainActor
+struct ChatCLILlama {
+    static func main() async throws {
+        // 1. Locate the GGUF on disk. Adjust to taste — or read it from argv.
+        let modelURL = URL(fileURLWithPath: NSString(
+            string: "~/Documents/Models/Qwen3-0.6B-Q4_K_M.gguf"
+        ).expandingTildeInPath)
+
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            FileHandle.standardError.write(Data(
+                "Model not found at \(modelURL.path)\n".utf8
+            ))
+            exit(1)
+        }
+
+        // 2. ModelInfo(ggufURL:) is a failable factory. It validates GGUF
+        // magic bytes and returns nil for files that aren't valid GGUFs.
+        guard let model = ModelInfo(ggufURL: modelURL) else {
+            FileHandle.standardError.write(Data(
+                "Not a valid GGUF: \(modelURL.path)\n".utf8
+            ))
+            exit(1)
+        }
+
+        // 3. ModelLoadPlan.compute(...) figures out a safe load shape for the
+        // host — context size clamped to available RAM, mmap vs in-memory,
+        // KV-cache sizing. See the parameter notes below the snippet.
+        let plan = ModelLoadPlan.compute(
+            for: model,
+            requestedContextSize: 2048,
+            strategy: .mappable,
+            environment: .init(
+                availableMemoryBytes: { ProcessInfo.processInfo.physicalMemory },
+                physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory
+            )
+        )
+
+        // 4. Standard service construction. DefaultBackends.register wires
+        // the Llama backend (and every other compiled-in backend) into the
+        // service's routing table.
+        let inference = InferenceService()
+        DefaultBackends.register(with: inference)
+
+        try await inference.loadModel(from: model, plan: plan)
+
+        // 5. Stream tokens. GenerationStream is NOT itself an AsyncSequence —
+        // iterate `stream.events`.
+        let stream = try inference.generate(
+            messages: [("user", "Say hello in five words.")],
+            systemPrompt: "You are a concise assistant.",
+            temperature: 0.7,
+            topP: 0.95,
+            repeatPenalty: 1.1,
+            maxOutputTokens: 64
+        )
+
+        for try await event in stream.events {
+            if case .token(let text) = event {
+                print(text, terminator: "")
+                fflush(stdout)
+            }
+        }
+        print("")
+
+        // 6. Clean up. See "Cleaning up" below for the Llama-specific
+        // teardown caveat — this Task.sleep is intentional.
+        inference.unloadModel()
+        try? await Task.sleep(nanoseconds: 500_000_000)
+    }
+}
+```
+
+### What `ModelLoadPlan.compute(...)` is doing
+
+- **`for:`** — the `ModelInfo` you're loading. The plan reads `model.estimatedMemoryBytes` and `model.architecture` to size the KV cache and decide whether the model fits.
+- **`requestedContextSize:`** — your *requested* context window in tokens. The planner clamps it down if RAM would be exhausted. `2048` is a safe starter; bump it for longer conversations. Set to `0` to ask for the model's natural maximum (clamped automatically).
+- **`strategy: .mappable`** — matches llama.cpp's `mmap` behaviour. The weights are paged in from disk on demand instead of being copied into RSS up front. Use `.inMemory` only if you've explicitly disabled mmap and need every byte resident. For GGUF on Apple Silicon, `.mappable` is the right default.
+- **`environment:`** — a snapshot of host memory the planner reasons about. The two closures let you mock available memory in tests; in production, `ProcessInfo.processInfo.physicalMemory` for both is fine. The planner will refuse to construct a plan it can't honour.
+
+The plan is a *value type* — it makes no IO. Loading happens in `inference.loadModel(from:plan:)` on step 4.
+
+### Why both a `ModelInfo` form and a `URL` form?
+
+ManifoldKit has two `loadModel(from:)` shapes at different layers:
+
+- **`InferenceService.loadModel(from: ModelInfo, plan:)`** — the consumer-facing call. Use this one.
+- **`BackendProtocol.loadModel(from: URL, plan:)`** — the backend-protocol contract that custom backends implement. You'd only call this if you were building a brand-new backend.
+
+The README's "Custom Backends" section documents the URL form because it's the protocol shape backend authors satisfy. Consumers call the `ModelInfo` form, and `ModelInfo(ggufURL:)` wraps the URL.
+
+---
+
+## 3. Cloud / Ollama via `loadCloudBackend(from:)`
+
+For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropic, LM Studio, or a custom OpenAI-compatible endpoint — the entry point is `InferenceService.loadCloudBackend(from:)` with an `APIEndpointRecord` describing the endpoint.
+
+> **Trait requirement.** Cloud backends are trait-gated. Add `Ollama` to your `traits:` for `localhost:11434`, or `CloudSaaS` for OpenAI / Claude. The default trait set (`MLX`, `Llama`, `HuggingFace`) does **not** include either. See [docs/FeatureMatrix.md](FeatureMatrix.md).
+
+**`Package.swift`:**
+
+```swift
+// swift-tools-version: 6.2
+import PackageDescription
+
+let package = Package(
+    name: "ChatCLICloud",
+    platforms: [.macOS(.v15)],
+    products: [
+        .executable(name: "chat-cli-cloud", targets: ["ChatCLICloud"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/roryford/ManifoldKit.git",
+            from: "0.33.0", // x-release-please-version
+            traits: [
+                .trait(name: "Ollama"),     // for localhost:11434
+                .trait(name: "CloudSaaS"),  // for OpenAI / Anthropic
+            ]
+        ),
+    ],
+    targets: [
+        .executableTarget(
+            name: "ChatCLICloud",
+            dependencies: [
+                .product(name: "ManifoldInference", package: "ManifoldKit"),
+                .product(name: "ManifoldBackends", package: "ManifoldKit"),
+            ]
+        ),
+    ]
+)
+```
+
+**`Sources/ChatCLICloud/main.swift`:**
+
+```swift
+import Foundation
+import ManifoldInference
+import ManifoldBackends
+
+@main
+@MainActor
+struct ChatCLICloud {
+    static func main() async throws {
+        let inference = InferenceService()
+        DefaultBackends.register(with: inference)
+
+        // Point at a local Ollama instance. baseURL and modelName both default
+        // off APIProvider.ollama, but pass them explicitly when you want a
+        // non-default model or a non-default host.
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.2"
+        )
+
+        try await inference.loadCloudBackend(from: endpoint)
+
+        let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
+        for try await event in stream.events {
+            if case .token(let text) = event {
+                print(text, terminator: "")
+                fflush(stdout)
+            }
+        }
+        print("")
+    }
+}
+```
+
+The same shape works for every supported HTTP provider. Swap `.ollama` for `.openAI`, `.openAIResponses`, `.claude`, `.lmStudio`, or `.custom`:
+
+- `.openAI` / `.openAIResponses` / `.claude` — `requiresAPIKey == true`. Store the key in Keychain under the endpoint's `keychainAccount` (defaults to the endpoint UUID). The bootstrap path in `ManifoldKit.quickStart()` wires Keychain lookup for you; CLI consumers manage their own storage.
+- `.lmStudio` — same shape as `.openAI` against `localhost:1234`, no key required.
+- `.custom` — pass your own `baseURL`. Speaks the OpenAI Chat Completions dialect.
+
+---
+
+## Cleaning up
+
+`inference.unloadModel()` is synchronous and currently returns before llama.cpp's Metal device has drained its residency set. If you exit the process immediately after `unloadModel()`, `__cxa_finalize` may abort with:
+
+```
+ggml-metal-device.m: GGML_ASSERT([rsets->data count] == 0) failed
+```
+
+This is tracked at [#1394](https://github.com/roryford/ManifoldKit/issues/1394). Until it's fixed, give the Metal device a short window to drain before letting `main` return:
+
+```swift,no-build
+inference.unloadModel()
+try? await Task.sleep(nanoseconds: 500_000_000) // workaround for #1394
+```
+
+500 ms is empirically sufficient on Apple Silicon and is harmless on backends that don't touch Metal. The workaround can be deleted once the upstream fix lands.
+
+The Foundation Models and cloud backends are not affected — the teardown race is specific to the Llama / Metal stack.
+
+---
+
+## Where to go next
+
+- [`docs/QUICKSTART.md`](QUICKSTART.md) — the SwiftUI hello-world and full `ManifoldKit.quickStart()` flow.
+- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — the full trait → backend → capability table.
+- [`Example/Examples/MinimalExample`](../Example/Examples/MinimalExample) — runnable minimum-viable SwiftUI app.
+- [README "Custom Backends"](../README.md#custom-backends) — implementing your own `BackendProtocol` conformance.
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — architecture invariants and how to add a backend.
