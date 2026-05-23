@@ -116,8 +116,19 @@ struct MyApp: App {
 
             // 5. Activate (or create) an initial session so `ChatView`'s
             //    composer is enabled on first launch.
-            let initial = sessionVM.sessions.first
-                ?? (try? await sessionVM.createSession())
+            //
+            //    Note: `??` cannot propagate `async`/`throws` into its RHS, so
+            //    this is written as an explicit if/else rather than
+            //    `sessions.first ?? (try? await createSession())`.
+            //    `createSession()` is `async throws -> ChatSessionRecord`, and
+            //    `sessions` is `[ChatSessionRecord]`, so both branches yield
+            //    the same type.
+            let initial: ChatSessionRecord?
+            if let existing = sessionVM.sessions.first {
+                initial = existing
+            } else {
+                initial = try? await sessionVM.createSession()
+            }
             if let initial {
                 sessionVM.activeSession = initial
                 await chatVM.switchToSession(initial)
