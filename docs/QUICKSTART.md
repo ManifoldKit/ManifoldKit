@@ -6,7 +6,7 @@ A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI
 
 ## Prerequisites
 
-- Xcode 16+ on macOS, or Swift 6.2+ toolchain (`swift-tools-version: 6.2` is required for `.macOS(.v26)` / `.iOS(.v26)` platform entries).
+- Xcode 16+ on macOS, or Swift 6.1+ toolchain. ManifoldKit's own `Package.swift` declares `// swift-tools-version: 6.1` and platforms `.iOS(.v18)` / `.macOS(.v15)`; consumer packages should match (or go higher) to avoid SwiftPM version-resolution churn.
 - A SwiftUI app target on iOS 18+ / macOS 15+ (Apple Foundation Models require iOS 26+ / macOS 26+).
 - Familiarity with SwiftUI's `App` protocol and `@State`. No prior knowledge of MLX, llama.cpp, MCP, or any specific backend is assumed.
 
@@ -67,9 +67,159 @@ struct MyChatApp: App {
 }
 ```
 
-Run the app. On macOS or iOS 26+, the Apple Foundation Models backend is available immediately; for other backends, see [Customizing backends](#customizing-backends).
+Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
 > **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and call `result.bootstrap.persistence.insertSession(_:)` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see [`Example/Advanced`](../Example/Advanced) for the worked example.
+
+## First-launch backend selection
+
+`quickStart()` registers every compiled-in backend with the inference service, but **it does not pick one for you**. The composer is enabled (a session exists), but no model is loaded — `ChatViewModel.isModelLoaded` is `false`, the composer placeholder reads "No model loaded", and the empty-state surfaces a "Select Model" button that flips the `showModelManagement` binding (see [`showModelManagement` binding](#showmodelmanagement-binding) below — by itself the binding doesn't present anything).
+
+This section shows the three documented paths to get a model loaded on first launch.
+
+### What "available immediately" actually means
+
+On macOS 26 / iOS 26, the Apple Foundation Models backend is *registered* by `DefaultBackends.register(with:)` — but it is **not auto-selected by `quickStart()`**. `ChatViewModel` needs two extra inputs before Foundation Models appears in `availableModels`:
+
+1. A provider closure that reports availability — `foundationModelProvider = { FoundationBackend.isAvailable }`.
+2. An explicit `loadFoundationModelIfAvailable()` call (or `autoSelectFirstRunModel()`, which is gated on a first-launch `UserDefaults` flag).
+
+Without those, `availableModels` won't contain the Foundation entry and `ChatView`'s welcome state will read "Welcome — Download a model to get started" even though the OS ships with one. (Tracked as A2-F1 in the iter-1 walkthrough.)
+
+### Seeding Foundation Models
+
+Add this to the `Hello World` example so the moment `result` is non-nil, you also probe Foundation availability and dispatch a load. The probe is OS-gated; the rest of `quickStart()`'s flow runs unchanged on older OSes.
+
+```swift,no-build
+import SwiftUI
+import SwiftData
+import ManifoldKit
+import ManifoldUI
+#if canImport(ManifoldFoundation)
+import ManifoldFoundation
+#endif
+
+@main
+struct MyChatApp: App {
+    @State private var result: QuickStartResult?
+    @State private var showModelManagement = false
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                ChatView(showModelManagement: $showModelManagement)
+                    .environment(result.viewModel)
+                    .modelContainer(result.bootstrap.modelContainer)
+                    .task {
+                        #if canImport(ManifoldFoundation)
+                        if #available(macOS 26, iOS 26, *) {
+                            result.viewModel.foundationModelProvider = { FoundationBackend.isAvailable }
+                            result.viewModel.loadFoundationModelIfAvailable()
+                        }
+                        #endif
+                    }
+            } else {
+                ProgressView().task {
+                    result = try? await ManifoldKit.quickStart()
+                }
+            }
+        }
+    }
+}
+```
+
+`loadFoundationModelIfAvailable()` is a no-op when the provider returns `false` or when no Foundation entry exists in `availableModels`, so it's safe to call unconditionally on supported OSes.
+
+### Seeding an Ollama endpoint
+
+For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint.
+
+```swift,no-build
+import SwiftUI
+import ManifoldKit
+import ManifoldUI
+import ManifoldInference
+
+@main
+struct MyChatApp: App {
+    @State private var result: QuickStartResult?
+    @State private var showModelManagement = false
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                ChatView(showModelManagement: $showModelManagement)
+                    .environment(result.viewModel)
+                    .modelContainer(result.bootstrap.modelContainer)
+            } else {
+                ProgressView().task {
+                    do {
+                        let r = try await ManifoldKit.quickStart()
+                        let existing = try await r.bootstrap.endpointStore.fetchEndpoints()
+                        if existing.isEmpty {
+                            // Seed a default Ollama endpoint pointing at localhost:11434.
+                            // `defaultBaseURL` / `defaultModelName` come from `APIProvider`.
+                            let ollama = APIEndpointRecord(
+                                name: "Local Ollama",
+                                provider: .ollama,
+                                modelName: "llama3.2:3b"  // any model you've `ollama pull`-ed
+                            )
+                            try await r.bootstrap.endpointStore.insertEndpoint(ollama)
+                            r.viewModel.setAvailableEndpoints([ollama])
+                        }
+                        result = r
+                    } catch {
+                        // Show ContentUnavailableView, log, etc.
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+The user can then pick "Local Ollama" from the model sidebar without ever opening a settings sheet. Cloud SaaS providers (OpenAI, Anthropic) follow the same pattern but additionally need an API key written to the keychain under `keychainAccount`; the `ManifoldUIModelManagement` `APIConfigurationView` handles that wiring, or you can write the key yourself before inserting the record.
+
+### `showModelManagement` binding
+
+`ChatView(showModelManagement: $flag)` accepts a `Binding<Bool>` but **does not present any sheet itself** — `ChatView` only *writes* `true` to the binding when the user taps an empty-state "Select Model" / "Browse" button. The host attaches a `.sheet(isPresented:)` modifier to whatever model-management surface they want.
+
+The canonical surface is `ModelManagementSheet` from the **`ManifoldUIModelManagement`** product (a non-default, opt-in module — add `.product(name: "ManifoldUIModelManagement", package: "ManifoldKit")` to your target's dependencies). It needs a `ModelManagementViewModel` in the SwiftUI environment; construct it with `.live()` for production:
+
+```swift,no-build
+import SwiftUI
+import ManifoldKit
+import ManifoldUI
+import ManifoldUIModelManagement
+
+@main
+struct MyChatApp: App {
+    @State private var result: QuickStartResult?
+    @State private var showModelManagement = false
+    @State private var managementVM = ModelManagementViewModel.live()
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                ChatView(showModelManagement: $showModelManagement)
+                    .environment(result.viewModel)
+                    .environment(managementVM)
+                    .modelContainer(result.bootstrap.modelContainer)
+                    .sheet(isPresented: $showModelManagement) {
+                        ModelManagementSheet(modelRegistry: result.viewModel.modelRegistry)
+                            .environment(managementVM)
+                    }
+            } else {
+                ProgressView().task {
+                    result = try? await ManifoldKit.quickStart()
+                }
+            }
+        }
+    }
+}
+```
+
+If you don't want the full model-management UI (e.g. cloud-only apps that seed an endpoint at launch as shown above), leave the `.sheet` modifier off and the binding will simply toggle a value nothing observes. The `Select Model` / `Browse` buttons then become harmless no-ops; consider hiding the empty-state hint with a custom empty-state view (see `ChatView.init(showModelManagement:emptyState:apiConfiguration:)`).
 
 ## Customizing backends
 

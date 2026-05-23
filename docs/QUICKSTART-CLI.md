@@ -25,7 +25,7 @@ The smallest possible CLI. No model files to manage, no network calls, no API ke
 **`Package.swift`:**
 
 ```swift
-// swift-tools-version: 6.2
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -102,7 +102,7 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 **`Package.swift`:**
 
 ```swift
-// swift-tools-version: 6.2
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -310,7 +310,7 @@ For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropi
 **`Package.swift`:**
 
 ```swift
-// swift-tools-version: 6.2
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
