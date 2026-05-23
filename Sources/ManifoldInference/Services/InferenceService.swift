@@ -635,7 +635,7 @@ public final class InferenceService {
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate
         )
-        generation.provider = self
+        wireGenerationContext()
         Self.scheduleToolSpillReap()
     }
     #endif
@@ -731,8 +731,8 @@ public final class InferenceService {
     /// `@MainActor`-isolated reference. All public entry points that touch the
     /// generation coordinator call this first.
     private func ensureProviderWired() {
-        if generation.provider == nil {
-            generation.provider = self
+        if !generation.hasBoundContext {
+            wireGenerationContext()
         }
     }
 }
@@ -781,11 +781,21 @@ private final class ModelLoadReadinessObserver {
     }
 }
 
-// MARK: - GenerationContextProvider Conformance
+// MARK: - Backend Context Bridging
 
-extension InferenceService: GenerationContextProvider {
-    var currentBackend: (any InferenceBackend)? { lifecycle.backend }
-    var isBackendLoaded: Bool { lifecycle.isModelLoaded }
+extension InferenceService {
+    /// Bridge into ``GenerationQueue``'s closure-based context seam.
+    ///
+    /// Replaces the former ``GenerationContextProvider`` protocol conformance.
+    /// Each closure reads through `lifecycle` so the queue always sees the
+    /// current backend / template state — never a cached snapshot.
+    fileprivate func wireGenerationContext() {
+        generation.bindContext(
+            currentBackend: { [weak self] in self?.lifecycle.backend },
+            isBackendLoaded: { [weak self] in self?.lifecycle.isModelLoaded ?? false },
+            selectedPromptTemplate: { [weak self] in self?.lifecycle.selectedPromptTemplate ?? .chatML }
+        )
+    }
 }
 
 // MARK: - Backend Snapshot

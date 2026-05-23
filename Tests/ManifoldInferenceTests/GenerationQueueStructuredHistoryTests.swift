@@ -16,7 +16,7 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
         try await super.setUp()
         provider = FakeGenerationContextProvider()
         coordinator = GenerationQueue()
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
     }
 
     override func tearDown() async throws {
@@ -128,7 +128,7 @@ final class GenerationQueueStructuredHistoryTests: XCTestCase {
     func test_generate_imageHistory_withVisionCapability_preservesStructuredImageParts() async throws {
         let backend = MockInferenceBackend(capabilities: BackendCapabilities(supportsVision: true))
         provider = FakeGenerationContextProvider(backend: backend)
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let image = MessagePart.image(data: ImageFixtures.oneByOnePNGData, mimeType: "image/png")
         let history: [StructuredMessage] = [

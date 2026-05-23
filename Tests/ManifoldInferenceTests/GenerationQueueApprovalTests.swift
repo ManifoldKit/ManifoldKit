@@ -84,7 +84,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
             toolRegistry: registry,
             toolApprovalGate: FixedGate(.denied(reason: "user blocked this tool"))
         )
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "weather in Rome?")],
@@ -135,7 +135,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
             toolRegistry: registry,
             toolApprovalGate: FixedGate(.denied(reason: nil))
         )
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "go")],
@@ -180,7 +180,7 @@ final class GenerationQueueApprovalTests: XCTestCase {
             toolRegistry: registry,
             toolApprovalGate: gate
         )
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "go")],

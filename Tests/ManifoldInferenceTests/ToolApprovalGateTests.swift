@@ -105,7 +105,7 @@ final class ToolApprovalGateTests: XCTestCase {
             toolRegistry: registry,
             toolApprovalGate: gate
         )
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
         return (coordinator, executor)
     }
 
@@ -220,7 +220,7 @@ final class ToolApprovalGateTests: XCTestCase {
         provider.backend.tokensToYieldPerTurn = [[], ["done"]]
 
         let coordinator = GenerationQueue(toolRegistry: registry)
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "go")],

@@ -67,7 +67,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
     /// Build a coordinator with the supplied registry already wired.
     private func makeCoordinator(registry: ToolRegistry) -> GenerationQueue {
         let coordinator = GenerationQueue(toolRegistry: registry)
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
         return coordinator
     }
 
@@ -212,7 +212,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         registry.register(executor)
 
         let coordinator = GenerationQueue(toolRegistry: registry)
-        coordinator.provider = toolAwareProvider
+        toolAwareProvider.bind(to: coordinator)
 
         let (_, stream) = try coordinator.enqueue(
             messages: [("user", "what time?")],
@@ -461,10 +461,18 @@ private final class ToolAwareMockBackend: InferenceBackend, ToolCallingHistoryRe
 }
 
 @MainActor
-private final class ToolAwareProvider: GenerationContextProvider {
+private final class ToolAwareProvider {
     let backend: ToolAwareMockBackend
     init(backend: ToolAwareMockBackend) { self.backend = backend }
     var currentBackend: (any InferenceBackend)? { backend }
     var isBackendLoaded: Bool { backend.isModelLoaded }
     var selectedPromptTemplate: PromptTemplate { .chatML }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { [weak self] in self?.backend },
+            isBackendLoaded: { [weak self] in self?.backend.isModelLoaded ?? false },
+            selectedPromptTemplate: { .chatML }
+        )
+    }
 }

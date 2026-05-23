@@ -53,7 +53,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
 
     private func makeCoordinator() -> GenerationQueue {
         let coordinator = GenerationQueue()
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
         return coordinator
     }
 

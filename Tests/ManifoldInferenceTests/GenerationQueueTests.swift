@@ -28,7 +28,7 @@ final class GenerationQueueTests: XCTestCase {
         try await super.setUp()
         provider = FakeGenerationContextProvider()
         coordinator = GenerationQueue()
-        coordinator.provider = provider
+        provider.bind(to: coordinator)
     }
 
     override func tearDown() async throws {
@@ -47,7 +47,7 @@ final class GenerationQueueTests: XCTestCase {
         thermal: @escaping @Sendable () -> ProcessInfo.ThermalState
     ) -> GenerationQueue {
         let coord = GenerationQueue(thermalStateProvider: thermal)
-        coord.provider = provider
+        provider.bind(to: coord)
         return coord
     }
 
@@ -291,7 +291,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_enqueue_userInitiatedBehindBackground_drainsFirst() async throws {
         let slowProvider = SlowFakeProvider()
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         // Active slot holds one request; queue builds behind it.
         let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
@@ -324,7 +324,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_cancel_queuedRequest_removesFromQueueAndLeavesActiveRunning() async throws {
         let slowProvider = SlowFakeProvider()
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
         let (queuedToken, queuedStream) = try coord.enqueue(
@@ -360,7 +360,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_cancel_activeRequest_noTokenAfterCancel() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let (token, stream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
 
@@ -405,7 +405,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_stopGeneration_emptiesQueueAndTerminatesAllStreams() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let (_, activeStream) = try coord.enqueue(messages: [("user", "active")], priority: .normal)
         let (_, q1Stream) = try coord.enqueue(messages: [("user", "queued1")], priority: .normal)
@@ -457,7 +457,7 @@ final class GenerationQueueTests: XCTestCase {
         let backend = SlowMockBackend(tokenCount: 1, delayMilliseconds: 60_000)
         let slowProvider = SlowFakeProvider(backend: backend)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         _ = try coord.enqueue(messages: [("user", "long")], priority: .normal)
 
@@ -485,7 +485,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_discardRequests_keepsMatchingSessionCancelsOthers() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let keepSession = UUID()
         let dropSession = UUID()
@@ -568,7 +568,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_isGenerating_transitions_onCancel() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 50, delayMilliseconds: 20)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let (token, stream) = try coord.enqueue(messages: [("user", "hi")], priority: .normal)
         XCTAssertTrue(coord.isGenerating)
@@ -590,7 +590,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_drainQueue_reentryRace_noCrash_stateConsistent() async throws {
         let slowProvider = SlowFakeProvider(tokenCount: 2, delayMilliseconds: 5)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider.bind(to: coord)
 
         let (token1, s1) = try coord.enqueue(messages: [("user", "a")], priority: .normal)
         let (token2, s2) = try coord.enqueue(messages: [("user", "b")], priority: .normal)
@@ -626,7 +626,7 @@ final class GenerationQueueTests: XCTestCase {
     func test_enqueue_noBackend_throwsNoModelLoaded() {
         let nilProvider = NilBackendProvider()
         let coord = GenerationQueue()
-        coord.provider = nilProvider
+        nilProvider.bind(to: coord)
 
         XCTAssertThrowsError(
             try coord.enqueue(messages: [("user", "x")], priority: .normal)
@@ -741,7 +741,7 @@ final class GenerationQueueTests: XCTestCase {
                 await Task.yield()
             }
         )
-        coord.provider = provider
+        provider.bind(to: coord)
 
         provider.backend.tokensToYield = ["a", "b"]
 
@@ -822,7 +822,7 @@ final class GenerationQueueTests: XCTestCase {
                 try await Task.sleep(for: duration)
             }
         )
-        coord.provider = provider
+        provider.bind(to: coord)
         provider.backend.tokensToYield = ["a", "b"]
 
         let (_, stream) = try coord.enqueue(
@@ -884,7 +884,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let (_, stream) = try coord.enqueue(
             messages: [("user", "hello")],
@@ -916,7 +916,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         // Two messages so we have something to trim.
         let (_, stream) = try coord.enqueue(
@@ -950,7 +950,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         // Single user message — cannot trim (would remove the only user turn).
         XCTAssertThrowsError(
@@ -985,7 +985,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let (_, stream) = try coord.enqueue(
             messages: [
@@ -1026,7 +1026,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let stream = try coord.generate(
             messages: [
@@ -1065,7 +1065,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let stream = try coord.generate(
             messages: [(role: "user", content: "fits without thinking reserve")],
@@ -1097,7 +1097,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let stream = try coord.generate(
             messages: [
@@ -1122,7 +1122,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         XCTAssertThrowsError(
             try coord.generate(
@@ -1152,7 +1152,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let messages = (0..<25).map { idx in
             (role: "user", content: "message \(idx)")
@@ -1184,7 +1184,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         XCTAssertThrowsError(
             try coord.generate(
@@ -1212,7 +1212,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         let stream = try coord.generate(
             messages: [(role: "assistant", content: "assistant-only stale response")],
@@ -1235,7 +1235,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         XCTAssertThrowsError(
             try coord.generate(
@@ -1266,7 +1266,7 @@ final class GenerationQueueTests: XCTestCase {
         let tcProvider = TokenCountingFakeProvider(backend: tcBackend)
 
         let coord = GenerationQueue()
-        coord.provider = tcProvider
+        tcProvider.bind(to: coord)
 
         XCTAssertThrowsError(
             try coord.generate(
@@ -1287,16 +1287,18 @@ final class GenerationQueueTests: XCTestCase {
     // MARK: - Provider teardown safety
 
     /// Deallocating the provider mid-stream must not crash the coordinator.
-    /// The `weak var provider` goes nil and in-flight generation ends cleanly.
+    /// The `bind(to:)` captures are `[weak self]` so once the strong ref
+    /// drops, `currentBackend` resolves to nil and in-flight generation
+    /// ends cleanly.
     func test_providerTeardown_midStream_noCrash_cleanEnd() async throws {
         let slow = SlowMockBackend(tokenCount: 20, delayMilliseconds: 20)
         var slowProvider: SlowFakeProvider? = SlowFakeProvider(backend: slow)
         let coord = GenerationQueue()
-        coord.provider = slowProvider
+        slowProvider!.bind(to: coord)
 
         let (_, stream) = try coord.enqueue(messages: [("user", "x")], priority: .normal)
 
-        // Consume a token, then release our strong ref so the weak var goes nil.
+        // Consume a token, then release our strong ref so the weak captures go nil.
         var iter = stream.events.makeAsyncIterator()
         _ = try await iter.next()
         slowProvider = nil
@@ -1311,7 +1313,7 @@ final class GenerationQueueTests: XCTestCase {
         // The coordinator must be in a stable state: no crash, no active
         // generation.
         XCTAssertFalse(coord.isGenerating)
-        XCTAssertNil(coord.provider as? SlowFakeProvider)
+        XCTAssertNil(coord.currentBackend)
     }
 }
 
@@ -1390,15 +1392,16 @@ private final class SleepCallCounter: @unchecked Sendable {
 
 // MARK: - File-local fakes
 //
-// These conform to the internal `GenerationContextProvider` via `@testable
-// import ManifoldInference`. Keeping them file-local (rather than publishing
-// them from `ManifoldTestSupport`) means the protocol stays internal and the
-// package's public API surface is unchanged.
+// Before #1418 these conformed to a `GenerationContextProvider` protocol.
+// That protocol was inlined into closure properties on `GenerationQueue`;
+// the fakes now expose a `bind(to:)` helper that wires their backend /
+// template state into the queue via `bindContext(...)`. The public API
+// surface is unchanged.
 
 /// A configurable fake that serves a `MockInferenceBackend`. Mirrors the
 /// construction pattern the rest of the inference tests use.
 @MainActor
-final class FakeGenerationContextProvider: GenerationContextProvider {
+final class FakeGenerationContextProvider {
 
     let backend: MockInferenceBackend
     var promptTemplate: PromptTemplate = .chatML
@@ -1413,12 +1416,20 @@ final class FakeGenerationContextProvider: GenerationContextProvider {
     var currentBackend: (any InferenceBackend)? { backend }
     var isBackendLoaded: Bool { backend.isModelLoaded }
     var selectedPromptTemplate: PromptTemplate { promptTemplate }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { [weak self] in self?.backend },
+            isBackendLoaded: { [weak self] in self?.backend.isModelLoaded ?? false },
+            selectedPromptTemplate: { [weak self] in self?.promptTemplate ?? .chatML }
+        )
+    }
 }
 
 /// A fake that serves a `SlowMockBackend` for tests that need a backend that
 /// yields tokens over time (cancellation / ordering).
 @MainActor
-private final class SlowFakeProvider: GenerationContextProvider {
+private final class SlowFakeProvider {
     let backend: SlowMockBackend
     init(backend: SlowMockBackend) { self.backend = backend }
     convenience init(tokenCount: Int = 10, delayMilliseconds: Int = 30) {
@@ -1427,15 +1438,31 @@ private final class SlowFakeProvider: GenerationContextProvider {
     var currentBackend: (any InferenceBackend)? { backend }
     var isBackendLoaded: Bool { backend.isModelLoaded }
     var selectedPromptTemplate: PromptTemplate { .chatML }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { [weak self] in self?.backend },
+            isBackendLoaded: { [weak self] in self?.backend.isModelLoaded ?? false },
+            selectedPromptTemplate: { .chatML }
+        )
+    }
 }
 
 /// A provider where `currentBackend` returns nil — used to exercise the
 /// `currentBackend == nil` branch of the enqueue guard.
 @MainActor
-private final class NilBackendProvider: GenerationContextProvider {
+private final class NilBackendProvider {
     var currentBackend: (any InferenceBackend)? { nil }
     var isBackendLoaded: Bool { false }
     var selectedPromptTemplate: PromptTemplate { .chatML }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { nil },
+            isBackendLoaded: { false },
+            selectedPromptTemplate: { .chatML }
+        )
+    }
 }
 
 private enum TokenCountingTestError: Error {
@@ -1511,7 +1538,7 @@ private final class TokenCountingMockBackend: InferenceBackend, TokenCountingBac
 
 /// A fake provider that vends a `TokenCountingMockBackend`.
 @MainActor
-private final class TokenCountingFakeProvider: GenerationContextProvider {
+private final class TokenCountingFakeProvider {
     let backend: TokenCountingMockBackend
     var promptTemplate: PromptTemplate = .chatML
 
@@ -1523,4 +1550,12 @@ private final class TokenCountingFakeProvider: GenerationContextProvider {
     var currentBackend: (any InferenceBackend)? { backend }
     var isBackendLoaded: Bool { backend.isModelLoaded }
     var selectedPromptTemplate: PromptTemplate { promptTemplate }
+
+    func bind(to queue: GenerationQueue) {
+        queue.bindContext(
+            currentBackend: { [weak self] in self?.backend },
+            isBackendLoaded: { [weak self] in self?.backend.isModelLoaded ?? false },
+            selectedPromptTemplate: { [weak self] in self?.promptTemplate ?? .chatML }
+        )
+    }
 }
