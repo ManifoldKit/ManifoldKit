@@ -1,3 +1,4 @@
+#if canImport(XCTest)
 import XCTest
 import ManifoldRuntime
 import ManifoldInference
@@ -151,3 +152,4 @@ extension SamplerPresetStoreContract where Self: XCTestCase {
         XCTAssertEqual(fetchedIDs, insertedIDs, file: file, line: line)
     }
 }
+#endif

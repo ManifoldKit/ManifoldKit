@@ -1,3 +1,4 @@
+#if canImport(XCTest)
 import XCTest
 import ManifoldRuntime
 import ManifoldInference
@@ -252,3 +253,4 @@ extension MessageStoreContract where Self: XCTestCase {
                        file: file, line: line)
     }
 }
+#endif

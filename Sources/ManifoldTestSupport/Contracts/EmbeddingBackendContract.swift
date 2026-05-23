@@ -1,3 +1,4 @@
+#if canImport(XCTest)
 import XCTest
 import ManifoldInference
 
@@ -156,3 +157,4 @@ extension EmbeddingBackendContract where Self: XCTestCase {
         }
     }
 }
+#endif

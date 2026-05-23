@@ -2,7 +2,6 @@ import XCTest
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
-import ManifoldContractTestSupport
 
 // MARK: - InMemoryBenchmarkCache (test double for contract adoption)
 
