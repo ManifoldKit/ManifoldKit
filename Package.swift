@@ -292,8 +292,15 @@ let package = Package(
                 .product(name: "MLXVLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXHuggingFace", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
+                // Hub is consumed directly by the FLUX diffusion backend (merged from
+                // the former ManifoldFlux target) for repository snapshot downloads.
+                .product(name: "Hub", package: "swift-transformers", condition: .when(traits: ["MLX"])),
                 // Vendored StableDiffusion (Sources/StableDiffusion), used by MLXDiffusionBackend.
                 .target(name: "StableDiffusion", condition: .when(traits: ["MLX"])),
+                // Vendored FluxSwift (Sources/FluxSwift), used by FluxDiffusionBackend.
+                // Merged in from the former ManifoldFlux target — same MLX trait, same
+                // vendored dep, single backend class; standalone target was pure overhead.
+                .target(name: "FluxSwift", condition: .when(traits: ["MLX"])),
             ],
             path: "Sources/ManifoldMLX",
             swiftSettings: [
@@ -318,22 +325,6 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log", condition: .when(traits: ["MLX"])),
             ],
             path: "Sources/FluxSwift",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-            ]
-        ),
-
-        // ManifoldFlux: FLUX.1 Schnell image-generation backend. Wraps FluxSwift
-        // and exposes ImageGenerationBackend + registration extension.
-        // Shares the MLX trait — enabled whenever MLX inference is available.
-        .target(
-            name: "ManifoldFlux",
-            dependencies: [
-                "ManifoldInference",
-                .target(name: "FluxSwift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-            ],
-            path: "Sources/ManifoldFlux",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
             ]
@@ -396,7 +387,6 @@ let package = Package(
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "ManifoldFlux", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
             ],
