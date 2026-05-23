@@ -15,54 +15,69 @@ Turn-loop orchestration — send, regenerate, edit, cancel, and branch — lives
 ```swift,no-build
 import ManifoldRuntime
 import ManifoldInference
+import ManifoldPersistenceSwiftData
 import ManifoldBackends
 import ManifoldUI
+import SwiftData
 import SwiftUI
 
 @main
 struct MyApp: App {
-    let runtime: any ChatRuntimeBootstrap
-    let inferenceService: InferenceService
-    let chatVM: ChatViewModel
-    let sessionVM: SessionManagerViewModel
-
-    init() {
-        let inferenceService = InferenceService()
-        DefaultBackends.register(with: inferenceService)
-
-        // AppRuntime lives in your app composition root. It may wrap the
-        // shipped SwiftData bootstrap or your own SessionStore/MessageStore.
-        let runtime = AppRuntime.make(inferenceService: inferenceService)
-        self.runtime = runtime
-        self.inferenceService = inferenceService
-
-        let chatVM = ChatViewModel(inferenceService: inferenceService)
-        chatVM.configure(runtime: runtime)
-        chatVM.refreshModels()
-        self.chatVM = chatVM
-
-        let sessionVM = SessionManagerViewModel()
-        sessionVM.configure(runtime: runtime)
-        self.sessionVM = sessionVM
-    }
+    @State private var bootstrap: ManifoldBootstrap?
+    @State private var chatVM: ChatViewModel?
+    @State private var sessionVM: SessionManagerViewModel?
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(chatVM)
-                .environment(sessionVM)
-                // `switchToSession` and `createSession` are async, so the
-                // initial activation runs in `.task` rather than `App.init()`
-                // (which is not an async context).
-                .task {
-                    let initial = sessionVM.sessions.first
-                        ?? (try? await sessionVM.createSession())
-                    if let initial {
-                        await chatVM.switchToSession(initial)
-                        chatVM.dispatchSelectedLoad()
-                    }
-                }
+            if let bootstrap, let chatVM, let sessionVM {
+                ContentView()
+                    .environment(chatVM)
+                    .environment(sessionVM)
+                    .modelContainer(bootstrap.modelContainer)
+            } else {
+                ProgressView("Starting…").task { await start() }
+            }
         }
+    }
+
+    @MainActor
+    private func start() async {
+        // `ManifoldBootstrap.build(...)` is async — drive it from `.task { }`
+        // on the launch view, not `App.init()`. It returns a (progress, task)
+        // tuple; consume the progress stream (or surface milestones to a
+        // launch UI) and await the task.
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "My Chat",
+                bundleIdentifier: "com.example.mychat"
+            )
+        )
+        for await _ in progress { }
+        guard let bootstrap = try? await task.value else { return }
+        DefaultBackends.register(with: bootstrap.inferenceService)
+
+        // `ManifoldBootstrap` conforms to `ChatRuntimeBootstrap`, so the same
+        // value wires both view models.
+        let chatVM = ChatViewModel(
+            inferenceService: bootstrap.inferenceService,
+            conversationRuntime: bootstrap.conversationRuntime
+        )
+        chatVM.configure(bootstrap: bootstrap)
+        chatVM.refreshModels()
+
+        let sessionVM = SessionManagerViewModel()
+        sessionVM.configure(bootstrap: bootstrap)
+
+        let initial = sessionVM.sessions.first
+            ?? (try? await sessionVM.createSession())
+        if let initial {
+            await chatVM.switchToSession(initial)
+            chatVM.dispatchSelectedLoad()
+        }
+
+        self.bootstrap = bootstrap
+        self.chatVM = chatVM
+        self.sessionVM = sessionVM
     }
 }
 ```
@@ -105,6 +120,10 @@ For a sidebar-based layout with multiple sessions, combine ``ChatView`` with ``S
 ### Session Management
 
 - ``SessionListView``
+
+### Runtime Contract
+
+- ``ManifoldRuntime/ChatRuntimeBootstrap``
 
 > Important: ``ModelManagementSheet``, ``ModelManagementViewModel``, and
 > ``APIConfigurationView`` moved to the new `ManifoldUIModelManagement`
