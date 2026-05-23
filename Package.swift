@@ -53,7 +53,6 @@ let package = Package(
         .library(name: "ManifoldUI", targets: ["ManifoldUI"]),
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
-        .library(name: "ManifoldAnyLanguageModelBridge", targets: ["ManifoldAnyLanguageModelBridge"]),
         .library(name: "ManifoldVoice", targets: ["ManifoldVoice"]),
         .library(name: "ManifoldFuzz", targets: ["ManifoldFuzz"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
@@ -399,6 +398,7 @@ let package = Package(
                 .target(name: "ManifoldFlux", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
             path: "Sources/ManifoldBackendsUmbrella",
             swiftSettings: [
@@ -408,6 +408,7 @@ let package = Package(
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
+                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
@@ -452,17 +453,6 @@ let package = Package(
             path: "Sources/ManifoldHuggingFace",
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
-        ),
-        .target(
-            name: "ManifoldAnyLanguageModelBridge",
-            dependencies: [
-                "ManifoldInference",
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
-            ],
-            path: "Sources/ManifoldAnyLanguageModelBridge",
-            swiftSettings: [
-                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         // ManifoldKit: umbrella library. Single-file `Exports.swift`
@@ -640,6 +630,7 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
@@ -648,6 +639,7 @@ let package = Package(
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
+                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         .testTarget(
@@ -696,18 +688,6 @@ let package = Package(
             path: "Tests/ManifoldHuggingFaceTests",
             swiftSettings: [
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
-        ),
-        .testTarget(
-            name: "ManifoldAnyLanguageModelBridgeTests",
-            dependencies: [
-                .target(name: "ManifoldAnyLanguageModelBridge", condition: .when(traits: ["AnyLanguageModel"])),
-                "ManifoldInference",
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
-            ],
-            path: "Tests/ManifoldAnyLanguageModelBridgeTests",
-            swiftSettings: [
-                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         // ManifoldServer: OpenAI-compatible HTTP server. Shipped as a single

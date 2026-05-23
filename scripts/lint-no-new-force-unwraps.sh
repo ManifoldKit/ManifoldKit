@@ -130,7 +130,7 @@ ALLOWLIST_PATHS=(
 
     # URL(string: "https://openrouter.ai/api/v1/")! — compile-time constant
     # fallback URL for OpenRouter in AnyLanguageModelCapabilities.
-    "ManifoldAnyLanguageModelBridge/AnyLanguageModelCapabilities.swift"
+    "ManifoldBackendsUmbrella/Bridges/AnyLanguageModel/AnyLanguageModelCapabilities.swift"
 
     # manifold-tools CLI: URL(string: "http://localhost:11434")! default Ollama
     # base URL; hard-coded constant, always valid.  CLI binary, not SDK product.
