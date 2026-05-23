@@ -80,6 +80,12 @@ public actor ManifoldIntentConfiguration {
     public var handler: (any AskManifoldHandler)? {
         _handler
     }
+
+    /// Removes the registered handler, leaving the configuration in its
+    /// initial unconfigured state. Intended for test teardown only.
+    func clearHandler() {
+        _handler = nil
+    }
 }
 
 // MARK: - AskManifoldIntent
@@ -161,6 +167,12 @@ public struct AskManifoldIntent: AppIntent {
 
         do {
             let reply = try await handler.ask(prompt)
+            guard !reply.isEmpty else {
+                // A conforming handler returned an empty string — surface this
+                // as a dialog rather than speaking "\(source) says: " verbatim.
+                Log.inference.warning("AskManifoldIntent: handler returned empty reply")
+                return .result(dialog: "I didn't get a response. Please try again.")
+            }
             let source = await handler.displayName()
             return .result(
                 dialog: IntentDialog(stringLiteral: "\(source) says: \(reply)")

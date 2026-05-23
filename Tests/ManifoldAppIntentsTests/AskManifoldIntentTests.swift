@@ -37,6 +37,13 @@ actor MockAskManifoldHandler: AskManifoldHandler {
 @available(iOS 18, macOS 15, *)
 final class AskManifoldIntentTests: XCTestCase {
 
+    override func setUp() async throws {
+        // Reset the shared singleton so each test starts with no handler.
+        // Without this, tests that install a handler bleed state into
+        // subsequent tests — ordering determines which paths get exercised.
+        await ManifoldIntentConfiguration.shared.clearHandler()
+    }
+
     // MARK: - perform() with configured handler
 
     func test_perform_returnsDialogWhenHandlerConfigured() async throws {
@@ -61,43 +68,15 @@ final class AskManifoldIntentTests: XCTestCase {
 
     // MARK: - perform() without handler
 
-    func test_noHandlerDialog_freshConfiguration() async throws {
-        // Fresh config actor — no configure() called, so handler is nil.
-        let freshConfig = ManifoldIntentConfiguration()
-        let handler = await freshConfig.handler
-        XCTAssertNil(handler, "A freshly created ManifoldIntentConfiguration must have no handler")
-    }
-
     func test_perform_returnsGracefulDialogWhenHandlerNil() async throws {
-        // Install a nil-sentinel: we can't easily clear shared, but we can
-        // verify the intent's guard branch by calling perform() immediately
-        // after clearing with a fresh test-only mock, then observe the
-        // "not configured" dialog text. The shared singleton is stateful, so
-        // this test depends on test ordering only for the nil-path. We
-        // accept this coupling because the nil path is also tested via the
-        // freshConfig assertion above, which is ordering-independent.
-        //
-        // To force the nil path cleanly without adding a public clearHandler()
-        // we verify the guard branch text by reading the perform() source
-        // contract: the intent returns the exact string below when handler is nil.
-        let expectedSubstring = "not configured"
-        // We can only verify this cleanly if no prior test left a handler.
-        // Skip rather than fail if a handler is already registered — the
-        // positive path tests above cover the core behavior.
-        let currentHandler = await ManifoldIntentConfiguration.shared.handler
-        guard currentHandler == nil else {
-            // A prior test registered a handler. The nil-path dialog text is
-            // verified via code inspection; skip to avoid a false failure.
-            return
-        }
-
+        // setUp() clears shared, so no handler is configured at this point.
         var intent = AskManifoldIntent()
         intent.prompt = "test"
         let result = try await intent.perform()
         let dump = String(describing: result)
         XCTAssertTrue(
-            dump.contains(expectedSubstring),
-            "Expected 'not configured' dialog; got: \(dump)"
+            dump.contains("not configured"),
+            "Expected 'not configured' dialog when no handler is set; got: \(dump)"
         )
     }
 
