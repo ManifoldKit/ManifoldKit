@@ -14,7 +14,7 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 
 Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
 
-> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
+> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names). `traits:` works on this form too — `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit", traits: [.trait(name: "Ollama")])` for the §3 cloud snippet.
 
 ---
 
@@ -287,6 +287,30 @@ for try await event in stream.events {
 }
 ```
 
+#### What events you'll see
+
+The `switch` above only matches two cases — `.token` and `.thinkingToken` — and lets everything else fall through `default:`. That's deliberate: for a streaming-text CLI those are the only two events you have to render. But `GenerationEvent` has more cases, and once you build tool calling, usage reporting, or a progress UI you'll want to handle them explicitly. The full list (see [``GenerationEvent``](https://swiftpackageindex.com/roryford/ManifoldKit/main/documentation/manifoldinference/generationevent) on Swift Package Index for the rendered DocC page):
+
+| Case                                                                  | Meaning                                                                                  |
+|-----------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `.prefillProgress(nPast: Int, nTotal: Int, tokensPerSecond: Double)`  | Prompt-eval progress before the first generated token (Llama / MLX).                     |
+| `.token(String)`                                                      | A fragment of generated text — usually one token. The thing you print.                   |
+| `.usage(prompt: Int, completion: Int)`                                | Token usage reported by the backend (cloud backends only today).                         |
+| `.toolCall(ToolCall)`                                                 | The model asked to call a tool. The host runs it and feeds back a `ToolResult`.          |
+| `.toolCallStart(callId: String, name: String)`                        | Streaming providers only — beginning of a tool call whose arguments stream as deltas.    |
+| `.toolCallArgumentsDelta(callId: String, textDelta: String)`          | JSON-arguments fragment for an in-flight streamed tool call.                             |
+| `.thinkingToken(String)`                                              | A fragment of model reasoning (inside a thinking block).                                 |
+| `.thinkingComplete`                                                   | Reasoning block closed; finalize any accumulated thinking content.                       |
+| `.thinkingSignature(String)`                                          | Anthropic-only opaque signature attached to the most recent thinking block.              |
+| `.toolLoopLimitReached(iterations: Int)`                              | Orchestrator stopped the tool-dispatch loop at `maxToolIterations`.                      |
+| `.toolResult(ToolResult)`                                             | Result of a tool the orchestrator dispatched on your behalf.                             |
+| `.kvCacheReuse(promptTokensReused: Int)`                              | Backend reused KV-cache prefix from the previous turn — that many tokens skipped decode. |
+| `.diagnosticThrottle(reason: String)`                                 | Runtime paused generation (e.g. thermal pressure); surface this in your UI.              |
+| `.toolDispatchStarted(callId: String, name: String, attempt: Int)`    | Orchestrator began handling a tool call — pin spinners / start timers here.              |
+| `.toolDispatchCompleted(callId: String, durationMs: Int, errorKind: ToolResult.ErrorKind?)` | Orchestrator finished handling a tool call (success or failure).         |
+
+Adding a case to `GenerationEvent` is source-breaking for exhaustive `switch` statements — that's why the snippets in this guide always include `default: break`. If you'd rather opt into the compiler warning when a new case lands, switch on `@unknown default:` instead.
+
 …or use `maxThinkingTokens:` on `generate(...)` to cap how long the model can "think" before being forced to emit a final answer:
 
 ```swift,no-build
@@ -340,6 +364,8 @@ let package = Package(
     ]
 )
 ```
+
+> **Pick a model that's actually on your Ollama instance.** The snippet below requests `llama3.2`. If you don't already have that pulled, run `ollama list` and substitute one you do have — the cloud backend will surface Ollama's 404 verbatim if the model name is unknown, which reads like a ManifoldKit bug but isn't.
 
 **`Sources/ChatCLICloud/main.swift`:**
 
