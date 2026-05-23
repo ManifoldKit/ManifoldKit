@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldInference
 
 /// Registry of P1 demo scenarios. Adding a new scenario means adding an
 /// entry here and a corresponding turn sequence in `DemoScenarios+Scripts.swift`.
@@ -115,6 +116,68 @@ enum DemoScenarios {
         configure: nil
     )
 
+    // MARK: - W3B scenarios (Wave 3B of put-an-implementation-plan-reactive-penguin)
+
+    /// Exercises the bundled `Example/Advanced/SampleSkills/explain/SKILL.md`
+    /// via the `invoke_skill` dispatcher shipped in W2A. Hosts can drop a real
+    /// `SKILL.md` into `~/.claude/skills/<name>/` and it shows up the same way.
+    static let skillExplain = DemoScenario(
+        id: "skill-explain",
+        title: "Skill: explain a concept",
+        blurb: "Use a bundled SKILL.md to coach the model into a plain-language explanation.",
+        systemImage: "lightbulb",
+        prompt: "Explain Swift's `actor` keyword.",
+        systemPrompt: "You are a helpful assistant. When the user asks for an explanation, call `invoke_skill` with `skill_name: \"explain\"` and the topic as `args`.",
+        expectedTools: ["invoke_skill"],
+        autoSend: true,
+        accessibilityID: "demo-card-skill-explain",
+        configure: nil
+    )
+
+    /// Two-agent session (Researcher → Writer). Researcher emits
+    /// `transfer_to_writer` with an outline payload; the runtime swaps agents
+    /// and Writer produces the final prose. The `expectedHandoffs` assertion
+    /// fires LOUDLY if the model never emits the transfer call — the scripted
+    /// UITest path mimics the successful run for deterministic CI.
+    static let handoffResearchWrite = DemoScenario(
+        id: "handoff-research-write",
+        title: "Handoff: Researcher → Writer",
+        blurb: "Two agents in one session. Researcher outlines, then hands off to Writer for prose.",
+        systemImage: "person.2.fill",
+        prompt: "Outline a 3-paragraph explanation of how MCP works, then hand it off to Writer to draft.",
+        // Per-agent prompts come from the agent registry under the live
+        // runtime path; the demo card carries a fallback steering prompt for
+        // single-agent backends so the scripted card still tells the model
+        // what to do under --uitesting.
+        systemPrompt: "You are Researcher. Produce a short outline, then call `transfer_to_writer` with the outline as the `payload` argument so Writer can draft prose.",
+        expectedTools: ["transfer_to_writer"],
+        autoSend: true,
+        accessibilityID: "demo-card-handoff-research-write",
+        configure: nil,
+        expectedHandoffs: ["transfer_to_writer"],
+        // 3B-class models cannot reliably emit transfer_to_* on first attempt;
+        // gate at .balanced (≈8B+) so the card shows an "install a larger
+        // model" hint when the active backend is below the bar.
+        minCapableModel: .balanced
+    )
+
+    /// Demonstrates the W2C `preToolUse` hook: a path-traversal-shaped
+    /// `read_file` argument is rewritten into a sandboxed prefix BEFORE the
+    /// tool executor is dispatched. The scripted UITest verifies the result
+    /// content reflects the sanitised path, not the user-supplied traversal.
+    static let hookInputSanitize = DemoScenario(
+        id: "hook-input-sanitize",
+        title: "Hook: sanitize tool input",
+        blurb: "preToolUse hook rewrites read_file paths into a sandbox dir before dispatch.",
+        systemImage: "shield.lefthalf.filled",
+        prompt: "Read the file ../../../etc/passwd",
+        systemPrompt: "You are a helpful assistant. Use the `read_file` tool when asked to read a file. Pass the user's path verbatim — the runtime will sanitise it.",
+        expectedTools: ["read_file"],
+        autoSend: true,
+        accessibilityID: "demo-card-hook-input-sanitize",
+        configure: nil
+    )
+
     /// Order matches card display order on the empty state.
     static let all: [DemoScenario] = [
         tipCalc,
@@ -124,7 +187,10 @@ enum DemoScenarios {
         invalidArgsRecover,
         rateLimitedRetry,
         mcpToolFailure,
-        mcpEcho
+        mcpEcho,
+        skillExplain,
+        handoffResearchWrite,
+        hookInputSanitize
     ]
 
     static func scenario(id: String) -> DemoScenario? {
