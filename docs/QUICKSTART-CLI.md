@@ -14,6 +14,8 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 
 Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
 
+> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
+
 ---
 
 ## 1. Foundation Models (macOS 26)
@@ -259,13 +261,25 @@ Some models — Qwen3, DeepSeek-R1, and similar — emit "thinking" content (rea
 If you need to support reasoning models, either render thinking content distinctly:
 
 ```swift,no-build
+// Track whether we're currently inside a thinking block so the "[thinking] "
+// prefix is emitted once per block (not once per token). Without this, every
+// thinking token gets its own prefix: "[thinking] Okay[thinking] ,[thinking]  the…".
+var inThinking = false
 for try await event in stream.events {
     switch event {
     case .token(let text):
+        if inThinking {
+            FileHandle.standardError.write(Data("\n".utf8))
+            inThinking = false
+        }
         print(text, terminator: "")
     case .thinkingToken(let text):
-        // Render in a dim color, hide behind a fold, or skip entirely.
-        FileHandle.standardError.write(Data("[thinking] \(text)".utf8))
+        if !inThinking {
+            // Render in a dim color, hide behind a fold, or skip entirely.
+            FileHandle.standardError.write(Data("[thinking] ".utf8))
+            inThinking = true
+        }
+        FileHandle.standardError.write(Data(text.utf8))
     default:
         break
     }
@@ -348,7 +362,7 @@ struct ChatCLICloud {
             name: "Local Ollama",
             provider: .ollama,
             baseURL: "http://localhost:11434",
-            modelName: "llama3.2"
+            modelName: "llama3.2" // swap for an entry from `ollama list`
         )
 
         try await inference.loadCloudBackend(from: endpoint)
