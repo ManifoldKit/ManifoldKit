@@ -4,6 +4,13 @@ name: Fuzz (weekly rotation)
 # self-hosted Apple-Silicon runner. Report-only — the job never fails on
 # findings; artefacts are uploaded for review.
 #
+# This is the single fuzz workflow ManifoldKit runs. The historical PR /
+# nightly / hosted-heartbeat tiers were retired in 2026-05: the signal data
+# showed that once a backend is mature the fuzzer goes quiet for months at a
+# time, so paying per-PR and nightly CI minutes did not pay off. The fuzzer
+# remains valuable when adding a new backend or model family — re-introduce
+# a higher cadence (or run `scripts/fuzz.sh` locally) during that work.
+#
 # Requires a self-hosted runner labelled `[self-hosted, macos, arm64]`
 # with Ollama installed and at least one model pulled. See FUZZING.md § CI tiers.
 

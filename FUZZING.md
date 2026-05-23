@@ -386,55 +386,25 @@ Use it for regression testing after changes to tool-calling logic in `ManifoldTo
 
 ## CI tiers
 
-The fuzzer runs on four tiers so each PR pays a small, bounded cost and larger
-investments are scheduled rather than blocking merges.
+ManifoldKit runs **one** fuzz workflow in CI: the weekly tier. Historically there
+were four (PR / nightly / hosted-heartbeat / weekly), but the signal data showed
+that once a backend is mature the fuzzer goes quiet for months at a time — and
+macOS CI minutes bill at 10×. The PR / nightly / hosted-heartbeat tiers were
+retired in 2026-05.
 
-### PR tier — `.github/workflows/fuzz-pr.yml`
+**When to bring a higher cadence back:** when adding a new backend or model
+family. The fuzzer earns its keep during that work (see #487 cluster, the April
+2026 super-session, #1334). Run `scripts/fuzz.sh` locally during development,
+and consider temporarily re-introducing a daily workflow until the new backend
+matures.
 
-- **When:** every PR that touches `Sources/**`, `Tests/**`, `Package.swift`, the allowlist, or the PR-tier workflow itself.
-- **Runner:** `macos-15` (GitHub-hosted — no self-hosted dependency).
-- **Budget:** 200 iterations at `--seed 1` on the smoke corpus subset, using the `MockInferenceBackend`-backed factory. Typical wall clock: ~60 seconds once the SPM cache is warm.
-- **Backend:** `--backend mock` (zero hardware). `--backend chaos` is also available via the CLI for local experiments with injected failure modes.
-- **Gate:** `scripts/fuzz-ci-gate.sh tmp/fuzz/index.json` compares every finding hash to `.github/fuzz-allowlist.json`. Any finding not on the allowlist, or any allowlist entry whose `expires` date has passed, fails the job.
-- **Goal:** zero flake tolerance. Because the seed and corpus are pinned, a PR that introduces a new finding hash is either a real regression or a new test of nerve for the harness.
-
-**Adding a finding to the allowlist.** Open `.github/fuzz-allowlist.json` and add an object to the `allowlist` array:
-
-```json
-{
-  "allowlist": [
-    {
-      "hash": "abc123def456",
-      "reason": "Known MockInferenceBackend edge case; tracked in #NNN",
-      "expires": "2026-05-19"
-    }
-  ]
-}
-```
-
-The `expires` field is strict — past that date the PR job fails even if the hash still matches, which forces periodic triage. Keep the window short (≤ 30 days) and link a tracking issue in `reason`.
-
-### Nightly tier — `.github/workflows/fuzz-nightly.yml`
-
-- **When:** `workflow_dispatch` only. The daily `05:00 UTC` cron was disabled until a self-hosted Apple-Silicon runner is provisioned — scheduled runs were queueing for 24h and auto-cancelling. Re-enable the `schedule:` block in `fuzz-nightly.yml` once a `[self-hosted, macos, arm64]` runner is registered.
-- **Runner:** `[self-hosted, macos, arm64]` — see [self-hosted runner requirements](#self-hosted-runner-requirements).
-- **Budget:** 10 wall-clock minutes.
-- **Backend:** real Ollama `qwen3.5:4b`. The seed is derived from `github.run_number` so each nightly run samples a different slice of the mutator space.
-- **Gate:** the job fails if `tmp/fuzz/index.json` contains any `confirmed`-severity finding. `flaky`-severity findings are uploaded as artefacts and do not fail the build (they are leads, not regressions).
-- **Artefacts:** the full `tmp/fuzz/` tree uploads to `fuzz-nightly-findings-<run-id>` every run.
-
-### Hosted heartbeat tier — `.github/workflows/fuzz-hosted-heartbeat.yml`
-
-- **When:** daily schedule (`06:35 UTC`) and `workflow_dispatch`.
-- **Runner:** `macos-15` (GitHub-hosted).
-- **Budget:** bounded deterministic smoke campaigns: `--iterations 80` on `mock`, then `--iterations 80` on `chaos`.
-- **Backend:** `--backend mock` and `--backend chaos` only — no Ollama dependency and no self-hosted hardware.
-- **Gate:** advisory heartbeat only. The workflow is intentionally non-required; it is used to catch harness regressions/flakes between manual self-hosted runs.
-- **Artefacts:** uploads `tmp/fuzz/` to `fuzz-hosted-heartbeat-findings-<run-id>` on every run.
+The `scripts/fuzz-ci-gate.sh` script and `.github/fuzz-allowlist.json` are still
+on disk — they were used by the retired PR-tier gate and can be re-wired into a
+future workflow if needed.
 
 ### Weekly tier — `.github/workflows/fuzz-weekly.yml`
 
-- **When:** `workflow_dispatch` only. The Sunday `07:00 UTC` cron was disabled alongside the nightly tier until a self-hosted Apple-Silicon runner is provisioned. Re-enable the `schedule:` block in `fuzz-weekly.yml` once a runner is registered.
+- **When:** `workflow_dispatch` only. A Sunday `07:00 UTC` cron is available in the workflow but is disabled until a self-hosted Apple-Silicon runner is provisioned. Re-enable the `schedule:` block in `fuzz-weekly.yml` once a runner is registered.
 - **Runner:** `[self-hosted, macos, arm64]`.
 - **Budget:** 30 wall-clock minutes.
 - **Backend:** `--backend ollama --model all` — rotates through every installed Ollama model per iteration. This is the explicit sibling-coverage sweep; bugs that only fire on a non-default model surface here.
@@ -442,14 +412,14 @@ The `expires` field is strict — past that date the PR job fails even if the ha
 
 ### Self-hosted runner requirements
 
-Nightly and weekly tiers assume a macOS self-hosted runner labelled `self-hosted`, `macos`, and `arm64`. Provisioning checklist:
+The weekly tier assumes a macOS self-hosted runner labelled `self-hosted`, `macos`, and `arm64`. Provisioning checklist:
 
-1. Apple Silicon host (nightly fuzzes Metal-accelerated Ollama inference — x86 emulation will be too slow to hit the 10-minute budget).
+1. Apple Silicon host (the fuzzer drives Metal-accelerated Ollama inference — x86 emulation will be too slow to hit the 30-minute budget).
 2. Xcode 26.3 and a matching Swift toolchain (same pins as `.github/workflows/ci.yml`).
-3. Ollama installed and reachable on `localhost:11434`. Pull at least `qwen3.5:4b` before the first nightly run (`ollama pull qwen3.5:4b`).
+3. Ollama installed and reachable on `localhost:11434`. Pull at least `qwen3.5:4b` before the first run (`ollama pull qwen3.5:4b`).
 4. Any additional models the weekly sweep should include — they'll be picked up automatically by `--model all`.
 
-Until a runner is provisioned, the nightly and weekly workflows will queue indefinitely on scheduled trigger. That is intentional — the PR tier does not depend on them, so the absence of a self-hosted runner does not block merges.
+Until a runner is provisioned, the weekly workflow can be triggered manually via `gh workflow run fuzz-weekly.yml`; it will simply queue indefinitely on a scheduled trigger.
 
 ---
 
