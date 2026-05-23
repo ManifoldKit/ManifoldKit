@@ -99,7 +99,7 @@ ALLOWLIST_PATHS=(
 
     # CGColorSpace(name: CGColorSpace.sRGB)! — CGColorSpace.sRGB is a
     # system-provided constant; non-nil on all supported OS versions.
-    "ManifoldFlux/FluxDiffusionBackend.swift"
+    "ManifoldMLX/Diffusion/Flux/FluxDiffusionBackend.swift"
 
     # .first! on a non-empty search-path result; the path is constructed
     # immediately above with FileManager and is guaranteed to have at least
