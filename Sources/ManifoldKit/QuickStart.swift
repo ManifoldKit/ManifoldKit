@@ -93,6 +93,32 @@ public enum ManifoldKit {
             viewModel.configure(persistence: bootstrap.persistence)
             viewModel.configure(endpointStore: bootstrap.endpointStore)
 
+            // A2-F4: ensure the documented `quickStart()` → `ChatView()` path
+            // produces a usable chat surface on first launch. `ChatView`
+            // disables its composer when `viewModel.activeSession == nil`, so
+            // a fresh install (no persisted sessions) would otherwise render
+            // a "No session selected" placeholder with no documented way to
+            // create one through the high-level API.
+            //
+            // We auto-create a single empty session iff the store is empty.
+            // When sessions already exist (relaunch, restored backup, host
+            // app that created its own session first), this is a no-op and
+            // the host's existing selection logic takes over.
+            //
+            // Model loading is intentionally orthogonal — a session with no
+            // model loaded still unblocks the composer, and the welcome
+            // empty-state for model selection lives in `ChatView`. See
+            // A2-F1 for the separate "auto-select a model when available"
+            // gap.
+            let existingSessions = try await bootstrap.persistence.fetchSessions(offset: 0, limit: 1)
+            if existingSessions.isEmpty {
+                let initialSession = ChatSessionRecord(title: "New Chat")
+                try await bootstrap.persistence.insertSession(initialSession)
+                await viewModel.switchToSession(initialSession)
+            } else if let mostRecent = existingSessions.first {
+                await viewModel.switchToSession(mostRecent)
+            }
+
             return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel)
         } catch {
             throw ManifoldKitError.from(error)

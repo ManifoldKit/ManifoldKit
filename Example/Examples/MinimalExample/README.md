@@ -36,9 +36,11 @@ struct MinimalExampleApp: App {
 ```
 
 `ManifoldKit.quickStart()` builds the SwiftData container, registers the
-compiled-in backends, and wires up a `ChatViewModel`. Errors surface as
-`ManifoldKitError` — see `MinimalExampleApp.swift` for the explicit handling
-shape.
+compiled-in backends, and wires up a `ChatViewModel`. On first launch (no
+persisted sessions) it auto-creates an initial empty session and activates
+it, so `ChatView`'s composer is enabled the moment the view appears. Errors
+surface as `ManifoldKitError` — see `MinimalExampleApp.swift` for the
+explicit handling shape.
 
 ## Running
 
