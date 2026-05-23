@@ -8,6 +8,8 @@ Agent handoffs let a session host several personas (e.g. a research agent that h
 
 This is **not** a multi-agent peer system. Agents are sequential and turn-scoped — the active agent owns the next turn entirely. For long-lived peer actors, see the v2 Team / Mailbox proposal.
 
+> Note: There are two `Agent` types in the stack. ``ManifoldInference/Agent`` is the storage-agnostic value type that flows through the runtime. `ManifoldPersistenceSwiftData/PersistedAgent` is the SwiftData `@Model` row backing it (also still exported under the back-compat name `Agent` from that module). When you import both modules, prefer `PersistedAgent` for the persistence row so the bare `Agent` resolves unambiguously to the value type.
+
 ## The moving parts
 
 | Piece | Lives in | Role |
