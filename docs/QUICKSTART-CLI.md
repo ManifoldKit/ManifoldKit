@@ -89,11 +89,13 @@ Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are 
 
 This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform.
 
-**Get a model first.** Drop any GGUF file into `~/Documents/Models/`. Good starter picks (small, fast, instruction-tuned):
+**Get a model first.** Drop any GGUF file into `~/Documents/Models/`. Good starter picks:
 
-- [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, decent quality, fastest cold-start
-- [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, better quality
+- [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, instruction-tuned, no reasoning tokens — **the snippet below works with this model unchanged**
+- [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using
 - Any other GGUF you've downloaded via HuggingFace, Ollama, or LM Studio
+
+> **Known issue with Llama-3 family multi-turn**: tracked at [#1398](https://github.com/roryford/ManifoldKit/issues/1398) — long multi-turn conversations may produce ChatML control-token leakage and hallucinated turns. Single-turn use is unaffected.
 
 **`Package.swift`:**
 
@@ -138,7 +140,7 @@ struct ChatCLILlama {
     static func main() async throws {
         // 1. Locate the GGUF on disk. Adjust to taste — or read it from argv.
         let modelURL = URL(fileURLWithPath: NSString(
-            string: "~/Documents/Models/Qwen3-0.6B-Q4_K_M.gguf"
+            string: "~/Documents/Models/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
         ).expandingTildeInPath)
 
         guard FileManager.default.fileExists(atPath: modelURL.path) else {
@@ -186,7 +188,7 @@ struct ChatCLILlama {
             temperature: 0.7,
             topP: 0.95,
             repeatPenalty: 1.1,
-            maxOutputTokens: 64
+            maxOutputTokens: 256
         )
 
         for try await event in stream.events {
@@ -222,6 +224,66 @@ ManifoldKit has two `loadModel(from:)` shapes at different layers:
 - **`BackendProtocol.loadModel(from: URL, plan:)`** — the backend-protocol contract that custom backends implement. You'd only call this if you were building a brand-new backend.
 
 The README's "Custom Backends" section documents the URL form because it's the protocol shape backend authors satisfy. Consumers call the `ModelInfo` form, and `ModelInfo(ggufURL:)` wraps the URL.
+
+### Multi-turn conversations
+
+`generate(messages:)` takes `[(role, content)]` and is stateless — the host owns the conversation history. Append the user's prompt before each call and the model's reply after each call:
+
+```swift,no-build
+var history: [(String, String)] = []
+
+while let prompt = readLine() {
+    history.append(("user", prompt))
+
+    var reply = ""
+    let stream = try inference.generate(messages: history, maxOutputTokens: 256)
+    for try await event in stream.events {
+        if case .token(let text) = event {
+            print(text, terminator: "")
+            fflush(stdout)
+            reply += text
+        }
+    }
+    print("")
+
+    history.append(("assistant", reply))
+}
+```
+
+Canonical role strings are `"user"`, `"assistant"`, and `"system"`. The `systemPrompt:` parameter on `generate(...)` is a convenience for the common case of one system message — when you pass it, ManifoldKit prepends a synthetic `("system", systemPrompt)` to the message array.
+
+### Reasoning models (thinking tokens)
+
+Some models — Qwen3, DeepSeek-R1, and similar — emit "thinking" content (reasoning steps) before their final answer. ManifoldKit surfaces these as a separate `GenerationEvent.thinkingToken(String)` case so the host can hide or render them as the UX demands. The §2 snippet above only handles `.token`, which means thinking output is silently dropped — that's fine for an instruct model but produces zero visible output for a reasoning model if its thinking block exhausts your `maxOutputTokens` budget.
+
+If you need to support reasoning models, either render thinking content distinctly:
+
+```swift,no-build
+for try await event in stream.events {
+    switch event {
+    case .token(let text):
+        print(text, terminator: "")
+    case .thinkingToken(let text):
+        // Render in a dim color, hide behind a fold, or skip entirely.
+        FileHandle.standardError.write(Data("[thinking] \(text)".utf8))
+    default:
+        break
+    }
+    fflush(stdout)
+}
+```
+
+…or use `maxThinkingTokens:` on `generate(...)` to cap how long the model can "think" before being forced to emit a final answer:
+
+```swift,no-build
+let stream = try inference.generate(
+    messages: history,
+    maxOutputTokens: 512,
+    maxThinkingTokens: 128
+)
+```
+
+If you're not sure whether your GGUF is a reasoning model, the simplest test is to run the §2 snippet against it: if you see no visible output, swap in the multi-handler `switch` shape above.
 
 ---
 

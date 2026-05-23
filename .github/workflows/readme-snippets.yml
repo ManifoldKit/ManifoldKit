@@ -1,6 +1,7 @@
 name: README Snippets
 
-# Compiles every `swift`-fenced code block in README.md and docs/QUICKSTART.md
+# Compiles every `swift`-fenced code block in README.md, docs/QUICKSTART.md,
+# and docs/QUICKSTART-CLI.md
 # against the current ManifoldKit package. Catches snippet drift the moment a
 # `feat:` PR renames a public type or removes an initializer that the docs
 # still copy-paste.
@@ -25,6 +26,7 @@ on:
       #   - The scripts the gate runs.
       - "README.md"
       - "docs/QUICKSTART.md"
+      - "docs/QUICKSTART-CLI.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"
       - "Sources/ManifoldInference/QuickStart*.swift"
@@ -39,6 +41,7 @@ on:
     paths:
       - "README.md"
       - "docs/QUICKSTART.md"
+      - "docs/QUICKSTART-CLI.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"
       - "Sources/ManifoldInference/QuickStart*.swift"
