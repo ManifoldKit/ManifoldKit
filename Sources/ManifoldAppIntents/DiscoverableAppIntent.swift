@@ -22,9 +22,7 @@ public enum AppIntentApprovalPolicy: Sendable {
     /// without a confirmation step.
     case readOnlyAutoApprove
 
-    // Not public because callers shouldn't hard-code on the Bool shape;
-    // `AppIntentToolExecutor` is the single consumer.
-    var requiresApproval: Bool {
+    public var requiresApproval: Bool {
         switch self {
         case .requiresUserApproval: true
         case .readOnlyAutoApprove: false
