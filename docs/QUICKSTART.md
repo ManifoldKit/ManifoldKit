@@ -4,7 +4,7 @@ A one-page tutorial for getting from "empty SwiftUI project" to "working chat UI
 
 ## Prerequisites
 
-- Xcode 16+ on macOS, or Swift 6.1+ toolchain.
+- Xcode 16+ on macOS, or Swift 6.2+ toolchain (`swift-tools-version: 6.2` is required for `.macOS(.v26)` / `.iOS(.v26)` platform entries).
 - A SwiftUI app target on iOS 18+ / macOS 15+ (Apple Foundation Models require iOS 26+ / macOS 26+).
 - Familiarity with SwiftUI's `App` protocol and `@State`. No prior knowledge of MLX, llama.cpp, MCP, or any specific backend is assumed.
 
@@ -110,7 +110,7 @@ DefaultBackends.register(with: inference)
 try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
 
 let stream = try inference.generate(messages: [("user", "Hello")])
-for try await event in stream {
+for try await event in stream.events {
     if case .token(let text) = event { print(text, terminator: "") }
 }
 ```
