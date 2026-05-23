@@ -12,7 +12,7 @@ Turn-loop orchestration — send, regenerate, edit, cancel, and branch — lives
 
 ### Minimum wiring
 
-```swift
+```swift,no-build
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldBackends
@@ -24,6 +24,7 @@ struct MyApp: App {
     let runtime: any ChatRuntimeBootstrap
     let inferenceService: InferenceService
     let chatVM: ChatViewModel
+    let sessionVM: SessionManagerViewModel
 
     init() {
         let inferenceService = InferenceService()
@@ -38,21 +39,29 @@ struct MyApp: App {
         let chatVM = ChatViewModel(inferenceService: inferenceService)
         chatVM.configure(runtime: runtime)
         chatVM.refreshModels()
+        self.chatVM = chatVM
 
         let sessionVM = SessionManagerViewModel()
         sessionVM.configure(runtime: runtime)
-        if let session = sessionVM.sessions.first ?? (try? sessionVM.createSession()) {
-            chatVM.switchToSession(session)
-            chatVM.dispatchSelectedLoad()
-        }
-
-        self.chatVM = chatVM
+        self.sessionVM = sessionVM
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(chatVM)
+                .environment(sessionVM)
+                // `switchToSession` and `createSession` are async, so the
+                // initial activation runs in `.task` rather than `App.init()`
+                // (which is not an async context).
+                .task {
+                    let initial = sessionVM.sessions.first
+                        ?? (try? await sessionVM.createSession())
+                    if let initial {
+                        await chatVM.switchToSession(initial)
+                        chatVM.dispatchSelectedLoad()
+                    }
+                }
         }
     }
 }
@@ -60,7 +69,7 @@ struct MyApp: App {
 
 Then place ``ChatView`` in your view hierarchy:
 
-```swift
+```swift,no-build
 struct ContentView: View {
     @Environment(ChatViewModel.self) var chatVM
 

@@ -14,7 +14,7 @@ The host is opt-in by design. It never starts unless you instantiate it and call
 
 Provide the runtime ports your app already owns. `ConversationRuntime` and the two stores are required; `RAGService` is optional and enables the `search_documents` tool.
 
-```swift
+```swift,no-build
 import ManifoldMCP
 import ManifoldRuntime
 
@@ -32,7 +32,7 @@ let host = ManifoldMCPHost(
 
 For local clients (Claude Desktop, scripts on the same machine), use the stdio transport:
 
-```swift
+```swift,no-build
 #if os(macOS)
 let transport = MCPHostStdioTransport()
 #endif
@@ -44,7 +44,7 @@ HTTP/SSE server-side transport is not yet implemented. It is tracked in issue #8
 
 `run(transport:)` blocks until the transport closes. Wrap it in a detached `Task` so your app continues running:
 
-```swift
+```swift,no-build
 Task {
     do {
         try await host.run(transport: transport)

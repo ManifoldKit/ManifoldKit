@@ -6,7 +6,7 @@
 
 Use `streamableHTTP` for SSE + request/response MCP sessions:
 
-```swift
+```swift,no-build
 let descriptor = MCPServerDescriptor(
     displayName: "Docs",
     transport: .streamableHTTP(

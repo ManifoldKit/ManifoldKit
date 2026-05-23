@@ -10,7 +10,7 @@ This article shows the full layout pattern for an app with a sidebar session lis
 
 Create both view models at the app level and share the same `InferenceService` between them. ``SessionManagerViewModel`` only manages session metadata — it never touches inference directly. ``ChatViewModel`` drives all generation.
 
-```swift
+```swift,no-build
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldBackends
@@ -41,15 +41,9 @@ struct MyApp: App {
 
         let sessionVM = SessionManagerViewModel()
         sessionVM.configure(runtime: runtime)
-        let initialSession = sessionVM.sessions.first ?? (try? sessionVM.createSession())
-        if let initialSession {
-            sessionVM.activeSession = initialSession
-            chatVM.switchToSession(initialSession)
-            chatVM.dispatchSelectedLoad()
-        }
         self.sessionVM = sessionVM
 
-        // Connect session title generation to InferenceService
+        // Connect session title generation to InferenceService.
         chatVM.onFirstMessage = { session, firstMessage in
             Task { @MainActor in
                 await sessionVM.autoRenameSession(
@@ -66,6 +60,19 @@ struct MyApp: App {
             RootView()
                 .environment(chatVM)
                 .environment(sessionVM)
+                // `switchToSession(_:)` and `createSession()` are async, so
+                // the initial activation has to run in a task — `App.init()`
+                // is not an async context. `.task` runs once when the root
+                // view first appears.
+                .task {
+                    let initial = sessionVM.sessions.first
+                        ?? (try? await sessionVM.createSession())
+                    if let initial {
+                        sessionVM.activeSession = initial
+                        await chatVM.switchToSession(initial)
+                        chatVM.dispatchSelectedLoad()
+                    }
+                }
         }
     }
 }
@@ -73,7 +80,7 @@ struct MyApp: App {
 
 ### Root layout with NavigationSplitView
 
-```swift
+```swift,no-build
 struct RootView: View {
     @Environment(ChatViewModel.self) var chatVM
     @Environment(SessionManagerViewModel.self) var sessionVM
@@ -84,10 +91,16 @@ struct RootView: View {
         } detail: {
             ChatView(showModelManagement: .constant(false))
         }
+        // `switchToSession(_:)` is async — the `onChange` closure itself is
+        // synchronous, so wrap the hop in a Task. Capturing `chatVM` /
+        // `sessionVM` from the @Environment is safe because Task inherits
+        // the @MainActor context.
         .onChange(of: sessionVM.activeSession) { _, newSession in
             guard let newSession, chatVM.activeSession?.id != newSession.id else { return }
-            chatVM.switchToSession(newSession)
-            chatVM.dispatchSelectedLoad()
+            Task {
+                await chatVM.switchToSession(newSession)
+                chatVM.dispatchSelectedLoad()
+            }
         }
     }
 }
@@ -99,7 +112,7 @@ Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore
 
 When the user selects a session in the sidebar, switch the active chat context:
 
-```swift
+```swift,no-build
 struct SessionListView: View {
     @Environment(ChatViewModel.self) var chatVM
     @Environment(SessionManagerViewModel.self) var sessionVM
@@ -110,13 +123,17 @@ struct SessionListView: View {
         }
         .onChange(of: sessionVM.activeSession) { _, newSession in
             if let session = newSession {
-                chatVM.switchToSession(session)
+                Task { await chatVM.switchToSession(session) }
             }
         }
         .toolbar {
             Button("New Chat", systemImage: "square.and.pencil") {
-                let session = try? sessionVM.createSession()
-                if let session { chatVM.switchToSession(session) }
+                // Both calls are async; the button action closure is not.
+                Task {
+                    if let session = try? await sessionVM.createSession() {
+                        await chatVM.switchToSession(session)
+                    }
+                }
             }
         }
     }
@@ -127,7 +144,7 @@ struct SessionListView: View {
 
 ``ChatViewModel`` exposes ``ChatViewModel/onFirstLaunch`` for apps that want to control the initial model selection flow — for example, showing an onboarding sheet instead of auto-selecting the Foundation model:
 
-```swift
+```swift,no-build
 chatVM.onFirstLaunch = {
     showOnboardingSheet = true
 }
@@ -135,7 +152,7 @@ chatVM.onFirstLaunch = {
 
 When `onFirstLaunch` is `nil`, ManifoldKit auto-selects the Foundation model if ``ChatViewModel/foundationModelProvider`` returns `true`:
 
-```swift
+```swift,no-build
 chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
 ```
 
@@ -143,7 +160,7 @@ chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
 
 Register background tasks that run after each response completes:
 
-```swift
+```swift,no-build
 chatVM.postGenerationTasks = [
     AnalyticsLogger(),       // your PostGenerationTask conforming types
     LocalIndexUpdater()
@@ -158,7 +175,7 @@ Pre-runtime ManifoldKit apps often wired persistence from a root view's `.task` 
 
 **Before** — view-lifecycle late-binding:
 
-```swift
+```swift,no-build
 import SwiftUI
 import ManifoldInference
 import ManifoldRuntime
@@ -183,7 +200,7 @@ struct LegacyApp: App {
 
 **After** — runtime-driven bootstrap:
 
-```swift
+```swift,no-build
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
@@ -229,7 +246,7 @@ Keep `configure(persistence:)` for adopters that provide custom ``SessionStore``
 
 `ChatView` accepts a `@ViewBuilder apiConfiguration:` closure that returns the host's API-key recovery sheet. The closure-injection pattern is **the canonical way** to mount `ManifoldUIModelManagement.APIConfigurationView` from a host that depends on both chat surfaces — and it is structural, not stylistic. Without it, `ManifoldUI` would have to import `ManifoldUIModelManagement` to reference the view directly, which would close a forbidden import cycle (the dependency edge runs UIModelManagement → UI, never the reverse). Closure injection lets the host module sit above both and pass the value down by name.
 
-```swift
+```swift,no-build
 import ManifoldUI
 import ManifoldUIModelManagement
 

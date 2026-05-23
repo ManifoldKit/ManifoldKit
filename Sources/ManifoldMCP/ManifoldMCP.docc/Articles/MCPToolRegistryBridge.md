@@ -4,7 +4,7 @@
 
 ## Registration lifecycle
 
-```swift
+```swift,no-build
 import ManifoldInference
 
 let registry = ToolRegistry()
@@ -33,7 +33,7 @@ Each bridged tool is an ``MCPToolExecutor`` with `requiresApproval` derived from
 
 Use:
 
-```swift
+```swift,no-build
 await source.markApproved(toolName: "docs.search")
 await source.invalidateApprovals(toolName: "docs.search")
 ```

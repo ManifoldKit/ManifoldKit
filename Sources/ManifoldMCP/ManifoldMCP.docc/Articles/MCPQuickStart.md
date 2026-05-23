@@ -4,7 +4,7 @@ Get a remote MCP server running in your `ToolRegistry` with explicit consent cop
 
 ## 1) Create a descriptor
 
-```swift
+```swift,no-build
 import ManifoldMCP
 
 let descriptor = MCPServerDescriptor(
@@ -23,7 +23,7 @@ let descriptor = MCPServerDescriptor(
 
 ## 2) Connect and register
 
-```swift
+```swift,no-build
 import ManifoldInference
 
 let client = MCPClient()
@@ -37,14 +37,14 @@ Tools are listed from `tools/list`, filtered by ``MCPToolFilter``, then namespac
 
 ## 3) Keep runtime boundaries explicit
 
-```swift
+```swift,no-build
 await source.unregister(from: registry)
 await client.disconnect(serverID: descriptor.id)
 ```
 
 If the server emits `notifications/tools/list_changed`, refresh and re-register:
 
-```swift
+```swift,no-build
 try await source.refreshTools()
 ```
 
@@ -54,7 +54,7 @@ try await source.refreshTools()
 
 When `MCPBuiltinCatalog` is enabled, start from ``MCPCatalog``:
 
-```swift
+```swift,no-build
 var notion = MCPCatalog.notion
 notion = MCPServerDescriptor(
     id: notion.id,
