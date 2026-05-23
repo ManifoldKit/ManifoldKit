@@ -11,9 +11,11 @@ import Foundation
 ///   - `key: value`                — plain string scalar
 ///   - `key: "value"` / `'value'`  — quoted scalar (handles inner colons)
 ///   - `key: [a, b, c]`            — flow-style list
+///   - `key:\n  - a\n  - b`        — block-style list (indent must be
+///                                   consistent within the list; terminates at
+///                                   next top-level key or end-of-frontmatter)
 ///
 /// **Not supported (returns nil from `parse(_:)`):**
-///   - Block-style lists (`key:\n  - a\n  - b`)
 ///   - Nested mappings
 ///   - Multi-line scalars (`>`, `|`)
 ///
@@ -54,13 +56,46 @@ internal enum SkillFrontmatterParser {
         guard let closing = fence else { return nil }
 
         var fields: [String: SkillFrontmatterValue] = [:]
-        for line in lines[1..<closing] {
+        var index = 1
+        while index < closing {
+            let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            // Skip blank lines + comment-only lines. Indented `- ` items that
+            // appear without an immediately-preceding `key:` opener are stray
+            // garbage (an unterminated block list from a removed key); the
+            // outer loop ignores them rather than failing the whole document.
+            if trimmed.isEmpty || trimmed.hasPrefix("#") {
+                index += 1
+                continue
+            }
+            // Only top-level keys (no leading whitespace) are recognised at
+            // this layer. Indented lines that aren't part of an active block
+            // list are skipped — block-list collection happens inside
+            // `parseKeyValue`'s caller below.
+            if line.first == " " || line.first == "\t" {
+                index += 1
+                continue
+            }
             guard let pair = parseKeyValue(trimmed) else {
                 return nil
             }
-            fields[pair.0] = pair.1
+            // A bare `key:` with no inline value is a block-list opener.
+            // Look ahead for `<indent>- value` lines; absence of any items is
+            // not an error — the key just resolves to an empty list. Mixed or
+            // inconsistent indents inside the block fail the whole document.
+            if case .string("") = pair.1 {
+                let (block, consumed) = collectBlockList(lines: lines, start: index + 1, closing: closing)
+                switch block {
+                case .invalid:
+                    return nil
+                case .items(let values):
+                    fields[pair.0] = .list(values)
+                    index += consumed
+                }
+            } else {
+                fields[pair.0] = pair.1
+            }
+            index += 1
         }
 
         let body: String
@@ -100,6 +135,73 @@ internal enum SkillFrontmatterParser {
         guard let first = value.first, first == "\"" || first == "'" else { return nil }
         guard value.count >= 2, value.last == first else { return nil }
         return String(value.dropFirst().dropLast())
+    }
+
+    /// Outcome of a block-list lookahead. `invalid` collapses the whole
+    /// frontmatter parse (mixed indents); `items` covers both the empty-list
+    /// case (`aliases:\n` followed immediately by a top-level key) and the
+    /// populated case.
+    private enum BlockListResult {
+        case invalid
+        case items([String])
+    }
+
+    /// Reads `<indent>- value` lines starting at `start` until the first line
+    /// that is not part of the list (top-level key, end-of-frontmatter, or a
+    /// differently-indented `- ` item which is treated as inconsistent).
+    ///
+    /// Returns the items collected plus the number of lines consumed past
+    /// `start`. Blank lines and comment lines (`# …`) are skipped without
+    /// terminating the list, matching YAML semantics.
+    private static func collectBlockList(lines: [String], start: Int, closing: Int) -> (BlockListResult, Int) {
+        var items: [String] = []
+        var indent: Int?
+        var consumed = 0
+        var cursor = start
+        while cursor < closing {
+            let line = lines[cursor]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Blank lines + comments inside a block list do not terminate it.
+            // (Top-level vs. indented makes no difference for blanks; an
+            // indented `# comment` line still doesn't end the list.)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") {
+                cursor += 1
+                consumed += 1
+                continue
+            }
+
+            let leadingSpaces = line.prefix { $0 == " " }.count
+            // A non-indented line ends the list (next top-level key, or any
+            // other non-list content).
+            if leadingSpaces == 0 {
+                break
+            }
+
+            // Indented content that isn't `- ` ends the list — we don't try to
+            // parse nested mappings.
+            guard trimmed.hasPrefix("- ") || trimmed == "-" else {
+                break
+            }
+
+            if let expected = indent {
+                if leadingSpaces != expected {
+                    return (.invalid, consumed)
+                }
+            } else {
+                indent = leadingSpaces
+            }
+
+            let rawItem = String(trimmed.dropFirst(trimmed == "-" ? 1 : 2))
+                .trimmingCharacters(in: .whitespaces)
+            // Strip matched quotes so `- "with, comma"` round-trips like the
+            // flow-list path.
+            let item = unquote(rawItem) ?? rawItem
+            items.append(item)
+            cursor += 1
+            consumed += 1
+        }
+        return (.items(items), consumed)
     }
 
     /// Parses YAML flow-style `[a, b, "c, d"]`. Returns `nil` on unterminated

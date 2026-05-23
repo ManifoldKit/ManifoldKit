@@ -101,6 +101,139 @@ final class YAMLFrontmatterTests: XCTestCase {
         // can't find `aliases` and fails.
     }
 
+    func test_parse_listBlockStyle_parses() {
+        let doc = """
+        ---
+        name: x
+        description: x
+        aliases:
+          - eli5
+          - simple
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list(["eli5", "simple"]))
+        // Sabotage-evidence: M1 reduce the indent on `- simple` to 1 space (vs.
+        // 2 on `- eli5`) — inconsistent-indent path returns nil; M2 swap the
+        // `- ` for `* ` (unsupported bullet) — list terminates after the key
+        // and the value comes back as `.list([])`; M3 drop the trailing `---`
+        // — fence detection fails and `parse` returns nil.
+    }
+
+    func test_parse_listBlockStyle_singleItem() {
+        let doc = """
+        ---
+        name: x
+        description: x
+        aliases:
+          - eli5
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list(["eli5"]))
+    }
+
+    func test_parse_listBlockStyle_emptyAllowed() {
+        let doc = """
+        ---
+        aliases:
+
+        name: foo
+        description: bar
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list([]))
+        XCTAssertEqual(parsed.fields["name"], .string("foo"))
+        // Sabotage-evidence: M1 add `  - eli5` between `aliases:` and the
+        // blank line — assertion now sees `.list(["eli5"])`; M2 rename
+        // `aliases:` → `alias:` — key check fails; M3 remove the blank line
+        // separator — `name:` is still detected as a top-level key and the
+        // empty-list resolution still holds.
+    }
+
+    func test_parse_listBlockStyle_stopAtNextKey() {
+        let doc = """
+        ---
+        aliases:
+          - eli5
+        name: foo
+        description: bar
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list(["eli5"]))
+        XCTAssertEqual(parsed.fields["name"], .string("foo"))
+        XCTAssertEqual(parsed.fields["description"], .string("bar"))
+        // Sabotage-evidence: M1 indent `name: foo` with two spaces — it'd be
+        // skipped at the outer loop and `name` key assertion fails; M2 swap
+        // `- eli5` for `  eli5` (no dash) — list terminates empty and
+        // aliases-assertion fails; M3 drop closing `---` — parse returns nil.
+    }
+
+    func test_parse_listBlockStyle_inconsistentIndent_rejected() {
+        let doc = """
+        ---
+        name: foo
+        description: bar
+        aliases:
+          - eli5
+            - simple
+        ---
+        """
+        // The existing parser returns nil for malformed flow lists; the block
+        // path matches that behaviour rather than silently dropping the key.
+        XCTAssertNil(SkillFrontmatterParser.parse(doc))
+        // Sabotage-evidence: M1 normalise both items to two-space indent →
+        // parse succeeds and the nil assert fails; M2 remove the second item
+        // entirely → single-item list parses fine; M3 strip closing `---` →
+        // still nil but for the fence reason (acceptable).
+    }
+
+    func test_parse_listBlockStyle_commentLinesSkipped() {
+        let doc = """
+        ---
+        name: foo
+        description: bar
+        aliases:
+          # leading comment
+          - eli5
+          # mid comment
+          - simple
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list(["eli5", "simple"]))
+    }
+
+    func test_parse_listBlockStyle_quotedItem_unquoted() {
+        // Block items mirror the flow-list behaviour around matched quotes so
+        // values with commas or leading whitespace round-trip cleanly.
+        let doc = """
+        ---
+        name: x
+        description: x
+        aliases:
+          - "with, comma"
+          - 'single quoted'
+        ---
+        """
+        guard let parsed = SkillFrontmatterParser.parse(doc) else {
+            return XCTFail("Expected valid parse")
+        }
+        XCTAssertEqual(parsed.fields["aliases"], .list(["with, comma", "single quoted"]))
+    }
+
     func test_parse_quotedString_unescapesQuotes() {
         let doc = """
         ---
