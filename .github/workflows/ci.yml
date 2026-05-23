@@ -40,7 +40,53 @@ permissions:
   contents: read
 
 jobs:
+  # Pre-flight build gate. Surfaces compile errors in ~60-90s instead of
+  # ~4-5 min — the heavier `test` / `cold-start-tier2` / `cold-start-tier3` /
+  # `foundation-only-build` jobs run `needs: build-gate` and short-circuit if
+  # the build doesn't compile. The gate itself is the same `swift build
+  # --build-tests --disable-default-traits` that the test job runs implicitly
+  # on first invocation, but isolated so its failure mode is obvious in PR
+  # checks and so the downstream wait queue collapses on broken pushes.
+  #
+  # `test` is a required status check (branch protection). When build-gate
+  # fails and the downstream `test` job is skipped via `needs:`, GitHub
+  # reports `test` as skipped, which blocks merge — exactly the desired
+  # behavior for a broken build. No `if: always()` overrides; we want fan-out
+  # cancellation.
+  build-gate:
+    runs-on: macos-15  # match downstream jobs so the cache key collides
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: swift build --build-tests
+        # Matches the default-trait CI build surface the `test` job exercises.
+        # --skip-update mirrors the downstream test invocation; Package.resolved
+        # is the source of truth for the dependency graph, so the pre-flight
+        # never needs to recontact remotes.
+        run: swift build --build-tests --disable-default-traits --skip-update
+
   test:
+    needs: build-gate
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
 
     steps:
@@ -324,6 +370,7 @@ jobs:
   # peels Hummingbird out of the default-trait build so only this job pays
   # the compile cost — and only when server code or the dep graph changes.
   server-tests:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -427,6 +474,7 @@ jobs:
   # `test` job skips the swift-syntax compile cost; this job picks them up
   # only when macro code or the dep graph changes.
   macros-tests:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -539,6 +587,7 @@ jobs:
   # symbol downstream-visible. Per `[[feedback_ci_path_filter_self_validation]]`
   # the script's own path is in the filter so script-only PRs still trigger.
   cold-start:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -593,6 +642,7 @@ jobs:
   # Same per-PR gating as `cold-start` above: only fires on Package.swift /
   # Package.resolved / script edits; nightly runs it unconditionally.
   cold-start-tier2:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -648,6 +698,7 @@ jobs:
   #
   # Same per-PR gating as the other cold-start jobs; nightly runs it daily.
   cold-start-tier3:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -702,6 +753,7 @@ jobs:
   # target whose code can flip the FoundationOnly bundle composition).
   # Nightly runs it unconditionally every day.
   foundation-only-build:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -758,6 +810,7 @@ jobs:
   # ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests suite to
   # keep runtime short.  See scripts/test-ios-simulator.sh for the full rationale.
   ci-ios-file-protection:
+    needs: build-gate
     runs-on: macos-15  # match the `test` job runner
 
     steps:
