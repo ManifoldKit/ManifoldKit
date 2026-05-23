@@ -43,10 +43,12 @@ final class SchemaMigrationTests: XCTestCase {
     }
 
     func test_publicTypealiases_matchCurrentSchemaModelTypes() {
-        // ChatMessage points to ManifoldSchemaV7.ChatMessage (kindRaw/citationsJSON).
-        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV7.ChatMessage.self))
-        // ChatSession is redefined at V8 to carry isPinned/pinnedAt (#1301).
-        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV8.ChatSession.self))
+        // ChatMessage is redefined at V9 to carry agentID.
+        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self))
+        // ChatSession is redefined at V9 to carry activeAgentID / activeSkillName / agents.
+        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
+        // Agent is introduced at V9.
+        XCTAssertEqual(ObjectIdentifier(Agent.self), ObjectIdentifier(ManifoldSchemaV9.Agent.self))
         // Other model types remain at V4.
         XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(ManifoldSchemaV4.SamplerPreset.self))
         XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(ManifoldSchemaV4.APIEndpoint.self))
@@ -76,8 +78,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertNotNil(container)
     }
 
-    func test_containerFactory_currentSchema_isV8() {
-        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV8.self))
+    func test_containerFactory_currentSchema_isV9() {
+        XCTAssertEqual(ObjectIdentifier(ModelContainerFactory.currentSchema), ObjectIdentifier(ManifoldSchemaV9.self))
     }
 
     func test_containerFactory_reopensPersistedStore() throws {
@@ -200,13 +202,94 @@ final class SchemaMigrationTests: XCTestCase {
                      "pinnedAt must default to nil for rows written under V7")
     }
 
+    // MARK: - V8 -> V9 migration (agents + skills foundation)
+
+    /// Boots a store at V8, writes a session and a message, then re-opens it
+    /// through the full migration plan. The migrated rows must surface with
+    /// nil/empty defaults on every new V9 field: `activeAgentID == nil`,
+    /// `activeSkillName == nil`, `agents.isEmpty`, and `agentID == nil` on
+    /// the message. No data motion; lightweight migration.
+    ///
+    /// Sabotage-evidence: removing the `activeAgentID` / `activeSkillName` /
+    /// `agents` declarations from ``ManifoldSchemaV9/ChatSession`` causes
+    /// compilation failure here (M1). Changing the default of `agentID` on
+    /// ``ManifoldSchemaV9/ChatMessage`` to non-nil produces a failing
+    /// XCTAssertNil (M2). Replacing the V8→V9 stage with a no-op `[]` halts
+    /// `makeContainer` with a schema-mismatch error before the asserts run
+    /// (M3).
+    func test_migrationPlan_v8SessionMigratesToV9WithNilAgentDefaults() throws {
+        let storeDirectory = try makeStoreDirectory(named: "ManifoldSchemaV8ToV9")
+        let storeURL = storeDirectory.appendingPathComponent("Manifold.sqlite")
+        let sessionID: UUID
+        let messageID: UUID
+
+        do {
+            let config = ModelConfiguration(url: storeURL)
+            let container = try ModelContainer(
+                for: Schema(versionedSchema: ManifoldSchemaV8.self),
+                configurations: [config]
+            )
+            let context = ModelContext(container)
+
+            // V8 owns ChatSession in its own namespace, but ChatMessage at V8
+            // is still ManifoldSchemaV7.ChatMessage (V8 didn't redefine it).
+            let session = ManifoldSchemaV8.ChatSession(title: "Legacy V8 session")
+            session.systemPrompt = "carry forward"
+            session.isPinned = true
+            session.pinnedAt = Date(timeIntervalSince1970: 1_700_000_000)
+            context.insert(session)
+
+            let message = ManifoldSchemaV7.ChatMessage(
+                role: .assistant,
+                content: "pre-V9 history",
+                sessionID: session.id
+            )
+            context.insert(message)
+
+            try context.save()
+            sessionID = session.id
+            messageID = message.id
+        }
+
+        let migratedContainer = try ModelContainerFactory.makeContainer(
+            configurations: [ModelConfiguration(url: storeURL)]
+        )
+        let migratedContext = ModelContext(migratedContainer)
+
+        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<ChatSession>(
+            predicate: #Predicate { $0.id == sessionID }
+        ))
+        XCTAssertEqual(fetchedSessions.count, 1)
+        let migratedSession = try XCTUnwrap(fetchedSessions.first)
+        XCTAssertEqual(migratedSession.title, "Legacy V8 session")
+        XCTAssertEqual(migratedSession.systemPrompt, "carry forward")
+        XCTAssertTrue(migratedSession.isPinned,
+                      "Existing V8 pin state must survive the V8→V9 migration")
+        XCTAssertNil(migratedSession.activeAgentID,
+                     "V9 lightweight migration must default activeAgentID to nil for rows written under V8")
+        XCTAssertNil(migratedSession.activeSkillName,
+                     "V9 lightweight migration must default activeSkillName to nil for rows written under V8")
+        XCTAssertTrue(migratedSession.agents.isEmpty,
+                      "V9 lightweight migration must default agents to an empty array for rows written under V8")
+
+        let fetchedMessages = try migratedContext.fetch(FetchDescriptor<ChatMessage>(
+            predicate: #Predicate { $0.id == messageID }
+        ))
+        XCTAssertEqual(fetchedMessages.count, 1)
+        let migratedMessage = try XCTUnwrap(fetchedMessages.first)
+        XCTAssertEqual(migratedMessage.content, "pre-V9 history")
+        XCTAssertNil(migratedMessage.agentID,
+                     "V9 lightweight migration must default ChatMessage.agentID to nil for rows written under V8")
+    }
+
     func test_schemaOwnedModelAndPublicAlias_areInterchangeable() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        // Use the V7 class (the current schema's ChatMessage type) so the
-        // SwiftData schema validator finds all required columns (kindRaw etc.).
-        let nestedMessage = ManifoldSchemaV7.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
+        // Use the V9 class (the current schema's ChatMessage type) so the
+        // SwiftData schema validator finds all required columns (kindRaw,
+        // agentID, etc.).
+        let nestedMessage = ManifoldSchemaV9.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
         context.insert(nestedMessage)
         try context.save()
         let nestedMessageID = nestedMessage.id

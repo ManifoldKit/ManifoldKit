@@ -9,6 +9,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             ManifoldSchemaV6.self,
             ManifoldSchemaV7.self,
             ManifoldSchemaV8.self,
+            ManifoldSchemaV9.self,
         ]
     }
 
@@ -22,6 +23,10 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
             .lightweight(fromVersion: ManifoldSchemaV6.self, toVersion: ManifoldSchemaV7.self),
             // V8 adds isPinned (default false) and pinnedAt (default nil) to ChatSession.
             .lightweight(fromVersion: ManifoldSchemaV7.self, toVersion: ManifoldSchemaV8.self),
+            // V9 adds activeAgentID, activeSkillName, agents (cascade) to ChatSession,
+            // agentID to ChatMessage, and a new Agent @Model. All new fields default
+            // to nil/empty so no data motion is required.
+            .lightweight(fromVersion: ManifoldSchemaV8.self, toVersion: ManifoldSchemaV9.self),
         ]
     }
 }
