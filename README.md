@@ -186,6 +186,14 @@ await source.register(in: registry)
 
 For a complete walkthrough (descriptor setup, lifecycle, and built-in catalog), see `Sources/ManifoldMCP/ManifoldMCP.docc/Articles/MCPGettingStarted.md`.
 
+## Skills, Handoffs, and Hooks
+
+Three session-scoped extension points complement MCP for non-MCP hosts:
+
+- **ManifoldSkills** — filesystem-discovered Claude-Code-compatible `SKILL.md` skills, exposed to the model via a single `invoke_skill` dispatch tool. See `Sources/ManifoldSkills/ManifoldSkills.docc/Articles/SkillsGettingStarted.md`.
+- **Agent handoffs** — multi-persona sessions where the model emits `transfer_to_<name>` to swap the active agent. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/AgentHandoffs.md`.
+- **Hook system** — synchronous `preToolUse` (sanitize/block) and `preCompact` (observe) hooks distinct from the observational event stream. See `Sources/ManifoldRuntime/ManifoldRuntime.docc/Articles/HookSystem.md`.
+
 ## Custom Backends
 
 Implement `InferenceBackend` and register it. The protocol takes a precomputed `ModelLoadPlan` so the caller's memory-admission verdict and effective context size flow through to the backend instead of being recomputed:
