@@ -623,6 +623,21 @@ public final class InferenceService {
         generation.handoffDetector = detector
     }
 
+    /// Install a pre-tool-use hook that the dispatch loop calls before every
+    /// tool call. The hook may sanitize the JSON arguments or block the
+    /// dispatch; the runtime wires this via ``PreToolUseHookAdapter`` so the
+    /// sanitize-only contract is enforced before the closure ever reaches
+    /// the loop. `nil` removes any installed hook (legacy direct-dispatch).
+    ///
+    /// `package` visibility: this is an internal seam between Runtime's
+    /// ``HookRegistry`` and the Inference layer. Hosts compose hooks via
+    /// ``ConversationRuntime`` instead of calling this directly.
+    package func setPreToolUseHook(
+        _ hook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
+    ) {
+        generation.preToolUseHook = hook
+    }
+
     #if DEBUG
     /// Debug-only init that pre-loads a backend, optionally alongside a
     /// ``ToolRegistry`` and ``ToolApprovalGate``. Used by tests to drive a

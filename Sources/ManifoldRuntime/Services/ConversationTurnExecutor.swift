@@ -26,6 +26,11 @@ struct ConversationTurnExecutor: Sendable {
     /// in Wave 2 (W2A/W2B). Storing it now keeps the public/package inits
     /// source-compatible across the wave boundary.
     private let sessionToolSources: [any SessionToolSource]
+    /// Optional ``HookRegistry`` wired in by ``ConversationRuntime``. When
+    /// non-nil the executor (W2C) installs a ``PreToolUseHookAdapter`` on
+    /// the inference service and invokes the registry's ``HookEvent/preCompact``
+    /// chain before ``CompressionPolicy/compress(history:sessionID:generate:)``.
+    private let hookRegistry: HookRegistry?
 
     init(
         persistence: ConversationPersistencePort,
@@ -42,7 +47,8 @@ struct ConversationTurnExecutor: Sendable {
         hookTimeout: Duration = .seconds(30),
         historyProviders: [any HistoryProvider] = [],
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
-        sessionToolSources: [any SessionToolSource] = []
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
@@ -59,6 +65,7 @@ struct ConversationTurnExecutor: Sendable {
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
         self.turnContextProvider = turnContextProvider
         self.sessionToolSources = sessionToolSources
+        self.hookRegistry = hookRegistry
     }
 
     // MARK: Send flow
@@ -559,6 +566,22 @@ struct ConversationTurnExecutor: Sendable {
             await inferenceService.setHandoffDetector(nil)
         }
 
+        // Pre-tool-use hook plumbing. The runtime owns the HookRegistry
+        // (Runtime can import Inference, not the other way round) so we
+        // adapt the registry into the closure shape the dispatch loop
+        // accepts. The adapter enforces the sanitize-only invariant and
+        // emits `.hookFired(event: "preToolUse", ...)` on every call.
+        if let hookRegistry {
+            let emit = self.eventSink
+            let adapter = PreToolUseHookAdapter.make(
+                registry: hookRegistry,
+                eventEmitter: { event in emit(event) }
+            )
+            await inferenceService.setPreToolUseHook(adapter)
+        } else {
+            await inferenceService.setPreToolUseHook(nil)
+        }
+
         // Build the assistant message slot up front so token deltas can
         // reference its id from the first emitted token.
         //
@@ -1048,6 +1071,28 @@ struct ConversationTurnExecutor: Sendable {
                         throw error
                     }
                     return result
+                }
+
+                // preCompact hook: v1 is observational. The plan's hook
+                // contract documents that preCompact CANNOT block compression
+                // (there's no mutation channel for the history shape); a
+                // hook that returns block:true logs a warning but compression
+                // still runs. Emit `.hookFired(event: "preCompact", ...)`
+                // regardless so observability stays consistent.
+                if let hookRegistry {
+                    let input = HookInput(
+                        event: .preCompact,
+                        sessionID: sessionID,
+                        toolName: nil,
+                        toolArguments: nil
+                    )
+                    let output = await hookRegistry.run(input)
+                    emit(.hookFired(event: "preCompact", sessionID: sessionID))
+                    if output.block {
+                        Log.inference.warning(
+                            "preCompact hook returned block:true — block is not honoured for compaction in v1; ignoring and proceeding with compression."
+                        )
+                    }
                 }
 
                 do {
