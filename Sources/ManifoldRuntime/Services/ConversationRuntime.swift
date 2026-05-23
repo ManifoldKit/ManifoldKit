@@ -66,6 +66,12 @@ public final class ConversationRuntime: Sendable {
 
     private let executor: ConversationTurnExecutor
 
+    /// Host-mutable holder for the per-session knobs the executor reads at
+    /// the top of each turn. Exposed through the `update*` mutators below
+    /// so a host that built the runtime once at app init can swap context
+    /// per scenario card / per agent flow without rebuilding.
+    private let bindings: RuntimeBindingsBox
+
     // MARK: Event stream
 
     /// Lifecycle event stream. Single-consumer by design — see the type
@@ -211,6 +217,11 @@ public final class ConversationRuntime: Sendable {
         self.events = AsyncStream(bufferingPolicy: .bufferingOldest(500)) { cap = $0 }
         let continuation = cap!
         self.continuation = continuation
+        let bindings = RuntimeBindingsBox(
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry
+        )
+        self.bindings = bindings
         self.executor = ConversationTurnExecutor(
             persistence: persistence,
             inferenceService: inferenceService,
@@ -226,9 +237,30 @@ public final class ConversationRuntime: Sendable {
             hookTimeout: hookTimeout,
             historyProviders: historyProviders,
             turnContextProvider: turnContextProvider,
-            sessionToolSources: sessionToolSources,
-            hookRegistry: hookRegistry
+            bindings: bindings
         )
+    }
+
+    // MARK: Host-mutable bindings
+
+    /// Replaces the per-session tool contributors used by subsequent turns.
+    ///
+    /// Used by host-app scenario machinery (e.g. the demo's per-card
+    /// runtime swap) that builds the runtime once at app init and then
+    /// needs to swap which sources are advertised on each turn. The
+    /// executor re-reads bindings at the top of every send turn, so the
+    /// new sources take effect on the next turn without an executor
+    /// rebuild. In-flight streams are not reconfigured — cancel and
+    /// resend if mid-stream rebind is required.
+    public func updateSessionToolSources(_ sources: [any SessionToolSource]) async {
+        await bindings.updateSessionToolSources(sources)
+    }
+
+    /// Replaces the ``HookRegistry`` used by subsequent turns. Pass `nil`
+    /// to detach hooks. Same per-turn rebind semantics as
+    /// ``updateSessionToolSources(_:)``.
+    public func updateHookRegistry(_ registry: HookRegistry?) async {
+        await bindings.updateHookRegistry(registry)
     }
 
     deinit {

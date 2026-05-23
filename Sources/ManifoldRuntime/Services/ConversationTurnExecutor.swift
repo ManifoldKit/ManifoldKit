@@ -21,16 +21,14 @@ struct ConversationTurnExecutor: Sendable {
     /// ``TurnContext/appData`` and forwarded to ``CompletedTurn/appData`` so
     /// ``GenerationHook`` implementations receive it without a side-channel.
     private let turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
-    /// Per-session tool contributors. Threaded through from
-    /// `ConversationRuntime.init`; consumed in `readAdvertisedToolDefinitions()`
-    /// in Wave 2 (W2A/W2B). Storing it now keeps the public/package inits
-    /// source-compatible across the wave boundary.
-    private let sessionToolSources: [any SessionToolSource]
-    /// Optional ``HookRegistry`` wired in by ``ConversationRuntime``. When
-    /// non-nil the executor (W2C) installs a ``PreToolUseHookAdapter`` on
-    /// the inference service and invokes the registry's ``HookEvent/preCompact``
-    /// chain before ``CompressionPolicy/compress(history:sessionID:generate:)``.
-    private let hookRegistry: HookRegistry?
+    /// Mutable holder for `sessionToolSources` + `hookRegistry`. The executor
+    /// reads a snapshot once per turn (top of the send loop) so a host call
+    /// to ``ConversationRuntime/updateSessionToolSources(_:)`` /
+    /// ``ConversationRuntime/updateHookRegistry(_:)`` made between turns
+    /// takes effect on the next turn without rebuilding the runtime. See
+    /// ``RuntimeBindingsBox`` for the rationale (host-app demo swaps per
+    /// scenario card; full runtime rebuild would be overkill).
+    private let bindings: RuntimeBindingsBox
 
     init(
         persistence: ConversationPersistencePort,
@@ -47,8 +45,7 @@ struct ConversationTurnExecutor: Sendable {
         hookTimeout: Duration = .seconds(30),
         historyProviders: [any HistoryProvider] = [],
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
-        sessionToolSources: [any SessionToolSource] = [],
-        hookRegistry: HookRegistry? = nil
+        bindings: RuntimeBindingsBox
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
@@ -64,8 +61,7 @@ struct ConversationTurnExecutor: Sendable {
         self.hookTimeout = hookTimeout
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
         self.turnContextProvider = turnContextProvider
-        self.sessionToolSources = sessionToolSources
-        self.hookRegistry = hookRegistry
+        self.bindings = bindings
     }
 
     // MARK: Send flow
@@ -538,6 +534,14 @@ struct ConversationTurnExecutor: Sendable {
         // flows or hosts without a SessionStore wired in; both paths are
         // identical to the legacy single-agent surface.
         var sessionRecord: ChatSessionRecord? = await persistence.fetchSession(sessionID: sessionID)
+
+        // Snapshot the host-mutable bindings once per turn. A
+        // `ConversationRuntime.updateSessionToolSources(_:)` /
+        // `updateHookRegistry(_:)` call concurrent with this turn takes
+        // effect on the *next* turn — deliberately, so a long in-flight
+        // generation isn't reconfigured mid-stream.
+        let (turnSessionToolSources, turnHookRegistry) = await bindings.snapshot()
+
         let activeAgent: Agent? = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
             return sessionRecord.agents.first(where: { $0.id == activeID })
@@ -571,10 +575,10 @@ struct ConversationTurnExecutor: Sendable {
         // adapt the registry into the closure shape the dispatch loop
         // accepts. The adapter enforces the sanitize-only invariant and
         // emits `.hookFired(event: "preToolUse", ...)` on every call.
-        if let hookRegistry {
+        if let turnHookRegistry {
             let emit = self.eventSink
             let adapter = PreToolUseHookAdapter.make(
-                registry: hookRegistry,
+                registry: turnHookRegistry,
                 eventEmitter: { event in emit(event) }
             )
             await inferenceService.setPreToolUseHook(adapter)
@@ -662,7 +666,10 @@ struct ConversationTurnExecutor: Sendable {
         // tool but limiting which names go on the wire works without
         // unregistering the executor. Fetched on the main actor because the
         // registry and InferenceService accessors are both MainActor-isolated.
-        let advertisedTools: [ToolDefinition] = await readAdvertisedToolDefinitions()
+        let advertisedTools: [ToolDefinition] = await readAdvertisedToolDefinitions(
+            sessionToolSources: turnSessionToolSources,
+            sessionRecord: sessionRecord
+        )
 
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
@@ -1079,14 +1086,14 @@ struct ConversationTurnExecutor: Sendable {
                 // hook that returns block:true logs a warning but compression
                 // still runs. Emit `.hookFired(event: "preCompact", ...)`
                 // regardless so observability stays consistent.
-                if let hookRegistry {
+                if let turnHookRegistry {
                     let input = HookInput(
                         event: .preCompact,
                         sessionID: sessionID,
                         toolName: nil,
                         toolArguments: nil
                     )
-                    let output = await hookRegistry.run(input)
+                    let output = await turnHookRegistry.run(input)
                     emit(.hookFired(event: "preCompact", sessionID: sessionID))
                     if output.block {
                         Log.inference.warning(
@@ -1192,24 +1199,70 @@ struct ConversationTurnExecutor: Sendable {
         return await registry.isCancelled(handle)
     }
 
-    @MainActor
-    private func readAdvertisedToolDefinitions() async -> [ToolDefinition] {
-        // TODO(W2A/W2B): fold `sessionToolSources` into the advertised list —
-        // union the per-session `toolDefinitions(for:)` with the registry's
-        // and intersect with each source's `allowedToolNames(for:)` (Skills
-        // allowed-tools enforcement). Per-session ChatSessionRecord lookup
-        // moves here from the call site.
-        guard let registry = inferenceService.toolRegistry else { return [] }
-        let definitions = registry.advertisedDefinitions
+    private func readAdvertisedToolDefinitions(
+        sessionToolSources: [any SessionToolSource],
+        sessionRecord: ChatSessionRecord?
+    ) async -> [ToolDefinition] {
+        // Base registry definitions — host-installed tools the executor
+        // already advertises today. Read from MainActor.
+        let registryDefinitions: [ToolDefinition] = await MainActor.run {
+            inferenceService.toolRegistry?.advertisedDefinitions ?? []
+        }
+
+        // Per-session source contributions. Each source's
+        // `toolDefinitions(for:)` returns the definitions it owns for this
+        // session — e.g. ``HandoffToolSource`` synthesising one
+        // `transfer_to_<name>` per non-active agent. Skipped when we don't
+        // have a session record to scope the query.
+        var sourceDefinitions: [ToolDefinition] = []
+        if let sessionRecord {
+            for source in sessionToolSources {
+                let defs = await source.toolDefinitions(for: sessionRecord)
+                sourceDefinitions.append(contentsOf: defs)
+            }
+        }
+
+        // Union — sources can override the registry's view of a tool of
+        // the same name by appearing later, but in practice the namespaces
+        // don't overlap (registry: bespoke executors; sources: synthesised
+        // tools). De-dupe by name to keep the wire shape stable.
+        var unioned: [ToolDefinition] = registryDefinitions
+        var seen = Set(registryDefinitions.map(\.name))
+        for def in sourceDefinitions where !seen.contains(def.name) {
+            unioned.append(def)
+            seen.insert(def.name)
+        }
+
+        // Apply allowed-tools intersection across sources. A `nil` return
+        // from `allowedToolNames(for:)` means "no restriction" — only
+        // non-nil sets participate in the intersection. Skills uses this
+        // to clamp the model's tool surface while a skill is active.
+        if let sessionRecord {
+            var allowList: Set<String>? = nil
+            for source in sessionToolSources {
+                if let allowed = await source.allowedToolNames(for: sessionRecord) {
+                    if let current = allowList {
+                        allowList = current.intersection(allowed)
+                    } else {
+                        allowList = allowed
+                    }
+                }
+            }
+            if let allowList {
+                unioned = unioned.filter { allowList.contains($0.name) }
+            }
+        }
+
         // When the active backend declares a hard cap on how many tools it can
         // handle per turn, truncate the list before building the GenerationConfig.
         // The definitions are already sorted alphabetically by ToolRegistry, so
         // `prefix` always picks the same lexicographically-first N tools —
         // deterministic ordering keeps the "X of Y tools enabled" UI stable.
-        if let cap = inferenceService.capabilities?.maxAdvertisedToolCount, definitions.count > cap {
-            return Array(definitions.prefix(cap))
+        let cap = await MainActor.run { inferenceService.capabilities?.maxAdvertisedToolCount }
+        if let cap, unioned.count > cap {
+            return Array(unioned.prefix(cap))
         }
-        return definitions
+        return unioned
     }
 
     @MainActor

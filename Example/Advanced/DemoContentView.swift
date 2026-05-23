@@ -52,6 +52,14 @@ struct DemoContentView: View {
     /// step (the demo still runs, just without per-agent rendering).
     var sessionStore: (any SessionStore)?
 
+    /// The live ``ConversationRuntime`` the demo built at app init. The
+    /// scenario runner rebinds the runtime's per-session knobs
+    /// (``ConversationRuntime/updateSessionToolSources(_:)`` /
+    /// ``ConversationRuntime/updateHookRegistry(_:)``) per scenario card
+    /// rather than rebuilding the runtime — same instance, swapped
+    /// bindings.
+    var conversationRuntime: ConversationRuntime?
+
     /// Buffer holding any ``InboundPayload`` that arrived during the
     /// cold-launch window, before the runtime finished bootstrapping.
     /// Drained once the mounted view can safely hand off to `ChatViewModel`.
@@ -419,7 +427,8 @@ struct DemoContentView: View {
                 sessions: sessionManager,
                 registry: toolRegistry,
                 sandboxRoot: sandboxRoot,
-                sessionStore: sessionStore
+                sessionStore: sessionStore,
+                conversationRuntime: conversationRuntime
             )
         }
     }

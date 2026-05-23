@@ -219,6 +219,7 @@ struct ManifoldDemoApp: App {
                         sandboxRoot: sandboxRoot,
                         ragService: runtime.ragService,
                         sessionStore: runtime.persistence,
+                        conversationRuntime: runtime.conversationRuntime,
                         pendingPayloadBuffer: pendingPayloadBuffer,
                         pendingDemoScenarioID: pendingDemoScenarioID
                     )
