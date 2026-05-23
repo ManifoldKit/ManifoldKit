@@ -30,14 +30,24 @@ enum DemoScenarioRunner {
     /// 5. If `sessionStore` is supplied AND the scenario populated
     ///    `agents`/`activeAgentID`, persist them onto the session record
     ///    before the first prompt is sent.
-    /// 6. Prefill the composer and, when `autoSend` is true, send.
+    /// 6. If `conversationRuntime` is supplied, rebind its
+    ///    `sessionToolSources` + `hookRegistry` to whatever the scenario
+    ///    populated. The runtime is built once at app init via
+    ///    `ManifoldBootstrap`, so per-scenario knobs flow through the
+    ///    `update*` mutators on the live instance — see
+    ///    `ConversationRuntime.updateSessionToolSources(_:)`. The previous
+    ///    scenario's bindings are cleared on every call (empty sources,
+    ///    `nil` registry) before the new scenario's are applied, so a
+    ///    scenario that opts out of either surface starts clean.
+    /// 7. Prefill the composer and, when `autoSend` is true, send.
     static func run(
         _ scenario: DemoScenario,
         chat: ChatViewModel,
         sessions: SessionManagerViewModel,
         registry: ToolRegistry,
         sandboxRoot: URL,
-        sessionStore: (any SessionStore)? = nil
+        sessionStore: (any SessionStore)? = nil,
+        conversationRuntime: ConversationRuntime? = nil
     ) async {
         guard !chat.isGenerating else { return }
 
@@ -79,6 +89,16 @@ enum DemoScenarioRunner {
         } catch {
             chat.errorMessage = "Failed to start scenario: \(error.localizedDescription)"
             return
+        }
+
+        // Bind the per-scenario `sessionToolSources` + `hookRegistry` onto
+        // the live runtime. Always overwrite — a previous scenario that
+        // installed e.g. a HandoffToolSource must not bleed into the next
+        // card. The runtime's executor reads bindings at the top of every
+        // turn, so this takes effect on the prompt we're about to send.
+        if let conversationRuntime {
+            await conversationRuntime.updateSessionToolSources(context.sessionToolSources)
+            await conversationRuntime.updateHookRegistry(context.hookRegistry)
         }
 
         chat.systemPrompt = scenario.systemPrompt

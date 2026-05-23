@@ -139,6 +139,8 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) throws {
         // Capture the previous configuration before any mutation so a failure
@@ -200,7 +202,9 @@ public final class ManifoldBootstrap {
                 sessionStore: resolvedPersistence,
                 inferenceService: resolvedInferenceService,
                 ragService: resolvedRAGService,
-                usageStore: resolvedUsageStore
+                usageStore: resolvedUsageStore,
+                sessionToolSources: sessionToolSources,
+                hookRegistry: hookRegistry
             )
             self.imageGenerationService = imageGenerationService
             if let imageGenerationService {
@@ -227,7 +231,9 @@ public final class ManifoldBootstrap {
         endpointStore: SwiftDataEndpointStore,
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
-        ragService: RAGService? = nil
+        ragService: RAGService? = nil,
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil
     ) {
         self.inferenceService = inferenceService
         self.diagnostics = diagnostics
@@ -243,7 +249,9 @@ public final class ManifoldBootstrap {
             sessionStore: persistence,
             inferenceService: inferenceService,
             ragService: ragService,
-            usageStore: usageStore
+            usageStore: usageStore,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry
         )
         self.imageGenerationService = imageGenerationService
         if let imageGenerationService {
@@ -261,6 +269,8 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
     ) -> (progress: AsyncStream<RuntimeBootstrapMilestone>, task: Task<ManifoldBootstrap, any Error>) {
         let (stream, continuation) = AsyncStream.makeStream(
@@ -305,7 +315,9 @@ public final class ManifoldBootstrap {
                     benchmarkCache: benchmarkCache,
                     endpointStore: endpointStore,
                     usageStore: usageStore,
-                    imageGenerationService: imageGenerationService
+                    imageGenerationService: imageGenerationService,
+                    sessionToolSources: sessionToolSources,
+                    hookRegistry: hookRegistry
                 )
             } catch {
                 ManifoldConfiguration.shared = previousConfiguration
