@@ -181,6 +181,26 @@ public enum ConversationEvent: Sendable {
     /// A tool call completed; `ToolResult` carries the outcome (success
     /// payload or error classification).
     case toolCallCompleted(ToolCall.ID, ToolResult)
+
+    // MARK: Multi-agent + skills + hooks (W2B / W2C / W3A telemetry)
+
+    /// The active agent for a session changed via a ``HandoffDetector``
+    /// detection. `from` is `nil` when the session had no prior active
+    /// agent. The runtime has already persisted the swap and injected the
+    /// boundary message into the next turn's structured history by the
+    /// time this event fires.
+    case agentHandoff(from: UUID?, to: UUID)
+
+    /// A skill was invoked through the skill dispatcher tool (W2C path —
+    /// stubbed here so adapters can begin pattern-matching against it
+    /// today; emission lands when the W2C wiring sees the skill dispatch
+    /// callsite).
+    case skillInvoked(name: String, sessionID: UUID)
+
+    /// A registered hook fired in response to an internal event boundary
+    /// (preToolUse / preCompact for now). Stub for observational adapters
+    /// before W2C/W3A wire the emission callsites.
+    case hookFired(event: String, sessionID: UUID)
 }
 
 // `ToolCall.ID` is `String` (see `ManifoldInference.ToolCall.id`). The

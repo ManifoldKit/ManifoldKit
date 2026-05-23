@@ -65,6 +65,7 @@ final class MLXBackendEventOrderParityTests: XCTestCase {
         case .usage: return "usage"
         case .prefillProgress: return "prefillProgress"
         case .diagnosticThrottle: return "diagnosticThrottle"
+        case .handoffRequested: return "handoffRequested"
         }
     }
 

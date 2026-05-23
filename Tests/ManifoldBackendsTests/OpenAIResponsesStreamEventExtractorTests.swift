@@ -203,6 +203,7 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
         case .diagnosticThrottle: return "diagnosticThrottle"
+        case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }
 
@@ -324,6 +325,7 @@ final class OpenAIResponsesStreamEventExtractorParityTests: XCTestCase {
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
         case .diagnosticThrottle: return "diagnosticThrottle"
+        case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }
 

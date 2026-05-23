@@ -1187,6 +1187,9 @@ final class ConversationRuntimeTests: XCTestCase {
         case .thinkingUpdated: return "thinkingUpdated"
         case .thinkingFinalized: return "thinkingFinalized"
         case .loopDetected: return "loopDetected"
+        case let .agentHandoff(from, to): return "agentHandoff(\(from?.uuidString ?? "nil")->\(to))"
+        case let .skillInvoked(name, _): return "skillInvoked(\(name))"
+        case let .hookFired(event, _): return "hookFired(\(event))"
         }
     }
 

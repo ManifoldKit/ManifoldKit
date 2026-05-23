@@ -9,7 +9,20 @@ extension ChatSession {
     /// Returns a storage-agnostic snapshot of this session suitable for
     /// passing to inference services that don't depend on SwiftData.
     public var record: ChatSessionRecord {
-        ChatSessionRecord(
+        // Map SwiftData @Model Agent rows to the storage-agnostic
+        // ManifoldInference.Agent value type so consumers downstream of
+        // ChatSessionRecord (HandoffToolSource, ConversationTurnExecutor)
+        // don't need to import the persistence module.
+        let agentRecords: [ManifoldInference.Agent] = agents.map { row in
+            ManifoldInference.Agent(
+                id: row.id,
+                name: row.name,
+                systemPrompt: row.systemPrompt,
+                description: row.descriptionText,
+                allowedToolNames: row.allowedToolNames
+            )
+        }
+        return ChatSessionRecord(
             id: id,
             title: title,
             createdAt: createdAt,
@@ -24,7 +37,10 @@ extension ChatSession {
             contextSizeOverride: contextSizeOverride,
             pinnedMessageIDs: pinnedMessageIDs,
             isPinned: isPinned,
-            pinnedAt: pinnedAt
+            pinnedAt: pinnedAt,
+            agents: agentRecords,
+            activeAgentID: activeAgentID,
+            activeSkillName: activeSkillName
         )
     }
 }

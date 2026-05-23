@@ -160,4 +160,15 @@ public enum GenerationEvent: Sendable, Equatable {
     /// value matches the ``ToolResult/errorKind`` of the `.toolResult` event
     /// with the same `callId`.
     case toolDispatchCompleted(callId: String, durationMs: Int, errorKind: ToolResult.ErrorKind?)
+
+    /// The orchestrator detected a synthetic `transfer_to_<agent>` tool call
+    /// and classified it as an agent handoff. Emitted in lieu of the regular
+    /// ``toolCall(_:)`` / ``toolResult(_:)`` pair — the dispatch loop
+    /// short-circuits regular tool dispatch and lets the runtime swap the
+    /// active agent and inject a boundary message into the next turn.
+    ///
+    /// Only emitted by ``GenerationToolDispatchLoop`` when it has been
+    /// configured with a session-aware handoff detector; backends never emit
+    /// this case directly.
+    case handoffRequested(AgentHandoff)
 }

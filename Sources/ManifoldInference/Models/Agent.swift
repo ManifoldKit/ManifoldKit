@@ -8,7 +8,7 @@ import Foundation
 /// the inference module. Agents are aggregated on a `ChatSessionRecord` (added
 /// in V9 schema migration, Wave 1B) and the active one drives system-prompt
 /// re-derivation per turn in `ConversationTurnExecutor`.
-public struct Agent: Sendable, Identifiable, Equatable, Codable {
+public struct Agent: Sendable, Identifiable, Equatable, Hashable, Codable {
     public let id: UUID
     public let name: String
     public let systemPrompt: String

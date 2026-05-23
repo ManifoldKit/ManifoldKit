@@ -143,6 +143,10 @@ public struct FixtureComparator {
                 // Queue-emitted lifecycle events and progress signals are
                 // not part of the wire contract — drop from projection.
                 return nil
+            case .handoffRequested:
+                // Runtime-synthesised handoff event — never emitted by the
+                // backend wire path the fixture comparator validates.
+                return nil
             }
         }
     }

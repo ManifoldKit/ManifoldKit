@@ -214,6 +214,7 @@ final class ToolCallContractTests: XCTestCase {
             case .diagnosticThrottle: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted: break
+            case .handoffRequested: break
             }
         }
 
@@ -287,6 +288,7 @@ final class ToolCallContractTests: XCTestCase {
             case .diagnosticThrottle: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted: break
+            case .handoffRequested: break
             }
         }
 

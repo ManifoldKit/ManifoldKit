@@ -60,6 +60,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         session.isPinned = record.isPinned
         session.pinnedAt = record.pinnedAt
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
+        session.activeAgentID = record.activeAgentID
+        session.activeSkillName = record.activeSkillName
         modelContext.insert(session)
         try modelContext.save()
         await fireSessionHooks(record)
@@ -83,6 +85,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         session.isPinned = record.isPinned
         session.pinnedAt = record.pinnedAt
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
+        session.activeAgentID = record.activeAgentID
+        session.activeSkillName = record.activeSkillName
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -207,6 +211,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         message.completionTokens = record.completionTokens
         message.kind = record.kind
         message.citations = record.citations
+        message.agentID = record.agentID
         modelContext.insert(message)
         try modelContext.save()
         await fireMessageHooks(record)
@@ -221,6 +226,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         message.completionTokens = record.completionTokens
         message.kind = record.kind
         message.citations = record.citations
+        message.agentID = record.agentID
         try modelContext.save()
         await fireMessageHooks(record)
     }
@@ -338,7 +344,8 @@ extension ChatMessage {
             promptTokens: promptTokens,
             completionTokens: completionTokens,
             kind: kind,
-            citations: citations
+            citations: citations,
+            agentID: agentID
         )
     }
 }

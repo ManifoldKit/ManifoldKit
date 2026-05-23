@@ -107,6 +107,10 @@ public final class ScenarioRunner {
                     // Dispatch lifecycle markers are observational; tool
                     // accounting flows through `.toolCall` / `.toolResult`.
                     continue
+                case .handoffRequested:
+                    // Multi-agent handoffs are runtime-driven; deterministic
+                    // single-agent replays never observe them.
+                    continue
                 }
             }
 

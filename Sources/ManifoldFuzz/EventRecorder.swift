@@ -145,6 +145,11 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolDispatchStarted", v: "\(callId):\(name):\(attempt)"))
                 case .toolDispatchCompleted(let callId, let durationMs, let errorKind):
                     events.append(.init(t: t, kind: "toolDispatchCompleted", v: "\(callId):\(durationMs):\(errorKind?.rawValue ?? "none")"))
+                case .handoffRequested(let handoff):
+                    // Multi-agent handoffs only surface through the runtime
+                    // executor; deterministic fuzz replays never observe
+                    // them but the case stays exhaustive for growth.
+                    events.append(.init(t: t, kind: "handoffRequested", v: handoff.targetAgentID.uuidString))
                 }
                 memoryTick()
             }

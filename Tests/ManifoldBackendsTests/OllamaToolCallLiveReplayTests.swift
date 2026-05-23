@@ -211,6 +211,10 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     break
                 case .prefillProgress:
                     break
+                case .handoffRequested:
+                    // Runtime-synthesised handoff event; live raw backend
+                    // replays never emit this case.
+                    break
                 }
             }
 

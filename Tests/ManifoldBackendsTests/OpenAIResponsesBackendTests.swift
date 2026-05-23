@@ -73,7 +73,8 @@ final class OpenAIResponsesBackendTests: XCTestCase {
              .diagnosticThrottle, .thinkingSignature,
              .toolCallStart, .toolCallArgumentsDelta,
              .toolDispatchStarted, .toolDispatchCompleted,
-             .prefillProgress:
+             .prefillProgress,
+             .handoffRequested:
             return nil
         }
     }

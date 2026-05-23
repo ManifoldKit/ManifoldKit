@@ -14,6 +14,31 @@ struct GenerationToolDispatchLoop {
     let generateWithConfig: ([StructuredMessage], String?, GenerationConfig) throws -> GenerationStream
     let yieldEvent: (GenerationEvent) -> Void
     let pauseWhileThermalCritical: (GenerationRequestToken) async -> Void
+    /// Session-aware handoff detector. `nil` when the executor has not
+    /// wired multi-agent handoffs (e.g. host apps that never construct
+    /// agents on the session). Returning `.handoff(...)` causes the loop
+    /// to emit ``GenerationEvent/handoffRequested(_:)`` and skip dispatch
+    /// for this call; returning `.regular(_)` (or being unset) falls
+    /// through to the normal dispatch path.
+    let handoffDetector: ((ToolCall) -> HandoffDetectionResult)?
+
+    init(
+        toolRegistry: ToolRegistry?,
+        toolApprovalGate: any ToolApprovalGate,
+        currentBackend: @escaping () -> InferenceBackend?,
+        generateWithConfig: @escaping ([StructuredMessage], String?, GenerationConfig) throws -> GenerationStream,
+        yieldEvent: @escaping (GenerationEvent) -> Void,
+        pauseWhileThermalCritical: @escaping (GenerationRequestToken) async -> Void,
+        handoffDetector: ((ToolCall) -> HandoffDetectionResult)? = nil
+    ) {
+        self.toolRegistry = toolRegistry
+        self.toolApprovalGate = toolApprovalGate
+        self.currentBackend = currentBackend
+        self.generateWithConfig = generateWithConfig
+        self.yieldEvent = yieldEvent
+        self.pauseWhileThermalCritical = pauseWhileThermalCritical
+        self.handoffDetector = handoffDetector
+    }
 
     /// Drives the backend through an entire tool-dispatch loop for one queued request.
     func run(
@@ -67,7 +92,33 @@ struct GenerationToolDispatchLoop {
                 guard !Task.isCancelled else { return }
 
                 switch event {
-                case .toolCall(let call) where toolRegistry != nil:
+                case .toolCall(let call):
+                    // Multi-agent handoff short-circuit. When the executor
+                    // wired a session-aware detector and the call resolves
+                    // to a known `transfer_to_<agent>` synthetic tool, skip
+                    // regular dispatch and emit the typed handoff event for
+                    // the runtime to consume (system-prompt swap, boundary
+                    // message injection). Handoff detection runs even when
+                    // no ``ToolRegistry`` is wired — the synthetic transfer
+                    // tools are advertised by ``HandoffToolSource`` directly
+                    // and never round-trip through the registry.
+                    if let detector = handoffDetector,
+                       case .handoff(let handoff) = detector(call) {
+                        yieldEvent(.handoffRequested(handoff))
+                        // The loop is single-shot for handoffs: the runtime
+                        // re-derives the system prompt on the next turn from
+                        // session.activeAgentID, so there's nothing left to
+                        // do in this turn's tool-dispatch path.
+                        return
+                    }
+                    // No handoff (or detector unset / non-handoff result) —
+                    // fall through to regular dispatch when the registry is
+                    // wired. Without a registry the event is forwarded
+                    // verbatim and the host consumes the tool call upstream.
+                    guard toolRegistry != nil else {
+                        yieldEvent(event)
+                        continue
+                    }
                     yieldEvent(.toolCall(call))
 
                     let dispatchAttempt = 1

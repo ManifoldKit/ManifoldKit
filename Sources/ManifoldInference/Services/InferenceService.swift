@@ -611,6 +611,18 @@ public final class InferenceService {
         generation.toolRegistry
     }
 
+    /// Configure a session-aware handoff detector. The runtime sets this
+    /// once the conversation surface has agents registered; the dispatch
+    /// loop then intercepts synthetic `transfer_to_<agent>` tool calls
+    /// (emitted as ``GenerationEvent/handoffRequested(_:)``) instead of
+    /// routing them through the regular ``ToolRegistry``.
+    ///
+    /// `nil` (the default) preserves the legacy single-agent surface —
+    /// every tool call goes through the registry exactly as before.
+    public func setHandoffDetector(_ detector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?) {
+        generation.handoffDetector = detector
+    }
+
     #if DEBUG
     /// Debug-only init that pre-loads a backend, optionally alongside a
     /// ``ToolRegistry`` and ``ToolApprovalGate``. Used by tests to drive a
