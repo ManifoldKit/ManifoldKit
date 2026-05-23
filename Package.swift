@@ -494,6 +494,15 @@ let package = Package(
         // so that fuzz-chat (an executable) can depend on ManifoldTestSupport
         // without pulling in XCTest, which is only available inside an xctest
         // host process and causes a dyld crash at runtime otherwise.
+        //
+        // DO NOT merge this back into ManifoldTestSupport. PR #1409 attempted
+        // that with a `#if canImport(XCTest)` file-level gate; the gate
+        // evaluated true on CI runners where the XCTest *headers* are
+        // available but the *runtime* dylib is not on the search path outside
+        // an xctest host. Result: `dyld[...]: Library not loaded:
+        // @rpath/libXCTestSwiftSupport.dylib` at fuzz-chat startup.
+        // `ContractTestSupportSplitAuditTest` (ManifoldCoreTests) enforces
+        // this split at the manifest + source-tree level.
         .target(
             name: "ManifoldContractTestSupport",
             dependencies: [

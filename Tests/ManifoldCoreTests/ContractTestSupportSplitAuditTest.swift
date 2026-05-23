@@ -1,0 +1,128 @@
+import XCTest
+
+/// Guards against regression of PR #1409: `ManifoldTestSupport` must NOT
+/// transitively pull in XCTest, and the XCTest-dependent contract mixins
+/// must stay in a dedicated `ManifoldContractTestSupport` target.
+///
+/// ## Why this matters
+///
+/// PR #1409 attempted to consolidate the two targets by collapsing
+/// `Sources/ManifoldContractTestSupport/*.swift` into
+/// `Sources/ManifoldTestSupport/Contracts/` under a file-level
+/// `#if canImport(XCTest)` gate. On the developer's local Mac this looked
+/// safe — `otool -L fuzz-chat` showed no XCTest references because Swift
+/// strips unused symbols at link time when the host compiler can resolve
+/// XCTest. On the CI runner, however, `canImport(XCTest)` evaluates true
+/// while the XCTest framework is not on the runtime library search path
+/// outside of an xctest host process. The result was a dyld crash at the
+/// first invocation of `swift run fuzz-chat ...`:
+///
+///     dyld[4010]: Library not loaded: @rpath/libXCTestSwiftSupport.dylib
+///       Referenced from: .../fuzz-chat
+///
+/// The fix is structural: XCTest-tainted code lives in its own target so
+/// non-test executables (`fuzz-chat` today, anything else tomorrow) can
+/// depend on `ManifoldTestSupport` without inheriting an XCTest link
+/// dependency they cannot satisfy at runtime.
+///
+/// ## What this test enforces
+///
+/// 1. `Sources/ManifoldContractTestSupport/` exists and contains at least
+///    one `*Contract.swift` file. (Sentinel against an "accidental" merge
+///    that deletes the directory.)
+/// 2. `Sources/ManifoldTestSupport/` contains no file with a top-level
+///    `import XCTest`. (Sentinel against re-introducing the
+///    `#if canImport(XCTest)` pattern that masked the crash.)
+/// 3. `Package.swift` declares both `ManifoldTestSupport` and
+///    `ManifoldContractTestSupport` as separate `.target(...)` entries.
+///
+/// ## Fixing a violation
+///
+/// Do not merge the two targets. If you need a helper that some tests
+/// share but executables also need, put it in `ManifoldTestSupport`
+/// (XCTest-free). If it must use `XCTAssert*` / `XCTestCase`, put it in
+/// `ManifoldContractTestSupport`.
+final class ContractTestSupportSplitAuditTest: XCTestCase {
+
+    func test_manifoldContractTestSupport_directoryExists() throws {
+        let repoRoot = try Self.repoRoot()
+        let contractDir = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("ManifoldContractTestSupport")
+
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(
+            atPath: contractDir.path,
+            isDirectory: &isDir
+        )
+        XCTAssertTrue(exists && isDir.boolValue,
+                      "Sources/ManifoldContractTestSupport/ must exist as a directory. See PR #1409 retrospective in this file's doc comment.")
+
+        let contents = try FileManager.default.contentsOfDirectory(atPath: contractDir.path)
+        let contractFiles = contents.filter { $0.hasSuffix("Contract.swift") }
+        XCTAssertFalse(contractFiles.isEmpty,
+                       "Sources/ManifoldContractTestSupport/ must contain at least one *Contract.swift file.")
+    }
+
+    func test_manifoldTestSupport_doesNotImportXCTest() throws {
+        let repoRoot = try Self.repoRoot()
+        let supportDir = repoRoot
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("ManifoldTestSupport")
+
+        let enumerator = FileManager.default.enumerator(atPath: supportDir.path)
+        var offenders: [String] = []
+        while let relative = enumerator?.nextObject() as? String {
+            guard relative.hasSuffix(".swift") else { continue }
+            let url = supportDir.appendingPathComponent(relative)
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            // Match a top-level `import XCTest` line — also catches the
+            // `#if canImport(XCTest)\nimport XCTest` shape that PR #1409
+            // introduced.
+            for line in text.split(separator: "\n") {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed == "import XCTest" {
+                    offenders.append(relative)
+                    break
+                }
+            }
+        }
+
+        XCTAssertTrue(
+            offenders.isEmpty,
+            """
+            ManifoldTestSupport must stay XCTest-free so non-test executables
+            (e.g. fuzz-chat) can depend on it without a runtime dyld crash.
+            Move the offending file(s) to Sources/ManifoldContractTestSupport/.
+            Offenders: \(offenders)
+            """
+        )
+    }
+
+    func test_packageManifest_declaresBothTargets() throws {
+        let repoRoot = try Self.repoRoot()
+        let packageURL = repoRoot.appendingPathComponent("Package.swift")
+        let manifest = try String(contentsOf: packageURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            manifest.contains("name: \"ManifoldTestSupport\""),
+            "Package.swift must declare a target named ManifoldTestSupport."
+        )
+        XCTAssertTrue(
+            manifest.contains("name: \"ManifoldContractTestSupport\""),
+            "Package.swift must declare a target named ManifoldContractTestSupport. See PR #1409 retrospective in this file's doc comment."
+        )
+    }
+
+    // MARK: - Helpers
+
+    private static func repoRoot() throws -> URL {
+        // This test file lives at Tests/ManifoldCoreTests/<this>.swift.
+        // Walk up two directories to reach the package root.
+        let thisFile = URL(fileURLWithPath: #filePath)
+        return thisFile
+            .deletingLastPathComponent()  // ManifoldCoreTests/
+            .deletingLastPathComponent()  // Tests/
+            .deletingLastPathComponent()  // repo root
+    }
+}
