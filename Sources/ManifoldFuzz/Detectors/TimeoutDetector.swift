@@ -12,9 +12,11 @@ import Foundation
 /// the calibration corpus + FP/TP gating (W2.C phase 2) is what will make
 /// the real windowed detector useful.
 ///
-/// FIXME: needs window history — see issue #489. Move to a stateful actor
-/// once the Detector protocol grows a registry-level state slot, or emit
-/// findings from a post-run aggregator that owns the history.
+/// Note: the windowed-median design needs window history. Realising it
+/// requires either growing the `Detector` protocol with a registry-level
+/// state slot, or emitting findings from a post-run aggregator that owns
+/// the history. #489 (the umbrella that tracked deferred detectors)
+/// closed without this redesign — re-file before resuming.
 ///
 /// Ships at `.flaky` severity.
 public struct TimeoutDetector: Detector {
