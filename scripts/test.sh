@@ -234,17 +234,6 @@ PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 # Local profile trait set: every trait minus Fuzz (which is build-only).
 PROFILE_LOCAL_TRAITS="MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros"
 
-# Detect Apple Silicon core count for --num-workers. Falls back to 4 on
-# non-macOS or if sysctl is unavailable.
-detect_workers() {
-    local n
-    n=$(sysctl -n hw.activecpu 2>/dev/null || echo "")
-    if [[ -z "$n" || ! "$n" =~ ^[0-9]+$ ]]; then
-        n=4
-    fi
-    echo "$n"
-}
-
 if [[ -n "$PROFILE" ]]; then
     case "$PROFILE" in
         ci|local|spike)
@@ -282,10 +271,8 @@ if [[ -n "$PROFILE" ]]; then
             SWIFT_ARGS+=("--skip-update")
             SKIP_UPDATE_PRESENT=1
         fi
-        WORKERS=$(detect_workers)
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  PROFILE: spike (minimal traits, single suite — pre-push gate still mandatory)"
-        echo "  Workers: $WORKERS (host hw.activecpu)"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         # Fall through to the single swift-test invocation at the bottom.
     elif [[ $HAS_USER_FILTER -eq 1 ]]; then
@@ -307,16 +294,14 @@ if [[ -n "$PROFILE" ]]; then
             SWIFT_ARGS+=("--skip-update")
             SKIP_UPDATE_PRESENT=1
         fi
-        if [[ $NUM_WORKERS_PRESENT -eq 0 ]]; then
-            WORKERS=$(detect_workers)
-            # --num-workers requires --parallel per swift-test's parser.
-            if [[ $PARALLEL_MODE -eq 0 ]]; then
-                SWIFT_ARGS+=("--parallel")
-                PARALLEL_MODE=1
-            fi
-            SWIFT_ARGS+=("--num-workers" "$WORKERS")
-            NUM_WORKERS_PRESENT=1
-        fi
+        # We deliberately do NOT inject `--parallel` here. Adding it surfaces
+        # pre-existing process-global state races in `BackendContractChecks`
+        # (each per-backend conformance suite's `test_z_contract_metaContract`
+        # reads a shared claims registry; under explicit `--parallel` the
+        # interleaving differs enough that 57 normally-skipped tests register
+        # as runs and 7 of them fail because the registry is partial). swift-
+        # test's implicit scheduling without the flag is the baseline that
+        # works — keep it.
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  PROFILE: $PROFILE (single-invocation override — caller passed --filter)"
         printf "  Filters: %s\n" "${FILTERS_SEEN[*]}"
@@ -325,7 +310,6 @@ if [[ -n "$PROFILE" ]]; then
         else
             echo "  Traits:  --disable-default-traits"
         fi
-        echo "  Workers: $(detect_workers) (host hw.activecpu)"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         # Fall through to the single swift-test invocation at the bottom.
     else
@@ -334,7 +318,6 @@ if [[ -n "$PROFILE" ]]; then
         # parsing surface single-pass and the summary printer authoritative
         # per call (each invocation prints its own summary).
         SCRIPT_PATH="$0"
-        WORKERS=$(detect_workers)
         EXTRA_ARGS=("${SWIFT_ARGS[@]}")
         # Build the per-profile flag sets.
         if [[ "$PROFILE" == "ci" ]]; then
@@ -349,7 +332,6 @@ if [[ -n "$PROFILE" ]]; then
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  PROFILE: $PROFILE (two-invocation pre-push gate)"
         echo "  Traits:  $BANNER_TRAITS"
-        echo "  Workers: $WORKERS (host hw.activecpu)"
         printf "  XCTest filters (%d): %s\n" "${#FILTERS[@]}" "${FILTERS[*]}"
         echo "  Swift Testing filter: $PROFILE_SWIFT_TESTING_FILTER (separate process — #681)"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -361,13 +343,22 @@ if [[ -n "$PROFILE" ]]; then
         done
 
         # Invocation 1: XCTest filters.
+        #
+        # We deliberately do NOT pass `--parallel` or `--num-workers` here.
+        # Explicit `--parallel` surfaces pre-existing process-global state
+        # races in `BackendContractChecks` — each per-backend conformance
+        # suite's `test_z_contract_metaContract` reads a shared claims
+        # registry, and explicit `--parallel` (with or without a tuned worker
+        # count) interleaves backend test classes enough that the registry is
+        # partial when meta-contract runs. swift-test's implicit scheduling
+        # without the flag is the baseline that's passed historically; keep it.
+        # Verified locally: 4395/0/57 pass under implicit scheduling vs
+        # 4445/7/0 with explicit --parallel.
         set +e
         "$SCRIPT_PATH" \
             "${XCTEST_FILTER_ARGS[@]}" \
             "${TRAIT_FLAGS[@]}" \
             --skip-update \
-            --parallel \
-            --num-workers "$WORKERS" \
             "${EXTRA_ARGS[@]}"
         RC1=$?
         set -e
@@ -382,8 +373,6 @@ if [[ -n "$PROFILE" ]]; then
             --filter "$PROFILE_SWIFT_TESTING_FILTER" \
             "${TRAIT_FLAGS[@]}" \
             --skip-update \
-            --parallel \
-            --num-workers "$WORKERS" \
             "${EXTRA_ARGS[@]}"
         RC2=$?
         set -e

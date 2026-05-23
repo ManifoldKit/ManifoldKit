@@ -123,7 +123,7 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 scripts/test.sh --profile local
 ```
 
-Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros`), tuned to the local core count via `--num-workers $(sysctl -n hw.activecpu)`. This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681).
+Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism surfaces pre-existing process-global state races in `BackendContractChecks` (the per-backend `test_z_contract_metaContract` reads a shared claims registry that gets clobbered when backend test classes interleave). swift-test's implicit scheduling matches historical behavior — keep it.
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 
