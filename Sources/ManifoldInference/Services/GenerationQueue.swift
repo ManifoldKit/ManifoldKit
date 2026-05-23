@@ -109,6 +109,12 @@ final class GenerationQueue {
     /// default) leaves multi-agent behaviour off entirely.
     var handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
 
+    /// Pre-tool-use hook installed by the runtime. Receives the in-flight
+    /// request's `sessionID` so adapters can route to per-session hook
+    /// registries. The dispatch loop calls this before each tool call;
+    /// `nil` preserves the legacy single-host surface.
+    var preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
+
     // MARK: - Test Seam
 
     /// Test-only hook invoked alongside `Log.inference.warning` when
@@ -678,6 +684,14 @@ final class GenerationQueue {
 
     /// Drives the backend through an entire tool-dispatch loop for one queued request.
     private func runToolDispatchLoop(request: QueuedRequest) async throws {
+        // Bind the per-request hook closures explicitly so the type checker
+        // doesn't have to infer them inside the giant init expression below.
+        let boundPreToolUseHook: PreToolUseHook? = preToolUseHook.map { hook in
+            let sessionID = request.sessionID
+            return { @Sendable toolName, arguments, _ in
+                await hook(toolName, arguments, sessionID)
+            }
+        }
         let loop = GenerationToolDispatchLoop(
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate,
@@ -705,7 +719,8 @@ final class GenerationQueue {
                 { [sessionID = request.sessionID] call in
                     detector(sessionID, call)
                 }
-            }
+            },
+            preToolUseHook: boundPreToolUseHook
         )
 
         try await loop.run(

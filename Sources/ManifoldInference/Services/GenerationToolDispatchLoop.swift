@@ -21,6 +21,13 @@ struct GenerationToolDispatchLoop {
     /// for this call; returning `.regular(_)` (or being unset) falls
     /// through to the normal dispatch path.
     let handoffDetector: ((ToolCall) -> HandoffDetectionResult)?
+    /// Optional pre-tool-use hook. When non-nil the dispatch loop invokes
+    /// this closure BEFORE dispatching each tool call. The hook may
+    /// sanitize the call's arguments (returned via ``PreToolUseOutcome/proceed(arguments:)``)
+    /// or block the dispatch entirely (``PreToolUseOutcome/block(reason:)``).
+    /// Wired from the runtime via ``InferenceService/setPreToolUseHook(_:)``;
+    /// `nil` (the default) preserves the legacy direct-dispatch shape.
+    let preToolUseHook: PreToolUseHook?
 
     init(
         toolRegistry: ToolRegistry?,
@@ -29,7 +36,8 @@ struct GenerationToolDispatchLoop {
         generateWithConfig: @escaping ([StructuredMessage], String?, GenerationConfig) throws -> GenerationStream,
         yieldEvent: @escaping (GenerationEvent) -> Void,
         pauseWhileThermalCritical: @escaping (GenerationRequestToken) async -> Void,
-        handoffDetector: ((ToolCall) -> HandoffDetectionResult)? = nil
+        handoffDetector: ((ToolCall) -> HandoffDetectionResult)? = nil,
+        preToolUseHook: PreToolUseHook? = nil
     ) {
         self.toolRegistry = toolRegistry
         self.toolApprovalGate = toolApprovalGate
@@ -38,6 +46,7 @@ struct GenerationToolDispatchLoop {
         self.yieldEvent = yieldEvent
         self.pauseWhileThermalCritical = pauseWhileThermalCritical
         self.handoffDetector = handoffDetector
+        self.preToolUseHook = preToolUseHook
     }
 
     /// Drives the backend through an entire tool-dispatch loop for one queued request.
@@ -121,6 +130,33 @@ struct GenerationToolDispatchLoop {
                     }
                     yieldEvent(.toolCall(call))
 
+                    // Pre-tool-use hook: give the host a synchronous chance
+                    // to sanitize the JSON arguments or block the call. A
+                    // block synthesises a typed permissionDenied result fed
+                    // back to the model so the dispatch loop keeps turning.
+                    var effectiveCall = call
+                    if let preToolUseHook {
+                        let outcome = await preToolUseHook(call.toolName, call.arguments, nil)
+                        switch outcome {
+                        case .block(let reason):
+                            let denied = ToolResult(
+                                callId: call.id,
+                                content: "Tool call blocked by pre-tool-use hook: \(reason ?? "no reason given")",
+                                errorKind: .permissionDenied
+                            )
+                            yieldEvent(.toolResult(denied))
+                            continue
+                        case .proceed(let sanitized):
+                            if sanitized != call.arguments {
+                                effectiveCall = ToolCall(
+                                    id: call.id,
+                                    toolName: call.toolName,
+                                    arguments: sanitized
+                                )
+                            }
+                        }
+                    }
+
                     let dispatchAttempt = 1
                     let dispatchStart = DispatchTime.now()
                     yieldEvent(.toolDispatchStarted(callId: call.id, name: call.toolName, attempt: dispatchAttempt))
@@ -137,15 +173,15 @@ struct GenerationToolDispatchLoop {
                     )
 
                     let result = await dispatchResult(
-                        for: call,
+                        for: effectiveCall,
                         lastCallSignature: lastCallSignature,
                         dispatchedInThisTurn: dispatchedInThisTurn,
                         toolResultByteTotal: toolResultByteTotal
                     )
 
                     toolResultByteTotal += result.content.utf8.count
-                    lastCallSignature = (toolName: call.toolName, arguments: call.arguments)
-                    dispatchedInThisTurn.append((call, result))
+                    lastCallSignature = (toolName: effectiveCall.toolName, arguments: effectiveCall.arguments)
+                    dispatchedInThisTurn.append((effectiveCall, result))
 
                     yieldEvent(.toolResult(result))
 
