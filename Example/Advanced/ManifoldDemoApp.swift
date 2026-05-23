@@ -9,6 +9,9 @@ import ManifoldTools
 #if canImport(ManifoldHuggingFace)
 import ManifoldHuggingFace
 #endif
+#if canImport(AppIntents)
+import ManifoldAppIntents
+#endif
 
 @main
 struct ManifoldDemoApp: App {
@@ -410,6 +413,19 @@ struct ManifoldDemoApp: App {
 
         self.chatViewModel = vm
         self.runtime = runtime
+
+        // Wire AskManifoldIntent so Siri / Shortcuts can route prompts
+        // through the demo's inference service. The handler is a plain actor
+        // adapter — no SwiftData or session dependency needed.
+        #if canImport(AppIntents)
+        if #available(iOS 18, macOS 15, *) {
+            Task {
+                await ManifoldIntentConfiguration.shared.configure(
+                    handler: RuntimeHandler(inferenceService: inferenceService)
+                )
+            }
+        }
+        #endif
     }
 
     /// Converts a ``PendingSharePayload`` (pure Foundation, extension-safe)
