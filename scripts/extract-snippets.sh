@@ -76,12 +76,13 @@ done
 INPUTS=(
     "README.md"
     "docs/QUICKSTART.md"
+    "docs/QUICKSTART-CLI.md"
 )
 
 mkdir -p "$OUT_DIR"
 # Clean any prior run so a deleted snippet doesn't linger as a stale file.
-rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift \
-      "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip 2>/dev/null || true
+rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickstart-cli-*.swift \
+      "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip 2>/dev/null || true
 
 total=0
 total_skipped=0
@@ -189,6 +190,13 @@ extract_one() {
                         .package\(* | .target\(* )
                             skip_reason="package-manifest-fragment"
                             ;;
+                        "import PackageDescription"* )
+                            # Full Package.swift snippet — recognisable by the
+                            # leading PackageDescription import. These cannot
+                            # compile as executable target sources; treat them
+                            # the same as the smaller .package(...) fragments.
+                            skip_reason="package-manifest-fragment"
+                            ;;
                     esac
                 fi
 
@@ -226,11 +234,12 @@ extract_one() {
 
 extract_one "README.md" "readme"
 extract_one "docs/QUICKSTART.md" "quickstart"
+extract_one "docs/QUICKSTART-CLI.md" "quickstart-cli"
 
 echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(s) into ${OUT_DIR}"
 
 if [[ $total -eq 0 ]]; then
-    echo "::error::No Swift snippets extracted from README.md or docs/QUICKSTART.md." >&2
+    echo "::error::No Swift snippets extracted from README.md, docs/QUICKSTART.md, or docs/QUICKSTART-CLI.md." >&2
     echo "If the docs intentionally dropped all code blocks, remove this gate." >&2
     exit 2
 fi

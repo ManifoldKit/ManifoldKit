@@ -290,6 +290,7 @@ check_no_build_in() {
 
 check_no_build_in "README.md"
 check_no_build_in "docs/QUICKSTART.md"
+check_no_build_in "docs/QUICKSTART-CLI.md"
 
 if [[ ${bad_no_build} -gt 0 ]]; then
     failures=$((failures + 1))

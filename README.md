@@ -41,6 +41,7 @@ struct MyChatApp: App {
 ```
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection, traits, and configuration.
+Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
 Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample).
 
 ## Feature Matrix
