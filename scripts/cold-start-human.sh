@@ -204,8 +204,25 @@ SWIFT_ENV=(
     GIT_CONFIG_VALUE_0=all
 )
 
+# Optional persistent build cache. When MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR is
+# set we redirect SwiftPM's build path to that directory so a CI cache step can
+# warm-restore it across runs. The tmpdir-based consumer's *Package.swift* and
+# the snippet itself live in ${WORK} and are recreated each run, but the
+# resolved dep checkouts + compiled object files keyed under .build/arm64-apple-
+# macosx survive the next invocation. We accept that SwiftPM path-fingerprints
+# make the consumer-target object cache invalid (snippet path changes each run
+# under mktemp), but the dependency graph's checkouts and prebuilt artifacts
+# (notably the llama.cpp xcframework) still warm-restore — see PR body for the
+# measurement of where the win lands.
+BUILD_PATH_FLAG=()
+if [[ -n "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR:-}" ]]; then
+    mkdir -p "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"
+    BUILD_PATH_FLAG=(--build-path "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}")
+    echo "    Using persistent build cache: ${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"
+fi
+
 echo "==> swift build (Hello World snippet from README)"
-if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" 2>&1 | tail -60; then
+if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" "${BUILD_PATH_FLAG[@]}" 2>&1 | tail -60; then
     echo "::error file=README.md,line=${first_h2_line}::The Hello World snippet does not compile against the current ManifoldKit public API."
     echo "    Either the snippet drifted (e.g. deleted symbol, renamed type) or"
     echo "    a public symbol it relies on was removed without updating the README."
@@ -214,8 +231,13 @@ if ! env "${SWIFT_ENV[@]}" swift build --package-path "${WORK}" 2>&1 | tail -60;
 fi
 
 # Sanity: confirm SwiftPM actually built the target's object file.
-# Empty/skipped builds can exit 0 if no sources matched.
-if ! find "${WORK}/.build" -name 'HelloWorld.swift.o' -print -quit 2>/dev/null | grep -q .; then
+# Empty/skipped builds can exit 0 if no sources matched. Search the configured
+# build root: either the in-${WORK} default or the persistent cache dir.
+BUILD_SEARCH_ROOT="${WORK}/.build"
+if [[ -n "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR:-}" ]]; then
+    BUILD_SEARCH_ROOT="${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"
+fi
+if ! find "${BUILD_SEARCH_ROOT}" -name 'HelloWorld.swift.o' -print -quit 2>/dev/null | grep -q .; then
     echo "::error::swift build exited 0 but did not produce HelloWorld.swift.o — check target wiring."
     exit 1
 fi

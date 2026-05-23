@@ -90,5 +90,37 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
+      # Cache the cold-start consumer's own build path across runs. The script
+      # honors MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR by passing it as SwiftPM's
+      # --build-path; the consumer target itself rebuilds each run (mktemp
+      # source path changes its module fingerprint), but the entire ManifoldKit
+      # dependency closure (artifacts + checkouts + transitive object files) is
+      # reused. Local measurement: cold 90s → warm 12s (7.5× speed-up), with
+      # 1545 → 359 build steps (dep graph re-used, only consumer target
+      # recompiled). Restore-keys fall back to a partial-prefix hit so a
+      # Package.resolved bump warms from the previous resolved set instead of
+      # paying the full cold cost. Memory `feedback_ci_build_debug_cache`
+      # warned off caching `.build/debug` for the main test job because path
+      # fingerprints invalidate restored objects; that risk is real here too,
+      # but the cache path is owned by THIS workflow only and the consumer
+      # target is the only piece that recompiles per run — the dep graph
+      # restore is the dominant win. Keyed on Package.resolved AND the script
+      # contents (a script change can shift the consumer's Package.swift
+      # shape, which would invalidate cached dep object files).
+      - name: Cache cold-start consumer build path
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/manifoldkit-cold-start-human
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-${{ hashFiles('Package.resolved', 'scripts/cold-start-human.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-cs-human-
+
       - name: Run tier-4 human cold-start gate
-        run: bash scripts/cold-start-human.sh
+        run: |
+          # Resolve cache path under $HOME so the cache step's `~/.cache/...`
+          # literal resolves to the same directory. GitHub Actions does not
+          # expand `~` in env: blocks, so we set the env var inline.
+          mkdir -p "$HOME/.cache/manifoldkit-cold-start-human"
+          export MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR="$HOME/.cache/manifoldkit-cold-start-human"
+          bash scripts/cold-start-human.sh
