@@ -1287,16 +1287,18 @@ final class GenerationQueueTests: XCTestCase {
     // MARK: - Provider teardown safety
 
     /// Deallocating the provider mid-stream must not crash the coordinator.
-    /// The `weak var provider` goes nil and in-flight generation ends cleanly.
+    /// The `bind(to:)` captures are `[weak self]` so once the strong ref
+    /// drops, `currentBackend` resolves to nil and in-flight generation
+    /// ends cleanly.
     func test_providerTeardown_midStream_noCrash_cleanEnd() async throws {
         let slow = SlowMockBackend(tokenCount: 20, delayMilliseconds: 20)
         var slowProvider: SlowFakeProvider? = SlowFakeProvider(backend: slow)
         let coord = GenerationQueue()
-        slowProvider.bind(to: coord)
+        slowProvider!.bind(to: coord)
 
         let (_, stream) = try coord.enqueue(messages: [("user", "x")], priority: .normal)
 
-        // Consume a token, then release our strong ref so the weak var goes nil.
+        // Consume a token, then release our strong ref so the weak captures go nil.
         var iter = stream.events.makeAsyncIterator()
         _ = try await iter.next()
         slowProvider = nil
@@ -1311,7 +1313,7 @@ final class GenerationQueueTests: XCTestCase {
         // The coordinator must be in a stable state: no crash, no active
         // generation.
         XCTAssertFalse(coord.isGenerating)
-        XCTAssertNil(coord.provider as? SlowFakeProvider)
+        XCTAssertNil(coord.currentBackend)
     }
 }
 
