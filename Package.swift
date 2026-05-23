@@ -59,10 +59,11 @@ let package = Package(
         .library(name: "ManifoldTools", targets: ["ManifoldTools"]),
         .executable(name: "manifold-tools", targets: ["manifold-tools"]),
         .library(name: "ManifoldAppIntents", targets: ["ManifoldAppIntents"]),
+        .library(name: "ManifoldSkills", targets: ["ManifoldSkills"]),
         .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
     ],
     traits: [
-        .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
+        .default(enabledTraits: ["MLX", "Llama", "HuggingFace", "Skills"]),
         .trait(name: "MLX", description: "Enable the MLX inference backend (requires Apple Silicon)"),
         .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
         .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
@@ -76,6 +77,7 @@ let package = Package(
         .trait(name: "AppIntents", description: "Enable the ManifoldAppIntents AppIntent ↔ ToolDefinition bridge."),
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
+        .trait(name: "Skills", description: "Enable the ManifoldSkills module (Claude-Code-compatible SKILL.md discovery + invoke_skill dispatcher). Default-on; macOS-only filesystem scan in v1."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
@@ -207,6 +209,20 @@ let package = Package(
                 .target(name: "ManifoldInference"),
             ],
             path: "Sources/ManifoldRuntime"
+        ),
+        // ManifoldSkills: Claude-Code-compatible SKILL.md filesystem discovery
+        // and `invoke_skill` dispatcher. Library target is unconditional
+        // (the body is platform-gated with `#if os(macOS)`); consumer edges
+        // are trait-gated per `feedback_trait_gating_internal_edges` —
+        // wrapping a library-to-library edge in `.when(traits: ["Skills"])`
+        // while sources still import unconditionally is the broken shape.
+        .target(
+            name: "ManifoldSkills",
+            dependencies: [
+                "ManifoldInference",
+                "ManifoldRuntime",
+            ],
+            path: "Sources/ManifoldSkills"
         ),
         // PersistenceSwiftData: SwiftData schema (@Model types), container factory,
         // SwiftData adapter implementations, and the full-stack bootstrap class.
@@ -459,8 +475,12 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldBackends",
                 "ManifoldUI",
+                .target(name: "ManifoldSkills", condition: .when(traits: ["Skills"])),
             ],
-            path: "Sources/ManifoldKit"
+            path: "Sources/ManifoldKit",
+            swiftSettings: [
+                .define("Skills", .when(traits: ["Skills"])),
+            ]
         ),
         // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
         .target(
@@ -532,6 +552,21 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 "ManifoldContractTestSupport",
+            ]
+        ),
+        // ManifoldSkills tests — consumer edge to ManifoldSkills is trait-gated
+        // (per `feedback_trait_gating_internal_edges`) so default-traits-off
+        // CI lanes don't try to build the module against the empty no-op body.
+        .testTarget(
+            name: "ManifoldSkillsTests",
+            dependencies: [
+                .target(name: "ManifoldSkills", condition: .when(traits: ["Skills"])),
+                "ManifoldInference",
+                "ManifoldRuntime",
+                "ManifoldContractTestSupport",
+            ],
+            swiftSettings: [
+                .define("Skills", .when(traits: ["Skills"])),
             ]
         ),
         // ManifoldPersistenceSwiftData-only tests: SwiftData @Model schema,
