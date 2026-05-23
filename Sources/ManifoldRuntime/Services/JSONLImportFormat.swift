@@ -135,7 +135,11 @@ public struct JSONLImportFormat: ConversationImportFormat {
         if let firstLine = rawLines.first {
             if let lineData = firstLine.data(using: .utf8),
                let firstObject = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-               firstObject["sessionID"] != nil {
+               // Discriminate envelope from message: message lines always have
+               // both "role" and "content". If both are absent and a title-like
+               // key is present it's a session envelope, not a message.
+               (firstObject["sessionID"] != nil ||
+                (firstObject["role"] == nil && firstObject["content"] == nil && firstObject["title"] != nil)) {
                 // This looks like a session envelope — parse it and advance past it.
                 lineIndex = 1
 
