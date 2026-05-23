@@ -42,6 +42,8 @@ Use `scripts/test.sh` — it runs configured suites and prints an honest summary
 
 For trait conventions, suite layout, classification (Unit / Integration / E2E), and the per-backend conformance walkthrough, see [`Tests/README.md`](Tests/README.md). It is the canonical entry point for "how do I add a backend / test / suite?".
 
+Four cross-cutting QA practices live outside the unit/integration/E2E pyramid — DX walkthroughs, audit tests, the audit sabotage suite, and cold-start conformance gates. See [`docs/QA-PRACTICES.md`](docs/QA-PRACTICES.md) for what each one catches, how to run it, and how to extend it.
+
 - Use `XCTestCase` for new tests; match `@Suite`/`@Test` in files that already use Swift Testing.
 - A test that hits SwiftData is an integration test — name and place it accordingly.
 - Do not mock the persistence layer. Use in-memory SwiftData stores.

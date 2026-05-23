@@ -272,6 +272,10 @@ scripts/test-mlx-integration.sh  # wires discovery env vars into .xctestrun
 For standalone targeting via Xcode scheme, set `MLX_VLM` in the manifest and
 run the `ManifoldE2ETests` scheme with the `MLX` trait enabled.
 
+### Cross-cutting QA practices
+
+Beyond the unit/integration/E2E pyramid below, ManifoldKit ships four cross-cutting QA practices: **DX walkthroughs** ([`scripts/dx-walkthrough/`](../scripts/dx-walkthrough/README.md)), **audit tests** (19 files matching `Tests/*/*AuditTest*.swift`), an **audit sabotage suite** ([`Tests/ManifoldAuditSabotageSuiteTests/`](ManifoldAuditSabotageSuiteTests/AuditSabotageSuiteTests.swift)), and **cold-start conformance gates** (described below). For the discovery doc — what each catches, why it exists, how to run, how to extend — see [`docs/QA-PRACTICES.md`](../docs/QA-PRACTICES.md).
+
 ### Cold-start conformance gates
 
 Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this repo via `.package(path:, name: "ManifoldKit", ...)`, and exercise the public surface from outside — catching breakage that in-tree tests miss because the in-tree compiler sees internals the fresh consumer cannot. Each gate's CI job in `.github/workflows/ci.yml` lists its own script path under `paths:` so edits to the gate re-trigger the gate (see `feedback_ci_path_filter_self_validation`).
