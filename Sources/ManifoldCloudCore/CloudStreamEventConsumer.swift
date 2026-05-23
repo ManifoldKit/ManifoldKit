@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 
@@ -34,4 +33,3 @@ public protocol CloudStreamEventConsumer: AnyObject, Sendable {
     /// emissions when the consumer is being dropped mid-stream.
     func finish(cancelled: Bool) -> [GenerationEvent]
 }
-#endif

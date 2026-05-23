@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 
@@ -90,4 +89,3 @@ public struct CloudAdapterRouting: Sendable {
         self.streamConsumerFactory = streamConsumerFactory
     }
 }
-#endif

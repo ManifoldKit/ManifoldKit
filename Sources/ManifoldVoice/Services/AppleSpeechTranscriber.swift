@@ -6,7 +6,7 @@ import Foundation
 public final class AppleSpeechTranscriber: NSObject, SpeechTranscribing {
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine: AVAudioEngine
-    private let audioSessionCoordinator: any VoiceAudioSessionCoordinating
+    private let audioSessionCoordinator: VoiceAudioSessionCoordinator
 
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -16,18 +16,18 @@ public final class AppleSpeechTranscriber: NSObject, SpeechTranscribing {
         self.init(
             locale: locale,
             audioEngine: AVAudioEngine(),
-            audioSessionCoordinator: DefaultVoiceAudioSessionCoordinator()
+            audioSessionCoordinator: VoiceAudioSessionCoordinator()
         )
     }
 
     init(
         locale: Locale,
         audioEngine: AVAudioEngine = AVAudioEngine(),
-        audioSessionCoordinator: (any VoiceAudioSessionCoordinating)? = nil
+        audioSessionCoordinator: VoiceAudioSessionCoordinator = VoiceAudioSessionCoordinator()
     ) {
         self.recognizer = SFSpeechRecognizer(locale: locale)
         self.audioEngine = audioEngine
-        self.audioSessionCoordinator = audioSessionCoordinator ?? DefaultVoiceAudioSessionCoordinator()
+        self.audioSessionCoordinator = audioSessionCoordinator
         super.init()
     }
 

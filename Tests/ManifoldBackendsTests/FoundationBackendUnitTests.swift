@@ -10,14 +10,10 @@ import ManifoldInference
 
 // MARK: - Test doubles
 
-/// Stub availability provider that always reports the configured availability.
-/// Injected into `FoundationBackend` to drive unavailable / available branches
-/// in unit tests without requiring a real Apple Intelligence entitlement.
-@available(iOS 26, macOS 26, *)
-private struct StubAvailabilityProvider: FoundationModelAvailabilityProvider {
-    let stubbedAvailability: SystemLanguageModel.Availability
-    var availability: SystemLanguageModel.Availability { stubbedAvailability }
-}
+// Note: the previous `StubAvailabilityProvider` protocol-shaped seam was
+// inlined as a `@Sendable () -> SystemLanguageModel.Availability` closure on
+// `FoundationBackend.init(availabilityResolver:)`. Tests now pass a closure
+// directly — see `test_loadModel_whenUnavailable_throwsInferenceFailure`.
 
 /// Isolated unit tests for `FoundationBackend` state management and guard paths.
 ///
@@ -611,10 +607,9 @@ final class FoundationBackendUnitTests: XCTestCase {
         // Build a backend that is wired to report "unavailable" regardless of the
         // real system state. The stub covers every non-.available reason without
         // needing to enumerate them individually.
-        let stub = StubAvailabilityProvider(
-            stubbedAvailability: .unavailable(.appleIntelligenceNotEnabled)
+        let unavailableBackend = FoundationBackend(
+            availabilityResolver: { .unavailable(.appleIntelligenceNotEnabled) }
         )
-        let unavailableBackend = FoundationBackend(availabilityProvider: stub)
 
         let url = URL(fileURLWithPath: "/dev/null")
         do {

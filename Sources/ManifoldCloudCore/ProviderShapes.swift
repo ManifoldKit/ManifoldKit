@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 
 // MARK: - Tool-Call Shape
@@ -202,4 +201,3 @@ public struct DefaultErrorBodyDecoder: ErrorBodyDecoder {
         parseCloudErrorMessage(from: body)
     }
 }
-#endif

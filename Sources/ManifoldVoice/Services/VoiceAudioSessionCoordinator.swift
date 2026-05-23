@@ -1,15 +1,7 @@
 @preconcurrency import AVFoundation
 
-protocol VoiceAudioSessionCoordinating: AnyObject {
-    @MainActor
-    func activateRecording() throws
-
-    @MainActor
-    func deactivateRecording()
-}
-
 @MainActor
-final class DefaultVoiceAudioSessionCoordinator: VoiceAudioSessionCoordinating {
+final class VoiceAudioSessionCoordinator {
     func activateRecording() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()

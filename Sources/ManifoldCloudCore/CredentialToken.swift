@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 
 /// Opaque wrapper for cloud-provider API keys that suppresses accidental
@@ -44,4 +43,3 @@ public struct CredentialToken: Sendable, CustomStringConvertible, CustomDebugStr
     public var description: String { "<redacted>" }
     public var debugDescription: String { "<redacted>" }
 }
-#endif
