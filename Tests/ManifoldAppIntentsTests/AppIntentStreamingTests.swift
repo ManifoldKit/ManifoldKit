@@ -94,6 +94,105 @@ struct NilFractionIntent: ProgressReportingAppIntent, Decodable {
     }
 }
 
+/// Streaming + AppEntity: re-uses `Book` / `BookQuery` / `InMemoryBookResolver`
+/// from `AppEntityParameterTests.swift`. The intent declares the entity via
+/// `@Parameter` and reads it back through `decoder.resolvedAppEntity`, which is
+/// only populated when the executor runs entity resolution + userInfo wiring
+/// — exactly what the streaming path was missing before this PR.
+///
+/// Conforms to `ProgressReportingAppIntent` so dispatch routes through the
+/// `runStreaming` inner loop (the non-progress branch falls back to the
+/// default wrapper which calls `execute(arguments:)` and would mask the
+/// streaming-path regression we're trying to lock in).
+@available(iOS 26, macOS 26, *)
+struct StreamingDescribeBookIntent: ProgressReportingAppIntent, Decodable {
+    static let title: LocalizedStringResource = "Streaming Describe Book"
+
+    @Parameter(title: "Book")
+    var book: Book
+
+    init() { self.book = Book(id: "", title: "") }
+
+    init(from decoder: Decoder) throws {
+        self.init()
+        if let resolved: Book = decoder.resolvedAppEntity("book") {
+            self.book = resolved
+        } else {
+            throw DecodingError.valueNotFound(
+                Book.self,
+                .init(codingPath: [], debugDescription: "missing resolved book")
+            )
+        }
+    }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        .result(value: "Streamed: \(book.title)")
+    }
+}
+
+/// Streaming + ProvidesDialog (compound) — distinct dialog and value text so
+/// the two channels can be asserted independently.
+///
+/// Conforms to `ProgressReportingAppIntent` so dispatch routes through
+/// `runStreaming` rather than the non-progress fallback wrapper.
+@available(iOS 26, macOS 26, *)
+struct StreamingCompoundDialogIntent: ProgressReportingAppIntent, Decodable {
+    static let title: LocalizedStringResource = "Streaming Compound Dialog"
+
+    @Parameter(title: "Topic")
+    var topic: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.topic = try c.decode(String.self, forKey: .topic)
+    }
+
+    private enum CodingKeys: String, CodingKey { case topic }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+        .result(
+            value: "structured-\(topic)",
+            dialog: IntentDialog(stringLiteral: "Spoken-\(topic)")
+        )
+    }
+}
+
+/// Streaming + AppEntity + progress reporting in the same intent. Emits one
+/// progress event before returning so the test can assert both the entity
+/// resolves AND progress still flows through `executeStreaming`'s
+/// reporter-drain sibling task.
+@available(iOS 26, macOS 26, *)
+struct StreamingEntityProgressIntent: ProgressReportingAppIntent, Decodable {
+    static let title: LocalizedStringResource = "Streaming Entity Progress"
+
+    @Parameter(title: "Book")
+    var book: Book
+
+    init() { self.book = Book(id: "", title: "") }
+
+    init(from decoder: Decoder) throws {
+        self.init()
+        if let resolved: Book = decoder.resolvedAppEntity("book") {
+            self.book = resolved
+        } else {
+            throw DecodingError.valueNotFound(
+                Book.self,
+                .init(codingPath: [], debugDescription: "missing resolved book")
+            )
+        }
+    }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        if let reporter = IntentProgressReporter.current {
+            await reporter.report(message: "describing \(book.title)", fraction: 0.5)
+        }
+        return .result(value: "Done: \(book.title)")
+    }
+}
+
 /// Slow-cancellation intent — sleeps long enough that the outer task can
 /// cancel mid-flight; `perform()` checks cancellation between sleeps.
 @available(iOS 26, macOS 26, *)
@@ -286,6 +385,135 @@ final class AppIntentStreamingTests: XCTestCase {
         }
         XCTAssertEqual(message, "indeterminate indet")
         XCTAssertNil(fraction, "nil fraction must round-trip as nil, not 0.0")
+    }
+
+    // MARK: streaming feature-parity with single-shot path
+
+    /// Regression: PR #1383 added entity resolution + userInfo wiring to the
+    /// single-shot `execute(arguments:)` path; the streaming inner loop
+    /// (`runStreaming`) was not updated and threw a decode error for any
+    /// AppEntity parameter. The shared `decodeIntent` helper introduced in
+    /// this PR closes that drift — both paths now go through the same
+    /// resolve-then-decode sequence.
+    func testStreamingResolvesAppEntityParameter() async throws {
+        let executor = AppIntentToolExecutor(
+            StreamingDescribeBookIntent.self,
+            approvalPolicy: .readOnlyAutoApprove,
+            entityResolver: InMemoryBookResolver()
+        )
+        let args = JSONSchemaValue.object([
+            "book": .object(["id": .string("b1")]),
+        ])
+
+        var events: [ToolExecutionEvent] = []
+        for try await event in executor.executeStreaming(arguments: args) {
+            events.append(event)
+        }
+
+        guard let last = events.last, case .completed(let result) = last else {
+            return XCTFail("terminal event must be .completed, got \(events)")
+        }
+        XCTAssertNil(
+            result.errorKind,
+            "streaming + AppEntity must resolve cleanly; got \(String(describing: result.errorKind)): \(result.content)"
+        )
+        XCTAssertTrue(
+            result.content.contains("Dune"),
+            "result body must include the resolved title; got \(result.content)"
+        )
+    }
+
+    /// Regression: PR #1385 wired `ToolResult.dialog` into the single-shot
+    /// path; the streaming inner loop dropped it on the floor by calling
+    /// `ToolResult(callId:content:errorKind:)` without the `dialog:` argument.
+    /// The shared `makeToolResult` helper now powers both paths.
+    ///
+    /// Note on sabotage-verification: on the iOS 26 / macOS 26 SDK
+    /// `extractDialog` returns nil for `IntentDialog` (private storage —
+    /// see `testPureDialogIntentExtractionFallsThroughOnPublicAPI`), so the
+    /// streaming-pre-fix and post-fix observable dialog values are both nil
+    /// here. This test is a forward-looking equivalence guard: when Apple
+    /// promotes `IntentDialog` rendering to a public surface (or hosts use
+    /// a Mirror-discoverable dialog), any streaming/single-shot drift will
+    /// trip the equality assertion below.
+    func testStreamingPopulatesDialogForProvidesDialogIntent() async throws {
+        let executor = AppIntentToolExecutor(
+            StreamingCompoundDialogIntent.self,
+            approvalPolicy: .readOnlyAutoApprove
+        )
+        let args = JSONSchemaValue.object(["topic": .string("Mars")])
+
+        var events: [ToolExecutionEvent] = []
+        for try await event in executor.executeStreaming(arguments: args) {
+            events.append(event)
+        }
+
+        guard let last = events.last, case .completed(let result) = last else {
+            return XCTFail("terminal event must be .completed, got \(events)")
+        }
+        XCTAssertNil(result.errorKind)
+        // Dialog extraction on iOS 26 / macOS 26 may yield nil (the dialog
+        // storage is private framework chrome — see PR #1385); the contract
+        // we actually want to lock in is "streaming uses the same
+        // `extractDialog`-aware code path as `execute`". The single-shot
+        // path for the same fixture is documented as nil-on-current-SDKs in
+        // `AppIntentToolExecutorTests.testCompoundDialogIntent`, so we
+        // assert the SAME outcome here — proving the streaming branch is
+        // not silently dropping a dialog the single-shot path would carry.
+        let singleShot = try await executor.execute(arguments: args)
+        XCTAssertEqual(
+            result.dialog,
+            singleShot.dialog,
+            "streaming dialog must match single-shot dialog; streaming=\(String(describing: result.dialog)), singleShot=\(String(describing: singleShot.dialog))"
+        )
+        // Content must carry the structured value, not the dialog (compound
+        // result — `shouldMirrorDialogIntoContent` returns false because the
+        // `ReturnsValue` payload is present).
+        XCTAssertTrue(
+            result.content.contains("structured-Mars"),
+            "compound result must surface the structured value in content; got \(result.content)"
+        )
+    }
+
+    /// Regression: combines #1383 (entity resolution) with #1384 (progress
+    /// reporter). If a future change reorders the entity-resolve /
+    /// progress-install sequence in `executeStreaming`, this test catches
+    /// the breakage: progress depends on `IntentProgressReporter.current`
+    /// being installed before `perform()`, and the entity depends on
+    /// `decoder.userInfo` being populated before `init(from:)` runs.
+    func testStreamingEntityAndProgressBothFlow() async throws {
+        let executor = AppIntentToolExecutor(
+            StreamingEntityProgressIntent.self,
+            approvalPolicy: .readOnlyAutoApprove,
+            entityResolver: InMemoryBookResolver()
+        )
+        let args = JSONSchemaValue.object([
+            "book": .object(["id": .string("b2")]),
+        ])
+
+        var events: [ToolExecutionEvent] = []
+        for try await event in executor.executeStreaming(arguments: args) {
+            events.append(event)
+        }
+
+        XCTAssertEqual(events.count, 2, "expected [.progress, .completed], got \(events)")
+        guard case .progress(let message, let fraction) = events[0] else {
+            return XCTFail("first event must be .progress, got \(events[0])")
+        }
+        XCTAssertEqual(message, "describing Foundation")
+        XCTAssertEqual(fraction, 0.5)
+
+        guard case .completed(let result) = events[1] else {
+            return XCTFail("terminal event must be .completed, got \(events[1])")
+        }
+        XCTAssertNil(
+            result.errorKind,
+            "entity must resolve AND progress must flow; got \(String(describing: result.errorKind)): \(result.content)"
+        )
+        XCTAssertTrue(
+            result.content.contains("Foundation"),
+            "result must reference the resolved entity title; got \(result.content)"
+        )
     }
 }
 

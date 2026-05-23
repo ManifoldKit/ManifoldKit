@@ -211,27 +211,10 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
 
             let intent: Intent
             do {
-                // Encode/decode symmetrically with ISO-8601 dates. The
-                // synthesised JSON Schema advertises `Date` as
-                // `{ "type": "string", "format": "date-time" }`, so models
-                // emit ISO-8601 strings — `JSONDecoder`'s default
-                // `secondsSince2001` strategy would reject every one of them.
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                // Hand the resolved entities to the host's `init(from:)` via
-                // userInfo — see ``CodingUserInfoKey/manifoldResolvedEntities``.
-                if !resolvedEntities.isEmpty {
-                    // `JSONDecoder.userInfo` values must be Sendable in
-                    // strict-concurrency builds; wrap the heterogeneous
-                    // entity map in a small Sendable box. Entities flow
-                    // synchronously into `init(from:)` on the same actor, so
-                    // `@unchecked Sendable` is safe in this scope.
-                    decoder.userInfo[.manifoldResolvedEntities] = ResolvedEntityBox(values: resolvedEntities)
-                }
-                let argsData = try encoder.encode(preparedArguments)
-                intent = try decoder.decode(Intent.self, from: argsData)
+                intent = try decodeIntent(
+                    from: preparedArguments,
+                    resolvedEntities: resolvedEntities
+                )
             } catch {
                 return ToolResult(
                     callId: "",
@@ -245,21 +228,7 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
             let result = try await intent.perform()
             try Task.checkCancellation()
 
-            let dialog = Self.extractDialog(result)
-            let structured = Self.serialise(result)
-            // For pure `ProvidesDialog` results without a `ReturnsValue`,
-            // `serialise(_:)` falls back to `String(describing:)` which
-            // typically contains the dialog text already, but the model
-            // still benefits from the explicit mirror — surface the dialog
-            // in `content` so the model has something useful to read, and
-            // keep `dialog` populated so the host UI can speak it verbatim.
-            let content: String
-            if let dialog, Self.shouldMirrorDialogIntoContent(result) {
-                content = dialog
-            } else {
-                content = structured
-            }
-            return ToolResult(callId: "", content: content, errorKind: nil, dialog: dialog)
+            return Self.makeToolResult(from: result)
         } catch is CancellationError {
             return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
         } catch {
@@ -531,14 +500,34 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
         do {
             try Task.checkCancellation()
 
+            // Mirror `execute(arguments:)` — pre-resolve entity parameters so
+            // streaming dispatch honours `@Parameter var book: Book`-style
+            // intents that arrive as `{ "id": ... }`. Without this the
+            // streaming path would throw a `JSONDecoder` error for any
+            // AppEntity parameter; see PR notes for the four-PR landing-wave
+            // drift that caused the regression.
+            let preparedArguments: JSONSchemaValue
+            let resolvedEntities: [String: Any]
+            do {
+                let (args, entities) = try await resolveEntityArguments(arguments)
+                preparedArguments = args
+                resolvedEntities = entities
+            } catch let error as EntityResolutionFailure {
+                return ToolResult(
+                    callId: "",
+                    content: error.message,
+                    errorKind: error.errorKind
+                )
+            }
+
+            try Task.checkCancellation()
+
             let intent: Intent
             do {
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let argsData = try encoder.encode(arguments)
-                intent = try decoder.decode(Intent.self, from: argsData)
+                intent = try decodeIntent(
+                    from: preparedArguments,
+                    resolvedEntities: resolvedEntities
+                )
             } catch {
                 return ToolResult(
                     callId: "",
@@ -552,8 +541,11 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
             let result = try await intent.perform()
             try Task.checkCancellation()
 
-            let content = Self.serialise(result)
-            return ToolResult(callId: "", content: content, errorKind: nil)
+            // Same dialog/structured branching as the single-shot path so
+            // `ProvidesDialog` intents see their dialog text on
+            // `ToolResult.dialog` and (for pure-dialog results) mirrored into
+            // `content`.
+            return Self.makeToolResult(from: result)
         } catch is CancellationError {
             return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
         } catch {
@@ -570,6 +562,64 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
                 errorKind: .permanent
             )
         }
+    }
+
+    // MARK: - Shared decode + result-assembly helpers
+
+    /// Encode the (entity-stripped) argument payload back to JSON, hand the
+    /// resolved entities to the decoder via `userInfo`, and decode into a
+    /// fresh `Intent`. Shared by ``execute(arguments:)`` and
+    /// ``runStreaming(arguments:)`` so the two dispatch paths can't drift on
+    /// date-strategy / userInfo wiring — the divergence between them was the
+    /// regression this PR closes.
+    private func decodeIntent(
+        from arguments: JSONSchemaValue,
+        resolvedEntities: [String: Any]
+    ) throws -> Intent {
+        // Encode/decode symmetrically with ISO-8601 dates. The synthesised
+        // JSON Schema advertises `Date` as
+        // `{ "type": "string", "format": "date-time" }`, so models emit
+        // ISO-8601 strings — `JSONDecoder`'s default `secondsSince2001`
+        // strategy would reject every one of them.
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        // Hand the resolved entities to the host's `init(from:)` via
+        // userInfo — see ``CodingUserInfoKey/manifoldResolvedEntities``.
+        if !resolvedEntities.isEmpty {
+            // `JSONDecoder.userInfo` values must be Sendable in
+            // strict-concurrency builds; wrap the heterogeneous entity map
+            // in a small Sendable box. Entities flow synchronously into
+            // `init(from:)` on the same actor, so `@unchecked Sendable` is
+            // safe in this scope.
+            decoder.userInfo[.manifoldResolvedEntities] = ResolvedEntityBox(values: resolvedEntities)
+        }
+        let argsData = try encoder.encode(arguments)
+        return try decoder.decode(Intent.self, from: argsData)
+    }
+
+    /// Assemble the terminal ``ToolResult`` for a successful `perform()`
+    /// outcome. Shared by single-shot and streaming dispatch so both paths
+    /// emit identical `content` / `dialog` shapes for `ProvidesDialog` and
+    /// `ReturnsValue` results.
+    ///
+    /// For pure `ProvidesDialog` results without a `ReturnsValue`,
+    /// ``serialise(_:)`` falls back to `String(describing:)` which typically
+    /// contains the dialog text already, but the model still benefits from
+    /// the explicit mirror — surface the dialog in `content` so the model
+    /// has something useful to read, and keep `dialog` populated so the host
+    /// UI can speak it verbatim.
+    static func makeToolResult(from result: some IntentResult) -> ToolResult {
+        let dialog = extractDialog(result)
+        let structured = serialise(result)
+        let content: String
+        if let dialog, shouldMirrorDialogIntoContent(result) {
+            content = dialog
+        } else {
+            content = structured
+        }
+        return ToolResult(callId: "", content: content, errorKind: nil, dialog: dialog)
     }
 
     // MARK: - Helpers
