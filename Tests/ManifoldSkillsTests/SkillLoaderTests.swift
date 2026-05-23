@@ -61,6 +61,42 @@ final class SkillLoaderTests: XCTestCase {
         #endif
     }
 
+    func test_discover_blockStyleAliases_roundTrip() throws {
+        // End-to-end smoke: a SKILL.md authored with idiomatic block-style
+        // `aliases:` must surface as a `Skill` with the expected aliases array.
+        // This guards the loader path that calls `SkillFrontmatterParser` and
+        // then collapses `.list(...)` into `Skill.aliases`.
+        #if !os(macOS)
+        throw XCTSkip("Discovery is macOS-only in v1")
+        #else
+        let root = try makeTempRoot()
+        let dir = root.appendingPathComponent("explain", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let frontmatter = """
+        ---
+        name: explain
+        description: Explain a snippet of code.
+        aliases:
+          - eli5
+          - simple
+        ---
+        BODY
+        """
+        try frontmatter.write(to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+
+        let loader = SkillLoader(searchPaths: [root])
+        let discovered = loader.discover()
+        XCTAssertEqual(discovered.count, 1)
+        XCTAssertEqual(discovered.first?.name, "explain")
+        XCTAssertEqual(discovered.first?.aliases, ["eli5", "simple"])
+        XCTAssertTrue(discovered.first?.promptTemplate.contains("BODY") ?? false)
+        // Sabotage-evidence: M1 change one of the `- ` to `* ` — block list
+        // ends empty and aliases assertion fails; M2 unindent both items —
+        // they become top-level non-key garbage and the file fails to parse;
+        // M3 rename `aliases:` → `alia:` — Skill.aliases falls back to [].
+        #endif
+    }
+
     func test_discover_lastWinsDedup_acrossPaths() throws {
         #if !os(macOS)
         throw XCTSkip("Discovery is macOS-only in v1")
