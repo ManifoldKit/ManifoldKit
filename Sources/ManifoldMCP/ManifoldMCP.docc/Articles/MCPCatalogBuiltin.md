@@ -25,7 +25,7 @@ Each descriptor includes:
 
 Treat these as templates: apps can clone and override hostnames, scopes, timeouts, and tool filters to match deployment policy.
 
-```swift
+```swift,no-build
 var github = MCPCatalog.github
 github = MCPServerDescriptor(
     id: github.id,

@@ -1,16 +1,28 @@
 #!/usr/bin/env bash
-# extract-snippets.sh — Extract fenced Swift code blocks from README.md and
-# docs/QUICKSTART.md into standalone .swift files for downstream compilation.
+# extract-snippets.sh — Extract fenced Swift code blocks from README.md,
+# docs/QUICKSTART*.md, and DocC catalogs into standalone .swift files for
+# downstream compilation.
 #
 # Wave D-C1 of the DX overhaul: the README's Hello World snippet is the
 # single most important piece of copy-paste correctness in the repo. This
 # script (plus its companion compile gate) makes "a future PR silently
 # breaks the snippet" a CI failure rather than a Slack apology.
 #
+# DocC coverage (added 2026-05-23 in response to A2-F8): in addition to the
+# README/QUICKSTART files, the script walks every `Sources/*/Documentation.docc/`
+# Markdown file (including nested `Articles/` and `Extensions/` directories).
+# DocC articles are documentation and are subject to the same compile-test
+# policy — A2-F8 was a broken `BuildingAChatUI.md` snippet that the
+# README/QUICKSTART-scoped gate could not see. Extracted DocC blocks use the
+# label `docc-<module>-<filename>-<NNN>` so test output is greppable per
+# article.
+#
 # What it does:
-#   - Walks README.md and docs/QUICKSTART.md.
+#   - Walks README.md, docs/QUICKSTART*.md, and every Markdown file inside
+#     a `.docc/` directory under `Sources/`.
 #   - Pulls out every fenced block tagged ```swift (case-insensitive).
-#   - Numbers them per-file (readme-001.swift, quickstart-001.swift, ...).
+#   - Numbers them per-file (readme-001.swift, quickstart-001.swift,
+#     docc-manifoldui-buildingachatui-001.swift, ...).
 #   - Writes each to --out <dir> (default /tmp/manifoldkit-snippets) with a
 #     `// Source: <relative-path>:<line>` header so failures point back to docs.
 #
@@ -81,8 +93,11 @@ INPUTS=(
 
 mkdir -p "$OUT_DIR"
 # Clean any prior run so a deleted snippet doesn't linger as a stale file.
+# Includes docc-* prefixes added in the 2026-05-23 DocC extension.
 rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickstart-cli-*.swift \
-      "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip 2>/dev/null || true
+      "$OUT_DIR"/docc-*.swift \
+      "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip \
+      "$OUT_DIR"/docc-*.skip 2>/dev/null || true
 
 total=0
 total_skipped=0
@@ -236,10 +251,36 @@ extract_one "README.md" "readme"
 extract_one "docs/QUICKSTART.md" "quickstart"
 extract_one "docs/QUICKSTART-CLI.md" "quickstart-cli"
 
+# DocC catalogs. Walk every Markdown file inside any Sources/*/Documentation.docc/
+# directory (including nested Articles/, Extensions/, etc.). Slug pattern is
+# `docc-<module>-<filename>` (both lowercased) so test output stays greppable
+# per-article. `find` is used for portability — BSD find on macOS supports
+# `-path` with shell globbing.
+docc_files=()
+while IFS= read -r path; do
+    [[ -n "$path" ]] && docc_files+=("$path")
+done < <(cd "$REPO_ROOT" && find Sources -type f -name '*.md' -path '*/*.docc/*' 2>/dev/null | LC_ALL=C sort)
+
+for docc_rel in "${docc_files[@]}"; do
+    # Derive module name from the .docc directory: Sources/<Module>/<Module>.docc/...
+    # Take everything up to ".docc" then strip the last path component to get the
+    # module name. Example:
+    #   Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md
+    #     module = ManifoldUI, file = BuildingAChatUI
+    module_path="${docc_rel%%.docc/*}"          # Sources/ManifoldUI/ManifoldUI
+    module_name="${module_path##*/}"            # ManifoldUI
+    file_base="$(basename "$docc_rel" .md)"     # BuildingAChatUI
+    # Lowercase for the slug (BSD tr).
+    module_lc=$(printf '%s' "$module_name" | tr '[:upper:]' '[:lower:]')
+    file_lc=$(printf '%s' "$file_base" | tr '[:upper:]' '[:lower:]')
+    slug="docc-${module_lc}-${file_lc}"
+    extract_one "$docc_rel" "$slug"
+done
+
 echo "Extracted ${total} Swift snippet(s) and skipped ${total_skipped} fragment(s) into ${OUT_DIR}"
 
 if [[ $total -eq 0 ]]; then
-    echo "::error::No Swift snippets extracted from README.md, docs/QUICKSTART.md, or docs/QUICKSTART-CLI.md." >&2
+    echo "::error::No Swift snippets extracted from README.md, docs/QUICKSTART*.md, or any DocC catalog." >&2
     echo "If the docs intentionally dropped all code blocks, remove this gate." >&2
     exit 2
 fi

@@ -31,7 +31,7 @@ dependency.
 Once your `AppIntent` adopts `Decodable`, registering it as a tool is a
 five-line affair:
 
-```swift
+```swift,no-build
 import ManifoldAppIntents
 import ManifoldInference
 
@@ -46,7 +46,7 @@ invoke it whenever the conversation calls for it.
 `AppIntentToolExecutor` requires per-call approval by default. For explicitly
 read-only intents, opt out deliberately:
 
-```swift
+```swift,no-build
 registry.register(
     AppIntentToolExecutor(
         AskManifoldDemoIntent.self,
@@ -61,7 +61,7 @@ AppIntents do not synthesise `Decodable` automatically because the
 `@Parameter` property wrappers shadow the storage. A four-line conformance
 keyed by the property names is enough:
 
-```swift
+```swift,no-build
 struct AskManifoldDemoIntent: AppIntent, Decodable {
     static let title: LocalizedStringResource = "Ask Manifold Demo"
     @Parameter(title: "Prompt") var prompt: String

@@ -4,7 +4,7 @@ Use ``MCPOAuthAuthorization`` when `MCPServerDescriptor.authorization` is `.oaut
 
 ## Wiring
 
-```swift
+```swift,no-build
 import ManifoldMCP
 
 let descriptor = MCPAuthorizationDescriptor.OAuthDescriptor(
@@ -25,7 +25,7 @@ let authorization = MCPOAuthAuthorization(
 
 Pass it to `connect`:
 
-```swift
+```swift,no-build
 let source = try await MCPClient().connect(serverDescriptor, authorization: authorization)
 ```
 

@@ -6,7 +6,7 @@ For a shortest-path setup, see <doc:MCPQuickStart>.
 
 ## 1) Create a descriptor
 
-```swift
+```swift,no-build
 import ManifoldMCP
 
 let descriptor = MCPServerDescriptor(
@@ -23,7 +23,7 @@ let descriptor = MCPServerDescriptor(
 
 ## 2) Connect the server
 
-```swift
+```swift,no-build
 let client = MCPClient()
 let source = try await client.connect(descriptor)
 ```
@@ -34,14 +34,14 @@ For deeper bridge behavior (refresh, approvals, error mapping), see <doc:MCPTool
 
 ## 3) Register tools into your registry
 
-```swift
+```swift,no-build
 let registry = ToolRegistry()
 await source.register(in: registry)
 ```
 
 When you disconnect, unregister the same source to keep tool visibility explicit:
 
-```swift
+```swift,no-build
 await source.unregister(from: registry)
 await client.disconnect(serverID: descriptor.id)
 ```

@@ -1,19 +1,21 @@
 name: README Snippets
 
-# Compiles every `swift`-fenced code block in README.md, docs/QUICKSTART.md,
-# and docs/QUICKSTART-CLI.md
+# Compiles every `swift`-fenced code block in README.md, docs/QUICKSTART*.md,
+# and every DocC catalog Markdown file under Sources/*/Documentation.docc/
 # against the current ManifoldKit package. Catches snippet drift the moment a
 # `feat:` PR renames a public type or removes an initializer that the docs
 # still copy-paste.
 #
-# Wave D-C1 of the DX overhaul. See:
+# Wave D-C1 of the DX overhaul. DocC coverage added 2026-05-23 (A2-F8):
+# broken `BuildingAChatUI.md` snippet shipped because the README-scoped gate
+# could not see DocC articles. See:
 #   - scripts/extract-snippets.sh        (block extraction + skip policy)
 #   - scripts/extract-snippets-test.sh   (per-snippet swift build scaffold)
 #
 # Discrete workflow (not folded into ci.yml) because the failure mode is
-# orthogonal: README copy-paste correctness has nothing to do with the
+# orthogonal: doc copy-paste correctness has nothing to do with the
 # library's own test suites. Failures on this workflow point the author at
-# the README/QUICKSTART block to fix, not at a Sources/ test target.
+# the README/QUICKSTART/DocC block to fix, not at a Sources/ test target.
 
 on:
   pull_request:
@@ -23,16 +25,21 @@ on:
       #   - The docs themselves (a new fence may need a no-build tag).
       #   - The umbrella module's public surface.
       #   - The Hello World's transitive surface (QuickStart, ManifoldUI types).
-      #   - The scripts the gate runs.
+      #   - DocC catalog Markdown — added 2026-05-23 (A2-F8).
+      #   - The scripts the gate runs (including check-readme.sh, which the
+      #     workflow's pre-flight step invokes — leaving the script off the
+      #     filter would mean an edit to the lint silently bypasses the gate).
       - "README.md"
       - "docs/QUICKSTART.md"
       - "docs/QUICKSTART-CLI.md"
+      - "Sources/**/*.docc/**/*.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"
       - "Sources/ManifoldInference/QuickStart*.swift"
       - "Sources/ManifoldInference/ManifoldKitError.swift"
       - "Package.swift"
       - "Package.resolved"
+      - "scripts/check-readme.sh"
       - "scripts/extract-snippets.sh"
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
@@ -42,12 +49,14 @@ on:
       - "README.md"
       - "docs/QUICKSTART.md"
       - "docs/QUICKSTART-CLI.md"
+      - "Sources/**/*.docc/**/*.md"
       - "Sources/ManifoldKit/**"
       - "Sources/ManifoldUI/**"
       - "Sources/ManifoldInference/QuickStart*.swift"
       - "Sources/ManifoldInference/ManifoldKitError.swift"
       - "Package.swift"
       - "Package.resolved"
+      - "scripts/check-readme.sh"
       - "scripts/extract-snippets.sh"
       - "scripts/extract-snippets-test.sh"
       - ".github/workflows/readme-snippets.yml"
@@ -93,5 +102,5 @@ jobs:
         # Cheap tripwire — fails fast if the Hello World fence vanished.
         run: scripts/check-readme.sh
 
-      - name: Compile README + QUICKSTART Swift snippets
+      - name: Compile README + QUICKSTART + DocC Swift snippets
         run: scripts/extract-snippets-test.sh

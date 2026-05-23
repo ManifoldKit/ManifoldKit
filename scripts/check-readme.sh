@@ -292,6 +292,15 @@ check_no_build_in "README.md"
 check_no_build_in "docs/QUICKSTART.md"
 check_no_build_in "docs/QUICKSTART-CLI.md"
 
+# DocC catalogs (added 2026-05-23, see A2-F8): DocC articles are documentation
+# and are subject to the same copy-paste-contract lint. Many articles use
+# headings like "## Quick Start" / "## Getting Started" that promise readers
+# a runnable snippet immediately below — a `swift,no-build` fence under one
+# of those headings hides drift indefinitely.
+while IFS= read -r docc_rel; do
+    [[ -n "$docc_rel" ]] && check_no_build_in "$docc_rel"
+done < <(cd "$REPO_ROOT" && find Sources -type f -name '*.md' -path '*/*.docc/*' 2>/dev/null | LC_ALL=C sort)
+
 if [[ ${bad_no_build} -gt 0 ]]; then
     failures=$((failures + 1))
     echo "Found ${bad_no_build} \`no-build\` block(s) under copy-paste-contract heading(s)."
