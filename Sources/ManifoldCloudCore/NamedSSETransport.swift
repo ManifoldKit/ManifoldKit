@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 
@@ -107,4 +106,3 @@ public struct NamedSSETransport: FramedTransport {
         return bytes
     }
 }
-#endif

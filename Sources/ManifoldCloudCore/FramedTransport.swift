@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 
 /// Splits a raw HTTP response byte stream into discrete payload frames.
@@ -35,4 +34,3 @@ public protocol FramedTransport: Sendable {
     /// underlying `URLSession.AsyncBytes` separately.
     func frames(from bytes: URLSession.AsyncBytes) -> AsyncStream<Data>
 }
-#endif

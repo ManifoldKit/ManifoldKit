@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 
 /// Outcome of inspecting a single SSE / NDJSON frame for stream-termination
@@ -233,4 +232,3 @@ public struct OllamaDoneFlagFinalizer: StreamFinalizer {
         )
     }
 }
-#endif

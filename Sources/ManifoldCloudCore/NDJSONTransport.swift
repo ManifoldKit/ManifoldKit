@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 
@@ -78,4 +77,3 @@ public struct NDJSONTransport: FramedTransport {
         }
     }
 }
-#endif

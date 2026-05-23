@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Darwin
 import Foundation
 import ManifoldInference
@@ -138,4 +137,3 @@ public enum DNSRebindingGuard {
     }
 }
 
-#endif
