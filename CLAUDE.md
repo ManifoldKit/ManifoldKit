@@ -117,24 +117,25 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 
 ## Pre-push checklist
 
-Run the same two-invocation shape CI uses (see `.github/workflows/ci.yml`). Running each suite as a separate `swift test` call is ~4–5× slower — don't do it.
+**Pre-push (local, Apple Silicon):**
 
 ```bash
-# 1. XCTest suites
-scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests \
-  --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests \
-  --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests \
-  --filter ManifoldBackendsTests --filter ManifoldInferenceTests \
-  --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests \
-  --filter ManifoldServerTests \
-  --disable-default-traits --skip-update
-
-# 2. Swift Testing — separate process (mixing with XCTest causes libmalloc SIGABRT — #681)
-scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
-  --disable-default-traits --skip-update
+scripts/test.sh --profile local
 ```
 
-**Spike gate** (bounded changes only): `swift build --build-tests --disable-default-traits` then run only the affected suite. Valid only when the diff touches one module and you've run the full suite once already on this branch. Full two-invocation gate is mandatory before the final push and after any rebase.
+Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism surfaces pre-existing process-global state races in `BackendContractChecks` (the per-backend `test_z_contract_metaContract` reads a shared claims registry that gets clobbered when backend test classes interleave). swift-test's implicit scheduling matches historical behavior — keep it.
+
+**Pre-push (CI repro — only when chasing a CI failure):**
+
+```bash
+scripts/test.sh --profile ci
+```
+
+Mirrors CI's `--disable-default-traits` two-invocation shape exactly. Use only when reproducing a CI failure; pre-push correctness is `--profile local`.
+
+Both profiles respect explicit caller flags: `scripts/test.sh --profile local --filter ManifoldCoreTests` runs *just* that suite, but under the local trait set and worker count. `scripts/test.sh` is the source of truth for the gate shape — the long literal command no longer lives here.
+
+**Spike gate** (bounded changes only): `scripts/test.sh --profile spike --spike-module <suite>` — runs `swift build --build-tests --disable-default-traits` + only the affected suite. Valid only when the diff touches one module and you've run the full suite once already on this branch. Full `--profile local` gate is mandatory before the final push and after any rebase.
 
 **Trait-combo sweep** (whenever modifying a switched enum, a `GenerationEvent` / `GenerationConfig` / `BackendCapabilities`-shaped type, or any trait-gated source file):
 ```bash
