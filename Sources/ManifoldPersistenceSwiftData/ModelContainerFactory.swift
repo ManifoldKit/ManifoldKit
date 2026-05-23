@@ -128,6 +128,49 @@ public enum ModelContainerFactory {
         return storeDirectory.appendingPathComponent("store.sqlite")
     }
 
+    /// Returns an on-disk `ModelContainer` configured for CloudKit sync.
+    ///
+    /// Drop-in replacement for ``makeContainer(configurations:)`` that opts
+    /// into SwiftData's automatic CloudKit mirroring. Conversations, sessions,
+    /// and all other model objects are synced to the user's private iCloud
+    /// database across their devices.
+    ///
+    /// ## Host app requirements
+    ///
+    /// 1. Add the **iCloud** capability in Xcode (Signing & Capabilities →
+    ///    iCloud → CloudKit) and create a container, e.g.
+    ///    `iCloud.com.yourapp.manifold`.
+    /// 2. Add the **Push Notifications** capability (required for CloudKit
+    ///    change notifications that wake the sync engine).
+    /// 3. Pass the container identifier here: `"iCloud.com.yourapp.manifold"`.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// ManifoldBootstrap.build(
+    ///     makeModelContainer: {
+    ///         try ModelContainerFactory.makeCloudKitContainer(
+    ///             containerIdentifier: "iCloud.com.yourapp.manifold"
+    ///         )
+    ///     }
+    /// )
+    /// ```
+    ///
+    /// - Parameter containerIdentifier: The CloudKit container identifier from
+    ///   your app's entitlements (starts with `"iCloud."`).
+    /// - Returns: A `ModelContainer` backed by SwiftData's CloudKit sync engine.
+    /// - Throws: If `ModelContainer` initialisation fails (e.g. schema
+    ///   migration error, or CloudKit container not found in entitlements).
+    public static func makeCloudKitContainer(containerIdentifier: String) throws -> ModelContainer {
+        let config: ModelConfiguration
+        if let storeURL = defaultStoreURL() {
+            config = ModelConfiguration(url: storeURL, cloudKitDatabase: .private(containerIdentifier))
+        } else {
+            config = ModelConfiguration(cloudKitDatabase: .private(containerIdentifier))
+        }
+        return try makeContainer(configurations: [config])
+    }
+
     /// Returns an ephemeral in-memory `ModelContainer` configured with the
     /// current schema.
     ///
