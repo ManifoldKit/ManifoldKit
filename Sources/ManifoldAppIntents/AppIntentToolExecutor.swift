@@ -137,8 +137,21 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
             let result = try await intent.perform()
             try Task.checkCancellation()
 
-            let content = Self.serialise(result)
-            return ToolResult(callId: "", content: content, errorKind: nil)
+            let dialog = Self.extractDialog(result)
+            let structured = Self.serialise(result)
+            // For pure `ProvidesDialog` results without a `ReturnsValue`,
+            // `serialise(_:)` falls back to `String(describing:)` which
+            // typically contains the dialog text already, but the model
+            // still benefits from the explicit mirror — surface the dialog
+            // in `content` so the model has something useful to read, and
+            // keep `dialog` populated so the host UI can speak it verbatim.
+            let content: String
+            if let dialog, Self.shouldMirrorDialogIntoContent(result) {
+                content = dialog
+            } else {
+                content = structured
+            }
+            return ToolResult(callId: "", content: content, errorKind: nil, dialog: dialog)
         } catch is CancellationError {
             return ToolResult(callId: "", content: "cancelled by user", errorKind: .cancelled)
         } catch {
@@ -188,6 +201,18 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
     /// a sensible `description` representation, and a stringly-typed body is
     /// what the model will read regardless.
     static func serialise(_ result: some IntentResult) -> String {
+        // The framework's `IntentResultContainer` is not itself `Encodable`,
+        // so the encodable-cast below misses on the most common compound
+        // shape (`ReturnsValue<T> & ProvidesDialog`). Pull the structured
+        // `value` payload out via reflection first — that's the field the
+        // model actually wants to read — and only fall back to encoding the
+        // whole result for custom `IntentResult` types that ARE `Encodable`.
+        if let value = extractReturnsValue(result) {
+            if let encoded = jsonEncode(value) {
+                return encoded
+            }
+            return String(describing: value)
+        }
         if let encodable = result as? any Encodable {
             do {
                 // Symmetric with the decoder in `execute(arguments:)` — a
@@ -210,6 +235,152 @@ public struct AppIntentToolExecutor<Intent: AppIntent & Decodable>: ToolExecutor
             }
         }
         return String(describing: result)
+    }
+
+    /// Pulls the `ReturnsValue<T>` payload out of a framework
+    /// `IntentResultContainer`, or returns `nil` for pure-dialog/no-value
+    /// results.
+    private static func extractReturnsValue(_ result: some IntentResult) -> Any? {
+        let mirror = Mirror(reflecting: result)
+        for child in mirror.children where child.label == "value" {
+            let inner = Mirror(reflecting: child.value)
+            if inner.displayStyle == .optional {
+                if inner.children.isEmpty { return nil }
+                return inner.children.first?.value
+            }
+            return child.value
+        }
+        return nil
+    }
+
+    /// JSON-encodes an arbitrary `Encodable` value with ISO-8601 dates,
+    /// or returns `nil` if the value isn't `Encodable` or encoding fails.
+    private static func jsonEncode(_ value: Any) -> String? {
+        guard let encodable = value as? any Encodable else { return nil }
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let data = try encoder.encode(EncodableBox(encodable))
+            return String(data: data, encoding: .utf8)
+        } catch {
+            Log.inference.warning(
+                "AppIntentToolExecutor: failed to JSON-encode ReturnsValue payload: \(String(describing: error), privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    /// Pulls the dialog string out of an `IntentResult & ProvidesDialog` using
+    /// public APIs only. Returns `nil` when the dialog can't be rendered from
+    /// the public surface — pure-dialog intents whose `IntentDialog` storage
+    /// isn't reachable via `CustomStringConvertible` or a public
+    /// `LocalizedStringResource` will fall through to the content mirror.
+    ///
+    /// Intentionally does NOT reach into AppIntents framework internals —
+    /// private deferred-localization classes have rearranged twice since
+    /// iOS 16 and are an App Store / privacy-review hazard. If the public
+    /// surface stops yielding the dialog text on a future SDK revision,
+    /// the correct fix is to add a public-API path here, not to reintroduce
+    /// KVC probing against private class names. See PR #1385 for context.
+    static func extractDialog(_ result: some IntentResult) -> String? {
+        guard result is any ProvidesDialog else { return nil }
+
+        // Locate the `dialog` child via Mirror — `Mirror` is public stdlib
+        // reflection, not private framework API.
+        let mirror = Mirror(reflecting: result)
+        var dialogValue: Any?
+        for child in mirror.children where child.label == "dialog" {
+            dialogValue = child.value
+            break
+        }
+        // Some `IntentResult` builders nest the dialog one level deep
+        // (e.g. inside a storage struct). Walk one extra layer when we
+        // didn't find the field directly on the result.
+        if dialogValue == nil {
+            for child in mirror.children {
+                let inner = Mirror(reflecting: child.value)
+                for sub in inner.children where sub.label == "dialog" {
+                    dialogValue = sub.value
+                    break
+                }
+                if dialogValue != nil { break }
+            }
+        }
+        guard let dialogValue else { return nil }
+
+        // The found value might be `IntentDialog?` (often `Optional<Any>`
+        // at this point). Unwrap one optional layer if needed.
+        guard let dialog = Self.unwrapOptional(dialogValue) else { return nil }
+
+        // Path 1: `IntentDialog` conforms to `CustomStringConvertible` on
+        // current SDKs. Accept the result only when it doesn't look like the
+        // Swift default type-name dump (`IntentDialog(...)`), which would
+        // leak framework chrome into the spoken text.
+        if let convertible = dialog as? CustomStringConvertible {
+            let rendered = convertible.description
+            if Self.looksRenderable(rendered, dialog: dialog) {
+                return rendered
+            }
+        }
+
+        // Path 2: walk one mirror level looking for a `LocalizedStringResource`
+        // child (public on iOS 16+). Resolve via `String(localized:)`.
+        let dialogMirror = Mirror(reflecting: dialog)
+        for child in dialogMirror.children {
+            if let resource = child.value as? LocalizedStringResource {
+                return String(localized: resource)
+            }
+        }
+
+        return nil
+    }
+
+    /// Returns `true` when a `String(describing:)` result is plausible spoken
+    /// text — i.e. not the Swift default reflection dump such as
+    /// `IntentDialog(...)` or `Optional(IntentDialog(...))`. The check is
+    /// deliberately conservative: anything that starts with the dialog's type
+    /// name is treated as non-renderable so the caller falls through to the
+    /// `LocalizedStringResource` probe or, ultimately, returns `nil`.
+    private static func looksRenderable(_ rendered: String, dialog: Any) -> Bool {
+        let trimmed = rendered.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return false }
+        let typeName = String(describing: type(of: dialog))
+        if trimmed.hasPrefix(typeName) { return false }
+        if trimmed.hasPrefix("IntentDialog") { return false }
+        return true
+    }
+
+    /// Peels one layer of `Optional` off an `Any` value via reflection.
+    /// Returns `nil` if the optional is `.none`, otherwise the wrapped value.
+    private static func unwrapOptional(_ value: Any) -> Any? {
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle != .optional { return value }
+        return mirror.children.first?.value
+    }
+
+    /// `true` when the result has a dialog but no separately-encodable
+    /// structured value, i.e. pure `IntentResult & ProvidesDialog` without a
+    /// `ReturnsValue<T>` payload. In that case the dialog string is the only
+    /// meaningful content for the model to read.
+    static func shouldMirrorDialogIntoContent(_ result: some IntentResult) -> Bool {
+        // The `ReturnsValue` protocol carries an associated `Value` type, so
+        // we can't form `any ReturnsValue` directly — instead probe via a
+        // Mirror lookup for a `value` child whose contents are non-nil.
+        // `IntentResultContainer` always carries a `value` slot, but for
+        // pure-dialog results it holds `Optional<Never>.none`; for
+        // `ReturnsValue<T>` results it holds the wrapped payload.
+        let mirror = Mirror(reflecting: result)
+        for child in mirror.children where child.label == "value" {
+            // Optional with displayStyle == .optional and no children means
+            // `.none`; any other shape (including a concrete non-optional
+            // value) counts as carrying a structured payload.
+            let valueMirror = Mirror(reflecting: child.value)
+            if valueMirror.displayStyle == .optional, valueMirror.children.isEmpty {
+                return true
+            }
+            return false
+        }
+        return true
     }
 
     /// Heuristic match for AppIntents authorisation failures.

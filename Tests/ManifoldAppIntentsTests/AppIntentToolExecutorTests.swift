@@ -206,6 +206,59 @@ struct PhantomStorageIntent: AppIntent, Decodable {
     }
 }
 
+/// Pure-dialog fixture: `ProvidesDialog` with no `ReturnsValue` payload.
+@available(iOS 26, macOS 26, *)
+struct PureDialogIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "PureDialog"
+
+    @Parameter(title: "Subject")
+    var subject: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.subject = try c.decode(String.self, forKey: .subject)
+    }
+
+    private enum CodingKeys: String, CodingKey { case subject }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: IntentDialog(stringLiteral: "Spoken about \(subject)"))
+    }
+}
+
+/// Compound fixture: `ReturnsValue<String> & ProvidesDialog` with the value
+/// distinct from the dialog text, so the two fields are independently
+/// observable.
+@available(iOS 26, macOS 26, *)
+struct CompoundDialogIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "CompoundDialog"
+
+    @Parameter(title: "Topic")
+    var topic: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.topic = try c.decode(String.self, forKey: .topic)
+    }
+
+    private enum CodingKeys: String, CodingKey { case topic }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+        .result(
+            value: "structured-\(topic)",
+            dialog: IntentDialog(stringLiteral: "Spoken-\(topic)")
+        )
+    }
+}
+
 // MARK: - Tests
 
 @available(iOS 26, macOS 26, *)
@@ -387,6 +440,149 @@ final class AppIntentToolExecutorTests: XCTestCase {
         XCTAssertEqual(executor.definition.name, "greeting_intent")
         XCTAssertTrue(executor.requiresApproval, "AppIntent executors require approval by default")
         XCTAssertFalse(executor.supportsConcurrentDispatch, "default sequential dispatch")
+    }
+
+    // MARK: dialog channel
+
+    // Documented limitation of the public-API extraction (PR #1385 follow-up):
+    // on iOS 26 / macOS 26 `IntentDialog` stores its text inside a private
+    // `LNStaticDeferredLocalizedString` ObjC class reachable only via KVC,
+    // which we deliberately do not call. `extractDialog` therefore returns
+    // `nil` for these fixtures, and content falls back to the structured
+    // `IntentResultContainer` dump. The next time Apple promotes the dialog
+    // storage to a public surface (e.g. `IntentDialog.full` returning a
+    // `LocalizedStringResource`), these tests should be flipped to assert
+    // the actual spoken text. Tracked in code comments rather than an issue
+    // per CLAUDE.md's "no follow-up issues" hygiene rule.
+
+    func testPureDialogIntentExtractionFallsThroughOnPublicAPI() async throws {
+        let executor = AppIntentToolExecutor(PureDialogIntent.self)
+        let args = JSONSchemaValue.object(["subject": .string("weather")])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        // Public-only extraction can't reach `LNStaticDeferredLocalizedString`
+        // storage on iOS 26 / macOS 26 — documented contract is `nil`.
+        XCTAssertNil(
+            result.dialog,
+            "public-API dialog extraction is expected to return nil on iOS 26 / macOS 26; got \(String(describing: result.dialog))"
+        )
+        // With dialog == nil the executor falls through to the structured
+        // serialisation path, which `String(describing:)`s the
+        // `IntentResultContainer`. We assert only that the spoken text
+        // appears *somewhere* in the dump — that proves the IntentDialog
+        // payload survived to the content channel even when extraction
+        // couldn't pluck it out cleanly.
+        XCTAssertTrue(
+            result.content.contains("Spoken about weather"),
+            "pure-dialog content fallback must still surface the IntentDialog text in the structured dump; got \(result.content)"
+        )
+    }
+
+    func testCompoundDialogIntentSplitsValueAndDialog() async throws {
+        let executor = AppIntentToolExecutor(CompoundDialogIntent.self)
+        let args = JSONSchemaValue.object(["topic": .string("alpha")])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        // Public-only extraction returns nil for the same reason as the
+        // pure-dialog fixture: the IntentDialog storage is private.
+        XCTAssertNil(
+            result.dialog,
+            "public-API dialog extraction is expected to return nil on iOS 26 / macOS 26; got \(String(describing: result.dialog))"
+        )
+        // The ReturnsValue<String> path is independent of dialog extraction
+        // — `extractReturnsValue` reads the public `value` slot via Mirror,
+        // so the JSON-encoded structured value still reaches content.
+        XCTAssertTrue(
+            result.content.contains("structured-alpha"),
+            "content must carry the JSON-encoded ReturnsValue, got \(result.content)"
+        )
+    }
+
+    func testPlainIntentLeavesDialogNil() async throws {
+        let executor = AppIntentToolExecutor(GreetingIntent.self)
+        let args = JSONSchemaValue.object([
+            "name": .string("Ada"),
+            "greeting": .string("Salut"),
+        ])
+
+        let result = try await executor.execute(arguments: args)
+
+        XCTAssertNil(result.errorKind)
+        XCTAssertNil(
+            result.dialog,
+            "intents without ProvidesDialog must leave dialog nil; got \(String(describing: result.dialog))"
+        )
+    }
+
+    func testToolResultCodableRoundTripPreservesDialog() throws {
+        let original = ToolResult(
+            callId: "abc",
+            content: "structured",
+            errorKind: nil,
+            dialog: "spoken"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: data)
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.dialog, "spoken")
+    }
+
+    func testToolResultCodableOmitsDialogKeyWhenNil() throws {
+        let result = ToolResult(callId: "abc", content: "structured", errorKind: nil)
+        let data = try JSONEncoder().encode(result)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(
+            json.contains("\"dialog\""),
+            "nil dialog must be omitted by encodeIfPresent to keep the pre-dialog wire shape; got \(json)"
+        )
+        // Sanity: a non-nil dialog DOES appear, proving the assertion above
+        // is meaningful (i.e. the key isn't simply always missing).
+        let withDialog = ToolResult(callId: "abc", content: "structured", errorKind: nil, dialog: "spoken")
+        let dialogJSON = try XCTUnwrap(String(data: JSONEncoder().encode(withDialog), encoding: .utf8))
+        XCTAssertTrue(dialogJSON.contains("\"dialog\""))
+    }
+
+    // MARK: private-API tripwire
+
+    /// Static guard: the executor source file must NOT reference private
+    /// AppIntents framework internals (KVC-based dialog extraction, the
+    /// `LNStaticDeferredLocalizedString` private class, etc.). Reintroducing
+    /// any of these strings would walk back the public-only extraction
+    /// commitment from PR #1385.
+    func testExecutorSourceDoesNotReferencePrivateAppIntentsAPI() throws {
+        // Navigate from this test file's path to the executor source.
+        // `#filePath` is the absolute path under SwiftPM test runs, so this
+        // resolves stably without bundle plumbing.
+        let testFile = URL(fileURLWithPath: #filePath)
+        let executorFile = testFile
+            .deletingLastPathComponent()              // ManifoldAppIntentsTests
+            .deletingLastPathComponent()              // Tests
+            .deletingLastPathComponent()              // package root
+            .appendingPathComponent("Sources")
+            .appendingPathComponent("ManifoldAppIntents")
+            .appendingPathComponent("AppIntentToolExecutor.swift")
+
+        let source: String
+        do {
+            source = try String(contentsOf: executorFile, encoding: .utf8)
+        } catch {
+            // FIXME: if `#filePath` ever stops resolving to a real on-disk
+            // path under SwiftPM test runs, downgrade this to a skipped
+            // diagnostic rather than a flaky failure.
+            throw XCTSkip("could not read executor source at \(executorFile.path): \(error)")
+        }
+
+        let banned = ["LNStatic", "value(forKey:", "valueForKey", "class_copyPropertyList", "class_copyIvarList"]
+        for needle in banned {
+            XCTAssertFalse(
+                source.contains(needle),
+                "AppIntentToolExecutor.swift must not contain \"\(needle)\" — private-API dialog extraction was removed in PR #1385 and must not be reintroduced."
+            )
+        }
     }
 
     func testReadOnlyApprovalPolicyCanOptOutOfPrompt() {
