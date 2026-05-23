@@ -100,18 +100,23 @@ See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capabilit
 
 If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()` and depend on just `ManifoldInference` plus the backends you want. Construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your transcript:
 
-```swift,no-build
+```swift
 import ManifoldInference
 import ManifoldBackends
 
-let inference = InferenceService()
-DefaultBackends.register(with: inference)
+@main
+struct BYOExample {
+    static func main() async throws {
+        let inference = InferenceService()
+        DefaultBackends.register(with: inference)
 
-try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
+        try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
 
-let stream = try inference.generate(messages: [("user", "Hello")])
-for try await event in stream.events {
-    if case .token(let text) = event { print(text, terminator: "") }
+        let stream = try inference.generate(messages: [("user", "Hello")])
+        for try await event in stream.events {
+            if case .token(let text) = event { print(text, terminator: "") }
+        }
+    }
 }
 ```
 
