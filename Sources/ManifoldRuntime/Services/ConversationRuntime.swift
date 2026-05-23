@@ -157,7 +157,8 @@ public final class ConversationRuntime: Sendable {
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
         historyProviders: [any HistoryProvider] = [],
-        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
+        sessionToolSources: [any SessionToolSource] = []
     ) {
         self.init(
             messageStore: messageStore,
@@ -172,7 +173,8 @@ public final class ConversationRuntime: Sendable {
             generationHooks: generationHooks,
             compressionPolicy: compressionPolicy,
             historyProviders: historyProviders,
-            turnContextProvider: turnContextProvider
+            turnContextProvider: turnContextProvider,
+            sessionToolSources: sessionToolSources
         )
     }
 
@@ -193,7 +195,8 @@ public final class ConversationRuntime: Sendable {
         compressionPolicy: (any CompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
         historyProviders: [any HistoryProvider] = [],
-        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
+        sessionToolSources: [any SessionToolSource] = []
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
@@ -219,7 +222,8 @@ public final class ConversationRuntime: Sendable {
             compressionPolicy: compressionPolicy,
             hookTimeout: hookTimeout,
             historyProviders: historyProviders,
-            turnContextProvider: turnContextProvider
+            turnContextProvider: turnContextProvider,
+            sessionToolSources: sessionToolSources
         )
     }
 

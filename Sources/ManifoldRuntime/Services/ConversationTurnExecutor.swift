@@ -21,6 +21,11 @@ struct ConversationTurnExecutor: Sendable {
     /// ``TurnContext/appData`` and forwarded to ``CompletedTurn/appData`` so
     /// ``GenerationHook`` implementations receive it without a side-channel.
     private let turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
+    /// Per-session tool contributors. Threaded through from
+    /// `ConversationRuntime.init`; consumed in `readAdvertisedToolDefinitions()`
+    /// in Wave 2 (W2A/W2B). Storing it now keeps the public/package inits
+    /// source-compatible across the wave boundary.
+    private let sessionToolSources: [any SessionToolSource]
 
     init(
         persistence: ConversationPersistencePort,
@@ -36,7 +41,8 @@ struct ConversationTurnExecutor: Sendable {
         compressionPolicy: (any CompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
         historyProviders: [any HistoryProvider] = [],
-        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
+        sessionToolSources: [any SessionToolSource] = []
     ) {
         self.persistence = persistence
         self.inferenceService = inferenceService
@@ -52,6 +58,7 @@ struct ConversationTurnExecutor: Sendable {
         self.hookTimeout = hookTimeout
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
         self.turnContextProvider = turnContextProvider
+        self.sessionToolSources = sessionToolSources
     }
 
     // MARK: Send flow
@@ -1052,6 +1059,11 @@ struct ConversationTurnExecutor: Sendable {
 
     @MainActor
     private func readAdvertisedToolDefinitions() async -> [ToolDefinition] {
+        // TODO(W2A/W2B): fold `sessionToolSources` into the advertised list —
+        // union the per-session `toolDefinitions(for:)` with the registry's
+        // and intersect with each source's `allowedToolNames(for:)` (Skills
+        // allowed-tools enforcement). Per-session ChatSessionRecord lookup
+        // moves here from the call site.
         guard let registry = inferenceService.toolRegistry else { return [] }
         let definitions = registry.advertisedDefinitions
         // When the active backend declares a hard cap on how many tools it can
