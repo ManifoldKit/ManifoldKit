@@ -69,6 +69,8 @@ struct MyChatApp: App {
 
 Run the app. On macOS or iOS 26+, the Apple Foundation Models backend is available immediately; for other backends, see [Customizing backends](#customizing-backends).
 
+> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and call `result.bootstrap.persistence.insertSession(_:)` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see [`Example/Advanced`](../Example/Advanced) for the worked example.
+
 ## Customizing backends
 
 `quickStart()` registers every backend that's compiled into your build (gated by SwiftPM traits). To control which backends ship, pass a `traits:` array on your `.package(...)` dependency:

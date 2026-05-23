@@ -9,6 +9,7 @@
 import XCTest
 import SwiftData
 import ManifoldInference
+import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldKit
 
@@ -70,6 +71,78 @@ final class QuickStartTests: XCTestCase {
         } catch {
             XCTFail("Expected ManifoldKitError, got \(type(of: error)): \(error). The facade must wrap all underlying errors through ManifoldKitError.from(_:).")
         }
+    }
+
+    /// Regression guard for A2-F4 — the documented `quickStart()` →
+    /// `ChatView()` happy path must produce a usable chat surface on first
+    /// launch. `ChatView` disables its composer whenever
+    /// `viewModel.activeSession == nil`; prior to this fix a fresh consumer
+    /// with no persisted sessions saw "No session selected" and could not
+    /// chat without diving into `Example/Advanced/` for `createSession()`.
+    func test_quickStart_autoCreatesInitialSession_whenStoreIsEmpty() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        // The invariant: a fresh consumer of quickStart() has a usable chat
+        // surface — activeSession is non-nil, which is what ChatView keys
+        // composer-enabled state off of.
+        XCTAssertNotNil(
+            result.viewModel.activeSession,
+            "quickStart() must auto-create an initial session so ChatView's composer is enabled on first launch (A2-F4)."
+        )
+
+        // And the session is actually persisted, so the SessionManagerViewModel
+        // sidebar in the host app's first-paint sees it without an extra
+        // round-trip.
+        let persisted = try await result.bootstrap.persistence.fetchSessions()
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.id, result.viewModel.activeSession?.id)
+    }
+
+    /// Symmetric guard: when persistence already contains sessions (e.g.
+    /// relaunch, restored backup, host app that wired its own session
+    /// creation before calling quickStart) the facade must not add a stray
+    /// "New Chat" row — instead it selects the existing most-recent session.
+    func test_quickStart_selectsExistingSession_whenStoreIsNonEmpty() async throws {
+        // Pre-seed the same on-disk path with a session. We use a shared
+        // in-memory container by sharing the makeModelContainer closure
+        // across two quickStart calls — but the in-memory factory makes a
+        // *new* container each call, so instead we drive the bootstrap once,
+        // create a session manually, then call quickStart again against
+        // the same container via the internal seam.
+        //
+        // Simpler: drive _quickStart twice with a container the test owns.
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        let firstResult = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container }
+        )
+        let firstSessionID = try XCTUnwrap(firstResult.viewModel.activeSession?.id)
+
+        // Insert a second, more-recent session directly through the
+        // persistence port so we can verify "selects the existing
+        // most-recent" rather than "always creates a fresh one".
+        let preExisting = ChatSessionRecord(title: "From a previous launch")
+        try await firstResult.bootstrap.persistence.insertSession(preExisting)
+
+        let secondResult = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { container }
+        )
+
+        // Exactly the two sessions we expect — no third one auto-created on
+        // the second launch.
+        let persisted = try await secondResult.bootstrap.persistence.fetchSessions()
+        XCTAssertEqual(persisted.count, 2)
+        let persistedIDs = Set(persisted.map(\.id))
+        XCTAssertTrue(persistedIDs.contains(firstSessionID))
+        XCTAssertTrue(persistedIDs.contains(preExisting.id))
+
+        // And the view model picked one of them rather than minting a new id.
+        let active = try XCTUnwrap(secondResult.viewModel.activeSession)
+        XCTAssertTrue(persistedIDs.contains(active.id))
     }
 
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
