@@ -259,10 +259,94 @@ struct CompoundDialogIntent: AppIntent, Decodable {
     }
 }
 
+/// Title/default-emission fixture: covers the schema-decoration code path
+/// that lifts `@Parameter(title:)` into the JSON-Schema `description` field
+/// and `@Parameter(default:)` into the `default` field.
+@available(iOS 26, macOS 26, *)
+struct DecoratedIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "Decorated"
+
+    @Parameter(title: "Display Name", default: "World")
+    var name: String
+
+    @Parameter(title: "Count", default: 5)
+    var count: Int
+
+    @Parameter(title: "Untouched")
+    var untouched: String
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.name = try c.decode(String.self, forKey: .name)
+        self.count = try c.decode(Int.self, forKey: .count)
+        self.untouched = try c.decode(String.self, forKey: .untouched)
+    }
+
+    private enum CodingKeys: String, CodingKey { case name, count, untouched }
+
+    func perform() async throws -> some IntentResult { .result() }
+}
+
+/// Collection-parameter fixture: drives the `[T]` / `Set<T>` schema emission
+/// path. Includes an optional array so the optional-vs-required pairing is
+/// exercised in one fixture.
+@available(iOS 26, macOS 26, *)
+struct CollectionIntent: AppIntent, Decodable {
+
+    static let title: LocalizedStringResource = "Collection"
+
+    @Parameter(title: "Tags")
+    var tags: [String]
+
+    @Parameter(title: "Counts")
+    var counts: [Int]
+
+    @Parameter(title: "Unique")
+    var unique: Set<String>
+
+    @Parameter(title: "Maybe Tags")
+    var maybeTags: [String]?
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        self.tags = try c.decode([String].self, forKey: .tags)
+        self.counts = try c.decode([Int].self, forKey: .counts)
+        self.unique = try c.decode(Set<String>.self, forKey: .unique)
+        self.maybeTags = try c.decodeIfPresent([String].self, forKey: .maybeTags)
+    }
+
+    private enum CodingKeys: String, CodingKey { case tags, counts, unique, maybeTags }
+
+    func perform() async throws -> some IntentResult { .result() }
+}
+
 // MARK: - Tests
 
 @available(iOS 26, macOS 26, *)
 final class AppIntentToolExecutorTests: XCTestCase {
+
+    // MARK: helpers
+
+    /// Returns the `type` field of a property-shaped schema object, or nil
+    /// if the schema isn't an object or doesn't carry one. Used to keep
+    /// shape-focused tests robust against additive schema fields
+    /// (descriptions, defaults, etc.).
+    private func propertyType(_ value: JSONSchemaValue?) -> String? {
+        guard case .object(let dict) = value, case .string(let t) = dict["type"] else { return nil }
+        return t
+    }
+
+    private func propertyFormat(_ value: JSONSchemaValue?) -> String? {
+        guard case .object(let dict) = value, case .string(let f) = dict["format"] else { return nil }
+        return f
+    }
 
     // MARK: definition synthesis
 
@@ -287,8 +371,11 @@ final class AppIntentToolExecutorTests: XCTestCase {
         guard case .object(let properties) = root["properties"] else {
             return XCTFail("schema must have an object `properties` field")
         }
-        XCTAssertEqual(properties["name"], .object(["type": .string("string")]))
-        XCTAssertEqual(properties["greeting"], .object(["type": .string("string")]))
+        // Asserting on `type` only keeps this test focused on
+        // required-vs-optional placement; the title-as-description emission
+        // is exercised in `testSchemaEmitsParameterTitleAsDescription`.
+        XCTAssertEqual(propertyType(properties["name"]), "string")
+        XCTAssertEqual(propertyType(properties["greeting"]), "string")
 
         guard case .array(let required) = root["required"] else {
             return XCTFail("schema must declare `required`")
@@ -304,19 +391,15 @@ final class AppIntentToolExecutorTests: XCTestCase {
             return XCTFail("schema root must be an object with properties")
         }
 
-        XCTAssertEqual(properties["count"], .object(["type": .string("integer")]))
-        XCTAssertEqual(properties["ratio"], .object(["type": .string("number")]))
-        XCTAssertEqual(properties["flag"], .object(["type": .string("boolean")]))
-        XCTAssertEqual(properties["when"], .object([
-            "type": .string("string"),
-            "format": .string("date-time"),
-        ]))
-        XCTAssertEqual(properties["link"], .object([
-            "type": .string("string"),
-            "format": .string("uri"),
-        ]))
+        XCTAssertEqual(propertyType(properties["count"]), "integer")
+        XCTAssertEqual(propertyType(properties["ratio"]), "number")
+        XCTAssertEqual(propertyType(properties["flag"]), "boolean")
+        XCTAssertEqual(propertyType(properties["when"]), "string")
+        XCTAssertEqual(propertyFormat(properties["when"]), "date-time")
+        XCTAssertEqual(propertyType(properties["link"]), "string")
+        XCTAssertEqual(propertyFormat(properties["link"]), "uri")
         // Optional → still in `properties`, but missing from `required`.
-        XCTAssertEqual(properties["note"], .object(["type": .string("string")]))
+        XCTAssertEqual(propertyType(properties["note"]), "string")
 
         guard case .array(let required) = root["required"] else {
             return XCTFail("schema must declare `required`")
@@ -591,6 +674,194 @@ final class AppIntentToolExecutorTests: XCTestCase {
             approvalPolicy: .readOnlyAutoApprove
         )
         XCTAssertFalse(executor.requiresApproval, "read-only AppIntent tools can be deliberately auto-approved")
+    }
+
+    // MARK: title + default emission
+
+    func testSchemaEmitsParameterTitleAsDescription() {
+        let executor = AppIntentToolExecutor(DecoratedIntent.self)
+        guard case .object(let root) = executor.definition.parameters,
+              case .object(let properties) = root["properties"],
+              case .object(let nameField) = properties["name"]
+        else {
+            return XCTFail("schema must contain a `name` property object")
+        }
+        XCTAssertEqual(
+            nameField["description"],
+            .string("Display Name"),
+            "schema must surface @Parameter(title:) as the per-property description"
+        )
+    }
+
+    func testSchemaEmitsParameterDefaultValue() {
+        let executor = AppIntentToolExecutor(DecoratedIntent.self)
+        guard case .object(let root) = executor.definition.parameters,
+              case .object(let properties) = root["properties"],
+              case .object(let nameField) = properties["name"],
+              case .object(let countField) = properties["count"]
+        else {
+            return XCTFail("schema must contain `name` and `count` property objects")
+        }
+        XCTAssertEqual(
+            nameField["default"],
+            .string("World"),
+            "string defaults must round-trip through the schema as JSON strings"
+        )
+        // Number defaults: JSONSchemaValue stores all numbers as Double, so
+        // `5` arrives as `.number(5.0)`. We don't care about the boxing —
+        // only that the value made it through.
+        XCTAssertEqual(
+            countField["default"],
+            .number(5),
+            "integer defaults must surface in the schema"
+        )
+    }
+
+    func testSchemaOmitsDefaultAndDescriptionWhenNoneProvided() {
+        let executor = AppIntentToolExecutor(DecoratedIntent.self)
+        guard case .object(let root) = executor.definition.parameters,
+              case .object(let properties) = root["properties"],
+              case .object(let untouched) = properties["untouched"]
+        else {
+            return XCTFail("schema must contain `untouched` property object")
+        }
+        XCTAssertNil(
+            untouched["default"],
+            "a parameter without a default must not carry a `default` field"
+        )
+        // `Untouched` is still a title on the wrapper — verify it shows up
+        // even when no default exists; otherwise the decoration path would
+        // be silently skipping fields.
+        XCTAssertEqual(untouched["description"], .string("Untouched"))
+    }
+
+    // MARK: collection support
+
+    func testSchemaEmitsArraysWithItemTypes() {
+        let executor = AppIntentToolExecutor(CollectionIntent.self)
+        guard case .object(let root) = executor.definition.parameters,
+              case .object(let properties) = root["properties"]
+        else {
+            return XCTFail("schema root must be an object with properties")
+        }
+
+        guard case .object(let tagsSchema) = properties["tags"] else {
+            return XCTFail("tags must produce an object schema")
+        }
+        XCTAssertEqual(tagsSchema["type"], .string("array"))
+        XCTAssertEqual(
+            tagsSchema["items"],
+            .object(["type": .string("string")]),
+            "[String] must emit items of type string"
+        )
+
+        guard case .object(let countsSchema) = properties["counts"] else {
+            return XCTFail("counts must produce an object schema")
+        }
+        XCTAssertEqual(countsSchema["type"], .string("array"))
+        XCTAssertEqual(
+            countsSchema["items"],
+            .object(["type": .string("integer")]),
+            "[Int] must emit items of type integer"
+        )
+
+        guard case .object(let uniqueSchema) = properties["unique"] else {
+            return XCTFail("unique must produce an object schema")
+        }
+        XCTAssertEqual(uniqueSchema["type"], .string("array"))
+        XCTAssertEqual(
+            uniqueSchema["items"],
+            .object(["type": .string("string")]),
+            "Set<String> must emit items of type string"
+        )
+    }
+
+    func testSchemaTreatsOptionalArrayAsArrayButNotRequired() {
+        let executor = AppIntentToolExecutor(CollectionIntent.self)
+        guard case .object(let root) = executor.definition.parameters,
+              case .object(let properties) = root["properties"]
+        else {
+            return XCTFail("schema root must be an object with properties")
+        }
+
+        // The optional-of-array must still emit array shape — only the
+        // required-membership is affected.
+        guard case .object(let maybe) = properties["maybeTags"] else {
+            return XCTFail("maybeTags must produce an object schema")
+        }
+        XCTAssertEqual(maybe["type"], .string("array"))
+        XCTAssertEqual(maybe["items"], .object(["type": .string("string")]))
+
+        guard case .array(let required) = root["required"] else {
+            return XCTFail("schema must declare `required`")
+        }
+        let requiredNames = required.compactMap { value -> String? in
+            if case .string(let s) = value { return s } else { return nil }
+        }
+        XCTAssertFalse(
+            requiredNames.contains("maybeTags"),
+            "optional array parameter must not appear in `required`"
+        )
+        XCTAssertTrue(requiredNames.contains("tags"), "non-optional array must be required")
+        XCTAssertTrue(requiredNames.contains("counts"))
+        XCTAssertTrue(requiredNames.contains("unique"))
+    }
+
+    // MARK: locale-safe auth classification
+
+    func testAuthDetectionRecognisesAppIntentsAuthorizationDomain() {
+        let error = NSError(
+            domain: "AppIntentsAuthorizationErrorDomain",
+            code: 42,
+            userInfo: [NSLocalizedDescriptionKey: "anything in any language"]
+        )
+        XCTAssertTrue(
+            AppIntentToolExecutor<GreetingIntent>.looksLikeAuthorizationFailure(error),
+            "errors in the AppIntents authorisation domain must classify as auth failures"
+        )
+    }
+
+    func testAuthDetectionRecognisesLAErrorDomain() {
+        let error = NSError(
+            domain: "com.apple.LocalAuthentication",
+            code: -4, // LAError.systemCancel
+            userInfo: [:]
+        )
+        XCTAssertTrue(
+            AppIntentToolExecutor<GreetingIntent>.looksLikeAuthorizationFailure(error),
+            "LocalAuthentication errors (Face ID / Touch ID) must classify as auth failures"
+        )
+    }
+
+    func testAuthDetectionIgnoresEnglishDescriptionOnUnrelatedDomain() {
+        // The hostile case: an unrelated framework throws an error whose
+        // English description happens to read "permission denied". The
+        // previous heuristic would have misclassified this; the new one
+        // ignores `localizedDescription` entirely and only sees the domain.
+        let error = NSError(
+            domain: "com.example.NetworkError",
+            code: 503,
+            userInfo: [NSLocalizedDescriptionKey: "permission denied"]
+        )
+        XCTAssertFalse(
+            AppIntentToolExecutor<GreetingIntent>.looksLikeAuthorizationFailure(error),
+            "domain-unrelated errors must NOT be classified as auth even if their English description suggests it — locale safety"
+        )
+    }
+
+    func testAuthDetectionMatchesDomainSubstringFallback() {
+        // Third-party domains that follow the convention still match —
+        // domain identity is locale-safe even with substring matching
+        // because domain strings are developer-authored API surface.
+        let error = NSError(
+            domain: "com.example.PermissionDeniedError",
+            code: 1,
+            userInfo: [:]
+        )
+        XCTAssertTrue(
+            AppIntentToolExecutor<GreetingIntent>.looksLikeAuthorizationFailure(error),
+            "third-party domains with `permission` / `authorisation` substring should still match"
+        )
     }
 }
 
