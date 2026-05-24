@@ -42,17 +42,19 @@ public enum ManifoldKit {
     ///
     /// ```swift
     /// let kit = try await ManifoldKit.quickStart()
-    /// // kit.viewModel — a configured ChatViewModel
-    /// // kit.bootstrap — keep alive for the lifetime of the app
+    /// // kit.viewModel      — a configured ChatViewModel
+    /// // kit.sessionManager — sessions already loaded; wire to a sidebar list
+    /// // kit.bootstrap      — keep alive for the lifetime of the app
     /// ```
     ///
     /// - Parameter configuration: The framework configuration. Defaults to
     ///   ``ManifoldInference/ManifoldConfiguration/default`` — fine for
     ///   demos and tests, but production apps should pass an explicit
     ///   configuration with their own bundle identifier.
-    /// - Returns: A ``QuickStartResult`` carrying both the bootstrap and the
-    ///   view model. The caller owns the bootstrap and must retain it for
-    ///   the lifetime of the chat runtime.
+    /// - Returns: A ``QuickStartResult`` carrying the bootstrap, the chat view
+    ///   model, and a session manager with the initial session page already
+    ///   loaded. The caller owns the bootstrap and must retain it for the
+    ///   lifetime of the chat runtime.
     public static func quickStart(
         configuration: ManifoldConfiguration = .default
     ) async throws -> QuickStartResult {
@@ -93,40 +95,38 @@ public enum ManifoldKit {
             viewModel.configure(persistence: bootstrap.persistence)
             viewModel.configure(endpointStore: bootstrap.endpointStore)
 
+            // Wire the session manager and await its initial load so that
+            // `sessionManager.sessions` is populated before this call returns
+            // (#1447). Using `configureAndLoad(bootstrap:)` instead of the
+            // fire-and-forget `configure(bootstrap:)` eliminates the race
+            // window that forced consumers to invent polling heuristics on
+            // relaunch.
+            let sessionManager = SessionManagerViewModel()
+            await sessionManager.configureAndLoad(bootstrap: bootstrap)
+
             // A2-F4: ensure the documented `quickStart()` → `ChatView()` path
-            // produces a usable chat surface on first launch. `ChatView`
-            // disables its composer when `viewModel.activeSession == nil`, so
-            // a fresh install (no persisted sessions) would otherwise render
-            // a "No session selected" placeholder with no documented way to
-            // create one through the high-level API.
+            // produces a usable chat surface on first launch.
             //
-            // We auto-create a single empty session iff the store is empty.
-            // When sessions already exist (relaunch, restored backup, host
-            // app that created its own session first), this is a no-op and
-            // the host's existing selection logic takes over.
-            //
-            // Model loading is intentionally orthogonal — a session with no
-            // model loaded still unblocks the composer, and the welcome
-            // empty-state for model selection lives in `ChatView`. See
-            // A2-F1 for the separate "auto-select a model when available"
-            // gap.
-            let existingSessions = try await bootstrap.persistence.fetchSessions(offset: 0, limit: 1)
-            if existingSessions.isEmpty {
+            // `sessionManager.sessions` is now populated (above), so we can
+            // branch on it directly rather than re-fetching from persistence.
+            if sessionManager.sessions.isEmpty {
                 let initialSession = ChatSessionRecord(title: "New Chat")
                 try await bootstrap.persistence.insertSession(initialSession)
                 await viewModel.switchToSession(initialSession)
-            } else if let mostRecent = existingSessions.first {
+                // Reload so sessionManager reflects the newly created session.
+                await sessionManager.loadSessions()
+            } else if let mostRecent = sessionManager.sessions.first {
                 await viewModel.switchToSession(mostRecent)
             }
 
-            return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel)
+            return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel, sessionManager: sessionManager)
         } catch {
             throw ManifoldKitError.from(error)
         }
     }
 }
 
-/// The pair returned by ``ManifoldKit/ManifoldKit/quickStart(configuration:)``.
+/// The result returned by ``ManifoldKit/ManifoldKit/quickStart(configuration:)``.
 ///
 /// `bootstrap` owns the inference service, SwiftData container, persistence
 /// adapters, and ``ConversationRuntime``. Retain it for the lifetime of the
@@ -136,16 +136,30 @@ public enum ManifoldKit {
 /// `ChatView` (or your own SwiftUI surface) as you would a manually
 /// constructed view model.
 ///
-/// `QuickStartResult` is `Sendable` because both fields are `@MainActor`
+/// `sessionManager` is a ``SessionManagerViewModel`` configured against the
+/// same bootstrap and with its initial session page already loaded (#1425).
+/// Pass it to a sidebar or session-list surface alongside `viewModel` — no
+/// additional `configure` or `loadSessions` call is required.
+///
+/// `QuickStartResult` is `Sendable` because all fields are `@MainActor`
 /// reference types; the struct itself carries no mutable state.
 @MainActor
 public struct QuickStartResult: Sendable {
     public let bootstrap: ManifoldBootstrap
     public let viewModel: ChatViewModel
+    /// A session manager pre-wired to `bootstrap` with the initial session
+    /// page already loaded. Use this to drive multi-session UI (sidebar,
+    /// create/delete/rename) without additional setup.
+    public let sessionManager: SessionManagerViewModel
 
-    public init(bootstrap: ManifoldBootstrap, viewModel: ChatViewModel) {
+    public init(
+        bootstrap: ManifoldBootstrap,
+        viewModel: ChatViewModel,
+        sessionManager: SessionManagerViewModel
+    ) {
         self.bootstrap = bootstrap
         self.viewModel = viewModel
+        self.sessionManager = sessionManager
     }
 }
 
