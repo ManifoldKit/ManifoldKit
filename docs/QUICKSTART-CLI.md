@@ -131,7 +131,7 @@ Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are 
 
 This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform.
 
-**Get a model first.** Drop any GGUF file into `~/Documents/Models/`. Good starter picks:
+**Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
 - [`Llama-3.2-3B-Instruct-Q4_K_M.gguf`](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF) — ~2 GB, instruction-tuned, no reasoning tokens — **the snippet below works with this model unchanged**
 - [`Qwen3-0.6B-Q4_K_M.gguf`](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF) — ~400 MB, fast, but emits `.thinkingToken` events before its final answer — see ["Reasoning models" below](#reasoning-models-thinking-tokens) before using

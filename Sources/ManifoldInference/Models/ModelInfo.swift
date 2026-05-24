@@ -172,6 +172,116 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         }
     }
 
+    // MARK: - GGUF Throwing Loader
+
+    /// Loads a `ModelInfo` from a `.gguf` file URL, throwing a typed
+    /// ``ModelDiscoveryError`` when the load fails.
+    ///
+    /// Use this when the caller needs to surface *why* a local GGUF could not
+    /// be turned into a `ModelInfo` (e.g. the model-management sheet wants to
+    /// show "file missing" vs "not a GGUF" vs "header could not be parsed").
+    /// The optional ``init(ggufURL:)`` initialiser remains the lower-friction
+    /// best-effort entry point used by directory scans.
+    ///
+    /// Header metadata parse failures are treated as **non-fatal**: a
+    /// `ModelInfo` is still returned (so the user can still try to load the
+    /// model and see the real backend error), but with empty template /
+    /// context-length fields. Callers that want to react to the metadata
+    /// failure can inspect the returned ``ModelInfo/detectedPromptTemplate``
+    /// being `nil`.
+    public static func load(ggufURL url: URL) throws -> ModelInfo {
+        let path = url.path
+
+        guard url.pathExtension.lowercased() == "gguf" else {
+            throw ModelDiscoveryError.notGGUF(path: path)
+        }
+
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            throw ModelDiscoveryError.fileMissing(path: path)
+        }
+        if isDirectory.boolValue {
+            throw ModelDiscoveryError.unexpectedFileKind(path: path, detail: "expected .gguf file, found directory")
+        }
+        guard fileManager.isReadableFile(atPath: path) else {
+            throw ModelDiscoveryError.notReadable(path: path, reason: "file is not readable by this process")
+        }
+        guard GGUFMetadataReader.isValidGGUF(at: url) else {
+            throw ModelDiscoveryError.notGGUF(path: path)
+        }
+
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try fileManager.attributesOfItem(atPath: path)
+        } catch {
+            throw ModelDiscoveryError.notReadable(path: path, reason: error.localizedDescription)
+        }
+        guard let size = attributes[.size] as? UInt64 else {
+            throw ModelDiscoveryError.notReadable(path: path, reason: "missing file size attribute")
+        }
+
+        // At this point the file is a real GGUF on disk. Parse header metadata —
+        // failures are surfaced as a non-fatal warning so the caller can still
+        // build a `ModelInfo` (matching the optional initialiser's behaviour)
+        // but discovery code that wants to log the actual reason can catch
+        // ``ModelDiscoveryError/metadataReadFailed`` if it switches to the
+        // alternate `loadStrict` later.
+        var detectedTemplate: PromptTemplate?
+        var detectedContextLength: Int?
+        var modelArchitecture: String?
+        var chatTemplateRaw: String?
+        var estimatedKVBytesPerToken: UInt64?
+        do {
+            let metadata = try GGUFMetadataReader.readMetadata(from: url)
+            detectedTemplate = PromptTemplateDetector.detect(from: metadata)
+            detectedContextLength = metadata.contextLength
+            modelArchitecture = metadata.generalArchitecture
+            chatTemplateRaw = metadata.chatTemplate
+            estimatedKVBytesPerToken = GGUFKVCacheEstimator.estimateBytesPerToken(from: metadata)
+        } catch {
+            Log.inference.warning("ModelInfo.load: GGUF metadata parse failed for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+
+        var info = ModelInfo(
+            id: Self.stableID(for: url),
+            name: Self.displayName(from: url.lastPathComponent, strippingExtension: ".gguf"),
+            fileName: url.lastPathComponent,
+            url: url,
+            fileSize: size,
+            modelType: .gguf,
+            detectedPromptTemplate: detectedTemplate,
+            detectedContextLength: detectedContextLength,
+            modelArchitecture: modelArchitecture,
+            chatTemplateRaw: chatTemplateRaw,
+            estimatedKVBytesPerToken: estimatedKVBytesPerToken
+        )
+
+        // Mirror the optional initialiser's static-tier estimate so the throwing
+        // and optional paths produce equivalent ModelInfo values for the same file.
+        info.capabilityTier = ModelCapabilityTier.estimate(from: info)
+
+        // Auto-detect a companion mmproj file in the same directory.
+        if !url.lastPathComponent.lowercased().hasPrefix("mmproj") {
+            let parentDir = url.deletingLastPathComponent()
+            do {
+                let candidates = try fileManager.contentsOfDirectory(
+                    at: parentDir,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                )
+                info.mmprojURL = candidates.first {
+                    $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
+                    $0.pathExtension.lowercased() == "gguf"
+                }
+            } catch {
+                Log.inference.warning("ModelInfo.load: mmproj companion scan failed in \(parentDir.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        return info
+    }
+
     // MARK: - MLX Initializer
 
     /// Creates a ModelInfo from an MLX model directory containing `config.json`.

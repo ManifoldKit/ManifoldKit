@@ -218,10 +218,36 @@ final class GGUFMetadataReaderTests: XCTestCase {
         // throwing, so the XCTAssertThrowsError assertion fails.
     }
 
+    func test_readMetadata_largeTokenizerArray_parses() throws {
+        // Real-world tokenizers ship vocab arrays well above the previous 65k cap:
+        // Llama 3 ships ~128k tokens, Gemma 2 ships ~256k. Regression guard for #1468.
+        let vocabCount: UInt64 = 200_000
+        var arrayData = Data()
+        let keyBytes = Array("tokenizer.ggml.tokens".utf8)
+        appendUInt64(&arrayData, UInt64(keyBytes.count))
+        arrayData.append(contentsOf: keyBytes)
+        appendUInt32(&arrayData, 9)               // ARRAY
+        appendUInt32(&arrayData, 0)               // element type uint8
+        appendUInt64(&arrayData, vocabCount)
+        arrayData.append(Data(repeating: 0x00, count: Int(vocabCount)))
+
+        let header = makeGGUFV3Header(metadata: [
+            arrayData,
+            makeStringKV(key: "general.architecture", value: "llama"),
+            makeUInt32KV(key: "llama.context_length", value: 4096)
+        ])
+        let url = try writeTempFile(named: "big-vocab.gguf", data: header)
+
+        let metadata = try GGUFMetadataReader.readMetadata(from: url)
+        XCTAssertEqual(metadata.generalArchitecture, "llama")
+        XCTAssertEqual(metadata.contextLength, 4096)
+    }
+
     func test_readMetadata_arrayExceedingElementLimit_throws() throws {
-        // A crafted GGUF with a single key whose array claims 100 000 elements (all uint8)
-        // must be rejected by the element-count limit.
-        let data = makeGGUFV3Header(metadata: [makeHugeArrayKV(key: "k", count: 100_000)])
+        // A crafted GGUF with a single key whose array claims 2 000 000 elements (all uint8)
+        // must be rejected by the element-count limit. The cap is sized to allow real
+        // tokenizer vocab arrays (Gemma 2 ships ~256 000 tokens) — see #1468.
+        let data = makeGGUFV3Header(metadata: [makeHugeArrayKV(key: "k", count: 2_000_000)])
         let url = try writeTempFile(named: "huge-array.gguf", data: data)
 
         XCTAssertThrowsError(try GGUFMetadataReader.readMetadata(from: url)) { error in
