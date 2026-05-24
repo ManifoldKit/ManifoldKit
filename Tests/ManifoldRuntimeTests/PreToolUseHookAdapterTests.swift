@@ -8,6 +8,13 @@ import ManifoldInference
 /// ``HookOutput/updatedInput``.
 final class PreToolUseHookAdapterTests: XCTestCase {
 
+    /// Single-writer box for capturing the Task spawned by the event emitter.
+    /// @unchecked Sendable is safe here: the emitter writes once (sync, inside
+    /// the adapter call), and the test reads once after `await adapter(...)`.
+    private final class TaskBox: @unchecked Sendable {
+        var task: Task<Void, Never>?
+    }
+
     /// Captures emitted events for telemetry assertions. Actor-isolated so
     /// the @Sendable emitter closure can mutate it without a data race.
     private actor EventRecorder {
@@ -151,11 +158,11 @@ final class PreToolUseHookAdapterTests: XCTestCase {
             HookOutput(updatedInput: #"{"path":"/sandbox/x"}"#)
         }
         let recorder = EventRecorder()
-        var emittedTask: Task<Void, Never>?
+        let box = TaskBox()
         let adapter = PreToolUseHookAdapter.make(
             registry: registry,
             eventEmitter: { event in
-                emittedTask = Task { await recorder.record(event) }
+                box.task = Task { await recorder.record(event) }
             }
         )
 
@@ -163,7 +170,7 @@ final class PreToolUseHookAdapterTests: XCTestCase {
         _ = await adapter("read_file", #"{"path":"./x"}"#, sessionID)
 
         // Await the exact Task the emitter spawned — deterministic, no scheduler race.
-        await emittedTask?.value
+        await box.task?.value
         let events = await recorder.snapshot()
 
         // The first recorded non-barrier event should be the preToolUse
