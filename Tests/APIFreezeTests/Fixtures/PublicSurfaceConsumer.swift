@@ -194,28 +194,9 @@ enum PublicSurfaceConsumer {
     // MARK: - ManifoldRuntime
 
     private static func consumeRuntimeInputs() {
-        let sessionID = UUID()
-        let _: SendInput = SendInput(
-            sessionID: sessionID,
-            userText: "hi"
-        )
-        let _: SendInput = SendInput(
-            sessionID: sessionID,
-            userText: "hi",
-            attachments: [.image(data: Data(), mimeType: "image/png")],
-            systemPrompt: "be helpful",
-            temperature: 0.7,
-            topP: 0.9,
-            repeatPenalty: 1.1,
-            maxOutputTokens: 2048,
-            maxThinkingTokens: nil,
-            streamingUpdateInterval: .milliseconds(33),
-            streamingBatchCharacterLimit: 128,
-            thinkingStreamingUpdateInterval: .milliseconds(33),
-            thinkingStreamingBatchCharacterLimit: 128,
-            loopDetectionEnabled: true
-        )
-        let _: RegenerateInput = RegenerateInput(sessionID: sessionID)
+        // Legacy input structs are pinned in DeprecatedSurfaceConsumer.swift
+        // (inside an @available(*, deprecated) type) to avoid deprecation
+        // warnings propagating here. Non-deprecated symbols pin here:
         let _: ConversationStreamHandle = ConversationStreamHandle()
     }
 

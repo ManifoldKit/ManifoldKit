@@ -18,6 +18,46 @@ Each section below is a complete, compile-tested example: a full `Package.swift`
 
 ---
 
+## Package dependency forms
+
+The sections below each show the tagged-release form. Two alternate forms are worth knowing.
+
+### Local-path form (local checkout, worktree, or monorepo)
+
+```swift
+dependencies: [
+    // name: is required — SwiftPM derives identity from the last path component,
+    // which breaks when the checkout directory is named differently from the package
+    // (e.g. "ManifoldKit.worktrees/feat-foo", "vendor/mk", a bare git worktree path).
+    .package(name: "ManifoldKit", path: "../ManifoldKit"),
+],
+```
+
+> **The `name:` argument is not optional here.** Without it, `.package(path: "../ManifoldKit")` derives the package name from `"ManifoldKit"` (the last path component), which happens to work in a standard clone but silently breaks in worktrees and non-default directory names. Always pass `name: "ManifoldKit"` explicitly on local-path dependencies.
+
+### Trait-selection form (opt in to specific backends)
+
+ManifoldKit uses [SwiftPM package traits](https://github.com/apple/swift-evolution/blob/main/proposals/0394-swiftpm-expression-macros.md) to gate optional backends. The default trait set (`MLX`, `Llama`, `HuggingFace`) is suitable for most consumers, but you can opt in to additional traits — or limit to a subset — by passing `traits:`:
+
+```swift
+dependencies: [
+    .package(
+        url: "https://github.com/roryford/ManifoldKit.git",
+        from: "0.33.0", // x-release-please-version
+        traits: [
+            .trait(name: "Ollama"),     // local Ollama server
+            .trait(name: "CloudSaaS"),  // OpenAI / Anthropic
+            // Omit "MLX" / "Llama" to skip those backends entirely
+            // (saves compile time if you're cloud-only).
+        ]
+    ),
+],
+```
+
+> **Both forms are composable.** A local-path dependency can specify traits too: `.package(name: "ManifoldKit", path: "../ManifoldKit", traits: [.trait(name: "Ollama")])`.
+
+---
+
 ## 1. Foundation Models (macOS 26)
 
 The smallest possible CLI. No model files to manage, no network calls, no API keys — Foundation Models ships with the OS on macOS 26 / iOS 26. If you're on a current Apple OS and your privacy / latency budget allows the on-device Apple model, this is the fastest path to a working binary.
