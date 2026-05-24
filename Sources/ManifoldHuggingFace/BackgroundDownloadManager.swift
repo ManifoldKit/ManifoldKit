@@ -59,14 +59,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     /// `.queued` or `.downloading`. Completed, failed, and cancelled downloads are
     /// not counted.
     public var hasActiveDownloads: Bool {
-        activeDownloads.values.contains { state in
-            switch state.status {
-            case .queued, .downloading:
-                return true
-            case .completed, .failed, .cancelled:
-                return false
-            }
-        }
+        progressReporter.hasActiveDownloads(activeDownloads)
     }
 
     // MARK: - Private State
@@ -82,35 +75,10 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     private var activeTempPaths: Set<URL> = []
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
-    internal struct TaskContext: Codable, Sendable {
-        let modelID: String
-        let relativePath: String?
-        let expectedBytes: Int64
-        let expectedChecksum: ModelFileChecksum?
-    }
+    internal typealias TaskContext = DownloadStateMachine.TaskContext
 
-    private struct SnapshotProgress: Sendable {
-        var bytesDownloaded: Int64
-        var expectedBytes: Int64
-    }
-
-    private struct SnapshotDownloadContext: Sendable {
-        let stagingDirectory: URL
-        let files: [String: SnapshotFileMetadata]
-        let totalBytes: Int64
-        var progressByFile: [String: SnapshotProgress]
-        var completedFiles: Set<String>
-        var taskIDs: Set<Int>
-        /// Set to true when a cancellation is in progress; lets delegate callbacks
-        /// drain without racing into .failed state before all tasks have reported back.
-        var isCancelling: Bool = false
-    }
-
-    /// Maps `URLSessionTask.taskIdentifier` to task metadata for delegate routing.
-    private var taskContexts: [Int: TaskContext] = [:]
-
-    /// Tracks multi-file MLX downloads by logical model ID.
-    private var snapshotDownloads: [String: SnapshotDownloadContext] = [:]
+    @ObservationIgnored
+    private var downloadStateMachine = DownloadStateMachine()
 
     /// Promoted to `internal` (from `private`) so `BackgroundDownloadManager+URLSessionDelegate.swift`
     /// can read `storageService.modelsDirectory` when moving completed downloads.
@@ -125,33 +93,17 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     @ObservationIgnored
     private let _sessionIdentifier: String
 
-    /// Backing store for the lazily created background URL session.
-    ///
-    /// Kept as an optional so `deinit` can skip invalidation when the session
-    /// was never created (e.g. in unit tests that never start a download).
-    /// Accessing `backgroundSession` during `deinit` before the object has fully
-    /// initialised its memory is unsafe and causes a SIGSEGV.
     @ObservationIgnored
-    private var _backgroundSession: URLSession?
+    private var _sessionCoordinator: BackgroundURLSessionCoordinator?
 
-    /// Lazily created background URL session.
-    ///
-    /// Marked `@ObservationIgnored` because `@Observable` does not support stored
-    /// computed-like properties that hold references.
-    @ObservationIgnored
-    private var backgroundSession: URLSession {
-        if let existing = _backgroundSession { return existing }
-        // Route through the centralised factory so the redirect guard is
-        // installed alongside `self` (the download delegate). A direct
-        // `URLSession(configuration:delegate:)` would skip the guard, leaving
-        // every download free to chase 30x redirects to IMDS or a LAN IP
-        // with the auth header still attached.
-        let session = URLSessionFactory.background(
-            identifier: _sessionIdentifier,
-            additionalDownloadDelegate: self
+    private var sessionCoordinator: BackgroundURLSessionCoordinator {
+        if let existing = _sessionCoordinator { return existing }
+        let coordinator = BackgroundURLSessionCoordinator(
+            sessionIdentifier: _sessionIdentifier,
+            downloadDelegate: self
         )
-        _backgroundSession = session
-        return session
+        _sessionCoordinator = coordinator
+        return coordinator
     }
 
     // MARK: - Persistence / Cleanup Collaborators
@@ -162,17 +114,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     @ObservationIgnored
     private let tempScanDirectory: URL
 
-    /// Activity center used to broadcast in-flight download state. Defaults
-    /// to ``NetworkActivityCenter/shared`` so integrators can bind a single
-    /// observable without threading dependencies through their app graph.
     @ObservationIgnored
-    private let activityCenter: NetworkActivityCenter
-
-    /// Per-model activity tokens. Issued when `startDownload` accepts a new
-    /// transfer and released the moment the model transitions out of an
-    /// active status (completed / failed / cancelled).
-    @ObservationIgnored
-    private var activityTokens: [String: NetworkActivityToken] = [:]
+    private let progressReporter: DownloadProgressReporter
 
     // MARK: - Init
 
@@ -186,7 +129,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     ) {
         self.storageService = storageService
         self._sessionIdentifier = sessionIdentifier ?? Self.sessionIdentifier
-        self.activityCenter = activityCenter
+        self.progressReporter = DownloadProgressReporter(activityCenter: activityCenter)
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let resolvedPersistenceDirectory = persistenceDirectory
@@ -203,7 +146,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     }
 
     deinit {
-        _backgroundSession?.invalidateAndCancel()
+        _sessionCoordinator?.invalidateAndCancel()
     }
 
     // MARK: - Public API
@@ -346,7 +289,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         if let resumeData {
             Log.download.info("Retrying download \(id) with resume data (\(resumeData.count) bytes)")
-            let task = backgroundSession.downloadTask(withResumeData: resumeData)
+            let task = sessionCoordinator.downloadTask(withResumeData: resumeData)
             let context = TaskContext(
                 modelID: model.id,
                 relativePath: nil,
@@ -354,7 +297,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 expectedChecksum: nil
             )
             task.taskDescription = encodeTaskDescription(context)
-            taskContexts[task.taskIdentifier] = context
+            downloadStateMachine.registerTask(taskID: task.taskIdentifier, context: context)
             do {
                 try savePendingDownload(model: model)
             } catch {
@@ -432,10 +375,10 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         Log.download.info("Cancelling download: \(id)")
 
         // getAllTasks delivers its callback on the URLSession delegate queue (a background
-        // thread). Reading taskContexts — which is written from @MainActor — on that queue
+        // thread). Reading task context state — which is written from @MainActor — on that queue
         // is a data race. We hop back to @MainActor for the dictionary read, match tasks
         // by model ID, and then cancel them. URLSessionTask.cancel() is thread-safe.
-        backgroundSession.getAllTasks { [weak self] tasks in
+        sessionCoordinator.getAllTasks { [weak self] tasks in
             guard let self else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -455,9 +398,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 // URLSession delegate callbacks can still arrive after task.cancel() is
                 // called; deferring cleanup here prevents a cancelled download from
                 // transitioning to .failed due to a "missing snapshot context" error.
-                if self.snapshotDownloads[id] != nil {
-                    self.snapshotDownloads[id]?.isCancelling = true
-                }
+                self.downloadStateMachine.markSnapshotCancelling(modelID: id)
             }
         }
     }
@@ -472,7 +413,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         Log.download.info("Reconnecting background session")
         // Simply accessing the lazy session property re-creates it, which causes
         // the system to deliver any pending delegate callbacks.
-        _ = backgroundSession
+        sessionCoordinator.reconnect()
 
         // Re-populate activeDownloads from persisted pending downloads.
         restorePendingDownloads()
@@ -600,7 +541,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         url: URL,
         expectedChecksum: ModelFileChecksum?
     ) throws {
-        let task = backgroundSession.downloadTask(with: url)
+        let task = sessionCoordinator.downloadTask(with: url)
         let context = TaskContext(
             modelID: model.id,
             relativePath: nil,
@@ -608,7 +549,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             expectedChecksum: expectedChecksum
         )
         task.taskDescription = encodeTaskDescription(context)
-        taskContexts[task.taskIdentifier] = context
+        downloadStateMachine.registerTask(taskID: task.taskIdentifier, context: context)
         try savePendingDownload(model: model)
         task.resume()
         Log.download.info("Download task \(task.taskIdentifier) started for \(model.id)")
@@ -620,22 +561,10 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         files: [ModelDownloadFile],
         stagingDirectory: URL
     ) {
-        let metadataFiles = files.map {
-            SnapshotFileMetadata(
-                relativePath: $0.relativePath,
-                sizeBytes: $0.sizeBytes,
-                expectedChecksum: $0.expectedChecksum
-            )
-        }
-        snapshotDownloads[model.id] = SnapshotDownloadContext(
-            stagingDirectory: stagingDirectory,
-            files: Dictionary(uniqueKeysWithValues: metadataFiles.map { ($0.relativePath, $0) }),
-            totalBytes: Int64(model.sizeBytes),
-            progressByFile: Dictionary(uniqueKeysWithValues: metadataFiles.map {
-                ($0.relativePath, SnapshotProgress(bytesDownloaded: 0, expectedBytes: Int64($0.sizeBytes)))
-            }),
-            completedFiles: [],
-            taskIDs: []
+        downloadStateMachine.prepareSnapshotDownload(
+            model: model,
+            files: files,
+            stagingDirectory: stagingDirectory
         )
     }
 
@@ -643,15 +572,16 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     private func startSnapshotDownload(model: DownloadableModel, files: [ModelDownloadFile]) throws {
         let stagingDirectory = try makeSnapshotStagingDirectory()
         prepareSnapshotDownload(model: model, files: files, stagingDirectory: stagingDirectory)
-        guard var context = snapshotDownloads[model.id] else {
+        guard downloadStateMachine.snapshotDownload(modelID: model.id) != nil else {
             throw HuggingFaceError.invalidDownloadedFile(reason: "Failed to create MLX snapshot context")
         }
 
         // Create all tasks and register context before persisting and resuming,
         // so reconnect metadata is written before any task can complete.
-        var tasks: [(URLSessionDownloadTask, TaskContext)] = []
+        var tasks: [URLSessionDownloadTask] = []
+        var taskIDs: Set<Int> = []
         for file in files {
-            let task = backgroundSession.downloadTask(with: file.url)
+            let task = sessionCoordinator.downloadTask(with: file.url)
             let taskContext = TaskContext(
                 modelID: model.id,
                 relativePath: file.relativePath,
@@ -659,12 +589,12 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                 expectedChecksum: file.expectedChecksum
             )
             task.taskDescription = encodeTaskDescription(taskContext)
-            taskContexts[task.taskIdentifier] = taskContext
-            context.taskIDs.insert(task.taskIdentifier)
-            tasks.append((task, taskContext))
+            downloadStateMachine.registerTask(taskID: task.taskIdentifier, context: taskContext)
+            taskIDs.insert(task.taskIdentifier)
+            tasks.append(task)
         }
 
-        snapshotDownloads[model.id] = context
+        downloadStateMachine.registerSnapshotTasks(modelID: model.id, taskIDs: taskIDs)
         // Persist before resuming so reconnect metadata is always in place.
         try savePendingDownload(
             model: model,
@@ -677,7 +607,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             },
             stagingDirectoryName: stagingDirectory.lastPathComponent
         )
-        for (task, _) in tasks {
+        for task in tasks {
             task.resume()
         }
     }
@@ -690,60 +620,24 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     }
 
     private func encodeTaskDescription(_ context: TaskContext) -> String {
-        do {
-            let data = try JSONEncoder().encode(context)
-            guard let string = String(data: data, encoding: .utf8) else {
-                Log.download.error("Failed to encode task description for \(context.modelID)")
-                return context.modelID
-            }
-            return string
-        } catch {
-            Log.download.error("Failed to encode task description for \(context.modelID): \(error.localizedDescription)")
-            return context.modelID
-        }
+        downloadStateMachine.encodeTaskDescription(context)
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
     internal func taskContext(for taskID: Int, taskDescription: String?) -> TaskContext? {
-        if let context = taskContexts[taskID] {
-            return context
-        }
-        guard let taskDescription else { return nil }
-        let trimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        // JSON-encoded TaskContext (new format) — detect by braces and decode strictly.
-        if trimmed.hasPrefix("{") && trimmed.hasSuffix("}") {
-            guard let data = taskDescription.data(using: .utf8) else {
-                Log.download.error("Failed to UTF-8 encode task description for task \(taskID)")
-                return nil
-            }
-            do {
-                return try JSONDecoder().decode(TaskContext.self, from: data)
-            } catch {
-                Log.download.error("Failed to decode task description for task \(taskID): \(error.localizedDescription)")
-                return nil
-            }
-        }
-        // Legacy plain model-ID format (pre-JSON task descriptions).
-        return TaskContext(modelID: taskDescription, relativePath: nil, expectedBytes: 0, expectedChecksum: nil)
+        downloadStateMachine.taskContext(for: taskID, taskDescription: taskDescription)
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
     @MainActor
     internal func removeTaskTracking(taskID: Int, modelID: String) {
-        taskContexts.removeValue(forKey: taskID)
-        guard var snapshot = snapshotDownloads[modelID] else { return }
-        snapshot.taskIDs.remove(taskID)
-        // When all tasks have drained after a cancellation, clean up staging.
-        if snapshot.isCancelling && snapshot.taskIDs.isEmpty {
-            snapshotDownloads.removeValue(forKey: modelID)
+        if let stagingDirectory = downloadStateMachine.removeTaskTracking(taskID: taskID, modelID: modelID) {
             do {
-                try FileManager.default.removeItem(at: snapshot.stagingDirectory)
+                try FileManager.default.removeItem(at: stagingDirectory)
             } catch {
                 Log.download.error("Failed to remove snapshot staging directory: \(error.localizedDescription)")
             }
-            return
         }
-        snapshotDownloads[modelID] = snapshot
     }
 
     @MainActor
@@ -753,30 +647,20 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         bytesDownloaded: Int64,
         totalBytesExpected: Int64
     ) {
-        guard var snapshot = snapshotDownloads[modelID] else { return }
-        let fallbackExpected = snapshot.files[relativePath].map { Int64($0.sizeBytes) } ?? 0
-        let expectedBytes = totalBytesExpected > 0 ? totalBytesExpected : fallbackExpected
-        snapshot.progressByFile[relativePath] = SnapshotProgress(
+        guard let progress = downloadStateMachine.updateSnapshotProgress(
+            modelID: modelID,
+            relativePath: relativePath,
             bytesDownloaded: bytesDownloaded,
-            expectedBytes: expectedBytes
-        )
-        snapshotDownloads[modelID] = snapshot
-
-        let totalDownloaded = snapshot.progressByFile.values.reduce(0) { $0 + $1.bytesDownloaded }
-        let totalExpected: Int64
-        if snapshot.totalBytes > 0 {
-            totalExpected = snapshot.totalBytes
-        } else {
-            totalExpected = snapshot.progressByFile.values.reduce(0) { $0 + $1.expectedBytes }
-        }
+            totalBytesExpected: totalBytesExpected
+        ) else { return }
         activeDownloads[modelID]?.updateProgress(
-            bytesDownloaded: totalDownloaded,
-            totalBytes: totalExpected
+            bytesDownloaded: progress.bytesDownloaded,
+            totalBytes: progress.totalBytes
         )
         updateActivityProgress(
             modelID: modelID,
-            bytesDownloaded: totalDownloaded,
-            totalBytes: totalExpected
+            bytesDownloaded: progress.bytesDownloaded,
+            totalBytes: progress.totalBytes
         )
     }
 
@@ -786,7 +670,7 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         relativePath: String,
         tempURL: URL
     ) throws {
-        guard var snapshot = snapshotDownloads[modelID] else {
+        guard let snapshot = downloadStateMachine.snapshotDownload(modelID: modelID) else {
             throw HuggingFaceError.invalidDownloadedFile(reason: "Missing snapshot context for MLX download")
         }
 
@@ -824,23 +708,19 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         }
 
         let fileSize = (try FileManager.default.attributesOfItem(atPath: resolvedDestination.path)[.size] as? NSNumber)?.int64Value ?? snapshot.progressByFile[relativePath]?.expectedBytes ?? 0
-        snapshot.completedFiles.insert(relativePath)
-        snapshot.progressByFile[relativePath] = SnapshotProgress(
-            bytesDownloaded: fileSize,
-            expectedBytes: snapshot.progressByFile[relativePath]?.expectedBytes ?? fileSize
-        )
-        snapshotDownloads[modelID] = snapshot
-
-        let totalDownloaded = snapshot.progressByFile.values.reduce(0) { $0 + $1.bytesDownloaded }
-        let totalExpected = snapshot.totalBytes > 0
-            ? snapshot.totalBytes
-            : snapshot.progressByFile.values.reduce(0) { $0 + $1.expectedBytes }
+        guard let progress = downloadStateMachine.markSnapshotFileCompleted(
+            modelID: modelID,
+            relativePath: relativePath,
+            fileSize: fileSize
+        ) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Missing snapshot context for MLX download")
+        }
         activeDownloads[modelID]?.updateProgress(
-            bytesDownloaded: totalDownloaded,
-            totalBytes: totalExpected
+            bytesDownloaded: progress.bytesDownloaded,
+            totalBytes: progress.totalBytes
         )
 
-        guard snapshot.completedFiles.count == snapshot.files.count else { return }
+        guard progress.isComplete else { return }
 
         let packageModel = activeDownloads[modelID]?.model
         if packageModel?.packageKind == .diffusion {
@@ -868,14 +748,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         try FileManager.default.moveItem(at: snapshot.stagingDirectory, to: finalURL)
         activeDownloads[modelID]?.markCompleted(localURL: finalURL)
         removePendingDownload(id: modelID)
-        snapshotDownloads.removeValue(forKey: modelID)
+        _ = downloadStateMachine.removeSnapshotDownload(modelID: modelID)
         endActivityIfNeeded(modelID: modelID)
     }
 
     // internal: required by BackgroundDownloadManager+URLSessionDelegate.swift
     @MainActor
     internal func failSnapshotDownload(modelID: String, error: String, cancelRemainingTasks: Bool) {
-        guard let snapshot = snapshotDownloads[modelID] else {
+        guard let snapshot = downloadStateMachine.snapshotDownload(modelID: modelID) else {
             if case .failed = activeDownloads[modelID]?.status {
                 return
             }
@@ -889,8 +769,8 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         if snapshot.isCancelling { return }
 
         if cancelRemainingTasks {
-            let activeTaskIDs = snapshot.taskIDs
-            backgroundSession.getAllTasks { tasks in
+            let activeTaskIDs = downloadStateMachine.snapshotTaskIDs(modelID: modelID)
+            sessionCoordinator.getAllTasks { tasks in
                 for task in tasks where activeTaskIDs.contains(task.taskIdentifier) {
                     task.cancel()
                 }
@@ -899,9 +779,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         activeDownloads[modelID]?.markFailed(error: error)
         endActivityIfNeeded(modelID: modelID)
-        snapshotDownloads.removeValue(forKey: modelID)
+        let stagingDirectory = downloadStateMachine.removeSnapshotDownload(modelID: modelID)
         do {
-            try FileManager.default.removeItem(at: snapshot.stagingDirectory)
+            try FileManager.default.removeItem(at: stagingDirectory ?? snapshot.stagingDirectory)
         } catch {
             Log.download.error("Failed to remove snapshot staging directory: \(error.localizedDescription)")
         }
@@ -958,21 +838,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
                let snapshotData = snapshotJSON.data(using: .utf8) {
                 do {
                     let files = try JSONDecoder().decode([SnapshotFileMetadata].self, from: snapshotData)
-                    snapshotDownloads[id] = SnapshotDownloadContext(
+                    downloadStateMachine.restoreSnapshotDownload(
+                        modelID: id,
+                        model: model,
+                        files: files,
                         stagingDirectory: storageService.modelsDirectory.appendingPathComponent(
                             stagingDirectoryName,
                             isDirectory: true
-                        ),
-                        files: Dictionary(uniqueKeysWithValues: files.map { ($0.relativePath, $0) }),
-                        totalBytes: Int64(model.sizeBytes),
-                        progressByFile: Dictionary(uniqueKeysWithValues: files.map {
-                            ($0.relativePath, SnapshotProgress(
-                                bytesDownloaded: 0,
-                                expectedBytes: Int64($0.sizeBytes)
-                            ))
-                        }),
-                        completedFiles: [],
-                        taskIDs: []
+                        )
                     )
                 } catch {
                     Log.download.error("Failed to restore snapshot metadata for \(id): \(error.localizedDescription)")
@@ -1049,19 +922,14 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     /// Idempotent so retries / snapshot fan-out don't double-register.
     @MainActor
     internal func beginActivityIfNeeded(modelID: String) {
-        guard activityTokens[modelID] == nil else { return }
-        activityTokens[modelID] = activityCenter.begin(
-            kind: .download(modelID: modelID),
-            host: "huggingface.co"
-        )
+        progressReporter.beginActivityIfNeeded(modelID: modelID)
     }
 
     /// Closes the activity token for `modelID` if one is outstanding. Safe
     /// to call from every mark-* terminal state — extra calls are no-ops.
     @MainActor
     internal func endActivityIfNeeded(modelID: String) {
-        guard let token = activityTokens.removeValue(forKey: modelID) else { return }
-        activityCenter.end(token)
+        progressReporter.endActivityIfNeeded(modelID: modelID)
     }
 
     /// Forwards progress to the activity center so the public observable
@@ -1072,11 +940,10 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         bytesDownloaded: Int64,
         totalBytes: Int64
     ) {
-        guard let token = activityTokens[modelID] else { return }
-        activityCenter.updateDownload(
-            token,
-            bytesReceived: bytesDownloaded,
-            totalBytes: totalBytes > 0 ? totalBytes : nil
+        progressReporter.updateActivityProgress(
+            modelID: modelID,
+            bytesDownloaded: bytesDownloaded,
+            totalBytes: totalBytes
         )
     }
 
