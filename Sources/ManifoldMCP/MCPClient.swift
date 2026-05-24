@@ -71,6 +71,30 @@ public actor MCPClient {
         _ descriptor: MCPServerDescriptor,
         authorization: any MCPAuthorization = MCPNoAuthorization()
     ) async throws -> MCPToolSource {
+        // Require explicit opt-in for STDIO transport — it spawns an arbitrary
+        // subprocess with the app's privileges and bypasses TLS + SSRF guards.
+        if case .stdio = descriptor.transport, !descriptor.allowsSTDIOTransport {
+            let error = MCPError.transportFailure(
+                "STDIO transport requires explicit opt-in via MCPServerDescriptor.allowsSTDIOTransport. " +
+                "See SECURITY.md for the threat model."
+            )
+            connectionStateContinuation.yield(.failed)
+            connectionEventContinuation.yield(.error(serverID: descriptor.id, error))
+            throw error
+        }
+
+        // Require explicit opt-in for unauthenticated servers — tool call arguments
+        // are sent in the clear and the server has no cryptographic identity.
+        if case .none = descriptor.authorization, !descriptor.isUnauthenticatedUnsafe {
+            let error = MCPError.transportFailure(
+                "MCP server has no auth configuration. " +
+                "Set isUnauthenticatedUnsafe: true to permit unauthenticated connections."
+            )
+            connectionStateContinuation.yield(.failed)
+            connectionEventContinuation.yield(.error(serverID: descriptor.id, error))
+            throw error
+        }
+
         connectionStateContinuation.yield(.connecting)
         connectionEventContinuation.yield(.connecting(serverID: descriptor.id))
 

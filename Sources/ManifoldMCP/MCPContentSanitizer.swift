@@ -1,6 +1,41 @@
 import Foundation
+import ManifoldInference
 
 enum MCPContentSanitizer {
+    // Phrases that are common in prompt-injection payloads. Detection is
+    // case-insensitive and substring-based. We log only — stripping silently
+    // would hide the attack from operators. This list is conservative: false
+    // positives are acceptable; false negatives (missing a real injection) are not.
+    private static let injectionIndicators: [String] = [
+        "ignore previous",
+        "system:",
+        "override",
+        "disregard",
+        "STOP",
+    ]
+
+    /// Logs a warning if `text` contains any known injection-indicator phrase.
+    /// Does NOT modify or block the content — logging surfaces the attack so
+    /// operators can investigate. Stripping silently would hide the evidence.
+    ///
+    /// - Returns: `true` if at least one injection indicator was detected, `false`
+    ///   otherwise. Callers may use the return value in tests; production call
+    ///   sites discard it.
+    @discardableResult
+    static func logInjectionIndicators(in text: String, field: String, toolName: String) -> Bool {
+        let lowered = text.lowercased()
+        var detected = false
+        for indicator in injectionIndicators {
+            if lowered.contains(indicator.lowercased()) {
+                Log.inference.warning(
+                    "MCPContentSanitizer: injection indicator found in tool metadata — field=\(field, privacy: .public) tool=\(toolName, privacy: .public) indicator=\(indicator, privacy: .public) — review server metadata for prompt-injection content"
+                )
+                detected = true
+            }
+        }
+        return detected
+    }
+
     /// Wraps tool output text in an untrusted-content envelope so the model
     /// can distinguish server-provided data from system instructions.
     static func wrapForUntrustedSurface(
