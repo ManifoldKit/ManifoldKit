@@ -612,17 +612,24 @@ backend.cachePolicy = .disabled  // opt out if needed
 
 #### On-device image generation with FLUX.1 Schnell ([#1178](https://github.com/roryford/ManifoldKit/issues/1178))
 
-`FluxDiffusionBackend` brings FLUX.1 Schnell on-device image generation to ManifoldKit via MLX. The backend generates 1024×1024 images in four denoising steps using the pre-quantized `argmaxinc/mlx-FLUX.1-schnell-4bit-quantized` weights (~7 GB, Apache 2.0, ungated). The curated diffusion catalog has been updated to ship this model as the default, replacing the previous SD 2.1 and SDXL Turbo entries whose licenses were incompatible with App Store distribution.
+`FluxDiffusionBackend` brings FLUX.1 Schnell on-device image generation to ManifoldKit via MLX. The backend generates 1024×1024 images in four denoising steps. Provide a local directory containing FLUX weights — either flux.swift's quantized layout (with `metadata.json`) or the standard diffusers layout — to `loadModel(from:)`, then iterate the `AsyncThrowingStream<ImageGenerationEvent, Error>` returned by `generate(prompt:config:)`. See [`docs/QUICKSTART-IMAGE-GEN.md`](docs/QUICKSTART-IMAGE-GEN.md) for the end-to-end shape including download options.
 
 ```swift
+import Foundation
+import ManifoldInference
 import ManifoldMLX
 
 let backend = FluxDiffusionBackend()
-let image = try await backend.generate(
-    prompt: "a red fox in a snowy forest, photorealistic",
-    steps: 4,
-    size: CGSize(width: 1024, height: 1024)
-)
+try await backend.loadModel(from: URL(fileURLWithPath: "/path/to/FLUX.1-schnell"))
+
+let config = ImageGenerationConfig(steps: 4, width: 1024, height: 1024, seed: 42)
+let stream = try backend.generate(prompt: "a red fox in a snowy forest", config: config)
+for try await event in stream {
+    switch event {
+    case .progress(let step, let total): print("\(step)/\(total)")
+    case .completed(let url): print("wrote \(url.path)")
+    }
+}
 ```
 
 ### Features
@@ -1163,7 +1170,7 @@ imageService.registerMLXDiffusionBackend()  // Apple Silicon only
 chatViewModel.configure(bootstrap)           // wires both runtimes in one call
 ```
 
-The first concrete conformer, `MLXDiffusionBackend`, ships in `BaseChatBackends` behind the existing `MLX` trait and auto-detects SD 2.1 Base and SDXL Turbo layouts from the weights directory. `DiffusionModelCatalog` seeds the install UI with both models; `HuggingFaceService` gains a parallel `downloadDiffusionModel(from:to:progress:)` path for the multi-file safetensors layout. `MLXDiffusionBackend` depends on `mlx-swift-examples` at a revision pin (`357c97f`) pending the upstream library's next tagged release.
+The first concrete conformer, `MLXDiffusionBackend`, ships in `BaseChatBackends` behind the existing `MLX` trait and auto-detects SD 2.1 Base and SDXL Turbo layouts from the weights directory. `DiffusionModelCatalog` seeds the install UI with both models; `HuggingFaceService` gains a parallel `downloadDiffusionModel(from:to:progress:)` path for the multi-file safetensors layout. `MLXDiffusionBackend` depends on `mlx-swift-examples` at a revision pin (`357c97f`) pending the upstream library's next tagged release. See [`docs/QUICKSTART-IMAGE-GEN.md`](docs/QUICKSTART-IMAGE-GEN.md) for a compile-tested end-to-end snippet.
 
 See [#1002](https://github.com/roryford/BaseChatKit/issues/1002), [#1003](https://github.com/roryford/BaseChatKit/pull/1003), [#1008](https://github.com/roryford/BaseChatKit/pull/1008), [#1009](https://github.com/roryford/BaseChatKit/pull/1009), [#1016](https://github.com/roryford/BaseChatKit/pull/1016), [#1018](https://github.com/roryford/BaseChatKit/pull/1018), [#1024](https://github.com/roryford/BaseChatKit/pull/1024), [#1025](https://github.com/roryford/BaseChatKit/pull/1025), [#1027](https://github.com/roryford/BaseChatKit/pull/1027), [#1028](https://github.com/roryford/BaseChatKit/pull/1028).
 
