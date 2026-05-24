@@ -40,13 +40,18 @@ public enum InferenceCostEstimator {
         completionTokens: Int
     ) -> (usd: Double, isApproximate: Bool) {
         let key = model.trimmingCharacters(in: .whitespaces).lowercased()
-        // Exact match first; fall back to prefix match for model variants
+        // Exact match first; fall back to longest-prefix match for model variants
         // (e.g. "claude-sonnet-4-6-20261201" → "claude-sonnet-4-6").
+        // Longest-prefix wins to avoid "gpt-4o" matching "gpt-4o-mini-20261201"
+        // when both keys are present in the table.
         let rates: (input: Double, output: Double)?
         if let exact = ratesPerMillion[key] {
             rates = exact
         } else {
-            rates = ratesPerMillion.first { key.hasPrefix($0.key) }?.value
+            rates = ratesPerMillion
+                .filter { key.hasPrefix($0.key) }
+                .max(by: { $0.key.count < $1.key.count })
+                .map { $0.value }
         }
 
         guard let r = rates else {

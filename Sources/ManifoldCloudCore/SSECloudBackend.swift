@@ -557,6 +557,11 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 // Emit metric regardless of outcome so the sink receives both
                 // successful and failed calls.
                 if let sink = capturedMetricSink {
+                    // `self` is weak here. If the backend was deallocated while the
+                    // stream was in-flight, `lastUsage` is unavailable and we emit a
+                    // metric with zero token counts. This is intentional — the metric
+                    // still records timing and the error class, so cost analysis
+                    // is the only field degraded.
                     let usage = self?.lastUsage
                     let promptTokens = usage?.promptTokens ?? 0
                     let completionTokens = usage?.completionTokens ?? 0
@@ -1051,6 +1056,7 @@ private final class WeakBox<T: AnyObject>: @unchecked Sendable {
 final class GenerationMetricTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var wallStart: ContinuousClock.Instant = ContinuousClock.now
+    private var dispatchDate: Date = Date()
     private var firstTokenInstant: ContinuousClock.Instant?
     private var lastTokenInstant: ContinuousClock.Instant?
     private var interTokenGapsNs: [Int64] = []
@@ -1059,6 +1065,9 @@ final class GenerationMetricTracker: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         wallStart = ContinuousClock.now
+        // Capture a Date alongside ContinuousClock so InferenceMetric carries an
+        // absolute timestamp for time-series storage and log correlation.
+        dispatchDate = Date()
     }
 
     func recordToken() {
@@ -1091,6 +1100,7 @@ final class GenerationMetricTracker: @unchecked Sendable {
         defer { lock.unlock() }
         let wallEnd = ContinuousClock.now
         let wallClock: Duration = wallStart <= wallEnd ? wallEnd - wallStart : .zero
+        let capturedDate = dispatchDate
 
         let ttft: Duration
         if let first = firstTokenInstant {
@@ -1120,7 +1130,8 @@ final class GenerationMetricTracker: @unchecked Sendable {
             estimatedCostUSD: estimatedCostUSD,
             isCostApproximate: isCostApproximate,
             costTableDate: costTableDate,
-            errorClass: errorClass
+            errorClass: errorClass,
+            timestamp: capturedDate
         )
     }
 }

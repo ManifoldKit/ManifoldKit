@@ -19,7 +19,9 @@ public struct InferenceMetric: Sendable {
     /// Number of tokens in the completion.
     public let completionTokens: Int
     /// Time elapsed between request dispatch and the first `.token` event.
-    /// Zero when the stream produced no tokens.
+    /// Zero when the stream produced no tokens. `.thinkingToken` events are
+    /// intentionally excluded — TTFT measures output latency as perceived by
+    /// the end user, not internal reasoning time.
     public let timeToFirstToken: Duration
     /// Average gap between consecutive token events.
     /// Zero when fewer than two tokens were observed.
@@ -36,6 +38,9 @@ public struct InferenceMetric: Sendable {
     /// Short error class name when the call ended in failure, `nil` on success
     /// (e.g. "rateLimited", "networkError", "authenticationFailed").
     public let errorClass: String?
+    /// Wall-clock date and time at which the generation request was dispatched.
+    /// Useful for time-series storage and correlating metrics with external logs.
+    public let timestamp: Date
 
     public init(
         provider: String,
@@ -49,7 +54,8 @@ public struct InferenceMetric: Sendable {
         estimatedCostUSD: Double,
         isCostApproximate: Bool,
         costTableDate: String,
-        errorClass: String?
+        errorClass: String?,
+        timestamp: Date = Date()
     ) {
         self.provider = provider
         self.model = model
@@ -63,6 +69,7 @@ public struct InferenceMetric: Sendable {
         self.isCostApproximate = isCostApproximate
         self.costTableDate = costTableDate
         self.errorClass = errorClass
+        self.timestamp = timestamp
     }
 }
 

@@ -102,6 +102,22 @@ struct InferenceCostEstimatorTests {
         #expect(!isApprox)
     }
 
+    @Test("gpt-4o-mini variant uses mini rate, not gpt-4o rate")
+    func gpt4oMiniVariantUsesLongestPrefix() {
+        // "gpt-4o-mini-20261201" has two matching prefixes: "gpt-4o" and "gpt-4o-mini".
+        // The longest-prefix-wins rule must select "gpt-4o-mini" ($0.15/$0.60 per M)
+        // rather than "gpt-4o" ($2.50/$10 per M).
+        let (usd, isApprox) = InferenceCostEstimator.estimatedCost(
+            provider: "OpenAI",
+            model: "gpt-4o-mini-20261201",
+            promptTokens: 1_000_000,
+            completionTokens: 0
+        )
+        // Input $0.15/M → $0.15 for 1M tokens
+        #expect(abs(usd - 0.15) < 0.0001)
+        #expect(!isApprox)
+    }
+
     @Test("Zero tokens produces zero cost")
     func zeroTokens() {
         let (usd, _) = InferenceCostEstimator.estimatedCost(
@@ -312,12 +328,15 @@ struct SSECloudBackendMetricTests {
 
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
 
+        var caughtError: Error?
         do {
             let stream = try backend.generate(prompt: "Hi", systemPrompt: nil, config: GenerationConfig())
             for try await _ in stream.events {}
         } catch {
-            // Expected — 401 throws authenticationFailed.
+            caughtError = error
         }
+        // 401 must produce authenticationFailed, not silently succeed.
+        #expect(caughtError != nil, "Expected stream to throw on 401 response")
 
         // Allow the metric emission Task to complete.
         try await Task.sleep(for: .milliseconds(100))
