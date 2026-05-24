@@ -15,7 +15,7 @@ The snippet below dictates into an arbitrary `String` binding — drop it
 behind a mic button in any SwiftUI view (image-gen prompt, search bar,
 note-taking field, etc.).
 
-```swift
+```swift,no-build
 import SwiftUI
 import ManifoldVoice
 
@@ -62,7 +62,7 @@ struct DictationField: View {
 Inject your own ``SpeechTranscribing`` to replace `SFSpeechRecognizer` (e.g.
 to integrate a local Whisper backend or a server-side STT service):
 
-```swift
+```swift,no-build
 import ManifoldVoice
 
 final class WhisperTranscriber: SpeechTranscribing {
