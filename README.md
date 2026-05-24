@@ -67,7 +67,7 @@ Most apps add a single product — the `ManifoldKit` umbrella — which re-expor
 ])
 ```
 
-Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`) stay opt-in — add them explicitly when you need that surface. For finer-grained dependency control (e.g. a UI-only target that doesn't link `ManifoldBackends`), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for trait selection and the bring-your-own-UI path.
+Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`) stay opt-in — add them explicitly when you need that surface. `ManifoldVoice` in particular is usable outside chat: it wraps Apple `Speech` / `AVFoundation` behind a chat-agnostic `VoiceConversationController`, so anything from an image-gen prompt field to a CLI dictation tool can drive it. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md) for the standalone STT path; the chat composer accessory is the *other* consumer of the same controller. For finer-grained dependency control (e.g. a UI-only target that doesn't link `ManifoldBackends`), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for trait selection and the bring-your-own-UI path.
 
 ## Requirements
 
