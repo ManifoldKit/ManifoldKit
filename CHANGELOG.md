@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.34.0](https://github.com/roryford/ManifoldKit/compare/v0.33.0...v0.34.0) — 2026-05-24
+
+### Highlights
+
+#### Multi-agent runtime — handoffs, hooks, skills, and session tool sources ([#1418](https://github.com/roryford/ManifoldKit/issues/1418), [#1429](https://github.com/roryford/ManifoldKit/issues/1429), [#1432](https://github.com/roryford/ManifoldKit/issues/1432), [#1435](https://github.com/roryford/ManifoldKit/issues/1435), [#1436](https://github.com/roryford/ManifoldKit/issues/1436), [#1443](https://github.com/roryford/ManifoldKit/issues/1443), [#1446](https://github.com/roryford/ManifoldKit/issues/1446))
+
+This release ships the full agentic runtime surface. `SessionToolSource` lets you register tools scoped to a session rather than a backend, so different agents in the same app can have different tool sets. `HookRegistry` adds `preToolUse` and `preCompact` events — inject validation, logging, or a confirmation gate without patching the turn loop. Agent handoffs use a `transfer_to_<name>` synthetic tool that `ConversationRuntime` resolves at call time, so the routing graph is declared in data rather than embedded in prompt text. `ManifoldBootstrap` gains `sessionToolSources` and `hookRegistry` fields so all of this wires up in the same one-call setup path.
+
+The `ManifoldSkills` module adds SKILL.md discovery: a skill file sits next to your source, its frontmatter declares the tool schema, and the runtime surfaces it without any additional registration code. Block-style YAML lists are now parsed correctly in the frontmatter.
+
+```swift
+let bootstrap = ManifoldBootstrap(
+    ...
+    hookRegistry: HookRegistry { event in
+        if case .preToolUse(let call) = event {
+            guard await permissionGate.allow(call) else { throw ToolCallDenied() }
+        }
+    },
+    sessionToolSources: [agentATools, agentBTools]
+)
+```
+
+#### `ManifoldFlux` merged into `ManifoldMLX` — BREAKING ([#1408](https://github.com/roryford/ManifoldKit/issues/1408))
+
+`import ManifoldFlux` is gone. The Flux image-generation backend now lives inside `ManifoldMLX` alongside the text-generation backend, eliminating a separate target that had no independent consumers. Apps using `import ManifoldBackends` (the documented path) are unaffected. Apps that imported the family target directly must replace `import ManifoldFlux` with `import ManifoldMLX`.
+
+#### AppIntents — `AskManifoldIntent` and batch registration ([#1379](https://github.com/roryford/ManifoldKit/issues/1379), [#1380](https://github.com/roryford/ManifoldKit/issues/1380))
+
+`AskManifoldIntent` is a ready-to-use system intent that surfaces ManifoldKit chat sessions to Siri and Shortcuts without any boilerplate. `DiscoverableAppIntent` gains a batch registration API so you can register a whole family of scene-specific intents in one call.
+
+```swift
+// Register all scene intents in AppDelegate or @main
+ManifoldAppIntents.registerAll([
+    AskManifoldIntent.self,
+    SummariseSessionIntent.self,
+])
+```
+
+#### Observability — per-token latency and cost meter on `SSECloudBackend` ([#1414](https://github.com/roryford/ManifoldKit/issues/1414))
+
+Every `SSECloudBackend` generation now records an `InferenceMetric`: time-to-first-token, mean inter-token latency, wall-clock duration, prompt/completion token counts, and an estimated cost in USD. Metrics flow through an `InferenceMetricSink` protocol so you can route them to your own analytics pipeline. The built-in `InMemoryMetricSink` keeps the last 100 metrics in an actor-backed ring buffer.
+
+```swift
+let sink = InMemoryMetricSink.shared
+let recent = await sink.recent()
+print(recent.last?.meanInterTokenLatency as Any) // TimeInterval?
+```
+
+#### CloudKit sync and V9 schema ([#873](https://github.com/roryford/ManifoldKit/issues/873), [#1420](https://github.com/roryford/ManifoldKit/issues/1420))
+
+`ManifoldBootstrap.makeCloudKitContainer()` is a new convenience factory that configures a CloudKit-backed SwiftData container with the right store description and schema migration path. The V9 schema adds agent and skill session fields to the persistent model layer, which `SessionToolSource` and `ManifoldSkills` depend on at runtime.
+
+#### MCP security hardening — STDIO opt-in, auth enforcement, schema sanitizer ([#1413](https://github.com/roryford/ManifoldKit/issues/1413))
+
+`MCPServerDescriptor` now requires explicit opt-in for STDIO transports (`allowsSTDIOTransport: true`) and unauthenticated servers (`isUnauthenticatedUnsafe: true`); attempts to connect without setting the relevant flag throw `MCPError.transportFailure` with an actionable message. `MCPContentSanitizer` now walks the full JSON Schema parameter tree — not just the top-level description — so injected instructions buried in nested property descriptions are caught and logged.
+
+### Features
+
+* **persistence:** rolling dialogue summarisation hook for long sessions ([#873](https://github.com/roryford/ManifoldKit/issues/873))
+* **runtime:** conversation import — `JSONLImportFormat` + `ConversationImporter` ([#873](https://github.com/roryford/ManifoldKit/issues/873))
+* **ui:** expose `SessionManagerViewModel` from `quickStart()` and await initial session load
+* **ui:** per-agent message rendering and handoff chip ([#1436](https://github.com/roryford/ManifoldKit/issues/1436))
+* **inference:** llama.cpp log-level knob, silence internal deprecations
+
+### Bug Fixes
+
+* **foundation:** emit generation events from `FoundationBackend` stream
+* **llama:** correct Llama-3 chat template and drain Metal residency on unload
+* **swiftui:** auto-create initial session in `quickStart()` so `ChatView` is usable on first launch ([#1411](https://github.com/roryford/ManifoldKit/issues/1411))
+* **ui:** wire Browse Models CTA and fix empty-state copy in `ChatView`
+
+### Documentation
+
+* QUICKSTART-CLI guide with Foundation + Llama + cloud worked examples ([#1397](https://github.com/roryford/ManifoldKit/issues/1397))
+* `ManifoldSkills`, `AgentHandoffs`, and `HookSystem` articles ([#1437](https://github.com/roryford/ManifoldKit/issues/1437))
+* `GenerationEvent` cases enumerated in QUICKSTART-CLI ([#1431](https://github.com/roryford/ManifoldKit/issues/1431))
+* Fix `BuildingAChatUI.md` snippets to compile against v0.33.0 ([#1434](https://github.com/roryford/ManifoldKit/issues/1434))
+
 ## [0.33.0](https://github.com/roryford/ManifoldKit/compare/v0.32.0...v0.33.0) — 2026-05-23
 
 ### Highlights
