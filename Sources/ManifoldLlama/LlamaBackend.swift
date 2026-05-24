@@ -591,10 +591,30 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         // so blocking here would freeze the UI for the duration of the spin-wait.
         // We await the generation task to ensure the C loop has stopped before
         // touching the pointers, preventing a use-after-free crash.
+        //
+        // Before calling llama_free we must:
+        //   1. Drain GPU work via llama_synchronize — the generation loop may have
+        //      been cancelled mid-stride, leaving Metal command buffers enqueued
+        //      but not yet committed. llama_free releases the Metal residency set
+        //      while those buffers still reference it, tripping:
+        //        GGML_ASSERT([rsets->data count] == 0)   (ggml-metal-device.m:618)
+        //      which aborts the process with SIGABRT (issue #1394).
+        //   2. Clear the KV cache — ensures ggml_metal_device_free finds an empty
+        //      residency set and does not assert on leftover context allocations.
         let newCleanupTask = Task.detached(priority: .utility) {
             await previousCleanup?.value
             await capturedTask?.value
-            if let ctx = capturedContext { llama_free(ctx) }
+            if let ctx = capturedContext {
+                // Synchronize before clearing: llama_memory_clear enqueues Metal
+                // ops internally; calling it before the GPU drains would race.
+                llama_synchronize(ctx)
+                if let mem = llama_get_memory(ctx) {
+                    llama_memory_clear(mem, false)
+                }
+                // Second synchronize to drain the KV-clear Metal pass before free.
+                llama_synchronize(ctx)
+                llama_free(ctx)
+            }
             if let mdl = capturedModel { llama_model_free(mdl) }
             LlamaBackendProcessLifecycle.release()
         }
