@@ -280,6 +280,10 @@ public final class MCPToolSource: @unchecked Sendable {
             } else {
                 schema = .object([:])
             }
+            // Scan parameter descriptions — they appear verbatim in the model's
+            // context window alongside parameter names and are an equally viable
+            // injection vector as the top-level tool description.
+            MCPContentSanitizer.logInjectionIndicatorsInSchema(schema, toolName: name)
             return MCPRemoteTool(
                 originalName: name,
                 namespacedName: name,

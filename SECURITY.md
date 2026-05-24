@@ -282,10 +282,18 @@ attempts before the content reaches the model's context window.
 
 `MCPToolSource` caps tool names and descriptions by UTF-8 byte count. When content
 contains known prompt-injection indicator phrases (`"ignore previous"`, `"system:"`,
-`"override"`, `"disregard"`, `"STOP"`), a warning is written to `Log.inference` instead
+`"override"`, `"disregard"`, `"[STOP]"`), a warning is written to `Log.inference` instead
 of silently dropping the content — stripping silently would hide the attack from
-operators. Host apps should forward `os_log` output from the `com.manifoldkit.inference`
-subsystem to their observability pipeline.
+operators. The scan covers the tool name, the top-level tool description, **and all
+`description` fields nested inside the JSON Schema** (parameter descriptions). Parameter
+descriptions flow verbatim into the model's context window and are an equally viable
+injection vector. Host apps should forward `os_log` output from the
+`com.manifoldkit.inference` subsystem to their observability pipeline.
+
+Note: the detection list uses the bracketed form `[STOP]` rather than the bare word
+`stop` to avoid false-positive warnings for common tool descriptions that mention
+stopping a process. Operators should treat any logged indicator as a signal requiring
+review, not automatic proof of an attack.
 
 ### Process isolation guidance
 

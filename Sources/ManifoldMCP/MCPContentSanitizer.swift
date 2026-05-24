@@ -6,12 +6,22 @@ enum MCPContentSanitizer {
     // case-insensitive and substring-based. We log only — stripping silently
     // would hide the attack from operators. This list is conservative: false
     // positives are acceptable; false negatives (missing a real injection) are not.
+    //
+    // Tuning notes:
+    //   "override" is broad but injection payloads frequently use it as a bare verb
+    //   ("override all previous instructions"). Legitimate tool descriptions tend to
+    //   pair it with a noun ("override the default timeout") — accept the false-positive
+    //   rate given the low cost of a log warning.
+    //
+    //   "[STOP]" targets the bracketed-token form used in adversarial payloads
+    //   (e.g. "[STOP][IGNORE ABOVE]"). Using bare "stop" would flood operator logs
+    //   for any tool that mentions stopping a process, so the bracketed form is used.
     private static let injectionIndicators: [String] = [
         "ignore previous",
         "system:",
         "override",
         "disregard",
-        "STOP",
+        "[STOP]",
     ]
 
     /// Logs a warning if `text` contains any known injection-indicator phrase.
@@ -32,6 +42,46 @@ enum MCPContentSanitizer {
                 )
                 detected = true
             }
+        }
+        return detected
+    }
+
+    /// Scans all `description` string values found anywhere in a JSON Schema tree
+    /// and logs a warning for each injection indicator found. Parameter descriptions
+    /// flow directly into the model's context window alongside argument names, so
+    /// an adversarial MCP server can embed injection payloads in schema metadata
+    /// just as easily as in the top-level tool description.
+    ///
+    /// The scan is shallow-recursive: it visits object values and array elements one
+    /// level at a time. Arbitrarily deep nesting is handled by the recursive call.
+    @discardableResult
+    static func logInjectionIndicatorsInSchema(
+        _ schema: JSONSchemaValue,
+        toolName: String
+    ) -> Bool {
+        var detected = false
+        switch schema {
+        case .object(let dict):
+            // Check this object's own "description" string field.
+            if case .string(let desc)? = dict["description"] {
+                if logInjectionIndicators(in: desc, field: "parameter description", toolName: toolName) {
+                    detected = true
+                }
+            }
+            // Recurse into all child values (properties, items, allOf, etc.).
+            for (_, child) in dict {
+                if logInjectionIndicatorsInSchema(child, toolName: toolName) {
+                    detected = true
+                }
+            }
+        case .array(let elements):
+            for element in elements {
+                if logInjectionIndicatorsInSchema(element, toolName: toolName) {
+                    detected = true
+                }
+            }
+        default:
+            break
         }
         return detected
     }
