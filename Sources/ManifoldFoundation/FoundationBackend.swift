@@ -449,17 +449,20 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: GenerationEvent.self)
         let generationStream = GenerationStream(stream)
 
-        let task = Task { [weak self, generationStream] in
-            guard let backend = self else {
-                continuation.finish()
-                return
-            }
-
+        // Strong capture of `self` is intentional: the generation Task owns the
+        // stream's lifetime and must run to completion (or explicit cancellation
+        // via `stopGeneration()`) regardless of external retain-count changes.
+        // Weak capture would silently drop the entire generation — emitting zero
+        // events — if ARC happened to release the backend between `generate()`
+        // returning and the Task being scheduled by the cooperative executor.
+        // The retain cycle (backend → generationTask → backend) is broken in the
+        // `defer` block when `generationTask` is nilled out on completion.
+        let task = Task { [self, generationStream] in
             defer {
-                backend.withStateLock {
-                    if backend.generationSequence == generationID {
-                        backend._isGenerating = false
-                        backend.generationTask = nil
+                withStateLock {
+                    if generationSequence == generationID {
+                        _isGenerating = false
+                        generationTask = nil
                     }
                 }
                 Self.logger.debug("Foundation generate finished")
@@ -483,11 +486,11 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 // next call.  This prevents a SIGTRAP: LanguageModelSession asserts when
                 // streamResponse() is called again while the previous ResponseStream
                 // iterator was dropped before returning nil.
-                backend.withStateLock { backend._sessionIsClean = false }
+                withStateLock { _sessionIsClean = false }
 
-                let streamExhausted: Bool
+                let result: StreamResult
                 if let toolEnvelope {
-                    streamExhausted = try await backend.runToolAwareStream(
+                    result = try await runToolAwareStream(
                         session: activeSession,
                         prompt: prompt,
                         schema: toolEnvelope,
@@ -496,7 +499,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         generationStream: generationStream
                     )
                 } else {
-                    streamExhausted = try await backend.runTextOnlyStream(
+                    result = try await runTextOnlyStream(
                         session: activeSession,
                         prompt: prompt,
                         options: options,
@@ -510,9 +513,31 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 // cancellation or output-token-limit break — leaves the iterator
                 // dropped mid-stream, which would cause LanguageModelSession to
                 // SIGTRAP on the next streamResponse() call.
-                if streamExhausted {
-                    backend.withStateLock { backend._sessionIsClean = true }
+                if result.streamExhausted {
+                    withStateLock { _sessionIsClean = true }
                 }
+
+                // Detect silent zero-event completion: Foundation Models can return
+                // an empty ResponseStream when the device is locked, Apple Intelligence
+                // is busy, or the on-device model is temporarily unavailable.  Without
+                // this check the consumer's for-try-await loop exits immediately with
+                // no tokens and no error — indistinguishable from "generation worked
+                // but produced nothing", the worst kind of silent failure.
+                //
+                // Only fire on a natural exhaustion (not mid-stream cancellation) so
+                // we don't misfire when the caller calls stopGeneration() before the
+                // first token arrives.
+                if result.streamExhausted && result.eventsEmitted == 0 && !Task.isCancelled {
+                    let msg = "Foundation Models returned an empty response. " +
+                        "Ensure Apple Intelligence is enabled, the device is unlocked, " +
+                        "and the model is fully downloaded in Settings > Apple Intelligence & Siri."
+                    Self.logger.warning("\(msg, privacy: .public)")
+                    let err = InferenceError.inferenceFailure(msg)
+                    await MainActor.run { generationStream.setPhase(.failed(msg)) }
+                    continuation.finish(throwing: err)
+                    return
+                }
+
                 await MainActor.run { generationStream.setPhase(.done) }
             } catch {
                 if !Task.isCancelled {
@@ -540,20 +565,30 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Streaming helpers
 
-    /// Default text-only streaming path. Returns `true` iff the response
-    /// stream was fully consumed (iterator returned `nil`).
+    /// Carries the outcome of a streaming helper back to the generation Task.
+    private struct StreamResult {
+        /// Whether the ResponseStream was fully consumed (iterator returned `nil`).
+        /// `false` means the loop broke early — task cancellation or output cap.
+        let streamExhausted: Bool
+        /// Total number of stream events (tokens or tool calls) emitted into the
+        /// continuation. Used to detect silent zero-event completions.
+        let eventsEmitted: Int
+    }
+
+    /// Default text-only streaming path.
     private func runTextOnlyStream(
         session: LanguageModelSession,
         prompt: String,
         options: GenerationOptions,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
         generationStream: GenerationStream
-    ) async throws -> Bool {
+    ) async throws -> StreamResult {
         let responseStream = session.streamResponse(to: prompt, options: options)
 
         var previousCount = 0
         var isFirstToken = true
         var streamExhausted = true
+        var eventsEmitted = 0
         for try await partial in responseStream {
             if Task.isCancelled {
                 streamExhausted = false
@@ -568,10 +603,11 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                     isFirstToken = false
                 }
                 continuation.yield(.token(newContent))
+                eventsEmitted += 1
                 previousCount = currentText.count
             }
         }
-        return streamExhausted
+        return StreamResult(streamExhausted: streamExhausted, eventsEmitted: eventsEmitted)
     }
 
     /// Tool-aware streaming path. Drives generation against the
@@ -580,8 +616,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
     /// `.token` deltas so existing UI streams smoothly. On stream completion
     /// we inspect the final `GeneratedContent` and emit either a single
     /// `.toolCall(...)` event (tool branch) or nothing more (text branch —
-    /// already streamed). Returns `true` iff the response stream was fully
-    /// consumed.
+    /// already streamed).
     private func runToolAwareStream(
         session: LanguageModelSession,
         prompt: String,
@@ -589,7 +624,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         options: GenerationOptions,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
         generationStream: GenerationStream
-    ) async throws -> Bool {
+    ) async throws -> StreamResult {
         let responseStream = session.streamResponse(
             to: prompt,
             schema: schema,
@@ -602,6 +637,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         var isFirstToken = true
         var finalRaw: GeneratedContent?
         var streamExhausted = true
+        var eventsEmitted = 0
 
         for try await snapshot in responseStream {
             if Task.isCancelled {
@@ -625,6 +661,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                         isFirstToken = false
                     }
                     continuation.yield(.token(delta))
+                    eventsEmitted += 1
                     lastTextLength = textSoFar.count
                     streamedAsText = true
                 }
@@ -632,7 +669,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         }
 
         guard streamExhausted, let finalRaw else {
-            return streamExhausted
+            return StreamResult(streamExhausted: streamExhausted, eventsEmitted: eventsEmitted)
         }
 
         // Decode the final envelope and dispatch on the branch the model picked.
@@ -645,9 +682,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
             if !streamedAsText {
                 await MainActor.run { generationStream.setPhase(.streaming) }
                 continuation.yield(.token(finalRaw.jsonString))
+                eventsEmitted += 1
             }
             Self.logger.warning("FoundationBackend: envelope decode failed; surfaced raw JSON as text")
-            return streamExhausted
+            return StreamResult(streamExhausted: streamExhausted, eventsEmitted: eventsEmitted)
         }
 
         switch envelope {
@@ -659,6 +697,7 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                     await MainActor.run { generationStream.setPhase(.streaming) }
                 }
                 continuation.yield(.token(final))
+                eventsEmitted += 1
             }
         case .toolCall(let name, let argumentsJSON):
             // The tool branch can produce zero `.token` events when the model
@@ -676,9 +715,10 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
                 arguments: argumentsJSON
             )
             continuation.yield(.toolCall(call))
+            eventsEmitted += 1
         }
 
-        return streamExhausted
+        return StreamResult(streamExhausted: streamExhausted, eventsEmitted: eventsEmitted)
     }
 
     // MARK: - Conversation Reset
