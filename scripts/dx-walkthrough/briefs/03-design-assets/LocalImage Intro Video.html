@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LocalImage — Intro</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0a; overflow: hidden; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="animations.jsx"></script>
+
+<script type="text/babel">
+// ─────────────────────────────────────────────────────────────
+// LocalImage — animated intro
+// ─────────────────────────────────────────────────────────────
+
+const PAPER = {
+  bg: '#F4F1EB',
+  surface: '#FBF8F2',
+  surfaceAlt: '#EBE6DB',
+  ink: '#1C1814',
+  inkDim: 'rgba(28,24,20,0.55)',
+  inkFaint: 'rgba(28,24,20,0.28)',
+  line: 'rgba(28,24,20,0.10)',
+  accent: '#1C1814',
+  accentInk: '#FBF8F2',
+};
+
+const SERIF = '"Tiempos Headline", "Charter", "Iowan Old Style", Georgia, serif';
+const SANS  = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif';
+const MONO  = 'ui-monospace, "SF Mono", Menlo, monospace';
+
+const DURATION = 30;
+
+
+
+// ─────────────────────────────────────────────────────────────
+// Tiny visual building blocks
+// ─────────────────────────────────────────────────────────────
+
+function Chip({ children, x, y, opacity = 1 }) {
+  return (
+    <div style={{
+      position: 'absolute', left: x, top: y,
+      padding: '6px 10px',
+      fontFamily: MONO, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+      color: PAPER.ink,
+      background: PAPER.surface,
+      border: `0.5px solid ${PAPER.line}`,
+      borderRadius: 999,
+      opacity,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+// Animated phone-shaped panel — the visual anchor.
+// 320×620, sits inside the Stage. Contents passed as children.
+function PhonePanel({ x, y, scale = 1, children }) {
+  return (
+    <div style={{
+      position: 'absolute', left: x, top: y,
+      width: 320, height: 620,
+      transform: `scale(${scale})`,
+      transformOrigin: 'top left',
+      background: PAPER.surface,
+      borderRadius: 36,
+      overflow: 'hidden',
+      border: `1px solid ${PAPER.line}`,
+      boxShadow: '0 30px 60px rgba(28,24,20,0.18), 0 8px 18px rgba(28,24,20,0.10)',
+    }}>
+      <div style={{ position: 'absolute', inset: 0, padding: '40px 22px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Striped placeholder image (matches existing screens.jsx vocabulary)
+function PlaceholderImage({ width, height, hue = 22, hue2 = 200, label, opacity = 1, radius = 18, blur = 0 }) {
+  return (
+    <div style={{
+      width, height, borderRadius: radius, opacity,
+      position: 'relative', overflow: 'hidden',
+      background: `linear-gradient(135deg, oklch(0.62 0.13 ${hue}) 0%, oklch(0.50 0.10 ${hue2}) 100%)`,
+      filter: blur ? `blur(${blur}px)` : 'none',
+    }}>
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'repeating-linear-gradient(135deg, rgba(255,255,255,0.07) 0 2px, transparent 2px 9px)',
+        mixBlendMode: 'overlay',
+      }}/>
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(120% 80% at 30% 25%, rgba(255,255,255,0.18) 0%, transparent 55%)',
+      }}/>
+      {label && (
+        <div style={{
+          position: 'absolute', left: 12, bottom: 10,
+          fontFamily: MONO, fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.85)',
+          textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+        }}>{label}</div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 1 — wordmark
+// ─────────────────────────────────────────────────────────────
+function SceneOpen({ visible }) {
+  const { progress, localTime } = useSprite();
+  if (!visible) return null;
+
+  const titleOp = clamp((localTime - 0.2) / 0.7, 0, 1);
+  const titleY  = (1 - Easing.easeOutCubic(titleOp)) * 24;
+
+  const tagOp   = clamp((localTime - 1.4) / 0.6, 0, 1);
+  const tagY    = (1 - Easing.easeOutCubic(tagOp)) * 12;
+
+  // Underline draws across
+  const lineW   = clamp((localTime - 1.0) / 0.9, 0, 1);
+
+  // Exit fade in last 0.7s
+  const exit = clamp((localTime - 3.5) / 0.7, 0, 1);
+  const opAll = 1 - exit;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: opAll }}>
+      <div style={{
+        position: 'absolute', left: '50%', top: 240,
+        transform: `translate(-50%, ${titleY}px)`,
+        opacity: titleOp,
+        fontFamily: SERIF, fontSize: 96, fontWeight: 500,
+        letterSpacing: -2, color: PAPER.ink,
+        whiteSpace: 'nowrap',
+      }}>
+        LocalImage
+      </div>
+      <div style={{
+        position: 'absolute', left: '50%', top: 360,
+        width: 380, height: 1,
+        transform: 'translateX(-50%)',
+        background: PAPER.line,
+      }}>
+        <div style={{
+          position: 'absolute', left: 0, top: 0, height: 1,
+          width: `${lineW * 100}%`,
+          background: PAPER.ink,
+        }}/>
+      </div>
+      <div style={{
+        position: 'absolute', left: '50%', top: 388,
+        transform: `translate(-50%, ${tagY}px)`,
+        opacity: tagOp,
+        fontFamily: SANS, fontSize: 18, fontWeight: 400,
+        color: PAPER.inkDim, letterSpacing: 0.2,
+      }}>
+        Image generation, on your device.
+      </div>
+
+      {/* monospace details */}
+      <div style={{
+        position: 'absolute', left: 60, top: 60,
+        fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+        color: PAPER.inkFaint, textTransform: 'uppercase',
+        opacity: titleOp,
+      }}>v 1.0 · iOS</div>
+      <div style={{
+        position: 'absolute', right: 60, top: 60,
+        fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+        color: PAPER.inkFaint, textTransform: 'uppercase',
+        opacity: titleOp,
+      }}>on-device · always</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 2 — speak it (waveform + transcript)
+// ─────────────────────────────────────────────────────────────
+function SceneVoice({ visible }) {
+  const { localTime } = useSprite();
+  if (!visible) return null;
+
+  const phoneOp = clamp(localTime / 0.5, 0, 1);
+  const phoneY  = (1 - Easing.easeOutCubic(phoneOp)) * 30;
+
+  const headerOp = clamp((localTime - 0.4) / 0.4, 0, 1);
+
+  // Waveform: 24 vertical bars whose heights wobble
+  const bars = 24;
+  const t = localTime;
+  const transcript = "a quiet harbor at dawn, watercolor";
+  const charsToShow = Math.floor(clamp((localTime - 1.6) / 2.4, 0, 1) * transcript.length);
+  const visibleText = transcript.slice(0, charsToShow);
+
+  const exit = clamp((localTime - 5.4) / 0.6, 0, 1);
+  const opAll = 1 - exit;
+
+  // Big copy on the left
+  const headlineOp = clamp((localTime - 0.5) / 0.6, 0, 1);
+  const headlineY = (1 - Easing.easeOutCubic(headlineOp)) * 18;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: opAll }}>
+      {/* Left copy */}
+      <div style={{
+        position: 'absolute', left: 90, top: 220,
+        opacity: headlineOp,
+        transform: `translateY(${headlineY}px)`,
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+          color: PAPER.inkFaint, textTransform: 'uppercase', marginBottom: 16,
+        }}>01 · prompt</div>
+        <div style={{
+          fontFamily: SERIF, fontSize: 72, fontWeight: 500,
+          letterSpacing: -1.5, color: PAPER.ink, lineHeight: 1.0,
+        }}>Just<br/>speak.</div>
+        <div style={{
+          fontFamily: SANS, fontSize: 16, color: PAPER.inkDim,
+          marginTop: 24, maxWidth: 360, lineHeight: 1.5,
+        }}>
+          Tap, talk, done. No prompts to memorize, no settings to fuss with — describe the picture you want like you'd describe it to a friend.
+        </div>
+      </div>
+
+      {/* Phone on the right */}
+      <div style={{
+        position: 'absolute', left: 800, top: 50,
+        opacity: phoneOp,
+        transform: `translateY(${phoneY}px)`,
+      }}>
+        <PhonePanel x={0} y={0}>
+          <div style={{
+            fontFamily: MONO, fontSize: 9.5, letterSpacing: 1.4,
+            color: PAPER.inkFaint, textTransform: 'uppercase',
+            opacity: headerOp, marginBottom: 32, marginTop: 4,
+          }}>listening</div>
+
+          {/* Big animated waveform */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 4, height: 160, marginTop: 50,
+          }}>
+            {Array.from({ length: bars }).map((_, i) => {
+              const phase = i * 0.35;
+              const h = 12 + Math.abs(Math.sin(t * 4 + phase) * 0.7
+                + Math.sin(t * 2.3 + phase * 1.7) * 0.3) * 100;
+              const o = clamp((localTime - 0.4 - i * 0.02) / 0.4, 0, 1);
+              return (
+                <div key={i} style={{
+                  width: 4, height: h, borderRadius: 2,
+                  background: PAPER.ink,
+                  opacity: o * 0.85,
+                }}/>
+              );
+            })}
+          </div>
+
+          {/* Transcript card */}
+          <div style={{
+            marginTop: 50, padding: '18px 18px',
+            background: PAPER.surfaceAlt, borderRadius: 16,
+            border: `0.5px solid ${PAPER.line}`,
+            minHeight: 90,
+            opacity: clamp((localTime - 1.4) / 0.4, 0, 1),
+          }}>
+            <div style={{
+              fontFamily: MONO, fontSize: 9, letterSpacing: 1.2,
+              color: PAPER.inkFaint, textTransform: 'uppercase', marginBottom: 8,
+            }}>transcript · live</div>
+            <div style={{
+              fontFamily: SERIF, fontSize: 19, color: PAPER.ink,
+              lineHeight: 1.35, letterSpacing: -0.2,
+            }}>
+              {visibleText}
+              <span style={{
+                display: 'inline-block', width: 2, height: 18,
+                background: PAPER.ink, marginLeft: 2,
+                opacity: Math.floor(t * 2) % 2 ? 1 : 0,
+                verticalAlign: 'text-bottom',
+              }}/>
+            </div>
+          </div>
+
+          {/* Mic dot */}
+          <div style={{
+            position: 'absolute', left: '50%', bottom: 48,
+            transform: 'translateX(-50%)',
+            width: 64, height: 64, borderRadius: 32,
+            background: PAPER.ink,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: `0 0 0 ${8 + Math.sin(t * 3) * 4}px rgba(28,24,20,0.08)`,
+          }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+              stroke={PAPER.accentInk} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="3" width="6" height="12" rx="3"/>
+              <path d="M5 11a7 7 0 0 0 14 0"/>
+              <path d="M12 18v3"/>
+            </svg>
+          </div>
+        </PhonePanel>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 3 — generating, on-device
+// ─────────────────────────────────────────────────────────────
+function SceneGenerate({ visible }) {
+  const { localTime } = useSprite();
+  if (!visible) return null;
+
+  const inOp = clamp(localTime / 0.5, 0, 1);
+  const exit = clamp((localTime - 5.4) / 0.6, 0, 1);
+  const opAll = (1 - exit) * inOp;
+
+  // Progress 0 → 1 over 5.5s
+  const progress = clamp(localTime / 5.5, 0, 1);
+
+  // Headline on right
+  const headlineOp = clamp((localTime - 0.4) / 0.6, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: opAll }}>
+      {/* Phone on left */}
+      <div style={{ position: 'absolute', left: 160, top: 50 }}>
+        <PhonePanel x={0} y={0}>
+          {/* Top chip — ON DEVICE pulses */}
+          <div style={{
+            position: 'absolute', left: 22, top: 22,
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 10px',
+            fontFamily: MONO, fontSize: 9, letterSpacing: 1.4, textTransform: 'uppercase',
+            color: PAPER.ink,
+            background: PAPER.surface,
+            border: `0.5px solid ${PAPER.line}`,
+            borderRadius: 999,
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: 3,
+              background: PAPER.ink,
+              opacity: 0.4 + Math.sin(localTime * 4) * 0.4 + 0.4,
+            }}/>
+            on device
+          </div>
+
+          {/* Generating canvas — striped placeholder with shimmer */}
+          <div style={{
+            position: 'absolute', left: 22, top: 90,
+            width: 276, height: 276, borderRadius: 18,
+            overflow: 'hidden',
+            background: PAPER.surfaceAlt,
+            border: `0.5px solid ${PAPER.line}`,
+          }}>
+            {/* Shimmer */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `repeating-linear-gradient(135deg,
+                rgba(28,24,20,0.04) 0 8px,
+                rgba(28,24,20,0.10) 8px 16px)`,
+            }}/>
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `linear-gradient(110deg,
+                transparent 0%,
+                transparent ${(localTime * 30) % 140 - 30}%,
+                rgba(255,255,255,0.55) ${(localTime * 30) % 140 - 5}%,
+                transparent ${(localTime * 30) % 140 + 20}%,
+                transparent 100%)`,
+            }}/>
+            {/* Faint emerging shape */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              opacity: progress * 0.75,
+            }}>
+              <PlaceholderImage width={276} height={276} hue={22} hue2={200}
+                radius={0} blur={Math.max(0, 16 - progress * 16)} />
+            </div>
+            {/* mono caption */}
+            <div style={{
+              position: 'absolute', left: 12, bottom: 12,
+              fontFamily: MONO, fontSize: 9.5, letterSpacing: 0.4,
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.85)',
+              textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+              opacity: progress,
+            }}>watercolor · 768²</div>
+          </div>
+
+          {/* Prompt echo */}
+          <div style={{
+            position: 'absolute', left: 22, top: 388,
+            fontFamily: MONO, fontSize: 9, letterSpacing: 1.2,
+            color: PAPER.inkFaint, textTransform: 'uppercase',
+          }}>generating</div>
+          <div style={{
+            position: 'absolute', left: 22, top: 408, right: 22,
+            fontFamily: SERIF, fontSize: 17, color: PAPER.ink,
+            lineHeight: 1.3, letterSpacing: -0.2,
+          }}>
+            "a quiet harbor at dawn, watercolor"
+          </div>
+
+          {/* Progress bar */}
+          <div style={{
+            position: 'absolute', left: 22, right: 22, top: 480,
+            height: 3, borderRadius: 2,
+            background: PAPER.surfaceAlt,
+          }}>
+            <div style={{
+              height: '100%', width: `${progress * 100}%`,
+              background: PAPER.ink, borderRadius: 2,
+              transition: 'width linear',
+            }}/>
+          </div>
+          <div style={{
+            position: 'absolute', left: 22, top: 492,
+            fontFamily: MONO, fontSize: 10, letterSpacing: 1,
+            color: PAPER.inkDim,
+          }}>
+            {Math.round(progress * 100)}% · step {Math.min(20, Math.floor(progress * 20) + 1)}/20
+          </div>
+          <div style={{
+            position: 'absolute', right: 22, top: 492,
+            fontFamily: MONO, fontSize: 10, letterSpacing: 1,
+            color: PAPER.inkDim,
+          }}>
+            ~{Math.max(1, Math.ceil((1 - progress) * 8))}s
+          </div>
+        </PhonePanel>
+      </div>
+
+      {/* Headline right */}
+      <div style={{
+        position: 'absolute', right: 90, top: 220, width: 460, textAlign: 'right',
+        opacity: headlineOp,
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+          color: PAPER.inkFaint, textTransform: 'uppercase', marginBottom: 16,
+        }}>02 · on device</div>
+        <div style={{
+          fontFamily: SERIF, fontSize: 64, fontWeight: 500,
+          letterSpacing: -1.5, color: PAPER.ink, lineHeight: 1.0,
+        }}>Your phone<br/>thinks for itself.</div>
+        <div style={{
+          fontFamily: SANS, fontSize: 16, color: PAPER.inkDim,
+          marginTop: 24, marginLeft: 'auto', maxWidth: 380, lineHeight: 1.5,
+        }}>
+          Nothing leaves the device. The model runs locally — your prompts, your pictures, your hardware. No upload. No account required.
+        </div>
+
+        {/* Hardware tags */}
+        <div style={{
+          display: 'flex', gap: 8, justifyContent: 'flex-end',
+          marginTop: 28, opacity: clamp((localTime - 1.6) / 0.5, 0, 1),
+        }}>
+          {['Neural Engine', '4.2 GB RAM', '0 KB sent'].map(s => (
+            <div key={s} style={{
+              padding: '6px 10px',
+              fontFamily: MONO, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+              color: PAPER.ink,
+              background: PAPER.surface,
+              border: `0.5px solid ${PAPER.line}`,
+              borderRadius: 999,
+            }}>{s}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 4 — Result + actions
+// ─────────────────────────────────────────────────────────────
+function SceneResult({ visible }) {
+  const { localTime } = useSprite();
+  if (!visible) return null;
+
+  const inOp = clamp(localTime / 0.6, 0, 1);
+  const exit = clamp((localTime - 5.0) / 0.6, 0, 1);
+  const opAll = (1 - exit) * inOp;
+
+  // Image reveal: starts blurred, sharpens
+  const sharp = clamp((localTime - 0.2) / 1.2, 0, 1);
+  const blur = (1 - sharp) * 18;
+  const scaleImg = 0.96 + sharp * 0.04;
+
+  // Action buttons drop in
+  const actionsOp = clamp((localTime - 1.3) / 0.5, 0, 1);
+  const actionsY = (1 - Easing.easeOutCubic(actionsOp)) * 16;
+
+  // Headline
+  const headOp = clamp((localTime - 0.5) / 0.6, 0, 1);
+
+  // Saved-to-library badge slides in last
+  const savedOp = clamp((localTime - 2.4) / 0.5, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: opAll }}>
+      {/* Headline */}
+      <div style={{
+        position: 'absolute', left: 90, top: 100,
+        opacity: headOp,
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+          color: PAPER.inkFaint, textTransform: 'uppercase', marginBottom: 12,
+        }}>03 · result</div>
+        <div style={{
+          fontFamily: SERIF, fontSize: 56, fontWeight: 500,
+          letterSpacing: -1.5, color: PAPER.ink, lineHeight: 1.0,
+        }}>It arrives.</div>
+      </div>
+
+      {/* Image — center stage */}
+      <div style={{
+        position: 'absolute', left: '50%', top: 220,
+        transform: `translateX(-50%) scale(${scaleImg})`,
+        transformOrigin: 'center top',
+        filter: `blur(${blur}px)`,
+        boxShadow: '0 30px 60px rgba(28,24,20,0.18), 0 8px 18px rgba(28,24,20,0.10)',
+        borderRadius: 22,
+      }}>
+        <PlaceholderImage
+          width={380} height={380}
+          hue={22} hue2={200}
+          radius={22}
+          label="harbor · watercolor · 768²"
+        />
+      </div>
+
+      {/* Saved-to-library chip below image */}
+      <div style={{
+        position: 'absolute', left: '50%', top: 620,
+        transform: 'translateX(-50%)',
+        opacity: savedOp,
+        display: 'flex', gap: 8, alignItems: 'center',
+        padding: '8px 14px',
+        background: PAPER.surface,
+        border: `0.5px solid ${PAPER.line}`,
+        borderRadius: 999,
+        fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase',
+        color: PAPER.inkDim,
+      }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke={PAPER.ink} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12l5 5 9-11"/>
+        </svg>
+        saved to library
+      </div>
+
+      {/* Action buttons row, right side */}
+      <div style={{
+        position: 'absolute', right: 90, top: 260,
+        width: 260,
+        display: 'flex', flexDirection: 'column', gap: 12,
+        opacity: actionsOp,
+        transform: `translateY(${actionsY}px)`,
+      }}>
+        <button style={{
+          padding: '16px 18px', borderRadius: 14,
+          background: PAPER.ink, color: PAPER.accentInk,
+          border: 'none',
+          fontFamily: SANS, fontSize: 16, fontWeight: 600,
+          letterSpacing: -0.2, textAlign: 'left', cursor: 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          Try again
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, opacity: 0.6 }}>SEED ↻</span>
+        </button>
+        <button style={{
+          padding: '16px 18px', borderRadius: 14,
+          background: PAPER.ink, color: PAPER.accentInk,
+          border: 'none',
+          fontFamily: SANS, fontSize: 16, fontWeight: 600,
+          letterSpacing: -0.2, textAlign: 'left', cursor: 'default',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          Refine
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, opacity: 0.6 }}>EDIT ↗</span>
+        </button>
+        <div style={{ height: 8 }}/>
+        <button style={{
+          padding: '14px 18px', borderRadius: 14,
+          background: 'transparent', color: PAPER.ink,
+          border: `0.5px solid ${PAPER.line}`,
+          fontFamily: SANS, fontSize: 15, fontWeight: 500,
+          textAlign: 'left', cursor: 'default',
+        }}>Save to Photos</button>
+        <button style={{
+          padding: '14px 18px', borderRadius: 14,
+          background: 'transparent', color: PAPER.ink,
+          border: `0.5px solid ${PAPER.line}`,
+          fontFamily: SANS, fontSize: 15, fontWeight: 500,
+          textAlign: 'left', cursor: 'default',
+        }}>Share…</button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 5 — library / private
+// ─────────────────────────────────────────────────────────────
+function SceneLibrary({ visible }) {
+  const { localTime } = useSprite();
+  if (!visible) return null;
+
+  const inOp = clamp(localTime / 0.5, 0, 1);
+  const exit = clamp((localTime - 4.4) / 0.6, 0, 1);
+  const opAll = (1 - exit) * inOp;
+
+  // Stagger 8 grid items in
+  const items = [
+    { hue: 22,  hue2: 200, label: 'harbor' },
+    { hue: 180, hue2: 320, label: 'forest' },
+    { hue: 140, hue2: 30,  label: 'meadow' },
+    { hue: 260, hue2: 40,  label: 'garden' },
+    { hue: 300, hue2: 200, label: 'orchid' },
+    { hue: 10,  hue2: 220, label: 'sunset' },
+    { hue: 200, hue2: 60,  label: 'storm'  },
+    { hue: 340, hue2: 180, label: 'bloom'  },
+  ];
+
+  const headOp = clamp((localTime - 0.4) / 0.6, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: opAll }}>
+      {/* Headline */}
+      <div style={{
+        position: 'absolute', left: 90, top: 100,
+        opacity: headOp, maxWidth: 460,
+      }}>
+        <div style={{
+          fontFamily: MONO, fontSize: 11, letterSpacing: 1.6,
+          color: PAPER.inkFaint, textTransform: 'uppercase', marginBottom: 12,
+        }}>04 · library</div>
+        <div style={{
+          fontFamily: SERIF, fontSize: 56, fontWeight: 500,
+          letterSpacing: -1.5, color: PAPER.ink, lineHeight: 1.0,
+        }}>Yours alone.</div>
+        <div style={{
+          fontFamily: SANS, fontSize: 16, color: PAPER.inkDim,
+          marginTop: 20, lineHeight: 1.5,
+        }}>
+          Every picture you make is auto-saved to a private library on the device. No cloud. No account. No one watching but you.
+        </div>
+
+        <div style={{
+          display: 'flex', gap: 8, marginTop: 24,
+          opacity: clamp((localTime - 1.2) / 0.4, 0, 1),
+        }}>
+          {['No account', 'No cloud', 'No telemetry'].map(s => (
+            <div key={s} style={{
+              padding: '6px 10px',
+              fontFamily: MONO, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+              color: PAPER.ink,
+              background: PAPER.surface,
+              border: `0.5px solid ${PAPER.line}`,
+              borderRadius: 999,
+            }}>{s}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid right side */}
+      <div style={{
+        position: 'absolute', right: 90, top: 90,
+        width: 480,
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12,
+      }}>
+        {items.map((it, i) => {
+          const start = 0.4 + i * 0.08;
+          const op = clamp((localTime - start) / 0.5, 0, 1);
+          const y  = (1 - Easing.easeOutCubic(op)) * 18;
+          return (
+            <div key={i} style={{
+              opacity: op,
+              transform: `translateY(${y}px)`,
+            }}>
+              <PlaceholderImage
+                width={150} height={150}
+                hue={it.hue} hue2={it.hue2}
+                label={it.label}
+                radius={12}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scene 6 — closing wordmark
+// ─────────────────────────────────────────────────────────────
+function SceneClose({ visible }) {
+  const { localTime } = useSprite();
+  if (!visible) return null;
+
+  const inOp = clamp(localTime / 0.7, 0, 1);
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: inOp }}>
+      <div style={{
+        position: 'absolute', left: '50%', top: 240,
+        transform: 'translateX(-50%)',
+        fontFamily: SERIF, fontSize: 96, fontWeight: 500,
+        letterSpacing: -2, color: PAPER.ink,
+        whiteSpace: 'nowrap',
+      }}>LocalImage</div>
+      <div style={{
+        position: 'absolute', left: '50%', top: 372,
+        transform: 'translateX(-50%)',
+        fontFamily: SANS, fontSize: 18,
+        color: PAPER.inkDim, letterSpacing: 0.2,
+      }}>Private by design.</div>
+
+      <div style={{
+        position: 'absolute', left: '50%', top: 440,
+        transform: 'translateX(-50%)',
+        display: 'flex', gap: 10,
+        opacity: clamp((localTime - 1.0) / 0.6, 0, 1),
+      }}>
+        {['iOS 17+', 'iPad', 'macOS'].map(s => (
+          <div key={s} style={{
+            padding: '6px 12px',
+            fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase',
+            color: PAPER.ink,
+            background: PAPER.surface,
+            border: `0.5px solid ${PAPER.line}`,
+            borderRadius: 999,
+          }}>{s}</div>
+        ))}
+      </div>
+
+      <div style={{
+        position: 'absolute', left: '50%', bottom: 80,
+        transform: 'translateX(-50%)',
+        fontFamily: MONO, fontSize: 10, letterSpacing: 1.6,
+        color: PAPER.inkFaint, textTransform: 'uppercase',
+      }}>coming soon</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Paper grain overlay
+// ─────────────────────────────────────────────────────────────
+
+function PaperGrain() {
+  // Subtle warm grain over everything
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, pointerEvents: 'none',
+      background: `radial-gradient(80% 60% at 50% 40%, transparent 0%, rgba(28,24,20,0.05) 100%)`,
+      mixBlendMode: 'multiply',
+    }}/>
+  );
+}
+
+function SceneLabel() {
+  const time = useTime();
+  // Shows a small mono label in the corner indicating which scene we're in
+  let label = '';
+  if (time < 3.9)       label = 'open';
+  else if (time < 9.3)  label = 'prompt';
+  else if (time < 14.7) label = 'on device';
+  else if (time < 19.7) label = 'result';
+  else if (time < 24.1) label = 'library';
+  else                  label = 'fin';
+
+  return (
+    <div style={{
+      position: 'absolute', left: 32, bottom: 28,
+      display: 'flex', alignItems: 'center', gap: 8,
+      fontFamily: MONO, fontSize: 10, letterSpacing: 1.6,
+      color: PAPER.inkFaint, textTransform: 'uppercase',
+    }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: 3,
+        background: PAPER.ink, opacity: 0.6,
+      }}/>
+      LocalImage · {label}
+    </div>
+  );
+}
+
+function ProgressTicker() {
+  const { time, duration } = useTimeline();
+  const pct = Math.round((time / duration) * 100);
+  return (
+    <div style={{
+      position: 'absolute', right: 32, bottom: 28,
+      fontFamily: MONO, fontSize: 10, letterSpacing: 1.6,
+      color: PAPER.inkFaint, textTransform: 'uppercase',
+      fontVariantNumeric: 'tabular-nums',
+    }}>
+      {String(pct).padStart(2, '0')} / 100
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Root
+// ─────────────────────────────────────────────────────────────
+
+function App() {
+  return (
+    <Stage width={1280} height={720} duration={DURATION} background={PAPER.bg} loop={true} autoplay={true}>
+      {/* Sprites overlap by 0.6s so each scene's intro fade covers the previous scene's exit fade. */}
+      {/* Scene 1 — Open (exits 3.5–4.2) */}
+      <Sprite start={0} end={4.2}>
+        <SceneOpen visible />
+      </Sprite>
+
+      {/* Scene 2 — Voice (enters 0–0.5; exits 5.4–6.0; total 6.0s, offset 3.6) */}
+      <Sprite start={3.6} end={9.6}>
+        <SceneVoice visible />
+      </Sprite>
+
+      {/* Scene 3 — Generate (enters 0–0.5; exits 5.4–6.0; total 6.0s, offset 9.0) */}
+      <Sprite start={9.0} end={15.0}>
+        <SceneGenerate visible />
+      </Sprite>
+
+      {/* Scene 4 — Result (enters 0–0.6; exits 5.0–5.6; total 5.6s, offset 14.4) */}
+      <Sprite start={14.4} end={20.0}>
+        <SceneResult visible />
+      </Sprite>
+
+      {/* Scene 5 — Library (enters 0–0.5; exits 4.4–5.0; total 5.0s, offset 19.4) */}
+      <Sprite start={19.4} end={24.4}>
+        <SceneLibrary visible />
+      </Sprite>
+
+      {/* Scene 6 — Close (enters 0–0.7; offset 23.8) */}
+      <Sprite start={23.8} end={DURATION}>
+        <SceneClose visible />
+      </Sprite>
+
+      {/* Always-on chrome */}
+      <PaperGrain />
+      <SceneLabel />
+      <ProgressTicker />
+    </Stage>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

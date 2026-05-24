@@ -27,10 +27,10 @@ A fresh consumer of ManifoldKit cold-builds all transitive dependencies (hugging
 
 ## Working directory
 
-Your app lives at `./app/` relative to wherever this brief is. Reference ManifoldKit via a local path dependency:
+Your app lives at `./app/` relative to wherever this brief is. Reference ManifoldKit via a local path dependency to the repo containing this brief — resolve the absolute path at run time:
 
 ```swift
-.package(name: "ManifoldKit", path: "/Users/roryford/Repos/ManifoldKit")
+.package(name: "ManifoldKit", path: "<absolute path to the ManifoldKit repo containing this brief>")
 ```
 
 (Per CLAUDE.md, `.package(path:)` needs an explicit `name:` to work reliably.)

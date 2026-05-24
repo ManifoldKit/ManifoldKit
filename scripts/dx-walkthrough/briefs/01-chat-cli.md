@@ -28,10 +28,10 @@ Don't be alarmed by long initial build times. Log it as friction if it bothers y
 
 ## Working directory
 
-Your app lives at `./app/` relative to wherever this brief is. Create a SwiftPM package there. Reference ManifoldKit via a local path dependency — the MK repo root is at `/Users/roryford/Repos/ManifoldKit`. Use:
+Your app lives at `./app/` relative to wherever this brief is. Create a SwiftPM package there. Reference ManifoldKit via a local path dependency to the repo containing this brief — resolve the absolute path at run time. Use:
 
 ```swift
-.package(name: "ManifoldKit", path: "/Users/roryford/Repos/ManifoldKit")
+.package(name: "ManifoldKit", path: "<absolute path to the ManifoldKit repo containing this brief>")
 ```
 
 (Per CLAUDE.md, `.package(path:)` needs an explicit `name:` to work reliably.)

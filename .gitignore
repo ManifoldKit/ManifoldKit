@@ -33,6 +33,9 @@ tmp/
 # synthesized SUMMARY.md / ROOT_CAUSES.md at the iteration root (those
 # live one level up from run-*/ and are tracked explicitly).
 scripts/dx-walkthrough/runs/*/*/run-*/
+# Phase 4 (iPhone on-device) per-run config — contains device UDID + team ID.
+# Never commit; each developer fills in their own.
+scripts/dx-walkthrough/runs/**/RUN-CONFIG.md
 # Security audit artefacts — must never be committed; contain detailed
 # vulnerability maps with file paths and line numbers.
 SECURITY_REMEDIATION_PLAN*.md

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LocalImage — Flow</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #f0eee9; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+<script type="text/babel" src="persona.jsx"></script>
+
+<script type="text/babel">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "showFrame": true,
+  "primaryTheme": "paper",
+  "historyVariant": "feed",
+  "animate": true
+}/*EDITMODE-END*/;
+
+function Phone({ children, theme, showFrame }) {
+  const t = THEMES[theme];
+  if (showFrame) {
+    return (
+      <IOSDevice width={402} height={874} dark={t.statusDark}>
+        {children}
+      </IOSDevice>
+    );
+  }
+  return (
+    <div style={{
+      width: 402, height: 874, overflow: 'hidden', position: 'relative',
+      background: t.bg, fontFamily: LI_FONT,
+      boxShadow: '0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06)',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+const ART_W = 402, ART_H = 874;
+const ART = (label, id) => ({ width: ART_W, height: ART_H, label, id });
+
+function Flow({ tweaks }) {
+  const t = tweaks.primaryTheme;
+  const showFrame = tweaks.showFrame;
+  const anim = tweaks.animate;
+  const HistoryScreen = tweaks.historyVariant === 'feed' ? ScreenHistoryFeed : ScreenHistoryChat;
+
+  return (
+    <DesignCanvas>
+      <DCSection id="journey" title="LocalImage — full journey"
+        subtitle="First launch → install → prompt → voice → generation → result → history. Tweaks (top-right) switches Paper / Dusk and Chat / Feed.">
+        <DCArtboard {...ART('01 · First launch', 'first')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenFirstLaunch theme={t} anim={anim} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART('02 · Installing model', 'download')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenDownload theme={t} anim={anim} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART('03 · Empty prompt', 'empty')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenEmptyPrompt theme={t} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART('04 · Voice listening', 'voice')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenVoiceListening theme={t} anim={anim} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART('05 · Generating', 'generating')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenGenerating theme={t} anim={anim} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART('06 · Result', 'result')}>
+          <Phone theme={t} showFrame={showFrame}><ScreenResult theme={t} /></Phone>
+        </DCArtboard>
+        <DCArtboard {...ART(`07 · History — ${tweaks.historyVariant}`, 'history')}>
+          <Phone theme={t} showFrame={showFrame}><HistoryScreen theme={t} /></Phone>
+        </DCArtboard>
+        <DCPostIt top={-30} left={1640} rotate={3} width={230}>
+          Reveal: 600ms crossfade from generating canvas → sharp image. The result page also auto-saves to the in-app library and tells you so — Save to Photos becomes secondary.
+        </DCPostIt>
+      </DCSection>
+
+      <DCSection id="errors" title="Error states"
+        subtitle="The brief left these out. Three the flow needs at minimum.">
+        <DCArtboard label="A · Download interrupted" id="err-download" width={ART_W} height={ART_H}>
+          <Phone theme={t} showFrame={showFrame}><ScreenErrorDownload theme={t} /></Phone>
+        </DCArtboard>
+        <DCArtboard label="B · Generation failed" id="err-gen" width={ART_W} height={ART_H}>
+          <Phone theme={t} showFrame={showFrame}><ScreenErrorGeneration theme={t} /></Phone>
+        </DCArtboard>
+        <DCArtboard label="C · Prompt blocked (content filter)" id="err-block" width={ART_W} height={ART_H}>
+          <Phone theme={t} showFrame={showFrame}><ScreenErrorBlocked theme={t} /></Phone>
+        </DCArtboard>
+        <DCPostIt top={-30} left={900} rotate={-2} width={230}>
+          Tone: explain what happened in plain language, never blame the user, always offer one tap to recover. Download is resumable from the failure point.
+        </DCPostIt>
+      </DCSection>
+
+      <DCSection id="themes" title="Light + Dark = Paper + Dusk"
+        subtitle="Theme follows iOS system setting. Paper for day, Dusk for night. Same tokens — only the surface inverts.">
+        <DCArtboard label="Paper · light" id="paper" width={ART_W} height={ART_H}>
+          <Phone theme="paper" showFrame={showFrame}><ScreenResult theme="paper" /></Phone>
+        </DCArtboard>
+        <DCArtboard label="Dusk · dark" id="dusk" width={ART_W} height={ART_H}>
+          <Phone theme="dusk" showFrame={showFrame}><ScreenResult theme="dusk" /></Phone>
+        </DCArtboard>
+        <DCArtboard label="History · Paper" id="th-paper-h" width={ART_W} height={ART_H}>
+          <Phone theme="paper" showFrame={showFrame}><ScreenHistoryFeed theme="paper" /></Phone>
+        </DCArtboard>
+        <DCArtboard label="History · Dusk" id="th-dusk-h" width={ART_W} height={ART_H}>
+          <Phone theme="dusk" showFrame={showFrame}><ScreenHistoryFeed theme="dusk" /></Phone>
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="appicons" title="App icon — six directions"
+        subtitle="Six unbranded explorations. Square iOS-style.">
+        <DCArtboard label="Icon explorations" id="icons" width={580} height={ART_H}>
+          <ScreenAppIcons />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="actions" title="Action sheet — what's behind the …"
+        subtitle="Long-press or tap '⋯' on any history item. Re-use, refine, vary, save, share, delete.">
+        <DCArtboard label="History · long-press menu" id="action-sheet" width={ART_W} height={ART_H}>
+          <Phone theme={t} showFrame={showFrame}><ScreenActionSheet theme={t} /></Phone>
+        </DCArtboard>
+        <DCPostIt top={-30} left={460} rotate={2} width={250}>
+          "Make a variation" is the quiet power feature — same prompt, fresh seed. It's how casual users discover that one prompt has a million possible outputs.
+        </DCPostIt>
+      </DCSection>
+
+      <DCSection id="persona" title="Persona walkthrough — Maya, 34"
+        subtitle="A non-creative-pro Canva user goes through the flow. Her reactions drove the changes below.">
+        <DCArtboard label="Maya walks the flow" id="persona-walk" width={1080} height={2300}>
+          <PersonaWalkthrough />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="larger" title="iPad + macOS — graceful scale-up"
+        subtitle="Brief said iPad/Mac are secondary. Same data model, different shell: persistent library sidebar instead of a stack of screens.">
+        <DCArtboard label="iPad · landscape" id="ipad" width={1180} height={820}>
+          <ScreenIPad theme={t} />
+        </DCArtboard>
+        <DCArtboard label="macOS · window" id="mac" width={920} height={620}>
+          <ScreenMac theme={t} />
+        </DCArtboard>
+        <DCPostIt top={-30} left={1240} rotate={-3} width={260}>
+          On iPhone, history is a destination you push into. On iPad/Mac, it's always visible — there's screen real estate to spare. Composer collapses to a single bar at the bottom of the canvas.
+        </DCPostIt>
+      </DCSection>
+
+      <DCSection id="notes" title="Decisions answered + open questions"
+        subtitle="What this round changed and what's still open for you.">
+        <DCArtboard label="Notes" id="notes-card" width={620} height={ART_H}>
+          <Notes />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+function Notes() {
+  const Item = ({ n, q, a }) => (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 0.6,
+        color: 'rgba(40,30,20,0.5)', textTransform: 'uppercase', marginBottom: 4 }}>{n}</div>
+      <div style={{ fontFamily: '"Tiempos Headline", Georgia, serif',
+        fontSize: 16, lineHeight: 1.3, fontWeight: 500,
+        color: 'rgba(28,24,20,0.95)', marginBottom: 6, letterSpacing: -0.2 }}>{q}</div>
+      <div style={{ fontSize: 13, lineHeight: 1.5, color: 'rgba(28,24,20,0.7)' }}>{a}</div>
+    </div>
+  );
+  return (
+    <div style={{
+      width: '100%', height: '100%', padding: '36px 32px',
+      fontFamily: '-apple-system, system-ui',
+      background: '#FBF8F2', overflow: 'auto',
+    }}>
+      <div style={{ fontFamily: '"Tiempos Headline", Georgia, serif',
+        fontSize: 22, fontWeight: 500, letterSpacing: -0.4, marginBottom: 4 }}>
+        Round 2 — what changed, what's left open
+      </div>
+      <div style={{ fontSize: 12.5, color: 'rgba(28,24,20,0.55)', marginBottom: 22 }}>
+        Notes from your review.
+      </div>
+
+      <div style={{ fontSize: 11, fontFamily: MONO, letterSpacing: 0.6,
+        color: 'rgba(28,24,20,0.45)', textTransform: 'uppercase',
+        marginBottom: 12, paddingBottom: 6, borderBottom: '0.5px solid rgba(28,24,20,0.12)' }}>
+        Resolved
+      </div>
+
+      <Item n="01" q="Light = Paper, Dark = Dusk."
+        a='Two themes only, bound to the iOS system setting. The third "Bright" direction is dropped.' />
+
+      <Item n="02" q="Result hierarchy now matches usage."
+        a={<>
+          <strong>Try again</strong> and <strong>Refine</strong> are the two largest, accent-filled buttons — equal weight and side-by-side. <strong>Save to Photos</strong> and <strong>Share</strong> are quieter ghost buttons below. Every result is auto-saved to the in-app library, so "save" no longer means "or it's gone."
+        </>} />
+
+      <Item n="03" q="Where do images live?"
+        a={<>
+          Two places. (1) The <strong>LocalImage library</strong> — every generation is auto-saved here forever; this is the conversation history. (2) <strong>Photos</strong> — only when the user explicitly taps Save. The result screen says "Saved to LocalImage library · 768²" right under the prompt, so users always know it isn't lost.
+        </>} />
+
+      <Item n="04" q="Suggestion chips now demonstrate stylistic range."
+        a="Six suggestions, each prefixed with a monospace style tag — PHOTO, ILLUSTRATION, PORTRAIT, ABSTRACT, FILM STILL, 3D RENDER. The tag teaches the user that style is part of the prompt, without exposing a 'style picker' control." />
+
+      <Item n="05" q="Three error states added."
+        a={<>
+          <strong>Download interrupted</strong> (resumable from %), <strong>Generation failed</strong> (memory pressure — try again, prompt preserved), and <strong>Prompt blocked</strong> (content filter — explained without scolding, with reassurance that the prompt stayed on-device).
+        </>} />
+
+      <Item n="06" q="Accessibility pass."
+        a={<>
+          Every icon-only button has an <code style={{ fontFamily: MONO, fontSize: 12 }}>aria-label</code>. Every generated image has its prompt as <code style={{ fontFamily: MONO, fontSize: 12 }}>alt</code>. The progress bar exposes <code style={{ fontFamily: MONO, fontSize: 12 }}>aria-valuenow</code>; the live transcript announces with <code style={{ fontFamily: MONO, fontSize: 12 }}>aria-live="polite"</code>; the generating canvas is a labelled <code style={{ fontFamily: MONO, fontSize: 12 }}>role="status"</code>.
+        </>} />
+
+      <Item n="07" q="Back-nav language fixed."
+        a='The Generating and Result screens now use a close (×) — they sit on top of the library, not behind it. Tapping × dismisses back to the library where every generation already lives. "← History" was misleading.' />
+
+      <Item n="08" q="App icon — six directions."
+        a={<>
+          See the icons board. My pick: <strong>Glass lens</strong> or <strong>Window</strong> — both lean on <em>seeing</em> rather than <em>generating</em>, which matches the user's mental model better than aperture or sparkle motifs.
+        </>} />
+
+      <Item n="09" q="Library long-press menu."
+        a={<>
+          Every history item exposes the same six actions via long-press or the "⋯" affordance: <strong>use again</strong>, <strong>refine</strong>, <strong>make a variation</strong>, <strong>save to Photos</strong>, <strong>share</strong>, <strong>delete</strong>. "Make a variation" is the quiet power feature — same prompt, fresh seed.
+        </>} />
+
+      <Item n="10" q="iPad + Mac — same data, different shell."
+        a={<>
+          Brief said secondary, so I'm leaning into "same model, scaled gracefully." The library becomes a persistent left sidebar; the focused image takes the canvas; the composer collapses to a single bar at the bottom. <strong>⌘N</strong> for new prompt, <strong>⌘⇧D</strong> to start voice. No new affordances — just more visible at once.
+        </>} />
+
+      <Item n="11" q="The ⋯ button has one job."
+        a={<>
+          Audited every "⋯" — they meant three different things on three screens. New rule: <strong>⋯ only appears next to a single image</strong> (in the library, or as the long-press handle), and always opens the same action sheet. App-level navigation uses a <strong>settings cog (⚙)</strong> instead. iPad/Mac dropped the ⋯ entirely — Save and Share are inline; long-press a library item for everything else.
+        </>} />
+
+      <Item n="12" q="Privacy vs share — both, framed honestly."
+        a={<>
+          The privacy promise is about the <em>generation</em>; sharing is something the user actively chooses. So: Share button reads <code style={{ fontFamily: MONO, fontSize: 12 }}>Share…</code> (iOS-standard "opens a chooser, you stay in control"), the action-sheet sub-line says "Choose an app — leaves the device only when you pick one," and the Result + iPad/Mac screens carry an <strong>ON DEVICE</strong> chip in the corner so the privacy line never fades on bigger screens. We <em>don't</em> add prompts to share, no "post to community" surfaces — social engagement happens through the user's own networks via the iOS share sheet, not through us.
+        </>} />
+
+      <div style={{ fontSize: 11, fontFamily: MONO, letterSpacing: 0.6,
+        color: 'rgba(28,24,20,0.45)', textTransform: 'uppercase',
+        margin: '28px 0 12px', paddingBottom: 6,
+        borderBottom: '0.5px solid rgba(28,24,20,0.12)' }}>
+        Open for you
+      </div>
+
+      <Item n="A" q="Auto-save to Photos? Or library only?"
+        a="Right now: library auto, Photos manual. The alternative — auto-save to Photos too — is friendlier for casual users but pollutes their camera roll fast. Recommend library-only by default, with a one-time first-run prompt asking if they want everything to also flow to Photos." />
+
+      <Item n="B" q="Naming."
+        a={<>"LocalImage" is descriptive but forgettable. Some to react to: <em>Quill</em>, <em>Pocket Studio</em>, <em>Atelier</em>, <em>Idle</em>, <em>Stillpoint</em>, <em>Frame</em>, <em>Latent</em>. None are right yet — happy to push further once you weigh in.</>} />
+
+      <Item n="C" q="What does the content filter actually block?"
+        a="The Prompt Blocked screen is intentionally vague (no list of words). Need product to confirm copy + whether we offer 'Learn more' as a real link to a policy page or remove it." />
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  return (
+    <React.Fragment>
+      <Flow tweaks={tweaks} />
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Aesthetic" />
+        <TweakRadio label="Theme" value={tweaks.primaryTheme}
+          options={[{value:'paper',label:'Paper (light)'},{value:'dusk',label:'Dusk (dark)'}]}
+          onChange={(v) => setTweak('primaryTheme', v)} />
+        <TweakSection label="History layout" />
+        <TweakRadio label="Variant" value={tweaks.historyVariant}
+          options={[{value:'chat',label:'Chat'},{value:'feed',label:'Feed'}]}
+          onChange={(v) => setTweak('historyVariant', v)} />
+        <TweakSection label="Presentation" />
+        <TweakToggle label="iPhone bezel" value={tweaks.showFrame}
+          onChange={(v) => setTweak('showFrame', v)} />
+        <TweakToggle label="Animate screens" value={tweaks.animate}
+          onChange={(v) => setTweak('animate', v)} />
+      </TweaksPanel>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
