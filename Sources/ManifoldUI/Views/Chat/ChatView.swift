@@ -620,7 +620,7 @@ public struct ChatView<APIConfig: View>: View {
                     Text("Welcome to \(ManifoldConfiguration.shared.appName)")
                         .font(.title2.bold())
 
-                    Text("Download a model to get started, or connect a cloud API in settings.")
+                    Text("Download a model or add a cloud backend to get started.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -628,7 +628,7 @@ public struct ChatView<APIConfig: View>: View {
                 }
 
                 Button {
-                    showModelManagement = true
+                    $showModelManagement.wrappedValue = true
                 } label: {
                     Label("Browse Models", systemImage: "square.and.arrow.down")
                 }
@@ -648,7 +648,7 @@ public struct ChatView<APIConfig: View>: View {
                 Text("Select a model from the sidebar to start chatting.")
             } actions: {
                 Button("Select Model") {
-                    showModelManagement = true
+                    $showModelManagement.wrappedValue = true
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)

@@ -74,7 +74,7 @@ final class ChatViewControlTests: XCTestCase {
     func test_chatView_noModel_showsWelcomeText() {
         let dump = chatViewDump()
         XCTAssertTrue(
-            dump.contains("Download a model to get started"),
+            dump.contains("Download a model or add a cloud backend to get started."),
             "ChatView with no models should show welcome text"
         )
     }
