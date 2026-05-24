@@ -16,13 +16,14 @@ import ManifoldPersistenceSwiftData
 @MainActor
 final class QuickStartTests: XCTestCase {
 
-    /// The happy path: `quickStart()` returns a bootstrap and a view model
-    /// that share the same inference service and have persistence wired up.
+    /// The happy path: `quickStart()` returns a bootstrap, a view model, and
+    /// a session manager that share the same inference service and have
+    /// persistence wired up.
     ///
     /// We use the internal `_quickStart` seam with an in-memory SwiftData
     /// container so the test doesn't touch the on-disk Application Support
     /// store the default factory derives.
-    func test_quickStart_returnsBootstrappedViewModel() async throws {
+    func test_quickStart_returnsBootstrappedViewModelAndSessionManager() async throws {
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
@@ -43,6 +44,12 @@ final class QuickStartTests: XCTestCase {
         // sharing") and is populated from the inference service the
         // bootstrap built.
         XCTAssertNotNil(result.viewModel.modelRegistry)
+
+        // Session-manager side (#1425/#1447): `sessionManager` is wired and
+        // sessions are populated the moment quickStart() returns — no polling
+        // or extra loadSessions() call needed.
+        XCTAssertFalse(result.sessionManager.sessions.isEmpty,
+            "sessionManager.sessions must be populated immediately after quickStart() returns (no polling required) — regression guard for #1447")
     }
 
     /// Errors from any step in the bootstrap chain must be reduced through
@@ -93,12 +100,15 @@ final class QuickStartTests: XCTestCase {
             "quickStart() must auto-create an initial session so ChatView's composer is enabled on first launch (A2-F4)."
         )
 
-        // And the session is actually persisted, so the SessionManagerViewModel
-        // sidebar in the host app's first-paint sees it without an extra
-        // round-trip.
+        // And the session is already visible in sessionManager.sessions (#1425,
+        // #1447) — no additional loadSessions() or polling needed.
         let persisted = try await result.bootstrap.persistence.fetchSessions()
         XCTAssertEqual(persisted.count, 1)
         XCTAssertEqual(persisted.first?.id, result.viewModel.activeSession?.id)
+        XCTAssertEqual(result.sessionManager.sessions.count, 1,
+            "sessionManager.sessions must reflect the auto-created session immediately (#1447)")
+        XCTAssertEqual(result.sessionManager.sessions.first?.id, result.viewModel.activeSession?.id,
+            "sessionManager and viewModel must share the same active session")
     }
 
     /// Symmetric guard: when persistence already contains sessions (e.g.
@@ -143,6 +153,11 @@ final class QuickStartTests: XCTestCase {
         // And the view model picked one of them rather than minting a new id.
         let active = try XCTUnwrap(secondResult.viewModel.activeSession)
         XCTAssertTrue(persistedIDs.contains(active.id))
+
+        // sessionManager also reflects both sessions without extra loadSessions()
+        // calls — #1447 guarantee applies to the relaunch path too.
+        XCTAssertEqual(secondResult.sessionManager.sessions.count, 2,
+            "sessionManager.sessions must reflect persisted sessions on relaunch immediately (#1447)")
     }
 
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
