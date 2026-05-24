@@ -12,7 +12,7 @@ import Foundation
 /// Defaults to ``fullPrecision`` for back-compat: packages downloaded before
 /// fp16 detection shipped have no `variant` field in their on-disk manifest,
 /// and the decoder treats absence as full-precision.
-public enum PrecisionVariant: String, Codable, Hashable, Sendable {
+public enum PrecisionVariant: String, Codable, Hashable, Sendable, CaseIterable {
     /// Full-precision weights — the plain `*.safetensors` file set
     /// (typically fp32 in the on-disk tensor metadata, but the runtime may
     /// up- or down-cast at load time).

@@ -51,3 +51,19 @@ For the source-backed operational contract around loading, streaming, memory han
 
 - ``GenerationEvent``
 - ``GenerationStream``
+
+### Image generation
+
+The image-generation value types live here (not in `ManifoldMLX`) so non-MLX
+modules — catalog UIs, persistence, runtime — can reference them without
+pulling in a backend family. Concrete backends (``MLXDiffusionBackend``,
+``FluxDiffusionBackend``) live in `ManifoldMLX`; see that module's
+documentation for the high-level vs. direct-backend chooser.
+
+- ``ImageGenerationBackend``
+- ``ImageGenerationService``
+- ``ImageGenerationConfig``
+- ``ImageGenerationEvent``
+- ``ImageModelInfo``
+- ``ImageModelFormat``
+- ``PrecisionVariant``
