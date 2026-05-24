@@ -38,11 +38,17 @@ struct PromptTemplateDetector {
     /// Detects a prompt template from a Jinja chat template string.
     ///
     /// Looks for unique token markers that identify each format. Order matters:
-    /// more specific patterns (ChatML, Llama 3, Gemma) are checked before broader
-    /// ones (Mistral `[INST]`, Alpaca `### Instruction`).
+    /// more specific patterns (Llama 3, Gemma) are checked before broader ones
+    /// (ChatML, Mistral `[INST]`, Alpaca `### Instruction`).
+    ///
+    /// Llama-3 must be checked before ChatML because Meta's official Llama-3
+    /// Jinja templates include a `<|im_start|>` compatibility branch alongside
+    /// the primary `<|start_header_id|>` markers. Checking ChatML first would
+    /// misidentify every Llama-3 GGUF as ChatML, causing the generation loop to
+    /// apply the wrong prompt format and leak `<|im_end|>` tokens in the output.
     static func detect(fromChatTemplate template: String) -> PromptTemplate {
-        if template.contains("<|im_start|>") { return .chatML }
         if template.contains("<|start_header_id|>") { return .llama3 }
+        if template.contains("<|im_start|>") { return .chatML }
         // Gemma 4 uses <|turn> — check before Gemma 1/2/3's <start_of_turn> since
         // both could theoretically coexist in a transitional template.
         if template.contains("<|turn>") { return .gemma4 }

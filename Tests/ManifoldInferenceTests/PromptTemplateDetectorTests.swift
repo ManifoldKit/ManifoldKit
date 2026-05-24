@@ -15,6 +15,36 @@ final class PromptTemplateDetectorTests: XCTestCase {
         XCTAssertEqual(PromptTemplateDetector.detect(fromChatTemplate: template), .llama3)
     }
 
+    /// Regression for #1398 — Meta's official Llama-3 Jinja templates include a
+    /// `<|im_start|>` compatibility branch alongside the primary `<|start_header_id|>`
+    /// markers. Checking ChatML first (the old ordering) misidentified every such GGUF
+    /// as ChatML, causing `<|im_end|>` tokens to appear in multi-turn generation output.
+    /// `<|start_header_id|>` must take priority over `<|im_start|>`.
+    func test_detect_llama3Template_withChatMLCompatibilityBranch_isNotMisidentifiedAsChatML() {
+        // Abbreviated but structurally faithful excerpt of Meta's published
+        // Llama-3.2-Instruct chat template, which contains both marker families.
+        let template = """
+            {%- if messages[0]['role'] == 'system' %}
+                {%- if tools is not none %}
+                    <|im_start|>system
+                    You have access to tools.
+                    <|im_end|>
+                {%- else %}
+                    <|start_header_id|>system<|end_header_id|>
+                    {{ system_message }}<|eot_id|>
+                {%- endif %}
+            {%- endif %}
+            <|start_header_id|>user<|end_header_id|>
+            {{ content }}<|eot_id|>
+            <|start_header_id|>assistant<|end_header_id|>
+            """
+        XCTAssertEqual(
+            PromptTemplateDetector.detect(fromChatTemplate: template),
+            .llama3,
+            "Llama-3 templates that include a <|im_start|> compatibility branch must resolve to .llama3, not .chatML"
+        )
+    }
+
     func test_detect_mistralTemplate() {
         let template = "{{ bos_token }}{% for message in messages %}[INST] {{ message['content'] }} [/INST]{% endfor %}"
         XCTAssertEqual(PromptTemplateDetector.detect(fromChatTemplate: template), .mistral)
@@ -330,6 +360,21 @@ final class PromptTemplateDetectorTests: XCTestCase {
                     generalArchitecture: "llama",
                     contextLength: 8192,
                     chatTemplate: "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{{ system }}<|eot_id|>",
+                    fileType: nil
+                ),
+                .llama3
+            ),
+            // Llama-3.2-Instruct — regression anchor for #1398. Meta's published
+            // template includes a `<|im_start|>` compatibility branch for tool-calling;
+            // the old ChatML-first ordering misidentified this as .chatML and leaked
+            // `<|im_end|>` tokens into multi-turn output.
+            (
+                "Llama-3.2-Instruct with ChatML compat branch",
+                GGUFMetadata(
+                    generalName: "Llama-3.2-3B-Instruct-Q4_K_M",
+                    generalArchitecture: "llama",
+                    contextLength: 131_072,
+                    chatTemplate: "{%- if tools %}<|im_start|>system\n{{ system }}<|im_end|>\n{%- else %}<|start_header_id|>system<|end_header_id|>\n\n{{ system }}<|eot_id|>{%- endif %}<|start_header_id|>user<|end_header_id|>\n\n{{ content }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
                     fileType: nil
                 ),
                 .llama3

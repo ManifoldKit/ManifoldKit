@@ -242,6 +242,40 @@ final class LlamaBackendTests: XCTestCase {
                        "isGenerating must be false after unloadAndWait()")
     }
 
+    // MARK: - Regression: Metal residency drain on unload (#1394)
+
+    /// Regression for #1394 — `unloadModel()` must synchronize the GPU and clear
+    /// the KV cache before calling `llama_free`. Without this, Metal command buffers
+    /// that were enqueued but not yet committed (e.g. after mid-loop cancellation)
+    /// keep the context's residency set non-empty when `ggml_metal_device_free` runs
+    /// at process exit, tripping `GGML_ASSERT([rsets->data count] == 0)` and aborting
+    /// with SIGABRT.
+    ///
+    /// The test verifies the post-conditions observable without a real model: after
+    /// `unloadAndWait()` completes, the backend is fully unloaded and no cleanup task
+    /// is outstanding. The actual Metal drain is exercised by the cleanup task body
+    /// in `unloadModel()`; a real-model E2E would be needed to observe the assert
+    /// directly, which CI cannot do without Metal.
+    func test_unloadAndWait_drainsCleanupTask_beforeReturning() async {
+        // Repeated load→unload→unloadAndWait cycles exercise the previousCleanup
+        // chaining path. If the cleanup task were not awaited, a second
+        // `loadModel` call immediately after `unloadModel()` (without await) could
+        // race the first cycle's `llama_free`, but the sequential `unloadAndWait`
+        // below validates that each cycle's cleanup is fully drained.
+        let backend = LlamaBackend()
+        // Three back-to-back failed loads to exercise the cleanup chain depth.
+        let fakeURL = URL(fileURLWithPath: "/nonexistent/model.gguf")
+        for _ in 0..<3 {
+            try? await backend.loadModel(from: fakeURL, plan: .testStub(effectiveContextSize: 512))
+            backend.unloadModel()
+        }
+        // Must complete without hanging — each cycle's cleanup task is chained.
+        await backend.unloadAndWait()
+
+        XCTAssertFalse(backend.isModelLoaded, "Backend must be unloaded after cleanup chain drains")
+        XCTAssertFalse(backend.isGenerating, "isGenerating must be false after cleanup chain drains")
+    }
+
     // MARK: - Stop Generation
 
     func test_stopGeneration_whenNotGenerating_isNoOp() {

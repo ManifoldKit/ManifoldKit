@@ -8,6 +8,13 @@ import ManifoldInference
 /// ``HookOutput/updatedInput``.
 final class PreToolUseHookAdapterTests: XCTestCase {
 
+    /// Single-writer box for capturing the Task spawned by the event emitter.
+    /// @unchecked Sendable is safe here: the emitter writes once (sync, inside
+    /// the adapter call), and the test reads once after `await adapter(...)`.
+    private final class TaskBox: @unchecked Sendable {
+        var task: Task<Void, Never>?
+    }
+
     /// Captures emitted events for telemetry assertions. Actor-isolated so
     /// the @Sendable emitter closure can mutate it without a data race.
     private actor EventRecorder {
@@ -151,34 +158,29 @@ final class PreToolUseHookAdapterTests: XCTestCase {
             HookOutput(updatedInput: #"{"path":"/sandbox/x"}"#)
         }
         let recorder = EventRecorder()
-        // Use a synchronous-feeling drain: collect events directly into the
-        // actor without spawning child tasks so the assertion is
-        // deterministic without a Task.yield dance.
+        let box = TaskBox()
         let adapter = PreToolUseHookAdapter.make(
             registry: registry,
             eventEmitter: { event in
-                // Synchronous hop into the actor via unstructured Task is
-                // fine here: we await full settle below via a barrier task.
-                Task { await recorder.record(event) }
+                box.task = Task { await recorder.record(event) }
             }
         )
 
         let sessionID = UUID()
         _ = await adapter("read_file", #"{"path":"./x"}"#, sessionID)
 
-        // Barrier: a no-op record call after the adapter resolves serialises
-        // the prior child task's record() ahead of our read.
-        await recorder.record(.hookFired(event: "__barrier__", sessionID: sessionID))
+        // Await the exact Task the emitter spawned — deterministic, no scheduler race.
+        await box.task?.value
         let events = await recorder.snapshot()
 
         // The first recorded non-barrier event should be the preToolUse
         // emission carrying the same session ID.
         let interesting = events.filter {
-            if case .hookFired(let name, _) = $0, name != "__barrier__" { return true }
+            if case .hookFired(let name, _) = $0 { return true }
             return false
         }
         XCTAssertEqual(interesting.count, 1, "Adapter must emit exactly one hookFired per invocation")
-        guard case .hookFired(let name, let sid) = interesting.first! else {
+        guard let first = interesting.first, case .hookFired(let name, let sid) = first else {
             XCTFail("Expected hookFired event")
             return
         }
