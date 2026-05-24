@@ -9,7 +9,7 @@ import Foundation
 /// Additional cases (e.g. a `gguf` variant for `stable-diffusion.cpp`, or a `coreAI`
 /// case once Apple's Core AI image-gen surface ships) land alongside their conformers
 /// rather than as forward-declared placeholders.
-public enum ImageModelFormat: String, Codable, Hashable, Sendable {
+public enum ImageModelFormat: String, Codable, Hashable, Sendable, CaseIterable {
     /// A directory containing UNet, VAE, and text-encoder weights in MLX-compatible
     /// safetensors form, plus the configs that describe their topology. Loaded by
     /// the MLX diffusion backend (e.g. via `mlx-swift-examples`'s `StableDiffusion`).

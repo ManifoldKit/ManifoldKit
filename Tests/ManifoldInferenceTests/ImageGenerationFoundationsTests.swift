@@ -262,4 +262,22 @@ final class ImageGenerationFoundationsTests: XCTestCase {
         }
         XCTAssertEqual(url.path, "/tmp/stub.png")
     }
+
+    // MARK: - CaseIterable conformance
+
+    /// Locks in `CaseIterable` on the discoverable image-gen value enums.
+    /// Without this, consumers have to guess case names blind (no fix-its,
+    /// no compiler-driven discovery) — see dx-walkthrough finding F4
+    /// (2026-05-24 phase-3 iter-1).
+    func test_imageModelFormat_isCaseIterable_andNonEmpty() {
+        XCTAssertFalse(ImageModelFormat.allCases.isEmpty)
+        XCTAssertTrue(ImageModelFormat.allCases.contains(.mlxDiffusion))
+        XCTAssertTrue(ImageModelFormat.allCases.contains(.fluxSchnell))
+    }
+
+    func test_precisionVariant_isCaseIterable_andNonEmpty() {
+        XCTAssertFalse(PrecisionVariant.allCases.isEmpty)
+        XCTAssertTrue(PrecisionVariant.allCases.contains(.fullPrecision))
+        XCTAssertTrue(PrecisionVariant.allCases.contains(.fp16))
+    }
 }
