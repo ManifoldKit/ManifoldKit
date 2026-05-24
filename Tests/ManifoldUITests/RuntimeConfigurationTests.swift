@@ -126,6 +126,77 @@ final class RuntimeConfigurationTests: XCTestCase {
         XCTAssertEqual(persistedIDs, [initialSession.id])
     }
 
+    // MARK: - #1447 session-restore reliability
+
+    /// Regression test for #1447: `configureAndLoad(bootstrap:)` must await
+    /// the initial session fetch so `sessions` is populated immediately after
+    /// the call — without any polling loop.
+    func test_configureAndLoad_sessionsPopulatedBeforeReturn() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let runtime = try ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
+                appName: "SessionRestoreTests",
+                bundleIdentifier: "com.manifoldkit.session-restore-tests"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        // Pre-populate SwiftData with two sessions before configure is called,
+        // matching the real-world scene-restore scenario where sessions already
+        // exist on disk.
+        let s1 = ChatSessionRecord(title: "Restore A")
+        let s2 = ChatSessionRecord(title: "Restore B")
+        try await runtime.persistence.insertSession(s1)
+        try await runtime.persistence.insertSession(s2)
+
+        let sessionManager = SessionManagerViewModel()
+
+        // configureAndLoad must await the initial fetch — no polling required.
+        await sessionManager.configureAndLoad(bootstrap: runtime)
+
+        XCTAssertEqual(
+            sessionManager.sessions.count, 2,
+            "sessions must be populated immediately after configureAndLoad — callers must not need a polling loop (#1447)"
+        )
+        let ids = Set(sessionManager.sessions.map(\.id))
+        XCTAssertTrue(ids.contains(s1.id), "Restore A should be present")
+        XCTAssertTrue(ids.contains(s2.id), "Restore B should be present")
+    }
+
+    /// Verifies that the synchronous `configure(bootstrap:)` fire-and-forget
+    /// path still works — `sessions` is populated after draining `autoLoadTask`.
+    func test_configure_autoLoadEventuallyPopulateSessions() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let runtime = try ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
+                appName: "SessionRestoreAutoLoadTests",
+                bundleIdentifier: "com.manifoldkit.session-restore-autoload-tests"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+
+        let s1 = ChatSessionRecord(title: "AutoLoad Session")
+        try await runtime.persistence.insertSession(s1)
+
+        let sessionManager = SessionManagerViewModel()
+        sessionManager.configure(bootstrap: runtime)
+
+        // sessions is empty immediately after the synchronous configure — this
+        // is the documented fire-and-forget behaviour.
+        XCTAssertEqual(
+            sessionManager.sessions.count, 0,
+            "Synchronous configure(bootstrap:) should not block on the fetch — sessions empty before autoLoadTask drains"
+        )
+
+        // After draining the scheduled task, sessions are available.
+        await sessionManager.autoLoadTask?.value
+        XCTAssertEqual(sessionManager.sessions.count, 1)
+    }
+
     func test_configureRuntime_loadsEndpointsAndSwitchUsesFreshEndpointRecords() async throws {
         let originalConfiguration = ManifoldConfiguration.shared
         defer { ManifoldConfiguration.shared = originalConfiguration }
