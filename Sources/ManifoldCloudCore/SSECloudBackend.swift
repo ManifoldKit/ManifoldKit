@@ -122,6 +122,12 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     private var _generationID: UInt64 = 0
     private var _activeEventIDTracker: SSEEventIDTracker?
 
+    /// The sink that receives an ``InferenceMetric`` after every generation call.
+    ///
+    /// Defaults to ``InMemoryMetricSink/shared`` so callers can read recent
+    /// metrics without any configuration. Set to `nil` to disable metric emission.
+    public var metricSink: (any InferenceMetricSink)? = InMemoryMetricSink.shared
+
     public let urlSession: URLSession
 
     /// SSE payload handler that extracts tokens, usage, stream-end signals,
@@ -452,6 +458,9 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         let session = self.urlSession
         let capturedTimeout = streamIdleTimeout
         let capturedBaseURL = baseURL
+        let capturedMetricSink = metricSink
+        let capturedModelName = modelName
+        let capturedBackendName = backendName
 
         // The Task needs to set phases on the GenerationStream, but GenerationStream
         // wraps the stream (chicken-and-egg). Use a WeakBox that the Task captures;
@@ -460,6 +469,10 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         let retryCounter = SendableCounter()
         let maxRetries = (capturedStrategy as? ExponentialBackoffStrategy)?.maxRetries ?? 3
         let weakSelf = WeakBox(self)
+
+        // Tracks per-token timestamps for TTFT and inter-token latency.
+        // Populated via the metric-observing wrapper stream below.
+        let metricTracker = GenerationMetricTracker()
 
         let stream = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in
             guard let self else {
@@ -477,6 +490,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                     }
                 }
 
+                var streamError: Error?
                 do {
                     // DNS rebinding guard: verify the endpoint's hostname does not
                     // resolve to a private/reserved address before connecting.
@@ -530,6 +544,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                     await MainActor.run { streamBox.value?.setPhase(.done) }
                     continuation.finish()
                 } catch {
+                    streamError = error
                     if error is CancellationError || Task.isCancelled {
                         continuation.finish()
                     } else {
@@ -537,6 +552,33 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                         await MainActor.run { streamBox.value?.setPhase(.failed(error.localizedDescription)) }
                         continuation.finish(throwing: error)
                     }
+                }
+
+                // Emit metric regardless of outcome so the sink receives both
+                // successful and failed calls.
+                if let sink = capturedMetricSink {
+                    let usage = self?.lastUsage
+                    let promptTokens = usage?.promptTokens ?? 0
+                    let completionTokens = usage?.completionTokens ?? 0
+                    let (costUSD, isApprox) = InferenceCostEstimator.estimatedCost(
+                        provider: capturedBackendName,
+                        model: capturedModelName,
+                        promptTokens: promptTokens,
+                        completionTokens: completionTokens
+                    )
+                    let errorClass = streamError.map { Self.classifyError($0) }
+                    let metric = metricTracker.buildMetric(
+                        provider: capturedBackendName,
+                        model: capturedModelName,
+                        promptTokens: promptTokens,
+                        cachedPromptTokens: 0,
+                        completionTokens: completionTokens,
+                        estimatedCostUSD: costUSD,
+                        isCostApproximate: isApprox,
+                        costTableDate: InferenceCostEstimator.costTableDate,
+                        errorClass: errorClass
+                    )
+                    Task { await sink.record(metric) }
                 }
             }
 
@@ -547,7 +589,35 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             }
         }
 
-        let generationStream = GenerationStream(stream, idleTimeout: capturedTimeout)
+        // Wrap the raw event stream in a metric-observing layer. Token events
+        // are intercepted to record TTFT and inter-token latency as the consumer
+        // iterates; the tracker is populated before the metric-emission Task
+        // reads it on stream completion. Cancellation propagates inward via
+        // structured-concurrency child task cancellation.
+        let trackedStream: AsyncThrowingStream<GenerationEvent, Error>
+        if capturedMetricSink != nil {
+            trackedStream = AsyncThrowingStream { outerContinuation in
+                let relayTask = Task {
+                    metricTracker.start()
+                    do {
+                        for try await event in stream {
+                            if case .token = event { metricTracker.recordToken() }
+                            outerContinuation.yield(event)
+                        }
+                        outerContinuation.finish()
+                    } catch {
+                        outerContinuation.finish(throwing: error)
+                    }
+                }
+                outerContinuation.onTermination = { @Sendable _ in
+                    relayTask.cancel()
+                }
+            }
+        } else {
+            trackedStream = stream
+        }
+
+        let generationStream = GenerationStream(trackedStream, idleTimeout: capturedTimeout)
         streamBox.value = generationStream
         return generationStream
     }
@@ -923,6 +993,30 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     public func setIsGenerating(_ value: Bool) {
         withStateLock { _isGenerating = value }
     }
+
+    // MARK: - Metric Helpers
+
+    /// Returns a short identifier string for an error suitable for tagging metrics.
+    ///
+    /// Uses switch-on-type patterns over `CloudBackendError` cases so new cases
+    /// get a descriptive label automatically. Falls back to the Swift type name
+    /// for non-cloud errors so observers can distinguish network errors from
+    /// parsing errors without having to decode the full message.
+    static func classifyError(_ error: Error) -> String {
+        if let cloud = error as? CloudBackendError {
+            switch cloud {
+            case .authenticationFailed: return "authenticationFailed"
+            case .rateLimited:          return "rateLimited"
+            case .serverError:          return "serverError"
+            case .networkError:         return "networkError"
+            case .invalidURL:           return "invalidURL"
+            case .backendDeallocated:   return "backendDeallocated"
+            case .timeout:              return "timeout"
+            default:                    return "cloudError"
+            }
+        }
+        return String(describing: type(of: error))
+    }
 }
 
 // MARK: - Sendable Helpers
@@ -946,3 +1040,88 @@ private final class WeakBox<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
     init(_ value: T?) { self.value = value }
 }
+
+// MARK: - Metric Tracking Helpers
+
+/// Accumulates per-token timing data for a single generation call.
+///
+/// Thread-safety via `NSLock` — the same pattern as `SendableCounter` in this
+/// file. Updated from the generation Task (arbitrary thread); read after the
+/// Task completes to build the final ``InferenceMetric``.
+final class GenerationMetricTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var wallStart: ContinuousClock.Instant = ContinuousClock.now
+    private var firstTokenInstant: ContinuousClock.Instant?
+    private var lastTokenInstant: ContinuousClock.Instant?
+    private var interTokenGapsNs: [Int64] = []
+
+    func start() {
+        lock.lock()
+        defer { lock.unlock() }
+        wallStart = ContinuousClock.now
+    }
+
+    func recordToken() {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = ContinuousClock.now
+        if firstTokenInstant == nil {
+            firstTokenInstant = now
+        } else if let last = lastTokenInstant {
+            // Nanosecond precision is sufficient for display; avoid Duration
+            // arithmetic inside the lock to keep it fast.
+            let gapNs = Int64((now - last).components.attoseconds / 1_000_000_000)
+            interTokenGapsNs.append(gapNs)
+        }
+        lastTokenInstant = now
+    }
+
+    func buildMetric(
+        provider: String,
+        model: String,
+        promptTokens: Int,
+        cachedPromptTokens: Int,
+        completionTokens: Int,
+        estimatedCostUSD: Double,
+        isCostApproximate: Bool,
+        costTableDate: String,
+        errorClass: String?
+    ) -> InferenceMetric {
+        lock.lock()
+        defer { lock.unlock() }
+        let wallEnd = ContinuousClock.now
+        let wallClock: Duration = wallStart <= wallEnd ? wallEnd - wallStart : .zero
+
+        let ttft: Duration
+        if let first = firstTokenInstant {
+            ttft = wallStart <= first ? first - wallStart : .zero
+        } else {
+            ttft = .zero
+        }
+
+        let meanITL: Duration
+        if interTokenGapsNs.isEmpty {
+            meanITL = .zero
+        } else {
+            let sumNs = interTokenGapsNs.reduce(Int64(0), +)
+            let avgNs = sumNs / Int64(interTokenGapsNs.count)
+            meanITL = .nanoseconds(avgNs)
+        }
+
+        return InferenceMetric(
+            provider: provider,
+            model: model,
+            promptTokens: promptTokens,
+            cachedPromptTokens: cachedPromptTokens,
+            completionTokens: completionTokens,
+            timeToFirstToken: ttft,
+            meanInterTokenLatency: meanITL,
+            wallClockDuration: wallClock,
+            estimatedCostUSD: estimatedCostUSD,
+            isCostApproximate: isCostApproximate,
+            costTableDate: costTableDate,
+            errorClass: errorClass
+        )
+    }
+}
+
