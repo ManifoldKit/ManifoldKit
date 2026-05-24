@@ -24,7 +24,7 @@ The sections below each show the tagged-release form. Two alternate forms are wo
 
 ### Local-path form (local checkout, worktree, or monorepo)
 
-```swift
+```swift,no-build
 dependencies: [
     // name: is required — SwiftPM derives identity from the last path component,
     // which breaks when the checkout directory is named differently from the package
@@ -39,7 +39,7 @@ dependencies: [
 
 ManifoldKit uses [SwiftPM package traits](https://github.com/apple/swift-evolution/blob/main/proposals/0394-swiftpm-expression-macros.md) to gate optional backends. The default trait set (`MLX`, `Llama`, `HuggingFace`) is suitable for most consumers, but you can opt in to additional traits — or limit to a subset — by passing `traits:`:
 
-```swift
+```swift,no-build
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
