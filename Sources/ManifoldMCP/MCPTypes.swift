@@ -17,6 +17,19 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
     public let toolFilter: MCPToolFilter
     public let approvalPolicy: MCPApprovalPolicy
 
+    /// STDIO transport launches a local subprocess. This expands the attack surface
+    /// considerably compared with HTTP (no TLS, no SSRF guard, process-level privilege).
+    /// Set to `true` only after auditing the subprocess binary and verifying it cannot
+    /// be replaced by a less-privileged user. See `SECURITY.md §MCP Threat Model`.
+    public var allowsSTDIOTransport: Bool
+
+    /// MCP servers with no auth configuration send all tool call arguments in the
+    /// clear and have no cryptographic identity. This is acceptable for fully
+    /// local/loopback servers but is a significant risk for network-reachable ones.
+    /// Set to `true` only after confirming the server is not reachable from untrusted
+    /// networks. See `SECURITY.md §MCP Threat Model`.
+    public var isUnauthenticatedUnsafe: Bool
+
     public init(
         id: UUID = UUID(),
         displayName: String,
@@ -28,7 +41,9 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         requestTimeout: Duration? = nil,
         dataDisclosure: String,
         toolFilter: MCPToolFilter = .allowAll,
-        approvalPolicy: MCPApprovalPolicy = .perCall
+        approvalPolicy: MCPApprovalPolicy = .perCall,
+        allowsSTDIOTransport: Bool = false,
+        isUnauthenticatedUnsafe: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -41,6 +56,8 @@ public struct MCPServerDescriptor: Sendable, Equatable, Hashable, Codable {
         self.dataDisclosure = dataDisclosure
         self.toolFilter = toolFilter
         self.approvalPolicy = approvalPolicy
+        self.allowsSTDIOTransport = allowsSTDIOTransport
+        self.isUnauthenticatedUnsafe = isUnauthenticatedUnsafe
     }
 }
 

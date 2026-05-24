@@ -259,10 +259,15 @@ final class MCPStdioTransportTests: XCTestCase {
     #endif
 
     func test_connectStdioUsesPlatformGating() async {
+        // allowsSTDIOTransport: true and isUnauthenticatedUnsafe: true here so
+        // the test reaches the platform-gating and shell-rejection checks rather
+        // than the security opt-in guards added in #1413.
         let descriptor = MCPServerDescriptor(
             displayName: "Stdio",
             transport: .stdio(.executable(at: URL(fileURLWithPath: "/bin/sh"), args: ["-c", "echo nope"])),
-            dataDisclosure: "test"
+            dataDisclosure: "test",
+            allowsSTDIOTransport: true,
+            isUnauthenticatedUnsafe: true
         )
 
         let client = MCPClient()

@@ -240,28 +240,35 @@ public final class MCPToolSource: @unchecked Sendable {
             // Cap name and description by UTF-8 byte count before construction
             // so an adversarial MCP server can't inject unbounded metadata into
             // the tool registry. Log a warning so operators can detect it.
+            // The fallback on failed UTF-8 decode is String.Substring prefix by
+            // character (grapheme cluster) rather than the raw input — this closes
+            // the inconsistency where a multi-byte grapheme straddles the byte cap
+            // and the fallback silently accepts the full, uncapped string.
             let name: String
             if rawName.utf8.count > config.maxMCPToolNameBytes {
-                name = String(
+                let truncated = String(
                     bytes: Array(rawName.utf8.prefix(config.maxMCPToolNameBytes)),
                     encoding: .utf8
-                ) ?? rawName
+                ) ?? String(rawName.prefix(config.maxMCPToolNameBytes))
+                name = truncated
                 Log.inference.warning("MCPToolSource: tool name truncated from \(rawName.utf8.count) to \(config.maxMCPToolNameBytes) bytes")
             } else {
                 name = rawName
             }
+            MCPContentSanitizer.logInjectionIndicators(in: name, field: "tool name", toolName: name)
             let description: String
             if case .string(let rawDescription)? = object["description"] {
                 if rawDescription.utf8.count > config.maxMCPToolDescriptionBytes {
                     let truncated = String(
                         bytes: Array(rawDescription.utf8.prefix(config.maxMCPToolDescriptionBytes)),
                         encoding: .utf8
-                    ) ?? rawDescription
+                    ) ?? String(rawDescription.prefix(config.maxMCPToolDescriptionBytes))
                     Log.inference.warning("MCPToolSource: tool description truncated from \(rawDescription.utf8.count) to \(config.maxMCPToolDescriptionBytes) bytes for tool '\(name, privacy: .public)'")
                     description = truncated
                 } else {
                     description = rawDescription
                 }
+                MCPContentSanitizer.logInjectionIndicators(in: description, field: "tool description", toolName: name)
             } else {
                 description = "MCP tool '\(name)'"
             }
@@ -273,6 +280,10 @@ public final class MCPToolSource: @unchecked Sendable {
             } else {
                 schema = .object([:])
             }
+            // Scan parameter descriptions — they appear verbatim in the model's
+            // context window alongside parameter names and are an equally viable
+            // injection vector as the top-level tool description.
+            MCPContentSanitizer.logInjectionIndicatorsInSchema(schema, toolName: name)
             return MCPRemoteTool(
                 originalName: name,
                 namespacedName: name,

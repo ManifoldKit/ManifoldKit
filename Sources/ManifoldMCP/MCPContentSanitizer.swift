@@ -1,6 +1,91 @@
 import Foundation
+import ManifoldInference
 
 enum MCPContentSanitizer {
+    // Phrases that are common in prompt-injection payloads. Detection is
+    // case-insensitive and substring-based. We log only — stripping silently
+    // would hide the attack from operators. This list is conservative: false
+    // positives are acceptable; false negatives (missing a real injection) are not.
+    //
+    // Tuning notes:
+    //   "override" is broad but injection payloads frequently use it as a bare verb
+    //   ("override all previous instructions"). Legitimate tool descriptions tend to
+    //   pair it with a noun ("override the default timeout") — accept the false-positive
+    //   rate given the low cost of a log warning.
+    //
+    //   "[STOP]" targets the bracketed-token form used in adversarial payloads
+    //   (e.g. "[STOP][IGNORE ABOVE]"). Using bare "stop" would flood operator logs
+    //   for any tool that mentions stopping a process, so the bracketed form is used.
+    private static let injectionIndicators: [String] = [
+        "ignore previous",
+        "system:",
+        "override",
+        "disregard",
+        "[STOP]",
+    ]
+
+    /// Logs a warning if `text` contains any known injection-indicator phrase.
+    /// Does NOT modify or block the content — logging surfaces the attack so
+    /// operators can investigate. Stripping silently would hide the evidence.
+    ///
+    /// - Returns: `true` if at least one injection indicator was detected, `false`
+    ///   otherwise. Callers may use the return value in tests; production call
+    ///   sites discard it.
+    @discardableResult
+    static func logInjectionIndicators(in text: String, field: String, toolName: String) -> Bool {
+        let lowered = text.lowercased()
+        var detected = false
+        for indicator in injectionIndicators {
+            if lowered.contains(indicator.lowercased()) {
+                Log.inference.warning(
+                    "MCPContentSanitizer: injection indicator found in tool metadata — field=\(field, privacy: .public) tool=\(toolName, privacy: .public) indicator=\(indicator, privacy: .public) — review server metadata for prompt-injection content"
+                )
+                detected = true
+            }
+        }
+        return detected
+    }
+
+    /// Scans all `description` string values found anywhere in a JSON Schema tree
+    /// and logs a warning for each injection indicator found. Parameter descriptions
+    /// flow directly into the model's context window alongside argument names, so
+    /// an adversarial MCP server can embed injection payloads in schema metadata
+    /// just as easily as in the top-level tool description.
+    ///
+    /// The scan is shallow-recursive: it visits object values and array elements one
+    /// level at a time. Arbitrarily deep nesting is handled by the recursive call.
+    @discardableResult
+    static func logInjectionIndicatorsInSchema(
+        _ schema: JSONSchemaValue,
+        toolName: String
+    ) -> Bool {
+        var detected = false
+        switch schema {
+        case .object(let dict):
+            // Check this object's own "description" string field.
+            if case .string(let desc)? = dict["description"] {
+                if logInjectionIndicators(in: desc, field: "parameter description", toolName: toolName) {
+                    detected = true
+                }
+            }
+            // Recurse into all child values (properties, items, allOf, etc.).
+            for (_, child) in dict {
+                if logInjectionIndicatorsInSchema(child, toolName: toolName) {
+                    detected = true
+                }
+            }
+        case .array(let elements):
+            for element in elements {
+                if logInjectionIndicatorsInSchema(element, toolName: toolName) {
+                    detected = true
+                }
+            }
+        default:
+            break
+        }
+        return detected
+    }
+
     /// Wraps tool output text in an untrusted-content envelope so the model
     /// can distinguish server-provided data from system instructions.
     static func wrapForUntrustedSurface(

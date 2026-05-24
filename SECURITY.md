@@ -231,6 +231,84 @@ For deployments that need stricter at-rest sealing, set
 `ManifoldConfiguration.shared.fileProtectionClass = .complete` and ship background
 work that is robust to a locked device.
 
+## MCP Threat Model
+
+ManifoldKit's MCP client (`MCPClient`) connects to external tool servers. Each server is
+a trust boundary: a compromised or malicious server can attempt prompt injection, data
+exfiltration, and SSRF. This section documents the mitigations and the residual risks
+that host apps must address.
+
+### STDIO opt-in requirement
+
+STDIO transport spawns a local subprocess with the app's process privileges. Unlike
+HTTP, there is no TLS, no SSRF guard, and no revocation path — the transport is as
+trusted as the executable on disk. `MCPServerDescriptor.allowsSTDIOTransport` defaults
+to `false`; connecting to a `stdio` endpoint without setting it throws:
+
+```
+MCPError.transportFailure("STDIO transport requires explicit opt-in via
+MCPServerDescriptor.allowsSTDIOTransport. See SECURITY.md for the threat model.")
+```
+
+Before setting `allowsSTDIOTransport = true`, verify:
+
+- The executable is code-signed with a known requirement (set `codesignRequirement`
+  on `MCPStdioCommand` to enforce this at runtime on macOS).
+- The executable path cannot be replaced by a less-privileged user or an adversarial
+  package install script.
+- The working directory and environment passed to the subprocess do not contain
+  secret credentials.
+
+### Auth requirement
+
+`MCPServerDescriptor.isUnauthenticatedUnsafe` defaults to `false`. Connecting to a
+server with `authorization: .none` without setting this flag throws:
+
+```
+MCPError.transportFailure("MCP server has no auth configuration. Set
+isUnauthenticatedUnsafe: true to permit unauthenticated connections.")
+```
+
+Unauthenticated servers have no cryptographic identity. Tool call arguments and return
+values are sent in the clear. This is acceptable for loopback-only servers (e.g., a
+locally-launched STDIO process that is also the only user of the port), but is a
+significant risk for any network-reachable endpoint.
+
+### Metadata sanitization
+
+`MCPContentSanitizer` wraps all tool output in an untrusted-content envelope and strips
+ANSI/DEC terminal escape sequences, control characters, and envelope-escape injection
+attempts before the content reaches the model's context window.
+
+`MCPToolSource` caps tool names and descriptions by UTF-8 byte count. When content
+contains known prompt-injection indicator phrases (`"ignore previous"`, `"system:"`,
+`"override"`, `"disregard"`, `"[STOP]"`), a warning is written to `Log.inference` instead
+of silently dropping the content — stripping silently would hide the attack from
+operators. The scan covers the tool name, the top-level tool description, **and all
+`description` fields nested inside the JSON Schema** (parameter descriptions). Parameter
+descriptions flow verbatim into the model's context window and are an equally viable
+injection vector. Host apps should forward `os_log` output from the
+`com.manifoldkit.inference` subsystem to their observability pipeline.
+
+Note: the detection list uses the bracketed form `[STOP]` rather than the bare word
+`stop` to avoid false-positive warnings for common tool descriptions that mention
+stopping a process. Operators should treat any logged indicator as a signal requiring
+review, not automatic proof of an attack.
+
+### Process isolation guidance
+
+ManifoldKit does not sandbox MCP server processes. Process isolation is the host app's
+responsibility:
+
+- On macOS, launch STDIO server processes inside an `NSXPCConnection` with a restricted
+  sandbox profile or use App Sandbox entitlements on the server binary.
+- On iOS/iPadOS, STDIO is unavailable. Use `streamableHTTP` against a loopback server
+  launched via a macOS companion app or an on-device HTTP server library.
+- Restrict the server process's file-system access to the minimum needed. Do not pass
+  the app's home directory as the working directory.
+- Do not forward `HOME`, `PATH`, or other ambient credentials from the parent
+  environment unless the server explicitly requires them.
+
 ## Pending Mitigations
 
 The following are known gaps with tracking issues. Each is listed in
