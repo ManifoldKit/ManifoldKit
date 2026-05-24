@@ -151,34 +151,29 @@ final class PreToolUseHookAdapterTests: XCTestCase {
             HookOutput(updatedInput: #"{"path":"/sandbox/x"}"#)
         }
         let recorder = EventRecorder()
-        // Use a synchronous-feeling drain: collect events directly into the
-        // actor without spawning child tasks so the assertion is
-        // deterministic without a Task.yield dance.
+        var emittedTask: Task<Void, Never>?
         let adapter = PreToolUseHookAdapter.make(
             registry: registry,
             eventEmitter: { event in
-                // Synchronous hop into the actor via unstructured Task is
-                // fine here: we await full settle below via a barrier task.
-                Task { await recorder.record(event) }
+                emittedTask = Task { await recorder.record(event) }
             }
         )
 
         let sessionID = UUID()
         _ = await adapter("read_file", #"{"path":"./x"}"#, sessionID)
 
-        // Barrier: a no-op record call after the adapter resolves serialises
-        // the prior child task's record() ahead of our read.
-        await recorder.record(.hookFired(event: "__barrier__", sessionID: sessionID))
+        // Await the exact Task the emitter spawned — deterministic, no scheduler race.
+        await emittedTask?.value
         let events = await recorder.snapshot()
 
         // The first recorded non-barrier event should be the preToolUse
         // emission carrying the same session ID.
         let interesting = events.filter {
-            if case .hookFired(let name, _) = $0, name != "__barrier__" { return true }
+            if case .hookFired(let name, _) = $0 { return true }
             return false
         }
         XCTAssertEqual(interesting.count, 1, "Adapter must emit exactly one hookFired per invocation")
-        guard case .hookFired(let name, let sid) = interesting.first! else {
+        guard let first = interesting.first, case .hookFired(let name, let sid) = first else {
             XCTFail("Expected hookFired event")
             return
         }
