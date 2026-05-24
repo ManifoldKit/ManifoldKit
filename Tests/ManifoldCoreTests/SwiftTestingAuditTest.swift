@@ -65,6 +65,7 @@ final class SwiftTestingAuditTest: XCTestCase {
         "ManifoldBackendsTests/CloudBackendSSETests.swift",
         "ManifoldBackendsTests/CloudErrorSanitizerTests.swift",
         "ManifoldBackendsTests/CloudThinkingTokenTests.swift",
+        "ManifoldBackendsTests/InferenceMetricTests.swift",
         "ManifoldBackendsTests/OllamaBackendTests.swift",
         "ManifoldBackendsTests/OpenAICompatEndpointTests.swift",
         "ManifoldBackendsTests/SecureBytesTests.swift",
