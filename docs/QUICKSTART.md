@@ -17,7 +17,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.31.0" // x-release-please-version
+    from: "0.34.0" // x-release-please-version
 )
 ```
 
@@ -228,7 +228,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.31.0", // x-release-please-version
+    from: "0.34.0", // x-release-please-version
     traits: [
         .trait(name: "MLX"),           // default-on
         .trait(name: "Llama"),         // default-on
