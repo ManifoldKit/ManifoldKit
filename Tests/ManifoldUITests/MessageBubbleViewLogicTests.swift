@@ -421,9 +421,32 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         )
     }
 
-    /// Logical contract: ChatView's `handoffChip(at:)` helper returns nil when
-    /// adjacent messages share an `agentID`. We assert the contract directly
-    /// on the agent-resolution model rather than rendering the full ChatView.
+    /// Logical contract: the history handoff resolver returns a chip when
+    /// adjacent messages change agents and both agents resolve from the session.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: compare by message.id instead of agentID → equality flips.
+    ///   M2: forget to resolve agents from the session → target assertions fail.
+    ///   M3: swap `from` and `to` → target assertion fails.
+    func test_handoffResolver_returnsChipAtAgentTransition() throws {
+        let (from, to) = agentPair()
+        let session = ChatSessionRecord(id: sessionID, agents: [from, to])
+        let msgA = ChatMessageRecord(role: .assistant, content: "first", sessionID: sessionID, agentID: from.id)
+        let msgB = ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID, agentID: to.id)
+
+        let chip = try XCTUnwrap(ChatHistoryHandoffResolver.chip(
+            at: 1,
+            messages: [msgA, msgB],
+            session: session
+        ))
+
+        XCTAssertEqual(chip.from?.id, from.id)
+        XCTAssertEqual(chip.to?.id, to.id)
+    }
+
+    /// Logical contract: the history handoff resolver returns nil when
+    /// adjacent messages share an `agentID`. We assert the helper directly
+    /// rather than rendering the full ChatView.
     ///
     /// Sabotage-evidence:
     ///   M1: render the chip regardless of equality → test expects nil → fails.
@@ -431,14 +454,14 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: swap `!=` for `==` in the check → flips polarity.
     func test_handoffChip_doesNotAppearWithinSameAgent() {
         let (a, _) = agentPair()
+        let session = ChatSessionRecord(id: sessionID, agents: [a])
         let msgA1 = ChatMessageRecord(role: .assistant, content: "first", sessionID: sessionID, agentID: a.id)
         let msgA2 = ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID, agentID: a.id)
 
-        // The chip predicate: render iff prev != cur and both resolve.
-        let shouldRender = (msgA1.agentID != nil)
-            && (msgA2.agentID != nil)
-            && (msgA1.agentID != msgA2.agentID)
-        XCTAssertFalse(shouldRender, "Same-agent adjacent messages must NOT trigger a chip.")
+        XCTAssertNil(
+            ChatHistoryHandoffResolver.chip(at: 1, messages: [msgA1, msgA2], session: session),
+            "Same-agent adjacent messages must NOT trigger a chip."
+        )
     }
 
     /// Snapshot the natural arrival ordering of `.tokenEmitted`-style events

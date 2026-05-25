@@ -60,11 +60,11 @@ final class ChatViewModelScrollToMessageTests: XCTestCase {
         let request = ChatScrollToMessageRequest(messageID: requested.id, anchor: .top)
 
         XCTAssertTrue(
-            ChatView<EmptyView>.canConsumeScrollToMessageRequest(request, in: [other, requested]),
+            ChatHistoryScrollBehavior.canConsumeScrollToMessageRequest(request, in: [other, requested]),
             "ChatView should consume a request once its target row exists."
         )
         XCTAssertFalse(
-            ChatView<EmptyView>.canConsumeScrollToMessageRequest(request, in: [other]),
+            ChatHistoryScrollBehavior.canConsumeScrollToMessageRequest(request, in: [other]),
             "ChatView should leave missing-message requests pending so later pagination/load can satisfy them."
         )
     }
