@@ -377,7 +377,18 @@ struct GGUFMetadataReader {
 
     /// Maximum element count for a single GGUF array. Bounds the inner loop to
     /// prevent spin-loops from crafted files with huge declared array counts.
-    private static let maxArrayElementCount: UInt64 = 65_536
+    ///
+    /// Sized to comfortably accommodate the largest real tokenizer vocab arrays
+    /// shipped with modern open-weight GGUFs:
+    ///   - Llama 3:  ~128 256 tokens
+    ///   - Gemma 2:  ~256 000 tokens
+    ///   - Qwen 2/3: ~152 000 tokens
+    ///
+    /// The previous 65 536 ceiling rejected `tokenizer.ggml.tokens` /
+    /// `tokenizer.ggml.scores` / `tokenizer.ggml.merges` on every one of those
+    /// families and caused `ModelInfo(ggufURL:)` to silently drop prompt
+    /// templates + context length + KV-cache estimates. See #1468.
+    private static let maxArrayElementCount: UInt64 = 1_000_000
 
     /// Skips a value of the given type without parsing it.
     ///

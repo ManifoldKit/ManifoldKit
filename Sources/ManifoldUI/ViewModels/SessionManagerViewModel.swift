@@ -37,7 +37,17 @@ public final class SessionManagerViewModel {
 
     public private(set) var sessions: [ChatSessionRecord] = []
     public private(set) var hasMoreSessions: Bool = false
-    public var activeSession: ChatSessionRecord?
+    public var activeSession: ChatSessionRecord? {
+        didSet {
+            // #1464: persist the active-session ID across relaunches so the
+            // documented `BuildingAChatUI` bootstrap can restore the previously
+            // viewed conversation without each host re-inventing the
+            // bookkeeping. The store is injected (see `lastActiveStore`) so
+            // `--parallel` test runs do not collide on `UserDefaults.standard`.
+            guard oldValue?.id != activeSession?.id else { return }
+            lastActiveStore.write(activeSession?.id)
+        }
+    }
 
     public var searchScope: SessionSearchScope = .titles
     public var searchQuery: String = ""
@@ -74,7 +84,15 @@ public final class SessionManagerViewModel {
     var persistence: (any SessionStore & MessageStore)? { _persistence }
     private var _persistence: (any SessionStore & MessageStore)?
 
-    public init() {}
+    /// Bookkeeping for the most recently activated session ID. Used by
+    /// ``selectInitialSession()`` on relaunch to prefer the previously
+    /// viewed conversation over an arbitrary newest entry. Injected so
+    /// `swift test --parallel` does not flake on shared `UserDefaults.standard`.
+    private let lastActiveStore: LastActiveSessionStore
+
+    public init(userDefaults: UserDefaults = .standard) {
+        self.lastActiveStore = LastActiveSessionStore(defaults: userDefaults)
+    }
 
     deinit {
         consumerTaskBox.cancel()
@@ -407,6 +425,62 @@ public final class SessionManagerViewModel {
         service?.clearSearch()
     }
 
+    // MARK: - Initial-session selection (#1464)
+
+    /// Picks the session a relaunching host should restore as ``activeSession``.
+    ///
+    /// Selection policy (first match wins):
+    /// 1. The previously active session (persisted across relaunches), when it
+    ///    still exists in ``sessions``.
+    /// 2. The most recent session whose message count is greater than zero —
+    ///    i.e. prefer real conversations over a stray empty `"New Chat"` row
+    ///    that may have been minted by a previous launch's bootstrap.
+    /// 3. The first session in ``sessions`` (already sorted most-recent-first
+    ///    by the persistence layer).
+    /// 4. `nil` when ``sessions`` is empty. The host decides whether to mint a
+    ///    fresh blank session at that point — this helper deliberately does
+    ///    not create one. Creating a session pre-restore is what produced the
+    ///    duplicate-blank-row behaviour in #1464.
+    ///
+    /// Call this **after** ``configureAndLoad(bootstrap:)`` (or any other path
+    /// that resolves the initial session page) and use the returned record to
+    /// drive both ``activeSession`` and the chat view model's
+    /// `switchToSession(_:)`. The act of assigning the returned record to
+    /// ``activeSession`` records it as the new last-active session, so the
+    /// next relaunch will prefer the same row.
+    ///
+    /// - Returns: The session to restore, or `nil` when there are no sessions.
+    public func selectInitialSession() async -> ChatSessionRecord? {
+        guard !sessions.isEmpty else { return nil }
+
+        // 1. Previously active session, if it still exists.
+        if let lastActiveID = lastActiveStore.read(),
+           let restored = sessions.first(where: { $0.id == lastActiveID }) {
+            return restored
+        }
+
+        // 2. Most recent non-empty session. We probe message counts via the
+        //    MessageStore rather than a session field because the record type
+        //    is storage-agnostic and does not carry a counter. The probe is
+        //    bounded to the current page — restoring a session that lives on
+        //    a deeper page is not worth a full fetch on the cold path.
+        if let messages = _persistence {
+            for session in sessions {
+                do {
+                    let recent = try await messages.fetchRecentMessages(for: session.id, limit: 1)
+                    if !recent.isEmpty { return session }
+                } catch {
+                    Log.persistence.warning(
+                        "selectInitialSession: message probe failed for \(session.id, privacy: .public): \(String(describing: error), privacy: .public)"
+                    )
+                }
+            }
+        }
+
+        // 3. Fallback: first session (most recent by updatedAt).
+        return sessions.first
+    }
+
     // MARK: - Service guard
 
     private func requireService(
@@ -422,6 +496,28 @@ public final class SessionManagerViewModel {
             throw ChatPersistenceError.providerNotConfigured
         }
         return service
+    }
+}
+
+/// Persists the most recently activated session ID across launches so the
+/// SwiftUI bootstrap can prefer it on relaunch (#1464). `UserDefaults` is
+/// injected so test runs don't collide on `UserDefaults.standard`; see the
+/// `userDefaults:` parameter on ``SessionManagerViewModel/init(userDefaults:)``.
+private struct LastActiveSessionStore {
+    static let defaultsKey = "manifoldkit.sessionManager.lastActiveSessionID"
+    let defaults: UserDefaults
+
+    func read() -> UUID? {
+        guard let raw = defaults.string(forKey: Self.defaultsKey) else { return nil }
+        return UUID(uuidString: raw)
+    }
+
+    func write(_ id: UUID?) {
+        if let id {
+            defaults.set(id.uuidString, forKey: Self.defaultsKey)
+        } else {
+            defaults.removeObject(forKey: Self.defaultsKey)
+        }
     }
 }
 

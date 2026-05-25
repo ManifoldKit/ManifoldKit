@@ -11,6 +11,16 @@ public final class ModelStorageService: @unchecked Sendable {
     private let customDirectory: URL?
     /// Overrides the bundle identifier used in the default path. Used in tests.
     private let customBundleIdentifier: String?
+    /// When `true`, ``discoverModels()`` also scans `~/Documents/Models` and
+    /// surfaces any GGUFs / MLX directories it finds there. App-scoped storage
+    /// always takes precedence — a model whose `id` is already discovered in
+    /// the primary directory is not duplicated by the fallback scan. See #1468.
+    private let includeUserDocumentsFallback: Bool
+    /// Overrides the location of the `~/Documents/Models` fallback directory.
+    /// Used in tests so the fallback scan never touches the developer's real
+    /// `~/Documents`. `nil` in production means "use the resolved user
+    /// `~/Documents/Models`".
+    private let fallbackDirectoryOverride: URL?
 
     /// Creates a `ModelStorageService`.
     ///
@@ -24,14 +34,30 @@ public final class ModelStorageService: @unchecked Sendable {
         self.fileManager = fileManager
         self.customDirectory = baseDirectory
         self.customBundleIdentifier = nil
+        // Default-on for the public init: SwiftUI hosts whose users follow the
+        // CLI quickstart and drop a GGUF into `~/Documents/Models` should still
+        // see it appear in the model-management sheet. App-scoped writes win;
+        // the fallback only surfaces additional files. Hosts that want strict
+        // app-scoped semantics can opt out via the internal init below.
+        self.includeUserDocumentsFallback = true
+        self.fallbackDirectoryOverride = nil
     }
 
     /// Internal init for test isolation — lets tests supply a specific bundle
-    /// identifier without touching the global `ManifoldConfiguration`.
-    init(fileManager: FileManager = .default, baseDirectory: URL? = nil, bundleIdentifier: String? = nil) {
+    /// identifier and override the `~/Documents/Models` fallback location so
+    /// per-test scratch directories aren't polluted by ambient host state.
+    init(
+        fileManager: FileManager = .default,
+        baseDirectory: URL? = nil,
+        bundleIdentifier: String? = nil,
+        includeUserDocumentsFallback: Bool = false,
+        fallbackDirectoryOverride: URL? = nil
+    ) {
         self.fileManager = fileManager
         self.customDirectory = baseDirectory
         self.customBundleIdentifier = bundleIdentifier
+        self.includeUserDocumentsFallback = includeUserDocumentsFallback
+        self.fallbackDirectoryOverride = fallbackDirectoryOverride
     }
 
     // MARK: - Directory
@@ -82,14 +108,70 @@ public final class ModelStorageService: @unchecked Sendable {
         try applyBackupExclusion(to: directory)
     }
 
+    /// Optional secondary scan location used by ``discoverModels()`` when
+    /// ``includeUserDocumentsFallback`` is `true`.
+    ///
+    /// Resolves to `~/Documents/Models` on the user domain. The CLI quickstart
+    /// documents this path; mirroring it from the SwiftUI sheet means a fresh
+    /// user can follow either guide and still see their models. App-scoped
+    /// storage always wins on a path collision (deduplicated by stable
+    /// `ModelInfo.id`). See #1468.
+    public var userDocumentsModelsDirectory: URL? {
+        if let override = fallbackDirectoryOverride {
+            return override
+        }
+        guard let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        return documents.appendingPathComponent("Models", isDirectory: true)
+    }
+
     // MARK: - Discovery
 
-    /// Scans the models directory for GGUF files and MLX model directories.
+    /// Scans the models directory (and `~/Documents/Models` when the
+    /// fallback is enabled) for GGUF files and MLX model directories.
     ///
-    /// Returns an empty array if the directory does not exist or contains no models.
+    /// Returns an empty array if neither directory contains any models. Per-file
+    /// failures during the scan are logged via ``ModelDiscoveryError`` but do
+    /// not abort the surrounding scan — one corrupt GGUF cannot hide its
+    /// healthy siblings.
     public func discoverModels() -> [ModelInfo] {
-        let directory = modelsDirectory
+        discoverModels(reportingErrors: nil)
+    }
 
+    /// Scans the models directory and reports per-file failures through
+    /// `errorHandler`. Designed for callers (typically `ModelManagementSheet`)
+    /// that want to surface "file present but unreadable" / "file is not GGUF"
+    /// to the user rather than swallow them in a log line.
+    ///
+    /// Precedence: the app-scoped ``modelsDirectory`` is scanned first.
+    /// When the fallback is enabled and a `~/Documents/Models` directory
+    /// exists, its contents are appended for any `ModelInfo` whose stable
+    /// ID is not already present.
+    public func discoverModels(reportingErrors errorHandler: ((ModelDiscoveryError) -> Void)?) -> [ModelInfo] {
+        var models: [ModelInfo] = []
+        var seenIDs: Set<UUID> = []
+
+        scanDirectory(modelsDirectory, into: &models, seenIDs: &seenIDs, errorHandler: errorHandler)
+
+        if includeUserDocumentsFallback,
+           let fallback = userDocumentsModelsDirectory,
+           fallback.resolvingSymlinksInPath().path != modelsDirectory.resolvingSymlinksInPath().path,
+           fileManager.fileExists(atPath: fallback.path) {
+            scanDirectory(fallback, into: &models, seenIDs: &seenIDs, errorHandler: errorHandler)
+        }
+
+        return models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Per-directory scan used by both the public ``discoverModels()`` and
+    /// the diagnostics-reporting overload.
+    private func scanDirectory(
+        _ directory: URL,
+        into models: inout [ModelInfo],
+        seenIDs: inout Set<UUID>,
+        errorHandler: ((ModelDiscoveryError) -> Void)?
+    ) {
         let contents: [URL]
         do {
             contents = try fileManager.contentsOfDirectory(
@@ -98,17 +180,24 @@ public final class ModelStorageService: @unchecked Sendable {
                 options: [.skipsHiddenFiles]
             )
         } catch {
-            Log.inference.warning("ModelStorageService: failed to read models directory: \(error, privacy: .private)")
-            return []
+            Log.inference.warning("ModelStorageService: failed to read models directory at \(directory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
         }
-
-        var models: [ModelInfo] = []
 
         for url in contents {
             // Check for GGUF files.
-            if url.pathExtension.lowercased() == "gguf",
-               let model = ModelInfo(ggufURL: url) {
-                models.append(model)
+            if url.pathExtension.lowercased() == "gguf" {
+                do {
+                    let model = try ModelInfo.load(ggufURL: url)
+                    if seenIDs.insert(model.id).inserted {
+                        models.append(model)
+                    }
+                } catch let error as ModelDiscoveryError {
+                    Log.inference.warning("ModelStorageService: skipping \(url.lastPathComponent, privacy: .public): \(error.errorDescription ?? "unknown reason", privacy: .public)")
+                    errorHandler?(error)
+                } catch {
+                    Log.inference.warning("ModelStorageService: unexpected GGUF load error for \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
                 continue
             }
 
@@ -125,7 +214,7 @@ public final class ModelStorageService: @unchecked Sendable {
                 continue
             }
 
-            if let model = ModelInfo(mlxDirectory: url) {
+            if let model = ModelInfo(mlxDirectory: url), seenIDs.insert(model.id).inserted {
                 models.append(model)
                 continue
             }
@@ -151,14 +240,13 @@ public final class ModelStorageService: @unchecked Sendable {
                 guard fileManager.fileExists(atPath: nestedURL.path, isDirectory: &nestedIsDir),
                       !isImagePackageDirectory(nestedURL),
                       nestedIsDir.boolValue,
-                      let model = ModelInfo(mlxDirectory: nestedURL, namespace: namespace) else {
+                      let model = ModelInfo(mlxDirectory: nestedURL, namespace: namespace),
+                      seenIDs.insert(model.id).inserted else {
                     continue
                 }
                 models.append(model)
             }
         }
-
-        return models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     /// Scans for atomically completed image model packages under `rootDirectory`.
