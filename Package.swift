@@ -107,7 +107,9 @@ let package = Package(
         // The StableDiffusion source (9 files, MIT) is now vendored in Sources/StableDiffusion.
         // If upstream resolves the platform conflict and cuts a new tag, revert to the
         // package dependency. Tracked in umbrella issue #1002.
-        .package(url: "https://github.com/huggingface/swift-huggingface.git", from: "0.9.0"),
+        // Pin 0.9.0 exactly: this is the verified tag that still exports the
+        // `HuggingFace` product consumed by ManifoldHuggingFace and its tests.
+        .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.9.0"),
         .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
         // The MLXHuggingFace macro generates `AutoTokenizer.from(modelFolder:)` which lives here.
