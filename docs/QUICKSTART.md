@@ -69,7 +69,31 @@ struct MyChatApp: App {
 
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
-> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and call `result.bootstrap.persistence.insertSession(_:)` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
+> **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
+
+```swift
+import ManifoldKit
+
+@main
+struct SeedSessionExample {
+    @MainActor
+    static func main() async throws {
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "My Chat",
+                bundleIdentifier: "com.example.mychat"
+            )
+        )
+        for await _ in progress { }
+        let bootstrap = try await task.value
+
+        let stores: any SessionStore & MessageStore = bootstrap.persistenceStores
+        try await stores.insertSession(ChatSessionRecord(title: "Inbox"))
+    }
+}
+```
+
+`persistenceStores` is the `SessionStore & MessageStore` handle itself — call `insertSession(_:)`, `fetchSessions()`, or `fetchMessages(for:)` on it directly. There is no `.sessionStore` / `.messageStore` sub-property pair to drill into.
 
 ## First-launch backend selection
 
@@ -132,7 +156,9 @@ struct MyChatApp: App {
 
 ### Seeding an Ollama endpoint
 
-For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint.
+For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint. If you want a seeded endpoint to be live immediately (single-endpoint apps, scripted demos, kiosk flows), also set `selectedEndpoint` and call `loadSelectedEndpoint()` before exposing the view model.
+
+⚠️ Ollama is gated behind the `Ollama` SwiftPM trait — see [Customizing backends](#customizing-backends) for the manifest snippet. Without that trait, no Ollama backend is registered for the seeded endpoint.
 
 ```swift,no-build
 import SwiftUI
@@ -166,6 +192,8 @@ struct MyChatApp: App {
                             )
                             try await r.bootstrap.endpointStore.insertEndpoint(ollama)
                             r.viewModel.setAvailableEndpoints([ollama])
+                            r.viewModel.selectedEndpoint = ollama
+                            await r.viewModel.loadSelectedEndpoint()
                         }
                         result = r
                     } catch {
@@ -178,7 +206,7 @@ struct MyChatApp: App {
 }
 ```
 
-The user can then pick "Local Ollama" from the model sidebar without ever opening a settings sheet. Cloud SaaS providers (OpenAI, Anthropic) follow the same pattern but additionally need an API key written to the keychain under `keychainAccount`; the `ManifoldUIModelManagement` `APIConfigurationView` handles that wiring, or you can write the key yourself before inserting the record.
+Cloud SaaS providers (OpenAI, Anthropic) follow the same pattern but additionally need an API key written to the keychain under `keychainAccount`; the `ManifoldUIModelManagement` `APIConfigurationView` handles that wiring, or you can write the key yourself before inserting the record. If your app presents its own endpoint picker instead of preloading one, bind the choice to `selectedEndpoint` and call `dispatchSelectedLoad()` from the selection-change handler, mirroring the local-model flow.
 
 ### `showModelManagement` binding
 

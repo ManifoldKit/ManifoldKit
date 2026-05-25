@@ -175,7 +175,33 @@ struct RootView: View {
 }
 ```
 
-Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore`` ports (vended by `bootstrap.persistenceStores`), so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
+Both view models share the same runtime-backed composite persistence handle `bootstrap.persistenceStores`, typed as `any SessionStore & MessageStore`, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. Call the store methods directly on that value — there is no `.sessionStore` / `.messageStore` pair to drill into:
+
+```swift
+import ManifoldKit
+
+@main
+struct PersistenceStoresExample {
+    @MainActor
+    static func main() async throws {
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "My Chat",
+                bundleIdentifier: "com.example.mychat"
+            )
+        )
+        for await _ in progress { }
+        let bootstrap = try await task.value
+
+        let stores: any SessionStore & MessageStore = bootstrap.persistenceStores
+        let session = ChatSessionRecord(title: "Seeded Session")
+        try await stores.insertSession(session)
+        _ = try await stores.fetchMessages(for: session.id)
+    }
+}
+```
+
+The root view no longer has to late-bind persistence from `modelContext` on first appearance.
 
 ### Switching sessions
 
