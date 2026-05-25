@@ -35,6 +35,12 @@ public final class ModelRegistry {
     /// downstream load coordination through `ChatViewModel`.
     public var selectedModel: ModelInfo?
 
+    /// Files that failed to load during the last ``refresh()`` call, surfaced
+    /// alongside ``ModelDiscoveryError`` so the model-management UI can show a
+    /// banner like "Skipped: foo.gguf — file is not a valid GGUF" instead of
+    /// silently dropping the entry. Cleared at the start of every refresh.
+    public var lastDiscoveryErrors: [ModelDiscoveryError] = []
+
     // MARK: - Dependencies
 
     private let inferenceService: InferenceService
@@ -84,11 +90,16 @@ public final class ModelRegistry {
         try modelStorage.ensureModelsDirectory()
 
         var models: [ModelInfo] = []
+        var collectedErrors: [ModelDiscoveryError] = []
         if let provider = foundationModelProvider, provider() {
             models.append(.builtInFoundation)
         }
-        models.append(contentsOf: modelStorage.discoverModels())
+        let discovered = modelStorage.discoverModels(reportingErrors: { error in
+            collectedErrors.append(error)
+        })
+        models.append(contentsOf: discovered)
         availableModels = models
+        lastDiscoveryErrors = collectedErrors
 
         if let selected = selectedModel,
            !availableModels.contains(where: { $0.id == selected.id }) {
