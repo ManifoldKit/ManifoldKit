@@ -31,7 +31,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     // (NDJSON framing transport, OllamaDoneFlagFinalizer, OllamaWholeToolCalls,
     // OllamaImagesField, OllamaFormatField, OllamaToolResult, NoPromptCache,
     // OllamaErrorBodyDecoder). Stream parsing now runs in
-    // `SSECloudBackend.parseResponseStreamRouted` and event extraction is
+    // `CloudRoutedStreamParser` and event extraction is
     // driven by a fresh per-stream ``OllamaStreamEventExtractor`` whose
     // factory pulls the active ``GenerationConfig`` + auto-detected
     // thinking markers from a state-lock-guarded snapshot stashed by
@@ -145,7 +145,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         )
 
         // Phase 3/Ollama — install adapter routing so the stream loop runs
-        // in `SSECloudBackend.parseResponseStreamRouted` driving a fresh
+        // in `CloudRoutedStreamParser` driving a fresh
         // per-stream `OllamaStreamEventExtractor`. The routing's
         // `buildRequest` closure forwards to `self.buildRequest` (weakly
         // captured) so the tool-aware-history snapshot/clear, the
@@ -539,7 +539,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     //
     // Phase 3/Ollama deleted the inline `OllamaStreamProcessor` parser. The
     // adapter routing installed at `init` time threads stream parsing
-    // through `SSECloudBackend.parseResponseStreamRouted`, which drives a
+    // through `CloudRoutedStreamParser`, which drives a
     // fresh `OllamaStreamEventExtractor` per generation (NDJSON via
     // `NDJSONTransport`, termination via `OllamaDoneFlagFinalizer`,
     // per-stream state owned by the extractor). The override below

@@ -11,7 +11,7 @@ import ManifoldTestSupport
 /// legacy `parseResponseStream` path.
 ///
 /// **Background.** PR #1272 (Phase 2/B/iii/δ) flipped `OpenAIBackend` to
-/// the adapter-routed path inside `SSECloudBackend.parseResponseStreamRouted`.
+/// the adapter-routed path inside `CloudRoutedStreamParser`.
 /// That path consumes `routing.framedTransport.frames(...)` instead of the
 /// legacy `SSEStreamParser.parse(bytes:limits:)` call that always read
 /// `effectiveSSEStreamLimits` live. The AI-engineering review flagged

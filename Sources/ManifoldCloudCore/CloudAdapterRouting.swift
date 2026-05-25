@@ -58,7 +58,7 @@ public struct CloudAdapterRouting: Sendable {
 
     /// Optional factory for a stateful per-stream event consumer.
     ///
-    /// When non-nil, `SSECloudBackend.parseResponseStreamRouted` invokes
+    /// When non-nil, `CloudRoutedStreamParser` invokes
     /// this factory at stream open and drives the resulting consumer with
     /// each decoded frame payload (`consume(payload:)`) followed by a
     /// single terminal `finish(cancelled:)`. The consumer takes over event

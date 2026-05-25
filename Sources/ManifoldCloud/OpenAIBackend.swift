@@ -80,7 +80,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         )
 
         // Phase 2/B/iii/δ — install adapter routing so the stream loop
-        // runs in `SSECloudBackend.parseResponseStreamRouted` and event
+        // runs in `CloudRoutedStreamParser` and event
         // extraction is driven by a fresh per-stream
         // `OpenAIStreamEventExtractor`. This is the inversion the
         // staged Phase 2/B preamble set up: the backend body stops
@@ -399,7 +399,7 @@ public final class OpenAIBackend: SSECloudBackend, TokenUsageProvider, CloudBack
     // Phase 2/B/iii/δ deleted the inline `parseResponseStream` override and
     // its `process*` step cluster. The adapter routing installed at
     // `init(urlSession:)` time threads stream parsing through
-    // `SSECloudBackend.parseResponseStreamRouted`, which drives a fresh
+    // `CloudRoutedStreamParser`, which drives a fresh
     // `OpenAIStreamEventExtractor` per generation. The extractor (shipped
     // in #1269) owns the per-stream state — open-thinking flag, index-
     // keyed tool-call delta buffer, once-only finalisation guard — that
