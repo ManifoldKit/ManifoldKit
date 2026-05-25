@@ -27,6 +27,8 @@
 
 ### Model Selection
 
+Local backends (MLX, Llama, Foundation) surface choices through ``availableModels`` / ``selectedModel``. Cloud and LAN backends (Ollama, OpenAI-compatible providers, Anthropic, and similar) surface saved endpoint records through ``availableEndpoints`` / ``selectedEndpoint``. Setting either property records the user's selection; call ``dispatchSelectedLoad()`` (or the explicit ``loadSelectedModel()`` / ``loadSelectedEndpoint()`` / ``loadCloudEndpoint(_:)`` entry points) to actually load it.
+
 - ``selectedModel``
 - ``selectedEndpoint``
 - ``availableModels``
@@ -56,4 +58,5 @@
 - ``configure(persistence:)``
 - ``refreshModels()``
 - ``loadSelectedModel()``
+- ``loadSelectedEndpoint()``
 - ``unloadModel()``
