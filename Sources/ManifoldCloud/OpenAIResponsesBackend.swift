@@ -92,7 +92,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         )
 
         // Phase 3/Responses — install adapter routing so the stream loop
-        // runs in `SSECloudBackend.parseResponseStreamRouted` and event
+        // runs in `CloudRoutedStreamParser` and event
         // extraction is driven by a fresh per-stream
         // `OpenAIResponsesStreamEventExtractor`. The previous inline
         // `parseResponseStream(bytes:config:continuation:)` override is
@@ -305,7 +305,7 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     // / `handleFunctionCallItemAdded` / `handleFunctionCallArgumentsDelta`
     // / `handleCompleted` cluster. The adapter routing installed at
     // `init(urlSession:)` time threads stream parsing through
-    // ``SSECloudBackend/parseResponseStreamRouted(routing:bytes:continuation:)``,
+    // ``CloudRoutedStreamParser``,
     // which drives a fresh ``OpenAIResponsesStreamEventExtractor`` per
     // generation. The extractor owns the per-stream state — open
     // thinking flag, item-id → call-id accumulator, once-only

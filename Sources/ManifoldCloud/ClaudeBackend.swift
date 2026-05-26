@@ -73,7 +73,7 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
 
         // Phase 3/Claude — install adapter routing and the per-stream
         // `ClaudeStreamEventExtractor` factory. The envelope
-        // (`SSECloudBackend.parseResponseStreamRouted`) drives event
+        // (`CloudRoutedStreamParser`) drives event
         // extraction through a fresh consumer per generation, so tool_use
         // accumulator state, the open-thinking flag, and split-usage
         // merging stay isolated. The inline `parseResponseStream`

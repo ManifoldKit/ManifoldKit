@@ -186,7 +186,7 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
 
 /// Compares the extractor's event sequence against the live
 /// ``OllamaBackend/parseResponseStream`` path (which itself now routes
-/// through the extractor inside `SSECloudBackend.parseResponseStreamRouted`).
+/// through the extractor inside `CloudRoutedStreamParser`).
 /// The parity test exists to guard against a regression where the routing
 /// is silently bypassed — if both paths drift the assertion fails with a
 /// per-event diff.

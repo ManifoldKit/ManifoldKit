@@ -238,7 +238,7 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
 /// ### Parity scope
 ///
 /// After the Phase 3/Claude flip, `ClaudeBackend` drives its stream
-/// through `SSECloudBackend.parseResponseStreamRouted` with the
+/// through `CloudRoutedStreamParser` with the
 /// extractor as the `streamConsumerFactory`. The "inline" side of this
 /// parity test therefore exercises the same extractor under the
 /// envelope (lifecycle, `finish(cancelled:)` flush from the envelope
