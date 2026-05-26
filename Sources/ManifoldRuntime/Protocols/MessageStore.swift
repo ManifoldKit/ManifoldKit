@@ -89,6 +89,41 @@ public protocol MessageStore: AnyObject, Sendable {
     func addPostWriteHook(_ hook: any MessageStorePostWriteHook)
 }
 
+// MARK: - Transactional batch mutations
+
+/// A single message-store mutation that can be grouped with other mutations.
+///
+/// ``TransactionalMessageStore`` conformers apply a batch of these operations
+/// as one unit of work so multi-row edits can commit consistently.
+public enum MessageStoreMutation: Sendable, Equatable {
+    /// Insert a new message record.
+    case insert(ChatMessageRecord)
+    /// Update an existing message record.
+    case update(ChatMessageRecord)
+    /// Delete one message by id.
+    case delete(UUID)
+    /// Delete every message belonging to a session.
+    case deleteMessages(sessionID: UUID)
+}
+
+/// Optional ``MessageStore`` capability for atomic multi-message writes.
+///
+/// Existing stores do not need to conform. Callers should probe with
+/// `as? any TransactionalMessageStore` and fall back to the legacy per-row
+/// operations when the capability is unavailable.
+@MainActor
+public protocol TransactionalMessageStore: MessageStore {
+    /// Applies every mutation in order and commits them as one unit.
+    ///
+    /// Implementations should fire ``MessageStorePostWriteHook`` only after
+    /// the full batch commits, and only for inserted or updated records.
+    ///
+    /// - Throws: The first validation or storage error encountered. If the
+    ///   underlying store supports rollback, no partial mutation should be
+    ///   visible after the error.
+    func performMessageMutations(_ mutations: [MessageStoreMutation]) async throws
+}
+
 // MARK: - Default pagination
 
 extension MessageStore {

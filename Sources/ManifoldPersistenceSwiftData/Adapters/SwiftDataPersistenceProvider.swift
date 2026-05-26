@@ -16,7 +16,7 @@ import SwiftData
 /// SwiftData `@Model` objects and plain ``ChatSessionRecord`` /
 /// ``ChatMessageRecord`` value types at the boundary.
 @MainActor
-public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
+public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, TransactionalMessageStore {
 
     private let modelContext: ModelContext
 
@@ -204,14 +204,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
     // MARK: - Messages
 
     public func insertMessage(_ record: ChatMessageRecord) async throws {
-        let message = ChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
-        message.id = record.id
-        message.timestamp = record.timestamp
-        message.promptTokens = record.promptTokens
-        message.completionTokens = record.completionTokens
-        message.kind = record.kind
-        message.citations = record.citations
-        message.agentID = record.agentID
+        let message = makeSwiftDataMessage(from: record)
         modelContext.insert(message)
         try modelContext.save()
         await fireMessageHooks(record)
@@ -221,12 +214,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         guard let message = try fetchSwiftDataMessage(id: record.id) else {
             throw ChatPersistenceError.messageNotFound(record.id)
         }
-        message.contentParts = record.contentParts
-        message.promptTokens = record.promptTokens
-        message.completionTokens = record.completionTokens
-        message.kind = record.kind
-        message.citations = record.citations
-        message.agentID = record.agentID
+        applyMutableMessageFields(from: record, to: message)
         try modelContext.save()
         await fireMessageHooks(record)
     }
@@ -279,6 +267,48 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
         try modelContext.save()
     }
 
+    public func performMessageMutations(_ mutations: [MessageStoreMutation]) async throws {
+        guard !mutations.isEmpty else { return }
+
+        var writtenRecords: [ChatMessageRecord] = []
+        do {
+            for mutation in mutations {
+                switch mutation {
+                case let .insert(record):
+                    modelContext.insert(makeSwiftDataMessage(from: record))
+                    writtenRecords.append(record)
+                case let .update(record):
+                    guard let message = try fetchSwiftDataMessage(id: record.id) else {
+                        throw ChatPersistenceError.messageNotFound(record.id)
+                    }
+                    applyMutableMessageFields(from: record, to: message)
+                    writtenRecords.append(record)
+                case let .delete(messageID):
+                    guard let message = try fetchSwiftDataMessage(id: messageID) else {
+                        throw ChatPersistenceError.messageNotFound(messageID)
+                    }
+                    modelContext.delete(message)
+                case let .deleteMessages(sessionID):
+                    let descriptor = FetchDescriptor<ChatMessage>(
+                        predicate: #Predicate { $0.sessionID == sessionID }
+                    )
+                    for message in try modelContext.fetch(descriptor) {
+                        modelContext.delete(message)
+                    }
+                }
+            }
+
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+
+        for record in writtenRecords {
+            await fireMessageHooks(record)
+        }
+    }
+
     // MARK: - Hooks
 
     public func addPostWriteHook(_ hook: any MessageStorePostWriteHook) {
@@ -320,6 +350,27 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore {
             predicate: #Predicate { $0.id == id }
         )
         return try modelContext.fetch(descriptor).first
+    }
+
+    private func makeSwiftDataMessage(from record: ChatMessageRecord) -> ChatMessage {
+        let message = ChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
+        message.id = record.id
+        message.timestamp = record.timestamp
+        message.promptTokens = record.promptTokens
+        message.completionTokens = record.completionTokens
+        message.kind = record.kind
+        message.citations = record.citations
+        message.agentID = record.agentID
+        return message
+    }
+
+    private func applyMutableMessageFields(from record: ChatMessageRecord, to message: ChatMessage) {
+        message.contentParts = record.contentParts
+        message.promptTokens = record.promptTokens
+        message.completionTokens = record.completionTokens
+        message.kind = record.kind
+        message.citations = record.citations
+        message.agentID = record.agentID
     }
 }
 
