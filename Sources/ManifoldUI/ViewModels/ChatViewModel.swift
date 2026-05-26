@@ -194,6 +194,9 @@ public final class ChatViewModel {
     }
 
     /// The cloud API endpoint the user has selected, or `nil` for local models.
+    ///
+    /// Selection only updates UI state. Hosts that want the selection to become
+    /// active must also call ``loadSelectedEndpoint()`` or ``dispatchSelectedLoad()``.
     /// Setting this clears `selectedModel` and vice versa.
     public var selectedEndpoint: APIEndpointRecord? {
         didSet {

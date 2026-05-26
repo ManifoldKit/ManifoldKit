@@ -104,19 +104,25 @@ public enum ManifoldKit {
             let sessionManager = SessionManagerViewModel()
             await sessionManager.configureAndLoad(bootstrap: bootstrap)
 
-            // A2-F4: ensure the documented `quickStart()` → `ChatView()` path
-            // produces a usable chat surface on first launch.
+            // A2-F4 + #1464: ensure the documented `quickStart()` → `ChatView()`
+            // path produces a usable chat surface on first launch, and that
+            // relaunch restores the previously active conversation rather than
+            // a stray blank session.
             //
             // `sessionManager.sessions` is now populated (above), so we can
             // branch on it directly rather than re-fetching from persistence.
-            if sessionManager.sessions.isEmpty {
+            if let restored = await sessionManager.selectInitialSession() {
+                sessionManager.activeSession = restored
+                await viewModel.switchToSession(restored)
+            } else {
+                // No persisted sessions — mint a fresh one so the composer
+                // is enabled on first launch. Subsequent relaunches will go
+                // through the restore branch above.
                 let initialSession = ChatSessionRecord(title: "New Chat")
                 try await bootstrap.persistence.insertSession(initialSession)
-                await viewModel.switchToSession(initialSession)
-                // Reload so sessionManager reflects the newly created session.
                 await sessionManager.loadSessions()
-            } else if let mostRecent = sessionManager.sessions.first {
-                await viewModel.switchToSession(mostRecent)
+                sessionManager.activeSession = initialSession
+                await viewModel.switchToSession(initialSession)
             }
 
             return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel, sessionManager: sessionManager)
