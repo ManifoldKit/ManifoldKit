@@ -526,7 +526,10 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             backendName: backendName,
             maxRetries: (capturedStrategy as? ExponentialBackoffStrategy)?.maxRetries ?? 3,
             statusValidator: { [weak self] response, bytes in
-                try await self?.checkStatusCode(response, bytes: bytes)
+                guard let self else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                try await self.checkStatusCode(response, bytes: bytes)
             },
             streamParser: { [weak self] bytes, continuation in
                 guard let self else {
