@@ -141,6 +141,7 @@ enum ChatHistoryHandoffResolver {
 
     /// Returns a ``HandoffChipView`` when adjacent persisted messages transition
     /// between two agents resolved from the active session.
+    @MainActor
     static func chip(
         at index: Int,
         messages: [ChatMessageRecord],
