@@ -15,9 +15,6 @@ import ManifoldInference
 public struct ChatView<APIConfig: View>: View {
 
     @Environment(ChatViewModel.self) private var viewModel
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
 
     private var features: ManifoldConfiguration.Features { ManifoldConfiguration.shared.features }
 
@@ -349,24 +346,36 @@ public struct ChatView<APIConfig: View>: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            errorBanner
+            ChatErrorRecoveryBanner(
+                viewModel: viewModel,
+                showAPIConfiguration: $showAPIConfiguration,
+                showModelManagement: $showModelManagement,
+                apiConfiguration: apiConfigurationBuilder
+            )
 
             if viewModel.isLoading {
-                loadingView
+                ChatLoadingContent(
+                    activityPhase: viewModel.activityPhase,
+                    unloadModel: { viewModel.unloadModel() }
+                )
             } else if !viewModel.isModelLoaded {
-                noModelLoadedView
+                ChatNoModelLoadedContent(
+                    appName: ManifoldConfiguration.shared.appName,
+                    hasAvailableModels: !viewModel.availableModels.isEmpty,
+                    showModelManagement: $showModelManagement
+                )
             } else {
                 messageList
             }
 
             if features.showUpgradeHint && viewModel.showUpgradeHint {
-                upgradeHintBanner
+                ChatUpgradeHintBanner(showModelManagement: $showModelManagement)
             }
 
             Divider()
                 .accessibilityHidden(true)
 
-            composerSection
+            ChatComposerSection(accessoryBuilder: composerAccessoryBuilder)
         }
         // Cmd+Shift+M opens Model Management from anywhere in the chat view.
         // The button must be in the view hierarchy (not toolbar) to be always active.
@@ -385,622 +394,50 @@ public struct ChatView<APIConfig: View>: View {
             // and can move to the overflow menu when space is tight. The action
             // buttons (export, device info, settings, clear) carry explicit
             // `.defaultHigh` priority so they survive sidebar-hidden collapse.
-            ToolbarItemGroup(placement: .automatic) {
-                if let backend = viewModel.activeBackendName,
-                   [
-                       BackendName.openAI.rawValue,
-                       BackendName.claude.rawValue,
-                       BackendName.ollama.rawValue,
-                       APIProvider.lmStudio.rawValue,
-                   ].contains(backend) {
-                    Label("Cloud", systemImage: "cloud.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.blue)
-                        .accessibilityLabel("Using cloud backend: \(backend)")
-                }
-                if features.showContextIndicator {
-                    ContextIndicatorView(
-                        usedTokens: viewModel.contextUsedTokens,
-                        maxTokens: viewModel.contextMaxTokens
-                    )
-                }
-                if features.showMemoryIndicator {
-                    MemoryIndicatorView(
-                        pressureLevel: viewModel.memoryPressureLevel,
-                        physicalMemoryBytes: viewModel.physicalMemoryBytes,
-                        appMemoryBytes: viewModel.appMemoryUsageBytes
-                    )
-                }
-            }
-            ToolbarItem(placement: .automatic) {
-                if features.showChatExport {
-                    exportButton
-                }
-            }
-            ToolbarItem(placement: .automatic) {
-                deviceInfoButton
-            }
-            ToolbarItem(placement: .automatic) {
-                if features.showGenerationSettings {
-                    settingsButton
-                }
-            }
-            ToolbarItem(placement: .automatic) {
-                clearChatButton
-            }
-        }
-        .alert("Clear Chat", isPresented: $showClearConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Clear", role: .destructive) {
-                Task { await viewModel.clearChat() }
-            }
-        } message: {
-            Text("This will delete all messages in the current chat. This cannot be undone.")
-        }
-        // On macOS, settings and export are presented as sheets from here because
-        // the toolbar buttons use `.popover` only on iOS (see button definitions below).
-        #if !os(iOS)
-        .sheet(isPresented: $isSettingsPresented) {
-            GenerationSettingsView(apiConfiguration: apiConfigurationBuilder)
-        }
-        .sheet(isPresented: $isExportPresented) {
-            ChatExportSheet()
-        }
-        #endif
-        // API configuration: on compact size class (iPhone) or macOS, use a full sheet
-        // because there is no stable toolbar anchor. On regular size class (iPad) the
-        // presentation is anchored to the recovery button via `.popover` — see
-        // `recoveryButton(for:)` below which attaches the popover directly to the button
-        // so the sheet modifier here is skipped on that path.
-        #if os(iOS)
-        .sheet(isPresented: Binding(
-            get: { showAPIConfiguration && horizontalSizeClass == .compact },
-            set: { if !$0 { showAPIConfiguration = false } }
-        )) {
-            apiConfigurationBuilder()
-                .presentationDragIndicator(.visible)
-        }
-        #else
-        .sheet(isPresented: $showAPIConfiguration) {
-            apiConfigurationBuilder()
-        }
-        #endif
-    }
-
-    @ViewBuilder
-    private var composerSection: some View {
-        VStack(spacing: 0) {
-            if let composerAccessoryBuilder {
-                composerAccessoryBuilder()
-            }
-            ChatInputBar()
-        }
-    }
-
-    // MARK: - Error Banner
-
-    @ViewBuilder
-    private var errorBanner: some View {
-        if let error = viewModel.activeError {
-            ErrorBannerView(
-                error: error,
-                onDismiss: { viewModel.activeError = nil },
-                recoveryAction: {
-                    recoveryButton(for: error.recovery)
-                }
+            ChatToolbarContent(
+                viewModel: viewModel,
+                features: features,
+                isDeviceInfoExpanded: $isDeviceInfoExpanded,
+                isSettingsPresented: $isSettingsPresented,
+                isExportPresented: $isExportPresented,
+                showClearConfirmation: $showClearConfirmation,
+                apiConfiguration: apiConfigurationBuilder
             )
         }
-    }
-
-    @ViewBuilder
-    private func recoveryButton(for recovery: ChatError.Recovery?) -> some View {
-        switch recovery {
-        case .retry:
-            Button("Retry") {
-                viewModel.activeError = nil
-                Task {
-                    await viewModel.regenerateLastResponse()
-                }
-            }
-            .buttonStyle(.borderless)
-            .font(.callout.bold())
-        case .configureAPIKey:
-            Button("Check API Key") {
-                #if os(iOS)
-                // On regular size class (iPad) the popover is anchored to this button,
-                // so we must NOT clear activeError here — doing so removes the error
-                // banner (and this button) from the view tree before SwiftUI can capture
-                // the anchor, causing the popover to present without an anchor or not at
-                // all. Instead, we clear activeError in the popover's dismissal handler.
-                // On compact (iPhone) the sheet is attached to the root view rather than
-                // this button, so the anchor disappearing is harmless there.
-                if horizontalSizeClass == .regular {
-                    showAPIConfiguration = true
-                } else {
-                    viewModel.activeError = nil
-                    showAPIConfiguration = true
-                }
-                #else
-                viewModel.activeError = nil
-                showAPIConfiguration = true
-                #endif
-            }
-            .buttonStyle(.borderless)
-            .font(.callout.bold())
-            #if os(iOS)
-            // On regular size class (iPad), anchor the API config as a popover on the
-            // recovery button so the split view stays visible. On compact (iPhone) the
-            // view-level `.sheet` above handles presentation instead.
-            .popover(isPresented: Binding(
-                get: { showAPIConfiguration && horizontalSizeClass == .regular },
-                set: {
-                    if !$0 {
-                        showAPIConfiguration = false
-                        // Clear the error now that the popover is gone — this removes the
-                        // banner and keeps the screen clean after the user is done
-                        // configuring their API key.
-                        viewModel.activeError = nil
-                    }
-                }
-            )) {
-                apiConfigurationBuilder()
-                    .frame(minWidth: 360, minHeight: 440)
-            }
-            #endif
-        case .selectModel:
-            Button("Select Model") {
-                viewModel.activeError = nil
-                showModelManagement = true
-            }
-            .buttonStyle(.borderless)
-            .font(.callout.bold())
-            .accessibilityIdentifier("chat-model-management-button")
-        case .dismissOnly, .none:
-            EmptyView()
-        }
-    }
-
-    // MARK: - Upgrade Hint Banner
-
-    private var upgradeHintBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.down.circle")
-                .foregroundStyle(.blue)
-                .accessibilityHidden(true)
-
-            Text("Want longer responses? Download a model for extended context.")
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                showModelManagement = true
-            } label: {
-                Text("Browse")
-                    .font(.callout.bold())
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.blue)
-            .accessibilityLabel("Browse models for extended context")
-            .accessibilityIdentifier("chat-model-management-button")
-        }
-        .padding(12)
-        .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
-        .padding(.top, 4)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    // MARK: - Loading
-
-    private var loadingView: some View {
-        Group {
-            if case .modelLoading(let progress) = viewModel.activityPhase {
-                ModelLoadingIndicatorView(progress: progress) {
-                    viewModel.unloadModel()
-                }
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-    }
-
-    // MARK: - No Model Loaded
-
-    @ViewBuilder
-    private var noModelLoadedView: some View {
-        if viewModel.availableModels.isEmpty {
-            // No models at all — welcome screen with browse CTA
-            VStack(spacing: 20) {
-                Image(systemName: "book.and.wrench")
-                    .font(.system(size: 56))
-                    .foregroundStyle(.secondary)
-
-                VStack(spacing: 8) {
-                    Text("Welcome to \(ManifoldConfiguration.shared.appName)")
-                        .font(.title2.bold())
-
-                    Text("Download a model or add a cloud backend to get started.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 320)
-                }
-
-                Button {
-                    $showModelManagement.wrappedValue = true
-                } label: {
-                    Label("Browse Models", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityLabel("Browse and download models")
-                .accessibilityIdentifier("chat-model-management-button")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-        } else {
-            // Models exist but none is selected — on iPhone there is no visible sidebar,
-            // so provide a button to open model management directly.
-            ContentUnavailableView {
-                Label("No Model Selected", systemImage: "cpu")
-            } description: {
-                Text("Select a model from the sidebar to start chatting.")
-            } actions: {
-                Button("Select Model") {
-                    $showModelManagement.wrappedValue = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("chat-model-management-button")
-            }
-            .frame(maxHeight: .infinity)
-        }
+        .chatShellPresentations(
+            viewModel: viewModel,
+            showClearConfirmation: $showClearConfirmation,
+            isSettingsPresented: $isSettingsPresented,
+            isExportPresented: $isExportPresented,
+            apiConfiguration: apiConfigurationBuilder
+        )
+        // API configuration: on compact size class (iPhone) or macOS, use a full sheet
+        // because there is no stable toolbar anchor. On regular size class (iPad) the
+        // presentation is anchored to the recovery button's popover.
+        .chatAPIConfigurationPresentation(
+            isPresented: $showAPIConfiguration,
+            apiConfiguration: apiConfigurationBuilder
+        )
     }
 
     // MARK: - Message List
 
     private var messageList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    // Trigger for loading older messages when the user scrolls to the top.
-                    if viewModel.hasOlderMessages {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .onAppear {
-                                loadOlderAndRestore(proxy: proxy)
-                            }
-                    }
-
-                    if viewModel.messages.isEmpty && !viewModel.isGenerating {
-                        emptyPlaceholder
-                    }
-
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                        // Handoff chip rendered above the bubble when the
-                        // preceding message was attributed to a different
-                        // agent. Pure function of persisted attribution —
-                        // decoupled from .agentHandoff event timing so
-                        // scrollback / restored sessions keep their chips.
-                        if let chip = handoffChip(at: index) {
-                            chip
-                        }
-                        let bubble = MessageBubbleView(
-                            message: message,
-                            isStreaming: isMessageStreaming(message),
-                            isPinned: viewModel.isMessagePinned(id: message.id),
-                            linkPreviewProvider: linkPreviewProvider,
-                            customKindRenderer: customKindRenderer,
-                            session: viewModel.activeSession
-                        )
-                        if let contextMenuItemsBuilder {
-                            bubble
-                                .messageActionMenu(message: message, viewModel: viewModel) { msg in
-                                    contextMenuItemsBuilder(msg)
-                                }
-                                .id(message.id)
-                        } else {
-                            bubble
-                                .messageActionMenu(message: message, viewModel: viewModel)
-                                .id(message.id)
-                        }
-                    }
-
-                    // Invisible anchor for auto-scrolling.
-                    Color.clear
-                        .frame(height: 1)
-                        .id("chatBottom")
-                }
-                .padding(.vertical, 8)
-            }
-            .defaultScrollAnchor(.bottom)
-            .onAppear {
-                _ = consumeScrollToMessageRequest(proxy: proxy)
-            }
-            .onChange(of: viewModel.scrollToMessageRequest?.requestID) {
-                _ = consumeScrollToMessageRequest(proxy: proxy)
-            }
-            .onChange(of: viewModel.messages.count) {
-                if consumeScrollToMessageRequest(proxy: proxy) { return }
-                // Only auto-scroll to bottom for new messages appended at the end,
-                // not when older messages are prepended at the top.
-                if !viewModel.isLoadingOlderMessages {
-                    scrollToBottom(proxy: proxy)
-                }
-            }
-            .onChange(of: viewModel.messages.last?.content) {
-                if consumeScrollToMessageRequest(proxy: proxy) { return }
-                scrollToBottom(proxy: proxy)
-            }
-        }
-        .frame(maxHeight: .infinity)
-    }
-
-    @ViewBuilder
-    private var emptyPlaceholder: some View {
-        if let customEmptyPlaceholder {
-            customEmptyPlaceholder
-                .frame(maxWidth: .infinity)
-                .padding(.top, 40)
-        } else {
-            Text("Send a message to start chatting.")
-                .foregroundStyle(.tertiary)
-                .font(.body)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 40)
-        }
-    }
-
-    // MARK: - Toolbar Items
-
-    private var exportButton: some View {
-        Button {
-            isExportPresented = true
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
-        }
-        .disabled(viewModel.messages.isEmpty)
-        .accessibilityLabel("Export chat")
-        #if os(iOS)
-        // On regular size class (iPad), anchor the export panel as a popover so
-        // the split-view context stays visible. On compact (iPhone), the popover
-        // automatically adapts to a sheet presentation.
-        .popover(isPresented: $isExportPresented) {
-            ChatExportSheet()
-                .frame(minWidth: 320, minHeight: 300)
-        }
-        #endif
-    }
-
-    private var deviceInfoButton: some View {
-        Button {
-            isDeviceInfoExpanded.toggle()
-        } label: {
-            Label("Device Info", systemImage: "info.circle")
-        }
-        .popover(isPresented: $isDeviceInfoExpanded) {
-            deviceInfoPopover
-        }
-    }
-
-    private var settingsButton: some View {
-        Button {
-            isSettingsPresented = true
-        } label: {
-            Label("Settings", systemImage: "gear")
-        }
-        .accessibilityLabel("Generation settings")
-        .accessibilityIdentifier("chat-settings-button")
-        #if os(iOS)
-        // Cmd+, is the iPadOS convention for settings with a hardware keyboard.
-        // Omitted on macOS to avoid conflicting with any host app's Settings scene
-        // (which also claims Cmd+,).
-        .keyboardShortcut(",", modifiers: .command)
-        .popover(isPresented: $isSettingsPresented) {
-            GenerationSettingsView(apiConfiguration: apiConfigurationBuilder)
-                .frame(minWidth: 320, minHeight: 400)
-        }
-        #endif
-    }
-
-    private var clearChatButton: some View {
-        Button {
-            showClearConfirmation = true
-        } label: {
-            Label("Clear Chat", systemImage: "trash")
-        }
-        .disabled(viewModel.messages.isEmpty)
-        .accessibilityLabel("Clear chat")
-        // Cmd+Shift+K mirrors the "Clear" shortcut convention used in Xcode and Terminal.
-        .keyboardShortcut("k", modifiers: [.command, .shift])
-    }
-
-    // MARK: - Device Info Popover
-
-    private var deviceInfoPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Device Info")
-                .font(.headline)
-
-            LabeledContent("Device") {
-                Text(viewModel.deviceDescription)
-            }
-
-            LabeledContent("Recommended Size") {
-                Text(viewModel.recommendedSize.description)
-            }
-
-            LabeledContent("Model Loaded") {
-                Text(viewModel.isModelLoaded ? "Yes" : "No")
-                    .foregroundStyle(viewModel.isModelLoaded ? .green : .secondary)
-            }
-            .accessibilityValue(viewModel.isModelLoaded ? "Yes" : "No")
-
-            if let modelName = viewModel.activeModelName {
-                LabeledContent("Model") {
-                    Text(modelName)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
-                }
-            }
-
-            if let backend = viewModel.activeBackendName {
-                LabeledContent("Backend") {
-                    Text(backend)
-                }
-            }
-        }
-        .padding()
-        .frame(minWidth: 280)
+        ChatHistoryView(
+            customEmptyPlaceholder: customEmptyPlaceholder,
+            linkPreviewProvider: linkPreviewProvider,
+            contextMenuItemsBuilder: contextMenuItemsBuilder,
+            customKindRenderer: customKindRenderer
+        )
     }
 
     // MARK: - Helpers
-
-    private func isMessageStreaming(_ message: ChatMessageRecord) -> Bool {
-        viewModel.isGenerating
-        && message.role == .assistant
-        && message.id == viewModel.messages.last?.id
-    }
-
-    /// Returns a ``HandoffChipView`` when the message at `index` is attributed
-    /// to a different agent than its immediate predecessor. Both sides must
-    /// resolve against the active session's agent registry — when either side
-    /// is `nil`, the previous `agentID` is `nil`, or the agents are equal,
-    /// no chip is rendered.
-    ///
-    /// Pure function of persisted attribution; intentionally not wired to the
-    /// `.agentHandoff` event stream so scrollback and restored sessions keep
-    /// their chips.
-    private func handoffChip(at index: Int) -> HandoffChipView? {
-        guard index > 0,
-              let session = viewModel.activeSession
-        else { return nil }
-        let messages = viewModel.messages
-        guard index < messages.count else { return nil }
-        let current = messages[index]
-        let previous = messages[index - 1]
-        guard let currentAgentID = current.agentID,
-              let previousAgentID = previous.agentID,
-              currentAgentID != previousAgentID
-        else { return nil }
-        let agents = session.agents
-        guard let toAgent = agents.first(where: { $0.id == currentAgentID }),
-              let fromAgent = agents.first(where: { $0.id == previousAgentID })
-        else { return nil }
-        return HandoffChipView(from: fromAgent, to: toAgent, payload: nil)
-    }
-
-    /// Loads the next page of older messages and scrolls back to the anchor
-    /// so the viewport doesn't jump when content is prepended above.
-    private func loadOlderAndRestore(proxy: ScrollViewProxy) {
-        Task { @MainActor in
-            guard let anchorID = await viewModel.loadOlderMessages() else { return }
-            // Scroll back to the message that was at the top before prepend,
-            // keeping it at the top of the viewport to prevent visible jump.
-            proxy.scrollTo(anchorID, anchor: .top)
-        }
-    }
-
-    @discardableResult
-    private func consumeScrollToMessageRequest(proxy: ScrollViewProxy) -> Bool {
-        guard let request = viewModel.scrollToMessageRequest else { return false }
-        guard Self.canConsumeScrollToMessageRequest(request, in: viewModel.messages) else { return false }
-        withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo(request.messageID, anchor: request.anchor.unitPoint)
-        }
-        viewModel.consumeScrollToMessageRequest(request)
-        return true
-    }
 
     static func canConsumeScrollToMessageRequest(
         _ request: ChatScrollToMessageRequest,
         in messages: [ChatMessageRecord]
     ) -> Bool {
-        messages.contains(where: { $0.id == request.messageID })
-    }
-
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.15)) {
-            proxy.scrollTo("chatBottom", anchor: .bottom)
-        }
-    }
-}
-
-private extension Optional where Wrapped == ChatMessageScrollAnchor {
-    var unitPoint: UnitPoint? {
-        switch self {
-        case .some(.top):
-            .top
-        case .some(.center):
-            .center
-        case .some(.bottom):
-            .bottom
-        case nil:
-            nil
-        }
-    }
-}
-
-// MARK: - Error Banner View
-
-/// Standalone chat error banner.
-///
-/// Extracted from ``ChatView`` so that its accessibility contract
-/// ("Error: <message>" header label) can be inspected directly in unit tests
-/// without mounting a full `ChatViewModel` environment.
-struct ErrorBannerView<Recovery: View>: View {
-
-    /// Builds the VoiceOver label for an error banner. Kept as a static helper
-    /// so tests can assert on the exact contract.
-    static func accessibilityLabel(for error: ChatError) -> String {
-        "Error: \(error.message)"
-    }
-
-    let error: ChatError
-    let onDismiss: () -> Void
-    let recoveryAction: () -> Recovery
-
-    init(
-        error: ChatError,
-        onDismiss: @escaping () -> Void,
-        @ViewBuilder recoveryAction: @escaping () -> Recovery
-    ) {
-        self.error = error
-        self.onDismiss = onDismiss
-        self.recoveryAction = recoveryAction
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-                .accessibilityHidden(true)
-
-            Text(error.message)
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            recoveryAction()
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss error")
-        }
-        .padding(12)
-        .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
-        .padding(.top, 8)
-        // Use .combine so that the container itself becomes the VoiceOver element.
-        // With .contain the label/trait modifiers below would be silently ignored —
-        // .contain exposes children individually and discards container-level overrides.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Self.accessibilityLabel(for: error))
-        .accessibilityAddTraits(.isHeader)
+        ChatHistoryScrollBehavior.canConsumeScrollToMessageRequest(request, in: messages)
     }
 }
 
