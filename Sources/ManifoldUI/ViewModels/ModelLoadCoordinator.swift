@@ -35,28 +35,28 @@ final class ModelLoadCoordinator {
 
     /// Forwards to `ChatViewModel.transitionPhase(to:)`. Returns `true` if the
     /// transition was accepted (matches `transitionPhase`'s own return value).
-    var onTransitionPhase: (BackendActivityPhase) -> Bool = { _ in false }
+    var onTransitionPhase: @MainActor (BackendActivityPhase) -> Bool = { _ in false }
 
     /// Forwards to setting `ChatViewModel.errorMessage` to a non-nil string.
-    var onSurfaceError: (String) -> Void = { _ in }
+    var onSurfaceError: @MainActor (String) -> Void = { _ in }
 
     /// Clears `ChatViewModel.errorMessage` (sets it to `nil`).
-    var onClearError: () -> Void = {}
+    var onClearError: @MainActor () -> Void = {}
 
     /// Forwards to setting `ChatViewModel.selectedPromptTemplate`.
-    var onSetSelectedPromptTemplate: (PromptTemplate) -> Void = { _ in }
+    var onSetSelectedPromptTemplate: @MainActor (PromptTemplate) -> Void = { _ in }
 
     /// Forwards to `ChatViewModel.invalidateTokenCaches()`.
-    var onInvalidateTokenCaches: () -> Void = {}
+    var onInvalidateTokenCaches: @MainActor () -> Void = {}
 
     /// Returns `ChatViewModel.isRestoringSession`.
-    var isRestoringSession: () -> Bool = { false }
+    var isRestoringSession: @MainActor () -> Bool = { false }
 
     /// Returns `ChatViewModel.activityPhase`.
-    var currentActivityPhase: () -> BackendActivityPhase = { .idle }
+    var currentActivityPhase: @MainActor () -> BackendActivityPhase = { .idle }
 
     /// Returns the `ModelLoadPlan.Environment` to use for local-model load plans.
-    var currentLoadPlanEnvironment: () -> ModelLoadPlan.Environment = { .current }
+    var currentLoadPlanEnvironment: @MainActor () -> ModelLoadPlan.Environment = { .current }
 
     // MARK: - State
 
