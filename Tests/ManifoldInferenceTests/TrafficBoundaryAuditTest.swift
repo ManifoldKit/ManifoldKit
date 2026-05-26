@@ -173,6 +173,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // Model download path — HuggingFace GGUF/MLX downloads.
         "ManifoldHuggingFace/BackgroundDownloadManager.swift",
         "ManifoldHuggingFace/BackgroundDownloadManager+URLSessionDelegate.swift",
+        // Foreground/background URLSession bridge for HF model downloads —
+        // factored out of HuggingFaceService in #1456 (background download
+        // manager decomposition).
+        "ManifoldHuggingFace/BackgroundURLSessionCoordinator.swift",
         "ManifoldHuggingFace/HuggingFaceService.swift",
         // Diffusion model download path — multi-file safetensors layout
         // (UNet, VAE, text encoders, tokenizers, scheduler). Sibling to the
@@ -319,7 +323,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 43,
+            Self.networkIOAllowlist.count, 44,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

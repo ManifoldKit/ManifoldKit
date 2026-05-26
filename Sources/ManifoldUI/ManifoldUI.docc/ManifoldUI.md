@@ -66,11 +66,12 @@ struct MyApp: App {
         chatVM.refreshModels()
 
         let sessionVM = SessionManagerViewModel()
-        sessionVM.configure(bootstrap: bootstrap)
+        await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
-        let initial = sessionVM.sessions.first
+        let initial = await sessionVM.selectInitialSession()
             ?? (try? await sessionVM.createSession())
         if let initial {
+            sessionVM.activeSession = initial
             await chatVM.switchToSession(initial)
             chatVM.dispatchSelectedLoad()
         }

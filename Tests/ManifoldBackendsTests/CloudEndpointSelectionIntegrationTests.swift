@@ -131,7 +131,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
     // MARK: - Select → Load → isModelLoaded
 
-    func test_selectedEndpointAndLoad_setsIsModelLoaded() async throws {
+    func test_selectedEndpointAndLoadSelectedEndpoint_setsIsModelLoaded() async throws {
         let endpoint = APIEndpointRecord(
             name: "Local Ollama",
             provider: .ollama,
@@ -141,7 +141,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         try persistEndpoint(endpoint)
 
         vm.selectedEndpoint = endpoint
-        await vm.loadCloudEndpoint(endpoint)
+        await vm.loadSelectedEndpoint()
 
         XCTAssertEqual(vm.selectedEndpoint?.id, endpoint.id)
         XCTAssertTrue(vm.isModelLoaded)

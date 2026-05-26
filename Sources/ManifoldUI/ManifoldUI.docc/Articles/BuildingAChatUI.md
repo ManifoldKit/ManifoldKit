@@ -99,8 +99,17 @@ struct MyApp: App {
             chatVM.configure(bootstrap: bootstrap)
             chatVM.refreshModels()
 
+            // 3a. Configure the session manager **and await its initial load**
+            //     so `sessionVM.sessions` is populated before the next step
+            //     inspects it. The plain `configure(bootstrap:)` overload
+            //     kicks the load off as a fire-and-forget Task and returns
+            //     immediately, which is the race that produced the
+            //     duplicate-blank-session bug fixed in #1464. Use
+            //     `configureAndLoad(bootstrap:)` from any bootstrap path that
+            //     wants relaunch-safe restore — it awaits the first page so
+            //     `sessions` is materially ready on return.
             let sessionVM = SessionManagerViewModel()
-            sessionVM.configure(bootstrap: bootstrap)
+            await sessionVM.configureAndLoad(bootstrap: bootstrap)
 
             // 4. Wire automatic session-title generation from the first
             //    message of a new chat. `inferenceService` is shared.
@@ -114,24 +123,24 @@ struct MyApp: App {
                 }
             }
 
-            // 5. Activate (or create) an initial session so `ChatView`'s
+            // 5. Restore (or create) an initial session so `ChatView`'s
             //    composer is enabled on first launch.
             //
-            //    Note: `??` cannot propagate `async`/`throws` into its RHS, so
-            //    this is written as an explicit if/else rather than
-            //    `sessions.first ?? (try? await createSession())`.
-            //    `createSession()` is `async throws -> ChatSessionRecord`, and
-            //    `sessions` is `[ChatSessionRecord]`, so both branches yield
-            //    the same type.
-            let initial: ChatSessionRecord?
-            if let existing = sessionVM.sessions.first {
-                initial = existing
-            } else {
-                initial = try? await sessionVM.createSession()
-            }
-            if let initial {
-                sessionVM.activeSession = initial
-                await chatVM.switchToSession(initial)
+            //    `selectInitialSession()` implements the relaunch-safe
+            //    selection policy: prefer the previously active session,
+            //    fall back to the most recent non-empty conversation, and
+            //    only return `nil` when the store really is empty (#1464).
+            //    The host decides whether to mint a blank session at that
+            //    point — minting one *before* the restore probe is the
+            //    naive pattern that produced repeated blank rows on
+            //    relaunch.
+            if let restored = await sessionVM.selectInitialSession() {
+                sessionVM.activeSession = restored
+                await chatVM.switchToSession(restored)
+                chatVM.dispatchSelectedLoad()
+            } else if let fresh = try? await sessionVM.createSession() {
+                sessionVM.activeSession = fresh
+                await chatVM.switchToSession(fresh)
                 chatVM.dispatchSelectedLoad()
             }
 
@@ -175,7 +184,33 @@ struct RootView: View {
 }
 ```
 
-Both view models share the same runtime-backed ``SessionStore`` / ``MessageStore`` ports (vended by `bootstrap.persistenceStores`), so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. The root view no longer has to late-bind persistence from `modelContext` on first appearance.
+Both view models share the same runtime-backed composite persistence handle `bootstrap.persistenceStores`, typed as `any SessionStore & MessageStore`, so session records created by `SessionManagerViewModel` are immediately visible to `ChatViewModel`. Call the store methods directly on that value — there is no `.sessionStore` / `.messageStore` pair to drill into:
+
+```swift
+import ManifoldKit
+
+@main
+struct PersistenceStoresExample {
+    @MainActor
+    static func main() async throws {
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "My Chat",
+                bundleIdentifier: "com.example.mychat"
+            )
+        )
+        for await _ in progress { }
+        let bootstrap = try await task.value
+
+        let stores: any SessionStore & MessageStore = bootstrap.persistenceStores
+        let session = ChatSessionRecord(title: "Seeded Session")
+        try await stores.insertSession(session)
+        _ = try await stores.fetchMessages(for: session.id)
+    }
+}
+```
+
+The root view no longer has to late-bind persistence from `modelContext` on first appearance.
 
 ### Switching sessions
 
@@ -317,7 +352,12 @@ struct ModernApp: App {
         chatVM.configure(bootstrap: bootstrap)
 
         let sessionVM = SessionManagerViewModel()
-        sessionVM.configure(bootstrap: bootstrap)
+        await sessionVM.configureAndLoad(bootstrap: bootstrap)
+
+        if let restored = await sessionVM.selectInitialSession() {
+            sessionVM.activeSession = restored
+            await chatVM.switchToSession(restored)
+        }
 
         self.bootstrap = bootstrap
         self.chatViewModel = chatVM
@@ -326,7 +366,11 @@ struct ModernApp: App {
 }
 ```
 
-Both view models must be configured from the bootstrap: ``ChatViewModel/configure(bootstrap:)`` wires persistence, the endpoint store, and (when present) the image-generation runtime. `SessionManagerViewModel.configure(bootstrap:)` wires the same persistence plus diagnostics. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save.
+Both view models must be configured from the bootstrap: ``ChatViewModel/configure(bootstrap:)`` wires persistence, the endpoint store, and (when present) the image-generation runtime. `SessionManagerViewModel.configureAndLoad(bootstrap:)` wires the same persistence plus diagnostics **and awaits the initial session-list load** before returning. Skipping the session-manager configuration leaves it on a nil-persistence path that fails on first save; using the non-awaiting `configure(bootstrap:)` overload from a relaunch-aware host produces the duplicate-blank-session race described in #1464.
+
+### Relaunch / restore guarantees
+
+After ``SessionManagerViewModel/configureAndLoad(bootstrap:)`` returns, `sessions` reflects the first persisted page. Calling ``SessionManagerViewModel/selectInitialSession()`` returns the session the host should restore as `activeSession`, preferring (in order) the previously active session, the most recent non-empty conversation, and finally the most recent session in the list. It returns `nil` only when no sessions exist — at which point the host decides whether to mint a fresh blank session. Assigning the returned record (or any subsequent user selection) to `activeSession` automatically persists it as the new last-active session for the next relaunch. No custom polling or wait heuristics are required.
 
 Keep ``ChatViewModel/configure(persistence:)`` for adopters that provide custom ``SessionStore`` / ``MessageStore`` impls (e.g. an in-memory test fixture, or a non-SwiftData backing store) — construct ``ChatViewModel`` and ``SessionManagerViewModel`` directly and call `configure(persistence:)`. The shipped SwiftData bootstrap and custom stores both satisfy the same runtime-port boundary.
 

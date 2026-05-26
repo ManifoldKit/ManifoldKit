@@ -160,6 +160,39 @@ final class QuickStartTests: XCTestCase {
             "sessionManager.sessions must reflect persisted sessions on relaunch immediately (#1447)")
     }
 
+    /// Regression guard for #1473 — the documented quickStart cloud-endpoint
+    /// recipe seeds `selectedEndpoint` and then activates it before first send.
+    func test_quickStart_seededEndpoint_canLoadViaSelectedEndpoint() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        let cloudBackend = QuickStartCloudBackend()
+        result.bootstrap.inferenceService.registerCloudBackendFactory { provider in
+            guard provider == .ollama else { return nil }
+            return cloudBackend
+        }
+
+        let endpoint = APIEndpointRecord(
+            name: "Local Ollama",
+            provider: .ollama,
+            baseURL: "http://localhost:11434",
+            modelName: "llama3.2:3b"
+        )
+
+        try await result.bootstrap.endpointStore.insertEndpoint(endpoint)
+        result.viewModel.setAvailableEndpoints([endpoint])
+        result.viewModel.selectedEndpoint = endpoint
+
+        await result.viewModel.loadSelectedEndpoint()
+
+        XCTAssertTrue(result.viewModel.isModelLoaded)
+        XCTAssertEqual(result.viewModel.activeBackendName, BackendName.ollama.rawValue)
+
+        let reply = try await result.viewModel.sendMessage("Say hello")
+        XCTAssertEqual(reply.content, "Hello cloud")
+    }
+
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
     /// snippet stores the result in a `@State` property or passes it across
     /// task boundaries; losing Sendability would silently break that.
@@ -168,4 +201,42 @@ final class QuickStartTests: XCTestCase {
     }
 
     private func _requireSendable<T: Sendable>(_: T.Type) {}
+}
+
+private final class QuickStartCloudBackend: InferenceBackend, CloudBackendURLModelConfigurable, @unchecked Sendable {
+    var isModelLoaded = false
+    var isGenerating = false
+    let capabilities = BackendCapabilities(
+        supportedParameters: [.temperature],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+
+    func configure(baseURL: URL, modelName: String) {}
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
+        isModelLoaded = true
+    }
+
+    func generate(
+        prompt: String,
+        systemPrompt: String?,
+        config: GenerationConfig
+    ) throws -> GenerationStream {
+        guard isModelLoaded else {
+            throw InferenceError.inferenceFailure("No model loaded")
+        }
+        let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            continuation.yield(.token("Hello cloud"))
+            continuation.finish()
+        }
+        return GenerationStream(stream)
+    }
+
+    func stopGeneration() {}
+
+    func unloadModel() {
+        isModelLoaded = false
+    }
 }

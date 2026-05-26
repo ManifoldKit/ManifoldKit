@@ -52,6 +52,22 @@ extension ChatViewModel {
         await loadCoordinator.loadLocalModel(model, generation: nil)
     }
 
+    /// Loads the currently selected cloud/LAN endpoint into the inference backend.
+    ///
+    /// Does nothing if a load is already in progress. Hosts that drive selection
+    /// through `selectedEndpoint` can call this directly; SwiftUI pickers that
+    /// react to selection changes should prefer ``dispatchSelectedLoad()``.
+    public func loadSelectedEndpoint() async {
+        guard !isLoading else { return }
+
+        guard let endpoint = selectedEndpoint else {
+            activeError = ChatError(kind: .configuration, message: "No endpoint selected.", recovery: .selectModel)
+            return
+        }
+
+        await loadCoordinator.loadCloudEndpointInternal(endpoint, generation: nil)
+    }
+
     /// Loads a cloud API endpoint for the active session.
     ///
     /// - Note: Prefer `dispatchSelectedLoad()` for UI-driven loads — it coordinates
