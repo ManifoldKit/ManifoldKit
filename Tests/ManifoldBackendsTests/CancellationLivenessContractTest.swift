@@ -43,7 +43,7 @@ final class CancellationLivenessContractTest: XCTestCase {
     ]
 
     /// Backend files that have migrated to the adapter-routed path. The
-    /// envelope's `parseResponseStreamRouted` loop in
+    /// envelope's `CloudRoutedStreamParser` loop in
     /// ``SSECloudBackend`` owns the `Task.isCancelled` observation for
     /// these — the per-stream consumer also observes cancellation at
     /// `consume(payload:)` so phantom tool calls cannot fire mid-cancel.
@@ -66,7 +66,7 @@ final class CancellationLivenessContractTest: XCTestCase {
             guard name.hasSuffix("Backend.swift") else { continue }
 
             // Adapter-routed backends delegate the stream loop and its
-            // cancellation observation to `SSECloudBackend.parseResponseStreamRouted`
+            // cancellation observation to `CloudRoutedStreamParser`
             // in `ManifoldCloudCore`. The audit accepts these as having
             // observed cancellation upstream — `adapterRouting` composition
             // is the gate.
@@ -85,7 +85,7 @@ final class CancellationLivenessContractTest: XCTestCase {
                 || content.contains("try Task.checkCancellation")
                 // Adapter-routed backends (`configure(adapterRouting:)`)
                 // delegate cancellation to
-                // `SSECloudBackend.parseResponseStreamRouted`, which is
+                // `CloudRoutedStreamParser`, which is
                 // the envelope's stream loop and contains the
                 // canonical `Task.isCancelled` check. After Phase 3,
                 // every cloud backend reaches this branch.

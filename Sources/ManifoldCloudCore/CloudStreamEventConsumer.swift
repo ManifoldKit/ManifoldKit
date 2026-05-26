@@ -14,7 +14,7 @@ import ManifoldInference
 ///
 /// ### Lifecycle
 ///
-/// `SSECloudBackend.parseResponseStreamRouted` obtains a fresh consumer at
+/// `CloudRoutedStreamParser` obtains a fresh consumer at
 /// stream open by invoking ``CloudAdapterRouting/streamConsumerFactory``
 /// (when non-nil), drives ``consume(payload:)`` for each frame, and calls
 /// ``finish(cancelled:)`` exactly once at stream end. Implementations must

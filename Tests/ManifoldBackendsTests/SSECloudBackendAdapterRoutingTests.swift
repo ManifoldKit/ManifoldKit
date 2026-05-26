@@ -231,6 +231,66 @@ struct SSECloudBackendAdapterRoutingTests {
         #expect(usageCompletion == 11)
     }
 
+    /// Directly exercises the extracted routed parser seam without a backend
+    /// subclass. The backend still owns orchestration; this pins the helper's
+    /// handler-driven event routing, thinking boundary, and finalizer usage.
+    @Test func routedParser_handlerPathInjectsThinkingBoundaryAndFinalizerUsage() async throws {
+        let scriptedFrames: [Data] = [
+            Data("think".utf8),
+            Data("text".utf8),
+            Data("DONE".utf8),
+        ]
+        let payloadHandler = ThinkingBoundaryHandler()
+        let framedTransport = RecordingFramedTransport(frames: scriptedFrames)
+        let finalizer = RecordingFinalizer(terminalFrame: Data("DONE".utf8))
+        let usageRecorder = UsageRecorder()
+        let routing = CloudAdapterRouting(
+            payloadHandler: payloadHandler,
+            framedTransport: framedTransport,
+            streamFinalizer: finalizer,
+            errorBodyDecoder: RecordingErrorBodyDecoder(),
+            buildRequest: { _, _, _ in URLRequest(url: URL(string: "https://unused.test/x")!) }
+        )
+        let parser = CloudRoutedStreamParser(
+            routing: routing,
+            limits: .default,
+            handleUsage: { usage in usageRecorder.record(usage) }
+        )
+
+        let endpoint = URL(string: "https://parser-seam-\(UUID().uuidString).test/stream")!
+        MockURLProtocol.stub(url: endpoint, response: .immediate(data: Data("ok".utf8), statusCode: 200))
+        let request = URLRequest(url: endpoint)
+        let (bytes, _) = try await makeMockSession().bytes(for: request)
+        MockURLProtocol.unstub(url: endpoint)
+
+        let stream = AsyncThrowingStream<GenerationEvent, Error> { continuation in
+            Task {
+                do {
+                    try await parser.parse(bytes: bytes, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+
+        var events: [String] = []
+        for try await event in stream {
+            switch event {
+            case .thinkingToken(let text): events.append("thinking:\(text)")
+            case .thinkingComplete: events.append("thinkingComplete")
+            case .token(let text): events.append("token:\(text)")
+            case .usage(let prompt, let completion): events.append("usage:\(prompt)/\(completion)")
+            default: break
+            }
+        }
+
+        #expect(events == ["thinking:rationale", "thinkingComplete", "token:answer", "usage:7/11"])
+        #expect(usageRecorder.lastPrompt == 7)
+        #expect(usageRecorder.lastCompletion == 11)
+        #expect(framedTransport.callCount == 1)
+    }
+
     /// Asserts that an unconfigured backend (no routing installed) still
     /// runs the legacy subclass-override path end-to-end. This is the
     /// regression check that the widen didn't accidentally re-route
@@ -358,6 +418,20 @@ private final class LegacyEchoHandler: SSEPayloadHandler, @unchecked Sendable {
     func extractStreamError(from payload: String) -> Error? { nil }
 }
 
+private final class ThinkingBoundaryHandler: SSEPayloadHandler, @unchecked Sendable {
+    func extractToken(from payload: String) -> String? { nil }
+    func extractEvents(from payload: String) -> [GenerationEvent] {
+        switch payload {
+        case "think": return [.thinkingToken("rationale")]
+        case "text": return [.token("answer")]
+        default: return []
+        }
+    }
+    func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? { nil }
+    func isStreamEnd(_ payload: String) -> Bool { false }
+    func extractStreamError(from payload: String) -> Error? { nil }
+}
+
 // MARK: - Counter
 
 private final class Counter: @unchecked Sendable {
@@ -369,6 +443,27 @@ private final class Counter: @unchecked Sendable {
     }
     func increment() {
         lock.lock(); _value += 1; lock.unlock()
+    }
+}
+
+private final class UsageRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var usage: (promptTokens: Int?, completionTokens: Int?)?
+
+    var lastPrompt: Int? {
+        lock.lock(); defer { lock.unlock() }
+        return usage?.promptTokens
+    }
+
+    var lastCompletion: Int? {
+        lock.lock(); defer { lock.unlock() }
+        return usage?.completionTokens
+    }
+
+    func record(_ usage: (promptTokens: Int?, completionTokens: Int?)) {
+        lock.lock()
+        self.usage = usage
+        lock.unlock()
     }
 }
 #endif
