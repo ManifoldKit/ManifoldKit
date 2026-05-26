@@ -354,7 +354,8 @@ jobs:
       - name: Upload test diagnostics on failure
         # swift test does not produce .xcresult bundles, so we upload whatever
         # diagnostics the failing step left behind (captured stdout/stderr,
-        # plus any xcresult bundles if they exist).
+        # watchdog stall snapshots/backtrace tails, plus any xcresult bundles
+        # if they exist).
         if: failure()
         uses: actions/upload-artifact@v7
         with:

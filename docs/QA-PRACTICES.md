@@ -93,7 +93,7 @@ Failures print the offending file/line plus the allowlist mechanism. Most audits
 ```bash
 SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests --disable-default-traits
 ```
-Without `SABOTAGE=1` every test skips immediately — the suite is nightly-only because it does temp-dir setup per test.
+Without `SABOTAGE=1` every test skips immediately — the suite is nightly-only because it does temp-dir setup per test. The scheduled `nightly-slow-tests` workflow runs it with `SABOTAGE=1`, `--min-passed 1`, and a log proof check for `ManifoldAuditSabotageSuiteTests` test-case lines so a skipped sabotage lane cannot look green.
 
 **Extend.** When you add a new audit (practice 2), pair it with a sabotage test:
 
