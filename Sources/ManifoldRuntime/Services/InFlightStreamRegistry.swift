@@ -35,6 +35,13 @@ actor InFlightStreamRegistry {
         return entries[handle.id]
     }
 
+    /// Marks every active handle cancelled and returns the tokens that should
+    /// be forwarded to ``InferenceService/cancelAsync(_:)`` during teardown.
+    func markAllCancelled() -> [InferenceService.GenerationRequestToken] {
+        cancelled.formUnion(entries.keys)
+        return Array(entries.values)
+    }
+
     func isCancelled(_ handle: ConversationStreamHandle) -> Bool {
         cancelled.contains(handle.id)
     }

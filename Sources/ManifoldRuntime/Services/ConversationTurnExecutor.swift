@@ -70,7 +70,8 @@ struct ConversationTurnExecutor: Sendable {
         sessionID: UUID,
         text: String,
         attachments rawAttachments: [MessagePart],
-        config: TurnConfig
+        config: TurnConfig,
+        taskRegistry: ConversationTurnTaskRegistry
     ) async throws -> ConversationStreamHandle {
         let handle = ConversationStreamHandle()
 
@@ -124,11 +125,9 @@ struct ConversationTurnExecutor: Sendable {
             emit(.sessionTouchFailed(sessionID: sessionID))
         }
 
-        // Detach the streaming work onto an unstructured task so the
-        // command returns the handle promptly. The task captures `self`
-        // strongly for the duration of the turn — releases via the
-        // registry when the turn ends.
-        Task.detached { [self] in
+        // Launch the streaming work through the runtime-owned task registry
+        // so cancellation and completion bookkeeping have one owner.
+        await taskRegistry.launch(handle: handle) { [self] in
             // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
@@ -170,7 +169,8 @@ struct ConversationTurnExecutor: Sendable {
 
     func runRegenerateFlow(
         sessionID: UUID,
-        config: TurnConfig
+        config: TurnConfig,
+        taskRegistry: ConversationTurnTaskRegistry
     ) async throws -> ConversationStreamHandle {
         let handle = ConversationStreamHandle()
 
@@ -195,7 +195,7 @@ struct ConversationTurnExecutor: Sendable {
         }
         emit(.messageRemoved(messageID: lastAssistant.id))
 
-        Task.detached { [self] in
+        await taskRegistry.launch(handle: handle) { [self] in
             // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
@@ -236,7 +236,8 @@ struct ConversationTurnExecutor: Sendable {
         sessionID: UUID,
         messageID: UUID,
         text: String,
-        config: TurnConfig
+        config: TurnConfig,
+        taskRegistry: ConversationTurnTaskRegistry
     ) async throws -> ConversationStreamHandle? {
         // Fetch history synchronously so we can locate the target message
         // and delete trailing messages before returning. Callers observe
@@ -285,7 +286,7 @@ struct ConversationTurnExecutor: Sendable {
         }
 
         let handle = ConversationStreamHandle()
-        Task.detached { [self] in
+        await taskRegistry.launch(handle: handle) { [self] in
             // Fire pre-turn hooks so consumers can cancel in-flight work from prior turns.
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
@@ -329,7 +330,8 @@ struct ConversationTurnExecutor: Sendable {
         newSessionID: UUID,
         newSessionTitle: String?,
         generateAfter: Bool,
-        config: TurnConfig
+        config: TurnConfig,
+        taskRegistry: ConversationTurnTaskRegistry
     ) async throws -> ConversationStreamHandle? {
         // Fetch source history synchronously so callers observe ordering:
         // `.sessionBranched` fires before `processTurn` returns.
@@ -408,7 +410,7 @@ struct ConversationTurnExecutor: Sendable {
             thinkingStreamingBatchCharacterLimit: 128,
             loopDetectionEnabled: true
         )
-        Task.detached { [self] in
+        await taskRegistry.launch(handle: handle) { [self] in
             // Re-fetch from the new session so the history reflects the
             // persisted copies with their new IDs and sessionID.
             var history: [ChatMessageRecord]
@@ -858,6 +860,9 @@ struct ConversationTurnExecutor: Sendable {
         // late-cancel that could still mark the handle cancelled and confuse
         // observers.
         let cancelled = await isCancelled(handle: handle)
+        if cancelled {
+            await inferenceService.cancelAsync(token)
+        }
         await registry.unregister(handle: handle)
 
         // Capture token usage off the active backend before any subsequent

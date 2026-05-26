@@ -85,6 +85,7 @@ public final class ConversationRuntime: Sendable {
     // MARK: In-flight state
 
     private let registry = InFlightStreamRegistry()
+    private let turnTasks = ConversationTurnTaskRegistry()
 
     // MARK: Diagnostics (test-injectable)
 
@@ -264,7 +265,20 @@ public final class ConversationRuntime: Sendable {
     }
 
     deinit {
+        turnTasks.cancelAll()
+        let registry = registry
+        let inferenceService = inferenceService
+        Task {
+            let tokens = await registry.markAllCancelled()
+            for token in tokens {
+                await inferenceService.cancelAsync(token)
+            }
+        }
         continuation.finish()
+    }
+
+    package var activeTurnTaskCount: Int {
+        turnTasks.count
     }
 
     // MARK: Canonical entry point
@@ -291,19 +305,22 @@ public final class ConversationRuntime: Sendable {
                 sessionID: input.sessionID,
                 text: text,
                 attachments: attachments,
-                config: input.config
+                config: input.config,
+                taskRegistry: turnTasks
             )
         case .regenerate:
             return try await executor.runRegenerateFlow(
                 sessionID: input.sessionID,
-                config: input.config
+                config: input.config,
+                taskRegistry: turnTasks
             )
         case let .edit(messageID, text):
             return try await executor.runEditFlow(
                 sessionID: input.sessionID,
                 messageID: messageID,
                 text: text,
-                config: input.config
+                config: input.config,
+                taskRegistry: turnTasks
             )
         case let .branch(messageID, newSessionID, newSessionTitle, generateAfter):
             return try await executor.runBranchFlow(
@@ -312,7 +329,8 @@ public final class ConversationRuntime: Sendable {
                 newSessionID: newSessionID,
                 newSessionTitle: newSessionTitle,
                 generateAfter: generateAfter,
-                config: input.config
+                config: input.config,
+                taskRegistry: turnTasks
             )
         }
     }
@@ -328,6 +346,7 @@ public final class ConversationRuntime: Sendable {
     /// underlying inference layer.
     public func cancel(_ handle: ConversationStreamHandle) async {
         let token = await registry.markCancelled(handle)
+        turnTasks.cancel(handle)
         guard let token else { return }
         await inferenceService.cancelAsync(token)
     }
