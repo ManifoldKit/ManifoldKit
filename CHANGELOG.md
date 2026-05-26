@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.35.0](https://github.com/roryford/ManifoldKit/compare/v0.34.0...v0.35.0) (2026-05-26)
+
+
+### Features
+
+* **inference:** pass advanced sampler params through GenerationConfig ([#689](https://github.com/roryford/ManifoldKit/issues/689)) ([7301bdd](https://github.com/roryford/ManifoldKit/commit/7301bddf161c391fe5601e248b6a7cb7233e339c))
+
+
+### Bug Fixes
+
+* load selected endpoints and correct quickstart docs ([#1480](https://github.com/roryford/ManifoldKit/issues/1480)) ([68da2d4](https://github.com/roryford/ManifoldKit/commit/68da2d48d29da05676df7476fd2ce688bcbbd2cd))
+* pin swift-huggingface to verified 0.9.0 tag ([#1479](https://github.com/roryford/ManifoldKit/issues/1479)) ([c15b569](https://github.com/roryford/ManifoldKit/commit/c15b5696a567739c16d6a3d9e68c5b155464ffce))
+* **swiftui:** reliable local GGUF discovery + actionable load errors ([#1472](https://github.com/roryford/ManifoldKit/issues/1472)) ([7b1e230](https://github.com/roryford/ManifoldKit/commit/7b1e2304d3dd35c29665eda205f7e76046581b81))
+* **ui:** turnkey relaunch restore + canonical multi-session guide ([#1471](https://github.com/roryford/ManifoldKit/issues/1471)) ([f8d50b8](https://github.com/roryford/ManifoldKit/commit/f8d50b875dfcb392c9b430d8f12f21f5cf0a6148))
+
+
+### Documentation
+
+* **docc:** seed Runtime + PersistenceSwiftData catalogs (tier 1 of [#1463](https://github.com/roryford/ManifoldKit/issues/1463)) ([#1469](https://github.com/roryford/ManifoldKit/issues/1469)) ([b5cd950](https://github.com/roryford/ManifoldKit/commit/b5cd95093e62b31007cbdd18947f73e75b9238d1))
+* **dx:** add image-gen + iPhone on-device DX walkthrough briefs ([#1459](https://github.com/roryford/ManifoldKit/issues/1459)) ([89cb82a](https://github.com/roryford/ManifoldKit/commit/89cb82acefaffeeaeea616c274d18cb8f3e18645))
+* **image-gen:** add CaseIterable + DocC to public image-gen value types ([#1467](https://github.com/roryford/ManifoldKit/issues/1467)) ([7c6ddb8](https://github.com/roryford/ManifoldKit/commit/7c6ddb83c8d076d2256655a9095ad298bcb1ba6c))
+* **imagegen:** publish discoverable image-gen DX surface ([#1470](https://github.com/roryford/ManifoldKit/issues/1470)) ([971164a](https://github.com/roryford/ManifoldKit/commit/971164aed51e2b3b32a551e4efe400bc1fee2427))
+* **voice:** document ManifoldVoice for standalone STT alongside chat composer use ([#1466](https://github.com/roryford/ManifoldKit/issues/1466)) ([2cc431d](https://github.com/roryford/ManifoldKit/commit/2cc431dde6bbb692c8a94881e1dada973b443c29))
+
+
+### Code Refactoring
+
+* **cloud-core:** decompose SSECloudBackend ([f94315e](https://github.com/roryford/ManifoldKit/commit/f94315e01884088e62840961ab24781600d03a00))
+* **huggingface:** decompose background download manager ([#1456](https://github.com/roryford/ManifoldKit/issues/1456)) ([866b340](https://github.com/roryford/ManifoldKit/commit/866b3403bb47d1ca844424a44841678c9826c383))
+* **ui:** decompose ChatView ([c881ba4](https://github.com/roryford/ManifoldKit/commit/c881ba4577c78dcc4a9f9a82bcb583f2f95dac79))
+
 ## [0.34.0](https://github.com/roryford/ManifoldKit/compare/v0.33.0...v0.34.0) — 2026-05-24
 
 ### Highlights
