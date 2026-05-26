@@ -60,6 +60,7 @@ final class MLXBackendEventOrderParityTests: XCTestCase {
         case .toolCall: return "toolCall"
         case .toolResult: return "toolResult"
         case .toolLoopLimitReached: return "toolLoopLimitReached"
+        case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .usage: return "usage"

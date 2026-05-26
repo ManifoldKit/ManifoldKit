@@ -56,7 +56,7 @@ final class ParallelToolCallOrderingTests: XCTestCase {
                 calls.append(c)
             case .prefillProgress, .token, .usage,
                  .thinkingToken, .thinkingComplete, .thinkingSignature,
-                 .toolResult, .toolLoopLimitReached,
+                 .toolResult, .toolProgress, .toolLoopLimitReached,
                  .kvCacheReuse, .diagnosticThrottle,
                  .toolCallStart, .toolCallArgumentsDelta,
                  .toolDispatchStarted, .toolDispatchCompleted,

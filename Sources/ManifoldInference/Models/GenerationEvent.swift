@@ -33,9 +33,10 @@
 /// ### Source compatibility for pattern-match consumers
 ///
 /// Adding new cases to this enum is source-breaking for exhaustive `switch`
-/// statements. Wave 3 test PRs that pattern-match `GenerationEvent` values
-/// **must** include a `default:` or `@unknown default:` arm, or be updated in
-/// the same PR that adds a new case.
+/// statements. New lifecycle payloads should prefer associated structs (as
+/// ``ToolProgressEvent`` does) so adding fields later can be source-compatible,
+/// but the initial enum case still requires exhaustive switches to add a case,
+/// `default:`, or `@unknown default:` arm.
 public enum GenerationEvent: Sendable, Equatable {
     /// Progress update while the backend is evaluating prompt tokens before the
     /// first generated content token is available.
@@ -115,6 +116,17 @@ public enum GenerationEvent: Sendable, Equatable {
     /// the assistant turn before the next generation round begins.
     case toolResult(ToolResult)
 
+    /// Interim progress from a streaming tool executor.
+    ///
+    /// Emitted between ``toolDispatchStarted(callId:name:attempt:)`` and the
+    /// terminal ``toolResult(_:)`` when the registered ``ToolExecutor`` yields
+    /// ``ToolExecutionEvent/progress(message:fraction:)`` values from
+    /// ``ToolExecutor/executeStreaming(arguments:)``. `callId` and `name` are
+    /// stamped by the orchestrator from the model-emitted ``ToolCall`` so
+    /// progress remains attributable even when an executor emits an empty or
+    /// stale terminal result id.
+    case toolProgress(ToolProgressEvent)
+
     /// Emitted at the start of a turn when the backend reused a KV-cache prefix
     /// from the previous turn. `promptTokensReused` is the number of prompt tokens
     /// whose KV state was preserved, saving their re-decode cost.
@@ -171,4 +183,37 @@ public enum GenerationEvent: Sendable, Equatable {
     /// configured with a session-aware handoff detector; backends never emit
     /// this case directly.
     case handoffRequested(AgentHandoff)
+}
+
+/// Payload for ``GenerationEvent/toolProgress(_:)``.
+///
+/// Kept as a struct rather than several enum associated values so future
+/// additive fields can grow through defaulted initializer parameters without
+/// forcing every consumer that already handles `.toolProgress(let progress)` to
+/// rewrite its pattern.
+public struct ToolProgressEvent: Sendable, Equatable, Hashable {
+    /// ``ToolCall/id`` of the in-flight call.
+    public let callId: String
+
+    /// ``ToolCall/toolName`` for display and grouping.
+    public let name: String
+
+    /// Human-readable status from the executor.
+    public let message: String
+
+    /// Optional 0.0...1.0 completion fraction, or `nil` when the total is
+    /// unknown.
+    public let fraction: Double?
+
+    public init(
+        callId: String,
+        name: String,
+        message: String,
+        fraction: Double? = nil
+    ) {
+        self.callId = callId
+        self.name = name
+        self.message = message
+        self.fraction = fraction
+    }
 }

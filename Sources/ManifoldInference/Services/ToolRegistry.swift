@@ -301,14 +301,57 @@ public protocol JSONSchemaValidating: Sendable {
     /// The returned ``ToolResult/callId`` always matches the incoming
     /// ``ToolCall/id``, regardless of what the executor returned.
     public func dispatch(_ call: ToolCall) async -> ToolResult {
+        var terminalResult: ToolResult?
+        for await event in dispatchStreaming(call) {
+            if case .completed(let result) = event {
+                terminalResult = result
+                break
+            }
+        }
+        if Task.isCancelled {
+            return Self.cancelledResult(callId: call.id)
+        }
+        return terminalResult ?? ToolResult(
+            callId: call.id,
+            content: "tool stream finished without a terminal result",
+            errorKind: .permanent
+        )
+    }
+
+    /// Streaming variant of ``dispatch(_:)``.
+    ///
+    /// Emits any executor-provided ``ToolExecutionEvent/progress(message:fraction:)``
+    /// chunks, then exactly one stamped ``ToolExecutionEvent/completed(_:)``.
+    /// Lookup, argument, schema, cancellation, and thrown-error failures are
+    /// still converted into terminal ``ToolResult`` values with the same
+    /// classification as ``dispatch(_:)``.
+    public func dispatchStreaming(_ call: ToolCall) -> AsyncStream<ToolExecutionEvent> {
+        AsyncStream { continuation in
+            let task = Task { @MainActor in
+                await self.performStreamingDispatch(call, continuation: continuation)
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func performStreamingDispatch(
+        _ call: ToolCall,
+        continuation: AsyncStream<ToolExecutionEvent>.Continuation
+    ) async {
+        func complete(_ result: ToolResult) {
+            continuation.yield(.completed(result))
+            continuation.finish()
+        }
+
         // 1. Case-insensitive lookup with a mismatch warning.
         let key = call.toolName.lowercased()
         guard let executor = tools[key] else {
-            return ToolResult(
+            complete(ToolResult(
                 callId: call.id,
                 content: "Unknown tool '\(call.toolName)'",
                 errorKind: .unknownTool
-            )
+            ))
+            return
         }
         if executor.definition.name != call.toolName {
             Log.inference.warning(
@@ -321,6 +364,7 @@ public protocol JSONSchemaValidating: Sendable {
         // dispatch. See the type-level "Reentrancy" section.
         let policy = outputPolicy
         let activeValidator = validator
+        let shouldCoerceArguments = coercesArguments
 
         // Track this dispatch as in-flight so unregister(name:) can emit an
         // observability warning if the registry is mutated mid-dispatch.
@@ -343,20 +387,22 @@ public protocol JSONSchemaValidating: Sendable {
             parsedArguments = .object([:])
         } else {
             guard let data = call.arguments.data(using: .utf8) else {
-                return ToolResult(
+                complete(ToolResult(
                     callId: call.id,
                     content: "arguments are not valid JSON: non-UTF8 payload",
                     errorKind: .invalidArguments
-                )
+                ))
+                return
             }
             do {
                 parsedArguments = try JSONDecoder().decode(JSONSchemaValue.self, from: data)
             } catch {
-                return ToolResult(
+                complete(ToolResult(
                     callId: call.id,
                     content: "arguments are not valid JSON: \(error)",
                     errorKind: .invalidArguments
-                )
+                ))
+                return
             }
         }
 
@@ -374,7 +420,7 @@ public protocol JSONSchemaValidating: Sendable {
         // schema produces. We don't want a depth cap to short-circuit
         // dispatch on a schema the validator might still accept.
         let dispatchArguments: JSONSchemaValue
-        if coercesArguments {
+        if shouldCoerceArguments {
             dispatchArguments = ToolArgumentCoercer.coerceBestEffort(parsedArguments, against: executor.definition.parameters)
         } else {
             dispatchArguments = parsedArguments
@@ -383,45 +429,52 @@ public protocol JSONSchemaValidating: Sendable {
         // 4. Optional schema validation (wave 2 wiring).
         if let activeValidator,
            let message = activeValidator.validateAgainst(executor.definition.parameters, value: dispatchArguments) {
-            return ToolResult(
+            complete(ToolResult(
                 callId: call.id,
                 content: "arguments failed schema validation: \(message)",
                 errorKind: .invalidArguments
-            )
+            ))
+            return
         }
 
         // 5. Execute, stamp callId, and apply the size policy.
-        // TODO(streaming): forward `executor.executeStreaming(arguments:)`
-        // progress chunks onto a new `GenerationEvent.toolProgress(...)` so the
-        // orchestrator can surface interim status to UI / the model without
-        // changing the terminal ToolResult contract. Single-shot path stays
-        // unchanged — see ToolExecutionEvent + executeStreaming in
-        // Sources/ManifoldInference/Services/ToolExecutor.swift.
-        let outcome: ToolResult
+        var sawTerminalResult = false
         do {
-            let raw = try await executor.execute(arguments: dispatchArguments)
-            // If the surrounding task was cancelled but the executor returned
-            // a value anyway (didn't observe cancellation), still treat the
-            // outcome as cancelled so the orchestrator's transcript records
-            // the contract-defined ``ToolResult`` instead of a stale value.
-            if Task.isCancelled {
-                return ToolResult(
-                    callId: call.id,
-                    content: "cancelled by user",
-                    errorKind: .cancelled
-                )
+            for try await event in executor.executeStreaming(arguments: dispatchArguments) {
+                if Task.isCancelled {
+                    complete(Self.cancelledResult(callId: call.id))
+                    return
+                }
+
+                switch event {
+                case .progress(let message, let fraction):
+                    continuation.yield(.progress(message: message, fraction: fraction))
+
+                case .completed(let raw):
+                    sawTerminalResult = true
+                    if Task.isCancelled {
+                        complete(Self.cancelledResult(callId: call.id))
+                        return
+                    }
+                    let outcome = ToolResult(
+                        callId: call.id,
+                        content: raw.content,
+                        errorKind: raw.errorKind
+                    )
+                    complete(Self.applyOutputPolicy(policy, to: outcome))
+                    return
+                }
             }
-            outcome = ToolResult(
-                callId: call.id,
-                content: raw.content,
-                errorKind: raw.errorKind
-            )
+
+            if !sawTerminalResult {
+                complete(ToolResult(
+                    callId: call.id,
+                    content: "tool stream finished without a terminal result",
+                    errorKind: .permanent
+                ))
+            }
         } catch is CancellationError {
-            return ToolResult(
-                callId: call.id,
-                content: "cancelled by user",
-                errorKind: .cancelled
-            )
+            complete(Self.cancelledResult(callId: call.id))
         } catch {
             // Foundation APIs that observe cancellation often throw
             // `URLError(.cancelled)` rather than `CancellationError`. When
@@ -429,23 +482,26 @@ public protocol JSONSchemaValidating: Sendable {
             // error as a cooperative cancellation so the dispatcher can
             // distinguish "user hit stop" from a true permanent failure.
             if Task.isCancelled {
-                return ToolResult(
-                    callId: call.id,
-                    content: "cancelled by user",
-                    errorKind: .cancelled
-                )
+                complete(Self.cancelledResult(callId: call.id))
+                return
             }
-            return ToolResult(
+            complete(ToolResult(
                 callId: call.id,
                 content: String(describing: error),
                 errorKind: .permanent
-            )
+            ))
         }
-
-        return Self.applyOutputPolicy(policy, to: outcome)
     }
 
     // MARK: - Output policy
+
+    private static func cancelledResult(callId: String) -> ToolResult {
+        ToolResult(
+            callId: callId,
+            content: "cancelled by user",
+            errorKind: .cancelled
+        )
+    }
 
     /// Applies ``outputPolicy`` to a finalized ``ToolResult``.
     ///

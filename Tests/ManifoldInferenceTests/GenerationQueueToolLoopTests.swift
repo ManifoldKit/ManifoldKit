@@ -50,6 +50,23 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         }
     }
 
+    private struct StreamingProgressExecutor: ToolExecutor {
+        let definition = ToolDefinition(name: "streaming_tool", description: "streaming", parameters: .object([:]))
+
+        func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
+            ToolResult(callId: "", content: "single-shot path should not run")
+        }
+
+        func executeStreaming(arguments: JSONSchemaValue) -> AsyncThrowingStream<ToolExecutionEvent, Error> {
+            AsyncThrowingStream { continuation in
+                continuation.yield(.progress(message: "phase 1", fraction: 0.1))
+                continuation.yield(.progress(message: "phase 2", fraction: 0.9))
+                continuation.yield(.completed(ToolResult(callId: "executor-stale-id", content: "streamed-result")))
+                continuation.finish()
+            }
+        }
+    }
+
     private var provider: FakeGenerationContextProvider!
 
     override func setUp() async throws {
@@ -188,6 +205,70 @@ final class GenerationQueueToolLoopTests: XCTestCase {
             if case .token(let t) = event { return t } else { return nil }
         }
         XCTAssertEqual(tokens.joined(), "The weather is sunny.")
+    }
+
+    func test_streamingToolProgress_emitsBetweenDispatchStartedAndToolResult() async throws {
+        let registry = ToolRegistry()
+        registry.register(StreamingProgressExecutor())
+
+        provider.backend.scriptedToolCallsPerTurn = [
+            [makeCall(id: "p-1", name: "streaming_tool", arguments: "{}")],
+            [],
+        ]
+        provider.backend.tokensToYieldPerTurn = [[], ["done"]]
+
+        let coordinator = makeCoordinator(registry: registry)
+        let (_, stream) = try coordinator.enqueue(
+            messages: [("user", "run streaming tool")],
+            maxOutputTokens: 64
+        )
+
+        let events = try await collectEvents(stream)
+
+        let toolCallIndex = try XCTUnwrap(events.firstIndex { event in
+            if case .toolCall = event { return true }
+            return false
+        })
+        let startedIndex = try XCTUnwrap(events.firstIndex { event in
+            if case .toolDispatchStarted = event { return true }
+            return false
+        })
+        let progressIndices = events.indices.filter { index in
+            if case .toolProgress = events[index] { return true }
+            return false
+        }
+        let resultIndex = try XCTUnwrap(events.firstIndex { event in
+            if case .toolResult = event { return true }
+            return false
+        })
+        let completedIndex = try XCTUnwrap(events.firstIndex { event in
+            if case .toolDispatchCompleted = event { return true }
+            return false
+        })
+
+        XCTAssertEqual(progressIndices.count, 2)
+        XCTAssertLessThan(toolCallIndex, startedIndex)
+        XCTAssertLessThan(startedIndex, progressIndices[0])
+        XCTAssertLessThan(progressIndices[0], progressIndices[1])
+        XCTAssertLessThan(progressIndices[1], resultIndex)
+        XCTAssertLessThan(resultIndex, completedIndex)
+
+        let progress = progressIndices.compactMap { index -> ToolProgressEvent? in
+            if case .toolProgress(let progress) = events[index] { return progress }
+            return nil
+        }
+        XCTAssertEqual(progress.map(\.callId), ["p-1", "p-1"])
+        XCTAssertEqual(progress.map(\.name), ["streaming_tool", "streaming_tool"])
+        XCTAssertEqual(progress.map(\.message), ["phase 1", "phase 2"])
+        XCTAssertEqual(progress[0].fraction, 0.1)
+        XCTAssertEqual(progress[1].fraction, 0.9)
+
+        let result = try XCTUnwrap(events.compactMap { event -> ToolResult? in
+            if case .toolResult(let result) = event { return result }
+            return nil
+        }.first)
+        XCTAssertEqual(result.callId, "p-1")
+        XCTAssertEqual(result.content, "streamed-result")
     }
 
     func test_toolCall_threadsResultIntoNextTurnHistory_viaToolCallingHistoryReceiver() async throws {
