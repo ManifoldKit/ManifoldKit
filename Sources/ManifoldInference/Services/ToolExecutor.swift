@@ -29,17 +29,21 @@ import Foundation
 /// `execute(arguments:)` is **atomic** from the orchestrator's point of view:
 /// the registry observes exactly one outcome per call — either a fully-formed
 /// ``ToolResult`` returned from the function, or a thrown error. There is no
-/// partial-emission channel. Executors that perform streaming or multi-step
-/// work (streaming file reads, subprocess pipes, streamed HTTP responses,
-/// multi-RPC transactions) MUST buffer that work internally and only return a
-/// single complete ``ToolResult`` once the work has succeeded.
+/// partial-output channel on the single-shot method. Executors that perform
+/// multi-step work (streaming file reads, subprocess pipes, streamed HTTP
+/// responses, multi-RPC transactions) MUST buffer result content internally and
+/// only return a single complete ``ToolResult`` once the work has succeeded.
+/// Streaming executors may report liveness through
+/// ``executeStreaming(arguments:)`` progress events, but the terminal
+/// ``ToolResult`` remains atomic transcript content.
 ///
 /// When an executor throws mid-work, ``ToolRegistry/dispatch(_:)`` records a
 /// ``ToolResult`` with ``ToolResult/ErrorKind/permanent`` and
 /// `String(describing: error)` as the content. Any in-flight state the
 /// executor had accumulated — bytes read, chunks processed, rows fetched — is
-/// discarded and never flows into the transcript. The model sees the error
-/// description, not the partial output.
+/// discarded and never flows into the transcript. Progress events emitted
+/// before the throw may already have reached observers, but the model sees the
+/// error description, not partial result content.
 ///
 /// The throw path is classified as ``ToolResult/ErrorKind/permanent``
 /// (not ``ToolResult/ErrorKind/transient``) by design: an uncategorised
@@ -55,21 +59,21 @@ import Foundation
 ///
 /// Practical consequences:
 ///
-/// - If your tool streams and you want to preserve what you got before
+/// - If your tool streams and you want to preserve output gathered before
 ///   failing, aggregate into a local buffer and only throw after you have
-///   decided to abandon that buffer. If the partial result is useful, return
-///   a successful ``ToolResult`` whose ``ToolResult/content`` contains the
-///   buffered prefix plus a description of why collection stopped, rather
-///   than throwing.
+///   decided to abandon that buffer. Use
+///   ``ToolExecutionEvent/progress(message:fraction:)`` for interim status,
+///   not partial transcript content. If the partial result is useful, return a
+///   successful ``ToolResult`` whose ``ToolResult/content`` contains the
+///   buffered prefix plus a description of why collection stopped, rather than
+///   throwing.
 /// - If the failure is transient (disk I/O hiccup, dropped connection,
 ///   rate-limit response), return
 ///   `ToolResult(callId: "", content: "...", errorKind: .transient)` rather
 ///   than throwing — this tells the orchestrator the call is safe to retry.
 /// - Do not rely on side-effects (written files, DB rows, API calls) to
-///   communicate partial progress to later turns — the orchestrator only
-///   sees the returned ``ToolResult``.
-/// - A future extension may add an explicit partial-content channel; until
-///   then, this atomic request/response shape is the contract.
+///   communicate partial progress to later turns — progress events are
+///   observational, and the model only sees the returned ``ToolResult``.
 ///
 /// ## Cooperative cancellation
 ///

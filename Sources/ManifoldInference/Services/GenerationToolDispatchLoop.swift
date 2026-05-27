@@ -176,7 +176,10 @@ struct GenerationToolDispatchLoop {
                         for: effectiveCall,
                         lastCallSignature: lastCallSignature,
                         dispatchedInThisTurn: dispatchedInThisTurn,
-                        toolResultByteTotal: toolResultByteTotal
+                        toolResultByteTotal: toolResultByteTotal,
+                        onProgress: { progress in
+                            yieldEvent(.toolProgress(progress))
+                        }
                     )
 
                     toolResultByteTotal += result.content.utf8.count
@@ -250,7 +253,8 @@ struct GenerationToolDispatchLoop {
         for call: ToolCall,
         lastCallSignature: (toolName: String, arguments: String)?,
         dispatchedInThisTurn: [(ToolCall, ToolResult)],
-        toolResultByteTotal: Int
+        toolResultByteTotal: Int,
+        onProgress: (ToolProgressEvent) -> Void
     ) async -> ToolResult {
         guard let registry = toolRegistry else {
             return ToolResult(callId: call.id, content: "", errorKind: .permanent)
@@ -282,12 +286,12 @@ struct GenerationToolDispatchLoop {
         }
 
         if registry.requiresApproval(toolName: call.toolName) == false {
-            return await registry.dispatch(call)
+            return await dispatchStreaming(call, through: registry, onProgress: onProgress)
         }
 
         switch await toolApprovalGate.approve(call) {
         case .approved:
-            return await registry.dispatch(call)
+            return await dispatchStreaming(call, through: registry, onProgress: onProgress)
         case .denied(let reason):
             Log.inference.info(
                 "GenerationQueue: tool '\(call.toolName, privacy: .public)' denied by ToolApprovalGate"
@@ -298,5 +302,42 @@ struct GenerationToolDispatchLoop {
                 errorKind: .permissionDenied
             )
         }
+    }
+
+    private func dispatchStreaming(
+        _ call: ToolCall,
+        through registry: ToolRegistry,
+        onProgress: (ToolProgressEvent) -> Void
+    ) async -> ToolResult {
+        var terminalResult: ToolResult?
+        for await event in registry.dispatchStreaming(call) {
+            switch event {
+            case .progress(let message, let fraction):
+                onProgress(
+                    ToolProgressEvent(
+                        callId: call.id,
+                        name: call.toolName,
+                        message: message,
+                        fraction: fraction
+                    )
+                )
+
+            case .completed(let result):
+                terminalResult = result
+            }
+        }
+
+        if Task.isCancelled {
+            return ToolResult(
+                callId: call.id,
+                content: "cancelled by user",
+                errorKind: .cancelled
+            )
+        }
+        return terminalResult ?? ToolResult(
+            callId: call.id,
+            content: "tool stream finished without a terminal result",
+            errorKind: .permanent
+        )
     }
 }

@@ -141,6 +141,9 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolCallStart", v: "\(callId):\(name)"))
                 case .toolCallArgumentsDelta(let callId, let textDelta):
                     events.append(.init(t: t, kind: "toolCallArgumentsDelta", v: "\(callId):\(textDelta)"))
+                case .toolProgress(let progress):
+                    let fraction = progress.fraction.map { String($0) } ?? "nil"
+                    events.append(.init(t: t, kind: "toolProgress", v: "\(progress.callId):\(progress.message):\(fraction)"))
                 case .toolDispatchStarted(let callId, let name, let attempt):
                     events.append(.init(t: t, kind: "toolDispatchStarted", v: "\(callId):\(name):\(attempt)"))
                 case .toolDispatchCompleted(let callId, let durationMs, let errorKind):

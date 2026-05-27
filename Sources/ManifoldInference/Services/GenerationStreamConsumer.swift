@@ -62,7 +62,7 @@ public struct GenerationStreamConsumer: Sendable {
             // which `dispatchToolCall` already handles.
             return .ignore
 
-        case .toolDispatchStarted, .toolDispatchCompleted:
+        case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted:
             // Lifecycle metadata for UI timers / spinners; consumed
             // directly by surfaces that want to render duration / error
             // kind. The chat-message state mapping has no work here —

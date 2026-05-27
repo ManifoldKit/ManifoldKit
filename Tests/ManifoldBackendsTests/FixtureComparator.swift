@@ -138,7 +138,7 @@ public struct FixtureComparator {
                 return .init(event: "thinkingSignature", fields: ["signature": sig])
             case .toolLoopLimitReached(let n):
                 return .init(event: "toolLoopLimitReached", fields: ["iterations": String(n)])
-            case .toolResult, .toolDispatchStarted, .toolDispatchCompleted,
+            case .toolResult, .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
                  .kvCacheReuse, .diagnosticThrottle, .prefillProgress:
                 // Queue-emitted lifecycle events and progress signals are
                 // not part of the wire contract — drop from projection.

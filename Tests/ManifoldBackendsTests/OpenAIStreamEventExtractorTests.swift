@@ -304,6 +304,7 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
         case .toolResult: return "toolResult"
+        case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
