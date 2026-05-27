@@ -268,7 +268,9 @@ public final class ConversationRuntime: Sendable {
         turnTasks.cancelAll()
         let registry = registry
         let inferenceService = inferenceService
-        Task {
+        // Use Task.detached so the teardown hop does not inherit an
+        // unspecified executor context from the non-isolated deinit.
+        Task.detached {
             let tokens = await registry.markAllCancelled()
             for token in tokens {
                 await inferenceService.cancelAsync(token)
