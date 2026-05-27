@@ -12,9 +12,9 @@
 # min, total 60 min wasted per push (last 5 main pushes all hit this).
 #
 # This wrapper:
-#   1. Runs `scripts/test.sh "$@"` and tees its output to a log file (test.sh
-#      already does this when MANIFOLD_TEST_OUTPUT_FILE is set; we point it at
-#      our own file so we don't fight over it).
+#   1. Runs `scripts/test.sh "$@"` and captures stdout + stderr to a log file
+#      (test.sh already does this when MANIFOLD_TEST_OUTPUT_FILE is set; we
+#      point it at our own file so we don't fight over it).
 #   2. Monitors the log for SwiftPM's streaming "[N/M] Testing Module.Suite/test"
 #      lines — under --parallel these are the only reliable per-worker progress
 #      signal (per-case `Test Case '...' passed` lines are emitted only by some
@@ -25,6 +25,9 @@
 #      SIGABRT (not SIGTERM/SIGKILL) is deliberate: it triggers the Swift
 #      runtime's crash handler, which prints a backtrace per thread for every
 #      worker, naming the test case that was running on the stuck worker.
+#      The wrapper also writes process snapshots and log tails into
+#      test-diagnostics/ so failure artifacts preserve stall evidence even
+#      when the live Actions log is truncated.
 #   4. The wrapper exits with the same exit code scripts/test.sh would have
 #      returned, so CI's existing failure plumbing (artifact upload, etc.)
 #      keeps working unchanged.
@@ -49,7 +52,10 @@
 #   STALL_SECONDS=N     Kill the swift test process tree if no progress line
 #                       has appeared in N seconds. Default: 180.
 #   WATCHDOG_LOG=path   Path to the watchdog's progress log. Default:
-#                       $MANIFOLD_TEST_OUTPUT_FILE if set, else a tmpfile.
+#                       $MANIFOLD_TEST_OUTPUT_FILE.
+#   WATCHDOG_DIAGNOSTICS_DIR=path
+#                       Directory for watchdog-specific process snapshots.
+#                       Default: directory containing WATCHDOG_LOG.
 #
 # Exit codes
 # ----------
@@ -65,15 +71,27 @@ PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # The wrapper and test.sh both want to control the log path. Point test.sh at
 # the same file we tail, so we don't duplicate the tee pipeline.
 if [[ -z "${MANIFOLD_TEST_OUTPUT_FILE:-}" ]]; then
-    MANIFOLD_TEST_OUTPUT_FILE="${TMPDIR:-/tmp}/test_output.txt"
+    MANIFOLD_TEST_OUTPUT_FILE="$PACKAGE_DIR/test-diagnostics/test-output.txt"
     export MANIFOLD_TEST_OUTPUT_FILE
 fi
 WATCHDOG_LOG="${WATCHDOG_LOG:-$MANIFOLD_TEST_OUTPUT_FILE}"
+WATCHDOG_DIAGNOSTICS_DIR="${WATCHDOG_DIAGNOSTICS_DIR:-$(dirname "$WATCHDOG_LOG")}"
+WATCHDOG_LOG_BASENAME="$(basename "$WATCHDOG_LOG")"
+WATCHDOG_DIAGNOSTICS_FILE="$WATCHDOG_DIAGNOSTICS_DIR/watchdog-${WATCHDOG_LOG_BASENAME%.log}.diagnostics.txt"
 
 # Pre-create the log so `tail -F` doesn't sit on a missing file. The trailing
 # newline is intentional: it gives the wrapper a baseline mtime to compare.
-mkdir -p "$(dirname "$WATCHDOG_LOG")"
+mkdir -p "$(dirname "$WATCHDOG_LOG")" "$WATCHDOG_DIAGNOSTICS_DIR"
 : > "$WATCHDOG_LOG"
+: > "$WATCHDOG_DIAGNOSTICS_FILE"
+{
+    echo "ci-test-with-watchdog diagnostics"
+    echo "started-at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    echo "stall-seconds=$STALL_SECONDS"
+    echo "watchdog-log=$WATCHDOG_LOG"
+    echo "arguments=$*"
+    echo ""
+} >> "$WATCHDOG_DIAGNOSTICS_FILE"
 
 # Background-launch scripts/test.sh. We use the same shell-quoting shape the
 # CI step uses so the wrapper is a drop-in replacement.
@@ -97,15 +115,84 @@ aborted_by_watchdog=0
 progress_pattern='^\[[0-9]+/[0-9]+\] Testing |^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
 
 # Snapshot the descendant swift-test / xctest pid set so we can SIGABRT them
-# all on stall. macOS lacks `pgrep -P --recursive`; walking the tree by name
-# is good enough because the wrapper itself is the only thing in this job
-# launching swift test.
+# all on stall without touching unrelated Swift work that may be running on the
+# same host.
+collect_descendant_pids() {
+    local root="$1"
+    local queue=("$root")
+    local pid
+    local child
+
+    while ((${#queue[@]} > 0)); do
+        pid="${queue[0]}"
+        queue=("${queue[@]:1}")
+        while read -r child; do
+            [[ -z "$child" ]] && continue
+            echo "$child"
+            queue+=("$child")
+        done < <(ps -axo pid=,ppid= 2>/dev/null | awk -v parent="$pid" '$2 == parent { print $1 }')
+    done
+}
+
 collect_test_descendants() {
-    # Match the binaries SwiftPM spawns: `swift-test` driver, the per-target
-    # `xctest` runners, and the Swift Testing executable. Strip the wrapper's
-    # own pid from the list defensively (it shouldn't match, but be safe).
-    pgrep -lf 'swift-test|xctest|swift-testing' 2>/dev/null \
-        | awk -v me=$$ '$1 != me { print $1 }'
+    local pid
+    local command
+
+    while read -r pid; do
+        [[ -z "$pid" ]] && continue
+        command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+        case "$command" in
+            *swift-test*|*xctest*|*swift-testing*|*"swift test"*)
+                echo "$pid"
+                ;;
+        esac
+    done < <(collect_descendant_pids "$TEST_PID")
+}
+
+append_process_snapshot() {
+    local label="$1"
+
+    {
+        echo "## $label"
+        echo "captured-at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        echo "test-pid=$TEST_PID"
+        echo ""
+        echo "### descendant process tree"
+        local descendants
+        descendants=$(collect_descendant_pids "$TEST_PID" || true)
+        if [[ -n "$descendants" ]]; then
+            while read -r pid; do
+                [[ -z "$pid" ]] && continue
+                ps -p "$pid" -o pid=,ppid=,pgid=,stat=,etime=,command= 2>/dev/null || true
+            done <<< "$descendants"
+        else
+            echo "(no descendants)"
+        fi
+        echo ""
+        echo "### matching test processes"
+        ps -axo pid=,ppid=,pgid=,stat=,etime=,command= 2>/dev/null \
+            | awk '/swift-test|xctest|swift-testing|swift test/ && $0 !~ /awk/ { print }' \
+            || true
+        echo ""
+    } >> "$WATCHDOG_DIAGNOSTICS_FILE"
+}
+
+append_log_tail() {
+    local label="$1"
+    local lines="${2:-200}"
+
+    {
+        echo "## $label"
+        echo "captured-at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        echo "source=$WATCHDOG_LOG"
+        echo ""
+        if [[ -f "$WATCHDOG_LOG" ]]; then
+            tail -"$lines" "$WATCHDOG_LOG" || true
+        else
+            echo "(watchdog log missing)"
+        fi
+        echo ""
+    } >> "$WATCHDOG_DIAGNOSTICS_FILE"
 }
 
 while kill -0 "$TEST_PID" 2>/dev/null; do
@@ -139,18 +226,34 @@ while kill -0 "$TEST_PID" 2>/dev/null; do
         echo "───────────────────────────────────────────"
         echo ""
 
+        append_process_snapshot "processes before SIGABRT"
+        append_log_tail "log tail before SIGABRT" 200
+
         descendants=$(collect_test_descendants)
         if [[ -n "$descendants" ]]; then
             echo "ci-test-with-watchdog: SIGABRT -> $(echo "$descendants" | tr '\n' ' ')"
+            {
+                echo "## signals"
+                echo "sigabrt-at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+                echo "pids=$(echo "$descendants" | tr '\n' ' ')"
+                echo ""
+            } >> "$WATCHDOG_DIAGNOSTICS_FILE"
             # shellcheck disable=SC2086
             kill -ABRT $descendants 2>/dev/null || true
             # Give the runtime a few seconds to dump backtraces, then SIGKILL
             # any that ignored SIGABRT so we don't deadlock the job step.
             sleep 10
+            append_process_snapshot "processes after SIGABRT grace period"
+            append_log_tail "log tail after SIGABRT grace period" 400
             # shellcheck disable=SC2086
             kill -KILL $descendants 2>/dev/null || true
         else
             echo "ci-test-with-watchdog: no swift-test/xctest descendants found to abort."
+            {
+                echo "## signals"
+                echo "no swift-test/xctest descendants found to abort"
+                echo ""
+            } >> "$WATCHDOG_DIAGNOSTICS_FILE"
         fi
 
         # Also SIGTERM the scripts/test.sh wrapper so its `wait` returns.
@@ -169,7 +272,10 @@ if (( aborted_by_watchdog == 1 )); then
     # 124 == GNU `timeout` convention for "process killed by watchdog". This
     # is distinct from scripts/test.sh's own exit codes (0/1/2/3) so a CI log
     # reader can immediately tell apart "test bug" from "test hang".
+    append_process_snapshot "processes after scripts/test.sh wait"
+    append_log_tail "final log tail after watchdog abort" 400
     echo "::error::ci-test-with-watchdog: aborted by stall watchdog (no progress for ${STALL_SECONDS}s)."
+    echo "::error::watchdog diagnostics captured at ${WATCHDOG_DIAGNOSTICS_FILE}"
     exit 124
 fi
 
