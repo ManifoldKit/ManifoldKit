@@ -363,15 +363,16 @@ final class LlamaKVPersistenceTests: XCTestCase {
             "Turn 2 must emit .kvCacheReuse — without it this determinism check is vacuous"
         )
 
-        // FIXME: Metal attention kernels use different parallel-reduction strategies
-        // for batches of different sizes. When KV prefix reuse re-decodes only the
-        // last 2 prompt tokens (a 2-token batch), the FP accumulation order differs
-        // from Turn 1's full-prompt batch, and the argmax can flip on near-tied logits.
-        // The -2 cap in LlamaBackend.generate() was designed to fix this for Qwen-family
-        // models (PR #966) but does not fully address all model architectures. Until the
-        // implementation enforces the same batch shape on both turns, this test is expected
-        // to fail on models where first-turn and KV-reuse-turn logits diverge.
-        XCTExpectFailure("KV-reuse greedy determinism not yet guaranteed across all model architectures — see issue tracker")
+        // FIXME: https://github.com/roryford/ManifoldKit/issues — file a tracking issue for
+        // "enforce same batch shape on KV-reuse re-decode to guarantee greedy determinism".
+        // Metal attention kernels use different parallel-reduction strategies for batches of
+        // different sizes. When KV prefix reuse re-decodes only the last 2 prompt tokens (a
+        // 2-token batch), the FP accumulation order differs from Turn 1's full-prompt batch,
+        // and the argmax can flip on near-tied logits. The -2 cap introduced in PR #966 fixes
+        // this for Qwen-family models but does not generalise to all architectures. Until the
+        // implementation enforces the same batch shape on both turns, this test is expected to
+        // fail on models where first-turn and KV-reuse-turn logits diverge.
+        XCTExpectFailure("KV-reuse greedy determinism not yet guaranteed across all model architectures — see FIXME above")
         XCTAssertEqual(
             turn1Tokens, turn2Tokens,
             "Greedy output must be deterministic across KV-reuse turns — "

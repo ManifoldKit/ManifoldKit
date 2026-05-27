@@ -130,8 +130,12 @@ final class LlamaTokenizationTests: XCTestCase {
         // (e.g. Llama3 uses <|start_header_id|> instead). On those vocabularies the
         // token count may exceed 20 because angle brackets and pipes are split into
         // BPE pieces — that's correct model behaviour, not a parse_special bug.
+        //
+        // countTokens calls llama_tokenize with add_bos=true, so a ChatML model that
+        // resolves <|im_start|> as a single special token returns 2 (BOS + token),
+        // not 1. Guard on == 2 rather than == 1.
         let singleTokenCount = try backend.countTokens("<|im_start|>")
-        guard singleTokenCount == 1 else {
+        guard singleTokenCount == 2 else {
             throw XCTSkip("Model does not include <|im_start|> as a special token — skipping ChatML-specific tokenization check")
         }
 
