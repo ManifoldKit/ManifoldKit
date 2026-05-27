@@ -16,9 +16,14 @@ import SwiftData
 public final class SwiftDataUsageStore: UsageStore {
 
     private let modelContext: ModelContext
+    // Retain the container so ModelContext remains valid even if the caller
+    // that owns the container (e.g. ManifoldBootstrap) is freed while an
+    // async recording task is still in flight.
+    private let container: ModelContainer
 
     public init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.container = modelContext.container
     }
 
     // MARK: - UsageStore

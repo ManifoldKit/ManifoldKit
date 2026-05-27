@@ -14,7 +14,7 @@ final class ModelCatalogTests: XCTestCase {
             .appendingPathComponent("ModelCatalogTests-\(UUID().uuidString)", isDirectory: true)
         modelsDirectory = scratchDirectory.appendingPathComponent("Models", isDirectory: true)
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
-        storage = ModelStorageService(baseDirectory: modelsDirectory)
+        storage = ModelStorageService(baseDirectory: modelsDirectory, includeUserDocumentsFallback: false)
         catalog = ModelCatalog(storage: storage)
     }
 
