@@ -301,8 +301,18 @@ public protocol JSONSchemaValidating: Sendable {
     /// The returned ``ToolResult/callId`` always matches the incoming
     /// ``ToolCall/id``, regardless of what the executor returned.
     public func dispatch(_ call: ToolCall) async -> ToolResult {
+        // Drive performStreamingDispatch directly in the *caller's* task so
+        // that `withTaskCancellationHandler` teardown in the executor unwinds
+        // before this function returns. If we wrapped dispatch in a child
+        // `Task { @MainActor in }` (as `dispatchStreaming` does), the child
+        // Task's cancellation cleanup is deferred until the next main-actor
+        // scheduling opportunity — after `dispatch` has already returned —
+        // which causes the bridged-handle leak tested by
+        // `test_bridgedCallbackExecutor_releasesHandle_onCancellation`.
         var terminalResult: ToolResult?
-        for await event in dispatchStreaming(call) {
+        let (stream, continuation) = AsyncStream<ToolExecutionEvent>.makeStream()
+        await performStreamingDispatch(call, continuation: continuation)
+        for await event in stream {
             if case .completed(let result) = event {
                 terminalResult = result
                 break
