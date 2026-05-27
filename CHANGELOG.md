@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.36.0](https://github.com/roryford/ManifoldKit/compare/v0.35.0...v0.36.0) (2026-05-27)
+
+### Highlights
+
+**Tool execution progress streaming** — `ConversationRuntime` now emits incremental progress events as tool calls execute, so host UIs can show live status rather than waiting for the full result to arrive. Wire up a `toolProgressHandler` on your runtime configuration to receive updates. ([#1488](https://github.com/roryford/ManifoldKit/issues/1488))
+
+### Bug Fixes
+
+* **SwiftDataUsageStore container retain** — async turn tasks that outlive `ManifoldBootstrap` could hit a use-after-free on `ModelContext` because `ModelContainer` was only weakly held. The store now retains the container directly, preventing the crash. ([#1490](https://github.com/roryford/ManifoldKit/issues/1490))
+* **Transactional message mutations** — message edits and deletions are now applied atomically in the SwiftData store, preventing partial writes under concurrent turn activity. ([#1485](https://github.com/roryford/ManifoldKit/issues/1485))
+* **UI coordinator actor isolation** — coordinator closures are now explicitly isolated to `@MainActor`, fixing a Swift 6 region-isolation warning that could surface as a runtime race on coordinator teardown. ([#1486](https://github.com/roryford/ManifoldKit/issues/1486))
+* **Runtime turn task registry** — in-flight turn tasks are now tracked in `ConversationTurnTaskRegistry` so cancellation reliably reaches all active tasks on session switch or runtime teardown. ([#1487](https://github.com/roryford/ManifoldKit/issues/1487))
+
 ## [0.35.0](https://github.com/roryford/ManifoldKit/compare/v0.34.0...v0.35.0) (2026-05-26)
 
 
