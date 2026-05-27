@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.36.0](https://github.com/roryford/ManifoldKit/compare/v0.35.0...v0.36.0) (2026-05-27)
+
+
+### Features
+
+* stream tool execution progress ([#1488](https://github.com/roryford/ManifoldKit/issues/1488)) ([7788316](https://github.com/roryford/ManifoldKit/commit/77883169170bfe8fd6788c93e00abaf31e5dc323))
+
+
+### Bug Fixes
+
+* add transactional message mutations ([#1485](https://github.com/roryford/ManifoldKit/issues/1485)) ([773fd8e](https://github.com/roryford/ManifoldKit/commit/773fd8e74bd47776568044e3b787adc408ff3789))
+* harden UI coordinator actor isolation ([#1486](https://github.com/roryford/ManifoldKit/issues/1486)) ([e2fe569](https://github.com/roryford/ManifoldKit/commit/e2fe569c6a2e2535c8ec2b364390c23a6ad51531))
+* retain ModelContainer in SwiftDataUsageStore and harden test isolation ([0d29d2d](https://github.com/roryford/ManifoldKit/commit/0d29d2ddcc889410d631bee3afad69f759291201))
+* **test:** resolve symlinks in GGUF discovery and fix model-specific Llama test assertions ([ba17f2b](https://github.com/roryford/ManifoldKit/commit/ba17f2bb0ccd3059cda46bfa1a17ed182f6926e0))
+* track runtime turn tasks ([#1487](https://github.com/roryford/ManifoldKit/issues/1487)) ([870f890](https://github.com/roryford/ManifoldKit/commit/870f8904d3dd527a056c64267c679387a298d0d7))
+
+
+### Continuous Integration
+
+* run sabotage audits nightly ([#1484](https://github.com/roryford/ManifoldKit/issues/1484)) ([d6c4f83](https://github.com/roryford/ManifoldKit/commit/d6c4f83bf7862d70672498572f3bfdb457038b6b))
+
 ## [0.35.0](https://github.com/roryford/ManifoldKit/compare/v0.34.0...v0.35.0) (2026-05-26)
 
 
