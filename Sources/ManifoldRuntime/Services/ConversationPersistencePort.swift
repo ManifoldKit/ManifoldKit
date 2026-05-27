@@ -31,6 +31,29 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
+    func performMessageMutations(_ mutations: [MessageStoreMutation]) async throws {
+        guard !mutations.isEmpty else { return }
+
+        if let transactionalStore = messageStore as? any TransactionalMessageStore {
+            try await transactionalStore.performMessageMutations(mutations)
+            return
+        }
+
+        for mutation in mutations {
+            switch mutation {
+            case let .insert(message):
+                try await messageStore.insertMessage(message)
+            case let .update(message):
+                try await messageStore.updateMessage(message)
+            case let .delete(messageID):
+                try await messageStore.deleteMessage(messageID)
+            case let .deleteMessages(sessionID):
+                try await messageStore.deleteMessages(for: sessionID)
+            }
+        }
+    }
+
+    @MainActor
     func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
         try await messageStore.fetchMessages(for: sessionID)
     }
