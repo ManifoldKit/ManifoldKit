@@ -86,6 +86,94 @@ private final class RuntimeUsageBackend: InferenceBackend, TokenUsageProvider, @
     }
 }
 
+private actor RuntimeTaskLifecycleFlag {
+    private var isSet = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func signal() {
+        guard !isSet else { return }
+        isSet = true
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func wait() async {
+        if isSet { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+}
+
+private final class HangingRuntimeBackend: InferenceBackend, @unchecked Sendable {
+    var isModelLoaded: Bool { true }
+    var isGenerating: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isGenerating
+    }
+    let capabilities = BackendCapabilities(
+        supportedParameters: [.temperature, .topP, .repeatPenalty],
+        maxContextTokens: 4096,
+        requiresPromptTemplate: false,
+        supportsSystemPrompt: true
+    )
+    var stopCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _stopCallCount
+    }
+
+    private let lock = NSLock()
+    private var _isGenerating = false
+    private var _stopCallCount = 0
+    private var activeContinuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation?
+    private let started = RuntimeTaskLifecycleFlag()
+    private let terminated = RuntimeTaskLifecycleFlag()
+
+    func loadModel(from url: URL, plan: ModelLoadPlan) async throws {}
+
+    func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
+        lock.lock()
+        _isGenerating = true
+        lock.unlock()
+
+        return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { [self] continuation in
+            lock.lock()
+            activeContinuation = continuation
+            lock.unlock()
+            Task { await started.signal() }
+            continuation.onTermination = { @Sendable [self] _ in
+                lock.lock()
+                activeContinuation = nil
+                _isGenerating = false
+                lock.unlock()
+                Task { await terminated.signal() }
+            }
+        })
+    }
+
+    func stopGeneration() {
+        lock.lock()
+        _stopCallCount += 1
+        _isGenerating = false
+        lock.unlock()
+    }
+
+    func unloadModel() {}
+
+    func waitUntilStarted() async {
+        await started.wait()
+    }
+
+    func waitUntilTerminated() async {
+        await terminated.wait()
+    }
+}
+
 /// Phase 1.2.5 PR-A — coverage for the new `ConversationRuntime` send sub-flow.
 ///
 /// Send is the only sub-flow PR-A ships. Regenerate / edit / branch are
@@ -301,6 +389,51 @@ final class ConversationRuntimeTests: XCTestCase {
             let first = try await group.next()
             group.cancelAll()
             return first ?? []
+        }
+    }
+
+    private func waitForActiveTurnTaskCount(
+        _ expectedCount: Int,
+        in runtime: ConversationRuntime,
+        deadline: Duration = .seconds(5)
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadlineInstant = clock.now + deadline
+        while runtime.activeTurnTaskCount != expectedCount {
+            if clock.now >= deadlineInstant {
+                throw TestError.deadlineElapsed
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    private func waitForBackendStart(
+        _ backend: HangingRuntimeBackend,
+        deadline: Duration = .seconds(5)
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await backend.waitUntilStarted() }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw TestError.deadlineElapsed
+            }
+            try await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func waitForBackendTermination(
+        _ backend: HangingRuntimeBackend,
+        deadline: Duration = .seconds(5)
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await backend.waitUntilTerminated() }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw TestError.deadlineElapsed
+            }
+            try await group.next()
+            group.cancelAll()
         }
     }
 
@@ -1046,6 +1179,45 @@ final class ConversationRuntimeTests: XCTestCase {
         // hang. (Sabotaging this would mean making `cancel(_:)` force-
         // unwrap or throw — the test asserts the no-op behaviour.)
         await runtime.cancel(bogus)
+    }
+
+    func test_cancel_hangingBackend_cancelsTurnTaskAndUnregisters() async throws {
+        let backend = HangingRuntimeBackend()
+        let inference = InferenceService(backend: backend, name: "Hanging")
+        let store = RuntimeMessageStore()
+        let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
+        let drain = drainUntilStreamFinished(from: runtime)
+
+        let handle = try await runtime.send(SendInput(sessionID: UUID(), userText: "hang"))
+        try await waitForBackendStart(backend)
+        XCTAssertEqual(runtime.activeTurnTaskCount, 1, "The launched turn should be tracked while the backend stream is hanging")
+
+        await runtime.cancel(handle)
+        let events = try await waitForEvents(from: drain)
+        try await waitForActiveTurnTaskCount(0, in: runtime)
+        try await waitForBackendTermination(backend)
+
+        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled])
+        XCTAssertEqual(backend.stopCallCount, 1, "Handle cancellation must propagate to the active backend request")
+        XCTAssertEqual(runtime.activeTurnTaskCount, 0, "Completed cancelled turns must unregister their task handle")
+    }
+
+    func test_deinit_cancelsActiveTurnTasks() async throws {
+        let backend = HangingRuntimeBackend()
+        let inference = InferenceService(backend: backend, name: "Hanging")
+        let store = RuntimeMessageStore()
+        var runtime: ConversationRuntime? = ConversationRuntime(messageStore: store, inferenceService: inference)
+        weak var weakRuntime = runtime
+
+        _ = try await runtime?.send(SendInput(sessionID: UUID(), userText: "hang"))
+        try await waitForBackendStart(backend)
+        XCTAssertEqual(runtime?.activeTurnTaskCount, 1)
+
+        runtime = nil
+
+        XCTAssertNil(weakRuntime, "Turn tasks must not retain the owning runtime after teardown")
+        try await waitForBackendTermination(backend)
+        XCTAssertGreaterThanOrEqual(backend.stopCallCount, 1, "Runtime teardown must cancel active backend requests")
     }
 
     // MARK: - Context pipeline integration
