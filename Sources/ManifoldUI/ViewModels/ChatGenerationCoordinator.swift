@@ -29,55 +29,55 @@ final class ChatGenerationCoordinator {
     // MARK: - State write-back closures
 
     /// Forwards to `ChatViewModel.transitionPhase(to:)`.
-    var onTransitionPhase: (BackendActivityPhase) -> Bool = { _ in false }
+    var onTransitionPhase: @MainActor (BackendActivityPhase) -> Bool = { _ in false }
 
     /// Writes `ChatViewModel.lastTurnState`.
-    var onSetLastTurnState: (ChatViewModel.TurnState) -> Void = { _ in }
+    var onSetLastTurnState: @MainActor (ChatViewModel.TurnState) -> Void = { _ in }
 
     /// Writes `ChatViewModel.backgroundTaskError`.
-    var onSetBackgroundTaskError: (Error?) -> Void = { _ in }
+    var onSetBackgroundTaskError: @MainActor (Error?) -> Void = { _ in }
 
     /// Writes `ChatViewModel.messageIDsWithStreamingThinking`.
-    var onSetMessageIDsWithStreamingThinking: (Set<UUID>) -> Void = { _ in }
+    var onSetMessageIDsWithStreamingThinking: @MainActor (Set<UUID>) -> Void = { _ in }
 
     // MARK: - Read-back closures
 
     /// Returns `ChatViewModel.activeSessionID`.
-    var currentActiveSessionID: () -> UUID? = { nil }
+    var currentActiveSessionID: @MainActor () -> UUID? = { nil }
 
     /// Returns `ChatViewModel.activeSession`.
-    var currentActiveSession: () -> ChatSessionRecord? = { nil }
+    var currentActiveSession: @MainActor () -> ChatSessionRecord? = { nil }
 
     /// Returns `ChatViewModel.messages`.
-    var currentMessages: () -> [ChatMessageRecord] = { [] }
+    var currentMessages: @MainActor () -> [ChatMessageRecord] = { [] }
 
     /// Returns `ChatViewModel.postGenerationTasks`.
-    var currentPostGenerationTasks: () -> [any PostGenerationTask] = { [] }
+    var currentPostGenerationTasks: @MainActor () -> [any PostGenerationTask] = { [] }
 
     // MARK: - Message mutation closures
 
     /// Forwards to `ChatViewModel.mutateMessage(id:_:)`.
-    var mutateMessage: (UUID, (inout ChatMessageRecord) -> Void) -> Bool = { _, _ in false }
+    var mutateMessage: @MainActor (UUID, (inout ChatMessageRecord) -> Void) -> Bool = { _, _ in false }
 
     /// Appends a message to `ChatViewModel.messages`.
-    var appendMessage: (ChatMessageRecord) -> Void = { _ in }
+    var appendMessage: @MainActor (ChatMessageRecord) -> Void = { _ in }
 
     /// Removes messages matching the predicate from `ChatViewModel.messages`.
-    var removeMessages: ((ChatMessageRecord) -> Bool) -> Void = { _ in }
+    var removeMessages: @MainActor ((ChatMessageRecord) -> Bool) -> Void = { _ in }
 
     // MARK: - Side-effect closures
 
     /// Forwards to `ChatViewModel.updateContextEstimate()`.
-    var updateContextEstimate: () -> Void = { }
+    var updateContextEstimate: @MainActor () -> Void = { }
 
     /// Forwards to `ChatViewModel.surfaceError(_:kind:)`.
-    var surfaceError: (any Error, ChatError.Kind) -> Void = { _, _ in }
+    var surfaceError: @MainActor (any Error, ChatError.Kind) -> Void = { _, _ in }
 
     /// Writes `ChatViewModel.errorMessage`.
-    var setErrorMessage: (String?) -> Void = { _ in }
+    var setErrorMessage: @MainActor (String?) -> Void = { _ in }
 
     /// Writes `ChatViewModel.showUpgradeHint` and triggers the callback.
-    var setShowUpgradeHint: (Bool) -> Void = { _ in }
+    var setShowUpgradeHint: @MainActor (Bool) -> Void = { _ in }
 
     /// Forwarded from `ChatViewModel.onSessionBranched`.
     var onSessionBranched: (@MainActor (UUID) async -> Void)?
