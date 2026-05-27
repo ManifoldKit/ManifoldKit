@@ -76,7 +76,7 @@ final class ConsumerRuntimeHarness {
 
             let chatViewModel = ChatViewModel(
                 inferenceService: runtime.inferenceService,
-                modelStorage: ModelStorageService(baseDirectory: directory),
+                modelStorage: ModelStorageService(baseDirectory: directory, includeUserDocumentsFallback: false),
                 toolApprovalGate: toolApprovalGate,
                 userDefaults: defaults,
                 conversationRuntime: runtime.conversationRuntime
