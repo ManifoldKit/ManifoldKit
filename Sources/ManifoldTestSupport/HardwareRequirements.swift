@@ -570,7 +570,7 @@ enum HardwareRequirements {
         maximumModelSize: Int64?
     ) -> GGUFModelCandidate? {
         guard url.pathExtension.lowercased() == "gguf" else { return nil }
-        // Resolve symlinks so that a symlink to a blob (e.g. ~/.ollama/models/blobs/*)
+        // Resolve symlinks so that a symlink to a blob (e.g. ~/.ollama/models/blobs/sha256-*)
         // passes the isRegularFile check — symlinks are not themselves regular files.
         let fileURL = url.resolvingSymlinksInPath()
         let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
