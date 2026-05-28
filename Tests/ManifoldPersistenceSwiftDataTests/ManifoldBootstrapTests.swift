@@ -162,4 +162,73 @@ final class ManifoldBootstrapTests: XCTestCase {
         let sessions = try await runtime.persistence.fetchSessions()
         XCTAssertEqual(sessions.map(\.id), [session.id])
     }
+
+    // MARK: - RAG wiring parity
+
+    /// Regression guard: a host using the async ``ManifoldBootstrap/build``
+    /// splash path with a ``RAGConfiguration`` must get a runtime with RAG
+    /// enabled, exactly like the synchronous `init`. Before this fix, `build()`
+    /// had no `ragConfiguration:` parameter and silently produced a runtime
+    /// with `ragService == nil` (retrieval disabled with no error or warning).
+    func test_buildAndInit_haveIdenticalRAGWiringParity() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let ragConfiguration = RAGConfiguration(chunkSize: 1200, chunkOverlap: 100, topK: 3)
+
+        // Synchronous init enables RAG.
+        let viaInit = try ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
+                appName: "RAG Init",
+                bundleIdentifier: "com.manifoldkit.runtime-tests.rag-init.\(UUID().uuidString)"
+            ),
+            ragConfiguration: ragConfiguration,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        XCTAssertNotNil(viaInit.ragService,
+            "Synchronous init with a RAGConfiguration must enable RAG retrieval")
+
+        // The async build() path must reach the same state.
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "RAG Build",
+                bundleIdentifier: "com.manifoldkit.runtime-tests.rag-build.\(UUID().uuidString)"
+            ),
+            ragConfiguration: ragConfiguration,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        for await _ in progress {}
+        let viaBuild = try await task.value
+        XCTAssertNotNil(viaBuild.ragService,
+            "build(ragConfiguration:) must enable RAG retrieval — parity with the synchronous init")
+    }
+
+    /// Existing `build()` callers that pass no `ragConfiguration:` must be
+    /// unaffected: RAG stays disabled, matching the synchronous `init` default.
+    func test_buildAndInit_defaultToRAGDisabled() async throws {
+        let originalConfiguration = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = originalConfiguration }
+
+        let viaInit = try ManifoldBootstrap(
+            configuration: ManifoldConfiguration(
+                appName: "No RAG Init",
+                bundleIdentifier: "com.manifoldkit.runtime-tests.norag-init.\(UUID().uuidString)"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        XCTAssertNil(viaInit.ragService,
+            "init without a RAGConfiguration must leave RAG disabled")
+
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: ManifoldConfiguration(
+                appName: "No RAG Build",
+                bundleIdentifier: "com.manifoldkit.runtime-tests.norag-build.\(UUID().uuidString)"
+            ),
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        for await _ in progress {}
+        let viaBuild = try await task.value
+        XCTAssertNil(viaBuild.ragService,
+            "build() without a RAGConfiguration must leave RAG disabled")
+    }
 }
