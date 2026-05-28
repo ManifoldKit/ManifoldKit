@@ -498,18 +498,24 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
         }
     }
 
-    /// Reads up to 1000 characters from the byte stream for error diagnostics.
+    /// Reads up to 1000 bytes from the byte stream for error diagnostics.
     private static func readErrorBody(from bytes: URLSession.AsyncBytes) async -> String {
-        var body = ""
+        // Accumulate raw bytes and decode as UTF-8 once at the end. Decoding
+        // each byte as an individual Latin-1 scalar mangles any multi-byte
+        // UTF-8 sequence (non-ASCII upstream/proxy error messages) into
+        // mojibake before sanitization ever sees it.
+        var data = Data()
         do {
             for try await byte in bytes {
-                body.append(Character(UnicodeScalar(byte)))
-                if body.count > 1000 { break }
+                data.append(byte)
+                if data.count > 1000 { break }
             }
         } catch {
-            // Best-effort — partial body is fine for error messages.
+            // Best-effort — a partial body is still useful for error messages,
+            // but log the interruption so the swallow stays observable.
+            Log.network.debug("Claude error-body read interrupted: \(error.localizedDescription, privacy: .private)")
         }
-        return body
+        return String(decoding: data, as: UTF8.self)
     }
 
 }
