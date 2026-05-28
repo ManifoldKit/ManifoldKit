@@ -20,7 +20,7 @@ In your consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.34.0", // x-release-please-version
+        from: "0.36.0", // x-release-please-version
         traits: [
             .trait(name: "MLX"),
         ]
