@@ -92,6 +92,162 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
 
         XCTAssertEqual(hook.records.count, 0)
     }
+
+    // MARK: - Flow-shaped batches
+    //
+    // These mirror the exact mutation batches the three ConversationTurnExecutor
+    // flows now build (compression replace, edit, branch). They prove that on a
+    // mid-sequence failure the whole batch rolls back against real SwiftData —
+    // the data-loss the sequential paths used to risk.
+
+    /// Compression replace: `deleteMessages(sessionID:)` + N inserts as one
+    /// batch. A failure mid-reinsert must leave the original history intact, not
+    /// wiped (the old path committed the delete before any insert).
+    func test_compressionReplaceBatch_rollsBackPreservingOriginalHistoryOnInsertFailure() async throws {
+        let session = ChatSessionRecord(title: "Compression Rollback")
+        try await provider.insertSession(session)
+
+        let original1 = ChatMessageRecord(role: .user, content: "q1", sessionID: session.id)
+        let original2 = ChatMessageRecord(role: .assistant, content: "a1", sessionID: session.id)
+        try await provider.insertMessage(original1)
+        try await provider.insertMessage(original2)
+
+        // A valid summary insert followed by an update of a record that does not
+        // exist (no prior insert in this batch) forces a failure after the
+        // delete + first insert have been staged.
+        let summary = ChatMessageRecord(role: .assistant, content: "summary", sessionID: session.id)
+        let phantom = ChatMessageRecord(role: .user, content: "never inserted", sessionID: session.id)
+
+        do {
+            try await provider.performMessageMutations([
+                .deleteMessages(sessionID: session.id),
+                .insert(summary),
+                .update(phantom),
+            ])
+            XCTFail("Expected compression replace batch to fail on phantom update")
+        } catch {
+            XCTAssertEqual(error as? ChatPersistenceError, .messageNotFound(phantom.id))
+        }
+
+        let messages = try await provider.fetchMessages(for: session.id)
+        XCTAssertEqual(messages.map(\.content), ["q1", "a1"])
+    }
+
+    /// Compression replace happy path: delete-all then reinsert commits together.
+    func test_compressionReplaceBatch_commitsReplacementAtomically() async throws {
+        let session = ChatSessionRecord(title: "Compression Commit")
+        try await provider.insertSession(session)
+        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "q1", sessionID: session.id))
+        try await provider.insertMessage(ChatMessageRecord(role: .assistant, content: "a1", sessionID: session.id))
+
+        let summary = ChatMessageRecord(role: .assistant, content: "summary", sessionID: session.id)
+        try await provider.performMessageMutations([
+            .deleteMessages(sessionID: session.id),
+            .insert(summary),
+        ])
+
+        let messages = try await provider.fetchMessages(for: session.id)
+        XCTAssertEqual(messages.map(\.content), ["summary"])
+    }
+
+    /// Edit: `update(edited)` + N trailing `delete`s. A trailing-delete failure
+    /// must not leave the edit committed with a truncated tail.
+    func test_editBatch_rollsBackEditWhenTrailingDeleteFails() async throws {
+        let session = ChatSessionRecord(title: "Edit Rollback")
+        try await provider.insertSession(session)
+
+        var edited = ChatMessageRecord(role: .user, content: "original", sessionID: session.id)
+        let trailing = ChatMessageRecord(role: .assistant, content: "reply", sessionID: session.id)
+        try await provider.insertMessage(edited)
+        try await provider.insertMessage(trailing)
+
+        edited.content = "edited text"
+        let missingTrailingID = UUID()
+
+        do {
+            try await provider.performMessageMutations([
+                .update(edited),
+                .delete(trailing.id),
+                .delete(missingTrailingID),
+            ])
+            XCTFail("Expected edit batch to fail on missing trailing delete")
+        } catch {
+            XCTAssertEqual(error as? ChatPersistenceError, .messageNotFound(missingTrailingID))
+        }
+
+        // Edit must NOT be visible and the trailing message must still be there.
+        let messages = try await provider.fetchMessages(for: session.id)
+        XCTAssertEqual(messages.map(\.content), ["original", "reply"])
+    }
+
+    /// Edit happy path: update + trailing deletes commit together.
+    func test_editBatch_commitsEditAndTrailingDeletesAtomically() async throws {
+        let session = ChatSessionRecord(title: "Edit Commit")
+        try await provider.insertSession(session)
+
+        var edited = ChatMessageRecord(role: .user, content: "original", sessionID: session.id)
+        let trailing1 = ChatMessageRecord(role: .assistant, content: "reply1", sessionID: session.id)
+        let trailing2 = ChatMessageRecord(role: .user, content: "reply2", sessionID: session.id)
+        try await provider.insertMessage(edited)
+        try await provider.insertMessage(trailing1)
+        try await provider.insertMessage(trailing2)
+
+        edited.content = "edited"
+        try await provider.performMessageMutations([
+            .update(edited),
+            .delete(trailing1.id),
+            .delete(trailing2.id),
+        ])
+
+        let messages = try await provider.fetchMessages(for: session.id)
+        XCTAssertEqual(messages.map(\.content), ["edited"])
+    }
+
+    /// Branch: the message-copy batch into the new session rolls back fully on a
+    /// mid-copy failure (the executor then deletes the orphaned session). Here
+    /// we verify the message half: no partial prefix survives.
+    func test_branchCopyBatch_rollsBackAllCopiesOnFailure() async throws {
+        let source = ChatSessionRecord(title: "Branch Source")
+        let target = ChatSessionRecord(title: "Branch Target")
+        try await provider.insertSession(source)
+        try await provider.insertSession(target)
+
+        let copy1 = ChatMessageRecord(role: .user, content: "copy1", sessionID: target.id)
+        let copy2 = ChatMessageRecord(role: .assistant, content: "copy2", sessionID: target.id)
+        // A trailing update of a record never inserted forces failure after the
+        // two inserts are staged.
+        let phantom = ChatMessageRecord(role: .user, content: "phantom", sessionID: target.id)
+
+        do {
+            try await provider.performMessageMutations([
+                .insert(copy1),
+                .insert(copy2),
+                .update(phantom),
+            ])
+            XCTFail("Expected branch copy batch to fail")
+        } catch {
+            XCTAssertEqual(error as? ChatPersistenceError, .messageNotFound(phantom.id))
+        }
+
+        let messages = try await provider.fetchMessages(for: target.id)
+        XCTAssertTrue(messages.isEmpty, "No partial message prefix should survive a failed branch copy")
+    }
+
+    /// Branch happy path: all copies land in the target session as one batch.
+    func test_branchCopyBatch_commitsAllCopiesAtomically() async throws {
+        let source = ChatSessionRecord(title: "Branch Source")
+        let target = ChatSessionRecord(title: "Branch Target")
+        try await provider.insertSession(source)
+        try await provider.insertSession(target)
+
+        try await provider.performMessageMutations([
+            .insert(ChatMessageRecord(role: .user, content: "c1", sessionID: target.id)),
+            .insert(ChatMessageRecord(role: .assistant, content: "c2", sessionID: target.id)),
+        ])
+
+        let messages = try await provider.fetchMessages(for: target.id)
+        XCTAssertEqual(messages.map(\.content), ["c1", "c2"])
+    }
 }
 
 private final class RecordingMessageHook: MessageStorePostWriteHook, @unchecked Sendable {

@@ -1727,16 +1727,26 @@ final class ConversationRuntimeTests: XCTestCase {
 
     // MARK: - Edit: delete failure on first trailing message
 
-    func test_edit_firstDeleteFails_throwsBeforeAnyTrailingDeletion() async throws {
-        // Sabotage check (verified manually): removing the re-throw on deleteMessage
-        // failure causes the method to continue deleting and return a handle, failing
-        // the XCTAssertThrowsError check.
+    func test_edit_trailingDeleteFails_emitsNoEventsForIncompleteBatch() async throws {
+        // The edit flow now commits the update + all trailing deletes through one
+        // `performMessageMutations` batch. The executor emits `.messageUpdated` /
+        // `.messageRemoved` only AFTER the batch succeeds, so a trailing-delete
+        // failure surfaces a `.persistence` error with NO events emitted.
         //
-        // RuntimeMessageStore.deleteError fires on the next call then self-clears.
-        // Setting it here means the first delete call (for trailing1) throws immediately,
-        // so zero trailing messages are removed. The update commits before the delete
-        // loop runs, so .messageUpdated is emitted and the store reflects the new
-        // content even though the throw follows.
+        // `RuntimeMessageStore` is non-transactional, so the port falls back to
+        // sequential per-row writes — the update may physically land before the
+        // failing delete. That fallback partial-commit is acceptable (an in-memory
+        // test fake), but the contract that observers care about — events fire only
+        // when the whole batch commits — must hold regardless. Against a real
+        // `TransactionalMessageStore` (SwiftData) the update also rolls back; that
+        // atomicity is proven in SwiftDataTransactionalMutationTests.
+        //
+        // Sabotage check (verified manually): moving the `emit(.messageUpdated)`
+        // call back above `performMessageMutations` makes the no-events assertion
+        // fail.
+        //
+        // RuntimeMessageStore.deleteError fires on the next call then self-clears,
+        // so the delete of trailing1 throws.
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
@@ -1747,8 +1757,6 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(trailing1)
         try await store.insertMessage(trailing2)
 
-        // Collect events so we can verify .messageUpdated fired before the
-        // delete failure and that no .messageRemoved events were emitted.
         var collectedEvents: [ConversationEvent] = []
         let eventCollector = Task { @MainActor [runtime] in
             for await event in runtime.events {
@@ -1756,7 +1764,7 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
 
-        // Poison: first delete call throws, leaving both trailing messages in place.
+        // Poison: the delete of trailing1 throws, aborting the batch.
         store.deleteError = ChatPersistenceError.messageNotFound(trailing1.id)
 
         do {
@@ -1772,27 +1780,17 @@ final class ConversationRuntimeTests: XCTestCase {
             XCTFail("Unexpected error type: \(error)")
         }
 
-        // Let any queued events drain.
         try await Task.sleep(for: .milliseconds(50))
         eventCollector.cancel()
 
-        // The update committed before the delete attempt: store has user (with new
-        // content) + both trailing messages (neither was deleted).
-        XCTAssertEqual(store.messages.count, 3,
-                       "Both trailing messages still in store when first delete fails")
-        XCTAssertEqual(store.messages[userMsg.id]?.content, "edited",
-                       "User message content was updated before the delete failure")
-
-        // .messageUpdated fired — the update completed before the delete loop ran.
-        XCTAssertTrue(collectedEvents.contains(where: {
-            if case .messageUpdated(let record) = $0 { return record.id == userMsg.id } else { return false }
-        }), ".messageUpdated fired for the edited message before the delete failure")
-
-        // No .messageRemoved events — the first delete threw before anything was removed.
+        // No events for an incomplete batch — neither the edit nor the deletions.
+        XCTAssertFalse(collectedEvents.contains(where: {
+            if case .messageUpdated = $0 { return true } else { return false }
+        }), "No .messageUpdated event when the batch aborts mid-sequence")
         let removedCount = collectedEvents.filter { event in
             if case .messageRemoved = event { return true } else { return false }
         }.count
-        XCTAssertEqual(removedCount, 0, "No .messageRemoved events when first delete fails")
+        XCTAssertEqual(removedCount, 0, "No .messageRemoved events when the batch aborts")
     }
 
     // MARK: - Branch: happy path (no generation)

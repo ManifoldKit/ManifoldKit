@@ -258,24 +258,23 @@ struct ConversationTurnExecutor: Sendable {
         // Update the edited message's content in the store.
         var updatedMessage = history[index]
         updatedMessage.content = text
+
+        // Commit the edit and the trailing-message deletions as ONE atomic
+        // batch. The old sequential path committed the update first, then
+        // deleted trailing messages one at a time — a mid-delete failure left
+        // the conversation truncated with the edit already persisted, which the
+        // caller's reload could not undo. Emitting events only after the batch
+        // commits keeps observers consistent with what's on disk.
+        let trailing = Array(history[(index + 1)...])
+        var mutations: [MessageStoreMutation] = [.update(updatedMessage)]
+        mutations.append(contentsOf: trailing.map { .delete($0.id) })
         do {
-            try await persistence.updateMessage(updatedMessage)
+            try await persistence.performMessageMutations(mutations)
         } catch {
             throw ConversationError.persistence(error)
         }
         emit(.messageUpdated(updatedMessage))
-
-        // Delete all messages after the edited one. On first failure stop
-        // deleting and throw — callers reload from the store on failure;
-        // the partial deletion is acknowledged, matching ChatViewModel's
-        // behaviour.
-        let trailing = Array(history[(index + 1)...])
         for msg in trailing {
-            do {
-                try await persistence.deleteMessage(msg.id)
-            } catch {
-                throw ConversationError.persistence(error)
-            }
             emit(.messageRemoved(messageID: msg.id))
         }
 
@@ -367,19 +366,25 @@ struct ConversationTurnExecutor: Sendable {
         }
 
         // Copy messages into the new session with fresh IDs and updated
-        // sessionID.
-        for original in slice {
-            let copy = ChatMessageRecord(
+        // sessionID, committed as ONE atomic batch. The old sequential path
+        // inserted copies one at a time — a mid-loop failure orphaned the
+        // freshly-inserted session with a partial message prefix. The session
+        // insert above commits separately (the adapter's transactional batch
+        // spans messages only), so on a copy failure we delete the orphaned
+        // session to leave no partial branch behind.
+        let copies = slice.map { original in
+            ChatMessageRecord(
                 role: original.role,
                 contentParts: original.contentParts,
                 timestamp: original.timestamp,
                 sessionID: newSessionID
             )
-            do {
-                try await persistence.insertMessage(copy)
-            } catch {
-                throw ConversationError.persistence(error)
-            }
+        }
+        do {
+            try await persistence.performMessageMutations(copies.map { .insert($0) })
+        } catch {
+            await persistence.deleteSession(newSessionID)
+            throw ConversationError.persistence(error)
         }
 
         emit(.sessionBranched(newSessionID: newSessionID, copiedCount: slice.count))
@@ -1123,10 +1128,13 @@ struct ConversationTurnExecutor: Sendable {
                         )
                         return
                     }
-                    try await persistence.deleteMessages(for: sessionID)
-                    for message in compressed {
-                        try await persistence.insertMessage(message)
-                    }
+                    // Replace history as ONE atomic batch: delete-then-reinsert
+                    // committed (or rolled back) together. A mid-loop failure on
+                    // the old sequential path permanently destroyed history —
+                    // the delete had already committed before the first insert.
+                    var mutations: [MessageStoreMutation] = [.deleteMessages(sessionID: sessionID)]
+                    mutations.append(contentsOf: compressed.map { .insert($0) })
+                    try await persistence.performMessageMutations(mutations)
                     emit(.historyCompressed(sessionID: sessionID, insertedRecords: compressed))
                     await compressionPolicy.postCompress(sessionID: sessionID, insertedRecords: compressed)
                 } catch {

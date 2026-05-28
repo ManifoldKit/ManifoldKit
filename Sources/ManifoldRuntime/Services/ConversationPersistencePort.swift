@@ -64,6 +64,25 @@ struct ConversationPersistencePort: Sendable {
         try await sessionStore.insertSession(session)
     }
 
+    /// Best-effort session delete used to unwind a partially-created branch
+    /// when the message-copy batch fails. The message mutations roll back on
+    /// their own (the adapter's `performMessageMutations` calls `rollback()`),
+    /// but the session insert commits separately because the adapter's
+    /// transactional batch spans messages only — so the branch flow deletes
+    /// the orphaned session here. Logs rather than throwing so the original
+    /// copy failure is the error the caller surfaces.
+    @MainActor
+    func deleteSession(_ sessionID: UUID) async {
+        guard let sessionStore else { return }
+        do {
+            try await sessionStore.deleteSession(sessionID)
+        } catch {
+            Log.persistence.warning(
+                "ConversationRuntime.branch: rollback deleteSession failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
     /// Fetches the storage-agnostic record for a single session, or `nil`
     /// when no session matches. Used by the executor to read multi-agent
     /// state (`activeAgentID`, `agents`) per turn so handoff detection and
