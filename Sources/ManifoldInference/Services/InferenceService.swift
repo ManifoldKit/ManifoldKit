@@ -378,16 +378,67 @@ public final class InferenceService {
 
     // MARK: - Generation Queue
 
-    /// Enqueues a generation request from a typed ``Message`` slice and
-    /// returns a token + stream pair.
+    /// Enqueues a generation request from a typed ``Message`` slice using a
+    /// pre-built ``GenerationConfig``, returning a token + stream pair.
+    ///
+    /// This is the value-typed entry point. Every sampling knob now lives on
+    /// ``GenerationConfig`` rather than being spread across a ~18-parameter
+    /// argument list, so adding a new knob is a one-line change on the config
+    /// type instead of a thread-through across every enqueue signature. The
+    /// parameterized overloads below remain as deprecated source-compatible
+    /// builders that assemble a config and forward here.
     ///
     /// The stream starts in `.queued` phase and transitions to `.connecting`
     /// when the request reaches the front of the queue.
     ///
-    /// Prefer this overload over the tuple-shaped `enqueue(messages: [(role:content:)])`
-    /// — `Message.system(_:)` / `.user(_:)` / `.assistant(_:)` cannot be
-    /// misspelled, while raw `"systme"` typos in the tuple variant pass
-    /// the type checker and surface as silent backend errors.
+    /// Prefer ``Message`` literals over raw role/content tuples —
+    /// `Message.system(_:)` / `.user(_:)` / `.assistant(_:)` cannot be
+    /// misspelled, while raw `"systme"` typos pass the type checker and
+    /// surface as silent backend errors.
+    public func enqueue(
+        messages: [Message],
+        systemPrompt: String? = nil,
+        config: GenerationConfig,
+        priority: GenerationPriority = .normal,
+        sessionID: UUID? = nil
+    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
+        ensureProviderWired()
+        return try generation.enqueue(
+            structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
+            systemPrompt: systemPrompt,
+            config: config,
+            priority: priority,
+            sessionID: sessionID
+        )
+    }
+
+    /// Structured-message variant of ``enqueue(messages:config:priority:sessionID:)``.
+    ///
+    /// Threads ``StructuredMessage`` through the queue so cloud backends
+    /// with structured wire formats (Anthropic) can replay prior assistant
+    /// turns including their thinking blocks and signatures verbatim.
+    public func enqueue(
+        structuredMessages messages: [StructuredMessage],
+        systemPrompt: String? = nil,
+        config: GenerationConfig,
+        priority: GenerationPriority = .normal,
+        sessionID: UUID? = nil
+    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
+        ensureProviderWired()
+        return try generation.enqueue(
+            structuredMessages: messages,
+            systemPrompt: systemPrompt,
+            config: config,
+            priority: priority,
+            sessionID: sessionID
+        )
+    }
+
+    /// Parameterized enqueue retained as a source-compatible builder.
+    ///
+    /// Assembles a ``GenerationConfig`` from the individual sampling
+    /// parameters and forwards to ``enqueue(messages:config:priority:sessionID:)``.
+    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(messages:config:priority:sessionID:).")
     public func enqueue(
         messages: [Message],
         systemPrompt: String? = nil,
@@ -409,33 +460,34 @@ public final class InferenceService {
         priority: GenerationPriority = .normal,
         sessionID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        ensureProviderWired()
-        return try generation.enqueue(
-            messages: messages.asRoleContentTuples,
+        try enqueue(
+            messages: messages,
             systemPrompt: systemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            topK: topK,
-            minP: minP,
-            presencePenalty: presencePenalty,
-            frequencyPenalty: frequencyPenalty,
-            seed: seed,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            jsonMode: jsonMode,
-            grammar: grammar,
-            tools: tools,
-            toolChoice: toolChoice,
-            maxToolIterations: maxToolIterations,
+            config: GenerationQueue.makeEnqueueConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                topK: topK,
+                minP: minP,
+                presencePenalty: presencePenalty,
+                frequencyPenalty: frequencyPenalty,
+                seed: seed,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                jsonMode: jsonMode,
+                grammar: grammar,
+                tools: tools,
+                toolChoice: toolChoice,
+                maxToolIterations: maxToolIterations
+            ),
             priority: priority,
             sessionID: sessionID
         )
     }
 
     /// Tuple-shaped enqueue retained for one minor while consumers migrate
-    /// to the typed ``enqueue(messages:[Message],...)`` overload.
-    @available(*, deprecated, message: "Use [Message] with .system/.user/.assistant — raw role strings are typo-prone.")
+    /// to the typed ``enqueue(messages:config:priority:sessionID:)`` overload.
+    @available(*, deprecated, message: "Use [Message] with .system/.user/.assistant and a GenerationConfig — raw role strings are typo-prone.")
     public func enqueue(
         messages: [(role: String, content: String)],
         systemPrompt: String? = nil,
@@ -454,28 +506,32 @@ public final class InferenceService {
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
         return try generation.enqueue(
-            messages: messages,
+            structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            jsonMode: jsonMode,
-            grammar: grammar,
-            tools: tools,
-            toolChoice: toolChoice,
-            maxToolIterations: maxToolIterations,
+            config: GenerationQueue.makeEnqueueConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                topK: nil,
+                minP: nil,
+                presencePenalty: nil,
+                frequencyPenalty: nil,
+                seed: nil,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                jsonMode: jsonMode,
+                grammar: grammar,
+                tools: tools,
+                toolChoice: toolChoice,
+                maxToolIterations: maxToolIterations
+            ),
             priority: priority,
             sessionID: sessionID
         )
     }
 
-    /// Structured-message variant of ``enqueue(messages:...)``.
-    ///
-    /// Threads ``StructuredMessage`` through the queue so cloud backends
-    /// with structured wire formats (Anthropic) can replay prior assistant
-    /// turns including their thinking blocks and signatures verbatim.
+    /// Parameterized structured-message enqueue retained as a source-compatible builder.
+    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(structuredMessages:config:priority:sessionID:).")
     public func enqueue(
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String? = nil,
@@ -497,25 +553,26 @@ public final class InferenceService {
         priority: GenerationPriority = .normal,
         sessionID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        ensureProviderWired()
-        return try generation.enqueue(
+        try enqueue(
             structuredMessages: messages,
             systemPrompt: systemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            topK: topK,
-            minP: minP,
-            presencePenalty: presencePenalty,
-            frequencyPenalty: frequencyPenalty,
-            seed: seed,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            jsonMode: jsonMode,
-            grammar: grammar,
-            tools: tools,
-            toolChoice: toolChoice,
-            maxToolIterations: maxToolIterations,
+            config: GenerationQueue.makeEnqueueConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                topK: topK,
+                minP: minP,
+                presencePenalty: presencePenalty,
+                frequencyPenalty: frequencyPenalty,
+                seed: seed,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                jsonMode: jsonMode,
+                grammar: grammar,
+                tools: tools,
+                toolChoice: toolChoice,
+                maxToolIterations: maxToolIterations
+            ),
             priority: priority,
             sessionID: sessionID
         )

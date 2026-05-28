@@ -383,9 +383,7 @@ package final class SessionListService: Sendable {
         let (_, stream) = try inferenceService.enqueue(
             messages: messages,
             systemPrompt: systemPrompt,
-            temperature: 0.3,
-            topP: 0.9,
-            repeatPenalty: 1.0,
+            config: GenerationConfig(temperature: 0.3, topP: 0.9, repeatPenalty: 1.0),
             priority: .background,
             sessionID: nil
         )

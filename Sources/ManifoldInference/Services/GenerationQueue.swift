@@ -439,6 +439,114 @@ final class GenerationQueue {
 
     // MARK: - Generation Queue
 
+    /// The single value-typed enqueue entry point.
+    ///
+    /// Takes a pre-built ``GenerationConfig`` plus the small non-config triple
+    /// (`priority`, `sessionID`, and the structured `messages`/`systemPrompt`).
+    /// Every parameterized convenience overload funnels here after assembling a
+    /// config, so the capability gates, queue-depth check, token/stream
+    /// construction, and FIFO+priority insertion live in exactly one place.
+    func enqueue(
+        structuredMessages messages: [StructuredMessage],
+        systemPrompt: String? = nil,
+        config: GenerationConfig,
+        priority: GenerationPriority = .normal,
+        sessionID: UUID? = nil
+    ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
+        guard let backend = currentBackend, isBackendLoaded else {
+            throw InferenceError.inferenceFailure("No model loaded")
+        }
+        guard requestQueue.count < maxQueueDepth else {
+            throw InferenceError.inferenceFailure("Generation queue is full")
+        }
+
+        // Capability gate for tool calling. A backend that reports
+        // `supportsToolCalling == false` has no wire path for tool definitions
+        // — they are silently dropped, and the model loops on "I cannot access
+        // tools" while the host's registry never sees the call. Reject the
+        // request up front with a clear error so the failure is diagnosable
+        // at the call site rather than manifesting as a silent no-op.
+        if !config.tools.isEmpty && !backend.capabilities.supportsToolCalling {
+            let backendType = String(describing: type(of: backend))
+            let toolWord = config.tools.count == 1 ? "tool" : "tools"
+            let message = "GenerationQueue: \(config.tools.count) \(toolWord) passed to enqueue() but \(backendType) reports capabilities.supportsToolCalling == false; tools will be ignored on the wire and tool calls will never be dispatched. Check `backend.capabilities.supportsToolCalling` before passing tools, or load a tool-capable backend."
+            Log.inference.warning("\(message, privacy: .public)")
+            Self.toolsUnsupportedWarningHook?(backendType, message)
+            throw InferenceError.inferenceFailure("Tools passed to a backend that does not support tool calling (\(backendType)); set capabilities.supportsToolCalling = true or remove tools from the request.")
+        }
+
+        let token = GenerationRequestToken(rawValue: nextGenerationToken.rawValue + 1)
+        nextGenerationToken = token
+
+        var continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation!
+        let rawStream = AsyncThrowingStream<GenerationEvent, Error> { continuation = $0 }
+        let stream = GenerationStream(rawStream)
+        stream.setPhase(.queued)
+        continuations[token] = continuation
+
+        Self.warnIfThinkingUnsupported(backend: backend, config: config)
+
+        let request = QueuedRequest(
+            token: token,
+            priority: priority,
+            sessionID: sessionID,
+            messages: messages,
+            systemPrompt: systemPrompt,
+            config: config,
+            stream: stream
+        )
+
+        if let insertIdx = requestQueue.firstIndex(where: { $0.priority < priority }) {
+            requestQueue.insert(request, at: insertIdx)
+        } else {
+            requestQueue.append(request)
+        }
+
+        drainQueue()
+        return (token: token, stream: stream)
+    }
+
+    /// Assembles a ``GenerationConfig`` from the individual sampling parameters
+    /// in the exact shape the parameterized `enqueue` overloads have always
+    /// produced. Centralised so both the tuple and structured builders match
+    /// field-for-field.
+    static func makeEnqueueConfig(
+        temperature: Float,
+        topP: Float,
+        repeatPenalty: Float,
+        topK: Int32?,
+        minP: Float?,
+        presencePenalty: Float?,
+        frequencyPenalty: Float?,
+        seed: UInt64?,
+        maxOutputTokens: Int?,
+        maxThinkingTokens: Int?,
+        jsonMode: Bool,
+        grammar: String?,
+        tools: [ToolDefinition],
+        toolChoice: ToolChoice,
+        maxToolIterations: Int
+    ) -> GenerationConfig {
+        var config = GenerationConfig(
+            temperature: temperature,
+            topP: topP,
+            repeatPenalty: repeatPenalty,
+            topK: topK,
+            minP: minP,
+            presencePenalty: presencePenalty,
+            frequencyPenalty: frequencyPenalty,
+            seed: seed,
+            maxOutputTokens: maxOutputTokens,
+            tools: tools,
+            toolChoice: toolChoice,
+            jsonMode: jsonMode,
+            maxToolIterations: maxToolIterations
+        )
+        config.maxThinkingTokens = maxThinkingTokens
+        config.grammar = grammar
+        return config
+    }
+
     func enqueue(
         messages: [(role: String, content: String)],
         systemPrompt: String? = nil,
@@ -463,21 +571,23 @@ final class GenerationQueue {
         try enqueue(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            topK: topK,
-            minP: minP,
-            presencePenalty: presencePenalty,
-            frequencyPenalty: frequencyPenalty,
-            seed: seed,
-            maxOutputTokens: maxOutputTokens,
-            maxThinkingTokens: maxThinkingTokens,
-            jsonMode: jsonMode,
-            grammar: grammar,
-            tools: tools,
-            toolChoice: toolChoice,
-            maxToolIterations: maxToolIterations,
+            config: Self.makeEnqueueConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                topK: topK,
+                minP: minP,
+                presencePenalty: presencePenalty,
+                frequencyPenalty: frequencyPenalty,
+                seed: seed,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                jsonMode: jsonMode,
+                grammar: grammar,
+                tools: tools,
+                toolChoice: toolChoice,
+                maxToolIterations: maxToolIterations
+            ),
             priority: priority,
             sessionID: sessionID
         )
@@ -510,75 +620,29 @@ final class GenerationQueue {
         priority: GenerationPriority = .normal,
         sessionID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        guard let backend = currentBackend, isBackendLoaded else {
-            throw InferenceError.inferenceFailure("No model loaded")
-        }
-        guard requestQueue.count < maxQueueDepth else {
-            throw InferenceError.inferenceFailure("Generation queue is full")
-        }
-
-        // Capability gate for tool calling. A backend that reports
-        // `supportsToolCalling == false` has no wire path for tool definitions
-        // — they are silently dropped, and the model loops on "I cannot access
-        // tools" while the host's registry never sees the call. Reject the
-        // request up front with a clear error so the failure is diagnosable
-        // at the call site rather than manifesting as a silent no-op.
-        if !tools.isEmpty && !backend.capabilities.supportsToolCalling {
-            let backendType = String(describing: type(of: backend))
-            let toolWord = tools.count == 1 ? "tool" : "tools"
-            let message = "GenerationQueue: \(tools.count) \(toolWord) passed to enqueue() but \(backendType) reports capabilities.supportsToolCalling == false; tools will be ignored on the wire and tool calls will never be dispatched. Check `backend.capabilities.supportsToolCalling` before passing tools, or load a tool-capable backend."
-            Log.inference.warning("\(message, privacy: .public)")
-            Self.toolsUnsupportedWarningHook?(backendType, message)
-            throw InferenceError.inferenceFailure("Tools passed to a backend that does not support tool calling (\(backendType)); set capabilities.supportsToolCalling = true or remove tools from the request.")
-        }
-
-        let token = GenerationRequestToken(rawValue: nextGenerationToken.rawValue + 1)
-        nextGenerationToken = token
-
-        var continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation!
-        let rawStream = AsyncThrowingStream<GenerationEvent, Error> { continuation = $0 }
-        let stream = GenerationStream(rawStream)
-        stream.setPhase(.queued)
-        continuations[token] = continuation
-
-        var config = GenerationConfig(
-            temperature: temperature,
-            topP: topP,
-            repeatPenalty: repeatPenalty,
-            topK: topK,
-            minP: minP,
-            presencePenalty: presencePenalty,
-            frequencyPenalty: frequencyPenalty,
-            seed: seed,
-            maxOutputTokens: maxOutputTokens,
-            tools: tools,
-            toolChoice: toolChoice,
-            jsonMode: jsonMode,
-            maxToolIterations: maxToolIterations
-        )
-        config.maxThinkingTokens = maxThinkingTokens
-        config.grammar = grammar
-
-        Self.warnIfThinkingUnsupported(backend: backend, config: config)
-
-        let request = QueuedRequest(
-            token: token,
-            priority: priority,
-            sessionID: sessionID,
-            messages: messages,
+        try enqueue(
+            structuredMessages: messages,
             systemPrompt: systemPrompt,
-            config: config,
-            stream: stream
+            config: Self.makeEnqueueConfig(
+                temperature: temperature,
+                topP: topP,
+                repeatPenalty: repeatPenalty,
+                topK: topK,
+                minP: minP,
+                presencePenalty: presencePenalty,
+                frequencyPenalty: frequencyPenalty,
+                seed: seed,
+                maxOutputTokens: maxOutputTokens,
+                maxThinkingTokens: maxThinkingTokens,
+                jsonMode: jsonMode,
+                grammar: grammar,
+                tools: tools,
+                toolChoice: toolChoice,
+                maxToolIterations: maxToolIterations
+            ),
+            priority: priority,
+            sessionID: sessionID
         )
-
-        if let insertIdx = requestQueue.firstIndex(where: { $0.priority < priority }) {
-            requestQueue.insert(request, at: insertIdx)
-        } else {
-            requestQueue.append(request)
-        }
-
-        drainQueue()
-        return (token: token, stream: stream)
     }
 
     /// Processes the next queued request if no generation is active.
