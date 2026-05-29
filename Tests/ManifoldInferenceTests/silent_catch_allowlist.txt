@@ -57,7 +57,6 @@ ManifoldServer/ChatCompletionsAdapter.swift:if let string = try? decoder.singleV
 
 # Stream cancellation cleanup paths — already-cancelled errors are the
 # only failure mode and would be redundant to log.
-ManifoldCloud/ClaudeBackend.swift:} catch {
 ManifoldTools/TranscriptLogger.swift:} catch {
 ManifoldTools/ReferenceTools/NowTool.swift:} catch {
 

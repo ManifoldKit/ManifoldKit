@@ -508,6 +508,56 @@ extension ClaudeBackendTests {
             // thing is that 503 is not mis-classified as providerOverloaded.
         }
     }
+
+    /// A non-ASCII (multi-byte UTF-8) upstream error message must survive the
+    /// error-body read intact and reach the surfaced `serverError` message.
+    ///
+    /// Regression for the per-byte `Character(UnicodeScalar(byte))` read, which
+    /// decoded each UTF-8 byte as an independent Latin-1 scalar and turned any
+    /// multi-byte sequence into mojibake before sanitization ever saw it.
+    ///
+    /// Sabotage check: revert `readErrorBody` to the per-byte
+    /// `body.append(Character(UnicodeScalar(byte)))` accumulation. The é/中文/🚫
+    /// glyphs come back as mojibake and the substring assertions fail.
+    func test_serverError_nonASCIIBody_roundTripsAsUTF8() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let backend = ClaudeBackend(urlSession: session)
+        backend.retryStrategy = ExponentialBackoffStrategy(maxRetries: 0)
+        let url = URL(string: "https://claude-utf8-\(UUID().uuidString).test")!
+        backend.configure(baseURL: url, apiKey: "sk-ant-test", modelName: "claude-sonnet-4-20250514")
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        // Mix 2-byte (é), 3-byte (中文), and 4-byte (🚫) UTF-8 sequences.
+        let upstreamMessage = "Réseau indisponible 中文 🚫"
+        let body = Data(#"{"type":"error","error":{"type":"api_error","message":"\#(upstreamMessage)"}}"#.utf8)
+        MockURLProtocol.stub(url: url, response: .immediate(data: body, statusCode: 500))
+        defer { MockURLProtocol.unstub(url: url) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        do {
+            for try await _ in stream.events {}
+            XCTFail("Expected serverError for HTTP 500")
+        } catch {
+            guard let cloudError = extractCloudError(error) else {
+                XCTFail("Expected CloudBackendError, got \(error)")
+                return
+            }
+            guard case .serverError(let code, let message) = cloudError else {
+                XCTFail("Expected .serverError, got \(cloudError)")
+                return
+            }
+            XCTAssertEqual(code, 500)
+            let surfaced = try XCTUnwrap(message, "serverError must carry the upstream message")
+            XCTAssertTrue(surfaced.contains("Réseau"),
+                          "2-byte UTF-8 (é) must survive the error-body read; got: \(surfaced)")
+            XCTAssertTrue(surfaced.contains("中文"),
+                          "3-byte UTF-8 must survive the error-body read; got: \(surfaced)")
+            XCTAssertTrue(surfaced.contains("🚫"),
+                          "4-byte UTF-8 must survive the error-body read; got: \(surfaced)")
+        }
+    }
 }
 
 #endif
