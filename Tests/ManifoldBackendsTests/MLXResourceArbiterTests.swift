@@ -207,6 +207,56 @@ final class MLXResourceArbiterTests: XCTestCase {
 
     // MARK: - clearAll
 
+    // MARK: - Teardown-vs-load ordering (issue #1498)
+
+    /// The motivating bug for the chained-cleanup barrier: the reload loop is
+    /// `unloadModel()` (spawns a `release` task) immediately followed by
+    /// `loadModel()` (issues a `claim`). Because the arbiter is an actor that
+    /// runs enqueued ops in *scheduling* order rather than call order, a fresh
+    /// `claim` enqueued before the prior `release` runs would be dropped by
+    /// that release — leaving the reloaded model with a zero cache budget and
+    /// an empty claim table.
+    ///
+    /// `MLXBackend` fixes this by chaining the `release` into `_cleanupTask`
+    /// and having `loadModel` `await` that task before claiming. This test
+    /// reproduces the barrier at the task-chain level (no Metal, no model
+    /// load): the `claim` only runs *after* `await release.value`, so the
+    /// final claim survives.
+    func test_releaseBeforeClaim_barrierPreservesFreshClaim() async {
+        let (arbiter, recorder) = makeArbiter()
+        let id = UUID()
+
+        // Prior lineage holds a claim.
+        await arbiter.claim(backendID: id, requestedCacheBytes: 100)
+
+        // unloadModel(): chained teardown task releasing the prior claim.
+        let releaseTask = Task { await arbiter.release(backendID: id) }
+
+        // loadModel(): the barrier — await the pending cleanup BEFORE claiming.
+        await releaseTask.value
+        await arbiter.claim(backendID: id, requestedCacheBytes: 250)
+
+        // The fresh claim must be live: one active claim of 250 bytes.
+        let active = await arbiter._activeClaimCountForTesting()
+        XCTAssertEqual(active, 1, "fresh claim must survive the reload barrier")
+        let total = await arbiter._totalClaimedBytesForTesting()
+        XCTAssertEqual(total, 250, "claim table must hold the new claim, not be emptied by the stale release")
+
+        // Sabotage check (mirrors the pre-fix interleave): if the claim is
+        // enqueued WITHOUT awaiting the release, the release can run last and
+        // drop it. We can't reorder actor scheduling deterministically here,
+        // but we can prove the inverse ordering empties the table — which is
+        // exactly what the barrier prevents.
+        let (arbiter2, _) = makeArbiter()
+        let id2 = UUID()
+        await arbiter2.claim(backendID: id2, requestedCacheBytes: 100)
+        await arbiter2.claim(backendID: id2, requestedCacheBytes: 250) // fresh claim
+        await arbiter2.release(backendID: id2)                          // stale release runs last
+        let activeSabotage = await arbiter2._activeClaimCountForTesting()
+        XCTAssertEqual(activeSabotage, 0,
+                       "control: release-after-claim drops the claim — this is the race the barrier averts")
+    }
+
     func test_clearAll_dropsAllClaimsAndInvokesClear() async {
         let (arbiter, recorder) = makeArbiter()
         let a = UUID()

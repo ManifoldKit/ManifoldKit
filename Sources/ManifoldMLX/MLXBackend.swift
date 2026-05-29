@@ -97,6 +97,15 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     private var _modelContainer: (any MLXModelContainerProtocol)?
     /// Access only under `stateLock`.
     private var _generationTask: Task<Void, Never>?
+    /// Chained arbiter-teardown task. Each `unloadModel`/`secureWipe` appends
+    /// its `release`/`clearAll` to this chain (`await previousCleanup?.value`)
+    /// so teardown is serialized, and `loadModel` awaits it before issuing a
+    /// new `claim`. Without this barrier the actor could process a fresh
+    /// `claim` *before* the prior `release` for the same `backendID`,
+    /// silently dropping the new claim (the actor runs in scheduling order,
+    /// not call order). Mirrors `LlamaBackend.cleanupTask`. Access only under
+    /// `stateLock`.
+    private var _cleanupTask: Task<Void, Never>?
     /// Access only under `stateLock`.
     private var _conversationHistory: [(role: String, content: String)] = []
     /// The tool-call dialect detected for the currently loaded model.
@@ -311,6 +320,13 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             // accumulate per-instance claims rather than overwriting each
             // other's `cacheLimit`.
             let cacheBytes = cachePolicy.resolvedBytes()
+            // Barrier: the `unloadModel()` issued at the top of this method
+            // spawned a chained teardown task that calls `release`/`clearAll`
+            // on the arbiter. Await it before claiming so a stale release from
+            // the prior lineage cannot land *after* this fresh claim and drop
+            // it (the arbiter is an actor; it runs enqueued ops in scheduling
+            // order, not call order). See `_cleanupTask`.
+            await pendingCleanupTask()?.value
             await MLXResourceArbiter.shared.claim(
                 backendID: backendID,
                 requestedCacheBytes: cacheBytes
@@ -431,10 +447,15 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
 
         withStateLock { self._generationTask = task }
 
-        continuation.onTermination = { @Sendable termination in
-            if case .cancelled = termination {
-                task.cancel()
-            }
+        // Cancel on ANY termination, not just `.cancelled`. A consumer that
+        // abandons the stream early (stops iterating, or the `GenerationStream`
+        // deinits) terminates it with `.finished`; without cancelling here the
+        // `@MainActor` generation task keeps running, occupying the MLX GPU
+        // scheduler until it completes naturally. The driver already treats
+        // `Task.isCancelled` as clean completion. Matches Llama / Foundation /
+        // the SSE runner.
+        continuation.onTermination = { @Sendable _ in
+            task.cancel()
         }
 
         return generationStream
@@ -560,16 +581,50 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             return had
         }
         if hadInitializedRuntime {
-            // Fire-and-forget: the protocol contract for `unloadModel()` is
-            // synchronous, but cache eviction does not need to block teardown.
-            // The arbiter clears `MLX.Memory` only on the last release; while
-            // sibling MLX backends are still loaded, this preserves their
-            // pooled buffers — that's the whole point of routing through the
-            // arbiter rather than calling `Memory.clearCache()` directly.
+            // The protocol contract for `unloadModel()` is synchronous, but
+            // cache eviction does not need to block teardown — so we still
+            // spawn a task rather than awaiting. The arbiter clears
+            // `MLX.Memory` only on the last release; while sibling MLX backends
+            // are still loaded, this preserves their pooled buffers — that's
+            // the whole point of routing through the arbiter rather than
+            // calling `Memory.clearCache()` directly.
+            //
+            // Chain onto the prior cleanup (`await previousCleanup?.value`) and
+            // store the result so the next `loadModel` can await it before
+            // claiming. This serializes teardown vs a following load and stops
+            // a stale `release` from dropping a fresh `claim`.
             let id = backendID
-            Task { await MLXResourceArbiter.shared.release(backendID: id) }
+            let previousCleanup = withStateLock { () -> Task<Void, Never>? in
+                let prior = _cleanupTask
+                _cleanupTask = nil
+                return prior
+            }
+            let cleanup = Task {
+                await previousCleanup?.value
+                await MLXResourceArbiter.shared.release(backendID: id)
+            }
+            withStateLock { _cleanupTask = cleanup }
         }
         Self.logger.info("MLX backend unloaded")
+    }
+
+    /// Schedules the same arbiter teardown as ``unloadModel()`` and awaits the
+    /// chained cleanup task that releases this backend's cache claim.
+    ///
+    /// Production code that drops the backend can keep calling fire-and-forget
+    /// ``unloadModel()`` — but the reload loop, programmatic back-to-back load
+    /// cycles, and tests should await this so the prior `release` is guaranteed
+    /// to have completed before the next `claim`. Mirrors
+    /// `LlamaBackend.unloadAndWait()`.
+    public func unloadAndWait() async {
+        unloadModel()
+        await pendingCleanupTask()?.value
+    }
+
+    /// Snapshots the pending arbiter-cleanup task under `stateLock`. Callers
+    /// await its `.value` to barrier against an in-flight `release`/`clearAll`.
+    private func pendingCleanupTask() -> Task<Void, Never>? {
+        withStateLock { _cleanupTask }
     }
 }
 
@@ -621,8 +676,19 @@ extension MLXBackend {
             // pool is process-global, partial scrubbing isn't possible: route
             // through `clearAll` so the arbiter drops accounting state too,
             // and surviving sibling backends will re-claim on their next
-            // load.
-            Task { await MLXResourceArbiter.shared.clearAll() }
+            // load. Chain it through `_cleanupTask` (same barrier as
+            // `unloadModel`) so a following `loadModel`'s `claim` can't be
+            // dropped by this `clearAll`.
+            let previousCleanup = withStateLock { () -> Task<Void, Never>? in
+                let prior = _cleanupTask
+                _cleanupTask = nil
+                return prior
+            }
+            let cleanup = Task {
+                await previousCleanup?.value
+                await MLXResourceArbiter.shared.clearAll()
+            }
+            withStateLock { _cleanupTask = cleanup }
         }
         #endif
     }
