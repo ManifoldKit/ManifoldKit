@@ -63,6 +63,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
         modelContext.insert(session)
+        reconcileAgents(on: session, with: record.agents)
         try modelContext.save()
         await fireSessionHooks(record)
     }
@@ -87,8 +88,53 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         session.pinnedSortKey = record.pinnedAt ?? .distantPast
         session.activeAgentID = record.activeAgentID
         session.activeSkillName = record.activeSkillName
+        reconcileAgents(on: session, with: record.agents)
         try modelContext.save()
         await fireSessionHooks(record)
+    }
+
+    /// Reconciles the session's owned `Agent` `@Model` rows against the
+    /// storage-agnostic `agents` carried on the record, so a write→read
+    /// round-trip is lossless (#1495). Diffs by `Agent.id`:
+    ///   - rows whose id is absent from the record are deleted (cascade-owned,
+    ///     so removal is safe);
+    ///   - rows present in both are updated in place (mutating the live row
+    ///     rather than replacing it preserves SwiftData object identity and
+    ///     avoids churning the `@Relationship` set);
+    ///   - record agents with no matching row are inserted and appended.
+    ///
+    /// `activeAgentID` is written separately on the parent row (and via
+    /// ``setActiveAgent(sessionID:agentID:)``), so handoff state is untouched
+    /// here — this only owns the agent registry membership.
+    private func reconcileAgents(on session: ChatSession, with agents: [ManifoldInference.Agent]) {
+        let desiredByID = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        var existingByID: [UUID: Agent] = [:]
+
+        // Remove rows no longer present in the record. Iterate a snapshot so we
+        // can mutate `session.agents` while walking it.
+        for row in session.agents {
+            if let desired = desiredByID[row.id] {
+                row.name = desired.name
+                row.systemPrompt = desired.systemPrompt
+                row.descriptionText = desired.description
+                row.allowedToolNames = desired.allowedToolNames
+                existingByID[row.id] = row
+            } else {
+                modelContext.delete(row)
+            }
+        }
+
+        // Insert rows for agents the session does not yet have.
+        for agent in agents where existingByID[agent.id] == nil {
+            let row = Agent(
+                id: agent.id,
+                name: agent.name,
+                systemPrompt: agent.systemPrompt,
+                descriptionText: agent.description,
+                allowedToolNames: agent.allowedToolNames
+            )
+            session.agents.append(row)
+        }
     }
 
     /// Narrow in-place write of `updatedAt` only — mutates the live `@Model`
