@@ -83,21 +83,14 @@ UI automation tests that launch the real Example app in a simulator and drive it
 ### Running tests
 
 ```bash
-# CI-safe local gate (no hardware required). Two-invocation shape mirrors CI —
-# see CLAUDE.md Pre-push checklist for the rationale.
-scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests \
-  --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests \
-  --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests \
-  --filter ManifoldBackendsTests --filter ManifoldInferenceTests \
-  --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests \
-  --filter ManifoldServerTests --disable-default-traits --skip-update
+# Default pre-push gate on Apple Silicon.
+scripts/test.sh --profile local
 
-# Swift Testing runs in a separate process to avoid mixed-runner crashes (#681).
-# Do NOT add --parallel to ManifoldInferenceTests — the UserDefaults.standard
-# race in test_autoSelectFirstRunModel_* and download-tests legacy-key reads
-# causes non-deterministic failures (issue #910).
-scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
-  --disable-default-traits --skip-update
+# CI repro when chasing a failure from the hosted lane.
+scripts/test.sh --profile ci
+
+# Narrow to a specific suite while keeping the profile's trait/worker shape.
+scripts/test.sh --profile local --filter ManifoldCoreTests
 
 # Apple Silicon only
 swift test --filter ManifoldBackendsTests --traits MLX,Llama

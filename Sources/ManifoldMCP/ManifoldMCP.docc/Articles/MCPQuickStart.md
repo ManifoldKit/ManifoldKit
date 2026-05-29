@@ -2,6 +2,9 @@
 
 Get a remote MCP server running in your `ToolRegistry` with explicit consent copy and tool boundaries.
 
+> Important: Enable the `MCP` trait in your package dependency first. See
+> <doc:MCPGettingStarted> for the dependency snippet.
+
 ## 1) Create a descriptor
 
 ```swift,no-build

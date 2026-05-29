@@ -8,11 +8,11 @@ shorter, recipe-shaped surface for *consumers*.
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.18.0")
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.36.0")
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
-> pin to a specific tag (`exact: "0.18.0"`) and read [CHANGELOG.md](CHANGELOG.md)
+> pin to a specific tag (`exact: "0.36.0"`) and read [CHANGELOG.md](CHANGELOG.md)
 > before bumping. The `0.x` line stabilises pieces incrementally; `1.0.0` will
 > be the freeze point.
 
@@ -236,7 +236,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.18.0",
+    from: "0.36.0",
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -314,7 +314,7 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.18.0",
+    from: "0.36.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -397,5 +397,7 @@ ManifoldKit is Swift-concurrency-native. The rules:
 - The `Example/Examples/MinimalExample/` app is the canonical runnable wiring.
 - DocC catalogs live alongside the modules
   (`Sources/ManifoldUI/ManifoldUI.docc/`).
+- Contributors changing ManifoldKit internals should use `scripts/test.sh --profile local`
+  as the default pre-push gate; `CLAUDE.md` documents the full contributor workflow.
 - For contributor-facing conventions (testing, traits, release process),
   see [CLAUDE.md](CLAUDE.md). For consumer-facing API, this file is enough.

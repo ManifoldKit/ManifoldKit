@@ -1,7 +1,6 @@
 # Perf Audit Harness
 
-Runs ManifoldFuzz scenarios from the perf-audit plan and aggregates
-their RunRecord JSON into a single Markdown table.
+Aggregates ManifoldFuzz RunRecord JSON into a single Markdown table.
 
 ## Usage
 
@@ -9,5 +8,5 @@ their RunRecord JSON into a single Markdown table.
     scripts/fuzz.sh --scenario kv-reuse-coverage --backend llama --duration 60
     scripts/perf-audit/summarize.sh > /tmp/audit-ground-truth.md
 
-The summarize script reads JSON from <fuzz output dir> and produces
-one section per scenario.
+The summarize script reads JSON from `MANIFOLD_PERF_AUDIT_INPUT_DIR`
+(default: `tmp/fuzz`) and produces one section per detector/scenario id.

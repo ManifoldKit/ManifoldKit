@@ -104,6 +104,9 @@ whose `RawValue` is `String`. AppIntents already encourages this shape for
 because it ships alongside the on-device LLM-actuation features in the
 current AppIntents revision. Apps with older minimum-deployment targets
 should gate registration behind `if #available(iOS 26, macOS 26, *)`.
+The sample `AskManifoldIntent` and related helper/demo types have lower
+deployment targets; the iOS 26 / macOS 26 floor applies specifically to the
+executor bridge and its streaming support.
 
 ## Topics
 

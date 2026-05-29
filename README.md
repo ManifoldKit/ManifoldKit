@@ -80,7 +80,8 @@ Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`
 
 ## Requirements
 
-- **Swift 6.2+** (`swift-tools-version: 6.2` in your `Package.swift`) — required for `.macOS(.v26)` / `.iOS(.v26)` platform entries (`PackageDescription.SupportedPlatform.MacOSVersion.v26` was introduced in PackageDescription 6.2).
+- **Swift 6.1+** (`swift-tools-version: 6.1` in this package's `Package.swift`)
+- If your app's own manifest declares `.macOS(.v26)` / `.iOS(.v26)`, use **Swift 6.2+** there — those platform entries were introduced in PackageDescription 6.2.
 - iOS 18+ / macOS 15+
 - Apple Foundation Models require iOS 26+ / macOS 26+
 

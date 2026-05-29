@@ -101,16 +101,12 @@ keeps them honest, plus DX walkthroughs and cold-start conformance gates — see
 failed push wastes ~25 billed minutes.
 
 ```bash
-swift test --filter ManifoldCoreTests --disable-default-traits \
-  && swift test --filter ManifoldInferenceTests --disable-default-traits \
-  && swift test --filter ManifoldInferenceSwiftTestingTests --disable-default-traits \
-  && swift test --filter ManifoldUITests --disable-default-traits \
-  && swift test --filter ManifoldUIModelManagementTests --disable-default-traits \
-  && swift test --filter ManifoldMCPTests --disable-default-traits \
-  && swift test --filter ManifoldBackendsTests --disable-default-traits \
-  && swift test --filter ManifoldTestSupportTests --disable-default-traits \
-  && swift test --filter ManifoldAppIntentsTests --disable-default-traits
+scripts/test.sh --profile local
 ```
+
+Use `scripts/test.sh` as the source of truth for the gate shape: it preserves the
+required two-invocation split between XCTest and Swift Testing. When you're
+reproducing a CI-only failure locally, use `scripts/test.sh --profile ci`.
 
 Never push based on a subset passing. After rebasing, always re-run the full suite —
 conflicts can silently break tests that compiled fine before.

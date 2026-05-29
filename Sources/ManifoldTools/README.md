@@ -51,7 +51,10 @@ Supported assertion kinds:
 |------|---------|-------------|
 | `containsLiteral` | `"value": String` | `finalAnswer.contains(value)` |
 | `equalsLiteral` | `"value": String` | `finalAnswer == value` |
-| `containsAny` | `"values": [String]` | Every entry in `values` is present |
+| `containsAll` | `"values": [String]` | Every entry in `values` is present |
+| `toolInvoked` | `"value": String` | Tool `value` was dispatched at least once |
+| `toolResultContains` | `"value": String`, `"values": [String]` | At least one result for tool `value` contains every entry in `values` |
+| `toolResultErrorKind` | `"value": String`, `"values": [String]` | At least one result for tool `value` has `errorKind` equal to the first entry in `values` |
 
 To add a scenario, drop a JSON file in `Scenarios/built-in/`. No Swift recompile needed — the loader enumerates the directory at runtime.
 

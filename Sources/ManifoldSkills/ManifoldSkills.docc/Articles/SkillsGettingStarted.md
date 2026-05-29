@@ -6,6 +6,10 @@ Wire filesystem-discovered skills into a chat session.
 
 ``SkillLoader`` walks the default Claude-Code-compatible roots and returns the parsed `Skill` values. The default search paths are resolved lazily so iOS / sandboxed builds with no `$HOME` don't crash at module init.
 
+> Warning: **macOS-only in v1.** On iOS, ``SkillLoader/discover()`` returns `[]`
+> and logs a one-time warning. Skill discovery requires entitlement / app-group
+> design that has not shipped yet.
+
 ```swift,no-build
 import ManifoldSkills
 

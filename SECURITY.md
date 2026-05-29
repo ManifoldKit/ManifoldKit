@@ -23,9 +23,9 @@ minors are end-of-life on the day a new minor ships.
 
 | Version       | Status                          |
 |---------------|---------------------------------|
-| `0.12.x`      | Supported (security + bug fix)  |
-| `0.11.x`      | Supported until `0.13.0`        |
-| `< 0.11`      | End-of-life                     |
+| `0.36.x`      | Supported (security + bug fix)  |
+| `0.35.x`      | Supported until `0.37.0`        |
+| `< 0.35`      | End-of-life                     |
 
 When ManifoldKit reaches `1.0.0`, this table will switch to a longer support window.
 
@@ -54,7 +54,7 @@ to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.12.0",
+    from: "0.36.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -85,7 +85,7 @@ and the import-graph rule in the same audit):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.12.0",
+    from: "0.36.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -115,7 +115,7 @@ Same `offline` guarantees, plus:
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.12.0",
+    from: "0.36.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -134,7 +134,7 @@ transport-security boundary.
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.12.0",
+    from: "0.36.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
@@ -190,7 +190,7 @@ Include:
 
 - A description of the vulnerability and impact.
 - Steps to reproduce.
-- Affected versions (the `0.12.x` baseline plus any earlier minor you've reproduced
+- Affected versions (the `0.36.x` baseline plus any earlier minor you've reproduced
   on).
 - Any potential mitigations or workarounds you've identified.
 
