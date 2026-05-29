@@ -449,8 +449,11 @@ struct ConversationTurnExecutor: Sendable {
     //
     // All four turn flows (send, regenerate, edit, branch) converge here
     // after their respective setup steps. The caller is responsible for
-    // fetching a clean `history` slice; this method owns context assembly →
-    // enqueue → drain → finalise.
+    // fetching a clean `history` slice; this method orchestrates the eight
+    // phases of a turn (context assembly → preparation → enqueue → drain →
+    // finalise → post-turn effects), each split out into its own method below
+    // for independent readability and testability. The orchestration here is
+    // a thin sequence; the behaviour lives in the phase methods.
 
     private func runGenerationTurn(
         sessionID: UUID,
@@ -459,6 +462,84 @@ struct ConversationTurnExecutor: Sendable {
         config: TurnConfig,
         handle: ConversationStreamHandle
     ) async {
+        // Phase 1 — context assembly. Returns `nil` on a context-assembly
+        // error (the error event has already been emitted).
+        guard let assembled = await assembleContext(
+            sessionID: sessionID,
+            userPrompt: userPrompt,
+            history: history
+        ) else {
+            return
+        }
+
+        // Phase 2 — turn setup / agent + hook configuration. Builds the
+        // generation plan (system prompt, structured history, advertised
+        // tools, assistant message slot).
+        let plan = await prepareGeneration(
+            sessionID: sessionID,
+            history: history,
+            config: config,
+            assembled: assembled
+        )
+
+        // Enqueue the request. Returns `nil` on an enqueue error (the error
+        // event has already been emitted).
+        guard let enqueued = await enqueueGeneration(
+            sessionID: sessionID,
+            config: config,
+            plan: plan,
+            handle: handle
+        ) else {
+            return
+        }
+
+        // Phase 3 — drain the stream.
+        var state = GenerationTurnState(
+            assistantMessage: plan.assistantMessage,
+            sessionRecord: assembled.sessionRecord
+        )
+        await drainStream(
+            sessionID: sessionID,
+            config: config,
+            handle: handle,
+            token: enqueued.token,
+            stream: enqueued.stream,
+            state: &state
+        )
+
+        // Phase 4 — finalise / persist the assistant message. Returns the
+        // terminal outcome; `nil` means a terminal path already emitted its
+        // events and returned (error / cancel / empty / persistence failure).
+        guard let outcome = await finalizeTurn(
+            sessionID: sessionID,
+            handle: handle,
+            token: enqueued.token,
+            state: &state
+        ) else {
+            return
+        }
+
+        // Phase 5 — post-turn side effects (usage recording, generation
+        // hooks, compression).
+        await runPostTurnEffects(
+            sessionID: sessionID,
+            assembled: assembled,
+            state: state,
+            usage: outcome.usage
+        )
+    }
+
+    // MARK: Phase 1 — context assembly
+
+    /// Emits `.beforeContextAssembly` / `.contextAssembled`, runs the budget
+    /// planner / pipeline / RAG slot merge, and reads the per-turn session +
+    /// bindings snapshot. Returns `nil` (after emitting `.errorRaised`) on a
+    /// context-assembly failure so the caller aborts the turn.
+    private func assembleContext(
+        sessionID: UUID,
+        userPrompt: String?,
+        history: [ChatMessageRecord]
+    ) async -> AssembledContext? {
         let messageCount = history.count
 
         // Context assembly hook. Always emit `.beforeContextAssembly` and
@@ -477,21 +558,10 @@ struct ConversationTurnExecutor: Sendable {
         // can inspect the conversation without each needing a separate fetch.
         // conversationText is nil on the first turn (empty history) — providers
         // must treat nil as "no text available" rather than "empty conversation".
-        let conversationText: String? = history.isEmpty ? nil : {
-            let joined = history
-                .compactMap { record -> String? in
-                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
-                    return text.isEmpty ? nil : text
-                }
-                .joined(separator: " ")
-                .lowercased()
-            return joined.isEmpty ? nil : joined
-        }()
-
         let turnContext = TurnContext(
             sessionID: sessionID,
             messageCount: messageCount,
-            conversationText: conversationText,
+            conversationText: Self.conversationText(from: history),
             tokenizer: nil  // backends own their tokenizer; providers use HeuristicTokenizer fallback
         )
 
@@ -508,14 +578,14 @@ struct ConversationTurnExecutor: Sendable {
                 )
             } catch {
                 emit(.errorRaised(.contextAssembly(error)))
-                return
+                return nil
             }
         } else if let pipeline {
             do {
                 slots = try await pipeline.assemble(messageCount: messageCount)
             } catch {
                 emit(.errorRaised(.contextAssembly(error)))
-                return
+                return nil
             }
         } else {
             slots = []
@@ -540,7 +610,7 @@ struct ConversationTurnExecutor: Sendable {
         // partially update us. `sessionRecord` is `nil` for sessionless
         // flows or hosts without a SessionStore wired in; both paths are
         // identical to the legacy single-agent surface.
-        var sessionRecord: ChatSessionRecord? = await persistence.fetchSession(sessionID: sessionID)
+        let sessionRecord: ChatSessionRecord? = await persistence.fetchSession(sessionID: sessionID)
 
         // Snapshot the host-mutable bindings once per turn. A
         // `ConversationRuntime.updateSessionToolSources(_:)` /
@@ -548,6 +618,31 @@ struct ConversationTurnExecutor: Sendable {
         // effect on the *next* turn — deliberately, so a long in-flight
         // generation isn't reconfigured mid-stream.
         let (turnSessionToolSources, turnHookRegistry) = await bindings.snapshot()
+
+        return AssembledContext(
+            slots: slots,
+            ragCitations: ragCitations,
+            sessionRecord: sessionRecord,
+            turnSessionToolSources: turnSessionToolSources,
+            turnHookRegistry: turnHookRegistry
+        )
+    }
+
+    // MARK: Phase 2 — turn setup / agent + hook configuration
+
+    /// Derives the active agent, wires the handoff detector + pre-tool-use
+    /// hook, composes the system prompt, builds the structured-history
+    /// snapshot (with multi-agent boundary message), resolves advertised
+    /// tools, and constructs the assistant message slot. No early-return
+    /// paths — this phase is pure setup.
+    private func prepareGeneration(
+        sessionID: UUID,
+        history: [ChatMessageRecord],
+        config: TurnConfig,
+        assembled: AssembledContext
+    ) async -> GenerationPlan {
+        let sessionRecord = assembled.sessionRecord
+        let slots = assembled.slots
 
         let activeAgent: Agent? = {
             guard let sessionRecord, let activeID = sessionRecord.activeAgentID else { return nil }
@@ -582,7 +677,7 @@ struct ConversationTurnExecutor: Sendable {
         // adapt the registry into the closure shape the dispatch loop
         // accepts. The adapter enforces the sanitize-only invariant and
         // emits `.hookFired(event: "preToolUse", ...)` on every call.
-        if let turnHookRegistry {
+        if let turnHookRegistry = assembled.turnHookRegistry {
             let emit = self.eventSink
             let adapter = PreToolUseHookAdapter.make(
                 registry: turnHookRegistry,
@@ -600,23 +695,13 @@ struct ConversationTurnExecutor: Sendable {
         // can render a "Sources" disclosure beneath the assistant bubble.
         // `nil` when RAG didn't run for this turn (no service, no user
         // prompt, or retrieval threw).
-        var assistantMessage = ChatMessageRecord(
+        let assistantMessage = ChatMessageRecord(
             role: .assistant,
             content: "",
             sessionID: sessionID,
-            citations: ragCitations.isEmpty ? nil : ragCitations,
+            citations: assembled.ragCitations.isEmpty ? nil : assembled.ragCitations,
             agentID: activeAgent?.id
         )
-        let assistantID = assistantMessage.id
-        func writeFinalContent(_ text: String, into message: inout ChatMessageRecord) {
-            message.contentParts.removeAll {
-                if case .text = $0 { return true }
-                return false
-            }
-            if !text.isEmpty {
-                message.contentParts.append(.text(text))
-            }
-        }
 
         // Multi-agent: re-derive the active system prompt from the
         // session's `activeAgentID` per turn (plan §Handoff semantics
@@ -674,28 +759,45 @@ struct ConversationTurnExecutor: Sendable {
         // unregistering the executor. Fetched on the main actor because the
         // registry and InferenceService accessors are both MainActor-isolated.
         let advertisedTools: [ToolDefinition] = await readAdvertisedToolDefinitions(
-            sessionToolSources: turnSessionToolSources,
+            sessionToolSources: assembled.turnSessionToolSources,
             sessionRecord: sessionRecord
         )
 
+        return GenerationPlan(
+            composedSystemPrompt: composedSystemPrompt,
+            structuredHistory: structuredHistory,
+            advertisedTools: advertisedTools,
+            assistantMessage: assistantMessage
+        )
+    }
+
+    /// Enqueues the backend request and registers the in-flight handle.
+    /// Returns `nil` (after emitting `.errorRaised(.inference(...))`) on an
+    /// enqueue failure. Emits `.streamStarted` once registration completes.
+    private func enqueueGeneration(
+        sessionID: UUID,
+        config: TurnConfig,
+        plan: GenerationPlan,
+        handle: ConversationStreamHandle
+    ) async -> EnqueuedGeneration? {
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
             (token, stream) = try await inferenceService.enqueueAsync(
-                structuredMessages: structuredHistory,
-                systemPrompt: composedSystemPrompt,
+                structuredMessages: plan.structuredHistory,
+                systemPrompt: plan.composedSystemPrompt,
                 temperature: config.temperature,
                 topP: config.topP,
                 repeatPenalty: config.repeatPenalty,
                 maxOutputTokens: config.maxOutputTokens,
                 maxThinkingTokens: config.maxThinkingTokens,
-                tools: advertisedTools,
+                tools: plan.advertisedTools,
                 priority: .userInitiated,
                 sessionID: sessionID
             )
         } catch {
             emit(.errorRaised(.inference(error)))
-            return
+            return nil
         }
 
         await registry.register(handle: handle, token: token)
@@ -709,19 +811,35 @@ struct ConversationTurnExecutor: Sendable {
             await inferenceService.cancelAsync(token)
         }
 
-        emit(.streamStarted(messageID: assistantID))
+        emit(.streamStarted(messageID: plan.assistantMessage.id))
 
-        // Drain the stream, mirroring GenerationQueue's four features:
-        //   (a) token batcher — coalesce per-token events into UI-cadenced batches
-        //   (b) thinking-block disclosure — track/batch reasoning tokens and emit
-        //       thinkingStarted / thinkingUpdated / thinkingFinalized events
-        //   (c) tool dispatch — persist toolCall + toolResult content parts and
-        //       emit toolCallRequested / toolCallCompleted events
-        //   (d) loop detection — stop the stream when RepetitionDetector fires
-        var accumulated = ""
-        var emptyResponse = true
-        var streamFailed: ConversationError?
-        var tokenUsage: (promptTokens: Int, completionTokens: Int)?
+        return EnqueuedGeneration(token: token, stream: stream)
+    }
+
+    // MARK: Phase 3 — stream drain
+
+    /// Drains the backend stream, mirroring GenerationQueue's four features:
+    ///   (a) token batcher — coalesce per-token events into UI-cadenced batches
+    ///   (b) thinking-block disclosure — track/batch reasoning tokens and emit
+    ///       thinkingStarted / thinkingUpdated / thinkingFinalized events
+    ///   (c) tool dispatch — persist toolCall + toolResult content parts and
+    ///       emit toolCallRequested / toolCallCompleted events
+    ///   (d) loop detection — stop the stream when RepetitionDetector fires
+    ///
+    /// Mutates `state` in place: accumulated text, the assistant message's
+    /// tool content parts, observed token usage, the streaming failure (if
+    /// any), and the session record (on a mid-stream agent handoff). All
+    /// post-loop flushing of pending token / thinking buffers happens here so
+    /// the finalisation phase sees a fully-drained state.
+    private func drainStream(
+        sessionID: UUID,
+        config: TurnConfig,
+        handle: ConversationStreamHandle,
+        token: InferenceService.GenerationRequestToken,
+        stream: GenerationStream,
+        state: inout GenerationTurnState
+    ) async {
+        let assistantID = state.assistantMessage.id
 
         var consumer = GenerationStreamConsumer(loopDetectionEnabled: config.loopDetectionEnabled)
         var batcher = StreamingTokenBatcher(
@@ -743,11 +861,11 @@ struct ConversationTurnExecutor: Sendable {
 
                 switch consumer.handle(event) {
                 case .appendText(let text):
-                    emptyResponse = false
+                    state.emptyResponse = false
                     if let batch = batcher.append(text, now: ContinuousClock.now) {
-                        accumulated += batch
+                        state.accumulated += batch
                         emit(.tokenEmitted(messageID: assistantID, delta: batch))
-                        if consumer.shouldStopForLoop(content: accumulated) {
+                        if consumer.shouldStopForLoop(content: state.accumulated) {
                             await inferenceService.cancelAsync(token)
                             emit(.loopDetected(messageID: assistantID))
                             break eventLoop
@@ -786,11 +904,11 @@ struct ConversationTurnExecutor: Sendable {
                     emit(.thinkingFinalized(messageID: assistantID, text: block, signature: signature))
 
                 case .dispatchToolCall(let call):
-                    assistantMessage.contentParts.append(.toolCall(call))
+                    state.assistantMessage.contentParts.append(.toolCall(call))
                     emit(.toolCallRequested(call))
 
                 case .appendToolResult(let result):
-                    assistantMessage.contentParts.append(.toolResult(result))
+                    state.assistantMessage.contentParts.append(.toolResult(result))
                     emit(.toolCallCompleted(result.callId, result))
 
                 case .toolLoopLimitReached(let iterations):
@@ -799,7 +917,7 @@ struct ConversationTurnExecutor: Sendable {
                     )))
 
                 case .recordUsage(let prompt, let completion):
-                    tokenUsage = (prompt, completion)
+                    state.tokenUsage = (prompt, completion)
 
                 case .recordHandoff(let handoff):
                     // Persist the active-agent swap and emit the typed
@@ -807,11 +925,11 @@ struct ConversationTurnExecutor: Sendable {
                     // chip. The next turn re-derives the system prompt
                     // from the new activeAgentID and prepends the boundary
                     // message into structuredHistory.
-                    if var current = sessionRecord {
+                    if var current = state.sessionRecord {
                         let previousID = current.activeAgentID
                         current.activeAgentID = handoff.targetAgentID
                         _ = await persistence.updateSession(current)
-                        sessionRecord = current
+                        state.sessionRecord = current
                         emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
                     } else {
                         Log.inference.warning(
@@ -832,15 +950,15 @@ struct ConversationTurnExecutor: Sendable {
             // user-initiated cancel.
             let cancelled = await isCancelled(handle: handle) || error is CancellationError
             if cancelled {
-                streamFailed = .cancelled
+                state.streamFailed = .cancelled
             } else {
-                streamFailed = .inference(error)
+                state.streamFailed = .inference(error)
             }
         }
 
         // Flush remaining buffered tokens (normal end, error, or cancellation).
         if let batch = batcher.flush(now: ContinuousClock.now) {
-            accumulated += batch
+            state.accumulated += batch
             emit(.tokenEmitted(messageID: assistantID, delta: batch))
         }
 
@@ -854,6 +972,23 @@ struct ConversationTurnExecutor: Sendable {
             pendingThinkingSignature = nil
             emit(.thinkingFinalized(messageID: assistantID, text: block, signature: signature))
         }
+    }
+
+    // MARK: Phase 4 — finalisation / persistence
+
+    /// Resolves token usage, decides the finish reason, and runs the terminal
+    /// persistence paths (error / cancelled / empty / happy). Returns `nil`
+    /// when a terminal path has already emitted its events and the turn must
+    /// stop (error / cancel / empty / persistence failure); returns a
+    /// ``FinalizedTurn`` carrying the resolved usage only on the happy path so
+    /// the caller proceeds to post-turn effects.
+    private func finalizeTurn(
+        sessionID: UUID,
+        handle: ConversationStreamHandle,
+        token: InferenceService.GenerationRequestToken,
+        state: inout GenerationTurnState
+    ) async -> FinalizedTurn? {
+        let assistantID = state.assistantMessage.id
 
         // Finalise the assistant message. If the stream produced no visible
         // content and was not cancelled, drop it — matches the
@@ -878,14 +1013,14 @@ struct ConversationTurnExecutor: Sendable {
         // the main actor — `InferenceService.lastTokenUsage` is MainActor-
         // isolated.
         let usage: (promptTokens: Int, completionTokens: Int)?
-        if let tokenUsage {
+        if let tokenUsage = state.tokenUsage {
             usage = tokenUsage
         } else {
             usage = await readLastTokenUsage()
         }
         if let usage {
-            assistantMessage.promptTokens = usage.promptTokens
-            assistantMessage.completionTokens = usage.completionTokens
+            state.assistantMessage.promptTokens = usage.promptTokens
+            state.assistantMessage.completionTokens = usage.completionTokens
             emit(.tokenUsageRecorded(
                 messageID: assistantID,
                 promptTokens: usage.promptTokens,
@@ -897,7 +1032,7 @@ struct ConversationTurnExecutor: Sendable {
         // parts, even if no visible text tokens arrived. Used below so all
         // three terminal paths (error, cancellation, normal) persist tool-only
         // turns rather than silently dropping them.
-        let hasToolContent = assistantMessage.contentParts.contains { part in
+        let hasToolContent = state.assistantMessage.contentParts.contains { part in
             if case .toolCall = part { return true }
             if case .toolResult = part { return true }
             return false
@@ -906,28 +1041,28 @@ struct ConversationTurnExecutor: Sendable {
         let reason: FinishReason
         if cancelled {
             reason = .cancelled
-        } else if let streamFailed {
+        } else if let streamFailed = state.streamFailed {
             // An inference error during streaming. Persist whatever we have
             // (parity with ChatViewModel.stopGeneration's partial-save
             // behaviour) and emit error. We do not collapse this into
             // `.streamFinished(reason: .empty)` because consumers need to
             // know the run failed.
-            writeFinalContent(accumulated, into: &assistantMessage)
-            if !accumulated.isEmpty || hasToolContent {
+            Self.writeFinalContent(state.accumulated, into: &state.assistantMessage)
+            if !state.accumulated.isEmpty || hasToolContent {
                 do {
-                    try await persistence.insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
+                    try await persistence.insertMessage(state.assistantMessage)
+                    emit(.messageInserted(state.assistantMessage))
                 } catch {
                     emit(.errorRaised(.persistence(error)))
                     emit(.errorRaised(streamFailed))
                     emit(.streamFinished(messageID: assistantID, reason: .stop))
-                    return
+                    return nil
                 }
             }
             emit(.errorRaised(streamFailed))
             emit(.streamFinished(messageID: assistantID, reason: .stop))
-            return
-        } else if emptyResponse && !hasToolContent {
+            return nil
+        } else if state.emptyResponse && !hasToolContent {
             reason = .empty
         } else {
             reason = .stop
@@ -936,11 +1071,11 @@ struct ConversationTurnExecutor: Sendable {
         if cancelled {
             // On cancel, persist whatever streamed in so far if non-empty —
             // matches ChatViewModel.stopGeneration's behaviour.
-            if !accumulated.isEmpty || hasToolContent {
-                writeFinalContent(accumulated, into: &assistantMessage)
+            if !state.accumulated.isEmpty || hasToolContent {
+                Self.writeFinalContent(state.accumulated, into: &state.assistantMessage)
                 do {
-                    try await persistence.insertMessage(assistantMessage)
-                    emit(.messageInserted(assistantMessage))
+                    try await persistence.insertMessage(state.assistantMessage)
+                    emit(.messageInserted(state.assistantMessage))
                 } catch {
                     emit(.errorRaised(.persistence(error)))
                     // Fall through and still emit streamFinished — the
@@ -948,7 +1083,7 @@ struct ConversationTurnExecutor: Sendable {
                 }
             }
             emit(.streamFinished(messageID: assistantID, reason: reason))
-            return
+            return nil
         }
 
         if reason == .empty {
@@ -969,28 +1104,47 @@ struct ConversationTurnExecutor: Sendable {
             emptyResponseObserver?(ConversationRuntime.EmptyResponseDiagnostic(sessionID: sessionID, backendName: backendName))
             emit(.streamFinished(messageID: assistantID, reason: reason))
             emit(.afterGeneration(messageID: assistantID, finalText: ""))
-            return
+            return nil
         }
 
         // Happy path: persist the assistant message.
-        writeFinalContent(accumulated, into: &assistantMessage)
+        Self.writeFinalContent(state.accumulated, into: &state.assistantMessage)
         do {
-            try await persistence.insertMessage(assistantMessage)
-            emit(.messageInserted(assistantMessage))
+            try await persistence.insertMessage(state.assistantMessage)
+            emit(.messageInserted(state.assistantMessage))
         } catch {
             emit(.errorRaised(.persistence(error)))
             emit(.streamFinished(messageID: assistantID, reason: reason))
-            return
+            return nil
         }
 
         emit(.streamFinished(messageID: assistantID, reason: reason))
-        emit(.afterGeneration(messageID: assistantID, finalText: accumulated))
+        emit(.afterGeneration(messageID: assistantID, finalText: state.accumulated))
 
         // Touch session timestamp so the sidebar reflects the assistant
         // turn's recency (parity with ChatViewModel's behaviour).
         if await persistence.touchSession(sessionID: sessionID) == false {
             emit(.sessionTouchFailed(sessionID: sessionID))
         }
+
+        return FinalizedTurn(usage: usage)
+    }
+
+    // MARK: Phase 5 — post-turn side effects
+
+    /// Records usage, fires post-generation hooks, and runs the compression
+    /// check. Reached only on the happy path (cancel / error / empty all
+    /// return before this point). All work here is best-effort: a failure is
+    /// logged but never surfaced to the user, because generation already
+    /// succeeded.
+    private func runPostTurnEffects(
+        sessionID: UUID,
+        assembled: AssembledContext,
+        state: GenerationTurnState,
+        usage: (promptTokens: Int, completionTokens: Int)?
+    ) async {
+        let assistantMessage = state.assistantMessage
+        let turnHookRegistry = assembled.turnHookRegistry
 
         // Best-effort usage recording. A persistence failure here must not
         // abort the turn loop or surface an error to the user — the
@@ -1152,24 +1306,44 @@ struct ConversationTurnExecutor: Sendable {
     }
 
     private func makeTurnContext(sessionID: UUID, history: [ChatMessageRecord]) -> TurnContext {
-        let conversationText: String? = history.isEmpty ? nil : {
-            let joined = history
-                .compactMap { record -> String? in
-                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
-                    return text.isEmpty ? nil : text
-                }
-                .joined(separator: " ")
-                .lowercased()
-            return joined.isEmpty ? nil : joined
-        }()
         var context = TurnContext(
             sessionID: sessionID,
             messageCount: history.count,
-            conversationText: conversationText,
+            conversationText: Self.conversationText(from: history),
             tokenizer: nil
         )
         context.appData = turnContextProvider?(sessionID)
         return context
+    }
+
+    /// Lower-cased, whitespace-joined text of every message's text parts.
+    /// `nil` on the first turn (empty history) so content-matching providers
+    /// treat it as "no text available" rather than "empty conversation".
+    /// Shared by ``makeTurnContext`` and Phase 1 context assembly — both
+    /// historically built this byte-for-byte identically.
+    private static func conversationText(from history: [ChatMessageRecord]) -> String? {
+        guard !history.isEmpty else { return nil }
+        let joined = history
+            .compactMap { record -> String? in
+                let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
+                return text.isEmpty ? nil : text
+            }
+            .joined(separator: " ")
+            .lowercased()
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// Replaces all text content parts on `message` with a single `.text`
+    /// part for `text` (or none when `text` is empty), preserving any
+    /// tool-call / tool-result parts already accumulated during the drain.
+    private static func writeFinalContent(_ text: String, into message: inout ChatMessageRecord) {
+        message.contentParts.removeAll {
+            if case .text = $0 { return true }
+            return false
+        }
+        if !text.isEmpty {
+            message.contentParts.append(.text(text))
+        }
     }
 
     /// Reads the backend's context window size from the main actor.
