@@ -49,9 +49,68 @@ struct MessagePartsView: View {
     }
 
     var body: some View {
-        ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-            partView(for: part)
+        // Identity must survive non-terminal insertions. The streaming
+        // coordinator inserts `.thinking` *before* the first text part
+        // (ChatGenerationCoordinator's `.thinkingStarted` handler), so an
+        // offset-based id would renumber every following part on insert,
+        // tearing down `AssistantMarkdownView`/`ToolInvocationView` state
+        // instead of moving the views. `keyedParts` derives a stable id from
+        // each part's kind + ordinal-within-kind (tools use their call id), so
+        // inserting a thinking block ahead of text leaves the text parts'
+        // identities untouched.
+        ForEach(Self.keyedParts(parts), id: \.key) { keyed in
+            partView(for: keyed.part)
         }
+    }
+
+    /// A `MessagePart` paired with a stable identity for `ForEach`.
+    struct KeyedPart: Identifiable {
+        let key: String
+        let part: MessagePart
+        var id: String { key }
+    }
+
+    /// Derives a stable, unique-within-message key for each part.
+    ///
+    /// - Tool calls/results key on their `ToolCall.id` / `ToolResult.callId`,
+    ///   which are stable across the streaming lifecycle (the call id is
+    ///   minted once and the result references it).
+    /// - All other parts key on `"<kind>-<ordinal>"` where the ordinal counts
+    ///   only occurrences of that same kind. Counting per-kind (rather than
+    ///   across all parts) is what makes the scheme insertion-stable: inserting
+    ///   a `.thinking` part ahead of existing `.text` parts does not change any
+    ///   text part's ordinal, so `"text-0"` keeps pointing at the same view.
+    ///
+    /// Tool ids are prefixed (`tool:`) so they can never collide with a
+    /// synthesized `"toolCall-<n>"`/`"toolResult-<n>"` fallback key.
+    static func keyedParts(_ parts: [MessagePart]) -> [KeyedPart] {
+        var ordinals: [String: Int] = [:]
+        return parts.map { part in
+            let key: String
+            switch part {
+            case .toolCall(let call):
+                key = "tool:call:\(call.id)"
+            case .toolResult(let result):
+                key = "tool:result:\(result.callId)"
+            case .text:
+                key = nextKey(for: "text", in: &ordinals)
+            case .thinking:
+                key = nextKey(for: "thinking", in: &ordinals)
+            case .image:
+                key = nextKey(for: "image", in: &ordinals)
+            case .audio:
+                key = nextKey(for: "audio", in: &ordinals)
+            case .generatedImage:
+                key = nextKey(for: "generatedImage", in: &ordinals)
+            }
+            return KeyedPart(key: key, part: part)
+        }
+    }
+
+    private static func nextKey(for kind: String, in ordinals: inout [String: Int]) -> String {
+        let ordinal = ordinals[kind, default: 0]
+        ordinals[kind] = ordinal + 1
+        return "\(kind)-\(ordinal)"
     }
 
     @ViewBuilder
