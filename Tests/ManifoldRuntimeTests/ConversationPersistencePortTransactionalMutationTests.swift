@@ -55,6 +55,56 @@ final class ConversationPersistencePortTransactionalMutationTests: XCTestCase {
         XCTAssertEqual(store.updateCallCount, 1)
         XCTAssertEqual(store.deleteCallCount, 1)
     }
+
+    func test_deleteSession_forwardsToSessionStore() async throws {
+        let store = LegacyMessageStore()
+        let sessionStore = RecordingSessionStore()
+        let port = ConversationPersistencePort(messageStore: store, sessionStore: sessionStore)
+
+        let sessionID = UUID()
+        await port.deleteSession(sessionID)
+
+        XCTAssertEqual(sessionStore.deletedSessionIDs, [sessionID])
+    }
+
+    func test_deleteSession_swallowsSessionStoreError() async throws {
+        let store = LegacyMessageStore()
+        let sessionStore = RecordingSessionStore()
+        sessionStore.shouldThrowOnDelete = true
+        let port = ConversationPersistencePort(messageStore: store, sessionStore: sessionStore)
+
+        // Best-effort: must not throw even when the underlying delete fails, so
+        // the branch flow surfaces the original copy error, not the cleanup error.
+        await port.deleteSession(UUID())
+        XCTAssertEqual(sessionStore.deletedSessionIDs.count, 1)
+    }
+}
+
+@MainActor
+private final class RecordingSessionStore: SessionStore {
+    private(set) var deletedSessionIDs: [UUID] = []
+    var shouldThrowOnDelete = false
+    private var sessions: [UUID: ChatSessionRecord] = [:]
+
+    enum StoreError: Error { case deleteFailed }
+
+    func insertSession(_ session: ChatSessionRecord) async throws {
+        sessions[session.id] = session
+    }
+
+    func updateSession(_ session: ChatSessionRecord) async throws {
+        sessions[session.id] = session
+    }
+
+    func deleteSession(_ sessionID: UUID) async throws {
+        deletedSessionIDs.append(sessionID)
+        if shouldThrowOnDelete { throw StoreError.deleteFailed }
+        sessions.removeValue(forKey: sessionID)
+    }
+
+    func fetchSessions() async throws -> [ChatSessionRecord] {
+        Array(sessions.values)
+    }
 }
 
 @MainActor
