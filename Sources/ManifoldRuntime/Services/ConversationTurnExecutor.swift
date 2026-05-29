@@ -288,27 +288,25 @@ struct ConversationTurnExecutor: Sendable {
             throw ConversationError.messageNotFound(messageID)
         }
 
-        // Update the edited message's content in the store.
+        // Apply the edit plus any trailing deletions as one logical batch.
+        // Transactional stores commit atomically; non-transactional stores fall
+        // back to sequential writes, but observers still must not see any
+        // `.messageUpdated` / `.messageRemoved` events unless the whole batch
+        // completes successfully.
         var updatedMessage = history[index]
         updatedMessage.content = text
+        let trailing = Array(history[(index + 1)...])
+
+        var mutations: [MessageStoreMutation] = [.update(updatedMessage)]
+        mutations.append(contentsOf: trailing.map { .delete($0.id) })
         do {
-            try await persistence.updateMessage(updatedMessage)
+            try await persistence.performMessageMutations(mutations)
         } catch {
             throw ConversationError.persistence(error)
         }
-        emit(.messageUpdated(updatedMessage))
 
-        // Delete all messages after the edited one. On first failure stop
-        // deleting and throw — callers reload from the store on failure;
-        // the partial deletion is acknowledged, matching ChatViewModel's
-        // behaviour.
-        let trailing = Array(history[(index + 1)...])
+        emit(.messageUpdated(updatedMessage))
         for msg in trailing {
-            do {
-                try await persistence.deleteMessage(msg.id)
-            } catch {
-                throw ConversationError.persistence(error)
-            }
             emit(.messageRemoved(messageID: msg.id))
         }
 
