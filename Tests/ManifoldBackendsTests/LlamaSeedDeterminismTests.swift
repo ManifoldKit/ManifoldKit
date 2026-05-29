@@ -100,6 +100,14 @@ final class LlamaSeedDeterminismTests: XCTestCase {
                 text += chunk
             }
         }
+        // The stream's last element fires from `continuation.finish()`, but
+        // `LlamaBackend` clears `isGenerating` in the generation task's `defer`,
+        // which has no happens-before relationship with the consumer loop exiting
+        // above. Without awaiting the task to settle, the *next* generate() can
+        // race the defer and throw `.alreadyGenerating` (observed under
+        // full-suite load). Awaiting the in-flight task guarantees the defer has
+        // run and `isGenerating == false` before the caller starts gen #2.
+        await backend.awaitGenerationSettled()
         return text
     }
 }

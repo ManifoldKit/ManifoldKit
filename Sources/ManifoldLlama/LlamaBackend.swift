@@ -488,6 +488,25 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     // MARK: - Control
 
+    /// Awaits completion of the in-flight generation task, if any.
+    ///
+    /// `isGenerating` is cleared in the generation task's `defer` block, which
+    /// runs *after* the stream's `continuation.finish()` — so a caller that has
+    /// just drained `generate(...)`'s stream has no happens-before guarantee that
+    /// the flag has flipped back to `false`. Issuing the next `generate(...)`
+    /// immediately can therefore race the defer and trip `.alreadyGenerating`.
+    ///
+    /// Await this between back-to-back generations on the same loaded model when
+    /// deterministic readiness matters (the determinism tests, programmatic
+    /// regenerate loops). It awaits the same `Task` whose `defer` releases the
+    /// guard, so on return `isGenerating == false` is guaranteed without
+    /// unloading the model — unlike ``unloadAndWait()``, the loaded context and
+    /// KV state are preserved for the next turn.
+    public func awaitGenerationSettled() async {
+        let task = withStateLock { generationTask }
+        await task?.value
+    }
+
     public func stopGeneration() {
         // Set the atomic flag first so the decode loop can break on its very next
         // iteration check — even before the lock is acquired below.
