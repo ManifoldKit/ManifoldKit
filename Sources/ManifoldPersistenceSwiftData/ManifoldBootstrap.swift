@@ -68,7 +68,7 @@ public struct RAGConfiguration: Sendable {
 ///
 /// ### Splash-screen progress
 ///
-/// Call ``build(configuration:inferenceService:diagnostics:makeModelContainer:)``
+/// Call ``build(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:sessionToolSources:hookRegistry:makeModelContainer:)``
 /// instead of `init` when you want to drive a launch progress UI. That factory
 /// returns an `AsyncStream<RuntimeBootstrapMilestone>` you can iterate on the
 /// main actor while bootstrap runs concurrently in a sibling task:
@@ -167,29 +167,10 @@ public final class ManifoldBootstrap {
             let resolvedUsageStore = SwiftDataUsageStore(modelContext: mainContext)
             self.usageStore = resolvedUsageStore
 
-            let resolvedRAGService: RAGService?
-            if let ragConfig = ragConfiguration {
-                let vectorURL = ragConfig.vectorStoreURL
-                    ?? ModelContainerFactory.defaultStoreURL()?
-                        .deletingLastPathComponent()
-                        .appendingPathComponent("ragvectors.bin")
-                    ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-                        .first!.appendingPathComponent("ragvectors.bin")
-                let vectorStore = FlatFileVectorStore(storageURL: vectorURL)
-                let documentStore = SwiftDataDocumentStore(modelContext: mainContext)
-                let chunker = DocumentChunker(
-                    chunkSize: ragConfig.chunkSize,
-                    overlap: ragConfig.chunkOverlap
-                )
-                resolvedRAGService = RAGService(
-                    documentStore: documentStore,
-                    vectorStore: vectorStore,
-                    embeddingBackend: ragConfig.embeddingBackend,
-                    chunker: chunker
-                )
-            } else {
-                resolvedRAGService = nil
-            }
+            let resolvedRAGService = Self.makeRAGService(
+                ragConfiguration: ragConfiguration,
+                modelContext: mainContext
+            )
             self.ragService = resolvedRAGService
 
             // ManifoldPersistenceSwiftData does not depend on ManifoldFoundation,
@@ -264,8 +245,52 @@ public final class ManifoldBootstrap {
         }
     }
 
+    /// Constructs the ``RAGService`` for the given configuration, or returns
+    /// `nil` when RAG was not requested.
+    ///
+    /// Shared by both the synchronous `init` and the async ``build(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:sessionToolSources:hookRegistry:makeModelContainer:)``
+    /// factory so the two bootstrap paths wire retrieval identically. Before
+    /// this was factored out, `build()` had no RAG wiring at all and silently
+    /// produced a runtime with retrieval disabled.
+    private static func makeRAGService(
+        ragConfiguration: RAGConfiguration?,
+        modelContext: ModelContext
+    ) -> RAGService? {
+        guard let ragConfig = ragConfiguration else { return nil }
+
+        // Resolve the on-disk vector index location. Both the configured URL
+        // and the derived Application Support path can be absent (e.g. a
+        // sandbox that denies the directory), so skip RAG with a logged
+        // warning rather than trapping on a recoverable path.
+        let vectorURL = ragConfig.vectorStoreURL
+            ?? ModelContainerFactory.defaultStoreURL()?
+                .deletingLastPathComponent()
+                .appendingPathComponent("ragvectors.bin")
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+                .first?.appendingPathComponent("ragvectors.bin")
+
+        guard let vectorURL else {
+            Log.persistence.warning("ManifoldBootstrap: could not resolve a vector-store URL — RAG retrieval disabled for this session.")
+            return nil
+        }
+
+        let vectorStore = FlatFileVectorStore(storageURL: vectorURL)
+        let documentStore = SwiftDataDocumentStore(modelContext: modelContext)
+        let chunker = DocumentChunker(
+            chunkSize: ragConfig.chunkSize,
+            overlap: ragConfig.chunkOverlap
+        )
+        return RAGService(
+            documentStore: documentStore,
+            vectorStore: vectorStore,
+            embeddingBackend: ragConfig.embeddingBackend,
+            chunker: chunker
+        )
+    }
+
     public static func build(
         configuration: ManifoldConfiguration,
+        ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
@@ -302,6 +327,10 @@ public final class ManifoldBootstrap {
                 let benchmarkCache = SwiftDataBenchmarkCache(modelContext: mainContext)
                 let endpointStore = SwiftDataEndpointStore(modelContext: mainContext)
                 let usageStore = SwiftDataUsageStore(modelContext: mainContext)
+                let ragService = makeRAGService(
+                    ragConfiguration: ragConfiguration,
+                    modelContext: mainContext
+                )
                 await Task.yield()
 
                 continuation.yield(.complete)
@@ -316,6 +345,7 @@ public final class ManifoldBootstrap {
                     endpointStore: endpointStore,
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
+                    ragService: ragService,
                     sessionToolSources: sessionToolSources,
                     hookRegistry: hookRegistry
                 )
