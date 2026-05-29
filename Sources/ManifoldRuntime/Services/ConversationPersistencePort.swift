@@ -132,18 +132,37 @@ struct ConversationPersistencePort: Sendable {
         }
     }
 
+    /// Bumps the session's `updatedAt` via the store's narrow single-column
+    /// write so a concurrent turn or host-side session edit isn't clobbered by
+    /// a stale-snapshot rewrite (see ``SessionStore/touch(sessionID:date:)``).
+    /// Best-effort: returns `false` and logs on failure.
     @MainActor
     func touchSession(sessionID: UUID) async -> Bool {
         guard let sessionStore else { return true }
         do {
-            let sessions = try await sessionStore.fetchSessions()
-            guard var session = sessions.first(where: { $0.id == sessionID }) else { return true }
-            session.updatedAt = Date()
-            try await sessionStore.updateSession(session)
+            try await sessionStore.touch(sessionID: sessionID, date: Date())
             return true
         } catch {
             Log.persistence.warning(
                 "ConversationRuntime: touchSession failed: \(error.localizedDescription)"
+            )
+            return false
+        }
+    }
+
+    /// Swaps the session's active agent via the store's narrow single-column
+    /// write so a mid-stream handoff doesn't clobber concurrent edits to other
+    /// session columns (see ``SessionStore/setActiveAgent(sessionID:agentID:)``).
+    /// Best-effort: returns `false` and logs on failure.
+    @MainActor
+    func setActiveAgent(sessionID: UUID, agentID: UUID?) async -> Bool {
+        guard let sessionStore else { return true }
+        do {
+            try await sessionStore.setActiveAgent(sessionID: sessionID, agentID: agentID)
+            return true
+        } catch {
+            Log.persistence.warning(
+                "ConversationRuntime: setActiveAgent failed: \(error.localizedDescription)"
             )
             return false
         }

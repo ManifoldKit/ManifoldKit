@@ -422,7 +422,9 @@ public final class InferenceService {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        sessionID: UUID? = nil,
+        handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
+        preToolUseHook: PreToolUseHook? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
         return try generation.enqueue(
@@ -430,7 +432,9 @@ public final class InferenceService {
             systemPrompt: systemPrompt,
             config: config,
             priority: priority,
-            sessionID: sessionID
+            sessionID: sessionID,
+            handoffDetector: handoffDetector,
+            preToolUseHook: preToolUseHook
         )
     }
 
