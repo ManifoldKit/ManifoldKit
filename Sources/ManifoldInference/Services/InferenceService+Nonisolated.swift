@@ -73,16 +73,23 @@ extension InferenceService {
             try self.enqueue(
                 structuredMessages: messages,
                 systemPrompt: systemPrompt,
-                temperature: temperature,
-                topP: topP,
-                repeatPenalty: repeatPenalty,
-                maxOutputTokens: maxOutputTokens,
-                maxThinkingTokens: maxThinkingTokens,
-                jsonMode: jsonMode,
-                grammar: grammar,
-                tools: tools,
-                toolChoice: toolChoice,
-                maxToolIterations: maxToolIterations,
+                config: GenerationQueue.makeEnqueueConfig(
+                    temperature: temperature,
+                    topP: topP,
+                    repeatPenalty: repeatPenalty,
+                    topK: nil,
+                    minP: nil,
+                    presencePenalty: nil,
+                    frequencyPenalty: nil,
+                    seed: nil,
+                    maxOutputTokens: maxOutputTokens,
+                    maxThinkingTokens: maxThinkingTokens,
+                    jsonMode: jsonMode,
+                    grammar: grammar,
+                    tools: tools,
+                    toolChoice: toolChoice,
+                    maxToolIterations: maxToolIterations
+                ),
                 priority: priority,
                 sessionID: sessionID
             )

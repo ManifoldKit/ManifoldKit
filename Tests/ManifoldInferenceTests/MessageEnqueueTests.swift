@@ -22,6 +22,7 @@ final class MessageEnqueueTests: XCTestCase {
         )
         var lastPrompt: String?
         var lastSystemPrompt: String?
+        var lastConfig: GenerationConfig?
 
         func loadModel(from url: URL, plan: ModelLoadPlan) async throws {
             isModelLoaded = true
@@ -30,6 +31,7 @@ final class MessageEnqueueTests: XCTestCase {
         func generate(prompt: String, systemPrompt: String?, config: GenerationConfig) throws -> GenerationStream {
             lastPrompt = prompt
             lastSystemPrompt = systemPrompt
+            lastConfig = config
             return GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
                 continuation.yield(.token("ok"))
                 continuation.finish()
@@ -112,6 +114,92 @@ final class MessageEnqueueTests: XCTestCase {
             ("assistant", "hello"),
             ("user", "how are you?")
         ])
+    }
+
+    // MARK: - Value-typed config entry point
+
+    /// Canonical exercise of the value-typed
+    /// ``InferenceService/enqueue(messages:config:priority:sessionID:)`` entry
+    /// point introduced when the ~18-parameter sampling list was collapsed onto
+    /// ``GenerationConfig``. Pins that a caller-built config reaches the backend
+    /// verbatim, with every field preserved.
+    func test_enqueue_valueTypedConfig_reachesBackendVerbatim() async throws {
+        let backend = CapturingBackend()
+        let service = InferenceService(backend: backend, name: "Capture")
+
+        var config = GenerationConfig(
+            temperature: 0.42,
+            topP: 0.81,
+            repeatPenalty: 1.23,
+            topK: 7,
+            seed: 99,
+            maxOutputTokens: 333
+        )
+        config.maxThinkingTokens = 64
+
+        let (_, stream) = try service.enqueue(
+            messages: [.user("hello")],
+            config: config,
+            priority: .normal,
+            sessionID: nil
+        )
+        for try await _ in stream.events {}
+
+        let received = try XCTUnwrap(backend.lastConfig)
+        XCTAssertEqual(received.temperature, 0.42)
+        XCTAssertEqual(received.topP, 0.81)
+        XCTAssertEqual(received.repeatPenalty, 1.23)
+        XCTAssertEqual(received.topK, 7)
+        XCTAssertEqual(received.seed, 99)
+        XCTAssertEqual(received.maxOutputTokens, 333)
+        XCTAssertEqual(received.maxThinkingTokens, 64)
+    }
+
+    /// The deprecated parameterized builder must produce the same config the
+    /// new value-typed path would — proves the shim is a pure forwarder.
+    @available(*, deprecated)
+    func test_parameterizedBuilder_matchesValueTypedConfig() async throws {
+        let paramBackend = CapturingBackend()
+        let paramService = InferenceService(backend: paramBackend, name: "Param")
+        let (_, paramStream) = try paramService.enqueue(
+            messages: [.user("hello")],
+            temperature: 0.42,
+            topP: 0.81,
+            repeatPenalty: 1.23,
+            topK: 7,
+            seed: 99,
+            maxOutputTokens: 333,
+            maxThinkingTokens: 64
+        )
+        for try await _ in paramStream.events {}
+
+        let configBackend = CapturingBackend()
+        let configService = InferenceService(backend: configBackend, name: "Config")
+        var config = GenerationConfig(
+            temperature: 0.42,
+            topP: 0.81,
+            repeatPenalty: 1.23,
+            topK: 7,
+            seed: 99,
+            maxOutputTokens: 333
+        )
+        config.maxThinkingTokens = 64
+        let (_, configStream) = try configService.enqueue(
+            messages: [.user("hello")],
+            config: config
+        )
+        for try await _ in configStream.events {}
+
+        let viaParams = try XCTUnwrap(paramBackend.lastConfig)
+        let viaConfig = try XCTUnwrap(configBackend.lastConfig)
+        XCTAssertEqual(viaParams.temperature, viaConfig.temperature)
+        XCTAssertEqual(viaParams.topP, viaConfig.topP)
+        XCTAssertEqual(viaParams.repeatPenalty, viaConfig.repeatPenalty)
+        XCTAssertEqual(viaParams.topK, viaConfig.topK)
+        XCTAssertEqual(viaParams.seed, viaConfig.seed)
+        XCTAssertEqual(viaParams.maxOutputTokens, viaConfig.maxOutputTokens)
+        XCTAssertEqual(viaParams.maxThinkingTokens, viaConfig.maxThinkingTokens)
+        XCTAssertEqual(viaParams.maxToolIterations, viaConfig.maxToolIterations)
     }
 
     // MARK: - Message conformance / role mapping

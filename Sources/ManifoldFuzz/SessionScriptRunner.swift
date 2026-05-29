@@ -213,13 +213,22 @@ public actor SessionScriptRunner {
         // Enqueue on MainActor (InferenceService is MainActor-isolated).
         let enqueueResult: Result<(GenerationRequestToken, GenerationStream), Error> = await MainActor.run { [service, options] in
             do {
+                let messageValues: [Message] = tuples.map { tuple in
+                    switch tuple.role {
+                    case "system": return .system(tuple.content)
+                    case "assistant": return .assistant(tuple.content)
+                    default: return .user(tuple.content)
+                    }
+                }
                 let r = try service.enqueue(
-                    messages: tuples,
+                    messages: messageValues,
                     systemPrompt: systemPrompt,
-                    temperature: options.temperature,
-                    topP: options.topP,
-                    repeatPenalty: options.repeatPenalty,
-                    maxOutputTokens: options.maxOutputTokens,
+                    config: GenerationConfig(
+                        temperature: options.temperature,
+                        topP: options.topP,
+                        repeatPenalty: options.repeatPenalty,
+                        maxOutputTokens: options.maxOutputTokens
+                    ),
                     priority: .normal,
                     sessionID: sessionID
                 )
