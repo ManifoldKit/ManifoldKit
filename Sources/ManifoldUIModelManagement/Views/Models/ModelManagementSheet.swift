@@ -137,7 +137,11 @@ public struct ModelManagementSheet: View {
             } else if selectedTab != initialTab {
                 selectedTab = initialTab
             }
-            try? modelRegistry.refresh()
+            do {
+                try modelRegistry.refresh()
+            } catch {
+                Log.download.warning("ModelManagementSheet: registry refresh on appear failed: \(error)")
+            }
             managementViewModel.invalidateModelCache()
         }
     }

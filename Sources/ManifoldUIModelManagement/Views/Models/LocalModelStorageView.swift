@@ -137,7 +137,11 @@ struct LocalModelStorageView: View {
     private func deleteModel(_ model: ModelInfo) {
         do {
             try managementViewModel.deleteModel(model)
-            try? modelRegistry.refresh()
+            do {
+                try modelRegistry.refresh()
+            } catch {
+                Log.download.warning("LocalModelStorageView: registry refresh after delete failed: \(error)")
+            }
         } catch {
             Log.download.error("Failed to delete model: \(error)")
             deleteErrorMessage = error.localizedDescription

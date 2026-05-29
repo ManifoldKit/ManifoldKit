@@ -46,7 +46,11 @@ struct HuggingFaceBrowserView: View {
     /// invoked only after the directory is already populated, so the error
     /// path is unreachable in practice).
     private func refreshModels() {
-        try? modelRegistry.refresh()
+        do {
+            try modelRegistry.refresh()
+        } catch {
+            Log.download.warning("HuggingFaceBrowserView: registry refresh failed: \(error)")
+        }
     }
 
     var body: some View {
