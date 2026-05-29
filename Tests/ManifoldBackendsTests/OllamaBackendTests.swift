@@ -425,6 +425,46 @@ struct OllamaBackendTests {
         }
     }
 
+    /// A non-ASCII (multi-byte UTF-8) upstream error message must survive the
+    /// shared `SSECloudBackend.drainAndSanitizeErrorBody` read intact and reach
+    /// the surfaced `serverError` message.
+    ///
+    /// Regression for the base class's per-byte `Character(UnicodeScalar(byte))`
+    /// read, which decoded each UTF-8 byte as an independent Latin-1 scalar and
+    /// turned any multi-byte sequence into mojibake before sanitization ever saw
+    /// it. Ollama routes through the same shared helper, so this also guards the
+    /// consolidation.
+    ///
+    /// Sabotage check: revert `drainAndSanitizeErrorBody` to per-byte
+    /// `errorBody.append(Character(UnicodeScalar(byte)))`. The é/中文/🚫 glyphs
+    /// come back as mojibake and the substring assertions fail.
+    @Test func serverError_nonASCIIBody_roundTripsAsUTF8() async throws {
+        let (backend, chatURL) = makeConfiguredBackend()
+        try await loadBackend(backend)
+
+        // Mix 2-byte (é), 3-byte (中文), and 4-byte (🚫) UTF-8 sequences.
+        let upstreamMessage = "Réseau indisponible 中文 🚫"
+        let body = try JSONSerialization.data(withJSONObject: ["error": upstreamMessage])
+        MockURLProtocol.stub(url: chatURL, response: .immediate(data: body, statusCode: 500))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hello", systemPrompt: nil, config: .init())
+        do {
+            for try await _ in stream.events {}
+            Issue.record("Expected server error")
+        } catch {
+            guard let error = extractCloudError(error) else { Issue.record("Expected CloudBackendError, got \(error)"); return }
+            guard case .serverError(let code, let message) = error else {
+                Issue.record("Expected serverError, got \(error)"); return
+            }
+            #expect(code == 500)
+            let surfaced = try #require(message, "serverError must carry the upstream message")
+            #expect(surfaced.contains("Réseau"), "2-byte UTF-8 (é) must survive; got: \(surfaced)")
+            #expect(surfaced.contains("中文"), "3-byte UTF-8 must survive; got: \(surfaced)")
+            #expect(surfaced.contains("🚫"), "4-byte UTF-8 must survive; got: \(surfaced)")
+        }
+    }
+
     @Test func rateLimitError_429() async throws {
         let (backend, chatURL) = makeConfiguredBackend()
         try await loadBackend(backend)

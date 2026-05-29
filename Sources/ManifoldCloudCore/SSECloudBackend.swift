@@ -701,20 +701,57 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 .flatMap { TimeInterval($0) }
             throw CloudBackendError.rateLimited(retryAfter: retryAfter)
         default:
-            var errorBody = ""
-            for try await byte in bytes {
-                errorBody.append(Character(UnicodeScalar(byte)))
-                if errorBody.count > 2048 { break }
-            }
-            let extracted = extractErrorMessage(from: errorBody)
-            // Raw body goes to os.Logger at .private so developers can still
-            // diagnose upstream issues via the Console / log archives; it never
-            // reaches the UI.
-            Log.network.debug("\(self.backendName, privacy: .public) upstream error body: \(errorBody, privacy: .private)")
-            let host = withStateLock { _baseURL?.host() }
-            let message = CloudErrorSanitizer.sanitize(extracted, host: host)
+            let message = await drainAndSanitizeErrorBody(bytes)
             throw CloudBackendError.serverError(statusCode: statusCode, message: message)
         }
+    }
+
+    /// Maximum number of error-body bytes drained for diagnostics across all
+    /// cloud backends. A few KB is plenty to capture a JSON error envelope
+    /// while bounding memory if an upstream/proxy streams an unbounded body.
+    /// Picked over the previous inconsistent 1000/2048 mix so every backend
+    /// reports the same truncation behaviour.
+    public static let errorBodyByteCap = 2048
+
+    /// Drains a non-2xx response body, decodes it once as UTF-8, logs the raw
+    /// body privately, and returns a sanitized, host-stripped error message
+    /// suitable for surfacing in `CloudBackendError.serverError`.
+    ///
+    /// Shared by every subclass's `default:` status branch so the drain → cap →
+    /// log → extract → sanitize sequence is implemented exactly once. Decoding
+    /// is deferred until the full (capped) byte buffer is accumulated:
+    /// appending one `UnicodeScalar` per byte would mangle any multi-byte
+    /// UTF-8 sequence (non-ASCII upstream/proxy messages) into mojibake before
+    /// the sanitizer ever sees it.
+    ///
+    /// - Parameters:
+    ///   - bytes: the response byte stream (read up to ``errorBodyByteCap``).
+    ///   - extractor: maps the decoded body to a human-readable message.
+    ///     Defaults to ``extractErrorMessage(from:)`` (adapter-routing aware).
+    /// - Returns: the sanitized message to surface to callers.
+    package func drainAndSanitizeErrorBody(
+        _ bytes: URLSession.AsyncBytes,
+        extractor: ((String) -> String?)? = nil
+    ) async -> String {
+        var data = Data()
+        do {
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count > Self.errorBodyByteCap { break }
+            }
+        } catch {
+            // Best-effort — a partial body still aids diagnostics, but log the
+            // interruption so the swallow stays observable.
+            Log.network.debug("\(self.backendName, privacy: .public) error-body read interrupted: \(error.localizedDescription, privacy: .private)")
+        }
+        let errorBody = String(decoding: data, as: UTF8.self)
+        // Raw body goes to os.Logger at .private so developers can still
+        // diagnose upstream issues via the Console / log archives; it never
+        // reaches the UI.
+        Log.network.debug("\(self.backendName, privacy: .public) upstream error body: \(errorBody, privacy: .private)")
+        let extracted = (extractor ?? extractErrorMessage(from:))(errorBody)
+        let host = withStateLock { _baseURL?.host() }
+        return CloudErrorSanitizer.sanitize(extracted, host: host)
     }
 
     /// Extracts an error message from a JSON error response body.
