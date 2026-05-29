@@ -148,15 +148,20 @@ struct MemoryPressureUnloadE2ETests {
             await vm.sendMessage()
         }
 
-        // Poll until generation begins with a deadline-based timeout.
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !vm.isGenerating && ContinuousClock.now < deadline {
+        // Poll until generation begins with a generous deadline. A cold large-model
+        // load plus first token can take well over 2s under full-suite load (this
+        // suite may run against a real backend in some lanes), so the original 2s
+        // window tripped the precondition before generation even started. 60s is a
+        // safe upper bound for a cold 8B load; the loop exits the instant
+        // `isGenerating` flips, so a fast mock startup pays no extra cost.
+        let startupDeadline = ContinuousClock.now.advanced(by: .seconds(60))
+        while !vm.isGenerating && ContinuousClock.now < startupDeadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         guard vm.isGenerating else {
             genTask.cancel()
             await genTask.value
-            Issue.record("Precondition failed: generation did not start within 2s")
+            Issue.record("Precondition failed: generation did not start within 60s")
             return
         }
 
