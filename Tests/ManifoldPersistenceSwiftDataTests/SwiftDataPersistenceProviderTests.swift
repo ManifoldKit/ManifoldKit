@@ -66,6 +66,76 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         XCTAssertEqual(first.pinnedMessageIDs, pinned)
     }
 
+    // MARK: - Narrow single-column writes (#1494 lost-update)
+
+    /// `touch(sessionID:)` bumps `updatedAt` on the live row without rewriting
+    /// the other columns. A concurrent edit to an unrelated column (here:
+    /// `title`) committed between a turn-start snapshot and the touch must
+    /// survive — the narrow write reads the live row, not the stale snapshot.
+    func test_touch_doesNotClobberConcurrentTitleEdit() async throws {
+        let original = ChatSessionRecord(title: "Original")
+        try await provider.insertSession(original)
+
+        // A turn captured this snapshot at its start (mimics the old
+        // read-modify-write `touchSession`).
+        let staleSnapshot = original
+
+        // Meanwhile a host-side edit renames the session on the live row.
+        var renamed = original
+        renamed.title = "Renamed"
+        try await provider.updateSession(renamed)
+
+        // The narrow touch must NOT carry the stale snapshot's title back.
+        let before = try await provider.fetchSessions().first!.updatedAt
+        try await provider.touch(sessionID: staleSnapshot.id, date: before.addingTimeInterval(10))
+
+        let after = try await provider.fetchSessions().first!
+        XCTAssertEqual(after.title, "Renamed",
+                       "touch must not clobber the concurrent title edit")
+        XCTAssertEqual(after.updatedAt, before.addingTimeInterval(10),
+                       "touch must bump updatedAt")
+
+        // Sabotage check: a read-modify-write touch off `staleSnapshot` would
+        // write title back to "Original", failing the first assertion.
+    }
+
+    /// `setActiveAgent(sessionID:agentID:)` swaps only the active agent on the
+    /// live row. A concurrent edit to another column committed after a
+    /// turn-start snapshot must survive.
+    func test_setActiveAgent_doesNotClobberConcurrentEdit() async throws {
+        let agentA = UUID()
+        let agentB = UUID()
+        let original = ChatSessionRecord(title: "Original", activeAgentID: agentA)
+        try await provider.insertSession(original)
+
+        let staleSnapshot = original
+
+        var renamed = original
+        renamed.title = "Renamed"
+        try await provider.updateSession(renamed)
+
+        try await provider.setActiveAgent(sessionID: staleSnapshot.id, agentID: agentB)
+
+        let after = try await provider.fetchSessions().first!
+        XCTAssertEqual(after.activeAgentID, agentB, "active agent must swap to B")
+        XCTAssertEqual(after.title, "Renamed",
+                       "setActiveAgent must not clobber the concurrent title edit")
+
+        // Sabotage check: a read-modify-write off `staleSnapshot` would write
+        // title back to "Original", failing the title assertion.
+    }
+
+    /// Both narrow writes silently no-op when the session is gone — a touch
+    /// racing a delete must not surface an error to the turn loop.
+    func test_narrowWrites_noOpWhenSessionMissing() async throws {
+        let missing = UUID()
+        // Neither call should throw.
+        try await provider.touch(sessionID: missing, date: Date())
+        try await provider.setActiveAgent(sessionID: missing, agentID: UUID())
+        let sessions = try await provider.fetchSessions()
+        XCTAssertTrue(sessions.isEmpty, "no session should have been created by the no-op writes")
+    }
+
     func test_fetchSessions_ordersByUpdatedAtDescending() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let older = ChatSessionRecord(title: "Older", updatedAt: now)

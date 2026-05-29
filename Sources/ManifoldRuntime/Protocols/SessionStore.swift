@@ -49,6 +49,40 @@ public protocol SessionStore: AnyObject, Sendable {
     ///   - Storage errors from the underlying store.
     func updateSession(_ session: ChatSessionRecord) async throws
 
+    /// Updates **only** `updatedAt` on the session, in place.
+    ///
+    /// The turn loop bumps `updatedAt` twice per send so the sidebar reflects
+    /// recency, but ``updateSession(_:)`` rewrites every column from a snapshot
+    /// taken earlier in the turn. Two concurrent turns (or a host-side session
+    /// edit racing a turn) interleave as a lost update: B reads, A writes its
+    /// fields, B writes its stale snapshot back, clobbering A's columns. This
+    /// narrow write mutates the live row's `updatedAt` without round-tripping
+    /// the other fields, so a concurrent edit to e.g. `title` survives.
+    ///
+    /// No-ops silently when the session does not exist — a touch racing a
+    /// delete is benign and must not surface an error to the turn loop.
+    ///
+    /// - Parameters:
+    ///   - sessionID: The session whose `updatedAt` to bump.
+    ///   - date: The timestamp to set (defaults to now).
+    /// - Throws: Storage errors from the underlying store.
+    func touch(sessionID: UUID, date: Date) async throws
+
+    /// Updates **only** `activeAgentID` on the session, in place.
+    ///
+    /// Mid-stream agent handoffs swap the active agent. ``updateSession(_:)``
+    /// would rewrite the whole row from the turn-start snapshot, clobbering any
+    /// concurrent field change. This narrow write mutates only the
+    /// active-agent column on the live row.
+    ///
+    /// No-ops silently when the session does not exist.
+    ///
+    /// - Parameters:
+    ///   - sessionID: The session to mutate.
+    ///   - agentID: The new active agent, or `nil` to clear it.
+    /// - Throws: Storage errors from the underlying store.
+    func setActiveAgent(sessionID: UUID, agentID: UUID?) async throws
+
     /// Deletes a chat session and all associated messages.
     ///
     /// Implementations that also conform to ``MessageStore`` typically delete
@@ -122,6 +156,29 @@ extension SessionStore {
     /// hooks inherit this and silently drop the registration. Provisional —
     /// see ``addPostWriteHook(_:)`` doc.
     public func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
+
+    /// Default: read-modify-write fallback for stores that don't push the
+    /// narrow update into the engine. **Not** atomic against a concurrent
+    /// full-record write — storage-backed adapters that own a live row MUST
+    /// override and mutate only `updatedAt` so the lost-update window closes.
+    /// Provided so in-memory test doubles keep compiling. Silently no-ops when
+    /// the session is gone.
+    public func touch(sessionID: UUID, date: Date = Date()) async throws {
+        let sessions = try await fetchSessions()
+        guard var session = sessions.first(where: { $0.id == sessionID }) else { return }
+        session.updatedAt = date
+        try await updateSession(session)
+    }
+
+    /// Default: read-modify-write fallback. See ``touch(sessionID:date:)`` for
+    /// why storage-backed adapters must override. Silently no-ops when the
+    /// session is gone.
+    public func setActiveAgent(sessionID: UUID, agentID: UUID?) async throws {
+        let sessions = try await fetchSessions()
+        guard var session = sessions.first(where: { $0.id == sessionID }) else { return }
+        session.activeAgentID = agentID
+        try await updateSession(session)
+    }
 
     /// Default: iterates ``fetchSessions()`` and calls ``deleteSession(_:)``
     /// per id. **Not** atomic — provided so existing custom in-memory

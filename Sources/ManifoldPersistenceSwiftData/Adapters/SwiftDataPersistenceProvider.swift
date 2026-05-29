@@ -91,6 +91,28 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         await fireSessionHooks(record)
     }
 
+    /// Narrow in-place write of `updatedAt` only — mutates the live `@Model`
+    /// row without rewriting the other columns, so a concurrent full-record
+    /// write (another turn, or a host-side session edit) is not clobbered by a
+    /// stale-snapshot rewrite. Fires session hooks with a fresh record read
+    /// back from the mutated row. Silently no-ops when the session is gone (a
+    /// touch racing a delete).
+    public func touch(sessionID: UUID, date: Date = Date()) async throws {
+        guard let session = try fetchSwiftDataSession(id: sessionID) else { return }
+        session.updatedAt = date
+        try modelContext.save()
+        await fireSessionHooks(session.toRecord())
+    }
+
+    /// Narrow in-place write of `activeAgentID` only. See ``touch(sessionID:date:)``
+    /// for the lost-update rationale. Silently no-ops when the session is gone.
+    public func setActiveAgent(sessionID: UUID, agentID: UUID?) async throws {
+        guard let session = try fetchSwiftDataSession(id: sessionID) else { return }
+        session.activeAgentID = agentID
+        try modelContext.save()
+        await fireSessionHooks(session.toRecord())
+    }
+
     public func deleteSession(_ sessionID: UUID) async throws {
         guard let session = try fetchSwiftDataSession(id: sessionID) else {
             throw ChatPersistenceError.sessionNotFound(sessionID)

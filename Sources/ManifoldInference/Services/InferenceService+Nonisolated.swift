@@ -67,7 +67,9 @@ extension InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        sessionID: UUID? = nil,
+        handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
+        preToolUseHook: PreToolUseHook? = nil
     ) async throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try await MainActor.run {
             try self.enqueue(
@@ -91,7 +93,9 @@ extension InferenceService {
                     maxToolIterations: maxToolIterations
                 ),
                 priority: priority,
-                sessionID: sessionID
+                sessionID: sessionID,
+                handoffDetector: handoffDetector,
+                preToolUseHook: preToolUseHook
             )
         }
     }

@@ -30,6 +30,15 @@ struct GenerationPlan {
     var structuredHistory: [StructuredMessage]
     var advertisedTools: [ToolDefinition]
     var assistantMessage: ChatMessageRecord
+    /// Per-request handoff detector for this turn, passed into `enqueueAsync`
+    /// rather than mutated onto the shared `InferenceService`. Threading it per
+    /// request closes the race where two concurrent turns clobbered the
+    /// service-global detector between set and stream consumption (#1494).
+    /// `nil` for sessionless / single-agent turns.
+    var handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
+    /// Per-request pre-tool-use hook for this turn. See ``handoffDetector`` for
+    /// the rationale. `nil` when no host hook registry is wired.
+    var preToolUseHook: PreToolUseHook?
 }
 
 /// The enqueued backend request: the cancellation token and the event stream

@@ -169,6 +169,17 @@ final class GenerationQueue {
         let systemPrompt: String?
         let config: GenerationConfig
         let stream: GenerationStream
+        /// Per-request handoff detector, captured at enqueue time. When set, it
+        /// is used for this request's dispatch loop instead of the queue-level
+        /// ``handoffDetector``. This closes the per-turn race where two
+        /// concurrent turns mutating the shared queue-level detector clobbered
+        /// each other between enqueue and stream consumption (#1494). `nil`
+        /// falls back to the queue-level default for legacy single-turn callers.
+        let handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
+        /// Per-request pre-tool-use hook, captured at enqueue time. See
+        /// ``handoffDetector`` for the rationale. `nil` falls back to the
+        /// queue-level ``preToolUseHook``.
+        let preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
     }
 
     // MARK: - Queue State (Private)
@@ -451,7 +462,9 @@ final class GenerationQueue {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        sessionID: UUID? = nil,
+        handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
+        preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         guard let backend = currentBackend, isBackendLoaded else {
             throw InferenceError.inferenceFailure("No model loaded")
@@ -493,7 +506,9 @@ final class GenerationQueue {
             messages: messages,
             systemPrompt: systemPrompt,
             config: config,
-            stream: stream
+            stream: stream,
+            handoffDetector: handoffDetector,
+            preToolUseHook: preToolUseHook
         )
 
         if let insertIdx = requestQueue.firstIndex(where: { $0.priority < priority }) {
@@ -768,9 +783,19 @@ final class GenerationQueue {
 
     /// Drives the backend through an entire tool-dispatch loop for one queued request.
     private func runToolDispatchLoop(request: QueuedRequest) async throws {
+        // Prefer the per-request closures captured at enqueue time over the
+        // queue-level defaults. The runtime threads detector + pre-tool-use
+        // hook in per request (#1494) so two concurrent turns can't clobber a
+        // shared mutable detector between enqueue and stream consumption. A
+        // `nil` per-request closure falls back to the queue-level default for
+        // legacy single-turn callers that still call setHandoffDetector(_:) /
+        // setPreToolUseHook(_:).
+        let effectiveHandoffDetector = request.handoffDetector ?? handoffDetector
+        let effectivePreToolUseHook = request.preToolUseHook ?? preToolUseHook
+
         // Bind the per-request hook closures explicitly so the type checker
         // doesn't have to infer them inside the giant init expression below.
-        let boundPreToolUseHook: PreToolUseHook? = preToolUseHook.map { hook in
+        let boundPreToolUseHook: PreToolUseHook? = effectivePreToolUseHook.map { hook in
             let sessionID = request.sessionID
             return { @Sendable toolName, arguments, _ in
                 await hook(toolName, arguments, sessionID)
@@ -799,7 +824,7 @@ final class GenerationQueue {
             pauseWhileThermalCritical: { [weak self] token in
                 await self?.pauseWhileThermalCritical(token: token)
             },
-            handoffDetector: handoffDetector.map { detector in
+            handoffDetector: effectiveHandoffDetector.map { detector in
                 { [sessionID = request.sessionID] call in
                     detector(sessionID, call)
                 }

@@ -653,39 +653,42 @@ struct ConversationTurnExecutor: Sendable {
             return sessionRecord.agents.filter { $0.id != activeID }
         }()
 
-        // Configure the handoff detector for this turn. The closure is
-        // captured by the GenerationQueue's loop construction; we always
-        // (re)set it so a host that mutates session.agents between turns
-        // sees the new registry on the next call without a clear/reset
-        // dance.
+        // Build the handoff detector for this turn as a per-request closure
+        // threaded into `enqueueAsync` (#1494) rather than mutated onto the
+        // shared `InferenceService`. The old per-turn `setHandoffDetector`
+        // raced: turn B's set between turn A's set and A's stream consumption
+        // clobbered A's detector because the queue keyed the detector on the
+        // service, not the request. Capturing the session snapshot in the
+        // closure keeps each in-flight turn's detector independent.
+        let turnHandoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
         if let sessionRecord {
-            await inferenceService.setHandoffDetector { @Sendable callSessionID, call in
+            turnHandoffDetector = { @Sendable callSessionID, call in
                 guard callSessionID == sessionRecord.id else {
-                    // Detector closures live on the queue but loop captures
-                    // a per-request sessionID; mismatches are defensive —
-                    // route through the regular dispatch path.
+                    // The queue passes the per-request sessionID; mismatches
+                    // are defensive — route through the regular dispatch path.
                     return .regular(call)
                 }
                 return HandoffDetector.classify(call, in: sessionRecord)
             }
         } else {
-            await inferenceService.setHandoffDetector(nil)
+            turnHandoffDetector = nil
         }
 
-        // Pre-tool-use hook plumbing. The runtime owns the HookRegistry
-        // (Runtime can import Inference, not the other way round) so we
-        // adapt the registry into the closure shape the dispatch loop
-        // accepts. The adapter enforces the sanitize-only invariant and
-        // emits `.hookFired(event: "preToolUse", ...)` on every call.
+        // Build the pre-tool-use hook for this turn. The runtime owns the
+        // HookRegistry (Runtime can import Inference, not the other way round)
+        // so we adapt the registry into the closure shape the dispatch loop
+        // accepts. The adapter enforces the sanitize-only invariant and emits
+        // `.hookFired(event: "preToolUse", ...)` on every call. Threaded per
+        // request alongside the detector (#1494).
+        let turnPreToolUseHook: PreToolUseHook?
         if let turnHookRegistry = assembled.turnHookRegistry {
             let emit = self.eventSink
-            let adapter = PreToolUseHookAdapter.make(
+            turnPreToolUseHook = PreToolUseHookAdapter.make(
                 registry: turnHookRegistry,
                 eventEmitter: { event in emit(event) }
             )
-            await inferenceService.setPreToolUseHook(adapter)
         } else {
-            await inferenceService.setPreToolUseHook(nil)
+            turnPreToolUseHook = nil
         }
 
         // Build the assistant message slot up front so token deltas can
@@ -767,7 +770,9 @@ struct ConversationTurnExecutor: Sendable {
             composedSystemPrompt: composedSystemPrompt,
             structuredHistory: structuredHistory,
             advertisedTools: advertisedTools,
-            assistantMessage: assistantMessage
+            assistantMessage: assistantMessage,
+            handoffDetector: turnHandoffDetector,
+            preToolUseHook: turnPreToolUseHook
         )
     }
 
@@ -793,7 +798,9 @@ struct ConversationTurnExecutor: Sendable {
                 maxThinkingTokens: config.maxThinkingTokens,
                 tools: plan.advertisedTools,
                 priority: .userInitiated,
-                sessionID: sessionID
+                sessionID: sessionID,
+                handoffDetector: plan.handoffDetector,
+                preToolUseHook: plan.preToolUseHook
             )
         } catch {
             emit(.errorRaised(.inference(error)))
@@ -928,7 +935,11 @@ struct ConversationTurnExecutor: Sendable {
                     if var current = state.sessionRecord {
                         let previousID = current.activeAgentID
                         current.activeAgentID = handoff.targetAgentID
-                        _ = await persistence.updateSession(current)
+                        // Narrow single-column write: bump only `activeAgentID`
+                        // on the live row so a concurrent turn or host-side
+                        // session edit isn't clobbered by a stale full-record
+                        // rewrite (#1494).
+                        _ = await persistence.setActiveAgent(sessionID: current.id, agentID: handoff.targetAgentID)
                         state.sessionRecord = current
                         emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
                     } else {
