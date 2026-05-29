@@ -59,7 +59,16 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     /// forward `"think": false` on the wire (thinking models only; Ollama
     /// silently ignores the flag on non-thinking models but we omit it for
     /// clean request bodies).
-    public private(set) var isThinkingModel: Bool = false
+    /// Backing storage for ``isThinkingModel``, guarded by the base class's
+    /// `stateLock` like every other load-state field. Written inside the
+    /// `withStateLock` blocks in `loadModel`/`unloadModel`; read from
+    /// `capabilities`/`buildRequest`, which run on a different actor — an
+    /// off-lock `var` here was an unsynchronized access / Swift-6 data race.
+    private var _isThinkingModel: Bool = false
+
+    public var isThinkingModel: Bool {
+        withStateLock { _isThinkingModel }
+    }
 
     /// Conservative floor for `num_ctx` when the caller did not plumb a real
     /// context budget via `ModelLoadPlan` (`.cloud()` default is `1`).
@@ -366,7 +375,6 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             probed = .empty
         }
 
-        self.isThinkingModel = probed.thinking
         let resolvedContextWindow = probed.contextLength ?? max(resolvedNumCtx, Self.defaultNumCtxFloor)
         let manifest = ModelManifest(
             contextWindow: resolvedContextWindow,
@@ -383,6 +391,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             producerKind: .lan
         )
         withStateLock {
+            _isThinkingModel = probed.thinking
             _autoDetectedThinkingMarkers = probed.thinkingMarkers
             _manifest = manifest
         }
@@ -586,17 +595,9 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
                 .flatMap { TimeInterval($0) }
             throw CloudBackendError.rateLimited(retryAfter: retryAfter)
         default:
-            var errorBodyData = Data()
-            for try await byte in bytes {
-                errorBodyData.append(byte)
-                if errorBodyData.count > 2048 { break }
-            }
-            let errorBody = String(decoding: errorBodyData, as: UTF8.self)
-            Log.network.debug("Ollama upstream error body: \(errorBody, privacy: .private)")
-            let host = self.baseURL?.host()
-            let message = CloudErrorSanitizer.sanitize(
-                OllamaModelProbe.extractErrorMessage(from: errorBody),
-                host: host
+            let message = await drainAndSanitizeErrorBody(
+                bytes,
+                extractor: { OllamaModelProbe.extractErrorMessage(from: $0) }
             )
             throw CloudBackendError.serverError(statusCode: statusCode, message: message)
         }
@@ -612,11 +613,11 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
     public override func unloadModel() {
         withStateLock {
+            _isThinkingModel = false
             _manifest = nil
             _autoDetectedThinkingMarkers = nil
             _pendingStreamConfig = nil
         }
-        isThinkingModel = false
         super.unloadModel()
     }
 }

@@ -872,4 +872,58 @@ struct SSEHazardTests {
                 "Split SSE frame must produce exactly one event; got \(tokens)")
     }
 }
+
+// MARK: - Shared error-body drain
+
+@Suite("SSECloudBackend error-body drain")
+struct SSECloudBackendErrorBodyDrainTests {
+
+    /// The drain cap is a single shared constant across every cloud backend —
+    /// the issue called out the previous inconsistent 1000-vs-2048 mix. Pin the
+    /// value so a future "just bump it for this one backend" edit trips here.
+    @Test func errorBodyByteCap_isSingleSharedValue() {
+        #expect(SSECloudBackend.errorBodyByteCap == 2048)
+    }
+
+    /// A non-ASCII (multi-byte UTF-8) body run through the shared helper end to
+    /// end must survive decode + sanitize intact. ClaudeBackend routes its 5xx
+    /// `default:` branch through `drainAndSanitizeErrorBody`, so this exercises
+    /// the consolidated path for the SaaS family.
+    ///
+    /// Sabotage check: revert the helper to per-byte
+    /// `errorBody.append(Character(UnicodeScalar(byte)))` — the glyphs mojibake
+    /// and the substring assertions fail.
+    @Test func claudeRoutesNonASCIIBodyThroughSharedHelper() async throws {
+        DNSRebindingGuard._resolverForTesting = { _ in ["93.184.216.34"] }
+        let session = makeMockSession()
+        let backend = ClaudeBackend(urlSession: session)
+        backend.retryStrategy = ExponentialBackoffStrategy(maxRetries: 0)
+        let url = URL(string: "https://claude-drain-\(UUID().uuidString).test")!
+        backend.configure(baseURL: url, apiKey: "sk-ant-test", modelName: "claude-sonnet-4-20250514")
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        let upstreamMessage = "Réseau indisponible 中文 🚫"
+        let body = Data(#"{"type":"error","error":{"type":"api_error","message":"\#(upstreamMessage)"}}"#.utf8)
+        MockURLProtocol.stub(url: url, response: .immediate(data: body, statusCode: 500))
+        defer { MockURLProtocol.unstub(url: url) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: GenerationConfig())
+        do {
+            for try await _ in stream.events {}
+            Issue.record("Expected serverError for HTTP 500")
+        } catch {
+            guard let cloudError = extractCloudError(error) else {
+                Issue.record("Expected CloudBackendError, got \(error)"); return
+            }
+            guard case .serverError(let code, let message) = cloudError else {
+                Issue.record("Expected serverError, got \(cloudError)"); return
+            }
+            #expect(code == 500)
+            let surfaced = try #require(message)
+            #expect(surfaced.contains("Réseau"))
+            #expect(surfaced.contains("中文"))
+            #expect(surfaced.contains("🚫"))
+        }
+    }
+}
 #endif

@@ -484,38 +484,12 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
                 .flatMap { TimeInterval($0) }
             throw CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: retryAfter)
         default:
-            let errorBody = await Self.readErrorBody(from: bytes)
-            Log.network.debug("Claude upstream error body: \(errorBody, privacy: .private)")
-            let host = self.baseURL?.host()
-            let sanitized = CloudErrorSanitizer.sanitize(
-                extractErrorMessage(from: errorBody),
-                host: host
-            )
+            let sanitized = await drainAndSanitizeErrorBody(bytes)
             throw CloudBackendError.serverError(
                 statusCode: statusCode,
                 message: sanitized
             )
         }
-    }
-
-    /// Reads up to 1000 bytes from the byte stream for error diagnostics.
-    private static func readErrorBody(from bytes: URLSession.AsyncBytes) async -> String {
-        // Accumulate raw bytes and decode as UTF-8 once at the end. Decoding
-        // each byte as an individual Latin-1 scalar mangles any multi-byte
-        // UTF-8 sequence (non-ASCII upstream/proxy error messages) into
-        // mojibake before sanitization ever sees it.
-        var data = Data()
-        do {
-            for try await byte in bytes {
-                data.append(byte)
-                if data.count > 1000 { break }
-            }
-        } catch {
-            // Best-effort — a partial body is still useful for error messages,
-            // but log the interruption so the swallow stays observable.
-            Log.network.debug("Claude error-body read interrupted: \(error.localizedDescription, privacy: .private)")
-        }
-        return String(decoding: data, as: UTF8.self)
     }
 
 }
