@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.37.0](https://github.com/roryford/ManifoldKit/compare/v0.36.0...v0.37.0) (2026-05-29)
+
+This release is a correctness-and-hardening pass from a deep code review: conversation history is now crash-safe, the async bootstrap no longer silently disables RAG, the generation API gains a single value-typed entry point, and `LlamaBackend` exposes a way to await an in-flight generation settling. The turn loop and several internal chokepoints were also decomposed and de-duplicated with no behavior change.
+
+### Highlights
+
+**Crash-safe conversation edits** — the edit, branch, and compression flows now commit their message writes through the transactional store as a single unit, so a failure mid-sequence can no longer truncate or destroy conversation history. Concurrent turns also stop clobbering each other: per-turn handoff detectors and pre-tool-use hooks are passed per request instead of being mutated on the shared `InferenceService`, and session "touch"/active-agent updates are written in place rather than via a full-record read-modify-write. ([#1500](https://github.com/roryford/ManifoldKit/issues/1500), [#1506](https://github.com/roryford/ManifoldKit/issues/1506))
+
+**RAG now works through `ManifoldBootstrap.build()`** — the async progress-stream bootstrap path previously ignored RAG configuration, silently disabling retrieval for apps that adopt the splash-screen flow. `build()` now takes a `ragConfiguration:` and wires retrieval identically to the synchronous initializer.
+
+```swift
+let bootstrap = try await ManifoldBootstrap.build(
+    ragConfiguration: .init(vectorStoreURL: storeURL),
+    onProgress: { stage in /* update splash UI */ }
+)
+```
+([#1503](https://github.com/roryford/ManifoldKit/issues/1503))
+
+**Single value-typed generation entry point** — `InferenceService` and `GenerationQueue` previously re-declared an ~18-parameter sampling list across eight signatures. They now funnel through one `GenerationConfig`-based `enqueue`; the long per-parameter overloads remain as deprecated shims for one release.
+
+```swift
+let (token, stream) = try service.enqueue(
+    messages: messages,
+    config: GenerationConfig(temperature: 0.7, maxOutputTokens: 1024),
+    priority: .normal
+)
+```
+([#1504](https://github.com/roryford/ManifoldKit/issues/1504))
+
+**Await an in-flight generation with `LlamaBackend.awaitGenerationSettled()`** — re-generating on a still-loaded `LlamaBackend` immediately after draining a stream could race the asynchronous release of the in-flight guard and throw `alreadyGenerating`. The new `awaitGenerationSettled()` awaits the active generation task (including its cleanup) without unloading the model, so a caller can safely start the next turn on the same loaded context.
+
+```swift
+for await event in backend.generate(prompt: prompt, config: config) { /* consume */ }
+await backend.awaitGenerationSettled()   // guard cleared — safe to generate again
+```
+([#1513](https://github.com/roryford/ManifoldKit/issues/1513))
+
+### Bug Fixes
+
+* **Lossless agent persistence** — `ChatSessionRecord.agents` now round-trips through `insertSession`/`updateSession` (reconciled by id); previously the write path silently dropped the agents array. ([#1507](https://github.com/roryford/ManifoldKit/issues/1507))
+* **Stable streaming view identity** — `MessagePartsView` keys parts by a per-kind ordinal instead of array offset, so inserting a thinking block mid-stream no longer tears down and rebuilds the following text/tool views (losing their state). ([#1508](https://github.com/roryford/ManifoldKit/issues/1508))
+* **UTF-8-safe cloud error bodies** — server error bodies are accumulated as `Data` and decoded once, fixing mojibake on non-ASCII upstream errors; the drain/sanitize logic is consolidated into a single `ManifoldCloudCore` helper shared by all SSE backends, and `OllamaBackend.isThinkingModel` is now lock-guarded. ([#1509](https://github.com/roryford/ManifoldKit/issues/1509))
+* **MLX teardown ordering** — `MLXBackend` serializes resource-arbiter release behind a chained cleanup task (with a new `unloadAndWait()`), so a reload immediately following an unload can't have its fresh claim dropped by the prior release; generation streams now cancel on any stream termination, not only explicit cancellation. ([#1510](https://github.com/roryford/ManifoldKit/issues/1510))
+* **Observable Claude error handling** — `ClaudeBackend`'s error-body read now logs instead of silently swallowing, and decodes multi-byte UTF-8 correctly. ([#1502](https://github.com/roryford/ManifoldKit/issues/1502))
+
+### Tests
+
+* **Hermetic model-discovery E2E** — the `ModelSelection`/`UserJourney` E2E suites now scan an isolated temporary directory instead of the real `~/Documents/Models`, so a developer's local models no longer fail the suites' exact-count assertions. ([#1512](https://github.com/roryford/ManifoldKit/issues/1512))
+
+### Documentation
+
+* **Refreshed setup guidance** — corrected stale guidance and setup docs. ([#1493](https://github.com/roryford/ManifoldKit/issues/1493))
+
+### Code Refactoring
+
+* **`runGenerationTurn` decomposition** — the ~690-line turn method is split into discrete phase methods (context assembly, preparation, stream drain, finalization, post-turn effects); behavior is unchanged. ([#1501](https://github.com/roryford/ManifoldKit/issues/1501))
+* **Inference chokepoint cleanup** — duplicated capability-warning blocks are collapsed to single chokepoints, the hand-rolled `os_unfair_lock` in `GenerationStream` is replaced with `OSAllocatedUnfairLock`, and swallowed `modelRegistry.refresh()` errors in the model-management UI are now logged. ([#1511](https://github.com/roryford/ManifoldKit/issues/1511))
+
 ## [0.36.0](https://github.com/roryford/ManifoldKit/compare/v0.35.0...v0.36.0) (2026-05-27)
 
 ### Highlights
