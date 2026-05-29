@@ -33,13 +33,20 @@ extension ChatViewModel {
         return Self.applySystemPromptContext(systemPrompt, context: systemPromptContext)
     }
 
+    /// Suspends until a runtime turn reaches its per-turn terminal outcome.
+    ///
+    /// Live token/thinking/message mutations still flow through the runtime
+    /// event drain; this completion path uses the turn handle so callers are
+    /// not coupled to the global event stream's terminal event ordering.
+    func awaitTurnCompletion(_ handle: ConversationTurnHandle) async {
+        await generationCoordinator.awaitTurnCompletion(handle)
+    }
+
     /// Suspends until the runtime stream associated with the most recent
     /// send/regenerate/edit call terminates.
     ///
-    /// Delegates to ``ChatGenerationCoordinator/awaitStreamCompletion()`` which
-    /// polls `activeConversationStreamHandle` on the coordinator. Using the
-    /// coordinator's handle avoids a stale-read of a forwarding computed property
-    /// before the drain task has processed `streamStarted`.
+    /// Retained for focused coordinator tests and legacy internal call sites.
+    /// New turn-driving code should use ``awaitTurnCompletion(_:)``.
     func awaitStreamCompletion() async {
         await generationCoordinator.awaitStreamCompletion()
     }

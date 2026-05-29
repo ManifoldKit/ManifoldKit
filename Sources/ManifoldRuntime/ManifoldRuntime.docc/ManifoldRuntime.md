@@ -7,7 +7,7 @@ Persistence-port protocols and the turn-loop orchestration shell that sits betwe
 `ManifoldRuntime` is the session-aware orchestration tier of ManifoldKit. It owns the surfaces that need a session record but no concrete persistence backend:
 
 - **Ports** — ``MessageStore``, ``SessionStore``, ``EndpointStore``, ``SamplerPresetStore``, ``BenchmarkCache`` — protocol shapes that `ManifoldPersistenceSwiftData` (or any drop-in alternative) satisfies.
-- **Turn-loop runtime** — ``ConversationRuntime`` composes the ports into the canonical send / regenerate / edit / branch / cancel pipeline and surfaces lifecycle as ``ConversationEvent`` values.
+- **Turn-loop runtime** — ``ConversationRuntime`` composes the ports into the canonical send / regenerate / edit / branch / cancel pipeline, surfaces lifecycle as ``ConversationEvent`` values, and exposes reliable per-turn completion through ``ConversationTurnHandle/outcome``.
 - **Use cases** — ``PromptContextPipeline``, ``ChatExportService``, ``SessionListService``.
 - **Session-scoped tool contributors** — ``SessionToolSource``, ``HandoffToolSource``, plus the contract mixins consumers can use to ship their own.
 - **Synchronous hooks** — ``HookRegistry``, ``HookEvent``, ``HookInput``, ``HookOutput`` — the host-mutation seam at `preToolUse` and `preCompact` decision points.
@@ -21,7 +21,7 @@ Import `ManifoldRuntime` directly when:
 - You are building a host shell that drives the turn loop from your own UI layer (not ``ChatView``) and need a single entry point for `send` / `regenerate` / `edit` / `cancel` / `branch`.
 - You want to swap in a custom ``MessageStore`` or ``SessionStore`` adapter — for example to log every write to an audit sidecar, or to back chat history with something other than SwiftData.
 - You need to install a ``HookRegistry`` (mutate tool calls before they run, redact compaction prompts, etc.) or register a ``SessionToolSource`` that contributes per-session tool descriptors.
-- You want to consume the ``ConversationEvent`` lifecycle stream directly — `.userMessageInserted`, `.assistantStreaming`, `.contextAssembled`, `.turnCompleted`, etc.
+- You want to consume the ``ConversationEvent`` lifecycle stream directly — message writes, token deltas, context assembly, stream terminals, hook activity, etc.
 
 ## When not to use this module
 
@@ -62,9 +62,19 @@ Task {
 }
 ```
 
+Use ``ConversationRuntime/events`` for observation, ordering-sensitive UI, and
+analytics. It is intentionally single-consumer and lossy under backpressure so
+stalled consumers cannot grow memory without bound. For command-style code that
+must reliably wait for a specific turn to finish, use
+``ConversationRuntime/processTurnWithOutcome(_:)`` and await
+``ConversationTurnHandle/outcome`` instead.
+
 ### Send a turn
 
-`processTurn(_:)` is the canonical entry point — build a ``TurnInput`` with the appropriate ``TurnKind`` (`.send`, `.regenerate`, `.edit`, `.branch`) and a shared ``TurnConfig``:
+`processTurnWithOutcome(_:)` is the recommended entry point when the caller
+needs reliable completion for the turn it just started. Build a ``TurnInput``
+with the appropriate ``TurnKind`` (`.send`, `.regenerate`, `.edit`, `.branch`)
+and a shared ``TurnConfig``:
 
 ```swift,no-build
 let input = TurnInput(
@@ -77,11 +87,15 @@ let input = TurnInput(
     )
 )
 
-let handle = try await runtime.processTurn(input)
-// `handle` exposes cancel + completion; events arrive on `runtime.events`.
+let turn = try await runtime.processTurnWithOutcome(input)
+let outcome = await turn?.outcome
+// `turn?.streamHandle` cancels this turn; `outcome` reports stop/empty/error/cancel.
 ```
 
-The legacy per-flow methods (`send`, `regenerate`, `edit`, `branch`) are deprecation shims and forward to `processTurn(_:)`.
+`processTurn(_:)` remains available when you only need the cancellation handle
+and a separate event-drain task owns completion. The legacy per-flow methods
+(`send`, `regenerate`, `edit`, `branch`) are deprecation shims and forward to
+`processTurn(_:)`.
 
 ### Implement a custom `MessageStore`
 
@@ -142,6 +156,8 @@ try await endpointStore.insertEndpoint(
 - ``ConversationRuntime``
 - ``ConversationEvent``
 - ``ConversationStreamHandle``
+- ``ConversationTurnHandle``
+- ``ConversationTurnOutcome``
 
 ### Session-scoped tool sources
 

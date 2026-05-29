@@ -1,5 +1,6 @@
 import Foundation
 import ManifoldInference
+import ManifoldMCP
 import ManifoldRuntime
 import os
 
@@ -498,21 +499,19 @@ public actor ManifoldMCPHost {
             config: TurnConfig()
         )
 
-        // Drive the turn and collect the final reply by draining the event stream.
-        // We attach a short-lived observer task on the shared `conversationRuntime.events`
-        // stream. NOTE: ConversationRuntime.events is single-consumer by design —
-        // when the host app is also draining events (e.g. ChatViewModel), this call
-        // will race with that consumer. Host apps that use ManifoldMCPHost alongside
-        // a ChatViewModel should route the MCP send through their own message-receive
-        // path rather than calling this tool (or accept that event delivery may be
-        // split). Document this in issue #874.
-        try await conversationRuntime.processTurn(input)
-
-        // Give the generation turn a moment to complete by awaiting the first
-        // afterGeneration event carrying the matching session's messageID.
-        // We use a continuation-based collector with a timeout so a hung backend
-        // does not block the MCP client indefinitely.
-        let reply = await collectFinalText(sessionID: sessionID, timeout: .seconds(120))
+        let turn = try await conversationRuntime.processTurnWithOutcome(input)
+        let reply: String?
+        if let turn,
+           let outcome = await collectOutcome(from: turn, timeout: .seconds(120)),
+           outcome.error == nil,
+           outcome.reason != .cancelled {
+            reply = outcome.finalText.isEmpty ? nil : outcome.finalText
+        } else {
+            if let turn {
+                await conversationRuntime.cancel(turn.streamHandle)
+            }
+            reply = nil
+        }
 
         return .object([
             "content": .array([
@@ -522,47 +521,25 @@ public actor ManifoldMCPHost {
         ])
     }
 
-    /// Drains the runtime event stream looking for the first `afterGeneration`
-    /// event for any message in `sessionID`. Returns the `finalText` or `nil`
-    /// if the timeout fires first.
-    private func collectFinalText(sessionID: UUID, timeout: Duration) async -> String? {
-        // We cannot rewind the shared event stream — any events already consumed
-        // by the host app are gone. Instead we race two tasks: one that scans
-        // forward from now and one that sleeps for `timeout`.
-        await withCheckedContinuation { continuation in
-            let resolved = OSAllocatedUnfairLock(initialState: false)
-
-            func tryResolve(_ value: String?) {
-                let shouldResolve = resolved.withLock { flag -> Bool in
-                    guard !flag else { return false }
-                    flag = true
-                    return true
-                }
-                if shouldResolve { continuation.resume(returning: value) }
+    private func collectOutcome(
+        from turn: ConversationTurnHandle,
+        timeout: Duration
+    ) async -> ConversationTurnOutcome? {
+        await withTaskGroup(of: ConversationTurnOutcome?.self) { group in
+            group.addTask {
+                await turn.outcome
             }
-
-            Task {
-                for await event in conversationRuntime.events {
-                    if case .afterGeneration(_, let finalText) = event {
-                        tryResolve(finalText.isEmpty ? nil : finalText)
-                        return
-                    }
-                    if case .errorRaised = event {
-                        tryResolve(nil)
-                        return
-                    }
-                }
-                tryResolve(nil)
-            }
-
-            Task {
+            group.addTask {
                 do {
                     try await Task.sleep(for: timeout)
+                    return nil
                 } catch {
-                    return
+                    return nil
                 }
-                tryResolve(nil)
             }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 

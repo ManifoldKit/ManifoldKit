@@ -73,4 +73,34 @@ final class GenerationStreamConsumerTests: XCTestCase {
         XCTAssertEqual(tokenAction, .appendText("hello"),
             "Processing .kvCacheReuse must not corrupt subsequent .token handling")
     }
+
+    // MARK: - Accumulator
+
+    func test_accumulator_tracksTextUsageAndEmptyState() {
+        var accumulator = GenerationStreamAccumulator()
+
+        XCTAssertTrue(accumulator.isEmptyResponse)
+        accumulator.recordTextToken()
+        accumulator.appendVisibleText("hel")
+        accumulator.appendVisibleText("lo")
+        accumulator.recordUsage(prompt: 7, completion: 3)
+
+        XCTAssertFalse(accumulator.isEmptyResponse)
+        XCTAssertEqual(accumulator.visibleText, "hello")
+        XCTAssertEqual(accumulator.tokenUsage?.promptTokens, 7)
+        XCTAssertEqual(accumulator.tokenUsage?.completionTokens, 3)
+    }
+
+    func test_accumulator_finalizesThinkingWithSignatureAndResets() {
+        var accumulator = GenerationStreamAccumulator()
+
+        XCTAssertTrue(accumulator.appendThinkingText("step"))
+        XCTAssertFalse(accumulator.appendThinkingText(" two"))
+        accumulator.recordThinkingSignature("sig")
+
+        let block = accumulator.finalizeThinking()
+        XCTAssertEqual(block, .init(text: "step two", signature: "sig"))
+        XCTAssertFalse(accumulator.hasOpenThinkingBlock)
+        XCTAssertNil(accumulator.finalizeThinking())
+    }
 }

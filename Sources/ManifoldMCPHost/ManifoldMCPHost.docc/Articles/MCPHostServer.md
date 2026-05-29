@@ -16,6 +16,7 @@ Provide the runtime ports your app already owns. `ConversationRuntime` and the t
 
 ```swift,no-build
 import ManifoldMCP
+import ManifoldMCPHost
 import ManifoldRuntime
 
 // Assuming `bootstrap` is your ManifoldBootstrap instance:
@@ -42,7 +43,7 @@ HTTP/SSE server-side transport is not yet implemented. It is tracked in issue #8
 
 ### 3. Start serving
 
-`run(transport:)` blocks until the transport closes. Wrap it in a detached `Task` so your app continues running:
+`run(transport:)` blocks until the transport closes. Wrap it in a `Task` so your app continues running:
 
 ```swift,no-build
 Task {
@@ -101,4 +102,4 @@ Your app should detect `--mcp-stdio` in its launch arguments and start the stdio
 
 - ``ManifoldMCPHost/run(transport:)`` processes one request at a time because `ManifoldMCPHost` is an `actor`. Concurrent clients require separate host instances (one per connection).
 - `send_message` writes the generated reply into the session's persistent message store, exactly as if the user had typed the message in the app's UI. Use with care in production.
-- The `ConversationRuntime.events` stream is single-consumer. If your app already has a `ChatViewModel` draining events, `send_message` may miss `afterGeneration` events. Consider routing MCP-initiated sends through a dedicated runtime instance.
+- `send_message` awaits the runtime's per-turn outcome instead of draining `ConversationRuntime.events`, so it can coexist with a UI event consumer.

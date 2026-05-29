@@ -32,12 +32,32 @@ import ManifoldInference
 /// Events emitted by ``ConversationRuntime``.
 ///
 /// The case set is the contract for runtime-using consumers — collapsing
-/// or renaming any of these is a coordinated breaking change. The four
-/// load-bearing cases for runtime-using consumers are
-/// ``beforeContextAssembly``, ``contextAssembled``, ``afterGeneration``,
-/// and ``compressionTriggered``: those bracket the two phases of generation
-/// host adapters need to extend even when they don't drive their own turn
-/// loop.
+/// or renaming any of these is a coordinated breaking change. The stream
+/// carrying these values is single-consumer and bounded; it is intended for
+/// lifecycle observation, ordering assertions, UI adapters, and host-side
+/// event consumers that continuously drain the stream.
+///
+/// Token, thinking, tool-call, skill, hook, and handoff cases are
+/// observational progress signals. They help adapters render incremental
+/// state, but they are not a durable command-completion protocol and can be
+/// dropped if the single consumer falls behind the bounded buffer.
+///
+/// Terminal-looking and mutation cases such as ``streamFinished(messageID:reason:)``,
+/// ``errorRaised(_:)``, ``messageInserted(_:)``, ``messageRemoved(messageID:)``,
+/// and ``messageUpdated(_:)`` remain important for event-stream consumers: a
+/// UI adapter should still reconcile visible state from them. Command-style
+/// callers that need to know when a specific turn has completed should instead
+/// call ``ConversationRuntime/processTurnWithOutcome(_:)`` and await the
+/// returned ``ConversationTurnHandle/outcome``. That per-turn path is not
+/// affected by event buffering, dropped events, or another component owning
+/// the global stream.
+///
+/// The four load-bearing extension points for runtime-using consumers are
+/// ``beforeContextAssembly(prompt:request:)``, ``contextAssembled(slots:)``,
+/// ``afterGeneration(messageID:finalText:)``, and
+/// ``compressionTriggered(removed:reason:)``: those bracket the two phases of
+/// generation host adapters need to extend even when they don't drive their
+/// own turn loop.
 ///
 /// Adding cases is allowed (source-breaking for exhaustive `switch`
 /// consumers — we accept that pre-1.0); renaming or removing requires

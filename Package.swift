@@ -35,6 +35,7 @@ let package = Package(
         .library(name: "ManifoldKit", targets: ["ManifoldKit"]),
         .library(name: "ManifoldInference", targets: ["ManifoldInference"]),
         .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
+        .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
         .library(name: "ManifoldPersistenceSwiftData", targets: ["ManifoldPersistenceSwiftData"]),
         // Initiative I7 split ManifoldBackends into 5 trait-gated source
@@ -185,18 +186,26 @@ let package = Package(
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
-        // MCP: Model Context Protocol client surface, tool bridge, and
-        // MCPHostServer (server-side: expose sessions, messages, and RAG docs
-        // to external MCP clients). ManifoldRuntime is included so
-        // ManifoldMCPHost can accept ConversationRuntime, SessionStore,
-        // MessageStore, and RAGService — none of those pull in SwiftData.
+        // MCP: Model Context Protocol client surface, descriptors, transports,
+        // OAuth, catalog presets, and tool bridge. It depends on Inference
+        // directly and intentionally stays runtime-/SwiftData-free; the
+        // runtime-backed server lives in ManifoldMCPHost below.
         .target(
             name: "ManifoldMCP",
-            dependencies: ["ManifoldInference", "ManifoldRuntime"],
+            dependencies: ["ManifoldInference"],
             path: "Sources/ManifoldMCP",
             swiftSettings: [
                 .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
             ]
+        ),
+        // ManifoldMCPHost: runtime-backed MCP server boundary. Exposes
+        // sessions, messages, RAG documents, and send-message tools to external
+        // MCP clients using ManifoldRuntime ports. Kept separate so client-only
+        // apps can depend on ManifoldMCP without pulling runtime host surface.
+        .target(
+            name: "ManifoldMCPHost",
+            dependencies: ["ManifoldMCP", "ManifoldRuntime"],
+            path: "Sources/ManifoldMCPHost"
         ),
         // Runtime: ports (MessageStore, SessionStore, EndpointStore,
         // SamplerPresetStore, BenchmarkCache), use cases (PromptContextPipeline,
@@ -624,6 +633,7 @@ let package = Package(
             name: "ManifoldMCPTests",
             dependencies: [
                 .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
+                .target(name: "ManifoldMCPHost", condition: .when(traits: ["MCP"])),
                 "ManifoldInference",
                 "ManifoldRuntime",
                 "ManifoldTestSupport",

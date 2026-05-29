@@ -93,6 +93,7 @@ struct GenerationToolDispatchLoop {
             let stream = try generateWithConfig(currentMessages, systemPrompt, config)
 
             var dispatchedInThisTurn: [(ToolCall, ToolResult)] = []
+            var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
 
             for try await event in stream.events {
                 guard !Task.isCancelled else { return }
@@ -100,8 +101,8 @@ struct GenerationToolDispatchLoop {
                 await pauseWhileThermalCritical(token)
                 guard !Task.isCancelled else { return }
 
-                switch event {
-                case .toolCall(let call):
+                switch consumer.handle(event) {
+                case .dispatchToolCall(let call):
                     // Multi-agent handoff short-circuit. When the executor
                     // wired a session-aware detector and the call resolves
                     // to a known `transfer_to_<agent>` synthetic tool, skip

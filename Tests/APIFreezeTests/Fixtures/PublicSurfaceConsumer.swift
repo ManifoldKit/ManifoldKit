@@ -197,7 +197,21 @@ enum PublicSurfaceConsumer {
         // Legacy input structs are pinned in DeprecatedSurfaceConsumer.swift
         // (inside an @available(*, deprecated) type) to avoid deprecation
         // warnings propagating here. Non-deprecated symbols pin here:
-        let _: ConversationStreamHandle = ConversationStreamHandle()
+        let streamHandle = ConversationStreamHandle()
+        let outcome = ConversationTurnOutcome(
+            sessionID: UUID(),
+            streamHandle: streamHandle,
+            assistantMessageID: UUID(),
+            assistantMessage: nil,
+            reason: .stop,
+            error: nil,
+            finalText: "done",
+            promptTokens: 1,
+            completionTokens: 2
+        )
+        let _: ConversationStreamHandle = outcome.streamHandle
+        let _: FinishReason = outcome.reason
+        let _: String = outcome.finalText
     }
 
     // MARK: - ManifoldTestSupport

@@ -1,11 +1,11 @@
 import Foundation
 import ManifoldInference
 
-internal enum MCPRequestID: Hashable, Sendable, CustomStringConvertible {
+package enum MCPRequestID: Hashable, Sendable, CustomStringConvertible {
     case int(Int)
     case string(String)
 
-    var description: String {
+    package var description: String {
         switch self {
         case .int(let value): return "\(value)"
         case .string(let value): return value
@@ -13,34 +13,40 @@ internal enum MCPRequestID: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-internal struct MCPJSONRPCErrorObject: Sendable, Equatable {
-    let code: Int
-    let message: String
-    let data: JSONSchemaValue?
+package struct MCPJSONRPCErrorObject: Sendable, Equatable {
+    package let code: Int
+    package let message: String
+    package let data: JSONSchemaValue?
+
+    package init(code: Int, message: String, data: JSONSchemaValue?) {
+        self.code = code
+        self.message = message
+        self.data = data
+    }
 }
 
-internal enum MCPJSONRPCMessage: Sendable, Equatable {
+package enum MCPJSONRPCMessage: Sendable, Equatable {
     case request(id: MCPRequestID, method: String, params: JSONSchemaValue?)
     case notification(method: String, params: JSONSchemaValue?)
     case result(id: MCPRequestID, result: JSONSchemaValue?)
     case error(id: MCPRequestID, error: MCPJSONRPCErrorObject)
 }
 
-internal struct MCPJSONRPCCodec: Sendable {
-    let maxMessageBytes: Int
-    let maxJSONNestingDepth: Int
+package struct MCPJSONRPCCodec: Sendable {
+    package let maxMessageBytes: Int
+    package let maxJSONNestingDepth: Int
 
-    init(maxMessageBytes: Int, maxJSONNestingDepth: Int) {
+    package init(maxMessageBytes: Int, maxJSONNestingDepth: Int) {
         self.maxMessageBytes = maxMessageBytes
         self.maxJSONNestingDepth = maxJSONNestingDepth
     }
 
-    func encode(_ message: MCPJSONRPCMessage) throws -> Data {
+    package func encode(_ message: MCPJSONRPCMessage) throws -> Data {
         let object = try encodeObject(from: message)
         return try JSONSerialization.data(withJSONObject: object, options: [])
     }
 
-    func decode(_ data: Data) throws -> MCPJSONRPCMessage {
+    package func decode(_ data: Data) throws -> MCPJSONRPCMessage {
         if data.count > maxMessageBytes {
             throw MCPError.oversizeMessage(data.count)
         }
