@@ -13,6 +13,11 @@ extension ChatSession {
         // ManifoldInference.Agent value type so consumers downstream of
         // ChatSessionRecord (HandoffToolSource, ConversationTurnExecutor)
         // don't need to import the persistence module.
+        //
+        // The inverse — persisting `agents` back into Agent rows — lives in
+        // SwiftDataPersistenceProvider.reconcileAgents(on:with:), invoked from
+        // insertSession/updateSession so this read mapping has a lossless write
+        // counterpart (#1495).
         let agentRecords: [ManifoldInference.Agent] = agents.map { row in
             ManifoldInference.Agent(
                 id: row.id,
