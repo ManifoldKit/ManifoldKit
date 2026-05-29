@@ -41,7 +41,14 @@ final class ModelSelectionE2ETests {
         service.registerBackendFactory { _ in mockRef }
 
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
-        let storage = ModelStorageService(baseDirectory: modelsDir)
+        // Disable the `~/Documents/Models` fallback scan so discovery is
+        // hermetic: counts must reflect only fixtures this suite writes to
+        // `modelsDir`, never whatever models the developer keeps in their real
+        // home directory. The public init defaults the fallback on (#1468).
+        let storage = ModelStorageService(
+            baseDirectory: modelsDir,
+            includeUserDocumentsFallback: false
+        )
         vm = ChatViewModel(inferenceService: service, modelStorage: storage)
         vm.configure(persistence: persistence)
 
@@ -188,7 +195,10 @@ final class ModelSelectionE2ETests {
     @Test("Model too large for device sets an error and skips load")
     func modelTooLarge_setsError() async throws {
         let mockRef = mock
-        let storage = ModelStorageService(baseDirectory: modelsDir)
+        let storage = ModelStorageService(
+            baseDirectory: modelsDir,
+            includeUserDocumentsFallback: false
+        )
 
         // Stage 2: fit checks route through `ModelLoadPlan`, which consults
         // `availableMemoryBytes` from an injected environment. The legacy

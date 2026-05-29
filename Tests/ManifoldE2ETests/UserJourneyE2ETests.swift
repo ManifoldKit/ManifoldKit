@@ -4,7 +4,7 @@ import SwiftData
 @testable import ManifoldUI
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
-import ManifoldInference
+@testable import ManifoldInference
 import ManifoldTestSupport
 
 /// Day-one user journey E2E — exercises a full first-session experience end to
@@ -51,7 +51,14 @@ final class UserJourneyE2ETests {
         service.registerBackendFactory { _ in backendRef }
 
         persistence = SwiftDataPersistenceProvider(modelContext: context)
-        let storage = ModelStorageService(baseDirectory: modelsDir)
+        // Disable the `~/Documents/Models` fallback scan so discovery is
+        // hermetic: the exact-count assertions in this journey must reflect
+        // only fixtures written to `modelsDir`, never the developer's real
+        // home-directory models. The public init defaults the fallback on (#1468).
+        let storage = ModelStorageService(
+            baseDirectory: modelsDir,
+            includeUserDocumentsFallback: false
+        )
         vm = ChatViewModel(inferenceService: service, modelStorage: storage)
         vm.configure(persistence: persistence)
 
