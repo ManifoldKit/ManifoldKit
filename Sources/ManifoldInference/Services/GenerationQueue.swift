@@ -270,19 +270,6 @@ final class GenerationQueue {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
-        // Single pre-dispatch chokepoint for the native-JSON-mode capability
-        // check. Backends without native JSON-mode support silently ignore
-        // the flag and return plain text, so we warn once per request here
-        // rather than in each backend. Callers can branch on
-        // `backend.capabilities.supportsNativeJSONMode` programmatically to
-        // suppress the warning by not setting the flag in the first place.
-        if jsonMode && !backend.capabilities.supportsNativeJSONMode {
-            let backendType = String(describing: type(of: backend))
-            let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
-            Log.inference.warning("\(message, privacy: .public)")
-            Self.jsonModeUnsupportedWarningHook?(backendType, message)
-        }
-
         var config = GenerationConfig(
             temperature: temperature,
             topP: topP,
@@ -334,13 +321,6 @@ final class GenerationQueue {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
-        if config.jsonMode && !backend.capabilities.supportsNativeJSONMode {
-            let backendType = String(describing: type(of: backend))
-            let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
-            Log.inference.warning("\(message, privacy: .public)")
-            Self.jsonModeUnsupportedWarningHook?(backendType, message)
-        }
-
         Self.warnIfThinkingUnsupported(backend: backend, config: config)
 
         return try dispatchToBackend(
@@ -352,6 +332,23 @@ final class GenerationQueue {
     }
 
     // MARK: - Backend dispatch (Private)
+
+    /// Single pre-dispatch chokepoint for the native-JSON-mode capability
+    /// check. Backends without native JSON-mode support silently ignore the
+    /// flag and return plain text, so we warn once per request here rather
+    /// than in each backend. Callers can branch on
+    /// `backend.capabilities.supportsNativeJSONMode` programmatically to
+    /// suppress the warning by not setting the flag in the first place.
+    private static func warnIfJSONModeUnsupported(
+        backend: InferenceBackend,
+        config: GenerationConfig
+    ) {
+        guard config.jsonMode, !backend.capabilities.supportsNativeJSONMode else { return }
+        let backendType = String(describing: type(of: backend))
+        let message = "GenerationQueue: jsonMode=true requested but \(backendType) does not support native JSON mode (capabilities.supportsNativeJSONMode == false); the flag will be ignored and the response will be plain text. Check `backend.capabilities.supportsNativeJSONMode` before setting `config.jsonMode`."
+        Log.inference.warning("\(message, privacy: .public)")
+        Self.jsonModeUnsupportedWarningHook?(backendType, message)
+    }
 
     private static func warnIfThinkingUnsupported(
         backend: InferenceBackend,
@@ -388,6 +385,8 @@ final class GenerationQueue {
         systemPrompt: String?,
         config: GenerationConfig
     ) throws -> GenerationStream {
+        Self.warnIfJSONModeUnsupported(backend: backend, config: config)
+
         if GenerationHistoryInstaller.containsImages(messages), !backend.capabilities.supportsVision {
             throw InferenceError.inferenceFailure(
                 "Image attachments require a backend whose capabilities.supportsVision is true. Select a vision-capable backend before sending image parts."

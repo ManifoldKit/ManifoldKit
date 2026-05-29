@@ -181,7 +181,11 @@ public struct StorageManagementView: View {
     private func deleteModel(_ model: ModelInfo, modelRegistry: ModelRegistry) {
         do {
             try managementViewModel.deleteModel(model)
-            try? modelRegistry.refresh()
+            do {
+                try modelRegistry.refresh()
+            } catch {
+                Log.download.warning("StorageManagementView: registry refresh after delete failed: \(error)")
+            }
         } catch {
             Log.download.error("Failed to delete model: \(error)")
         }

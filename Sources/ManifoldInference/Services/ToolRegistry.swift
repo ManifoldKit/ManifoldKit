@@ -222,11 +222,7 @@ public protocol JSONSchemaValidating: Sendable {
     /// 5 entries — see README "Tool Calling" section.
     public var definitions: [ToolDefinition] {
         let result = sortedDefinitions()
-        #if DEBUG
-        if result.count > 5 {
-            print("[ManifoldKit] ⚠️ \(result.count) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section.")
-        }
-        #endif
+        warnIfTooManyTools(result)
         return result
     }
 
@@ -240,12 +236,20 @@ public protocol JSONSchemaValidating: Sendable {
         let result = advertisedToolNameKeys.map { keys in
             allDefinitions.filter { keys.contains($0.name.lowercased()) }
         } ?? allDefinitions
+        warnIfTooManyTools(result)
+        return result
+    }
+
+    /// Emits a DEBUG-only console warning when a model-facing tool list grows
+    /// past the point where small local backends start to degrade. Shared by
+    /// ``definitions`` and ``advertisedDefinitions`` so the threshold and
+    /// message stay in one place.
+    private func warnIfTooManyTools(_ result: [ToolDefinition]) {
         #if DEBUG
         if result.count > 5 {
             print("[ManifoldKit] ⚠️ \(result.count) tools in this request. Local backends (3B–8B) degrade beyond ~5 — see README Tool Calling section.")
         }
         #endif
-        return result
     }
 
     private func sortedDefinitions() -> [ToolDefinition] {

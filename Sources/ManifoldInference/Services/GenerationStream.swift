@@ -183,30 +183,19 @@ public final class GenerationStream: Sendable {
 // MARK: - Thread-safe Atomics
 
 /// Lock-protected boolean for cross-task signaling.
-private final class ManagedAtomic<Value>: @unchecked Sendable {
-    private let lock = os_unfair_lock_t.allocate(capacity: 1)
-    private var storage: Value
+private final class ManagedAtomic<Value: Sendable>: @unchecked Sendable {
+    private let lock: OSAllocatedUnfairLock<Value>
 
     init(_ initial: Value) {
-        storage = initial
-        lock.initialize(to: os_unfair_lock())
-    }
-
-    deinit {
-        lock.deinitialize(count: 1)
-        lock.deallocate()
+        lock = OSAllocatedUnfairLock(initialState: initial)
     }
 
     func load() -> Value {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        return storage
+        lock.withLock { $0 }
     }
 
     func store(_ value: Value) {
-        os_unfair_lock_lock(lock)
-        defer { os_unfair_lock_unlock(lock) }
-        storage = value
+        lock.withLock { $0 = value }
     }
 }
 
@@ -219,29 +208,13 @@ private typealias AtomicInstant = ManagedAtomic<ContinuousClock.Instant>
 /// This breaks the init ordering problem: the closure is created before `self`
 /// is available, and the handler is assigned after init completes.
 private final class StalledCallback: @unchecked Sendable {
-    private let lock = os_unfair_lock_t.allocate(capacity: 1)
+    private let lock = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(initialState: nil)
     var handler: (@Sendable () -> Void)? {
-        get {
-            os_unfair_lock_lock(lock)
-            defer { os_unfair_lock_unlock(lock) }
-            return _handler
-        }
-        set {
-            os_unfair_lock_lock(lock)
-            defer { os_unfair_lock_unlock(lock) }
-            _handler = newValue
-        }
-    }
-    private var _handler: (@Sendable () -> Void)?
-
-    init() {
-        lock.initialize(to: os_unfair_lock())
+        get { lock.withLock { $0 } }
+        set { lock.withLock { $0 = newValue } }
     }
 
-    deinit {
-        lock.deinitialize(count: 1)
-        lock.deallocate()
-    }
+    init() {}
 
     func fire() {
         handler?()

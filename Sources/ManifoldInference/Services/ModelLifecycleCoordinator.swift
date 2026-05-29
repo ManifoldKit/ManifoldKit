@@ -211,19 +211,43 @@ final class ModelLifecycleCoordinator {
         }
 
         let backendName = backendDisplayName(for: modelInfo.modelType)
-        let request = beginLoadRequest(
+        let url = modelInfo.url
+        let mmprojURL = modelInfo.mmprojURL
+        let dispatchPlan = effectivePlan
+        try await runLoad(
             source: "local",
             target: modelTypeLogLabel(modelInfo.modelType),
+            backendName: backendName,
+            backend: newBackend,
+            modelName: modelInfo.name
+        ) {
+            (newBackend as? MultimodalProjectorConfigurable)?.setMmprojURL(mmprojURL)
+            try await newBackend.loadModel(from: url, plan: dispatchPlan)
+        }
+    }
+
+    /// Shared begin/install/detached-load/catch/commit ceremony for both the
+    /// on-disk model path and the cloud-endpoint path. The only per-call
+    /// variation is the request labels, the model name, and the detached load
+    /// body — passed in as `loadOperation`, which runs off the main actor
+    /// inside `Task.detached`.
+    private func runLoad(
+        source: String,
+        target: String,
+        backendName: String,
+        backend newBackend: any InferenceBackend,
+        modelName: String,
+        loadOperation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        let request = beginLoadRequest(
+            source: source,
+            target: target,
             backend: backendName
         )
         installProgressHandler(on: newBackend, for: request)
         do {
-            let url = modelInfo.url
-            let mmprojURL = modelInfo.mmprojURL
-            let dispatchPlan = effectivePlan
             try await Task.detached(priority: .userInitiated) {
-                (newBackend as? MultimodalProjectorConfigurable)?.setMmprojURL(mmprojURL)
-                try await newBackend.loadModel(from: url, plan: dispatchPlan)
+                try await loadOperation()
             }.value
         } catch {
             (newBackend as? LoadProgressReporting)?.setLoadProgressHandler(nil)
@@ -236,7 +260,12 @@ final class ModelLifecycleCoordinator {
         (newBackend as? LoadProgressReporting)?.setLoadProgressHandler(nil)
 
         logLoadEvent("load.complete", request: request)
-        guard commitLoadIfCurrent(request: request, backend: newBackend, backendName: backendName, modelName: modelInfo.name) else {
+        guard commitLoadIfCurrent(
+            request: request,
+            backend: newBackend,
+            backendName: backendName,
+            modelName: modelName
+        ) else {
             newBackend.unloadModel()
             logLoadEvent("load.suppress", request: request, reason: "stale-success", clearMetadata: true)
             return
@@ -288,38 +317,16 @@ final class ModelLifecycleCoordinator {
         }
 
         let cloudBackendName = backendDisplayName(for: endpoint.provider)
-        let request = beginLoadRequest(
+        let backendURL = url
+        let cloudPlan = ModelLoadPlan.cloud()
+        try await runLoad(
             source: "cloud",
             target: endpoint.provider.rawValue,
-            backend: cloudBackendName
-        )
-        installProgressHandler(on: newBackend, for: request)
-        do {
-            let backendURL = url
-            let cloudPlan = ModelLoadPlan.cloud()
-            try await Task.detached(priority: .userInitiated) {
-                try await newBackend.loadModel(from: backendURL, plan: cloudPlan)
-            }.value
-        } catch {
-            (newBackend as? LoadProgressReporting)?.setLoadProgressHandler(nil)
-            let isStale = finishLoadAttemptWithFailure(request, error: error)
-            if isStale {
-                newBackend.unloadModel()
-            }
-            throw error
-        }
-        (newBackend as? LoadProgressReporting)?.setLoadProgressHandler(nil)
-
-        logLoadEvent("load.complete", request: request)
-        guard commitLoadIfCurrent(
-            request: request,
-            backend: newBackend,
             backendName: cloudBackendName,
+            backend: newBackend,
             modelName: endpoint.modelName
-        ) else {
-            newBackend.unloadModel()
-            logLoadEvent("load.suppress", request: request, reason: "stale-success", clearMetadata: true)
-            return
+        ) {
+            try await newBackend.loadModel(from: backendURL, plan: cloudPlan)
         }
     }
 
