@@ -19,4 +19,9 @@ public enum ImageModelFormat: String, Codable, Hashable, Sendable, CaseIterable 
     /// weights in MLX safetensors form. Loaded by `FluxDiffusionBackend` via
     /// `mzbac/flux.swift`. Supports both FP16 and flux.swift 4-bit quantized layouts.
     case fluxSchnell
+
+    /// A cloud HTTP image-generation API (e.g. xAI Grok Imagine).
+    /// The backend ignores `directoryURL` from `ImageModelInfo` and makes
+    /// HTTP requests instead of loading a local model file.
+    case cloudAPI
 }
