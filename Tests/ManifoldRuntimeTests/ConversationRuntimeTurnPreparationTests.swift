@@ -10,46 +10,6 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
         let id: UUID
     }
 
-    @MainActor
-    final class InMemoryMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
-        private var hooks: [any MessageStorePostWriteHook] = []
-
-        func insertMessage(_ message: ChatMessageRecord) async throws {
-            messages[message.id] = message
-            for hook in hooks {
-                await hook.messageDidWrite(message, in: message.sessionID)
-            }
-        }
-
-        func updateMessage(_ message: ChatMessageRecord) async throws {
-            guard messages[message.id] != nil else {
-                throw ChatPersistenceError.messageNotFound(message.id)
-            }
-            messages[message.id] = message
-        }
-
-        func deleteMessage(_ messageID: UUID) async throws {
-            guard messages.removeValue(forKey: messageID) != nil else {
-                throw ChatPersistenceError.messageNotFound(messageID)
-            }
-        }
-
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
-            messages.values
-                .filter { $0.sessionID == sessionID }
-                .sorted { $0.timestamp < $1.timestamp }
-        }
-
-        func deleteMessages(for sessionID: UUID) async throws {
-            messages = messages.filter { $0.value.sessionID != sessionID }
-        }
-
-        func addPostWriteHook(_ hook: any MessageStorePostWriteHook) {
-            hooks.append(hook)
-        }
-    }
-
     actor RecordingHook: GenerationHook {
         private var turns: [CompletedTurn] = []
 
@@ -366,5 +326,46 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
         XCTAssertTrue(persisted.contains(where: { $0.id == blocked.id }))
         XCTAssertFalse(persisted.contains(where: { $0.id == oldAnswer.id }))
         XCTAssertTrue(persisted.contains(where: { $0.content == "new answer" }))
+    }
+
+    func test_historyShaper_receivesAppDataFromHostTurnContextProvider() async throws {
+        let payload = Payload(id: UUID())
+        let hostProvider = RecordingHostTurnContextProvider(payload: payload)
+
+        actor ShaperPayloadCapture {
+            private(set) var captured: (any Sendable)? = nil
+            func record(_ value: (any Sendable)?) { captured = value }
+        }
+
+        struct CapturingShaper: HistoryShaper {
+            let capture: ShaperPayloadCapture
+            func shape(
+                history: [ChatMessageRecord],
+                request: HistoryShapingRequest
+            ) async throws -> HistoryShapingResult {
+                await capture.record(request.appData)
+                return HistoryShapingResult(promptHistory: history)
+            }
+        }
+
+        let capture = ShaperPayloadCapture()
+        let (runtime, _, _) = makeRuntime(
+            historyShaper: CapturingShaper(capture: capture),
+            hostTurnContextProvider: hostProvider
+        )
+
+        let sessionID = UUID()
+        let maybeHandle = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "Hello", attachments: []),
+            config: TurnConfig()
+        ))
+        let handle = try XCTUnwrap(maybeHandle)
+        let outcome = await handle.outcome
+        XCTAssertNil(outcome.error)
+
+        let capturedPayload = await capture.captured
+        XCTAssertEqual(capturedPayload as? Payload, payload,
+            "HistoryShapingRequest.appData must equal the value from HostTurnContextProvider")
     }
 }

@@ -1273,6 +1273,23 @@ struct ConversationTurnExecutor: Sendable {
         }
     }
 
+    private enum HistoryShaperValidationError: LocalizedError, Sendable {
+        case duplicateMessageIDs
+        case nonCanonicalMessageIDs
+        case orderViolation
+
+        var errorDescription: String? {
+            switch self {
+            case .duplicateMessageIDs:
+                return "HistoryShaper returned duplicate prompt-visible message IDs."
+            case .nonCanonicalMessageIDs:
+                return "HistoryShaper may only return canonical message IDs."
+            case .orderViolation:
+                return "HistoryShaper must preserve canonical record order for visible messages."
+            }
+        }
+    }
+
     private func fetchAndPrepareTurnHistory(
         sessionID: UUID,
         turnKind: TurnKind,
@@ -1400,28 +1417,16 @@ struct ConversationTurnExecutor: Sendable {
         let promptIDs = promptHistory.map(\.id)
 
         guard Set(promptIDs).count == promptIDs.count else {
-            throw NSError(
-                domain: "ConversationTurnExecutor.HistoryShaper",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper returned duplicate prompt-visible message IDs."]
-            )
+            throw HistoryShaperValidationError.duplicateMessageIDs
         }
 
         guard promptIDs.allSatisfy(canonicalIDSet.contains) else {
-            throw NSError(
-                domain: "ConversationTurnExecutor.HistoryShaper",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper may only return canonical message IDs."]
-            )
+            throw HistoryShaperValidationError.nonCanonicalMessageIDs
         }
 
         let canonicalVisibleIDs = canonicalIDs.filter { promptIDs.contains($0) }
         guard canonicalVisibleIDs == promptIDs else {
-            throw NSError(
-                domain: "ConversationTurnExecutor.HistoryShaper",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper must preserve canonical record order for visible messages."]
-            )
+            throw HistoryShaperValidationError.orderViolation
         }
     }
 

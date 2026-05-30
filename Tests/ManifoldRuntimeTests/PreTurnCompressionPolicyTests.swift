@@ -10,42 +10,6 @@ import ManifoldTestSupport
 @MainActor
 final class PreTurnCompressionPolicyTests: XCTestCase {
 
-    // MARK: - In-memory MessageStore (shared with CompressionPolicyTests)
-
-    @MainActor
-    final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
-
-        func insertMessage(_ message: ChatMessageRecord) async throws {
-            messages[message.id] = message
-        }
-
-        func updateMessage(_ message: ChatMessageRecord) async throws {
-            guard messages[message.id] != nil else {
-                throw ChatPersistenceError.messageNotFound(message.id)
-            }
-            messages[message.id] = message
-        }
-
-        func deleteMessage(_ messageID: UUID) async throws {
-            guard messages.removeValue(forKey: messageID) != nil else {
-                throw ChatPersistenceError.messageNotFound(messageID)
-            }
-        }
-
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
-            messages.values
-                .filter { $0.sessionID == sessionID }
-                .sorted { $0.timestamp < $1.timestamp }
-        }
-
-        func deleteMessages(for sessionID: UUID) async throws {
-            messages = messages.filter { $0.value.sessionID != sessionID }
-        }
-
-        func addPostWriteHook(_ hook: any MessageStorePostWriteHook) {}
-    }
-
     // MARK: - Call counter
 
     actor CallCounter {
@@ -206,7 +170,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_compressCalled_whenShouldReturnTrue() async throws {
         let backend = makeMock()
         let policy = AlwaysPreCompressPolicy()
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: InferenceService(backend: backend, name: "Mock"),
@@ -230,7 +194,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_compressNotCalled_whenShouldReturnFalse() async throws {
         let backend = makeMock()
         let policy = NeverPreCompressPolicy()
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: InferenceService(backend: backend, name: "Mock"),
@@ -254,7 +218,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_userMessageOutsideCompressedSegment() async throws {
         // Seed the session with a prior exchange so there's history to compress.
         let backend = makeMock(tokensToYield: ["prior response"])
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let sessionID = UUID()
         let inference = InferenceService(backend: backend, name: "Mock")
 
@@ -314,7 +278,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_historyCompressedBeforeUserMessageInserted() async throws {
         let backend = makeMock()
         let policy = AlwaysPreCompressPolicy()
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: InferenceService(backend: backend, name: "Mock"),
@@ -347,7 +311,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_failingPolicy_throwsPreTurnCompressionFailed() async throws {
         let backend = makeMock()
         let policy = FailingPreCompressPolicy()
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: InferenceService(backend: backend, name: "Mock"),
@@ -376,7 +340,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_failingPolicy_preservesExistingHistory() async throws {
         // Seed two prior messages.
         let backend = makeMock(tokensToYield: ["seed reply"])
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let sessionID = UUID()
         let inference = InferenceService(backend: backend, name: "Mock")
 
@@ -419,7 +383,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_emptyReturnPolicy_throwsAndPreservesHistory() async throws {
         let backend = makeMock()
         let policy = EmptyReturnPreCompressPolicy()
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(
             messageStore: store,
             inferenceService: InferenceService(backend: backend, name: "Mock"),
@@ -454,7 +418,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         let observer = PostCompressObserver()
         let summaryContent = "PostCompressContent"
         let policy = ObservingPreCompressPolicy(observer: observer, summaryContent: summaryContent)
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let sessionID = UUID()
 
         let runtime = ConversationRuntime(
@@ -484,7 +448,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
     func test_preTurnCompression_notCalledOnRegenerate() async throws {
         // Seed a prior exchange so regenerate has something to work with.
         let backend = makeMock(tokensToYield: ["seed", "regen"])
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let sessionID = UUID()
         let inference = InferenceService(backend: backend, name: "Mock")
 
@@ -519,11 +483,19 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
 
     func test_shouldCompressReceivesCorrectArgs() async throws {
         actor ArgCapture {
-            var messageCount: Int?
-            var lastPromptTokens: Int??
+            private var recorded: (messageCount: Int, lastPromptTokens: Int?)?
+            private var waiting: CheckedContinuation<(messageCount: Int, lastPromptTokens: Int?), Never>?
+
             func record(messageCount: Int, lastPromptTokens: Int?) {
-                self.messageCount = messageCount
-                self.lastPromptTokens = lastPromptTokens
+                let value = (messageCount: messageCount, lastPromptTokens: lastPromptTokens)
+                recorded = value
+                waiting?.resume(returning: value)
+                waiting = nil
+            }
+
+            func waitForArgs() async -> (messageCount: Int, lastPromptTokens: Int?) {
+                if let recorded { return recorded }
+                return await withCheckedContinuation { waiting = $0 }
             }
         }
 
@@ -543,11 +515,11 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         }
 
         let backend = makeMock(tokensToYield: ["seed reply"])
-        let store = RuntimeMessageStore()
+        let store = InMemoryMessageStore()
         let sessionID = UUID()
         let inference = InferenceService(backend: backend, name: "Mock")
 
-        // Seed one exchange first to get a non-empty history.
+        // Seed one exchange first to get a non-empty history (user + assistant = 2 messages).
         let seedRuntime = ConversationRuntime(messageStore: store, inferenceService: inference)
         try await seedRuntime.processTurn(TurnInput(
             sessionID: sessionID,
@@ -572,11 +544,17 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         ))
         _ = try await drainUntilStreamFinished(from: runtime)
 
-        // Brief settle for the async Task inside shouldCompressBeforeTurn.
-        try await Task.sleep(for: .milliseconds(50))
+        let (count, _) = try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
+            group.addTask { await capture.waitForArgs() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                throw XCTestError(.timeoutWhileWaiting)
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
 
-        let count = await capture.messageCount
-        XCTAssertNotNil(count, "shouldCompressBeforeTurn must be called with message count")
-        XCTAssertGreaterThan(count ?? 0, 0, "messageCount should reflect the seeded history")
+        XCTAssertEqual(count, 2, "messageCount should reflect the 2 seeded messages (user + assistant)")
     }
 }

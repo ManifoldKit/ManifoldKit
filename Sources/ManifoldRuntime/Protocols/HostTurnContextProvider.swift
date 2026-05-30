@@ -11,6 +11,8 @@ public struct TurnContextBuildRequest: Sendable {
     public let turnKind: TurnKind
     public let messageCount: Int
     public let userInput: String?
+    /// Derived from the canonical (unfiltered) history snapshot; does not
+    /// reflect any subsequent shaping by a registered ``HistoryShaper``.
     public let conversationText: String?
     public let tokenizer: (any TokenizerProvider)?
 
