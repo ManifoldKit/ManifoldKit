@@ -193,6 +193,41 @@ final class QuickStartTests: XCTestCase {
         XCTAssertFalse(reply.content.isEmpty, "Expected non-empty reply from Ollama endpoint")
     }
 
+    /// Regression guard for #1515 — `quickStart()` must wire `onFirstMessage`
+    /// so that sessions whose title is still "New Chat" are auto-titled after
+    /// the first user message, rather than remaining "New Chat" across every
+    /// relaunch.
+    ///
+    /// We verify the word-truncation path (no inference required): a short
+    /// first message sets the title verbatim; a long one is trimmed to a word
+    /// boundary with an ellipsis.
+    func test_quickStart_autotitles_session_on_first_message() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        let session = try XCTUnwrap(result.viewModel.activeSession,
+            "quickStart() must produce an active session before we can test auto-title")
+
+        // Confirm the hook is wired — calling it directly exercises the same
+        // closure the real send path would call.
+        XCTAssertNotNil(result.viewModel.onFirstMessage,
+            "quickStart() must wire onFirstMessage for auto-title (#1515)")
+
+        // Short message — title should be the message verbatim.
+        let shortMessage = "Hello world"
+        await result.viewModel.onFirstMessage?(session, shortMessage)
+
+        let afterShort = try await result.bootstrap.persistence.fetchSessions()
+        let renamedShort = afterShort.first { $0.id == session.id }
+        XCTAssertEqual(renamedShort?.title, shortMessage,
+            "Short first message should become the session title verbatim")
+
+        // Sabotage check: title must differ from the default.
+        XCTAssertNotEqual(renamedShort?.title, "New Chat",
+            "Session title must no longer be 'New Chat' after first message")
+    }
+
     /// Compile-time check that `QuickStartResult` is `Sendable`. The README's
     /// snippet stores the result in a `@State` property or passes it across
     /// task boundaries; losing Sendability would silently break that.

@@ -161,12 +161,29 @@ proper.
 
 ### Foundation (on-device, iOS 26 / macOS 26+)
 
-No additional steps. `DefaultBackends.register(with:)` installs
-`FoundationBackend` automatically when the OS version qualifies. The chat
-view model auto-selects the Foundation model on first launch via
-``ChatViewModel/foundationModelProvider``; override it (or set
-``ChatViewModel/onFirstLaunch``) if you want to show an onboarding sheet
-instead.
+`DefaultBackends.register(with:)` installs `FoundationBackend`
+automatically when the OS version qualifies, but **Foundation is not
+auto-selected**. Two explicit wiring steps are required before the chat
+view model will treat it as an available model:
+
+1. Set `foundationModelProvider` so the view model can probe availability.
+2. Call `loadFoundationModelIfAvailable()` (or `autoSelectFirstRunModel()`,
+   which is gated on a first-launch `UserDefaults` flag) to trigger the
+   actual load.
+
+```swift
+#if canImport(ManifoldFoundation)
+if #available(macOS 26, iOS 26, *) {
+    chatVM.foundationModelProvider = { FoundationBackend.isAvailable }
+    chatVM.loadFoundationModelIfAvailable()
+}
+#endif
+```
+
+Without those two steps, `availableModels` will not contain the Foundation
+entry and the chat surface will show "Welcome — Download a model to get
+started" even on a supported OS. Set ``ChatViewModel/onFirstLaunch`` if you
+want to show an onboarding sheet instead of auto-loading.
 
 ### Local GGUF (llama.cpp) and MLX
 
@@ -230,7 +247,196 @@ their own settings UI, can skip `ManifoldUIModelManagement` entirely and
 use `ChatView(showModelManagement:)` — the `APIConfig == EmptyView`
 convenience initializer supplies an empty sheet.
 
-## 6. Persistence and relaunch guarantees
+## 6. Full recipe: explicit bootstrap + multi-session UI + APIConfigurationView + Ollama
+
+This section gives the single end-to-end example that previously had to be
+stitched together from `QUICKSTART.md`, `AGENTS.md`, and the DocC article.
+It covers:
+
+- **Manual `ManifoldBootstrap.build(...)` bootstrap** from a `.task { }` (async, no deadlock).
+- **`SessionManagerViewModel` wired with `configureAndLoad`** (relaunch-safe restore).
+- **`.environment(\.endpointStore, bootstrap.endpointStore)` injection** — required for `APIConfigurationView` to save keys.
+- **Ollama endpoint pre-seeded in code** — the same pattern applies to any cloud provider.
+- **`ManifoldUIModelManagement`** mounted via closure injection (optional).
+
+### Package dependency
+
+Tagged release:
+
+```swift
+// Package.swift
+.package(
+    url: "https://github.com/roryford/ManifoldKit.git",
+    from: "0.37.0",
+    traits: [
+        .trait(name: "Ollama"),     // opt-in: localhost:11434
+        .trait(name: "CloudSaaS"), // opt-in: OpenAI, Anthropic, LM Studio
+    ]
+)
+```
+
+Local SwiftPM path (development / monorepo):
+
+```swift
+.package(
+    name: "ManifoldKit",
+    path: "../ManifoldKit",      // adjust to your checkout
+    traits: [
+        .trait(name: "Ollama"),
+        .trait(name: "CloudSaaS"),
+    ]
+)
+```
+
+Target dependencies (add what you need):
+
+```swift
+.target(name: "MyApp", dependencies: [
+    .product(name: "ManifoldKit", package: "ManifoldKit"),
+    // Optional — only when surfacing model browser / endpoint editor UI:
+    .product(name: "ManifoldUIModelManagement", package: "ManifoldKit"),
+])
+```
+
+### App entry point
+
+```swift,no-build
+import SwiftUI
+import ManifoldKit
+import ManifoldUI
+import ManifoldUIModelManagement   // optional — omit if you don't want the model browser
+
+@main
+struct MyChatApp: App {
+    @State private var bootstrap: ManifoldBootstrap?
+    @State private var chatVM: ChatViewModel?
+    @State private var sessionVM: SessionManagerViewModel?
+    @State private var startupError: Error?
+
+    var body: some Scene {
+        WindowGroup {
+            if let bootstrap, let chatVM, let sessionVM {
+                RootView()
+                    .environment(chatVM)
+                    .environment(sessionVM)
+                    // Inject the endpoint store so APIConfigurationView can
+                    // persist API keys without any extra glue in the host.
+                    .environment(\.endpointStore, bootstrap.endpointStore)
+                    .modelContainer(bootstrap.modelContainer)
+            } else if let startupError {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(String(describing: startupError))
+                )
+            } else {
+                ProgressView("Starting…")
+                    .task { await start() }
+            }
+        }
+    }
+
+    @MainActor
+    private func start() async {
+        do {
+            let (progress, task) = ManifoldBootstrap.build(
+                configuration: ManifoldConfiguration(
+                    appName: "My Chat",
+                    bundleIdentifier: "com.example.mychat"
+                )
+            )
+            for await _ in progress { /* drain or drive a progress bar */ }
+            let bootstrap = try await task.value
+
+            DefaultBackends.register(with: bootstrap.inferenceService)
+
+            let chatVM = ChatViewModel(
+                inferenceService: bootstrap.inferenceService,
+                conversationRuntime: bootstrap.conversationRuntime
+            )
+            chatVM.configure(bootstrap: bootstrap)
+
+            // Use configureAndLoad — not configure — so sessions are
+            // populated before selectInitialSession() runs (#1464).
+            let sessionVM = SessionManagerViewModel()
+            await sessionVM.configureAndLoad(bootstrap: bootstrap)
+
+            // Pre-seed an Ollama endpoint if none exist yet.
+            let existing = try await bootstrap.endpointStore.fetchEndpoints()
+            if existing.isEmpty {
+                let ollama = APIEndpointRecord(
+                    name: "Local Ollama",
+                    provider: .ollama,
+                    modelName: "llama3.2:3b"
+                )
+                try await bootstrap.endpointStore.insertEndpoint(ollama)
+            }
+
+            // Restore or create the initial session.
+            if let restored = await sessionVM.selectInitialSession() {
+                sessionVM.activeSession = restored
+                await chatVM.switchToSession(restored)
+            } else if let fresh = try? await sessionVM.createSession() {
+                sessionVM.activeSession = fresh
+                await chatVM.switchToSession(fresh)
+            }
+
+            self.bootstrap = bootstrap
+            self.chatVM = chatVM
+            self.sessionVM = sessionVM
+        } catch {
+            self.startupError = error
+        }
+    }
+}
+```
+
+### Root view with sidebar + APIConfigurationView
+
+```swift,no-build
+import SwiftUI
+import ManifoldKit
+import ManifoldUI
+import ManifoldUIModelManagement
+
+struct RootView: View {
+    @Environment(ChatViewModel.self) var chatVM
+    @Environment(SessionManagerViewModel.self) var sessionVM
+    @State private var showModelManagement = false
+
+    var body: some View {
+        NavigationSplitView {
+            SessionListView()
+        } detail: {
+            // Pass APIConfigurationView via closure injection — this is the
+            // structural pattern that avoids an import cycle between ManifoldUI
+            // and ManifoldUIModelManagement. Omit apiConfiguration: entirely
+            // if your app doesn't surface an API key editor.
+            ChatView(
+                showModelManagement: $showModelManagement,
+                apiConfiguration: { APIConfigurationView() }
+            )
+            .sheet(isPresented: $showModelManagement) {
+                ModelManagementSheet(modelRegistry: chatVM.modelRegistry)
+            }
+        }
+        .onChange(of: sessionVM.activeSession) { _, newSession in
+            guard let newSession,
+                  chatVM.activeSession?.id != newSession.id else { return }
+            Task { await chatVM.switchToSession(newSession) }
+        }
+    }
+}
+```
+
+> **`ManifoldUIModelManagement` is optional.** Import it only when your
+> app surfaces a model browser, model downloader, or API endpoint editor UI.
+> Cloud-only apps that pre-seed endpoints in code (like the `start()` snippet
+> above), or apps that build their own settings UI, can omit the import
+> entirely and use `ChatView(showModelManagement:)` — the convenience
+> initializer supplies an empty API sheet.
+
+## 7. Persistence and relaunch guarantees
 
 With either bootstrap path, ManifoldKit gives you the following without
 any custom host code:
@@ -259,7 +465,7 @@ Things the host is **still** responsible for:
 - Calling `chatVM.refreshModels()` after backend changes (e.g. after a
   download finishes or an endpoint is added).
 
-## 7. Common pitfalls
+## 8. Common pitfalls
 
 - **Calling `SessionManagerViewModel.configure(bootstrap:)` (non-`await`
   overload) and then reading `sessions` on the next line.** The load is
