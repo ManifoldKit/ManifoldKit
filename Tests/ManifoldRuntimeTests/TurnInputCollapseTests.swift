@@ -139,6 +139,8 @@ final class TurnInputCollapseTests: XCTestCase {
                 return "messageInserted-\(record.role.rawValue)-\(record.content)"
             case .beforeContextAssembly:
                 return "beforeContextAssembly"
+            case .historyShaped:
+                return "historyShaped"
             case .contextAssembled:
                 return "contextAssembled"
             case .streamStarted:

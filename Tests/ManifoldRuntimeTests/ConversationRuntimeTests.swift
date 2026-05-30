@@ -1498,6 +1498,7 @@ final class ConversationRuntimeTests: XCTestCase {
         case .errorRaised: return "errorRaised"
         case .sessionTouchFailed: return "sessionTouchFailed"
         case .beforeContextAssembly: return "beforeContextAssembly"
+        case .historyShaped: return "historyShaped"
         case .contextAssembled: return "contextAssembled"
         case .afterGeneration: return "afterGeneration"
         case .compressionTriggered: return "compressionTriggered"

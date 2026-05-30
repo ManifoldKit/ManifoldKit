@@ -53,7 +53,8 @@ import ManifoldInference
 /// the global stream.
 ///
 /// The four load-bearing extension points for runtime-using consumers are
-/// ``beforeContextAssembly(prompt:request:)``, ``contextAssembled(slots:)``,
+/// ``beforeContextAssembly(prompt:request:)``, ``historyShaped(sessionID:diagnostics:)``,
+/// ``contextAssembled(slots:)``,
 /// ``afterGeneration(messageID:finalText:)``, and
 /// ``compressionTriggered(removed:reason:)``: those bracket the two phases of
 /// generation host adapters need to extend even when they don't drive their
@@ -148,6 +149,14 @@ public enum ConversationEvent: Sendable {
     /// will see. Load-bearing for runtime-using consumers — adapters pin
     /// behaviour against this case.
     case beforeContextAssembly(prompt: String?, request: PromptContextRequest)
+
+    /// Fires after a registered ``HistoryShaper`` has produced the prompt-
+    /// visible base history, before additive ``HistoryProvider`` records and
+    /// prompt-context slots are assembled.
+    ///
+    /// `diagnostics` identify canonical records that were removed or rewritten
+    /// for prompt visibility. No event is emitted when no shaper is registered.
+    case historyShaped(sessionID: UUID, diagnostics: [HistoryShapingDiagnostic])
 
     /// Fires after slots are assembled, before the request is enqueued.
     /// Carries the merged `[PromptSlot]` so adapters can introspect what's

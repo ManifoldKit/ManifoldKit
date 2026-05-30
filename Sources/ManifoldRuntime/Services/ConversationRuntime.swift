@@ -163,12 +163,27 @@ public final class ConversationRuntime: Sendable {
     ///     the runtime compresses history and emits
     ///     ``ConversationEvent/historyCompressed(sessionID:)``. Compression
     ///     failures are logged and never abort the turn.
-    ///   - historyProviders: Optional list of ``HistoryProvider`` conformances
-    ///     applied to the fetched history before context assembly. Providers are
-    ///     applied in registration order; each sees the history as augmented by
-    ///     all preceding providers. A throwing provider aborts the current turn
-    ///     with a ``ConversationError/persistence(_:)`` error. Defaults to `[]`
-    ///     so existing call sites compile unchanged.
+    ///   - historyShaper: Optional host-owned history transformer applied to the
+    ///     canonical fetched history before additive ``HistoryProvider``
+    ///     contributions, prompt-context slot assembly, and RAG. Use this to
+    ///     remove or rewrite prompt-visible history without mutating canonical
+    ///     persistence. A throwing shaper aborts the turn with
+    ///     ``ConversationError/contextAssembly(_:)``.
+    ///   - historyProviders: Optional list of additive ``HistoryProvider``
+    ///     conformances applied after `historyShaper` (when present) and before
+    ///     prompt-context slot assembly. Providers are applied in registration
+    ///     order; each sees the history as augmented by all preceding providers.
+    ///     A throwing provider aborts the current turn with a
+    ///     ``ConversationError/persistence(_:)`` error. Defaults to `[]` so
+    ///     existing call sites compile unchanged.
+    ///   - hostTurnContextProvider: Optional richer async/throwing provider that
+    ///     builds per-turn ``TurnContext/appData`` from full request metadata.
+    ///     When supplied, its result is threaded through history shaping,
+    ///     history providers, prompt-context assembly, and
+    ///     ``GenerationHook/postGeneration(_:)``. A thrown error aborts the turn
+    ///     with ``ConversationError/contextAssembly(_:)``.
+    ///   - turnContextProvider: Legacy source-compatible session-ID-only appData
+    ///     provider. Used only when `hostTurnContextProvider` is `nil`.
     public convenience init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
@@ -180,7 +195,10 @@ public final class ConversationRuntime: Sendable {
         usageStore: (any UsageStore)? = nil,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
+        historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
+        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil
@@ -197,7 +215,10 @@ public final class ConversationRuntime: Sendable {
             emptyResponseObserver: nil,
             generationHooks: generationHooks,
             compressionPolicy: compressionPolicy,
+            preTurnCompressionPolicy: preTurnCompressionPolicy,
+            historyShaper: historyShaper,
             historyProviders: historyProviders,
+            hostTurnContextProvider: hostTurnContextProvider,
             turnContextProvider: turnContextProvider,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry
@@ -219,8 +240,11 @@ public final class ConversationRuntime: Sendable {
         emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
+        historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
+        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil
@@ -252,8 +276,11 @@ public final class ConversationRuntime: Sendable {
             emptyResponseObserver: emptyResponseObserver,
             generationHooks: generationHooks,
             compressionPolicy: compressionPolicy,
+            preTurnCompressionPolicy: preTurnCompressionPolicy,
             hookTimeout: hookTimeout,
+            historyShaper: historyShaper,
             historyProviders: historyProviders,
+            hostTurnContextProvider: hostTurnContextProvider,
             turnContextProvider: turnContextProvider,
             bindings: bindings
         )
