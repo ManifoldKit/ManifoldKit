@@ -48,6 +48,195 @@ with a localized message when either authorization is denied.
 - Inject your own ``SpeechTranscribing`` / ``SpeechSynthesizing`` implementations
   in tests to avoid touching the audio session.
 
+## When to use this module
+
+Import `ManifoldVoice` directly when:
+
+- You want **streaming STT in any SwiftUI view** — a search bar, image-generation
+  prompt field, note-taking surface, or accessibility aid — without building
+  a chat session.
+- You need **TTS readback** of model output or any other text, with start/stop
+  control and an `isSpeaking` observable property to drive UI.
+- You want **wake-word triggering** — a passive phrase (e.g. "Hey Manifold")
+  that starts a recording session hands-free without a tap target.
+- You are building an accessibility-first UI and need `VoiceCaptureState`
+  changes to drive button labels and progress indicators.
+- You want to replace `SFSpeechRecognizer` with a different STT engine (e.g. a
+  local Whisper model) without changing the rest of your UI — inject your own
+  ``SpeechTranscribing`` conformer.
+
+## When not to use this module
+
+- **You only need text input.** If push-to-talk is an optional enhancement, you
+  can ship the text path first and add `ManifoldVoice` later. The module adds
+  `Speech` and `AVFoundation` link-time cost even when the user never taps the
+  mic button.
+- **You need server-side or Whisper-based STT.** The shipped ``AppleSpeechTranscriber``
+  uses `SFSpeechRecognizer` — inject a custom ``SpeechTranscribing`` conformer
+  instead of using this module as-is.
+- **You are testing on a simulator.** Recording always fails with
+  ``VoiceError/simulatorUnsupported``. Inject a ``SpeechTranscribing`` mock
+  that yields scripted updates instead of touching the audio session.
+
+## Beyond chat
+
+``VoiceConversationController`` has no dependency on chat types. Common
+non-chat patterns:
+
+- **Dictation field** — observe `liveTranscript` to mirror the in-flight
+  transcript into a `TextField`; commit `stopRecording()` to the field's binding.
+  See <doc:StandaloneSpeechRecognition> for a full worked example.
+- **Image-generation prompt** — drive `startRecording()` / `stopRecording()`
+  from a mic button next to the diffusion prompt field; feed the committed
+  transcript directly to `ImageGenerationService`.
+- **Accessibility readback** — call `speak(_:)` on ``AppleSpeechSynthesizer``
+  (or any ``SpeechSynthesizing`` conformer) to read assistant replies aloud in
+  a hands-free context. The controller tracks `isSpeaking` so a stop button
+  can be shown only while TTS is active.
+
+## The 3–5 most-used types
+
+### `VoiceConversationController` — the top-level coordinator
+
+``VoiceConversationController`` is a `@MainActor @Observable` class that
+coordinates the full voice lifecycle. Zero-argument init uses Apple's built-in
+speech recognition and synthesis:
+
+```swift,no-build
+import SwiftUI
+import ManifoldVoice
+
+@MainActor
+struct PromptBar: View {
+    @State private var voice = VoiceConversationController()
+    @Binding var prompt: String
+
+    var body: some View {
+        HStack {
+            TextField("Describe an image", text: $prompt)
+            Button {
+                Task { await toggleRecording() }
+            } label: {
+                Image(systemName: voice.isRecording ? "mic.fill" : "mic")
+                    .foregroundStyle(voice.isRecording ? .red : .secondary)
+            }
+        }
+        // Mirror the live transcript into the field while recording.
+        .onChange(of: voice.liveTranscript) { _, text in
+            if voice.isRecording { prompt = text }
+        }
+    }
+
+    private func toggleRecording() async {
+        if voice.isRecording {
+            if let committed = await voice.stopRecording() {
+                prompt = committed   // replace live preview with final result
+            }
+        } else {
+            await voice.startRecording()
+        }
+    }
+}
+```
+
+### `VoiceCaptureState` — drive your UI
+
+``VoiceCaptureState`` is an `Equatable` enum that tracks the controller's
+lifecycle. Observe it to show permission-request spinners, recording indicators,
+and error messages:
+
+```swift,no-build
+import ManifoldVoice
+
+switch voice.captureState {
+case .idle:
+    micButton.isEnabled = true
+case .requestingPermission:
+    micButton.isEnabled = false
+    statusLabel.text = "Requesting access…"
+case .recording:
+    micButton.tintColor = .systemRed
+    statusLabel.text = voice.liveTranscript.isEmpty ? "Listening…" : voice.liveTranscript
+case .processing:
+    micButton.isEnabled = false
+    statusLabel.text = "Finishing transcript…"
+case .failed(let message):
+    micButton.isEnabled = true
+    statusLabel.text = message
+}
+```
+
+``VoiceConversationController/statusText`` provides a pre-computed human-readable
+string that covers the same cases, including the `isSpeaking` TTS state.
+
+### `SpeechTranscribing` — inject a custom STT backend
+
+Conform to ``SpeechTranscribing`` to swap out `SFSpeechRecognizer` — for
+example to route audio through a local Whisper model or a server-side STT
+service. The protocol is four `@MainActor` methods:
+
+```swift,no-build
+import ManifoldVoice
+
+final class WhisperTranscriber: SpeechTranscribing {
+    @MainActor
+    func requestAuthorization() async -> VoiceAuthorizationStatus { .authorized }
+
+    @MainActor
+    func startTranscribing(
+        onUpdate: @escaping @MainActor (SpeechTranscriptionUpdate) -> Void
+    ) async throws {
+        // Start your audio pipeline; call onUpdate as partials arrive.
+        onUpdate(SpeechTranscriptionUpdate(text: "partial…", isFinal: false))
+    }
+
+    @MainActor
+    func stopTranscribing() async throws -> String? {
+        // Flush the final result; return nil to let the controller use liveTranscript.
+        return nil
+    }
+
+    @MainActor func cancelTranscribing() { /* stop audio pipeline */ }
+}
+
+// Inject at construction time.
+let controller = VoiceConversationController(transcriber: WhisperTranscriber())
+```
+
+In unit tests, inject a scripted conformer that feeds canned ``SpeechTranscriptionUpdate``
+values synchronously — no audio session needed.
+
+### Wake-word detection
+
+``WakeWordDetector`` intercepts in-flight transcription updates and fires when a
+configured phrase is heard. Implement the two-method protocol and pass it to the
+controller. ``VoiceConversationController/recentWakeWordDetection`` holds the
+last detection for UI toast display:
+
+```swift,no-build
+import ManifoldVoice
+
+final class PhraseDetector: WakeWordDetector {
+    private let trigger: String
+
+    init(phrase: String) { self.trigger = phrase.lowercased() }
+
+    @MainActor
+    func ingest(_ update: SpeechTranscriptionUpdate) -> WakeWordDetection? {
+        guard update.text.lowercased().contains(trigger) else { return nil }
+        return WakeWordDetection(phrase: trigger, transcript: update.text)
+    }
+
+    @MainActor func reset() {}
+}
+
+let controller = VoiceConversationController(
+    wakeWordDetector: PhraseDetector(phrase: "hey manifold")
+)
+
+// Observe recentWakeWordDetection to show a toast and start a new turn.
+```
+
 ## Topics
 
 ### Standalone usage
