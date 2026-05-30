@@ -25,13 +25,25 @@ import ManifoldInference
 /// ## Event delivery
 ///
 /// The ``events`` stream is constructed once per runtime instance and is
-/// single-consumer. Callers either iterate it directly (tests) or install
-/// an adapter that drains it into observable state
+/// single-consumer. Use it for lifecycle observation, event ordering, and UI
+/// adapters that need the full event transcript. Callers either iterate it
+/// directly (tests) or install an adapter that drains it into observable state
 /// (`ChatViewModel`-shaped consumers). The stream is capped at 500 buffered
 /// events using `.bufferingOldest` — when a slow consumer falls behind,
 /// already-arrived events are preserved and the newest unprocessed arrivals
 /// are dropped. Adapters must drain the stream on a long-lived task to
 /// avoid hitting the cap during normal operation.
+///
+/// Treat token, thinking, tool-call, skill, hook, and handoff events as
+/// observational progress. Treat ``ConversationEvent/streamFinished(messageID:reason:)``,
+/// ``ConversationEvent/errorRaised(_:)``, and message mutation events as
+/// important inputs for event consumers that reconcile UI or side-channel
+/// state, not as the recommended command-completion primitive. Command-style
+/// callers should use ``processTurnWithOutcome(_:)`` and await the returned
+/// ``ConversationTurnHandle/outcome`` for reliable per-turn completion,
+/// including cancellation, empty responses, and asynchronous generation
+/// failures. That outcome path is independent of event buffering, dropped
+/// events, and competing consumers.
 ///
 /// ## Turn entry points
 ///
@@ -74,11 +86,16 @@ public final class ConversationRuntime: Sendable {
 
     // MARK: Event stream
 
-    /// Lifecycle event stream. Single-consumer by design — see the type
-    /// docs. Capped at 500 buffered events: when a slow consumer falls
-    /// behind, the oldest unprocessed events are preserved and the newest
-    /// arrivals are dropped. This prevents unbounded memory growth when the
-    /// consumer stalls (e.g. app backgrounded during a long generation).
+    /// Lifecycle event stream for observation, progress rendering, state
+    /// reconciliation, and ordering assertions.
+    ///
+    /// Single-consumer by design — see the type docs. Capped at 500 buffered
+    /// events: when a slow consumer falls behind, the oldest unprocessed
+    /// events are preserved and the newest arrivals are dropped. This prevents
+    /// unbounded memory growth when the consumer stalls (e.g. app backgrounded
+    /// during a long generation). Await
+    /// ``processTurnWithOutcome(_:)``'s ``ConversationTurnHandle/outcome`` when
+    /// command-style turn completion must be reliable.
     public let events: AsyncStream<ConversationEvent>
     private let continuation: AsyncStream<ConversationEvent>.Continuation
 
@@ -301,6 +318,31 @@ public final class ConversationRuntime: Sendable {
     /// ``FinishReason/cancelled``.
     @discardableResult
     public func processTurn(_ input: TurnInput) async throws -> ConversationStreamHandle? {
+        try await processTurn(input, outcomeCompletion: nil)
+    }
+
+    /// Processes one turn and returns a per-turn handle with reliable
+    /// completion independent of the global ``events`` stream.
+    ///
+    /// The returned ``ConversationTurnHandle/outcome`` completes exactly once
+    /// for generation flows, including cancellation, empty responses, and
+    /// asynchronous failures. It is not affected by ``events`` buffering, event
+    /// drops, or another component already consuming the event stream. Flows
+    /// that do not generate (assistant edit, branch without generation) still
+    /// return `nil`.
+    @discardableResult
+    public func processTurnWithOutcome(_ input: TurnInput) async throws -> ConversationTurnHandle? {
+        let completion = ConversationTurnOutcomeCompletion()
+        guard let streamHandle = try await processTurn(input, outcomeCompletion: completion) else {
+            return nil
+        }
+        return ConversationTurnHandle(streamHandle: streamHandle, completion: completion)
+    }
+
+    private func processTurn(
+        _ input: TurnInput,
+        outcomeCompletion: ConversationTurnOutcomeCompletion?
+    ) async throws -> ConversationStreamHandle? {
         switch input.kind {
         case let .send(text, attachments):
             return try await executor.runSendFlow(
@@ -308,13 +350,15 @@ public final class ConversationRuntime: Sendable {
                 text: text,
                 attachments: attachments,
                 config: input.config,
-                taskRegistry: turnTasks
+                taskRegistry: turnTasks,
+                outcomeCompletion: outcomeCompletion
             )
         case .regenerate:
             return try await executor.runRegenerateFlow(
                 sessionID: input.sessionID,
                 config: input.config,
-                taskRegistry: turnTasks
+                taskRegistry: turnTasks,
+                outcomeCompletion: outcomeCompletion
             )
         case let .edit(messageID, text):
             return try await executor.runEditFlow(
@@ -322,7 +366,8 @@ public final class ConversationRuntime: Sendable {
                 messageID: messageID,
                 text: text,
                 config: input.config,
-                taskRegistry: turnTasks
+                taskRegistry: turnTasks,
+                outcomeCompletion: outcomeCompletion
             )
         case let .branch(messageID, newSessionID, newSessionTitle, generateAfter):
             return try await executor.runBranchFlow(
@@ -332,7 +377,8 @@ public final class ConversationRuntime: Sendable {
                 newSessionTitle: newSessionTitle,
                 generateAfter: generateAfter,
                 config: input.config,
-                taskRegistry: turnTasks
+                taskRegistry: turnTasks,
+                outcomeCompletion: outcomeCompletion
             )
         }
     }

@@ -122,3 +122,82 @@ public struct GenerationStreamConsumer: Sendable {
         case ignore
     }
 }
+
+/// Small state reducer for callers that need to drain a generation stream and
+/// persist the terminal assistant turn.
+///
+/// ``GenerationStreamConsumer`` owns the raw event→action mapping. This
+/// accumulator owns the cross-event state that multiple orchestrators otherwise
+/// tend to duplicate: visible text, empty-response tracking, token usage, and
+/// in-flight thinking blocks. It intentionally leaves batching, persistence,
+/// cancellation, and event emission to the caller.
+public struct GenerationStreamAccumulator: Sendable {
+    public private(set) var visibleText: String
+    public private(set) var isEmptyResponse: Bool
+    public private(set) var tokenUsage: (promptTokens: Int, completionTokens: Int)?
+    public var currentThinkingText: String { thinkingText }
+
+    private var thinkingText: String
+    private var thinkingSignature: String?
+
+    public init(
+        visibleText: String = "",
+        isEmptyResponse: Bool = true,
+        tokenUsage: (promptTokens: Int, completionTokens: Int)? = nil
+    ) {
+        self.visibleText = visibleText
+        self.isEmptyResponse = isEmptyResponse
+        self.tokenUsage = tokenUsage
+        self.thinkingText = ""
+        self.thinkingSignature = nil
+    }
+
+    /// Records that a visible token arrived, even if batching delays display.
+    public mutating func recordTextToken() {
+        isEmptyResponse = false
+    }
+
+    /// Appends text that has been released from a caller-owned token batcher.
+    public mutating func appendVisibleText(_ text: String) {
+        visibleText += text
+    }
+
+    public mutating func recordUsage(prompt: Int, completion: Int) {
+        tokenUsage = (prompt, completion)
+    }
+
+    /// Appends reasoning text and returns whether this opened a new block.
+    public mutating func appendThinkingText(_ text: String) -> Bool {
+        let startsBlock = thinkingText.isEmpty
+        thinkingText += text
+        return startsBlock
+    }
+
+    public mutating func recordThinkingSignature(_ signature: String) {
+        thinkingSignature = signature
+    }
+
+    /// Finalizes the current thinking block, if it contains any text.
+    public mutating func finalizeThinking() -> FinalizedThinking? {
+        let block = thinkingText
+        let signature = thinkingSignature
+        thinkingText = ""
+        thinkingSignature = nil
+        guard !block.isEmpty else { return nil }
+        return FinalizedThinking(text: block, signature: signature)
+    }
+
+    public var hasOpenThinkingBlock: Bool {
+        !thinkingText.isEmpty
+    }
+
+    public struct FinalizedThinking: Equatable, Sendable {
+        public let text: String
+        public let signature: String?
+
+        public init(text: String, signature: String?) {
+            self.text = text
+            self.signature = signature
+        }
+    }
+}

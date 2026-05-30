@@ -159,11 +159,13 @@ extension ChatViewModel {
             config: makeTurnConfig(systemPrompt: effectiveSystemPrompt())
         )
         do {
-            let handle = try await conversationRuntime.processTurn(input)
-            activeConversationStreamHandle = handle
-            await awaitStreamCompletion()
+            if let handle = try await conversationRuntime.processTurnWithOutcome(input) {
+                await awaitTurnCompletion(handle)
+            } else {
+                await Task.yield()
+            }
         } catch {
-            Log.persistence.error("ConversationRuntime.processTurn(.send) failed: \(error)")
+            Log.persistence.error("ConversationRuntime.processTurnWithOutcome(.send) failed: \(error)")
             surfaceError(error, kind: .persistence)
         }
     }
@@ -180,11 +182,13 @@ extension ChatViewModel {
             config: makeTurnConfig(systemPrompt: effectiveSystemPrompt())
         )
         do {
-            let handle = try await conversationRuntime.processTurn(input)
-            activeConversationStreamHandle = handle
-            await awaitStreamCompletion()
+            if let handle = try await conversationRuntime.processTurnWithOutcome(input) {
+                await awaitTurnCompletion(handle)
+            } else {
+                await Task.yield()
+            }
         } catch {
-            Log.ui.error("ConversationRuntime.processTurn(.regenerate) failed: \(error)")
+            Log.ui.error("ConversationRuntime.processTurnWithOutcome(.regenerate) failed: \(error)")
             surfaceError(error, kind: .generation)
         }
     }
@@ -204,11 +208,13 @@ extension ChatViewModel {
         // Invalidate the token cache for the edited message — content changed.
         tokenCountCache.removeValue(forKey: messageID)
         do {
-            let handle = try await conversationRuntime.processTurn(input)
-            activeConversationStreamHandle = handle
-            await awaitStreamCompletion()
+            if let handle = try await conversationRuntime.processTurnWithOutcome(input) {
+                await awaitTurnCompletion(handle)
+            } else {
+                await Task.yield()
+            }
         } catch {
-            Log.ui.error("ConversationRuntime.processTurn(.edit) failed: \(error)")
+            Log.ui.error("ConversationRuntime.processTurnWithOutcome(.edit) failed: \(error)")
             surfaceError(error, kind: .generation)
         }
     }
@@ -230,10 +236,10 @@ extension ChatViewModel {
         // stop-button get immediate feedback. The runtime's subsequent
         // `.streamFinished(reason: .cancelled)` event is a no-op for phase
         // (the state machine treats `idle → idle` as `.unchanged`) but it's
-        // still load-bearing — it's how `awaitStreamCompletion()` resumes
-        // (clearing `activeConversationStreamHandle`) and how persistence of
-        // the partial reply happens. Do NOT clear the handle here; let the
-        // drain task clear it when the cancellation has fully propagated.
+        // still load-bearing — it's how live event reduction observes the
+        // terminal state and how persistence of the partial reply happens. Do
+        // NOT clear the handle here; let the runtime outcome or drain task
+        // clear it when the cancellation has fully propagated.
         //
         // Always forward to the backend — call sites like memory-pressure
         // handlers and scenePhase teardown invoke this defensively even

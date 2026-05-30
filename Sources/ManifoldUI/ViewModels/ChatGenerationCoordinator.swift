@@ -192,6 +192,38 @@ final class ChatGenerationCoordinator {
 
     // MARK: - Stream Completion
 
+    /// Suspends until the supplied runtime turn reaches its terminal outcome.
+    ///
+    /// This is the completion path for UI turn drivers. The global event drain
+    /// remains responsible for live token, thinking, and message mutation
+    /// reduction; this method gives that drain a short bounded window to consume
+    /// already-emitted final deltas, then reconciles terminal state from the
+    /// per-turn outcome if the drain is delayed or unavailable.
+    func awaitTurnCompletion(_ turnHandle: ConversationTurnHandle) async {
+        activeConversationStreamHandle = turnHandle.streamHandle
+        let outcome = await turnHandle.outcome
+
+        let clock = ContinuousClock()
+        let fallbackAt = clock.now + .milliseconds(250)
+        while activeConversationStreamHandle?.id == outcome.streamHandle.id,
+              clock.now < fallbackAt {
+            do {
+                try await Task.sleep(for: .milliseconds(10))
+            } catch {
+                break
+            }
+        }
+
+        // If the drain task already consumed the terminal event, it has also
+        // cleared the handle and updated observable state. If another turn has
+        // started, do not let this stale outcome clobber it.
+        guard activeConversationStreamHandle?.id == outcome.streamHandle.id else {
+            return
+        }
+
+        applyTerminalOutcome(outcome)
+    }
+
     /// Suspends until `activeConversationStreamHandle` becomes `nil`.
     func awaitStreamCompletion() async {
         // Yield once before entering the sleep loop so the runtime event drain
@@ -203,7 +235,11 @@ final class ChatGenerationCoordinator {
             // timeout in the awaitStreamCompletion test.
             // Sleep rather than yield so concurrent callers don't starve the
             // runtime event drain task that clears the handle.
-            try? await Task.sleep(for: .milliseconds(1))
+            do {
+                try await Task.sleep(for: .milliseconds(1))
+            } catch {
+                break
+            }
         }
     }
 
@@ -475,5 +511,88 @@ final class ChatGenerationCoordinator {
             return
         }
         _ = mutateMessage(messages[idx].id) { $0.status = .failed }
+    }
+
+    private func applyTerminalOutcome(_ outcome: ConversationTurnOutcome) {
+        activeConversationStreamHandle = nil
+        activeConversationMessageID = nil
+        transitionPhase(to: .idle)
+
+        if let error = outcome.error {
+            surface(conversationError: error)
+            if case .cancelled = error {
+                onSetLastTurnState(.idle)
+            } else {
+                markMostRecentUserMessageFailed()
+                onSetLastTurnState(.failed(error))
+            }
+            return
+        }
+
+        if outcome.reason == .empty, let assistantMessageID = outcome.assistantMessageID {
+            removeMessages { $0.id == assistantMessageID }
+        } else if let assistantMessage = outcome.assistantMessage,
+                  assistantMessage.sessionID == currentActiveSessionID() {
+            if currentMessages().contains(where: { $0.id == assistantMessage.id }) {
+                _ = mutateMessage(assistantMessage.id) {
+                    Self.mergeTerminalAssistant(assistantMessage, into: &$0)
+                }
+            } else {
+                appendMessage(assistantMessage)
+            }
+        }
+
+        updateContextEstimate()
+
+        if outcome.reason == .stop,
+           let completed = outcome.assistantMessageID.flatMap({ id in
+               currentMessages().first(where: { $0.id == id })
+           }) ?? outcome.assistantMessage,
+           completed.hasVisibleContent,
+           let session = currentActiveSession() {
+            onSetLastTurnState(.completed(completed))
+            runPostGenerationTasks(message: completed, session: session)
+        } else {
+            onSetLastTurnState(.idle)
+        }
+
+        if outcome.reason == .stop,
+           ManifoldConfiguration.shared.features.showUpgradeHint,
+           let completed = outcome.assistantMessageID.flatMap({ id in
+               currentMessages().first(where: { $0.id == id })
+           }) ?? outcome.assistantMessage,
+           completed.hasVisibleContent {
+            setShowUpgradeHint(true)
+        }
+    }
+
+    private func surface(conversationError error: ConversationError) {
+        switch error {
+        case .persistence(let underlying):
+            surfaceError(underlying, .persistence)
+        case .inference(let underlying):
+            surfaceError(underlying, .generation)
+        case .cancelled:
+            break
+        case .contextAssembly(let underlying):
+            surfaceError(underlying, .generation)
+        case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured, .messageTooLarge:
+            setErrorMessage(error.localizedDescription)
+        }
+    }
+
+    private static func mergeTerminalAssistant(
+        _ terminal: ChatMessageRecord,
+        into current: inout ChatMessageRecord
+    ) {
+        let liveNonTextParts = current.contentParts.filter { part in
+            if case .text = part { return false }
+            return true
+        }
+        current = terminal
+        current.contentParts = liveNonTextParts
+        if !terminal.content.isEmpty {
+            current.contentParts.append(.text(terminal.content))
+        }
     }
 }

@@ -2,6 +2,7 @@
 import Foundation
 import XCTest
 @testable import ManifoldMCP
+@testable import ManifoldMCPHost
 import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
@@ -18,9 +19,25 @@ final class ManifoldMCPHostTests: XCTestCase {
         sessions: [ChatSessionRecord] = [],
         messages: [ChatMessageRecord] = []
     ) -> (host: ManifoldMCPHost, sessionStore: StubSessionStore, messageStore: StubMessageStore) {
+        let fixture = makeRuntimeHost(sessions: sessions, messages: messages)
+        return (fixture.host, fixture.sessionStore, fixture.messageStore)
+    }
+
+    private func makeRuntimeHost(
+        sessions: [ChatSessionRecord] = [],
+        messages: [ChatMessageRecord] = [],
+        tokensToYield: [String] = ["Hello", " world"]
+    ) -> (
+        host: ManifoldMCPHost,
+        runtime: ConversationRuntime,
+        sessionStore: StubSessionStore,
+        messageStore: StubMessageStore
+    ) {
         let sessionStore = StubSessionStore(sessions: sessions)
         let messageStore = StubMessageStore(messages: messages)
         let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = tokensToYield
         let inferenceService = InferenceService(backend: backend)
         let runtime = ConversationRuntime(
             messageStore: messageStore,
@@ -32,7 +49,7 @@ final class ManifoldMCPHostTests: XCTestCase {
             messageStore: messageStore,
             conversationRuntime: runtime
         )
-        return (host, sessionStore, messageStore)
+        return (host, runtime, sessionStore, messageStore)
     }
 
     /// Drives a single JSON-RPC request through the host and returns the
@@ -313,6 +330,53 @@ final class ManifoldMCPHostTests: XCTestCase {
             return
         }
         XCTAssertEqual(err.code, -32002)
+    }
+
+    func test_toolCall_sendMessage_returnsOutcomeTextWithoutStealingRuntimeEvents() async throws {
+        let sessionID = UUID()
+        let session = ChatSessionRecord(id: sessionID, title: "MCP Session")
+        let fixture = makeRuntimeHost(
+            sessions: [session],
+            tokensToYield: ["MCP", " reply"]
+        )
+        let host = fixture.host
+        let runtime = fixture.runtime
+
+        let observedFinalText = Task { () -> String? in
+            for await event in runtime.events {
+                if case .afterGeneration(_, let finalText) = event {
+                    return finalText
+                }
+            }
+            return nil
+        }
+        defer { observedFinalText.cancel() }
+
+        let result = try await sendRequest(
+            method: "tools/call",
+            params: .object([
+                "name": .string("send_message"),
+                "arguments": .object([
+                    "session_id": .string(sessionID.uuidString),
+                    "text": .string("Hello over MCP"),
+                ]),
+            ]),
+            to: host
+        )
+
+        guard case .object(let response) = result,
+              case .array(let content) = response["content"],
+              case .object(let first) = content.first,
+              case .string(let responseText) = first["text"] else {
+            XCTFail("Expected MCP content text")
+            observedFinalText.cancel()
+            return
+        }
+
+        XCTAssertEqual(responseText, "MCP reply")
+        let finalText = await observedFinalText.value
+        XCTAssertEqual(finalText, "MCP reply")
+        XCTAssertEqual(response["isError"], .bool(false))
     }
 }
 

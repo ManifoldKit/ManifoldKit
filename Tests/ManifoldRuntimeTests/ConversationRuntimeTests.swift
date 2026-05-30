@@ -392,6 +392,22 @@ final class ConversationRuntimeTests: XCTestCase {
         }
     }
 
+    private func waitForOutcome(
+        from handle: ConversationTurnHandle,
+        deadline: Duration = .seconds(5)
+    ) async throws -> ConversationTurnOutcome {
+        try await withThrowingTaskGroup(of: ConversationTurnOutcome.self) { group in
+            group.addTask { await handle.outcome }
+            group.addTask {
+                try await Task.sleep(for: deadline)
+                throw TestError.deadlineElapsed
+            }
+            let first = try await group.next()
+            group.cancelAll()
+            return try XCTUnwrap(first)
+        }
+    }
+
     private func waitForActiveTurnTaskCount(
         _ expectedCount: Int,
         in runtime: ConversationRuntime,
@@ -517,11 +533,14 @@ final class ConversationRuntimeTests: XCTestCase {
         )
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "What is ManifoldKit?"))
-        _ = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "What is ManifoldKit?")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.reason, .stop)
+
 
         let stored = Array(store.messages.values).sorted { $0.timestamp < $1.timestamp }
         let assistant = stored.first(where: { $0.role == .assistant })
@@ -554,11 +573,14 @@ final class ConversationRuntimeTests: XCTestCase {
         )
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "anything"))
-        _ = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "anything")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.reason, .stop)
+
 
         let stored = Array(store.messages.values).sorted { $0.timestamp < $1.timestamp }
         let assistant = stored.first(where: { $0.role == .assistant })
@@ -618,6 +640,58 @@ final class ConversationRuntimeTests: XCTestCase {
         }
     }
 
+    func test_processTurnWithOutcome_successCompletesWithoutEventDrain() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["Hello", " outcome"]
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let sessionID = UUID()
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "hi"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+
+        XCTAssertEqual(outcome.sessionID, sessionID)
+        XCTAssertEqual(outcome.streamHandle, turn.streamHandle)
+        XCTAssertEqual(outcome.reason, .stop)
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.finalText, "Hello outcome")
+        XCTAssertEqual(outcome.assistantMessage?.content, "Hello outcome")
+        XCTAssertEqual(outcome.assistantMessageID, outcome.assistantMessage?.id)
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["Hello outcome"])
+    }
+
+    func test_processTurnWithOutcome_heavyTokenPressureCompletesWithoutEventDrain() async throws {
+        let tokens = (0..<750).map { "token\($0);" }
+        let expectedText = tokens.joined()
+        XCTAssertGreaterThan(tokens.count, 500, "Test must exceed the global events stream buffer cap")
+
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = tokens
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "pressure"),
+            config: TurnConfig(
+                streamingBatchCharacterLimit: 1,
+                loopDetectionEnabled: false
+            )
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+
+        let outcome = try await waitForOutcome(from: turn)
+
+        XCTAssertEqual(outcome.reason, .stop)
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.finalText, expectedText)
+        XCTAssertEqual(outcome.assistantMessage?.content, expectedText)
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), [expectedText])
+    }
+
     func test_send_hooksFireForBothUserAndAssistantWrites() async throws {
         // The store's post-write hook is the contract test: anything the
         // runtime persists must drive that hook. Two writes per turn.
@@ -628,11 +702,14 @@ final class ConversationRuntimeTests: XCTestCase {
         store.addPostWriteHook(recorder)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "ping"))
-        _ = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "ping")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.reason, .stop)
+
 
         XCTAssertEqual(recorder.records.count, 2, "Hook fires for both user and assistant writes")
         XCTAssertEqual(recorder.records[0].role, .user, "First hook is the user write")
@@ -651,20 +728,19 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "say nothing"))
-        let events = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .send(text: "say nothing")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+
 
         // Only the user message persists; the assistant message is dropped.
         XCTAssertEqual(store.messages.count, 1, "Empty assistant response is dropped, user persisted")
         XCTAssertEqual(Array(store.messages.values).first?.role, .user)
 
-        // Stream finishes with .empty.
-        XCTAssertTrue(events.contains(where: {
-            if case .streamFinished(_, .empty) = $0 { return true } else { return false }
-        }), "Stream finishes with .empty when no tokens were emitted")
+        XCTAssertEqual(outcome.reason, .empty, "Empty turns complete with an .empty outcome")
     }
 
     // MARK: - Finish-state regressions
@@ -721,6 +797,26 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(finalText, "")
     }
 
+    func test_processTurnWithOutcome_emptyResponseCompletesAndDropsAssistant() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = []
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "empty")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+
+        XCTAssertEqual(outcome.reason, .empty)
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.finalText, "")
+        XCTAssertNotNil(outcome.assistantMessageID, "The dropped assistant still has the turn-local message ID")
+        XCTAssertNil(outcome.assistantMessage)
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0)
+    }
+
     func test_finishState_cancelBeforeFirstToken_emitsSingleCancelledTerminalAndNoAssistant() async throws {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["late"]
@@ -747,6 +843,30 @@ final class ConversationRuntimeTests: XCTestCase {
         }, "No token event should escape after pre-token cancel")
         XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0,
                        "Pre-token cancel drops the empty assistant")
+    }
+
+    func test_processTurnWithOutcome_cancelCompletesWithCancelledReason() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["late"]
+        let gate = TokenEmissionGate()
+        mock.tokenEmissionGate = gate
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "cancel"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        await runtime.cancel(turn.streamHandle)
+        let outcome = try await waitForOutcome(from: turn)
+        await gate.release()
+
+        XCTAssertEqual(outcome.reason, .cancelled)
+        XCTAssertNil(outcome.error)
+        XCTAssertEqual(outcome.finalText, "")
+        XCTAssertNil(outcome.assistantMessage)
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.count, 0)
     }
 
     func test_finishState_cancelAfterPartialOutput_persistsPartialAndEmitsSingleCancelledTerminal() async throws {
@@ -818,6 +938,32 @@ final class ConversationRuntimeTests: XCTestCase {
             XCTAssertLessThan(errorIndex, finishIndex,
                               "Inference error is surfaced before the terminal event")
         }
+    }
+
+    func test_processTurnWithOutcome_streamErrorCompletesWithErrorWithoutEventDrain() async throws {
+        let mock = MockInferenceBackend()
+        mock.tokensToYield = ["partial"]
+        mock.shouldThrowInsideStream = InferenceError.inferenceFailure("partial")
+        let (runtime, store, _, _) = makeRuntime(mock: mock)
+
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "fail"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+
+        XCTAssertEqual(outcome.reason, .stop)
+        XCTAssertNotNil(outcome.error)
+        if case .inference? = outcome.error {
+            // Expected.
+        } else {
+            XCTFail("Expected inference error outcome")
+        }
+        XCTAssertEqual(outcome.finalText, "partial")
+        XCTAssertEqual(outcome.assistantMessage?.content, "partial")
+        XCTAssertEqual(store.messages.values.filter { $0.role == .assistant }.map(\.content), ["partial"])
     }
 
     func test_finishState_streamErrorWithPartial_persistsPartialThenErrorsBeforeSingleStopTerminal() async throws {
@@ -1186,18 +1332,21 @@ final class ConversationRuntimeTests: XCTestCase {
         let inference = InferenceService(backend: backend, name: "Hanging")
         let store = RuntimeMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
-        let drain = drainUntilStreamFinished(from: runtime)
 
-        let handle = try await runtime.send(SendInput(sessionID: UUID(), userText: "hang"))
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "hang")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
         try await waitForBackendStart(backend)
         XCTAssertEqual(runtime.activeTurnTaskCount, 1, "The launched turn should be tracked while the backend stream is hanging")
 
-        await runtime.cancel(handle)
-        let events = try await waitForEvents(from: drain)
+        await runtime.cancel(turn.streamHandle)
+        let outcome = try await waitForOutcome(from: turn)
         try await waitForActiveTurnTaskCount(0, in: runtime)
         try await waitForBackendTermination(backend)
 
-        XCTAssertEqual(streamFinishedReasons(in: events), [.cancelled])
+        XCTAssertEqual(outcome.reason, .cancelled)
         XCTAssertEqual(backend.stopCallCount, 1, "Handle cancellation must propagate to the active backend request")
         XCTAssertEqual(runtime.activeTurnTaskCount, 0, "Completed cancelled turns must unregister their task handle")
     }
@@ -1284,11 +1433,14 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let (runtime, _, _, _) = makeRuntime(mock: mock, sessionStore: sessions)
 
-        _ = try await runtime.send(SendInput(sessionID: original.id, userText: "hi"))
-        _ = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: original.id,
+            kind: .send(text: "hi")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.reason, .stop)
+
 
         // Touch happens twice per send (once before generation, once after).
         XCTAssertGreaterThanOrEqual(sessions.updateCount, 1,
@@ -1888,27 +2040,19 @@ final class ConversationRuntimeTests: XCTestCase {
         let sourceSession = ChatSessionRecord(id: sessionID, title: "Source")
         try await sessionStore.insertSession(sourceSession)
 
-        let input = BranchInput(
-            sourceSessionID: sessionID,
-            branchMessageID: msg2.id,   // branch at the last user message
-            newSessionID: newSessionID,
-            generateAfterBranch: true
-        )
-        let handle = try await runtime.branch(input)
-
-        XCTAssertNotNil(handle, "branch returns a handle when generation is triggered")
-
-        // Wait for generation to complete on the new session.
-        let events = try await collectEvents(from: runtime) { event in
-            if case .afterGeneration = event { return true }
-            return false
-        }
-
-        // Generation events fired against the newSessionID.
-        let streamStarted = events.first { event in
-            if case .streamStarted = event { return true } else { return false }
-        }
-        XCTAssertNotNil(streamStarted, "streamStarted fires during branch generation")
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: sessionID,
+            kind: .branch(
+                messageID: msg2.id,
+                newSessionID: newSessionID,
+                newSessionTitle: nil,
+                generateAfter: true
+            )
+        ))
+        let turn = try XCTUnwrap(maybeTurn, "branch returns a handle when generation is triggered")
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.sessionID, newSessionID)
+        XCTAssertEqual(outcome.reason, .stop)
 
         // New session now has 3 + 1 messages: 3 copied + 1 new assistant.
         let newMessages = try await store.fetchMessages(for: newSessionID)
@@ -2243,11 +2387,16 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.shouldThrowInsideStream = InferenceError.inferenceFailure("network blip")
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "tool-only error test"))
-        let events = try await collectUntilStreamFinished(from: runtime)
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "tool-only error test")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
 
-        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
-                       "Stream error emits exactly one terminal event")
+        XCTAssertEqual(outcome.reason, .stop,
+                       "Stream error completes with a stop outcome")
+        XCTAssertNotNil(outcome.error, "Stream error is captured in the reliable outcome")
 
         let assistantMessages = store.messages.values.filter { $0.role == .assistant }
         XCTAssertEqual(assistantMessages.count, 1,
@@ -2275,10 +2424,14 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.scriptedToolCalls = [call]
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "tool-only normal test"))
-        let events = try await collectUntilStreamFinished(from: runtime)
+        let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
+            sessionID: UUID(),
+            kind: .send(text: "tool-only normal test")
+        ))
+        let turn = try XCTUnwrap(maybeTurn)
+        let outcome = try await waitForOutcome(from: turn)
 
-        XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
+        XCTAssertEqual(outcome.reason, .stop,
                        "Tool-only normal completion finishes with .stop, not .empty")
 
         let assistantMessages = store.messages.values.filter { $0.role == .assistant }
@@ -2567,13 +2720,12 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
         let sessionID = UUID()
 
-        let handle = try await runtime.processTurn(
+        let maybeTurn = try await runtime.processTurnWithOutcome(
             TurnInput(sessionID: sessionID, kind: .send(text: exactText))
         )
-        XCTAssertNotNil(handle, "message at the byte limit must be accepted and return a handle")
-
-        // Allow the stream to settle so the user message persistence is flushed.
-        _ = try await collectUntilStreamFinished(from: runtime)
+        let turn = try XCTUnwrap(maybeTurn, "message at the byte limit must be accepted and return a handle")
+        let outcome = try await waitForOutcome(from: turn)
+        XCTAssertEqual(outcome.reason, .stop)
 
         let persisted = store.messages.values.filter { $0.sessionID == sessionID && $0.role == .user }
         XCTAssertEqual(persisted.count, 1,
