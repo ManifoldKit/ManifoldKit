@@ -20,6 +20,9 @@
 #   - platforms macOS .v15 (ManifoldKit's floor)
 #   - depends on the local ManifoldKit checkout via .package(name: ..., path: ...)
 #   - links the ManifoldKit umbrella product (covers ManifoldUI / Inference re-exports)
+#   - built with --disable-default-traits so MLX/Llama XCFrameworks are not
+#     compiled (they require hardware and slow each build by ~3 min). Snippets
+#     that import ManifoldBackends still compile — the umbrella is trait-safe.
 #
 # Exit codes:
 #   0 — every snippet compiled.
@@ -112,7 +115,7 @@ EOF
     echo "── ${base}  (from ${src_location})"
 
     log="$pkg_dir/build.log"
-    if (cd "$pkg_dir" && swift build) > "$log" 2>&1; then
+    if (cd "$pkg_dir" && swift build --disable-default-traits) > "$log" 2>&1; then
         echo "   PASS"
         passed=$((passed + 1))
     else
