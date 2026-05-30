@@ -20,6 +20,13 @@
 #   - platforms macOS .v15 (ManifoldKit's floor)
 #   - depends on the local ManifoldKit checkout via .package(name: ..., path: ...)
 #   - links the ManifoldKit umbrella product (covers ManifoldUI / Inference re-exports)
+#   - depends on ManifoldKit with traits: ["FoundationOnly"] so MLX/Llama/
+#     HuggingFace XCFrameworks are not compiled (they require hardware and add
+#     ~3 min per build). FoundationOnly is the established lean-build trait;
+#     ManifoldBackends is trait-safe so the ManifoldBackends import snippet
+#     still compiles. --disable-default-traits is NOT passed on the command
+#     line because that flag applies to the snippet package itself, which
+#     declares no traits and would be rejected by SwiftPM.
 #
 # Exit codes:
 #   0 — every snippet compiled.
@@ -84,7 +91,7 @@ let package = Package(
         .executable(name: "SnippetApp", targets: ["SnippetApp"]),
     ],
     dependencies: [
-        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
+        .package(name: "ManifoldKit", path: "$REPO_ROOT", traits: ["FoundationOnly"]),
     ],
     targets: [
         .executableTarget(
