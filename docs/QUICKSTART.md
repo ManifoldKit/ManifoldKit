@@ -339,6 +339,7 @@ do {
 
 ## Where to go next
 
+- [`docs/SWIFTUI-MULTI-SESSION.md`](SWIFTUI-MULTI-SESSION.md) — **ready to add a session sidebar?** Start here. Covers multi-session UI, relaunch restore, `APIConfigurationView`, and a complete end-to-end recipe that replaces piecemeal fragments from multiple docs.
 - [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full trait → backend → capability table.
 - [`Example/Examples/MinimalExample`](../Example/Examples/MinimalExample) — runnable minimum-viable app.
 - [`Example/Advanced`](../Example/Advanced) — full reference app with sessions, model management, and a custom composer accessory.

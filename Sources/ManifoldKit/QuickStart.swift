@@ -104,6 +104,17 @@ public enum ManifoldKit {
             let sessionManager = SessionManagerViewModel()
             await sessionManager.configureAndLoad(bootstrap: bootstrap)
 
+            // Auto-title sessions after the first user message so restored
+            // sessions don't all remain titled "New Chat" (#1515). The word-
+            // truncation path (`autoGenerateTitle`) is used here rather than
+            // the inference-backed `autoRenameSession` so the hook is
+            // synchronous, cheap, and available on all OS versions without
+            // any backend being loaded. Hosts that want AI-generated titles
+            // can replace this closure after `quickStart()` returns.
+            viewModel.onFirstMessage = { [weak sessionManager] session, text in
+                await sessionManager?.autoGenerateTitle(for: session, firstMessage: text)
+            }
+
             // A2-F4 + #1464: ensure the documented `quickStart()` → `ChatView()`
             // path produces a usable chat surface on first launch, and that
             // relaunch restores the previously active conversation rather than

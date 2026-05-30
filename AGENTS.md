@@ -46,9 +46,10 @@ view target — CI lint rejects that edge.
 
 ## Bootstrap recipe (canonical hello-world)
 
-The shipped `ManifoldBootstrap` wires inference, persistence, the conversation
-runtime, and the model container in the right order. Drop this in
-`@main App.init()`:
+The shipped `ManifoldBootstrap.build(...)` wires inference, persistence, the
+conversation runtime, and the model container in the right order. Because it
+is `async`, wire it from a `.task { }` on the launch view — **not** from
+`App.init()`, which is synchronous and would deadlock:
 
 ```swift
 import SwiftUI
@@ -58,51 +59,75 @@ import ManifoldUIModelManagement   // model browser/download UI is opt-in
 
 @main
 struct MyChatApp: App {
-    private let runtime: ManifoldBootstrap
-    @State private var chatViewModel: ChatViewModel
-    @State private var sessionManager: SessionManagerViewModel
-    @State private var modelManagement: ModelManagementViewModel
-
-    init() {
-        let runtime = try! ManifoldBootstrap(
-            configuration: ManifoldConfiguration(
-                appName: "My Chat",
-                bundleIdentifier: "com.example.mychat"
-            )
-        )
-        self.runtime = runtime
-
-        DefaultBackends.register(with: runtime.inferenceService)
-
-        let vm = ChatViewModel(
-            inferenceService: runtime.inferenceService,
-            conversationRuntime: runtime.conversationRuntime
-        )
-        vm.foundationModelProvider = {
-            if #available(iOS 26, macOS 26, *) {
-                return FoundationBackend.isAvailable
-            }
-            return false
-        }
-        vm.configure(runtime: runtime)
-        _chatViewModel = State(initialValue: vm)
-
-        let sessions = SessionManagerViewModel()
-        sessions.configure(runtime: runtime)
-        _sessionManager = State(initialValue: sessions)
-
-        _modelManagement = State(initialValue: ModelManagementViewModel.live())
-    }
+    @State private var bootstrap: ManifoldBootstrap?
+    @State private var chatViewModel: ChatViewModel?
+    @State private var sessionManager: SessionManagerViewModel?
+    @State private var modelManagement = ModelManagementViewModel.live()
+    @State private var startupError: Error?
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(chatViewModel)
-                .environment(sessionManager)
-                .environment(modelManagement)
-                .environment(\.endpointStore, runtime.endpointStore)
+            if let bootstrap, let chatViewModel, let sessionManager {
+                ContentView()
+                    .environment(chatViewModel)
+                    .environment(sessionManager)
+                    .environment(modelManagement)
+                    // .environment(\.endpointStore, ...) lets APIConfigurationView
+                    // persist API keys without extra glue in the host.
+                    .environment(\.endpointStore, bootstrap.endpointStore)
+                    .modelContainer(bootstrap.modelContainer)
+            } else if let startupError {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(String(describing: startupError))
+                )
+            } else {
+                ProgressView("Starting…")
+                    .task { await start() }
+            }
         }
-        .modelContainer(runtime.modelContainer)
+    }
+
+    @MainActor
+    private func start() async {
+        do {
+            let (progress, task) = ManifoldBootstrap.build(
+                configuration: ManifoldConfiguration(
+                    appName: "My Chat",
+                    bundleIdentifier: "com.example.mychat"
+                )
+            )
+            for await _ in progress { /* drain milestones or drive a progress bar */ }
+            let bootstrap = try await task.value
+
+            DefaultBackends.register(with: bootstrap.inferenceService)
+
+            let vm = ChatViewModel(
+                inferenceService: bootstrap.inferenceService,
+                conversationRuntime: bootstrap.conversationRuntime
+            )
+            vm.configure(bootstrap: bootstrap)
+
+            // Use configureAndLoad — not configure — so sessions are populated
+            // before selectInitialSession() runs (#1464).
+            let sessions = SessionManagerViewModel()
+            await sessions.configureAndLoad(bootstrap: bootstrap)
+
+            if let restored = await sessions.selectInitialSession() {
+                sessions.activeSession = restored
+                await vm.switchToSession(restored)
+            } else if let fresh = try? await sessions.createSession() {
+                sessions.activeSession = fresh
+                await vm.switchToSession(fresh)
+            }
+
+            self.bootstrap = bootstrap
+            self.chatViewModel = vm
+            self.sessionManager = sessions
+        } catch {
+            self.startupError = error
+        }
     }
 }
 ```
@@ -117,10 +142,13 @@ import ManifoldUIModelManagement
 struct ContentView: View {
     @Environment(ChatViewModel.self) private var vm
     @Environment(ModelManagementViewModel.self) private var mm
+    @Environment(SessionManagerViewModel.self) private var sessionVM
     @State private var showModelManagement = false
 
     var body: some View {
-        NavigationStack {
+        NavigationSplitView {
+            SessionListView()
+        } detail: {
             ChatView(
                 showModelManagement: $showModelManagement,
                 apiConfiguration: { APIConfigurationView() }
@@ -130,12 +158,25 @@ struct ContentView: View {
                     .environment(mm)
             }
         }
+        .onChange(of: sessionVM.activeSession) { _, newSession in
+            guard let newSession,
+                  vm.activeSession?.id != newSession.id else { return }
+            Task { await vm.switchToSession(newSession) }
+        }
     }
 }
 ```
 
 `Example/Examples/MinimalExample/` is the runnable version of this — keep it
 open while you wire the real app.
+
+> For a single-session surface without a sidebar, `ManifoldKit.quickStart()`
+> collapses the `start()` method above into one call. See
+> [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for that path.
+>
+> For the complete end-to-end recipe (local SwiftPM path, Ollama seeding,
+> `ManifoldUIModelManagement` optionality), see
+> [`docs/SWIFTUI-MULTI-SESSION.md` § Full recipe](docs/SWIFTUI-MULTI-SESSION.md).
 
 ## Sending a message
 

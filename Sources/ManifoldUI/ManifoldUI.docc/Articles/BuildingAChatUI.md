@@ -400,6 +400,7 @@ The closure is invoked at sheet/popover presentation time, not at `ChatView` ini
 
 ## Next Steps
 
+- See [`docs/SWIFTUI-MULTI-SESSION.md`](../../../../../../docs/SWIFTUI-MULTI-SESSION.md) for the single canonical guide to multi-session UI, relaunch restore, `APIConfigurationView`, local SwiftPM path, and a complete end-to-end recipe covering everything in one place.
 - See ``GenerationSettingsView`` to give users control over temperature and prompt templates
 - See `ManifoldUIModelManagement.ModelManagementSheet` for the combined model selection, download, and storage UI (now in the peeled `ManifoldUIModelManagement` product — `import` it explicitly)
 - See ``ManifoldConfiguration/Features`` to hide UI features that don't apply to your deployment
