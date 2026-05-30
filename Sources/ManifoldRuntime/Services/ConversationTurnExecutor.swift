@@ -14,6 +14,7 @@ struct ConversationTurnExecutor: Sendable {
     private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
     private let generationHooks: [any GenerationHook]
     private let compressionPolicy: (any CompressionPolicy)?
+    private let preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
     private let hookTimeout: Duration
     private let historyAssembler: HistoryAssembler
     /// Optional provider that attaches host-app data to each turn. Called with
@@ -42,6 +43,7 @@ struct ConversationTurnExecutor: Sendable {
         emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
         historyProviders: [any HistoryProvider] = [],
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
@@ -58,6 +60,7 @@ struct ConversationTurnExecutor: Sendable {
         self.emptyResponseObserver = emptyResponseObserver
         self.generationHooks = generationHooks
         self.compressionPolicy = compressionPolicy
+        self.preTurnCompressionPolicy = preTurnCompressionPolicy
         self.hookTimeout = hookTimeout
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
         self.turnContextProvider = turnContextProvider
@@ -107,6 +110,60 @@ struct ConversationTurnExecutor: Sendable {
         } else {
             userContentParts = [.text(text)] + attachments
         }
+
+        // Pre-turn compression: runs before the user message is appended so
+        // the just-submitted action always falls outside the compressed
+        // segment. Only runs for `.send` turns (not regenerate / edit / branch).
+        // Failures throw to the caller — unlike post-turn compression which
+        // logs and continues, pre-turn failure aborts the turn because the
+        // host's ordering invariant depends on compression completing first.
+        //
+        // userMessage is created AFTER this block so its timestamp naturally
+        // follows the compression summary records in store sort order.
+        if let preTurnPolicy = preTurnCompressionPolicy {
+            let existingHistory: [ChatMessageRecord]
+            do {
+                existingHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            } catch {
+                throw ConversationError.persistence(error)
+            }
+            let lastPromptTokens = existingHistory.last(where: { $0.role == .assistant })?.promptTokens
+            if preTurnPolicy.shouldCompressBeforeTurn(
+                messageCount: existingHistory.count,
+                lastPromptTokens: lastPromptTokens
+            ) {
+                let generate = makeCompressionGenerateClosure()
+                let compressed: [ChatMessageRecord]
+                do {
+                    compressed = try await preTurnPolicy.compressBeforeTurn(
+                        history: existingHistory,
+                        sessionID: sessionID,
+                        generate: generate
+                    )
+                } catch {
+                    throw ConversationError.preTurnCompressionFailed(error)
+                }
+                guard !compressed.isEmpty else {
+                    throw ConversationError.preTurnCompressionFailed(
+                        PreTurnCompressionEmptyResultError()
+                    )
+                }
+                do {
+                    try await persistence.deleteMessages(for: sessionID)
+                    for message in compressed {
+                        try await persistence.insertMessage(message)
+                    }
+                } catch {
+                    throw ConversationError.persistence(error)
+                }
+                emit(.historyCompressed(sessionID: sessionID, insertedRecords: compressed))
+                await preTurnPolicy.postCompressBeforeTurn(
+                    sessionID: sessionID,
+                    insertedRecords: compressed
+                )
+            }
+        }
+
         let userMessage = ChatMessageRecord(
             role: .user,
             contentParts: userContentParts,
@@ -1192,41 +1249,7 @@ struct ConversationTurnExecutor: Sendable {
                     return
                 }
 
-                // Wrap inferenceService in a Sendable closure so the policy
-                // can call the backend for summarisation without holding a
-                // reference to the executor itself. Uses background priority
-                // so compression doesn't compete with the user's next turn.
-                let generate: @Sendable ([ChatMessageRecord]) async throws -> String = { [inferenceService] messages in
-                    let structured = messages
-                        .filter { $0.kind.isWireVisible }
-                        .map { record -> StructuredMessage in
-                            let role = record.kind.backendRole ?? record.role
-                            return StructuredMessage(role: role.rawValue, parts: record.contentParts)
-                        }
-                    let (token, compressStream) = try await inferenceService.enqueueAsync(
-                        structuredMessages: structured,
-                        priority: .background
-                    )
-                    var result = ""
-                    var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
-                    do {
-                        for try await event in compressStream.events {
-                            // Propagate parent-task cancellation into the
-                            // backend stream so we don't keep draining after
-                            // the runtime has moved on.
-                            try Task.checkCancellation()
-                            if case .appendText(let chunk) = consumer.handle(event) {
-                                result += chunk
-                            }
-                        }
-                    } catch {
-                        // Cancel the backend token on any exit (cancellation or
-                        // inference error) so the backend doesn't keep running.
-                        await inferenceService.cancelAsync(token)
-                        throw error
-                    }
-                    return result
-                }
+                let generate = makeCompressionGenerateClosure()
 
                 // preCompact hook: v1 is observational. The plan's hook
                 // contract documents that preCompact CANNOT block compression
@@ -1281,6 +1304,44 @@ struct ConversationTurnExecutor: Sendable {
 
 
     // MARK: Helpers
+
+    /// Returns a `@Sendable` closure that drives a background inference call
+    /// for summarisation. Shared by pre-turn and post-turn compression paths.
+    private func makeCompressionGenerateClosure() -> @Sendable ([ChatMessageRecord]) async throws -> String {
+        let inferenceService = self.inferenceService
+        return { messages in
+            let structured = messages
+                .filter { $0.kind.isWireVisible }
+                .map { record -> StructuredMessage in
+                    let role = record.kind.backendRole ?? record.role
+                    return StructuredMessage(role: role.rawValue, parts: record.contentParts)
+                }
+            let (token, compressStream) = try await inferenceService.enqueueAsync(
+                structuredMessages: structured,
+                priority: .background
+            )
+            var result = ""
+            var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
+            do {
+                for try await event in compressStream.events {
+                    try Task.checkCancellation()
+                    if case .appendText(let chunk) = consumer.handle(event) {
+                        result += chunk
+                    }
+                }
+            } catch {
+                await inferenceService.cancelAsync(token)
+                throw error
+            }
+            return result
+        }
+    }
+
+    private struct PreTurnCompressionEmptyResultError: LocalizedError, Sendable {
+        var errorDescription: String? {
+            "Pre-turn compression returned an empty history."
+        }
+    }
 
     private func emit(_ event: ConversationEvent) {
         eventSink(event)

@@ -392,6 +392,8 @@ final class ChatGenerationCoordinator {
                 break
             case .contextAssembly(let underlying):
                 surfaceError(underlying, .generation)
+            case .preTurnCompressionFailed(let underlying):
+                surfaceError(underlying, .generation)
             case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured, .messageTooLarge:
                 setErrorMessage(error.localizedDescription)
             }
@@ -575,6 +577,8 @@ final class ChatGenerationCoordinator {
         case .cancelled:
             break
         case .contextAssembly(let underlying):
+            surfaceError(underlying, .generation)
+        case .preTurnCompressionFailed(let underlying):
             surfaceError(underlying, .generation)
         case .messageNotFound, .noAssistantMessageToRegenerate, .providerNotConfigured, .messageTooLarge:
             setErrorMessage(error.localizedDescription)

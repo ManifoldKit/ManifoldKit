@@ -134,6 +134,12 @@ public enum ConversationError: Error, Sendable {
     /// Context assembly via a registered ``PromptContextProvider`` failed.
     case contextAssembly(any Error)
 
+    /// Pre-turn compression ran but
+    /// ``PreTurnCompressionPolicy/compressBeforeTurn(history:sessionID:generate:)``
+    /// threw or returned an empty history. Existing history is preserved and
+    /// the turn was not executed. The associated value is the underlying error.
+    case preTurnCompressionFailed(any Error)
+
     /// The runtime's send was cancelled (via ``ConversationRuntime/cancel(_:)``
     /// or task cancellation propagation). Adapters use this to suppress
     /// error UI for explicit user cancel.
@@ -157,6 +163,8 @@ extension ConversationError: LocalizedError {
             return "Inference failure during conversation: \(error.localizedDescription)"
         case let .contextAssembly(error):
             return "Context assembly failure: \(error.localizedDescription)"
+        case let .preTurnCompressionFailed(error):
+            return "Pre-turn compression failed: \(error.localizedDescription)"
         case .cancelled:
             return "Conversation request was cancelled."
         }
