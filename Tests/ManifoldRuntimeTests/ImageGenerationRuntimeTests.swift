@@ -501,6 +501,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             .errorRaised(.cancelled),
             .sessionTouchFailed(sessionID: UUID()),
             .beforeContextAssembly(prompt: nil, request: PromptContextRequest(sessionID: UUID(), messageCount: 0, userInput: nil)),
+            .historyShaped(sessionID: UUID(), diagnostics: []),
             .contextAssembled(slots: []),
             .afterGeneration(messageID: UUID(), finalText: ""),
             .compressionTriggered(removed: [], reason: .manual),
@@ -520,7 +521,7 @@ final class ImageGenerationRuntimeTests: XCTestCase {
                  .streamStarted, .tokenEmitted, .tokenUsageRecorded,
                  .thinkingStarted, .thinkingUpdated, .thinkingFinalized,
                  .loopDetected, .streamFinished, .errorRaised, .sessionTouchFailed,
-                 .beforeContextAssembly, .contextAssembled, .afterGeneration,
+                 .beforeContextAssembly, .historyShaped, .contextAssembled, .afterGeneration,
                  .compressionTriggered, .historyCompressed, .toolCallRequested, .toolCallApproved,
                  .toolCallCompleted,
                  .agentHandoff, .skillInvoked, .hookFired:
@@ -528,8 +529,8 @@ final class ImageGenerationRuntimeTests: XCTestCase {
             }
         }
         // Pin the exact case count as a runtime assertion too — the
-        // sample list is the source of truth. W2B added agentHandoff,
-        // skillInvoked, and hookFired (22 → 25).
-        XCTAssertEqual(samples.count, 25, "ConversationEvent case count drifted — image-side cases may have leaked in")
+        // sample list is the source of truth. Runtime history shaping added
+        // one more context-side case (25 → 26).
+        XCTAssertEqual(samples.count, 26, "ConversationEvent case count drifted — image-side cases may have leaked in")
     }
 }

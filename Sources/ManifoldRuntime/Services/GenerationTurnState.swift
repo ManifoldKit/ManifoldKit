@@ -10,6 +10,15 @@ import ManifoldInference
 // finalise → post-turn handoff). They carry no behaviour — only state — so
 // the decomposition stays a pure refactor.
 
+/// Output of the pre-assembly history-preparation phase. Carries the prompt-
+/// visible history after host shaping + additive history providers plus the
+/// resolved turn context snapshot used by downstream prompt assembly and
+/// post-generation hooks.
+struct PreparedTurnHistory {
+    var history: [ChatMessageRecord]
+    var turnContext: TurnContext
+}
+
 /// Output of phase 1 (context assembly). Carries the assembled prompt slots,
 /// any RAG citations, the once-per-turn session snapshot, and the host-mutable
 /// bindings snapshot (tool sources + hook registry) read at the top of the

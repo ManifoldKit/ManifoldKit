@@ -14,13 +14,17 @@ struct ConversationTurnExecutor: Sendable {
     private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
     private let generationHooks: [any GenerationHook]
     private let compressionPolicy: (any CompressionPolicy)?
+    private let preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
     private let hookTimeout: Duration
+    private let historyShaper: (any HistoryShaper)?
     private let historyAssembler: HistoryAssembler
-    /// Optional provider that attaches host-app data to each turn. Called with
-    /// the session UUID before context assembly; the returned value is stored on
-    /// ``TurnContext/appData`` and forwarded to ``CompletedTurn/appData`` so
-    /// ``GenerationHook`` implementations receive it without a side-channel.
-    private let turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
+    /// Optional richer provider that attaches host-app data to each turn from a
+    /// full metadata snapshot. When absent, ``legacyTurnContextProvider`` keeps
+    /// the old session-ID-only seam source-compatible.
+    private let hostTurnContextProvider: (any HostTurnContextProvider)?
+    /// Legacy session-ID-only host appData seam. Kept for source compatibility
+    /// and used only when ``hostTurnContextProvider`` is `nil`.
+    private let legacyTurnContextProvider: (@Sendable (UUID) -> (any Sendable)?)?
     /// Mutable holder for `sessionToolSources` + `hookRegistry`. The executor
     /// reads a snapshot once per turn (top of the send loop) so a host call
     /// to ``ConversationRuntime/updateSessionToolSources(_:)`` /
@@ -42,8 +46,11 @@ struct ConversationTurnExecutor: Sendable {
         emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?,
         generationHooks: [any GenerationHook] = [],
         compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
         hookTimeout: Duration = .seconds(30),
+        historyShaper: (any HistoryShaper)? = nil,
         historyProviders: [any HistoryProvider] = [],
+        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         bindings: RuntimeBindingsBox
     ) {
@@ -58,9 +65,12 @@ struct ConversationTurnExecutor: Sendable {
         self.emptyResponseObserver = emptyResponseObserver
         self.generationHooks = generationHooks
         self.compressionPolicy = compressionPolicy
+        self.preTurnCompressionPolicy = preTurnCompressionPolicy
         self.hookTimeout = hookTimeout
+        self.historyShaper = historyShaper
         self.historyAssembler = HistoryAssembler(providers: historyProviders)
-        self.turnContextProvider = turnContextProvider
+        self.hostTurnContextProvider = hostTurnContextProvider
+        self.legacyTurnContextProvider = turnContextProvider
         self.bindings = bindings
     }
 
@@ -107,6 +117,60 @@ struct ConversationTurnExecutor: Sendable {
         } else {
             userContentParts = [.text(text)] + attachments
         }
+
+        // Pre-turn compression: runs before the user message is appended so
+        // the just-submitted action always falls outside the compressed
+        // segment. Only runs for `.send` turns (not regenerate / edit / branch).
+        // Failures throw to the caller — unlike post-turn compression which
+        // logs and continues, pre-turn failure aborts the turn because the
+        // host's ordering invariant depends on compression completing first.
+        //
+        // userMessage is created AFTER this block so its timestamp naturally
+        // follows the compression summary records in store sort order.
+        if let preTurnPolicy = preTurnCompressionPolicy {
+            let existingHistory: [ChatMessageRecord]
+            do {
+                existingHistory = try await persistence.fetchMessages(sessionID: sessionID)
+            } catch {
+                throw ConversationError.persistence(error)
+            }
+            let lastPromptTokens = existingHistory.last(where: { $0.role == .assistant })?.promptTokens
+            if preTurnPolicy.shouldCompressBeforeTurn(
+                messageCount: existingHistory.count,
+                lastPromptTokens: lastPromptTokens
+            ) {
+                let generate = makeCompressionGenerateClosure()
+                let compressed: [ChatMessageRecord]
+                do {
+                    compressed = try await preTurnPolicy.compressBeforeTurn(
+                        history: existingHistory,
+                        sessionID: sessionID,
+                        generate: generate
+                    )
+                } catch {
+                    throw ConversationError.preTurnCompressionFailed(error)
+                }
+                guard !compressed.isEmpty else {
+                    throw ConversationError.preTurnCompressionFailed(
+                        PreTurnCompressionEmptyResultError()
+                    )
+                }
+                do {
+                    try await persistence.deleteMessages(for: sessionID)
+                    for message in compressed {
+                        try await persistence.insertMessage(message)
+                    }
+                } catch {
+                    throw ConversationError.persistence(error)
+                }
+                emit(.historyCompressed(sessionID: sessionID, insertedRecords: compressed))
+                await preTurnPolicy.postCompressBeforeTurn(
+                    sessionID: sessionID,
+                    insertedRecords: compressed
+                )
+            }
+        }
+
         let userMessage = ChatMessageRecord(
             role: .user,
             contentParts: userContentParts,
@@ -133,45 +197,26 @@ struct ConversationTurnExecutor: Sendable {
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
             }
-            // Fetch history first — one store fetch covers both the
-            // message count for context assembly and the structured
-            // messages for enqueueAsync. By the time we get here, the
-            // user message we just inserted is in the store
-            // (insertMessage awaited above).
-            var history: [ChatMessageRecord]
+            let preparedHistory: PreparedTurnHistory
             do {
-                history = try await persistence.fetchMessages(sessionID: sessionID)
-            } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                preparedHistory = try await fetchAndPrepareTurnHistory(
                     sessionID: sessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-            do {
-                history = try await historyAssembler.assemble(
-                    history: history,
-                    context: makeTurnContext(sessionID: sessionID, history: history)
+                    turnKind: .send(text: text, attachments: attachments),
+                    userPrompt: text
                 )
             } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                await failPreparedTurn(
+                    error,
                     sessionID: sessionID,
                     handle: handle,
-                    error: conversationError
+                    outcomeCompletion: outcomeCompletion
                 )
                 return
             }
             await runGenerationTurn(
                 sessionID: sessionID,
                 userPrompt: text,
-                history: history,
+                preparedHistory: preparedHistory,
                 config: config,
                 handle: handle,
                 outcomeCompletion: outcomeCompletion
@@ -217,42 +262,26 @@ struct ConversationTurnExecutor: Sendable {
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
             }
-            // Fetch history after deletion — the removed assistant message
-            // is gone, so context assembly starts from the last user turn.
-            var postHistory: [ChatMessageRecord]
+            let preparedHistory: PreparedTurnHistory
             do {
-                postHistory = try await persistence.fetchMessages(sessionID: sessionID)
-            } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                preparedHistory = try await fetchAndPrepareTurnHistory(
                     sessionID: sessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-            do {
-                postHistory = try await historyAssembler.assemble(
-                    history: postHistory,
-                    context: makeTurnContext(sessionID: sessionID, history: postHistory)
+                    turnKind: .regenerate,
+                    userPrompt: nil
                 )
             } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                await failPreparedTurn(
+                    error,
                     sessionID: sessionID,
                     handle: handle,
-                    error: conversationError
+                    outcomeCompletion: outcomeCompletion
                 )
                 return
             }
             await runGenerationTurn(
                 sessionID: sessionID,
                 userPrompt: nil,
-                history: postHistory,
+                preparedHistory: preparedHistory,
                 config: config,
                 handle: handle,
                 outcomeCompletion: outcomeCompletion
@@ -322,44 +351,26 @@ struct ConversationTurnExecutor: Sendable {
             for hook in generationHooks {
                 await hook.willBeginTurn(sessionID: sessionID)
             }
-            // Fetch history fresh after the synchronous edit + deletion —
-            // the updated message and removed trailing messages are
-            // already committed to the store before the detached task
-            // runs.
-            var postHistory: [ChatMessageRecord]
+            let preparedHistory: PreparedTurnHistory
             do {
-                postHistory = try await persistence.fetchMessages(sessionID: sessionID)
-            } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                preparedHistory = try await fetchAndPrepareTurnHistory(
                     sessionID: sessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-            do {
-                postHistory = try await historyAssembler.assemble(
-                    history: postHistory,
-                    context: makeTurnContext(sessionID: sessionID, history: postHistory)
+                    turnKind: .edit(messageID: messageID, text: text),
+                    userPrompt: nil
                 )
             } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                await failPreparedTurn(
+                    error,
                     sessionID: sessionID,
                     handle: handle,
-                    error: conversationError
+                    outcomeCompletion: outcomeCompletion
                 )
                 return
             }
             await runGenerationTurn(
                 sessionID: sessionID,
                 userPrompt: nil,
-                history: postHistory,
+                preparedHistory: preparedHistory,
                 config: config,
                 handle: handle,
                 outcomeCompletion: outcomeCompletion
@@ -458,42 +469,31 @@ struct ConversationTurnExecutor: Sendable {
             loopDetectionEnabled: true
         )
         await taskRegistry.launch(handle: handle) { [self] in
-            // Re-fetch from the new session so the history reflects the
-            // persisted copies with their new IDs and sessionID.
-            var history: [ChatMessageRecord]
+            let preparedHistory: PreparedTurnHistory
             do {
-                history = try await persistence.fetchMessages(sessionID: newSessionID)
-            } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                preparedHistory = try await fetchAndPrepareTurnHistory(
                     sessionID: newSessionID,
-                    handle: handle,
-                    error: conversationError
-                )
-                return
-            }
-            do {
-                history = try await historyAssembler.assemble(
-                    history: history,
-                    context: makeTurnContext(sessionID: newSessionID, history: history)
+                    turnKind: .branch(
+                        messageID: branchMessageID,
+                        newSessionID: newSessionID,
+                        newSessionTitle: newSessionTitle,
+                        generateAfter: generateAfter
+                    ),
+                    userPrompt: nil
                 )
             } catch {
-                let conversationError = ConversationError.persistence(error)
-                emit(.errorRaised(conversationError))
-                await completeOutcome(
-                    outcomeCompletion,
+                await failPreparedTurn(
+                    error,
                     sessionID: newSessionID,
                     handle: handle,
-                    error: conversationError
+                    outcomeCompletion: outcomeCompletion
                 )
                 return
             }
             await runGenerationTurn(
                 sessionID: newSessionID,
                 userPrompt: nil,
-                history: history,
+                preparedHistory: preparedHistory,
                 config: branchConfig,
                 handle: handle,
                 outcomeCompletion: outcomeCompletion
@@ -512,12 +512,14 @@ struct ConversationTurnExecutor: Sendable {
     private func runGenerationTurn(
         sessionID: UUID,
         userPrompt: String?,
-        history: [ChatMessageRecord],
+        preparedHistory: PreparedTurnHistory,
         config: TurnConfig,
         handle: ConversationStreamHandle,
         outcomeCompletion: ConversationTurnOutcomeCompletion? = nil
     ) async {
-        let messageCount = history.count
+        let history = preparedHistory.history
+        let turnContext = preparedHistory.turnContext
+        let messageCount = turnContext.messageCount
 
         // Context assembly hook. Always emit `.beforeContextAssembly` and
         // `.contextAssembled` so adapters that pin against these events
@@ -530,28 +532,6 @@ struct ConversationTurnExecutor: Sendable {
             userInput: userPrompt
         )
         emit(.beforeContextAssembly(prompt: userPrompt, request: request))
-
-        // Build a TurnContext so budget-aware and content-matching providers
-        // can inspect the conversation without each needing a separate fetch.
-        // conversationText is nil on the first turn (empty history) — providers
-        // must treat nil as "no text available" rather than "empty conversation".
-        let conversationText: String? = history.isEmpty ? nil : {
-            let joined = history
-                .compactMap { record -> String? in
-                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
-                    return text.isEmpty ? nil : text
-                }
-                .joined(separator: " ")
-                .lowercased()
-            return joined.isEmpty ? nil : joined
-        }()
-
-        let turnContext = TurnContext(
-            sessionID: sessionID,
-            messageCount: messageCount,
-            conversationText: conversationText,
-            tokenizer: nil  // backends own their tokenizer; providers use HeuristicTokenizer fallback
-        )
 
         var slots: [PromptSlot]
         if let budgetPlanner {
@@ -577,7 +557,11 @@ struct ConversationTurnExecutor: Sendable {
             }
         } else if let pipeline {
             do {
-                slots = try await pipeline.assemble(messageCount: messageCount)
+                slots = try await pipeline.assemble(
+                    totalBudget: Int.max,
+                    contextSize: 0,
+                    context: turnContext
+                )
             } catch {
                 let conversationError = ConversationError.contextAssembly(error)
                 emit(.errorRaised(conversationError))
@@ -1165,7 +1149,7 @@ struct ConversationTurnExecutor: Sendable {
                 assistantMessage: assistantMessage,
                 promptTokens: usage?.promptTokens,
                 completionTokens: usage?.completionTokens,
-                appData: turnContextProvider?(sessionID)
+                appData: turnContext.appData
             )
             for hook in generationHooks {
                 let hookLabel = "\(type(of: hook))"
@@ -1192,41 +1176,7 @@ struct ConversationTurnExecutor: Sendable {
                     return
                 }
 
-                // Wrap inferenceService in a Sendable closure so the policy
-                // can call the backend for summarisation without holding a
-                // reference to the executor itself. Uses background priority
-                // so compression doesn't compete with the user's next turn.
-                let generate: @Sendable ([ChatMessageRecord]) async throws -> String = { [inferenceService] messages in
-                    let structured = messages
-                        .filter { $0.kind.isWireVisible }
-                        .map { record -> StructuredMessage in
-                            let role = record.kind.backendRole ?? record.role
-                            return StructuredMessage(role: role.rawValue, parts: record.contentParts)
-                        }
-                    let (token, compressStream) = try await inferenceService.enqueueAsync(
-                        structuredMessages: structured,
-                        priority: .background
-                    )
-                    var result = ""
-                    var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
-                    do {
-                        for try await event in compressStream.events {
-                            // Propagate parent-task cancellation into the
-                            // backend stream so we don't keep draining after
-                            // the runtime has moved on.
-                            try Task.checkCancellation()
-                            if case .appendText(let chunk) = consumer.handle(event) {
-                                result += chunk
-                            }
-                        }
-                    } catch {
-                        // Cancel the backend token on any exit (cancellation or
-                        // inference error) so the backend doesn't keep running.
-                        await inferenceService.cancelAsync(token)
-                        throw error
-                    }
-                    return result
-                }
+                let generate = makeCompressionGenerateClosure()
 
                 // preCompact hook: v1 is observational. The plan's hook
                 // contract documents that preCompact CANNOT block compression
@@ -1312,25 +1262,226 @@ struct ConversationTurnExecutor: Sendable {
         ))
     }
 
-    private func makeTurnContext(sessionID: UUID, history: [ChatMessageRecord]) -> TurnContext {
-        let conversationText: String? = history.isEmpty ? nil : {
-            let joined = history
-                .compactMap { record -> String? in
-                    let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
-                    return text.isEmpty ? nil : text
+    private enum TurnPreparationFailure: Error {
+        case persistence(any Error)
+        case contextAssembly(any Error)
+    }
+
+    private struct PreTurnCompressionEmptyResultError: LocalizedError, Sendable {
+        var errorDescription: String? {
+            "Pre-turn compression returned an empty history."
+        }
+    }
+
+    private func fetchAndPrepareTurnHistory(
+        sessionID: UUID,
+        turnKind: TurnKind,
+        userPrompt: String?
+    ) async throws -> PreparedTurnHistory {
+        let canonicalHistory: [ChatMessageRecord]
+        do {
+            canonicalHistory = try await persistence.fetchMessages(sessionID: sessionID)
+        } catch {
+            throw TurnPreparationFailure.persistence(error)
+        }
+
+        let request = TurnContextBuildRequest(
+            sessionID: sessionID,
+            turnKind: turnKind,
+            messageCount: canonicalHistory.count,
+            userInput: userPrompt,
+            conversationText: conversationText(for: canonicalHistory),
+            tokenizer: await readTokenizer()
+        )
+
+        let appData: (any Sendable)?
+        do {
+            appData = try await resolveTurnAppData(for: request)
+        } catch {
+            throw TurnPreparationFailure.contextAssembly(error)
+        }
+
+        let shapedHistory: [ChatMessageRecord]
+        do {
+            shapedHistory = try await shapeHistory(
+                canonicalHistory,
+                sessionID: sessionID,
+                request: HistoryShapingRequest(
+                    turnContextRequest: request,
+                    appData: appData
+                )
+            )
+        } catch {
+            throw TurnPreparationFailure.contextAssembly(error)
+        }
+
+        let historyProviderContext = makeTurnContext(
+            sessionID: sessionID,
+            history: shapedHistory,
+            tokenizer: request.tokenizer,
+            appData: appData
+        )
+
+        let assembledHistory: [ChatMessageRecord]
+        do {
+            assembledHistory = try await historyAssembler.assemble(
+                history: shapedHistory,
+                context: historyProviderContext
+            )
+        } catch {
+            throw TurnPreparationFailure.persistence(error)
+        }
+
+        return PreparedTurnHistory(
+            history: assembledHistory,
+            turnContext: makeTurnContext(
+                sessionID: sessionID,
+                history: assembledHistory,
+                tokenizer: request.tokenizer,
+                appData: appData
+            )
+        )
+    }
+
+    private func failPreparedTurn(
+        _ error: Error,
+        sessionID: UUID,
+        handle: ConversationStreamHandle,
+        outcomeCompletion: ConversationTurnOutcomeCompletion?
+    ) async {
+        let conversationError: ConversationError
+        if let failure = error as? TurnPreparationFailure {
+            switch failure {
+            case .persistence(let underlying):
+                conversationError = .persistence(underlying)
+            case .contextAssembly(let underlying):
+                conversationError = .contextAssembly(underlying)
+            }
+        } else {
+            conversationError = .contextAssembly(error)
+        }
+        emit(.errorRaised(conversationError))
+        await completeOutcome(
+            outcomeCompletion,
+            sessionID: sessionID,
+            handle: handle,
+            error: conversationError
+        )
+    }
+
+    private func resolveTurnAppData(
+        for request: TurnContextBuildRequest
+    ) async throws -> (any Sendable)? {
+        if let hostTurnContextProvider {
+            return try await hostTurnContextProvider.appData(for: request)
+        }
+        return legacyTurnContextProvider?(request.sessionID)
+    }
+
+    private func shapeHistory(
+        _ canonicalHistory: [ChatMessageRecord],
+        sessionID: UUID,
+        request: HistoryShapingRequest
+    ) async throws -> [ChatMessageRecord] {
+        guard let historyShaper else { return canonicalHistory }
+
+        let result = try await historyShaper.shape(history: canonicalHistory, request: request)
+        try validateShapedHistory(result.promptHistory, against: canonicalHistory)
+        emit(.historyShaped(sessionID: sessionID, diagnostics: result.diagnostics))
+        return result.promptHistory
+    }
+
+    private func validateShapedHistory(
+        _ promptHistory: [ChatMessageRecord],
+        against canonicalHistory: [ChatMessageRecord]
+    ) throws {
+        let canonicalIDs = canonicalHistory.map(\.id)
+        let canonicalIDSet = Set(canonicalIDs)
+        let promptIDs = promptHistory.map(\.id)
+
+        guard Set(promptIDs).count == promptIDs.count else {
+            throw NSError(
+                domain: "ConversationTurnExecutor.HistoryShaper",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper returned duplicate prompt-visible message IDs."]
+            )
+        }
+
+        guard promptIDs.allSatisfy(canonicalIDSet.contains) else {
+            throw NSError(
+                domain: "ConversationTurnExecutor.HistoryShaper",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper may only return canonical message IDs."]
+            )
+        }
+
+        let canonicalVisibleIDs = canonicalIDs.filter { promptIDs.contains($0) }
+        guard canonicalVisibleIDs == promptIDs else {
+            throw NSError(
+                domain: "ConversationTurnExecutor.HistoryShaper",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "HistoryShaper must preserve canonical record order for visible messages."]
+            )
+        }
+    }
+
+    /// Returns a `@Sendable` closure that drives a background inference call
+    /// for summarisation. Used by both pre-turn and post-turn compression paths.
+    private func makeCompressionGenerateClosure() -> @Sendable ([ChatMessageRecord]) async throws -> String {
+        let inferenceService = self.inferenceService
+        return { messages in
+            let structured = messages
+                .filter { $0.kind.isWireVisible }
+                .map { record -> StructuredMessage in
+                    let role = record.kind.backendRole ?? record.role
+                    return StructuredMessage(role: role.rawValue, parts: record.contentParts)
                 }
-                .joined(separator: " ")
-                .lowercased()
-            return joined.isEmpty ? nil : joined
-        }()
-        var context = TurnContext(
+            let (token, compressStream) = try await inferenceService.enqueueAsync(
+                structuredMessages: structured,
+                priority: .background
+            )
+            var result = ""
+            var consumer = GenerationStreamConsumer(loopDetectionEnabled: false)
+            do {
+                for try await event in compressStream.events {
+                    try Task.checkCancellation()
+                    if case .appendText(let chunk) = consumer.handle(event) {
+                        result += chunk
+                    }
+                }
+            } catch {
+                await inferenceService.cancelAsync(token)
+                throw error
+            }
+            return result
+        }
+    }
+
+    private func makeTurnContext(
+        sessionID: UUID,
+        history: [ChatMessageRecord],
+        tokenizer: (any TokenizerProvider)?,
+        appData: (any Sendable)?
+    ) -> TurnContext {
+        TurnContext(
             sessionID: sessionID,
             messageCount: history.count,
-            conversationText: conversationText,
-            tokenizer: nil
+            conversationText: conversationText(for: history),
+            tokenizer: tokenizer,
+            appData: appData
         )
-        context.appData = turnContextProvider?(sessionID)
-        return context
+    }
+
+    private func conversationText(for history: [ChatMessageRecord]) -> String? {
+        guard !history.isEmpty else { return nil }
+        let joined = history
+            .compactMap { record -> String? in
+                let text = record.contentParts.compactMap(\.textContent).joined(separator: " ")
+                return text.isEmpty ? nil : text
+            }
+            .joined(separator: " ")
+            .lowercased()
+        return joined.isEmpty ? nil : joined
     }
 
     /// Reads the backend's context window size from the main actor.
@@ -1338,6 +1489,11 @@ struct ConversationTurnExecutor: Sendable {
     @MainActor
     private func readContextWindowSize() async -> Int {
         inferenceService.capabilities?.contextWindowSize ?? 0
+    }
+
+    @MainActor
+    private func readTokenizer() async -> (any TokenizerProvider)? {
+        inferenceService.tokenizer
     }
 
     /// Runs `operation` with a timeout. If the operation doesn't finish within
