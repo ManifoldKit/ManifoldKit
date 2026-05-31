@@ -2,40 +2,56 @@
 
 ## [0.40.0](https://github.com/roryford/ManifoldKit/compare/v0.39.1...v0.40.0) (2026-05-31)
 
+This release opens the Glass Box observability system with a runtime event tap and surfaces session pinning in the sidebar UI.
+
+### Highlights
+
+**Glass Box P0 — runtime event tap and `ConversationEventRecorder`** — `ConversationRuntime` now supports secondary multicast event taps independent of the primary `events` stream. Call `addEventTap(bufferingPolicy:)` to install a tap that receives every `ConversationEvent` without interfering with other consumers; taps are unbounded by default so no events are dropped. `ConversationEventRecorder` wraps a tap and accumulates the full event trace into its `trace` array, making it straightforward to capture a complete turn log for testing, debugging, or replay. A new `ObservingATurn` DocC article covers when to use a tap versus the primary stream and the bounded/unbounded buffering tradeoff. ([#1555](https://github.com/roryford/ManifoldKit/issues/1555))
+
+```swift
+let recorder = ConversationEventRecorder(runtime: runtime)
+let drainTask = recorder.start()
+// … send a turn …
+await drainTask.value
+print(recorder.trace)  // full ordered event log
+```
 
 ### Features
 
-* **runtime:** Glass Box P0 — multicast event tap, ConversationEventRecorder ([#1555](https://github.com/roryford/ManifoldKit/issues/1555)) ([31f3671](https://github.com/roryford/ManifoldKit/commit/31f367150010b9a511a70109eaab81de3374871d))
-* **ui:** session pinning in SessionListView ([#1556](https://github.com/roryford/ManifoldKit/issues/1556)) ([7c5cfef](https://github.com/roryford/ManifoldKit/commit/7c5cfefc5c66cccff53f1e6bca6f136008308865))
+* **Session pinning in `SessionListView`** — Pinned sessions now appear at the top of the sidebar list. The UI wires directly into the existing `isPinned` flag and `pin/unpinSession` calls on `SessionManagerViewModel`; no host-app changes are required. ([#1556](https://github.com/roryford/ManifoldKit/issues/1556))
 
 ## [0.39.1](https://github.com/roryford/ManifoldKit/compare/v0.39.0...v0.39.1) (2026-05-31)
 
-
 ### Bug Fixes
 
-* **ui:** gate WebSearchToolSource behind CloudSaaS trait ([#1551](https://github.com/roryford/ManifoldKit/issues/1551)) ([6dd6b90](https://github.com/roryford/ManifoldKit/commit/6dd6b90675a4b5de29c963867893044a29b61ca6))
+* **`WebSearchToolSource` CloudSaaS gate** — `WebSearchToolSource` imports `ManifoldCloudCore` for `TokenProvider`, but `ManifoldUI` was missing the conditional dependency declaration, causing `BUILD FAILED` when the `CloudSaaS` trait is enabled. The file is now compiled only under `#if CloudSaaS` and the package dependency is declared accordingly. ([#1551](https://github.com/roryford/ManifoldKit/issues/1551))
 
 ## [0.39.0](https://github.com/roryford/ManifoldKit/compare/v0.38.0...v0.39.0) (2026-05-31)
 
+This release adds Core Spotlight integration, a provider-agnostic web search tool, and a convenience wrapper for multi-source tool registration.
+
+### Highlights
+
+**`SpotlightIndexer` — Core Spotlight integration** — Host apps can now surface ManifoldKit chat sessions in iOS and macOS Spotlight without custom indexing code. Call `SpotlightIndexer.index(sessions:)` after loading sessions and on any change; `SpotlightIndexer.sessionID(from:)` handles activity restoration when the user taps a Spotlight result. ([#1548](https://github.com/roryford/ManifoldKit/issues/1548))
+
+```swift
+SpotlightIndexer.index(sessions: sessionList.sessions)
+
+// In your scene delegate:
+if let sessionID = SpotlightIndexer.sessionID(from: userActivity) {
+    router.openSession(id: sessionID)
+}
+```
+
+**`WebSearchToolSource` — provider-agnostic live web search** — A new `ToolSource` that adds a web-search tool to any runtime backed by a search-enabled chat-completion endpoint. Configure it with a `TokenProvider` and `baseURL`; it slots in alongside `ImageGenerationToolSource` and `VideoGenerationToolSource` with no provider-specific code required. ([#1546](https://github.com/roryford/ManifoldKit/issues/1546))
 
 ### Features
 
-* **bootstrap:** add addToolSources convenience wrapper ([#1543](https://github.com/roryford/ManifoldKit/issues/1543)) ([4e0cd96](https://github.com/roryford/ManifoldKit/commit/4e0cd96a96400c496c008a74fba4c792ee8f93cc))
-* **ui:** SpotlightIndexer — index ChatSessionRecords in Core Spotlight ([#1548](https://github.com/roryford/ManifoldKit/issues/1548)) ([078ea2c](https://github.com/roryford/ManifoldKit/commit/078ea2c9558d2808ac90368c9c5117597b6c2a64))
-* **ui:** WebSearchToolSource — provider-agnostic live web search tool ([#1546](https://github.com/roryford/ManifoldKit/issues/1546)) ([06ac182](https://github.com/roryford/ManifoldKit/commit/06ac1823696b1956a1560680fb7ac6881a750cb5))
-
+* **`addToolSources(_:)` on `ManifoldBootstrap`** — Convenience wrapper so host apps can register multiple `ToolSource` instances in a single call without reaching into `conversationRuntime` directly. ([#1543](https://github.com/roryford/ManifoldKit/issues/1543))
 
 ### Bug Fixes
 
-* **ui:** replace try? with do/catch in generation action buttons ([df3a36c](https://github.com/roryford/ManifoldKit/commit/df3a36ca47c3e7036a032e04006b36408106c57f))
-
-
-### Documentation
-
-* **changelog:** rewrite v0.38.0 release notes in Prisma-style format ([#1549](https://github.com/roryford/ManifoldKit/issues/1549)) ([34e3090](https://github.com/roryford/ManifoldKit/commit/34e309075efa200ec3831ec74e9c4d6aedf77ca8))
-* **ui:** add addToolSources registration example to GenerationComponents article ([9edccb2](https://github.com/roryford/ManifoldKit/commit/9edccb2d83c9f0c12303a0d9b2bf7a78e798b4bf))
-* **ui:** add SpotlightIndexer usage examples to GenerationComponents article ([cd9f46c](https://github.com/roryford/ManifoldKit/commit/cd9f46c2c37cf839bcd1fa3ebc1211042e5ee098))
-* video generation quickstart, TokenProvider guide, GenerativeContextMenuItems coverage ([697747d](https://github.com/roryford/ManifoldKit/commit/697747d8319585803a49cf7502d3ea2e64454d4e))
+* **Generation action buttons** — `try?` replaced with explicit `do/catch` throughout the generation-action-button chain; errors now surface to the UI rather than being silently discarded.
 
 ## [0.38.0](https://github.com/roryford/ManifoldKit/compare/v0.37.0...v0.38.0) (2026-05-31)
 

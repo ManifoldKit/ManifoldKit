@@ -592,6 +592,16 @@ public final class ChatViewModel {
         generationCoordinator.conversationRuntime
     }
 
+    /// Public accessor exposing the runtime for developer tooling (e.g. ``ArchitectView``).
+    ///
+    /// Surfaces the same runtime that the internal turn loop uses. Callers
+    /// should install event taps rather than driving turns directly — use
+    /// ``sendMessage()``, ``regenerateLastResponse()``, and ``editMessage(_:newContent:)``
+    /// for all turn-level operations.
+    public var runtime: ConversationRuntime {
+        conversationRuntime
+    }
+
     /// Forwarding accessor so callers that hold `activeConversationStreamHandle` references
     /// (tests, Messages extension) continue to compile without changes.
     var activeConversationStreamHandle: ConversationStreamHandle? {
