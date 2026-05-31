@@ -112,10 +112,13 @@ jobs:
           echo "$newest_section"
           echo "================================"
 
-          # Check for auto-generated bullet entries (Release Please format):
-          # Lines starting with "* " followed by lowercase text
-          # These indicate the entry hasn't been rewritten in prose style
-          if echo "$newest_section" | grep -qE '^\* [a-z]'; then
+          # Check for auto-generated bullet entries (Release Please format).
+          # Two patterns to catch:
+          #   (a) "* lowercase" — old bare-bullet style
+          #   (b) "* **scope:** description" — scoped style (introduced when RP
+          #       started generating "* **runtime:** Glass Box P0 — …" entries);
+          #       these start with "* **" so the old "^\* [a-z]" regex missed them.
+          if echo "$newest_section" | grep -qE '^\* (\*\*[a-z]|[a-z])'; then
             echo ""
             echo "::error::CHANGELOG.md contains auto-generated bullet entries."
             echo "::error::Release notes must be rewritten in prose style before merging."
@@ -124,7 +127,7 @@ jobs:
             echo "::error::Found format:     * auto-generated commit message"
             echo ""
             echo "Auto-generated entries found:"
-            echo "$newest_section" | grep -E '^\* [a-z]'
+            echo "$newest_section" | grep -E '^\* (\*\*[a-z]|[a-z])'
             exit 1
           fi
 
