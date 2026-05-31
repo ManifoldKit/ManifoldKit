@@ -50,6 +50,21 @@ let bootstrap = try ManifoldBootstrap(
 // `InferenceService`. Pass it into ChatViewModel (or drive it directly).
 ```
 
+### Incognito (in-memory) sessions with ``ManifoldBootstrap/makeInMemory(configuration:inferenceService:ragConfiguration:)``
+
+For sessions where conversation history must never touch disk — Incognito mode, SwiftUI Previews, or test scaffolding — use the `makeInMemory` factory. It returns a fully-wired bootstrap backed by an ephemeral SwiftData container; all data is discarded when the instance is deallocated:
+
+```swift,no-build
+let incognito = try ManifoldBootstrap.makeInMemory(
+    configuration: ManifoldConfiguration(bundleIdentifier: "com.example.MyApp"),
+    inferenceService: myInferenceService
+)
+// incognito.isInMemory == true
+// Pass to ChatViewModel exactly like a regular bootstrap — no API difference.
+```
+
+Check ``ManifoldBootstrap/isInMemory`` to surface the ephemeral badge in your UI (for example the Architect view's Incognito indicator).
+
 ### Splash-screen progress with ``ManifoldBootstrap/build(configuration:inferenceService:imageGenerationService:diagnostics:sessionToolSources:hookRegistry:makeModelContainer:)``
 
 For apps that want a launch progress UI, the static `build(configuration:)` factory returns an `AsyncStream<RuntimeBootstrapMilestone>` you can iterate on the main actor while bootstrap runs concurrently:
