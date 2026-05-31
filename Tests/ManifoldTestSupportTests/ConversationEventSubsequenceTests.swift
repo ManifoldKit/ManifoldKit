@@ -3,6 +3,7 @@ import Foundation
 @testable import ManifoldRuntime
 import ManifoldInference
 import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - ConversationEventSubsequenceTests
 

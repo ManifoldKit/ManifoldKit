@@ -3,6 +3,7 @@ import Foundation
 import XCTest
 import ManifoldInference
 import ManifoldRuntime
+import ManifoldTestSupport
 
 /// Executes a ``RuntimeScenario`` in either scripted (hermetic CI) or live
 /// (real backend) mode and returns the recorded trace + assertion outcomes.

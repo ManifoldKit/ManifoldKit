@@ -2,6 +2,7 @@
 import Foundation
 import ManifoldRuntime
 import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - RuntimeScenarioRunnerTests
 
