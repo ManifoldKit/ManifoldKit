@@ -27,6 +27,9 @@ public struct ChatView<APIConfig: View>: View {
     @State private var isExportPresented: Bool = false
     @State private var showClearConfirmation: Bool = false
     @State private var showAPIConfiguration: Bool = false
+    #if DEBUG
+    @State private var showArchitectView: Bool = false
+    #endif
 
     /// Optional replacement for the built-in "Send a message to start chatting."
     /// placeholder shown when the session has no messages. Hosts pass a custom
@@ -403,6 +406,16 @@ public struct ChatView<APIConfig: View>: View {
                 showClearConfirmation: $showClearConfirmation,
                 apiConfiguration: apiConfigurationBuilder
             )
+            #if DEBUG
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showArchitectView = true
+                } label: {
+                    Label("Architect", systemImage: "magnifyingglass.circle")
+                }
+                .accessibilityLabel("Open Architect developer inspector")
+            }
+            #endif
         }
         .chatShellPresentations(
             viewModel: viewModel,
@@ -418,6 +431,14 @@ public struct ChatView<APIConfig: View>: View {
             isPresented: $showAPIConfiguration,
             apiConfiguration: apiConfigurationBuilder
         )
+        #if DEBUG
+        .sheet(isPresented: $showArchitectView) {
+            ArchitectView(
+                runtime: viewModel.runtime,
+                capabilities: viewModel.backendCapabilities
+            )
+        }
+        #endif
     }
 
     // MARK: - Message List
