@@ -150,11 +150,13 @@ try await endpointStore.insertEndpoint(
 
 - <doc:AgentHandoffs>
 - <doc:HookSystem>
+- <doc:ObservingATurn>
 
 ### Conversation runtime
 
 - ``ConversationRuntime``
 - ``ConversationEvent``
+- ``ConversationEventRecorder``
 - ``ConversationStreamHandle``
 - ``ConversationTurnHandle``
 - ``ConversationTurnOutcome``
