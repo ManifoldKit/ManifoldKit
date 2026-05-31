@@ -7,7 +7,7 @@ import ManifoldInference
 
 /// Configuration for the RAG knowledge base.
 ///
-/// Pass to ``ManifoldBootstrap/init(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:makeModelContainer:)``
+/// Pass to ``ManifoldBootstrap/init(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:makeModelContainer:)``
 /// to enable on-device RAG. When `nil`, the runtime runs without retrieval.
 ///
 /// ```swift
@@ -68,7 +68,7 @@ public struct RAGConfiguration: Sendable {
 ///
 /// ### Splash-screen progress
 ///
-/// Call ``build(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:sessionToolSources:hookRegistry:makeModelContainer:)``
+/// Call ``build(configuration:ragConfiguration:inferenceService:imageGenerationService:diagnostics:runtimeOptions:sessionToolSources:hookRegistry:makeModelContainer:)``
 /// instead of `init` when you want to drive a launch progress UI. That factory
 /// returns an `AsyncStream<RuntimeBootstrapMilestone>` you can iterate on the
 /// main actor while bootstrap runs concurrently in a sibling task:
@@ -112,6 +112,17 @@ public final class ManifoldBootstrap {
     /// `nil` when ``imageGenerationService`` is `nil`.
     public let imageRuntime: ImageGenerationRuntime?
 
+    /// The video-generation service, when the host opted in to video generation.
+    /// `nil` when ``ManifoldBootstrap`` was constructed without a
+    /// `videoGenerationService` parameter.
+    public let videoGenerationService: VideoGenerationService?
+
+    /// The video-generation runtime, pre-wired against ``videoGenerationService``
+    /// and ``persistence``. Pass to ``ChatViewModel/configure(videoRuntime:)``
+    /// to enable video generation in the chat view model.
+    /// `nil` when ``videoGenerationService`` is `nil`.
+    public let videoRuntime: VideoGenerationRuntime?
+
     /// The RAG knowledge-base service, when the host opted in via
     /// ``RAGConfiguration``. `nil` when bootstrapped without RAG.
     ///
@@ -138,6 +149,7 @@ public final class ManifoldBootstrap {
         ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -207,6 +219,15 @@ public final class ManifoldBootstrap {
             } else {
                 self.imageRuntime = nil
             }
+            self.videoGenerationService = videoGenerationService
+            if let videoGenerationService {
+                self.videoRuntime = VideoGenerationRuntime(
+                    service: videoGenerationService,
+                    messageStore: resolvedPersistence
+                )
+            } else {
+                self.videoRuntime = nil
+            }
         } catch {
             ManifoldConfiguration.shared = previousConfiguration
             throw error
@@ -223,6 +244,7 @@ public final class ManifoldBootstrap {
         endpointStore: SwiftDataEndpointStore,
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
         ragService: RAGService? = nil,
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -264,6 +286,15 @@ public final class ManifoldBootstrap {
             )
         } else {
             self.imageRuntime = nil
+        }
+        self.videoGenerationService = videoGenerationService
+        if let videoGenerationService {
+            self.videoRuntime = VideoGenerationRuntime(
+                service: videoGenerationService,
+                messageStore: persistence
+            )
+        } else {
+            self.videoRuntime = nil
         }
     }
 
@@ -315,6 +346,7 @@ public final class ManifoldBootstrap {
         ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -368,6 +400,7 @@ public final class ManifoldBootstrap {
                     endpointStore: endpointStore,
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
+                    videoGenerationService: videoGenerationService,
                     ragService: ragService,
                     runtimeOptions: runtimeOptions,
                     sessionToolSources: sessionToolSources,

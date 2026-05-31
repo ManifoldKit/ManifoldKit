@@ -18,7 +18,7 @@ final class ManifoldBootstrapRuntimeOptionsTests: XCTestCase {
 
     actor RecordingHook: GenerationHook {
         private(set) var receivedTurns: [CompletedTurn] = []
-        private var pending: [CheckedContinuation<CompletedTurn, Never>] = []
+        private var pending: [CheckedContinuation<CompletedTurn, any Error>] = []
 
         func postGeneration(_ turn: CompletedTurn) async {
             receivedTurns.append(turn)
@@ -26,8 +26,27 @@ final class ManifoldBootstrapRuntimeOptionsTests: XCTestCase {
             pending.removeAll()
         }
 
-        func awaitNextTurn() async -> CompletedTurn {
-            await withCheckedContinuation { pending.append($0) }
+        /// Suspends until the next `postGeneration` delivery and returns it.
+        ///
+        /// Returns immediately when the hook has already fired (prevents a race
+        /// where the generation task completes before this continuation is
+        /// registered). Uses a throwing continuation so task cancellation can
+        /// resume the stored continuation with `CancellationError`, avoiding a
+        /// debug-build deinit precondition trap when the caller's 5-second
+        /// deadline fires first.
+        func awaitNextTurn() async throws -> CompletedTurn {
+            if let already = receivedTurns.last { return already }
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { pending.append($0) }
+            } onCancel: {
+                Task { await self.cancelPending() }
+            }
+        }
+
+        private func cancelPending() {
+            let waiters = pending
+            pending.removeAll()
+            for cont in waiters { cont.resume(throwing: CancellationError()) }
         }
     }
 
@@ -57,7 +76,7 @@ final class ManifoldBootstrapRuntimeOptionsTests: XCTestCase {
         )
         // Await the hook's own signal — deterministic, no sleep.
         try await withThrowingTaskGroup(of: CompletedTurn.self) { group in
-            group.addTask { await hook.awaitNextTurn() }
+            group.addTask { try await hook.awaitNextTurn() }
             group.addTask {
                 try await Task.sleep(for: .seconds(5))
                 throw TestError.deadlineElapsed
