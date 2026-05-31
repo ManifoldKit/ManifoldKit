@@ -42,7 +42,7 @@ The button tint changes to ``Color/accentColor`` when an image is already staged
 Place it in the `composerAccessory` slot of ``ChatView``:
 
 ```swift,no-build
-ChatView(showModelManagement: , composerAccessory: {
+ChatView(showModelManagement: $show, composerAccessory: {
     VisionInputButton()
 })
 ```
@@ -50,7 +50,7 @@ ChatView(showModelManagement: , composerAccessory: {
 Combine it with ``VoiceComposerAccessory`` when your app supports both modalities:
 
 ```swift,no-build
-ChatView(showModelManagement: , composerAccessory: {
+ChatView(showModelManagement: $show, composerAccessory: {
     HStack {
         VisionInputButton()
         VoiceComposerAccessory(controller: controller)

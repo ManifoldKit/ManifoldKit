@@ -59,31 +59,33 @@ public struct VisionInputButton: View {
 
     public var body: some View {
         #if os(iOS)
-        PhotosPicker(selection: $photoItem, matching: .images) {
-            Image(systemName: "photo.badge.plus")
-                .symbolVariant(.fill)
-                .font(.title2)
-                .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
+        if isVisionSupported {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Image(systemName: "photo.badge.plus")
+                    .symbolVariant(.fill)
+                    .font(.title2)
+                    .foregroundStyle(hasImageStaged ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
+            .help(hasImageStaged ? "Photo attached" : "Attach image")
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                loadPhoto(from: newItem)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(hasImageStaged ? "Photo attached" : "Attach photo")
-        .help(hasImageStaged ? "Photo attached" : "Attach image")
-        .onChange(of: photoItem) { _, newItem in
-            guard let newItem else { return }
-            loadPhoto(from: newItem)
-        }
-        .opacity(isVisionSupported ? 1 : 0)
-        .allowsHitTesting(isVisionSupported)
         #elseif os(macOS)
-        Button {
-            openImagePanel()
-        } label: {
-            Image(systemName: "photo.badge.plus")
-                .symbolVariant(.fill)
+        if isVisionSupported {
+            Button {
+                openImagePanel()
+            } label: {
+                Image(systemName: "photo.badge.plus")
+                    .symbolVariant(.fill)
+            }
+            .help("Attach image")
         }
-        .help("Attach image")
-        .opacity(isVisionSupported ? 1 : 0)
-        .allowsHitTesting(isVisionSupported)
+        #else
+        EmptyView()
         #endif
     }
 
@@ -125,13 +127,19 @@ public struct VisionInputButton: View {
         panel.canChooseDirectories = false
         panel.begin { [panel] response in
             guard response == .OK, let url = panel.url else { return }
-            Task { @MainActor in
+            // Read file data off the main actor to avoid blocking the UI thread
+            // on large image files, then hop back to @MainActor to stage the part.
+            Task {
                 do {
                     let data = try Data(contentsOf: url)
                     let mime = mimeType(for: url)
-                    viewModel.stageAttachment(.image(data: data, mimeType: mime))
+                    await MainActor.run {
+                        viewModel.stageAttachment(.image(data: data, mimeType: mime))
+                    }
                 } catch {
-                    viewModel.surfaceError(error, kind: .configuration, context: "attaching image from file")
+                    await MainActor.run {
+                        viewModel.surfaceError(error, kind: .configuration, context: "attaching image from file")
+                    }
                 }
             }
         }
