@@ -102,6 +102,8 @@ struct MessagePartsView: View {
                 key = nextKey(for: "audio", in: &ordinals)
             case .generatedImage:
                 key = nextKey(for: "generatedImage", in: &ordinals)
+            case .generatedVideo:
+                key = nextKey(for: "generatedVideo", in: &ordinals)
             }
             return KeyedPart(key: key, part: part)
         }
@@ -155,6 +157,28 @@ struct MessagePartsView: View {
 
         case .generatedImage(let payload):
             generatedImageView(payload)
+
+        case .generatedVideo(let payload):
+            generatedVideoView(payload)
+        }
+    }
+
+    @ViewBuilder
+    private func generatedVideoView(_ payload: VideoMessagePayload) -> some View {
+        // The video binary lives on disk; surface a simple file-exists check
+        // so the UI degrades gracefully when the binary is missing (deleted,
+        // container migration, restored backup without binary).
+        if FileManager.default.fileExists(atPath: payload.videoURL.path) {
+            // Hosts that want a richer player should use the payload's
+            // `videoURL` directly. The runtime/service layer does not ship
+            // a first-party video player view — that's a host concern.
+            Text(payload.prompt)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Video file not found")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

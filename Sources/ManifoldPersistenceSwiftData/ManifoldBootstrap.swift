@@ -112,6 +112,17 @@ public final class ManifoldBootstrap {
     /// `nil` when ``imageGenerationService`` is `nil`.
     public let imageRuntime: ImageGenerationRuntime?
 
+    /// The video-generation service, when the host opted in to video generation.
+    /// `nil` when ``ManifoldBootstrap`` was constructed without a
+    /// `videoGenerationService` parameter.
+    public let videoGenerationService: VideoGenerationService?
+
+    /// The video-generation runtime, pre-wired against ``videoGenerationService``
+    /// and ``persistence``. Pass to ``ChatViewModel/configure(videoRuntime:)``
+    /// to enable video generation in the chat view model.
+    /// `nil` when ``videoGenerationService`` is `nil`.
+    public let videoRuntime: VideoGenerationRuntime?
+
     /// The RAG knowledge-base service, when the host opted in via
     /// ``RAGConfiguration``. `nil` when bootstrapped without RAG.
     ///
@@ -138,6 +149,7 @@ public final class ManifoldBootstrap {
         ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService videoService: VideoGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -207,6 +219,10 @@ public final class ManifoldBootstrap {
             } else {
                 self.imageRuntime = nil
             }
+            self.videoGenerationService = videoService
+            self.videoRuntime = videoService.map {
+                VideoGenerationRuntime(service: $0, messageStore: resolvedPersistence)
+            }
         } catch {
             ManifoldConfiguration.shared = previousConfiguration
             throw error
@@ -223,6 +239,7 @@ public final class ManifoldBootstrap {
         endpointStore: SwiftDataEndpointStore,
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
         ragService: RAGService? = nil,
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -264,6 +281,15 @@ public final class ManifoldBootstrap {
             )
         } else {
             self.imageRuntime = nil
+        }
+        self.videoGenerationService = videoGenerationService
+        if let videoGenerationService {
+            self.videoRuntime = VideoGenerationRuntime(
+                service: videoGenerationService,
+                messageStore: persistence
+            )
+        } else {
+            self.videoRuntime = nil
         }
     }
 
@@ -315,6 +341,7 @@ public final class ManifoldBootstrap {
         ragConfiguration: RAGConfiguration? = nil,
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
+        videoGenerationService: VideoGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -368,6 +395,7 @@ public final class ManifoldBootstrap {
                     endpointStore: endpointStore,
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
+                    videoGenerationService: videoGenerationService,
                     ragService: ragService,
                     runtimeOptions: runtimeOptions,
                     sessionToolSources: sessionToolSources,
@@ -425,4 +453,5 @@ extension ManifoldBootstrap: ChatRuntimeBootstrap {
     public var apiEndpointStore: any EndpointStore { endpointStore }
     public var diagnosticsService: DiagnosticsService { diagnostics }
     public var imageGenerationRuntime: ImageGenerationRuntime? { imageRuntime }
+    public var videoGenerationRuntime: VideoGenerationRuntime? { videoRuntime }
 }

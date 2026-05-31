@@ -10,4 +10,5 @@ public protocol ChatRuntimeBootstrap: AnyObject {
     var apiEndpointStore: any EndpointStore { get }
     var diagnosticsService: DiagnosticsService { get }
     var imageGenerationRuntime: ImageGenerationRuntime? { get }
+    var videoGenerationRuntime: VideoGenerationRuntime? { get }
 }

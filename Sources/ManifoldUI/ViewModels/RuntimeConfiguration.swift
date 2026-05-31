@@ -19,6 +19,9 @@ extension ChatViewModel {
         if let imageRuntime = bootstrap.imageGenerationRuntime {
             configure(imageRuntime: imageRuntime)
         }
+        if let videoRuntime = bootstrap.videoGenerationRuntime {
+            configure(videoRuntime: videoRuntime)
+        }
     }
 
     /// Preferred bootstrap path for apps that assemble shared services through

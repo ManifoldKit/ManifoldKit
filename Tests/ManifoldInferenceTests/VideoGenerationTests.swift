@@ -22,35 +22,54 @@ final class VideoGenerationTests: XCTestCase {
 
     // MARK: - VideoGenerationConfig
 
-    func test_videoGenerationConfig_durationClampedToRange() {
-        XCTAssertEqual(VideoGenerationConfig(duration: 0).duration, 1)
-        XCTAssertEqual(VideoGenerationConfig(duration: -10).duration, 1)
-        XCTAssertEqual(VideoGenerationConfig(duration: 16).duration, 15)
-        XCTAssertEqual(VideoGenerationConfig(duration: 100).duration, 15)
+    func test_videoGenerationConfig_defaults() {
+        let config = VideoGenerationConfig()
+        XCTAssertEqual(config.duration, 5)
+        XCTAssertEqual(config.aspectRatio, VideoGenerationConfig.AspectRatio.landscape)
+        XCTAssertNil(config.width)
+        XCTAssertNil(config.height)
+        XCTAssertNil(config.sourceImageURL)
+    }
+
+    func test_videoGenerationConfig_durationPassedThrough() {
+        // Backends enforce their own limits; the config stores the value as-is.
+        XCTAssertEqual(VideoGenerationConfig(duration: 0).duration, 0)
         XCTAssertEqual(VideoGenerationConfig(duration: 7).duration, 7)
+        XCTAssertEqual(VideoGenerationConfig(duration: 100).duration, 100)
     }
 
     func test_videoGenerationConfig_codableRoundTrip() throws {
         let config = VideoGenerationConfig(
             duration: 8,
-            aspectRatio: .portrait,
-            resolution: .sd,
+            aspectRatio: VideoGenerationConfig.AspectRatio.portrait,
+            width: 1280,
+            height: 720,
             sourceImageURL: URL(fileURLWithPath: "/tmp/source.jpg")
         )
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(VideoGenerationConfig.self, from: data)
         XCTAssertEqual(decoded.duration, config.duration)
         XCTAssertEqual(decoded.aspectRatio, config.aspectRatio)
-        XCTAssertEqual(decoded.resolution, config.resolution)
+        XCTAssertEqual(decoded.width, config.width)
+        XCTAssertEqual(decoded.height, config.height)
         XCTAssertEqual(decoded.sourceImageURL, config.sourceImageURL)
     }
 
-    func test_videoGenerationConfig_defaults() {
-        let config = VideoGenerationConfig()
-        XCTAssertEqual(config.duration, 5)
-        XCTAssertEqual(config.aspectRatio, .landscape)
-        XCTAssertEqual(config.resolution, .hd)
-        XCTAssertNil(config.sourceImageURL)
+    func test_videoGenerationConfig_acceptsArbitraryAspectRatioString() {
+        // AspectRatio is a free-form string; backends that use non-standard
+        // notation (e.g. "LANDSCAPE") can pass any value.
+        let custom = VideoGenerationConfig(aspectRatio: "WIDESCREEN")
+        XCTAssertEqual(custom.aspectRatio, "WIDESCREEN")
+    }
+
+    // MARK: - AspectRatio constants
+
+    func test_aspectRatio_constantValues() {
+        XCTAssertEqual(VideoGenerationConfig.AspectRatio.landscape, "16:9")
+        XCTAssertEqual(VideoGenerationConfig.AspectRatio.portrait,  "9:16")
+        XCTAssertEqual(VideoGenerationConfig.AspectRatio.square,    "1:1")
+        XCTAssertEqual(VideoGenerationConfig.AspectRatio.wide,      "4:3")
+        XCTAssertEqual(VideoGenerationConfig.AspectRatio.tall,      "3:4")
     }
 
     // MARK: - VideoGenerationEvent
@@ -73,20 +92,6 @@ final class VideoGenerationTests: XCTestCase {
             default:
                 XCTFail("Round-trip mismatch: \(event) → \(decoded)")
             }
-        }
-    }
-
-    // MARK: - AspectRatio / Resolution coverage
-
-    func test_aspectRatio_allCasesHaveRawValue() {
-        for ratio in VideoGenerationConfig.AspectRatio.allCases {
-            XCTAssertFalse(ratio.rawValue.isEmpty)
-        }
-    }
-
-    func test_resolution_allCasesHaveRawValue() {
-        for res in VideoGenerationConfig.Resolution.allCases {
-            XCTAssertFalse(res.rawValue.isEmpty)
         }
     }
 }
