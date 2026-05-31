@@ -139,6 +139,7 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
         makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
@@ -176,14 +177,24 @@ public final class ManifoldBootstrap {
             // ManifoldPersistenceSwiftData does not depend on ManifoldFoundation,
             // so FoundationBackend cannot be instantiated here directly. Host apps
             // that run on iOS 26+ / macOS 26+ can wire their own auxiliary service
-            // via the `auxiliaryInferenceService:` parameter on ConversationRuntime.
+            // via `runtimeOptions.auxiliaryInferenceService`.
             // See ManifoldFoundation.FoundationBackend for the recommended setup.
             self.conversationRuntime = ConversationRuntime(
                 messageStore: resolvedPersistence,
                 sessionStore: resolvedPersistence,
                 inferenceService: resolvedInferenceService,
+                pipeline: runtimeOptions.pipeline,
+                budgetPlanner: runtimeOptions.budgetPlanner,
                 ragService: resolvedRAGService,
+                auxiliaryInferenceService: runtimeOptions.auxiliaryInferenceService,
                 usageStore: resolvedUsageStore,
+                generationHooks: runtimeOptions.generationHooks,
+                compressionPolicy: runtimeOptions.compressionPolicy,
+                preTurnCompressionPolicy: runtimeOptions.preTurnCompressionPolicy,
+                historyShaper: runtimeOptions.historyShaper,
+                historyProviders: runtimeOptions.historyProviders,
+                hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
+                turnContextProvider: runtimeOptions.turnContextProvider,
                 sessionToolSources: sessionToolSources,
                 hookRegistry: hookRegistry
             )
@@ -213,6 +224,7 @@ public final class ManifoldBootstrap {
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
         ragService: RAGService? = nil,
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil
     ) {
@@ -229,8 +241,18 @@ public final class ManifoldBootstrap {
             messageStore: persistence,
             sessionStore: persistence,
             inferenceService: inferenceService,
+            pipeline: runtimeOptions.pipeline,
+            budgetPlanner: runtimeOptions.budgetPlanner,
             ragService: ragService,
+            auxiliaryInferenceService: runtimeOptions.auxiliaryInferenceService,
             usageStore: usageStore,
+            generationHooks: runtimeOptions.generationHooks,
+            compressionPolicy: runtimeOptions.compressionPolicy,
+            preTurnCompressionPolicy: runtimeOptions.preTurnCompressionPolicy,
+            historyShaper: runtimeOptions.historyShaper,
+            historyProviders: runtimeOptions.historyProviders,
+            hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
+            turnContextProvider: runtimeOptions.turnContextProvider,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry
         )
@@ -294,6 +316,7 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
+        runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
@@ -346,6 +369,7 @@ public final class ManifoldBootstrap {
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
                     ragService: ragService,
+                    runtimeOptions: runtimeOptions,
                     sessionToolSources: sessionToolSources,
                     hookRegistry: hookRegistry
                 )
