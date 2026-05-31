@@ -113,6 +113,12 @@ public final class InferenceService {
 
     public var capabilities: BackendCapabilities? { lifecycle.capabilities }
 
+    /// The currently-loaded cloud backend, if any. Host apps can use this to
+    /// call ``SSECloudBackend/configure(baseURL:tokenProvider:modelName:)``
+    /// after ``loadCloudBackend(from:)`` to inject a rotating token provider
+    /// without going through the static Keychain path.
+    public var currentCloudBackend: (any InferenceBackend)? { lifecycle.backend }
+
     // MARK: - Deny Policy
 
     /// Policy applied when a ``ModelLoadPlan`` returns a ``ModelLoadPlan/Verdict/deny``
