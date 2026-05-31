@@ -40,53 +40,63 @@ permissions:
   contents: read
 
 jobs:
-  # Pre-flight build gate. Surfaces compile errors in ~60-90s instead of
-  # ~4-5 min — the heavier `test` / `cold-start-tier2` / `cold-start-tier3` /
-  # `foundation-only-build` jobs run `needs: build-gate` and short-circuit if
-  # the build doesn't compile. The gate itself is the same `swift build
-  # --build-tests --disable-default-traits` that the test job runs implicitly
-  # on first invocation, but isolated so its failure mode is obvious in PR
-  # checks and so the downstream wait queue collapses on broken pushes.
-  #
-  # `test` is a required status check (branch protection). When build-gate
-  # fails and the downstream `test` job is skipped via `needs:`, GitHub
-  # reports `test` as skipped, which blocks merge — exactly the desired
-  # behavior for a broken build. No `if: always()` overrides; we want fan-out
-  # cancellation.
-  build-gate:
-    runs-on: macos-15  # match downstream jobs so the cache key collides
-    timeout-minutes: 10
-
+  # Single ubuntu-latest job that runs dorny/paths-filter once for every
+  # downstream job that needs it. Avoids spinning up a macOS runner (10× billed)
+  # per push just to detect that no relevant files changed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      macros: ${{ steps.filter.outputs.macros }}
+      cold-start: ${{ steps.filter.outputs.cold-start }}
+      persistence: ${{ steps.filter.outputs.persistence }}
+      foundation-only: ${{ steps.filter.outputs.foundation-only }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+      - uses: actions/checkout@v6
         with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM dependencies
-        uses: actions/cache@v5
+          fetch-depth: 2
+      - uses: dorny/paths-filter@v4
+        id: filter
         with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: swift build --build-tests
-        # Matches the default-trait CI build surface the `test` job exercises.
-        # --skip-update mirrors the downstream test invocation; Package.resolved
-        # is the source of truth for the dependency graph, so the pre-flight
-        # never needs to recontact remotes.
-        run: swift build --build-tests --disable-default-traits --skip-update
+          filters: |
+            server:
+              - 'Sources/ManifoldServer*/**'
+              - 'Tests/ManifoldServerTests/**'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test.sh'
+            macros:
+              - 'Sources/ManifoldMacrosPlugin/**'
+              - 'Sources/ManifoldInference/Macros/**'
+              - 'Tests/ManifoldInferenceTests/ToolSchemaMacro*.swift'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test.sh'
+            cold-start:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/cold-start-conformance.sh'
+              - 'scripts/cold-start-tier2-bootstrap.sh'
+              - 'scripts/cold-start-tier3-chatview.sh'
+              - '.github/workflows/ci.yml'
+            persistence:
+              - 'Sources/ManifoldPersistenceSwiftData/**'
+              - 'Tests/ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests.swift'
+              - '.swiftpm/xcode/xcshareddata/xcschemes/ManifoldPersistenceSwiftDataTests.xcscheme'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
+              - 'scripts/test-ios-simulator.sh'
+            foundation-only:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'Sources/ManifoldFoundation/**'
+              - 'scripts/check-foundation-only-bundle.sh'
+              - '.github/workflows/ci.yml'
 
   test:
-    needs: build-gate
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
 
     steps:
@@ -329,6 +339,19 @@ jobs:
       # macOS-min) per push.  scripts/check-coverage.sh thresholds sit 10pp
       # below the 2026-05-15 baseline, so a ≤24h detection delay is acceptable.
 
+      # PinnedSessionDelegateTests was previously in the standalone security-gates.yml
+      # workflow (a separate macos-15 runner). Folded in here to save ~90 billed
+      # macOS-minutes per push. MCPHardeningTests are already covered by the
+      # ManifoldMCPTests filter above; only this test requires the CloudSaaS trait.
+      - name: Test — PinnedSessionDelegate (CloudSaaS)
+        if: always()
+        id: test-pinned-session-delegate
+        timeout-minutes: 10
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
+          STALL_SECONDS: "120"
+        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits CloudSaaS --skip-update
+
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
         # MANIFOLD_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
@@ -337,6 +360,7 @@ jobs:
         env:
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
+          PINNED_SESSION_FAILED: ${{ steps.test-pinned-session-delegate.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
           {
@@ -345,6 +369,7 @@ jobs:
             echo "job=test"
             echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
             echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"
+            echo "pinned-session-failed=${PINNED_SESSION_FAILED}"
           } > test-diagnostics/failed-steps.txt
           # Best-effort: copy any xcresult bundles a future xcodebuild step
           # might have produced under DerivedData.
@@ -371,7 +396,8 @@ jobs:
   # peels Hummingbird out of the default-trait build so only this job pays
   # the compile cost — and only when server code or the dep graph changes.
   server-tests:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -382,27 +408,12 @@ jobs:
           # `pull_request` works with the default shallow clone.
           fetch-depth: 2
 
-      - name: Detect server-relevant changes
-        id: server-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            server:
-              - 'Sources/ManifoldServer*/**'
-              - 'Tests/ManifoldServerTests/**'
-              - 'Package.swift'
-              - 'Package.resolved'
-              - '.github/workflows/ci.yml'
-              - 'scripts/test.sh'
-
       - name: Select Xcode
-        if: steps.server-changed.outputs.server == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.server-changed.outputs.server == 'true'
         uses: actions/cache@v5
         with:
           # Same path/key shape as the `test` job — both jobs share the same
@@ -418,7 +429,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Verify Swift toolchain matches Package.swift tools-version
-        if: steps.server-changed.outputs.server == 'true'
         run: |
           set -euo pipefail
           tools_line=$(head -n 1 Package.swift)
@@ -443,14 +453,13 @@ jobs:
 
       - name: Test — Server suite (Server trait)
         id: test-server
-        if: steps.server-changed.outputs.server == 'true'
         timeout-minutes: 12
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
         run: scripts/test.sh --filter ManifoldServerTests --disable-default-traits --traits Server --skip-update
 
       - name: Stage test diagnostics
-        if: failure() && steps.server-changed.outputs.server == 'true'
+        if: failure()
         run: |
           mkdir -p test-diagnostics
           {
@@ -461,7 +470,7 @@ jobs:
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
-        if: failure() && steps.server-changed.outputs.server == 'true'
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: xcresult-server-${{ github.run_attempt }}
@@ -475,7 +484,8 @@ jobs:
   # `test` job skips the swift-syntax compile cost; this job picks them up
   # only when macro code or the dep graph changes.
   macros-tests:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.macros == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -486,28 +496,12 @@ jobs:
           # `pull_request` works with the default shallow clone.
           fetch-depth: 2
 
-      - name: Detect macro-relevant changes
-        id: macros-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            macros:
-              - 'Sources/ManifoldMacrosPlugin/**'
-              - 'Sources/ManifoldInference/Macros/**'
-              - 'Tests/ManifoldInferenceTests/ToolSchemaMacro*.swift'
-              - 'Package.swift'
-              - 'Package.resolved'
-              - '.github/workflows/ci.yml'
-              - 'scripts/test.sh'
-
       - name: Select Xcode
-        if: steps.macros-changed.outputs.macros == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.macros-changed.outputs.macros == 'true'
         uses: actions/cache@v5
         with:
           # Same path/key shape as the `test` job — both jobs share the same
@@ -523,7 +517,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Verify Swift toolchain matches Package.swift tools-version
-        if: steps.macros-changed.outputs.macros == 'true'
         run: |
           set -euo pipefail
           tools_line=$(head -n 1 Package.swift)
@@ -548,14 +541,13 @@ jobs:
 
       - name: Test — @ToolSchema macro suite (Macros trait)
         id: test-macros
-        if: steps.macros-changed.outputs.macros == 'true'
         timeout-minutes: 12
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-macros.log
         run: scripts/test.sh --filter ToolSchemaMacro --disable-default-traits --traits Macros --skip-update
 
       - name: Stage test diagnostics
-        if: failure() && steps.macros-changed.outputs.macros == 'true'
+        if: failure()
         run: |
           mkdir -p test-diagnostics
           {
@@ -566,7 +558,7 @@ jobs:
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
-        if: failure() && steps.macros-changed.outputs.macros == 'true'
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: xcresult-macros-${{ github.run_attempt }}
@@ -588,7 +580,8 @@ jobs:
   # symbol downstream-visible. Per `[[feedback_ci_path_filter_self_validation]]`
   # the script's own path is in the filter so script-only PRs still trigger.
   cold-start:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -597,25 +590,12 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect cold-start-relevant changes
-        id: cold-start-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            cold-start:
-              - 'Package.swift'
-              - 'Package.resolved'
-              - 'scripts/cold-start-conformance.sh'
-              - '.github/workflows/ci.yml'
-
       - name: Select Xcode
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -628,7 +608,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start conformance
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
@@ -643,7 +622,8 @@ jobs:
   # Same per-PR gating as `cold-start` above: only fires on Package.swift /
   # Package.resolved / script edits; nightly runs it unconditionally.
   cold-start-tier2:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -652,25 +632,12 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect cold-start-relevant changes
-        id: cold-start-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            cold-start:
-              - 'Package.swift'
-              - 'Package.resolved'
-              - 'scripts/cold-start-tier2-bootstrap.sh'
-              - '.github/workflows/ci.yml'
-
       - name: Select Xcode
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -683,7 +650,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-2 conformance
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
@@ -699,7 +665,8 @@ jobs:
   #
   # Same per-PR gating as the other cold-start jobs; nightly runs it daily.
   cold-start-tier3:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -708,25 +675,12 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect cold-start-relevant changes
-        id: cold-start-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            cold-start:
-              - 'Package.swift'
-              - 'Package.resolved'
-              - 'scripts/cold-start-tier3-chatview.sh'
-              - '.github/workflows/ci.yml'
-
       - name: Select Xcode
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -739,7 +693,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-spm-
 
       - name: Run cold-start tier-3 ChatView conformance
-        if: steps.cold-start-changed.outputs.cold-start == 'true'
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
@@ -754,7 +707,8 @@ jobs:
   # target whose code can flip the FoundationOnly bundle composition).
   # Nightly runs it unconditionally every day.
   foundation-only-build:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.foundation-only == 'true'
     runs-on: macos-15  # match the `test` job runner so cache keys collide
 
     steps:
@@ -763,26 +717,12 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect foundation-only-relevant changes
-        id: foundation-only-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            foundation-only:
-              - 'Package.swift'
-              - 'Package.resolved'
-              - 'Sources/ManifoldFoundation/**'
-              - 'scripts/check-foundation-only-bundle.sh'
-              - '.github/workflows/ci.yml'
-
       - name: Select Xcode
-        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         uses: actions/cache@v5
         with:
           # FoundationOnly resolves a much smaller dep graph than the default
@@ -799,7 +739,6 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
 
       - name: Run FoundationOnly bundle audit
-        if: steps.foundation-only-changed.outputs.foundation-only == 'true'
         timeout-minutes: 10
         run: scripts/check-foundation-only-bundle.sh
 
@@ -811,7 +750,8 @@ jobs:
   # ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests suite to
   # keep runtime short.  See scripts/test-ios-simulator.sh for the full rationale.
   ci-ios-file-protection:
-    needs: build-gate
+    needs: [changes]
+    if: needs.changes.outputs.persistence == 'true'
     runs-on: macos-15  # match the `test` job runner
 
     steps:
@@ -820,28 +760,12 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Detect persistence-relevant changes
-        id: persistence-changed
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            persistence:
-              - 'Sources/ManifoldPersistenceSwiftData/**'
-              - 'Tests/ManifoldPersistenceSwiftDataTests/ModelContainerFileProtectionTests.swift'
-              - '.swiftpm/xcode/xcshareddata/xcschemes/ManifoldPersistenceSwiftDataTests.xcscheme'
-              - 'Package.swift'
-              - 'Package.resolved'
-              - '.github/workflows/ci.yml'
-              - 'scripts/test-ios-simulator.sh'
-
       - name: Select Xcode
-        if: steps.persistence-changed.outputs.persistence == 'true'
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: "26.3"
 
       - name: Cache SwiftPM build
-        if: steps.persistence-changed.outputs.persistence == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -855,12 +779,11 @@ jobs:
 
       - name: Test — ModelContainerFileProtectionTests (iOS Simulator)
         id: test-ios-file-protection
-        if: steps.persistence-changed.outputs.persistence == 'true'
         timeout-minutes: 15
         run: scripts/test-ios-simulator.sh --ci
 
       - name: Stage test diagnostics
-        if: failure() && steps.persistence-changed.outputs.persistence == 'true'
+        if: failure()
         run: |
           mkdir -p test-diagnostics
           {
@@ -873,7 +796,7 @@ jobs:
             | while read -r r; do cp -R "$r" test-diagnostics/ || true; done
 
       - name: Upload test diagnostics on failure
-        if: failure() && steps.persistence-changed.outputs.persistence == 'true'
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: xcresult-ios-file-protection-${{ github.run_attempt }}
