@@ -116,6 +116,38 @@ let tap = runtime.addEventTap(bufferingPolicy: .bufferingNewest(200))
 
 Bounded taps drop events when the consumer falls behind. The primary ``ConversationRuntime/events`` stream uses `.bufferingOldest(500)` — a different policy — so a slow bounded tap does not affect it.
 
+## Running scenarios
+
+``RuntimeScenarioRunner`` lets you drive a complete multi-turn conversation against a scripted or real backend in a single call, with the recorded trace returned for inspection.
+
+In `.scripted` mode the runner wires up a ``ScriptedGenerationBackend`` from the scenario's embedded turn script, records the full ``ConversationEvent`` trace, and checks the structural subsequence automatically:
+
+```swift,no-build
+import ManifoldTestSupport
+
+let result = try await RuntimeScenarioRunner.run(.basicTokenStream)
+RuntimeScenarioRunner.assert(result: result)  // calls XCTFail if subsequence fails
+```
+
+All built-in scenarios are collected in ``RuntimeScenarioRegistry/all``. Iterate it in a test matrix to cover every registered scenario in one loop:
+
+```swift,no-build
+for scenario in RuntimeScenarioRegistry.all {
+    let result = try await RuntimeScenarioRunner.run(scenario)
+    RuntimeScenarioRunner.assert(result: result)
+}
+```
+
+For live-backend runs, pass `.live(backend:)` — the runner uses the same structural assertions but does not check token content:
+
+```swift,no-build
+let result = try await RuntimeScenarioRunner.run(
+    .basicTokenStream,
+    mode: .live(backend: myRealBackend)
+)
+RuntimeScenarioRunner.assert(result: result)
+```
+
 ## Re-entrancy rule (yield-outside-lock)
 
 If you implement a custom continuation-based observer, be aware of the **yield-outside-lock invariant** that ``EventTapRegistry`` maintains:
