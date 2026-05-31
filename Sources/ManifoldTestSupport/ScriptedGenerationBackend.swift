@@ -126,28 +126,27 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
         let script = nextTurn()
         isGenerating = true
 
-        let raw = AsyncThrowingStream<GenerationEvent, Error> { [weak self] continuation in
-            Task {
-                for event in script.events {
-                    switch event {
-                    case .emit(let generationEvent):
-                        continuation.yield(generationEvent)
-                    case .throwError(let error):
-                        self?.isGenerating = false
+        let (raw, continuation) = AsyncThrowingStream<GenerationEvent, Error>.makeStream()
+        Task { [weak self] in
+            for event in script.events {
+                switch event {
+                case .emit(let generationEvent):
+                    continuation.yield(generationEvent)
+                case .throwError(let error):
+                    self?.isGenerating = false
+                    continuation.finish(throwing: error)
+                    return
+                case .delay(let duration):
+                    do {
+                        try await Task.sleep(for: duration)
+                    } catch {
                         continuation.finish(throwing: error)
                         return
-                    case .delay(let duration):
-                        do {
-                            try await Task.sleep(for: duration)
-                        } catch {
-                            continuation.finish(throwing: error)
-                            return
-                        }
                     }
                 }
-                self?.isGenerating = false
-                continuation.finish()
             }
+            self?.isGenerating = false
+            continuation.finish()
         }
         return GenerationStream(raw)
     }
