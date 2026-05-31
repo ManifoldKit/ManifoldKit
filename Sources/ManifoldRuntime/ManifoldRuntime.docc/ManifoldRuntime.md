@@ -156,6 +156,8 @@ try await endpointStore.insertEndpoint(
 
 - ``ConversationRuntime``
 - ``ConversationEvent``
+- ``ConversationEventKind``
+- ``ConversationEventTrace``
 - ``ConversationEventRecorder``
 - ``ConversationStreamHandle``
 - ``ConversationTurnHandle``

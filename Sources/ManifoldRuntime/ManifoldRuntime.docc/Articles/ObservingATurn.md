@@ -69,6 +69,41 @@ print(tokens)
 
 `ConversationEventRecorder` is an `actor`, so `trace` is safe to read from any isolation context.
 
+## Saving a trace for debugging
+
+After draining a ``ConversationEventRecorder``, wrap the raw event array in a
+``ConversationEventTrace`` and call ``ConversationEventTrace/save(to:)`` to
+persist the turn as a JSONL file. Each line is a JSON object with three fields:
+`index` (0-based position), `kind` (the ``ConversationEventKind`` raw value),
+and `summary` (a human-readable one-liner derived from the event's associated
+values — the token delta for `.tokenEmitted`, the finish reason for
+`.streamFinished`, the slot count for `.contextAssembled`, and so on).
+
+```swift,no-build
+import ManifoldRuntime
+
+let recorder = ConversationEventRecorder()
+let drainTask = await recorder.start(on: runtime)
+
+let turn = try await runtime.processTurnWithOutcome(input)
+await turn?.outcome
+drainTask.cancel()
+await drainTask.value
+
+let trace = await ConversationEventTrace(recorder: recorder)
+
+// Inspect kinds inline
+print(trace.kinds) // [.contextAssembled, .streamStarted, .tokenEmitted, ...]
+
+// Save to disk for golden-trace comparison (P3) or offline debugging
+let url = URL(fileURLWithPath: "/tmp/turn.jsonl")
+try trace.save(to: url)
+```
+
+The JSONL format is intentionally minimal so it remains readable in any text
+editor and diff-friendly in version control. A future P3 pass will add a
+structured read path for golden-trace regression testing.
+
 ## Backpressure tradeoff
 
 The default buffering policy for taps is `.unbounded`, which means events accumulate in memory if the consumer lags. This eliminates any risk of the tap consumer blocking the turn loop or missing events during a burst.
