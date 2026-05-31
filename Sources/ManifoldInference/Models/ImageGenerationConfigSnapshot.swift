@@ -30,6 +30,9 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
     public var height: Int
     public var seed: UInt64?
     public var guidanceScale: Float?
+    /// Mirrors ``ImageGenerationConfig/aspectRatio``. `nil` means the backend
+    /// derives the ratio from ``width``/``height`` or uses its own default.
+    public var aspectRatio: String?
 
     /// Mirrors ``ImageGenerationConfig/outputDirectory``. Persisted so a
     /// "regenerate from history" affordance can re-target the same storage
@@ -57,6 +60,7 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
         height: Int,
         seed: UInt64? = nil,
         guidanceScale: Float? = nil,
+        aspectRatio: String? = nil,
         outputDirectory: URL? = nil
     ) {
         self.steps = steps
@@ -64,6 +68,7 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
         self.height = height
         self.seed = seed
         self.guidanceScale = guidanceScale
+        self.aspectRatio = aspectRatio
         self.outputDirectory = outputDirectory
     }
 
@@ -76,6 +81,7 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
         self.height = config.height
         self.seed = config.seed
         self.guidanceScale = config.guidanceScale
+        self.aspectRatio = config.aspectRatio
         self.outputDirectory = config.outputDirectory
     }
 
@@ -89,6 +95,7 @@ public struct ImageGenerationConfigSnapshot: Sendable, Hashable {
             height: height,
             seed: seed,
             guidanceScale: guidanceScale,
+            aspectRatio: aspectRatio,
             outputDirectory: outputDirectory
         )
     }
@@ -102,7 +109,7 @@ extension ImageGenerationConfigSnapshot: Codable {
     // decode to `nil` rather than failing the whole row, and so absent
     // fields never get force-encoded as `null`.
     private enum CodingKeys: String, CodingKey {
-        case steps, width, height, seed, guidanceScale, outputDirectory
+        case steps, width, height, seed, guidanceScale, aspectRatio, outputDirectory
     }
 
     public init(from decoder: any Decoder) throws {
@@ -112,6 +119,7 @@ extension ImageGenerationConfigSnapshot: Codable {
         self.height = try c.decode(Int.self, forKey: .height)
         self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
         self.guidanceScale = try c.decodeIfPresent(Float.self, forKey: .guidanceScale)
+        self.aspectRatio = try c.decodeIfPresent(String.self, forKey: .aspectRatio)
         self.outputDirectory = try c.decodeIfPresent(URL.self, forKey: .outputDirectory)
     }
 
