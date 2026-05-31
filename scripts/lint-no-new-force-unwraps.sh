@@ -43,6 +43,7 @@ ALLOWLIST_PATHS=(
     "ManifoldInference/Services/GenerationQueue.swift"
     "ManifoldRuntime/Services/ConversationRuntime.swift"
     "ManifoldRuntime/Services/ImageGenerationRuntime.swift"
+    "ManifoldRuntime/Services/VideoGenerationRuntime.swift"
     "ManifoldRuntime/Services/SessionListService.swift"
     "ManifoldAppIntents/IntentProgressReporter.swift"
 
