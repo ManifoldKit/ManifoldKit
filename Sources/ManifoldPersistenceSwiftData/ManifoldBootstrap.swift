@@ -458,4 +458,5 @@ extension ManifoldBootstrap: ChatRuntimeBootstrap {
     public var apiEndpointStore: any EndpointStore { endpointStore }
     public var diagnosticsService: DiagnosticsService { diagnostics }
     public var imageGenerationRuntime: ImageGenerationRuntime? { imageRuntime }
+    public var videoGenerationRuntime: VideoGenerationRuntime? { videoRuntime }
 }
