@@ -1,8 +1,11 @@
 import Foundation
 import ManifoldRuntime
 import ManifoldInference
+#if CloudSaaS
 import ManifoldCloudCore
+#endif
 
+#if CloudSaaS
 /// SessionToolSource that exposes a `search_web` tool backed by a live
 /// search-enabled chat completion endpoint.
 ///
@@ -69,3 +72,4 @@ public final class WebSearchToolSource: SessionToolSource {
         return ToolResult(callId: toolName, content: content)
     }
 }
+#endif
