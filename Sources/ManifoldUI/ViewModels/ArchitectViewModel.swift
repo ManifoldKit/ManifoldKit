@@ -30,12 +30,9 @@ public struct ArchitectEventEntry: Identifiable, Sendable {
         self.kind = event.kind
         self.event = event
         self.isCompressionRelated = {
-            switch event {
-            case .compressionTriggered, .historyCompressed:
-                return true
-            default:
-                return false
-            }
+            if case .compressionTriggered = event { return true }
+            if case .historyCompressed = event { return true }
+            return false
         }()
         self.isError = {
             if case .errorRaised = event { return true }
@@ -202,7 +199,7 @@ public final class ArchitectViewModel {
         isRecording = true
         let tap = runtime.addEventTap(bufferingPolicy: .bufferingOldest(Self.maxLogSize))
         tapTask = Task { [weak self] in
-            var idx = await self?.eventLog.count ?? 0
+            var idx = self?.eventLog.count ?? 0
             for await event in tap {
                 guard let self else { break }
                 let entry = ArchitectEventEntry(event: event, index: idx)
