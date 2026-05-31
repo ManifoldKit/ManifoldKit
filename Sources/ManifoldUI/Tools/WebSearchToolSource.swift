@@ -52,7 +52,10 @@ public final class WebSearchToolSource: SessionToolSource {
         else { return ToolResult(callId: toolName, content: "Invalid arguments", errorKind: .invalidArguments) }
 
         let token = try await tokenProvider.token()
-        var request = URLRequest(url: URL(string: "\(baseURL)/chat/completions")!)
+        guard let endpointURL = URL(string: "\(baseURL)/chat/completions") else {
+            return ToolResult(callId: toolName, content: "Invalid baseURL: \(baseURL)", errorKind: .invalidArguments)
+        }
+        var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -64,8 +67,9 @@ public final class WebSearchToolSource: SessionToolSource {
         ])
 
         let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            return ToolResult(callId: toolName, content: "Search failed", errorKind: .transient)
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode
+        guard httpStatus == 200 else {
+            return ToolResult(callId: toolName, content: "Search failed (HTTP \(httpStatus.map(String.init) ?? "unknown"))", errorKind: .transient)
         }
         let responseJSON = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
         let content = ((responseJSON?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String ?? "No results"
