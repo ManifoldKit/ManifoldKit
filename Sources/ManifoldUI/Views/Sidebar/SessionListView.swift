@@ -35,47 +35,116 @@ public struct SessionListView: View {
                 ContentUnavailableView.search(text: searchText)
             } else {
                 List(selection: $sessionManager.activeSession) {
-                    ForEach(sessionManager.displayedSessions) { session in
-                        rowContent(for: session)
-                            .tag(session)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    sessionToDelete = session
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    renameText = session.title
-                                    sessionToRename = session
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
-                                .tint(.blue)
-                            }
-                            .contextMenu {
-                                Button {
-                                    renameText = session.title
-                                    sessionToRename = session
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
+                    let pinned = sessionManager.pinnedSessions
+                    let unpinned: [ChatSessionRecord] = {
+                        let trimmed = sessionManager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard trimmed.isEmpty else { return sessionManager.displayedSessions }
+                        let pinnedIDs = Set(pinned.map(\.id))
+                        return sessionManager.sessions.filter { !pinnedIDs.contains($0.id) }
+                    }()
 
-                                Button(role: .destructive) {
-                                    sessionToDelete = session
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                    if !pinned.isEmpty {
+                        Section("Pinned") {
+                            ForEach(pinned) { session in
+                                rowContent(for: session)
+                                    .tag(session)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            sessionToDelete = session
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    .swipeActions(edge: .leading) {
+                                        Button {
+                                            Task { try? await sessionManager.unpinSession(session) }
+                                        } label: {
+                                            Label("Unpin", systemImage: "pin.slash")
+                                        }
+                                        .tint(.orange)
+                                        Button {
+                                            renameText = session.title
+                                            sessionToRename = session
+                                        } label: {
+                                            Label("Rename", systemImage: "pencil")
+                                        }
+                                        .tint(.blue)
+                                    }
+                                    .contextMenu {
+                                        Button {
+                                            Task { try? await sessionManager.unpinSession(session) }
+                                        } label: {
+                                            Label("Unpin", systemImage: "pin.slash")
+                                        }
+                                        Button {
+                                            renameText = session.title
+                                            sessionToRename = session
+                                        } label: {
+                                            Label("Rename", systemImage: "pencil")
+                                        }
+                                        Button(role: .destructive) {
+                                            sessionToDelete = session
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                             }
-                            .onAppear {
-                                // Trigger pagination only for the unfiltered list — search
-                                // results already pull from a wider window in the VM.
-                                if searchText.isEmpty,
-                                   session.id == sessionManager.sessions.last?.id {
-                                    Task { await sessionManager.loadNextPage() }
+                        }
+                    }
+
+                    Section(pinned.isEmpty ? "" : "Chats") {
+                        ForEach(unpinned) { session in
+                            rowContent(for: session)
+                                .tag(session)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        sessionToDelete = session
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        Task { try? await sessionManager.pinSession(session) }
+                                    } label: {
+                                        Label("Pin", systemImage: "pin")
+                                    }
+                                    .tint(.yellow)
+                                    Button {
+                                        renameText = session.title
+                                        sessionToRename = session
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    .tint(.blue)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        Task { try? await sessionManager.pinSession(session) }
+                                    } label: {
+                                        Label("Pin", systemImage: "pin")
+                                    }
+                                    Button {
+                                        renameText = session.title
+                                        sessionToRename = session
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) {
+                                        sessionToDelete = session
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                .onAppear {
+                                    // Trigger pagination only for the unfiltered list — search
+                                    // results already pull from a wider window in the VM.
+                                    if sessionManager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                       session.id == sessionManager.sessions.last?.id {
+                                        Task { await sessionManager.loadNextPage() }
+                                    }
+                                }
+                        }
                     }
                 }
                 .accessibilityIdentifier("session-list")
