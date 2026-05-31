@@ -70,6 +70,45 @@ final class RuntimeScenarioRunnerTests: XCTestCase {
         XCTAssertEqual(finishedCount, 2, "Expected 2 streamFinished events, got \(finishedCount)")
     }
 
+    // MARK: - P4a: flagship scenario structural assertions
+
+    /// The self-managing research session must contain exactly one
+    /// `historyCompressed` event, and it must appear *before* the third
+    /// `contextAssembled` — proving that turn 3 assembled its context from
+    /// the compressed history.
+    func test_researchSession_historyCompressedBeforeThirdContextAssembled() async throws {
+        let result = try await RuntimeScenarioRunner.run(.researchSession)
+
+        XCTAssertTrue(result.subsequencePassed, result.subsequenceFailureReason ?? "subsequence check failed")
+
+        // Exactly one compression event must fire (the policy fires once at
+        // messageCount == 4, then the count drops back below the threshold).
+        let compressionCount = result.trace.kinds.filter { $0 == .historyCompressed }.count
+        XCTAssertEqual(compressionCount, 1, "Expected exactly 1 historyCompressed event, got \(compressionCount)")
+
+        // The structural ordering guarantee: historyCompressed must precede the
+        // third contextAssembled in the trace.
+        let kinds = result.trace.kinds
+        let compressionIndex = kinds.firstIndex(of: .historyCompressed)
+        let contextAssembledIndices = kinds.enumerated()
+            .filter { $0.element == .contextAssembled }
+            .map(\.offset)
+
+        XCTAssertNotNil(compressionIndex, "historyCompressed must appear in the trace")
+        XCTAssertGreaterThanOrEqual(
+            contextAssembledIndices.count, 3,
+            "Expected at least 3 contextAssembled events (one per post-compression turn)"
+        )
+        if let ci = compressionIndex, contextAssembledIndices.count >= 3 {
+            let thirdContextAssembledIndex = contextAssembledIndices[2]
+            XCTAssertLessThan(
+                ci,
+                thirdContextAssembledIndex,
+                "historyCompressed must precede the third contextAssembled — got historyCompressed at \(ci), third contextAssembled at \(thirdContextAssembledIndex)"
+            )
+        }
+    }
+
     // MARK: - Registry integrity
 
     /// All scenario IDs in the registry must be unique — duplicate IDs would

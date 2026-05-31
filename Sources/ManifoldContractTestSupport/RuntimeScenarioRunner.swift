@@ -74,7 +74,8 @@ public enum RuntimeScenarioRunner {
         let runtime = ConversationRuntime(
             messageStore: store,
             sessionStore: nil,
-            inferenceService: inferenceService
+            inferenceService: inferenceService,
+            preTurnCompressionPolicy: scenario.preTurnCompressionPolicy
         )
 
         let recorder = ConversationEventRecorder()
