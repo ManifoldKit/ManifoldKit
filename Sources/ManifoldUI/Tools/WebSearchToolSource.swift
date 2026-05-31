@@ -67,8 +67,9 @@ public final class WebSearchToolSource: SessionToolSource {
         ])
 
         let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            return ToolResult(callId: toolName, content: "Search failed", errorKind: .transient)
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode
+        guard httpStatus == 200 else {
+            return ToolResult(callId: toolName, content: "Search failed (HTTP \(httpStatus.map(String.init) ?? "unknown"))", errorKind: .transient)
         }
         let responseJSON = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
         let content = ((responseJSON?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String ?? "No results"
