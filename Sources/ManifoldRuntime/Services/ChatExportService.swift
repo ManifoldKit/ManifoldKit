@@ -14,6 +14,14 @@ public enum ExportFormat: String, CaseIterable, Identifiable {
         case .markdown: "md"
         }
     }
+
+    /// The UTI MIME type for the format, suitable for `ShareLink` preview metadata.
+    public var mimeType: String {
+        switch self {
+        case .plainText: "text/plain"
+        case .markdown: "text/markdown"
+        }
+    }
 }
 
 /// Exports chat messages to plain text or markdown format.
