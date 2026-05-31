@@ -68,6 +68,14 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     /// default.
     public var guidanceScale: Float?
 
+    /// Aspect ratio hint for backends that accept ratio strings rather than
+    /// pixel dimensions (e.g. `"16:9"`, `"1:1"`, `"4:3"`).
+    ///
+    /// When non-nil, backends that support named ratios should use this value
+    /// directly. `nil` means the backend uses its own default or derives the
+    /// ratio from ``width`` / ``height``.
+    public var aspectRatio: String?
+
     /// Destination directory the backend should write the produced image
     /// into.
     ///
@@ -86,6 +94,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         height: Int = 1024,
         seed: UInt64? = nil,
         guidanceScale: Float? = nil,
+        aspectRatio: String? = nil,
         outputDirectory: URL? = nil
     ) {
         self.steps = steps
@@ -93,6 +102,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         self.height = height
         self.seed = seed
         self.guidanceScale = guidanceScale
+        self.aspectRatio = aspectRatio
         self.outputDirectory = outputDirectory
     }
 
@@ -121,7 +131,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     // Custom Codable so `outputDirectory` rides as `encodeIfPresent` and an
     // older payload that omits it decodes to `nil` rather than failing.
     private enum CodingKeys: String, CodingKey {
-        case steps, width, height, seed, guidanceScale, outputDirectory
+        case steps, width, height, seed, guidanceScale, aspectRatio, outputDirectory
     }
 
     public init(from decoder: any Decoder) throws {
@@ -131,6 +141,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         self.height = try c.decode(Int.self, forKey: .height)
         self.seed = try c.decodeIfPresent(UInt64.self, forKey: .seed)
         self.guidanceScale = try c.decodeIfPresent(Float.self, forKey: .guidanceScale)
+        self.aspectRatio = try c.decodeIfPresent(String.self, forKey: .aspectRatio)
         self.outputDirectory = try c.decodeIfPresent(URL.self, forKey: .outputDirectory)
     }
 
@@ -141,6 +152,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         try c.encode(height, forKey: .height)
         try c.encodeIfPresent(seed, forKey: .seed)
         try c.encodeIfPresent(guidanceScale, forKey: .guidanceScale)
+        try c.encodeIfPresent(aspectRatio, forKey: .aspectRatio)
         try c.encodeIfPresent(outputDirectory, forKey: .outputDirectory)
     }
 }
