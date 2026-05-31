@@ -96,14 +96,8 @@ let package = Package(
         // these traits exist solely so `#if SystemAIProviderExtension` and
         // `#if CoreAI` conditional blocks can be written today and flip live on
         // June 8 without a Package.swift change. See docs/wwdc-2026-trait-stubs.md.
-        .trait(
-            name: "SystemAIProviderExtension",
-            description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API."
-        ),
-        .trait(
-            name: "CoreAI",
-            description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface."
-        ),
+        .trait(name: "SystemAIProviderExtension", description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API."),
+        .trait(name: "CoreAI", description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface."),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.31.3"),

@@ -156,15 +156,17 @@ public enum FeatureMatrix {
             name: "SystemAIProviderExtension",
             description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API.",
             unlocks: []
-            // TODO(dx-matrix): no concrete capability until the API surface
-            // is confirmed at WWDC 2026. Add to pendingMapping in FeatureMatrixTests.
+            // TODO(dx-matrix): post-WWDC, remove "SystemAIProviderExtension"
+            // from FeatureMatrixTests.pendingMapping and add the concrete
+            // ManifoldCapability cases it unlocks.
         ),
         ManifoldTrait(
             name: "CoreAI",
             description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface.",
             unlocks: []
-            // TODO(dx-matrix): no concrete capability until the API surface
-            // is confirmed at WWDC 2026. Add to pendingMapping in FeatureMatrixTests.
+            // TODO(dx-matrix): post-WWDC, remove "CoreAI" from
+            // FeatureMatrixTests.pendingMapping and add the concrete
+            // ManifoldCapability cases it unlocks.
         ),
     ]
 
