@@ -92,6 +92,12 @@ let package = Package(
         // from the resolved graph. Apple Foundation Models still work via
         // FoundationBackend (iOS 26 / macOS 26+). See docs/AppStoreSubmission.md.
         .trait(name: "FoundationOnly", description: "App Store-lean: Apple Foundation Models only. Pass `traits: [\"FoundationOnly\"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set."),
+        // WWDC 2026 pre-emptive stubs. No associated targets or source files —
+        // these traits exist solely so `#if SystemAIProviderExtension` and
+        // `#if CoreAI` conditional blocks can be written today and flip live on
+        // June 8 without a Package.swift change. See docs/wwdc-2026-trait-stubs.md.
+        .trait(name: "SystemAIProviderExtension", description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API."),
+        .trait(name: "CoreAI", description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface."),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.31.3"),

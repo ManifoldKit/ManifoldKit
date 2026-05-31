@@ -18,6 +18,10 @@ final class FeatureMatrixTests: XCTestCase {
     // doesn't have to lie about them.
     private let pendingMapping: Set<String> = [
         "Fuzz",
+        // WWDC 2026 pre-emptive stubs: no capability mapping until the APIs
+        // ship on June 8. Remove from here and add unlocks once confirmed.
+        "SystemAIProviderExtension",
+        "CoreAI",
     ]
 
     func testEveryMatrixTraitExistsInPackageManifest() throws {

@@ -149,6 +149,25 @@ public enum FeatureMatrix {
             description: "App Store-lean: Apple Foundation Models only. Pass `traits: [\"FoundationOnly\"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set.",
             unlocks: [.foundationBackend]
         ),
+        // WWDC 2026 pre-emptive stubs. No targets, no source files — pure
+        // compile-condition placeholders until the frameworks ship on June 8.
+        // See docs/wwdc-2026-trait-stubs.md for deferred decision points.
+        ManifoldTrait(
+            name: "SystemAIProviderExtension",
+            description: "Stubs for the iOS 27 system AI provider extension surface (Siri/Writing Tools backend slot). No-op until WWDC 2026 ships the API.",
+            unlocks: []
+            // TODO(dx-matrix): post-WWDC, remove "SystemAIProviderExtension"
+            // from FeatureMatrixTests.pendingMapping and add the concrete
+            // ManifoldCapability cases it unlocks.
+        ),
+        ManifoldTrait(
+            name: "CoreAI",
+            description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface.",
+            unlocks: []
+            // TODO(dx-matrix): post-WWDC, remove "CoreAI" from
+            // FeatureMatrixTests.pendingMapping and add the concrete
+            // ManifoldCapability cases it unlocks.
+        ),
     ]
 
     // MARK: - Lookups
