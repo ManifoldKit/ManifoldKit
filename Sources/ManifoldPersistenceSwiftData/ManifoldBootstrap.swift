@@ -93,6 +93,15 @@ public final class ManifoldBootstrap {
     /// Persists per-turn token counts for all cloud-backed sessions. Host apps
     /// can read aggregated totals via ``usageStore`` to surface cost dashboards.
     public let usageStore: SwiftDataUsageStore
+
+    /// `true` when this bootstrap was created with
+    /// ``makeInMemory(configuration:inferenceService:ragConfiguration:)``.
+    ///
+    /// Useful for surfaces that need to indicate an Incognito/ephemeral mode —
+    /// for example the Architect view's Incognito indicator.
+    public var isInMemory: Bool { _isInMemory }
+    private let _isInMemory: Bool
+
     /// The shared turn-loop runtime, pre-wired against ``persistence`` and
     /// ``inferenceService``. Apps that bootstrap through this type should pass
     /// this instance to ``ChatViewModel/configure(conversationRuntime:)`` (or
@@ -154,7 +163,8 @@ public final class ManifoldBootstrap {
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() }
+        makeModelContainer: @MainActor () throws -> ModelContainer = { try ModelContainerFactory.makeContainer() },
+        isInMemory: Bool = false
     ) throws {
         // Capture the previous configuration before any mutation so a failure
         // partway through bootstrap leaves `ManifoldConfiguration.shared`
@@ -223,6 +233,7 @@ public final class ManifoldBootstrap {
             self.videoRuntime = videoService.map {
                 VideoGenerationRuntime(service: $0, messageStore: resolvedPersistence)
             }
+            self._isInMemory = isInMemory
         } catch {
             ManifoldConfiguration.shared = previousConfiguration
             throw error
@@ -243,7 +254,8 @@ public final class ManifoldBootstrap {
         ragService: RAGService? = nil,
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
-        hookRegistry: HookRegistry? = nil
+        hookRegistry: HookRegistry? = nil,
+        isInMemory: Bool = false
     ) {
         self.inferenceService = inferenceService
         self.diagnostics = diagnostics
@@ -254,6 +266,7 @@ public final class ManifoldBootstrap {
         self.endpointStore = endpointStore
         self.usageStore = usageStore
         self.ragService = ragService
+        self._isInMemory = isInMemory
         self.conversationRuntime = ConversationRuntime(
             messageStore: persistence,
             sessionStore: persistence,
@@ -408,6 +421,49 @@ public final class ManifoldBootstrap {
         }
 
         return (stream, task)
+    }
+
+    // MARK: - In-memory bootstrap
+
+    /// Creates a ``ManifoldBootstrap`` backed by an ephemeral in-memory SwiftData
+    /// container — nothing is written to disk.
+    ///
+    /// Use for Incognito sessions (no conversation history persisted), SwiftUI
+    /// Previews, and test helpers that need the full bootstrap stack without
+    /// touching the production store.
+    ///
+    /// ```swift
+    /// let incognito = try ManifoldBootstrap.makeInMemory(
+    ///     configuration: ManifoldConfiguration(bundleIdentifier: "com.example.MyApp"),
+    ///     inferenceService: InferenceService(backend: myBackend)
+    /// )
+    /// // incognito.isInMemory == true
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - configuration: The ``ManifoldConfiguration`` to install.
+    ///   - inferenceService: The inference service to use. A default
+    ///     ``InferenceService`` is created when `nil`.
+    ///   - ragConfiguration: Optional RAG configuration. When supplied, the
+    ///     RAG service is wired against the in-memory document store and the
+    ///     vector index URL from ``RAGConfiguration/vectorStoreURL`` (or a
+    ///     resolved Application Support path). Pass `nil` to disable retrieval.
+    /// - Returns: A fully-wired ``ManifoldBootstrap`` whose persistence is
+    ///   ephemeral — all data is discarded when the instance is deallocated.
+    /// - Throws: If the in-memory ``ModelContainer`` cannot be created.
+    public static func makeInMemory(
+        configuration: ManifoldConfiguration,
+        inferenceService: InferenceService? = nil,
+        ragConfiguration: RAGConfiguration? = nil
+    ) throws -> ManifoldBootstrap {
+        let container = try ModelContainerFactory.makeInMemoryContainer()
+        return try ManifoldBootstrap(
+            configuration: configuration,
+            ragConfiguration: ragConfiguration,
+            inferenceService: inferenceService,
+            makeModelContainer: { container },
+            isInMemory: true
+        )
     }
 
     // MARK: - Boot hooks
