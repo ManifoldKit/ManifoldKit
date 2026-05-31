@@ -96,8 +96,18 @@ public final class ConversationRuntime: Sendable {
     /// during a long generation). Await
     /// ``processTurnWithOutcome(_:)``'s ``ConversationTurnHandle/outcome`` when
     /// command-style turn completion must be reliable.
+    ///
+    /// For multi-consumer observation, use ``addEventTap(bufferingPolicy:)``
+    /// to install additional independent streams that each receive the full
+    /// event flow without competing with this consumer.
     public let events: AsyncStream<ConversationEvent>
     private let continuation: AsyncStream<ConversationEvent>.Continuation
+
+    /// Fan-out registry for secondary event consumers installed via
+    /// ``addEventTap(bufferingPolicy:)``. Separate from the primary
+    /// ``continuation`` so the primary stream's `.bufferingOldest(500)` policy
+    /// does not affect tap consumers, and a slow tap cannot stall the turn loop.
+    private let eventTaps = EventTapRegistry()
 
     // MARK: In-flight state
 
@@ -272,7 +282,10 @@ public final class ConversationRuntime: Sendable {
             ragService: ragService,
             usageStore: usageStore,
             registry: registry,
-            emit: { continuation.yield($0) },
+            emit: { [eventTaps] event in
+                continuation.yield(event)
+                eventTaps.broadcast(event)
+            },
             emptyResponseObserver: emptyResponseObserver,
             generationHooks: generationHooks,
             compressionPolicy: compressionPolicy,
@@ -321,6 +334,7 @@ public final class ConversationRuntime: Sendable {
             }
         }
         continuation.finish()
+        eventTaps.finishAll()
     }
 
     package var activeTurnTaskCount: Int {
@@ -424,6 +438,31 @@ public final class ConversationRuntime: Sendable {
         turnTasks.cancel(handle)
         guard let token else { return }
         await inferenceService.cancelAsync(token)
+    }
+
+    // MARK: Secondary event taps
+
+    /// Installs a secondary multicast tap on this runtime's event flow.
+    ///
+    /// The returned stream receives every ``ConversationEvent`` the primary
+    /// ``events`` stream sees. The tap is independent of the primary consumer —
+    /// installing one does not starve ``events``, and a slow tap does not stall
+    /// the turn loop.
+    ///
+    /// - Parameter bufferingPolicy: Controls what happens when the tap consumer
+    ///   falls behind. Defaults to `.unbounded` so no events are dropped; pass a
+    ///   bounded policy if you need backpressure semantics.
+    /// - Returns: An `AsyncStream` that delivers events until the runtime
+    ///   terminates, at which point the stream finishes normally.
+    public func addEventTap(
+        bufferingPolicy: AsyncStream<ConversationEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<ConversationEvent> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { [eventTaps] continuation in
+            let id = eventTaps.register(continuation)
+            continuation.onTermination = { _ in
+                eventTaps.deregister(id)
+            }
+        }
     }
 
     // MARK: Legacy command surface (deprecated)
