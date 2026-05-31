@@ -89,7 +89,15 @@ Once registered, the model will call `generate_image` or `generate_video` autono
 
 ## Registering tool sources
 
-Use `ManifoldBootstrap.addToolSources(_:)` to register generation tool sources after `quickStart()`:
+When importing `ManifoldKit` (the umbrella module), use the one-liner convenience:
+
+```swift,no-build
+// One call registers whichever generation services are wired in the bootstrap.
+// Sources for nil services are silently skipped.
+await kit.bootstrap.addGenerationToolSources(viewModel: kit.viewModel)
+```
+
+For apps that import `ManifoldPersistenceSwiftData` directly (without the umbrella), use `addToolSources(_:)`:
 
 ```swift,no-build
 await kit.bootstrap.addToolSources([
@@ -98,7 +106,7 @@ await kit.bootstrap.addToolSources([
 ])
 ```
 
-This replaces the more verbose `conversationRuntime.updateSessionToolSources(_:)` call.
+Both calls replace the more verbose `conversationRuntime.updateSessionToolSources(_:)` call.
 
 ### Prerequisites
 
@@ -107,7 +115,7 @@ Both tool sources require their corresponding generation runtimes to be wired in
 - ``ImageGenerationToolSource`` — requires an ``ImageGenerationRuntime`` wired via `ManifoldBootstrap.build(imageGenerationService:)`.
 - ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired into ``ChatViewModel``.
 
-If a generation runtime is absent, the tool source is safe to register — the underlying `ChatViewModel` call will surface an error through ``ChatViewModel/backgroundTaskError`` rather than crashing.
+`addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, so it is safe to call unconditionally — no conditional check required at the call site.
 
 ## Context Menu Items
 
