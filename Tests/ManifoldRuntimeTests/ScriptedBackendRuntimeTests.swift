@@ -3,6 +3,7 @@ import Foundation
 @testable import ManifoldRuntime
 @testable import ManifoldInference
 import ManifoldTestSupport
+import ManifoldContractTestSupport
 
 // MARK: - ScriptedBackendRuntimeTests
 
