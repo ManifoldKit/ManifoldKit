@@ -14,6 +14,11 @@ import ManifoldRuntime
 ///   regardless of which backend drives the conversation.
 /// - Display metadata (``displayName``, ``scenarioDescription``) for the
 ///   demo picker UI that the Architect view (P5) will surface.
+/// - An optional ``preTurnCompressionPolicy`` for scenarios that exercise the
+///   runtime's history-compression path. When supplied,
+///   ``RuntimeScenarioRunner`` wires it into ``ConversationRuntime`` so
+///   compression fires deterministically — without requiring real token-usage
+///   data from the scripted backend.
 public struct RuntimeScenario: Sendable {
 
     /// Stable identifier — used as the test name and demo card key.
@@ -36,13 +41,25 @@ public struct RuntimeScenario: Sendable {
     /// recorded trace for the scenario to pass — in both scripted and live mode.
     public let expectedSubsequence: [ConversationEventKind]
 
+    /// Optional pre-turn compression policy. When non-nil,
+    /// ``RuntimeScenarioRunner`` passes this to
+    /// ``ConversationRuntime/init(messageStore:sessionStore:inferenceService:preTurnCompressionPolicy:)``
+    /// so the scenario can exercise the ``ConversationEvent/historyCompressed``
+    /// path deterministically.
+    ///
+    /// Pre-turn compression fires before the user message is appended to the
+    /// store, so ``ConversationEvent/historyCompressed`` appears *before* the
+    /// ``ConversationEvent/contextAssembled`` event for the same turn.
+    public let preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
+
     public init(
         id: String,
         displayName: String,
         scenarioDescription: String,
         userMessages: [String],
         scriptedTurns: [ScriptedGenerationBackend.TurnScript],
-        expectedSubsequence: [ConversationEventKind]
+        expectedSubsequence: [ConversationEventKind],
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
     ) {
         precondition(
             userMessages.count == scriptedTurns.count,
@@ -54,6 +71,7 @@ public struct RuntimeScenario: Sendable {
         self.userMessages = userMessages
         self.scriptedTurns = scriptedTurns
         self.expectedSubsequence = expectedSubsequence
+        self.preTurnCompressionPolicy = preTurnCompressionPolicy
     }
 }
 #endif

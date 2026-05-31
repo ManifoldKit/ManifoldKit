@@ -20,6 +20,8 @@ public enum RuntimeScenarioRegistry {
         .swapTheBrain,
         .midStreamErrorRecovery,
         .researcherWriterHandoff,
+        // P4a: flagship scenario:
+        .researchSession,
     ]
 }
 
@@ -173,6 +175,63 @@ extension RuntimeScenario {
             .streamStarted, .tokenEmitted, .streamFinished,
             .streamStarted, .tokenEmitted, .streamFinished,
         ]
+    )
+
+    // MARK: - P4a: flagship scenario
+
+    /// The centerpiece Glass Box scenario: a multi-turn research conversation
+    /// that fills the context window, triggers automatic history compression,
+    /// then continues answering coherently from the compressed history.
+    ///
+    /// The structural assertion it validates is:
+    /// ```
+    /// contextAssembled         // turn 1 context assembly
+    ///   ≺ streamFinished       // turn 1 generation complete
+    ///   ≺ contextAssembled     // turn 2 context assembly
+    ///   ≺ streamFinished       // turn 2 generation complete
+    ///   ≺ historyCompressed    // runtime compresses history before turn 3
+    ///   ≺ contextAssembled     // turn 3 assembles from compressed history
+    ///   ≺ streamFinished       // turn 3 generation complete
+    ///   ≺ contextAssembled     // turn 4 context assembly
+    ///   ≺ streamFinished       // turn 4 generation complete
+    /// ```
+    ///
+    /// Pre-turn compression fires when `messageCount >= 4` (2 user + 2
+    /// assistant messages from the first two turns). The policy replaces the
+    /// stored history with a single synthetic memory record without calling the
+    /// inference backend, so the scripted turn sequence is not disrupted.
+    ///
+    /// This scenario is the scripted (CI) counterpart of the flagship demo
+    /// described in Glass Box issue #1531. No real RAG or external calls are
+    /// needed — ``FixedCountPreTurnCompressionPolicy`` drives compression
+    /// deterministically via message count.
+    public static let researchSession = RuntimeScenario(
+        id: "self-managing-research-session",
+        displayName: "Self-Managing Research Session",
+        scenarioDescription: "A 4-turn research conversation that fills the context window after 2 turns, triggers automatic history compression at the start of turn 3 (replacing prior history with a synthetic memory record), then continues coherently from the compressed history. Verifies the full historyCompressed → contextAssembled → streamFinished structural ordering.",
+        userMessages: [
+            "What is photosynthesis?",
+            "How does the light-dependent reaction work?",
+            "What role does chlorophyll play?",
+            "Summarise everything you've told me so far.",
+        ],
+        scriptedTurns: [
+            .tokens(["Photosynthesis", " converts", " light", " to", " energy", "."]),
+            .tokens(["Light", "-dependent", " reactions", " use", " ATP", "."]),
+            .tokens(["Chlorophyll", " absorbs", " light", "."]),
+            .tokens(["Summary", ": photosynthesis", ", reactions", ", chlorophyll", "."]),
+        ],
+        // Compression fires before turn 3 (messageCount == 4: 2 user + 2 assistant
+        // from turns 1–2), emitting historyCompressed before contextAssembled for
+        // that turn. Turns 1, 2, and 4 run without compression.
+        expectedSubsequence: [
+            .contextAssembled, .streamStarted, .tokenEmitted, .streamFinished,  // turn 1
+            .contextAssembled, .streamStarted, .tokenEmitted, .streamFinished,  // turn 2
+            .historyCompressed,                                                  // compression fires before turn 3
+            .contextAssembled, .streamStarted, .tokenEmitted, .streamFinished,  // turn 3
+            .contextAssembled, .streamStarted, .tokenEmitted, .streamFinished,  // turn 4
+        ],
+        preTurnCompressionPolicy: FixedCountPreTurnCompressionPolicy(compressAfterMessages: 4)
     )
 }
 #endif
