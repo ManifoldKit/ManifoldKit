@@ -33,6 +33,33 @@ The button tint changes to ``Color/accentColor`` when an image is already staged
 
 > Note: ``PhotoAttachmentButton`` is iOS-only. It is compiled under `#if os(iOS)` and is not available on macOS or visionOS.
 
+## Cross-Platform Vision Input
+
+``VisionInputButton`` is the recommended image-attachment button for apps that target both iOS and macOS. On iOS it presents the system `PhotosPicker`; on macOS it opens an `NSOpenPanel` restricted to image file types. In both cases the selected image is staged on ``ChatViewModel`` via ``ChatViewModel/stageAttachment(_:)`` and sent as a ``MessagePart/image(data:mimeType:placeholderHash:)`` part with the next user message.
+
+``VisionInputButton`` hides itself automatically when the active backend does not report ``BackendCapabilities/supportsVision`` — no extra conditional logic is required in the host UI.
+
+Place it in the `composerAccessory` slot of ``ChatView``:
+
+```swift,no-build
+ChatView(showModelManagement: , composerAccessory: {
+    VisionInputButton()
+})
+```
+
+Combine it with ``VoiceComposerAccessory`` when your app supports both modalities:
+
+```swift,no-build
+ChatView(showModelManagement: , composerAccessory: {
+    HStack {
+        VisionInputButton()
+        VoiceComposerAccessory(controller: controller)
+    }
+})
+```
+
+> Note: ``PhotoAttachmentButton`` is iOS-only and predates this component. New code should prefer ``VisionInputButton``, which compiles on both iOS and macOS.
+
 ## Tool Sources
 
 ``ImageGenerationToolSource`` and ``VideoGenerationToolSource`` conform to `SessionToolSource` and advertise `generate_image` and `generate_video` tools respectively to the language model. Register them via `ConversationRuntime.updateSessionToolSources(_:)` after the bootstrap and view model are wired:
