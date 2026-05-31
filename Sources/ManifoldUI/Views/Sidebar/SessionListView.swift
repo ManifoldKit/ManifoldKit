@@ -57,7 +57,13 @@ public struct SessionListView: View {
                                     }
                                     .swipeActions(edge: .leading) {
                                         Button {
-                                            Task { try? await sessionManager.unpinSession(session) }
+                                            Task {
+                                                do {
+                                                    try await sessionManager.unpinSession(session)
+                                                } catch {
+                                                    errorMessage = "Failed to unpin session: \(error.localizedDescription)"
+                                                }
+                                            }
                                         } label: {
                                             Label("Unpin", systemImage: "pin.slash")
                                         }
@@ -72,7 +78,13 @@ public struct SessionListView: View {
                                     }
                                     .contextMenu {
                                         Button {
-                                            Task { try? await sessionManager.unpinSession(session) }
+                                            Task {
+                                                do {
+                                                    try await sessionManager.unpinSession(session)
+                                                } catch {
+                                                    errorMessage = "Failed to unpin session: \(error.localizedDescription)"
+                                                }
+                                            }
                                         } label: {
                                             Label("Unpin", systemImage: "pin.slash")
                                         }
@@ -105,7 +117,13 @@ public struct SessionListView: View {
                                 }
                                 .swipeActions(edge: .leading) {
                                     Button {
-                                        Task { try? await sessionManager.pinSession(session) }
+                                        Task {
+                                            do {
+                                                try await sessionManager.pinSession(session)
+                                            } catch {
+                                                errorMessage = "Failed to pin session: \(error.localizedDescription)"
+                                            }
+                                        }
                                     } label: {
                                         Label("Pin", systemImage: "pin")
                                     }
@@ -120,7 +138,13 @@ public struct SessionListView: View {
                                 }
                                 .contextMenu {
                                     Button {
-                                        Task { try? await sessionManager.pinSession(session) }
+                                        Task {
+                                            do {
+                                                try await sessionManager.pinSession(session)
+                                            } catch {
+                                                errorMessage = "Failed to pin session: \(error.localizedDescription)"
+                                            }
+                                        }
                                     } label: {
                                         Label("Pin", systemImage: "pin")
                                     }
@@ -266,6 +290,7 @@ public struct SessionListView: View {
             return
         }
         debounceTask = Task { @MainActor [sessionManager] in
+            // CancellationError is expected on task cancel — Task.isCancelled checked below.
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
             runSearch(query: query, scope: scope, on: sessionManager)
