@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.40.0](https://github.com/roryford/ManifoldKit/compare/v0.39.1...v0.40.0) (2026-05-31)
+
+
+### Features
+
+* **runtime:** Glass Box P0 — multicast event tap, ConversationEventRecorder ([#1555](https://github.com/roryford/ManifoldKit/issues/1555)) ([31f3671](https://github.com/roryford/ManifoldKit/commit/31f367150010b9a511a70109eaab81de3374871d))
+* **ui:** session pinning in SessionListView ([#1556](https://github.com/roryford/ManifoldKit/issues/1556)) ([7c5cfef](https://github.com/roryford/ManifoldKit/commit/7c5cfefc5c66cccff53f1e6bca6f136008308865))
+
 ## [0.39.1](https://github.com/roryford/ManifoldKit/compare/v0.39.0...v0.39.1) (2026-05-31)
 
 
