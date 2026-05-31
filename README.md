@@ -50,6 +50,24 @@ Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExamp
 The same backend, model-management, persistence, and download infrastructure that powers the chat UI is reusable for non-chat consumers. The framing is "chat-first" because that's the most complete reference integration, but the public surface explicitly supports:
 
 - **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell, 1024×1024 in 4 steps) and `MLXDiffusionBackend` (SDXL Turbo) conform to `ImageGenerationBackend` and stream `ImageGenerationEvent`s exactly like text inference streams `GenerationEvent`. See [docs/QUICKSTART-IMAGE-GEN.md](docs/QUICKSTART-IMAGE-GEN.md) for an end-to-end example.
+- **Cloud video generation** — Any cloud service that conforms to `VideoGenerationBackend` wires into `VideoGenerationService` and `VideoGenerationRuntime`, which persist the result via `MessageStore` and expose real-time progress through `ChatViewModel.videoGenerationProgress`. The same `ManifoldBootstrap` init that accepts an `imageGenerationService` also accepts a `videoGenerationService`, so adding video is one extra parameter:
+
+  ```swift,no-build
+  let backend = MyVideoBackend()
+  backend.configure(baseURL: videoAPIURL, tokenProvider: tokenProvider, modelName: "my-video-model")
+  let service = VideoGenerationService(backend: backend)
+  let kit = try ManifoldBootstrap(
+      configuration: config,
+      videoGenerationService: service
+  )
+  // Trigger a generation from anywhere you hold the view model:
+  try await kit.viewModel.generateVideo(
+      prompt: "a sun rising over mountains",
+      config: VideoGenerationConfig(duration: 5, aspectRatio: VideoGenerationConfig.AspectRatio.landscape)
+  )
+  ```
+
+  See [docs/QUICKSTART-VIDEO-GEN.md](docs/QUICKSTART-VIDEO-GEN.md) for the full walkthrough.
 - **Standalone speech-to-text / text-to-speech** — `ManifoldVoice` wraps Apple `Speech` + `AVFoundation` behind a chat-agnostic `VoiceConversationController` that anything (image-gen prompt fields, search bars, CLI dictation) can drive. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md).
 - **CLI / server / non-SwiftUI consumers** — backends, model management, and persistence work without `ChatView`. See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md).
 

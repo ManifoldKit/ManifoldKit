@@ -81,6 +81,11 @@ struct ImageGen {
             seed: 42,
             outputDirectory: FileManager.default.temporaryDirectory
         )
+        // Backends that accept a ratio string (e.g. cloud backends) read
+        // `aspectRatio` directly. On-device backends that operate on explicit
+        // pixel dimensions derive the ratio from `width`/`height` instead.
+        // let config = ImageGenerationConfig(steps: 4, width: 1024, height: 1024,
+        //     aspectRatio: "16:9", outputDirectory: FileManager.default.temporaryDirectory)
 
         // 4. `generate` returns an AsyncThrowingStream. Iterate it to observe
         //    progress; the terminal `.completed(url)` event carries the
