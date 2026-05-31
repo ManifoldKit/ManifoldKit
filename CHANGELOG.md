@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.39.0](https://github.com/roryford/ManifoldKit/compare/v0.38.0...v0.39.0) (2026-05-31)
+
+
+### Features
+
+* **bootstrap:** add addToolSources convenience wrapper ([#1543](https://github.com/roryford/ManifoldKit/issues/1543)) ([4e0cd96](https://github.com/roryford/ManifoldKit/commit/4e0cd96a96400c496c008a74fba4c792ee8f93cc))
+* **ui:** SpotlightIndexer — index ChatSessionRecords in Core Spotlight ([#1548](https://github.com/roryford/ManifoldKit/issues/1548)) ([078ea2c](https://github.com/roryford/ManifoldKit/commit/078ea2c9558d2808ac90368c9c5117597b6c2a64))
+* **ui:** WebSearchToolSource — provider-agnostic live web search tool ([#1546](https://github.com/roryford/ManifoldKit/issues/1546)) ([06ac182](https://github.com/roryford/ManifoldKit/commit/06ac1823696b1956a1560680fb7ac6881a750cb5))
+
+
+### Bug Fixes
+
+* **ui:** replace try? with do/catch in generation action buttons ([df3a36c](https://github.com/roryford/ManifoldKit/commit/df3a36ca47c3e7036a032e04006b36408106c57f))
+
+
+### Documentation
+
+* **changelog:** rewrite v0.38.0 release notes in Prisma-style format ([#1549](https://github.com/roryford/ManifoldKit/issues/1549)) ([34e3090](https://github.com/roryford/ManifoldKit/commit/34e309075efa200ec3831ec74e9c4d6aedf77ca8))
+* **ui:** add addToolSources registration example to GenerationComponents article ([9edccb2](https://github.com/roryford/ManifoldKit/commit/9edccb2d83c9f0c12303a0d9b2bf7a78e798b4bf))
+* **ui:** add SpotlightIndexer usage examples to GenerationComponents article ([cd9f46c](https://github.com/roryford/ManifoldKit/commit/cd9f46c2c37cf839bcd1fa3ebc1211042e5ee098))
+* video generation quickstart, TokenProvider guide, GenerativeContextMenuItems coverage ([697747d](https://github.com/roryford/ManifoldKit/commit/697747d8319585803a49cf7502d3ea2e64454d4e))
+
 ## [0.38.0](https://github.com/roryford/ManifoldKit/compare/v0.37.0...v0.38.0) (2026-05-31)
 
 This release adds video generation end-to-end, a `TokenProvider` protocol for rotating cloud credentials, per-turn history and context hooks, and a set of ready-made UI components for media attachment and generation context menus.
