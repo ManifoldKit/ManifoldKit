@@ -141,7 +141,9 @@ private struct EventRowView: View {
         case .thinkingStarted, .thinkingUpdated, .thinkingFinalized:
             return .cyan
 
-        default:
+        case .messageInserted, .messageRemoved, .messageUpdated,
+             .sessionBranched, .tokenUsageRecorded, .loopDetected,
+             .sessionTouchFailed, .afterGeneration:
             return .secondary
         }
     }
