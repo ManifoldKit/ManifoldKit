@@ -34,28 +34,45 @@ public final class AppleSpeechTranscriber: NSObject, SpeechTranscribing {
     public func requestAuthorization() async -> VoiceAuthorizationStatus {
         guard recognizer != nil else { return .unsupportedLocale }
 
-        let speechStatus = await withCheckedContinuation { continuation in
+        // Delegate TCC requests to nonisolated static helpers.
+        //
+        // Both SFSpeechRecognizer.requestAuthorization and
+        // AVCaptureDevice.requestAccess deliver their callbacks on an arbitrary
+        // background thread. In Swift 6.3, a withCheckedContinuation created
+        // inside a @MainActor-isolated function carries actor isolation; resuming
+        // such a continuation from a non-main thread triggers the runtime's
+        // dispatch_assert_queue_fail check and crashes the process.
+        //
+        // nonisolated static functions create non-actor-isolated continuations,
+        // which are safe to resume from any thread.
+        let speechStatus = await Self.requestSpeechRecognitionAuthorization()
+
+        switch speechStatus {
+        case .authorized:
+            let micGranted = await Self.requestMicrophoneAccess()
+            return micGranted ? .authorized : .microphoneDenied
+        case .denied:           return .denied
+        case .restricted:       return .restricted
+        case .notDetermined:    return .notDetermined
+        @unknown default:       return .denied
+        }
+    }
+
+    private nonisolated static func requestSpeechRecognitionAuthorization()
+        async -> SFSpeechRecognizerAuthorizationStatus
+    {
+        await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
             }
         }
+    }
 
-        switch speechStatus {
-        case .authorized:
-            let microphoneGranted = await withCheckedContinuation { continuation in
-                AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    continuation.resume(returning: granted)
-                }
+    private nonisolated static func requestMicrophoneAccess() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                continuation.resume(returning: granted)
             }
-            return microphoneGranted ? .authorized : .microphoneDenied
-        case .denied:
-            return .denied
-        case .restricted:
-            return .restricted
-        case .notDetermined:
-            return .notDetermined
-        @unknown default:
-            return .denied
         }
     }
 
