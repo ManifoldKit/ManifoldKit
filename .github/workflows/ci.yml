@@ -350,7 +350,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
           STALL_SECONDS: "120"
-        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits CloudSaaS --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits CloudSaaS --skip-update --min-passed 1
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
