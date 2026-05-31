@@ -102,6 +102,7 @@ For a sidebar-based layout with multiple sessions, combine ``ChatView`` with ``S
 ### Getting Started
 
 - <doc:BuildingAChatUI>
+- <doc:GenerationComponents>
 
 ### View Models
 
@@ -113,6 +114,12 @@ For a sidebar-based layout with multiple sessions, combine ``ChatView`` with ``S
 - ``ChatView``
 - ``ChatInputBar``
 - ``MessageBubbleView``
+
+### Generation
+
+- ``PhotoAttachmentButton``
+- ``ImageGenerationToolSource``
+- ``VideoGenerationToolSource``
 
 ### Settings
 
