@@ -102,7 +102,7 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
     /// `.kvCacheReuse` is advisory metadata that the runtime passes through
     /// as `.ignore`. The turn must still complete normally — `streamFinished`
     /// (not `errorRaised`) must appear in the trace.
-    func test_kvCacheReuse_appearsInTokenUsageRecorded() async throws {
+    func test_kvCacheReuse_completesNormally() async throws {
         let backend = ScriptedGenerationBackend(turns: [
             .kvCacheReuse(reuseCount: 256, then: ["Hello", " world"])
         ])
