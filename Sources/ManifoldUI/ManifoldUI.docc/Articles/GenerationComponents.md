@@ -120,3 +120,25 @@ configuration is required beyond wiring the runtimes.
 > never see the video items, and vice versa. This makes it safe to register
 > ``GenerativeContextMenuItems`` unconditionally regardless of which generation
 > surface your app supports.
+
+## Spotlight Indexing
+
+`SpotlightIndexer` indexes chat sessions in iOS/macOS Core Spotlight so users can find and open conversations from system search:
+
+```swift
+// After loading sessions:
+await SpotlightIndexer.index(sessions: kit.sessionManager.sessions)
+
+// On session list changes:
+.onChange(of: kit.sessionManager.sessions) { _, sessions in
+    Task { await SpotlightIndexer.index(sessions: sessions) }
+}
+
+// On sign-out:
+SpotlightIndexer.deleteAll()
+
+// Handle Spotlight tap (in App.onContinueUserActivity):
+if let id = SpotlightIndexer.sessionID(from: userActivity) {
+    // switch to that session
+}
+```
