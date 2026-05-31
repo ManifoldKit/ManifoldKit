@@ -81,3 +81,42 @@ Both tool sources require their corresponding generation runtimes to be wired in
 - ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired into ``ChatViewModel``.
 
 If a generation runtime is absent, the tool source is safe to register — the underlying `ChatViewModel` call will surface an error through ``ChatViewModel/backgroundTaskError`` rather than crashing.
+
+## Context Menu Items
+
+``GenerativeContextMenuItems`` surfaces generation actions directly in the
+long-press context menu of each chat bubble. Pass it to ``ChatView`` via the
+`contextMenuItems` trailing closure:
+
+```swift,no-build
+ChatView(showModelManagement: $show) { message in
+    GenerativeContextMenuItems(message: message, viewModel: viewModel)
+}
+```
+
+Items appear conditionally based on the message content and which runtimes are
+configured on the view model:
+
+- **Generate Image from This** — shown when the message has text content and
+  an ``ImageGenerationRuntime`` is wired via
+  ``ChatViewModel/configure(imageRuntime:)``.
+- **Generate Video from This** — shown when the message has text content and a
+  ``VideoGenerationRuntime`` is wired via
+  ``ChatViewModel/configure(videoRuntime:)``.
+- **Remix Image** — shown when the message contains a generated image part and
+  an ``ImageGenerationRuntime`` is configured. Re-triggers image generation
+  using the original prompt (or the message text as a fallback).
+- **Animate as Video** — shown when the message contains a generated image part
+  and a ``VideoGenerationRuntime`` is configured. Submits the original image
+  prompt for video generation in image-to-video mode.
+
+``GenerativeContextMenuItems`` reads ``ChatViewModel/imageRuntime`` and
+``ChatViewModel/videoRuntime`` at render time, so items appear and disappear
+automatically if runtimes are added or removed at runtime — no additional
+configuration is required beyond wiring the runtimes.
+
+> Note: ``GenerativeContextMenuItems`` does not show menu items for runtimes
+> that are absent. An app that wires only an ``ImageGenerationRuntime`` will
+> never see the video items, and vice versa. This makes it safe to register
+> ``GenerativeContextMenuItems`` unconditionally regardless of which generation
+> surface your app supports.
