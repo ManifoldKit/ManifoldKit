@@ -650,6 +650,29 @@ public final class ChatViewModel {
     /// generations. Driven by the `ImageGenerationRuntime` event drain.
     public internal(set) var imageGenerationProgress: [UUID: ImageGenerationProgress] = [:]
 
+    // MARK: - VideoGenerationRuntime
+    //
+    // Optional sibling to `_imageRuntime` for the video-generation path.
+    // Hosts that opt in to video generation install one via
+    // `configure(videoRuntime:)` (typically through `ManifoldBootstrap`);
+    // chat-only hosts leave this nil and the public video-generation methods
+    // throw `.notConfigured`. Storage lives on the main type because
+    // extensions cannot add stored properties — all behavior lives in
+    // `ChatViewModel+VideoGeneration.swift`.
+
+    /// Backing storage for ``videoRuntime``. Internal so the
+    /// `ChatViewModel+VideoGeneration` extension can mutate it.
+    var _videoRuntime: VideoGenerationRuntime?
+
+    /// Drain task for the video runtime event stream. Cancelled when the
+    /// runtime is replaced (latest-wins) or the view model is torn down.
+    @ObservationIgnored
+    var videoRuntimeEventDrainTask: Task<Void, Never>?
+
+    /// Per-message-ID progress dictionary for in-flight or completed video
+    /// generations. Driven by the `VideoGenerationRuntime` event drain.
+    public internal(set) var videoGenerationProgress: [UUID: VideoGenerationProgress] = [:]
+
     // MARK: - Private State
 
     var lastPressureLevel: MemoryPressureLevel = .nominal
@@ -840,6 +863,7 @@ public final class ChatViewModel {
 
     deinit {
         imageRuntimeEventDrainTask?.cancel()
+        videoRuntimeEventDrainTask?.cancel()
         endpointRefreshTask?.cancel()
     }
 
