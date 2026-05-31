@@ -125,7 +125,7 @@ configuration is required beyond wiring the runtimes.
 
 `SpotlightIndexer` indexes chat sessions in iOS/macOS Core Spotlight so users can find and open conversations from system search:
 
-```swift
+```swift,no-build
 // After loading sessions:
 await SpotlightIndexer.index(sessions: kit.sessionManager.sessions)
 
