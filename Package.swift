@@ -431,7 +431,11 @@ let package = Package(
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
         .target(
             name: "ManifoldUI",
-            dependencies: ["ManifoldRuntime", "ManifoldInference"],
+            dependencies: [
+                "ManifoldRuntime",
+                "ManifoldInference",
+                .target(name: "ManifoldCloudCore", condition: .when(traits: ["CloudSaaS"])),
+            ],
             path: "Sources/ManifoldUI",
             swiftSettings: [
                 .define("Ollama", .when(traits: ["Ollama"])),
