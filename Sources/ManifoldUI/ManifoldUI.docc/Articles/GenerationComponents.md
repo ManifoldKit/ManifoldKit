@@ -60,6 +60,19 @@ Once registered, the model will call `generate_image` or `generate_video` autono
 
 ``VideoGenerationToolSource`` delegates to ``ChatViewModel/generateVideo(prompt:config:)`` using a fire-and-forget detached `Task`. ``VideoGenerationToolSource/resolve(toolName:arguments:session:)`` returns immediately — video generation is long-running (typically 30–60 seconds) and must not block the conversation turn executor. Progress and the completed video surface through ``ChatViewModel/videoGenerationProgress`` exactly as if the user had triggered generation directly.
 
+## Registering tool sources
+
+Use `ManifoldBootstrap.addToolSources(_:)` to register generation tool sources after `quickStart()`:
+
+```swift,no-build
+await kit.bootstrap.addToolSources([
+    ImageGenerationToolSource(viewModel: kit.viewModel),
+    VideoGenerationToolSource(viewModel: kit.viewModel)
+])
+```
+
+This replaces the more verbose `conversationRuntime.updateSessionToolSources(_:)` call.
+
 ### Prerequisites
 
 Both tool sources require their corresponding generation runtimes to be wired into the bootstrap before installation:
