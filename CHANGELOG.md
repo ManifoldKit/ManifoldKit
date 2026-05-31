@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/roryford/ManifoldKit/compare/v0.39.0...v0.39.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **ui:** gate WebSearchToolSource behind CloudSaaS trait ([#1551](https://github.com/roryford/ManifoldKit/issues/1551)) ([6dd6b90](https://github.com/roryford/ManifoldKit/commit/6dd6b90675a4b5de29c963867893044a29b61ca6))
+
 ## [0.39.0](https://github.com/roryford/ManifoldKit/compare/v0.38.0...v0.39.0) (2026-05-31)
 
 
