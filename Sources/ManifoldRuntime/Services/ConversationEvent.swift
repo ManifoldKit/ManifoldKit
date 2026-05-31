@@ -239,3 +239,43 @@ public enum ConversationEvent: Sendable {
 extension ToolCall {
     public typealias ID = String
 }
+
+// MARK: - Kind
+
+extension ConversationEvent {
+
+    /// The kind of this event, stripped of associated values.
+    ///
+    /// Used as the stable discriminant in JSONL traces and
+    /// ``XCTAssertEventSubsequence(_:contains:file:line:)`` assertions.
+    public var kind: ConversationEventKind {
+        switch self {
+        case .messageInserted:          return .messageInserted
+        case .messageRemoved:           return .messageRemoved
+        case .messageUpdated:           return .messageUpdated
+        case .sessionBranched:          return .sessionBranched
+        case .streamStarted:            return .streamStarted
+        case .tokenEmitted:             return .tokenEmitted
+        case .tokenUsageRecorded:       return .tokenUsageRecorded
+        case .thinkingStarted:          return .thinkingStarted
+        case .thinkingUpdated:          return .thinkingUpdated
+        case .thinkingFinalized:        return .thinkingFinalized
+        case .loopDetected:             return .loopDetected
+        case .streamFinished:           return .streamFinished
+        case .errorRaised:              return .errorRaised
+        case .sessionTouchFailed:       return .sessionTouchFailed
+        case .beforeContextAssembly:    return .beforeContextAssembly
+        case .historyShaped:            return .historyShaped
+        case .contextAssembled:         return .contextAssembled
+        case .afterGeneration:          return .afterGeneration
+        case .compressionTriggered:     return .compressionTriggered
+        case .historyCompressed:        return .historyCompressed
+        case .toolCallRequested:        return .toolCallRequested
+        case .toolCallApproved:         return .toolCallApproved
+        case .toolCallCompleted:        return .toolCallCompleted
+        case .agentHandoff:             return .agentHandoff
+        case .skillInvoked:             return .skillInvoked
+        case .hookFired:                return .hookFired
+        }
+    }
+}
