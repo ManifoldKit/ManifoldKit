@@ -448,6 +448,27 @@ public final class ManifoldBootstrap {
     }
 }
 
+// MARK: - Tool sources
+
+extension ManifoldBootstrap {
+    /// Registers additional session tool sources with the conversation runtime.
+    ///
+    /// Convenience wrapper around
+    /// ``ConversationRuntime/updateSessionToolSources(_:)``. Tool sources added
+    /// here are available to all subsequent generation turns; calling this method
+    /// again replaces the previous set.
+    ///
+    /// ```swift
+    /// await bootstrap.addToolSources([
+    ///     ImageGenerationToolSource(viewModel: viewModel),
+    ///     MyCustomToolSource()
+    /// ])
+    /// ```
+    public func addToolSources(_ sources: [any SessionToolSource]) async {
+        await conversationRuntime.updateSessionToolSources(sources)
+    }
+}
+
 extension ManifoldBootstrap: ChatRuntimeBootstrap {
     public var persistenceStores: any SessionStore & MessageStore { persistence }
     public var apiEndpointStore: any EndpointStore { endpointStore }
