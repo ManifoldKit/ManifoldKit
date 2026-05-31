@@ -64,7 +64,11 @@ public final class VideoGenerationToolSource: SessionToolSource {
         // processes the request. The generated video and progress updates surface
         // through ChatViewModel.videoGenerationProgress.
         Task { @MainActor in
-            try? await viewModel.generateVideo(prompt: prompt, config: VideoGenerationConfig(duration: 5))
+            do {
+                try await viewModel.generateVideo(prompt: prompt, config: VideoGenerationConfig(duration: 5))
+            } catch {
+                Log.ui.warning("VideoGenerationToolSource: video generation failed: \(error)")
+            }
         }
         return ToolResult(callId: toolName, content: "Video generation started. It will appear in approximately 30–60 seconds.")
     }

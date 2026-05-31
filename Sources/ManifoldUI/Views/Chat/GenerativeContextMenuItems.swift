@@ -51,10 +51,14 @@ public struct GenerativeContextMenuItems: View {
         if hasText && hasImageRuntime {
             Button {
                 Task {
-                    try? await viewModel.generateImage(
-                        prompt: text,
-                        config: ImageGenerationConfig()
-                    )
+                    do {
+                        try await viewModel.generateImage(
+                            prompt: text,
+                            config: ImageGenerationConfig()
+                        )
+                    } catch {
+                        Log.ui.warning("GenerativeContextMenuItems: image generation failed: \(error)")
+                    }
                 }
             } label: {
                 Label("Generate Image from This", systemImage: "photo.badge.plus")
@@ -65,10 +69,14 @@ public struct GenerativeContextMenuItems: View {
         if hasText && hasVideoRuntime {
             Button {
                 Task {
-                    try? await viewModel.generateVideo(
-                        prompt: text,
-                        config: VideoGenerationConfig()
-                    )
+                    do {
+                        try await viewModel.generateVideo(
+                            prompt: text,
+                            config: VideoGenerationConfig()
+                        )
+                    } catch {
+                        Log.ui.warning("GenerativeContextMenuItems: video generation failed: \(error)")
+                    }
                 }
             } label: {
                 Label("Generate Video from This", systemImage: "video.badge.plus")
@@ -80,10 +88,14 @@ public struct GenerativeContextMenuItems: View {
             Button {
                 let prompt = generatedImage?.prompt ?? text
                 Task {
-                    try? await viewModel.generateImage(
-                        prompt: prompt,
-                        config: ImageGenerationConfig()
-                    )
+                    do {
+                        try await viewModel.generateImage(
+                            prompt: prompt,
+                            config: ImageGenerationConfig()
+                        )
+                    } catch {
+                        Log.ui.warning("GenerativeContextMenuItems: image remix failed: \(error)")
+                    }
                 }
             } label: {
                 Label("Remix Image", systemImage: "arrow.triangle.2.circlepath")
@@ -95,10 +107,14 @@ public struct GenerativeContextMenuItems: View {
             Button {
                 let prompt = generatedImage?.prompt ?? text
                 Task {
-                    try? await viewModel.generateVideo(
-                        prompt: prompt,
-                        config: VideoGenerationConfig()
-                    )
+                    do {
+                        try await viewModel.generateVideo(
+                            prompt: prompt,
+                            config: VideoGenerationConfig()
+                        )
+                    } catch {
+                        Log.ui.warning("GenerativeContextMenuItems: video animation failed: \(error)")
+                    }
                 }
             } label: {
                 Label("Animate as Video", systemImage: "play.rectangle.on.rectangle")
