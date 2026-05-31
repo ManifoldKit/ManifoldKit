@@ -52,7 +52,10 @@ public final class WebSearchToolSource: SessionToolSource {
         else { return ToolResult(callId: toolName, content: "Invalid arguments", errorKind: .invalidArguments) }
 
         let token = try await tokenProvider.token()
-        var request = URLRequest(url: URL(string: "\(baseURL)/chat/completions")!)
+        guard let endpointURL = URL(string: "\(baseURL)/chat/completions") else {
+            return ToolResult(callId: toolName, content: "Invalid baseURL: \(baseURL)", errorKind: .invalidArguments)
+        }
+        var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
