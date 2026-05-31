@@ -14,6 +14,9 @@ import ManifoldInference
 /// Pair with ``VoiceComposerAccessory`` or use standalone as the
 /// `composerAccessory` argument to ``ChatView``.
 ///
+/// > Note: Consider using ``VisionInputButton`` which provides the same
+/// > functionality on iOS and additionally supports macOS file-picker input.
+///
 /// ## Usage
 ///
 /// ```swift
