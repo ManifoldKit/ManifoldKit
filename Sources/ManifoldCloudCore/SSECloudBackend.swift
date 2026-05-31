@@ -88,6 +88,8 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         set { withStateLock { _keychainAccount = newValue } }
     }
 
+    private var _tokenProvider: (any TokenProvider)?
+
     private var _ephemeralAPIKey: SecureBytes?
     /// Fallback API key for tests or ephemeral use. Prefer ``keychainAccount``.
     ///
@@ -332,6 +334,28 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         }
     }
 
+    /// Configures the backend with a ``TokenProvider`` for rotating credentials.
+    ///
+    /// Use this overload for OAuth access tokens, JWTs, or any credential
+    /// that may expire. The provider's ``TokenProvider/token()`` method is
+    /// called on every outbound request via ``resolveTokenAsync()``.
+    ///
+    /// - Note: `buildRequest` is synchronous, so the ``TokenProvider`` path
+    ///   requires callers to use ``resolveTokenAsync()`` in an async context
+    ///   before building the request, rather than calling ``resolveAPIKeySecure()``
+    ///   directly. Subclasses using a token provider should override
+    ///   ``buildRequest(prompt:systemPrompt:config:)`` to accept an already-resolved
+    ///   token, or adopt the adapter-routed path which supports async request building.
+    public func configure(baseURL: URL, tokenProvider: any TokenProvider, modelName: String) {
+        withStateLock {
+            _baseURL = baseURL
+            _tokenProvider = tokenProvider
+            _ephemeralAPIKey = nil
+            _keychainAccount = nil
+            _modelName = modelName
+        }
+    }
+
     /// Configures the backend without an API key (for local servers).
     public func configure(baseURL: URL, modelName: String) {
         configure(baseURL: baseURL, apiKey: nil, modelName: modelName)
@@ -388,6 +412,26 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         case .clone(let source):     return SecureBytes(copying: source)
         case .none:                  return nil
         }
+    }
+
+    /// Resolves the bearer token asynchronously.
+    ///
+    /// When a ``TokenProvider`` is configured, calls ``TokenProvider/token()``
+    /// to obtain a (possibly freshly refreshed) token. Falls back to
+    /// ``resolveAPIKeySecure()`` for Keychain-backed and ephemeral keys,
+    /// returning the raw string value.
+    ///
+    /// Use this method in async contexts (e.g. adapter-routed request builders)
+    /// instead of ``resolveAPIKeySecure()`` so that rotating-credential backends
+    /// transparently refresh tokens without callers needing to know which
+    /// credential source is configured.
+    ///
+    /// Returns `nil` when no credential of any kind is configured.
+    package func resolveTokenAsync() async throws -> String? {
+        if let provider = withStateLock({ _tokenProvider }) {
+            return try await provider.token()
+        }
+        return resolveAPIKeySecure()?.stringValue
     }
 
     // MARK: - ConversationHistoryReceiver
@@ -675,6 +719,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             _baseURL = nil
             _keychainAccount = nil
             _ephemeralAPIKey = nil
+            _tokenProvider = nil
             _isModelLoaded = false
         }
         Log.inference.info("\(self.backendName) backend unloaded")
