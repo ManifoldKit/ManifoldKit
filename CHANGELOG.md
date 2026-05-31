@@ -2,50 +2,39 @@
 
 ## [0.38.0](https://github.com/roryford/ManifoldKit/compare/v0.37.0...v0.38.0) (2026-05-31)
 
-This release adds video generation end-to-end, a `TokenProvider` protocol for rotating cloud credentials, per-turn history and context hooks, and a set of ready-made UI components for media attachment and generation context menus.
-
-### Highlights
-
-**Video generation end-to-end** — `VideoGenerationBackend` is the new `ManifoldInference` protocol for cloud video generation. It mirrors `ImageGenerationBackend` in shape: `generate(prompt:config:)` returns an `AsyncThrowingStream<VideoGenerationEvent, Error>` whose events progress through `.queued`, `.generating(fractionComplete:)`, and `.completed(URL)`. `VideoGenerationConfig` controls duration (1–15 s), aspect ratio, resolution, and an optional source image URL for image-to-video. `VideoGenerationService` and `VideoGenerationRuntime` sit in `ManifoldRuntime` and wire directly into `ChatViewModel` — no extra assembly required. `VideoGenerationToolSource` and `ImageGenerationToolSource` let the compose bar trigger either modality as a named tool. ([#1526](https://github.com/roryford/ManifoldKit/issues/1526), [#1527](https://github.com/roryford/ManifoldKit/issues/1527), [#1530](https://github.com/roryford/ManifoldKit/issues/1530), [#1536](https://github.com/roryford/ManifoldKit/issues/1536))
-
-**`TokenProvider` for dynamic cloud auth** — `SSECloudBackend.configure(tokenProvider:)` accepts a `TokenProvider` whose `token()` async method is called per-request, making it straightforward to vend short-lived JWTs or OAuth tokens without re-configuring the backend. The existing Keychain and ephemeral-key paths are unchanged.
-
-```swift
-struct MyOAuthProvider: TokenProvider {
-    func token() async throws -> String {
-        try await authService.freshBearerToken()
-    }
-}
-
-backend.configure(baseURL: url, tokenProvider: MyOAuthProvider(), modelName: "grok-4.3")
-```
-([#1541](https://github.com/roryford/ManifoldKit/issues/1541))
-
-**Per-turn history and context hooks** — three new opt-in injection points let host apps shape what the runtime sends each turn. `HistoryShaper` is an `async throws` transformer applied to the assembled message history before the prompt is built; it emits a `.historyShaped` event with per-message diagnostics so the UI can surface what changed. `HostTurnContextProvider` is a richer async alternative to the legacy `turnContextProvider` closure, carrying a full `TurnMetadata` snapshot. `PreTurnCompressionPolicy` controls whether history compression runs before a turn starts. Omitting all three preserves existing behavior. Note: `ConversationError` gains a new `preTurnCompressionFailed` case — exhaustive switches outside this repo will need a handler. ([#1524](https://github.com/roryford/ManifoldKit/issues/1524))
-
-**`PhotoAttachmentButton` and `GenerativeContextMenuItems`** — `PhotoAttachmentButton` is a drop-in compose-bar photo picker backed by `stageAttachment`; add it alongside `SendButton` for one-tap image input. `GenerativeContextMenuItems` provides standard long-press context menu items (Regenerate, Copy, Edit) wired to the active `ConversationRuntime`.
-
-```swift
-MessageBubble(message: message)
-    .contextMenu { GenerativeContextMenuItems(message: message) }
-```
-([#1535](https://github.com/roryford/ManifoldKit/issues/1535), [#1537](https://github.com/roryford/ManifoldKit/issues/1537))
 
 ### Features
 
-* **Reliable turn outcomes and `ManifoldMCPHost`** — per-turn completion is now written atomically through `ConversationTurnHandle`/`ConversationTurnOutcome`, removing the need for UI and MCP flows to listen on the bounded shared events stream. The runtime-backed MCP host is extracted into a standalone `ManifoldMCPHost`. ([#1514](https://github.com/roryford/ManifoldKit/issues/1514))
-* **`aspectRatio` on `ImageGenerationConfig`** — pass a standard ratio string (`"16:9"`, `"1:1"`, etc.) to image-generation requests. ([#1540](https://github.com/roryford/ManifoldKit/issues/1540))
-* **`currentCloudBackend` on `InferenceService`** — read the active cloud backend directly without going through the model registry. ([#1542](https://github.com/roryford/ManifoldKit/issues/1542))
-* **Session auto-title** — sessions receive an auto-generated title from the first user turn when none is set. ([#1517](https://github.com/roryford/ManifoldKit/issues/1517))
+* add reliable turn outcomes and MCP host target ([#1514](https://github.com/roryford/ManifoldKit/issues/1514)) ([aff2629](https://github.com/roryford/ManifoldKit/commit/aff262954d291f00f1dce299780fe01d8bb8e41e))
+* **cloud:** add TokenProvider protocol and SSECloudBackend.configure(tokenProvider:) ([#1541](https://github.com/roryford/ManifoldKit/issues/1541)) ([d6dd9b1](https://github.com/roryford/ManifoldKit/commit/d6dd9b1bb6e926fa4109a969dbd5c3a18d51e0b5))
+* **inference:** add aspectRatio field to ImageGenerationConfig ([#1540](https://github.com/roryford/ManifoldKit/issues/1540)) ([6147dc7](https://github.com/roryford/ManifoldKit/commit/6147dc72a459a0274f4e182c5b52f2dd3c805f01))
+* **inference:** expose currentCloudBackend on InferenceService ([#1542](https://github.com/roryford/ManifoldKit/issues/1542)) ([9870b99](https://github.com/roryford/ManifoldKit/commit/9870b99b012f79be91eee56a8b2ad4b1a07d538c))
+* **inference:** VideoGenerationBackend protocol + VideoGenerationConfig/Event + cloudAPI ImageModelFormat ([#1526](https://github.com/roryford/ManifoldKit/issues/1526)) ([3589392](https://github.com/roryford/ManifoldKit/commit/3589392c1a7d93471c2db93a044be11d182d7543))
+* **runtime:** HistoryShaper, HostTurnContextProvider, PreTurnCompressionPolicy ([#1524](https://github.com/roryford/ManifoldKit/issues/1524)) ([fc6bb59](https://github.com/roryford/ManifoldKit/commit/fc6bb59b4d593c3d2471ef8ea57e187c453343f6))
+* **runtime:** VideoGenerationService + Runtime, provider-neutral VideoGenerationConfig, ConversationRuntimeOptions ([#1527](https://github.com/roryford/ManifoldKit/issues/1527)) ([8a54781](https://github.com/roryford/ManifoldKit/commit/8a54781357506c4969ec0d16ac90d5702624d5d6))
+* **runtime:** VideoGenerationService, VideoGenerationRuntime, and ChatViewModel wiring ([#1530](https://github.com/roryford/ManifoldKit/issues/1530)) ([206903d](https://github.com/roryford/ManifoldKit/commit/206903d35d64388f5899cc401c3e825c4c880ec1))
+* **ui:** GenerativeContextMenuItems — standard context menu items for generation actions ([#1537](https://github.com/roryford/ManifoldKit/issues/1537)) ([3ea67b1](https://github.com/roryford/ManifoldKit/commit/3ea67b1adf9097f6c2b24cb9a200600c998f4a6a))
+* **ui:** ImageGenerationToolSource + VideoGenerationToolSource ([#1536](https://github.com/roryford/ManifoldKit/issues/1536)) ([f910d8d](https://github.com/roryford/ManifoldKit/commit/f910d8def17a240e5b2ea2d781c8f1275a416254))
+* **ui:** PhotoAttachmentButton — compose-bar photo picker backed by stageAttachment ([#1535](https://github.com/roryford/ManifoldKit/issues/1535)) ([2054a91](https://github.com/roryford/ManifoldKit/commit/2054a916a5618c71abecc951a09c737e6f976112))
+
 
 ### Bug Fixes
 
-* **Voice authorization crash** — `dispatch_assert_queue_fail` crash in `requestAuthorization` when called off the main queue is resolved. ([#1529](https://github.com/roryford/ManifoldKit/issues/1529))
+* **ci:** use traits:[FoundationOnly] on snippet dependency to skip MLX/Llama ([#1522](https://github.com/roryford/ManifoldKit/issues/1522)) ([950853c](https://github.com/roryford/ManifoldKit/commit/950853c3288cbb2554f546910531559f704ed990))
+* **voice:** prevent dispatch_assert_queue_fail crash in requestAuthorization ([#1529](https://github.com/roryford/ManifoldKit/issues/1529)) ([c0c787b](https://github.com/roryford/ManifoldKit/commit/c0c787be97cf882f1377468cd395fa2a7b240bf6))
+
+
+### Developer Experience
+
+* **swiftui:** unify host docs and add session auto-title ([#1517](https://github.com/roryford/ManifoldKit/issues/1517)) ([efd7688](https://github.com/roryford/ManifoldKit/commit/efd7688d40806885975b31e2f313eb05841ce744)), closes [#1515](https://github.com/roryford/ManifoldKit/issues/1515)
+
 
 ### Documentation
 
-* Tier 1 DocC catalogs fleshed out for `ManifoldInference`, `ManifoldMLX`, and `ManifoldVoice`. ([#1516](https://github.com/roryford/ManifoldKit/issues/1516))
-* `GenerationComponents` article covers `PhotoAttachmentButton`, tool sources, and context menus. ([#1538](https://github.com/roryford/ManifoldKit/issues/1538))
+* add TODO.md tracking Glass Box P0 trigger ([29a3898](https://github.com/roryford/ManifoldKit/commit/29a3898cb5ed8742067264a142fbbc718be33ea4))
+* **docc:** flesh out Tier 1 DocC catalogs (ManifoldInference, ManifoldMLX, ManifoldVoice) ([#1516](https://github.com/roryford/ManifoldKit/issues/1516)) ([0ac287a](https://github.com/roryford/ManifoldKit/commit/0ac287af8adee013c2b9759e0e154e17fcb0791c))
+* realtime voice-agent design note (parked) ([215bb59](https://github.com/roryford/ManifoldKit/commit/215bb59cfbe9d7830774a2f46ccd9d8db11a5eef))
+* **ui:** add GenerationComponents article for PhotoAttachmentButton, tool sources, context menus ([#1538](https://github.com/roryford/ManifoldKit/issues/1538)) ([e0d7362](https://github.com/roryford/ManifoldKit/commit/e0d736291ec5a2ffe02695fa5638d82829f2676d))
 
 ## [0.37.0](https://github.com/roryford/ManifoldKit/compare/v0.36.0...v0.37.0) (2026-05-29)
 
