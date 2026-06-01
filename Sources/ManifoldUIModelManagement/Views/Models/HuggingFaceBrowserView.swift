@@ -142,16 +142,44 @@ struct HuggingFaceBrowserView: View {
             }
 
             if !viewModel.searchResults.isEmpty {
-                let groups = DownloadableModelGroup.group(
-                    viewModel.searchResults,
-                    sortKey: { viewModel.compatibilityTier(for: $0) }
-                )
+                Section {
+                    // Use-case picker — biases the fit ranking. Ranks, never filters:
+                    // every model below stays visible regardless of selection.
+                    Picker("Optimize for", selection: $viewModel.selectedUseCase) {
+                        ForEach(ModelUseCase.allCases, id: \.self) { useCase in
+                            Text(useCaseLabel(useCase)).tag(useCase)
+                        }
+                    }
+                    .accessibilityLabel("Optimize recommendations for use case")
+
+                    // Sort escape hatch — power users who distrust the recommendation
+                    // can fall back to the deterministic size / downloads order.
+                    Picker("Sort", selection: $viewModel.sortMode) {
+                        ForEach(ModelManagementViewModel.SortMode.allCases, id: \.self) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Sort order")
+                }
+
+                let groups = sortedGroups()
+                let topModelID = (viewModel.sortMode == .recommended)
+                    ? viewModel.rankedVariants().first?.0.id
+                    : nil
                 Section(viewModel.isDirectRepoLookup ? "Files in \(viewModel.searchQuery)" : "Search Results") {
                     ForEach(groups) { group in
                         if group.variants.count == 1 {
-                            DownloadableModelRow(model: group.variants[0])
+                            let variant = group.variants[0]
+                            DownloadableModelRow(
+                                model: variant,
+                                showFitGuidance: true,
+                                rationale: rationale(for: variant, topModelID: topModelID)
+                            )
                         } else {
-                            let recommended = group.recommendedVariant(for: viewModel.deviceCapabilityService)
+                            // "Best for your device": the top-ranked quant for the use
+                            // case when ranking is active, else the legacy memory-fit pick.
+                            let recommended = bestVariant(for: group)
                             let noVariantFits = recommended != nil && !group.variants.contains(where: {
                                 $0.sizeBytes > 0 && viewModel.canRunModel(sizeBytes: $0.sizeBytes)
                             })
@@ -161,9 +189,15 @@ struct HuggingFaceBrowserView: View {
                             DisclosureGroup {
                                 ForEach(sortedVariants) { variant in
                                     VStack(alignment: .leading, spacing: 2) {
-                                        DownloadableModelRow(model: variant)
+                                        DownloadableModelRow(
+                                            model: variant,
+                                            showFitGuidance: true,
+                                            rationale: variant.id == recommended?.id
+                                                ? viewModel.fitScore(for: variant)?.rationale
+                                                : nil
+                                        )
                                         if variant.id == recommended?.id {
-                                            Text(noVariantFits ? "Smallest available" : "Recommended")
+                                            Text(bestForDeviceLabel(noVariantFits: noVariantFits))
                                                 .font(.caption2)
                                                 .padding(.horizontal, 4)
                                                 .padding(.vertical, 1)
@@ -280,6 +314,85 @@ struct HuggingFaceBrowserView: View {
             viewModel.activeModelFileName = modelRegistry.selectedModel?.fileName
             viewModel.loadRecommendations(preferredModelIDs: recommendedModelIDs)
         }
+    }
+
+    // MARK: - Ranking helpers
+
+    /// Groups the current search results and orders them per the selected `sortMode`.
+    ///
+    /// `.recommended` orders groups by their best variant's composite fit score for the
+    /// selected use case (rank, don't filter — all groups stay present). `.size` reuses
+    /// the historical compatibility-tier order; `.downloads` defers to the default
+    /// download-count sort. Within a group, variants are always shown smallest-first
+    /// (see `DownloadableModelGroup.group`).
+    private func sortedGroups() -> [DownloadableModelGroup] {
+        switch viewModel.sortMode {
+        case .size:
+            return DownloadableModelGroup.group(
+                viewModel.searchResults,
+                sortKey: { viewModel.compatibilityTier(for: $0) }
+            )
+        case .downloads:
+            return DownloadableModelGroup.group(viewModel.searchResults)
+        case .recommended:
+            // Best composite per group; higher first. Groups with no scoreable variant
+            // (all size 0) sort to the bottom but are never dropped.
+            let groups = DownloadableModelGroup.group(viewModel.searchResults)
+            return groups.sorted { lhs, rhs in
+                bestComposite(in: lhs) > bestComposite(in: rhs)
+            }
+        }
+    }
+
+    /// Highest composite fit score among a group's variants, or `-1` when none score.
+    private func bestComposite(in group: DownloadableModelGroup) -> Double {
+        group.variants
+            .compactMap { viewModel.fitScore(for: $0)?.composite }
+            .max() ?? -1
+    }
+
+    /// The variant to surface as "Best for your device".
+    ///
+    /// In `.recommended` mode this is the top-ranked quant for the use case; otherwise
+    /// it falls back to the legacy largest-that-fits memory pick so the size/downloads
+    /// modes keep their familiar behaviour.
+    private func bestVariant(for group: DownloadableModelGroup) -> DownloadableModel? {
+        switch viewModel.sortMode {
+        case .recommended:
+            let ranked = group.variants
+                .compactMap { variant -> (DownloadableModel, Double)? in
+                    guard let score = viewModel.fitScore(for: variant) else { return nil }
+                    return (variant, score.composite)
+                }
+                .max(by: { $0.1 < $1.1 })
+            // Fall back to the memory-fit pick when nothing scores (all size 0).
+            return ranked?.0 ?? group.recommendedVariant(for: viewModel.deviceCapabilityService)
+        case .size, .downloads:
+            return group.recommendedVariant(for: viewModel.deviceCapabilityService)
+        }
+    }
+
+    /// The one-line rationale for a single-variant row, shown only on the overall
+    /// top-ranked model so the "why" appears once rather than on every row.
+    private func rationale(for model: DownloadableModel, topModelID: String?) -> String? {
+        guard let topModelID, model.id == topModelID else { return nil }
+        return viewModel.fitScore(for: model)?.rationale
+    }
+
+    private func useCaseLabel(_ useCase: ModelUseCase) -> String {
+        switch useCase {
+        case .general:    return "General"
+        case .coding:     return "Coding"
+        case .reasoning:  return "Reasoning"
+        case .chat:       return "Chat"
+        case .multimodal: return "Multimodal"
+        case .embedding:  return "Embedding"
+        }
+    }
+
+    private func bestForDeviceLabel(noVariantFits: Bool) -> String {
+        if noVariantFits { return "Smallest available" }
+        return viewModel.sortMode == .recommended ? "Best for your device" : "Recommended"
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {

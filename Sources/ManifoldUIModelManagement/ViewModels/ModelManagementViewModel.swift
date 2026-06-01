@@ -46,6 +46,44 @@ public final class ModelManagementViewModel {
     /// User-facing error from the last search or download attempt.
     public var searchError: String?
 
+    // MARK: - Recommendation State
+
+    /// The use case the browser ranks search results for.
+    ///
+    /// Drives `rankedVariants(useCase:)` ordering. In-memory `@Observable` state with
+    /// a `.general` default; persisted only when a `UserDefaults` is injected (see
+    /// `init`). Changing it re-orders the list but never hides a model — ranking, not
+    /// filtering, is the contract (see `SortMode`).
+    public var selectedUseCase: ModelUseCase = .general {
+        didSet { persistSelectedUseCase() }
+    }
+
+    /// How the browser orders search-result groups.
+    ///
+    /// The escape hatch for power users: `.recommended` applies device-aware fit
+    /// ranking, `.size`/`.downloads` fall back to the pre-existing deterministic order
+    /// so no model is ever buried behind a recommendation they disagree with.
+    public enum SortMode: String, CaseIterable, Sendable {
+        /// Device-aware fit ranking for `selectedUseCase` (the new default).
+        case recommended
+        /// Smallest on-disk size first — the historical compatibility-tier order.
+        case size
+        /// Most-downloaded first.
+        case downloads
+
+        /// Short label for a segmented control or menu.
+        public var label: String {
+            switch self {
+            case .recommended: return "Recommended"
+            case .size:        return "Size"
+            case .downloads:   return "Downloads"
+            }
+        }
+    }
+
+    /// The active sort mode for the browser. In-memory; defaults to `.recommended`.
+    public var sortMode: SortMode = .recommended
+
     // MARK: - Services
 
     private let huggingFaceService: (any HuggingFaceServiceProtocol)?
@@ -54,6 +92,16 @@ public final class ModelManagementViewModel {
     private let modelStorage: ModelStorageService
     private let diagnostics: DiagnosticsService?
     private let fileRemover: @Sendable (URL) throws -> Void
+
+    /// Injected defaults store for persisting `selectedUseCase`.
+    ///
+    /// Never `UserDefaults.standard` implicitly — a shared instance is a documented
+    /// `--parallel` flake source (#734, #761). Callers opt into persistence by passing
+    /// a suite; the default `nil` keeps the picker purely in-memory.
+    private let userDefaults: UserDefaults?
+
+    /// Defaults key for the persisted use case. Namespaced to avoid host-app collisions.
+    private static let selectedUseCaseKey = "ManifoldKit.ModelManagement.selectedUseCase"
 
     // MARK: - Download Tracking
 
@@ -111,6 +159,7 @@ public final class ModelManagementViewModel {
         deviceCapability: DeviceCapabilityService = DeviceCapabilityService(),
         modelStorage: ModelStorageService = ModelStorageService(),
         diagnostics: DiagnosticsService? = nil,
+        userDefaults: UserDefaults? = nil,
         fileRemover: @escaping @Sendable (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) }
     ) {
         self.huggingFaceService = huggingFaceService
@@ -118,7 +167,9 @@ public final class ModelManagementViewModel {
         self.deviceCapability = deviceCapability
         self.modelStorage = modelStorage
         self.diagnostics = diagnostics
+        self.userDefaults = userDefaults
         self.fileRemover = fileRemover
+        restoreSelectedUseCase()
     }
 
     /// Creates a production-ready model manager with search and downloads enabled.
@@ -603,16 +654,58 @@ public final class ModelManagementViewModel {
     /// the default group sort — the authoritative will-it-run gate stays `ModelLoadPlan`.
     /// Returns best-first.
     ///
-    /// Next: a SwiftUI use-case picker that drives this ranking is the natural follow-up UI.
+    /// - Parameters:
+    ///   - useCase: The use case to weight dimensions for. Defaults to `selectedUseCase`.
+    ///   - device: Device profile for scoring. Defaults to the real host profile; tests
+    ///     inject a fixed profile so ranking is deterministic regardless of the runner.
     public func rankedVariants(
-        useCase: ModelUseCase = .general
+        useCase: ModelUseCase? = nil,
+        device: DeviceProfile? = nil
     ) -> [(DownloadableModel, ModelFitScore)] {
-        let device = DeviceProfile(
+        let resolvedDevice = device ?? DeviceProfile(
             physicalMemoryBytes: deviceCapability.physicalMemory,
             usableMemoryBytes: DeviceCapabilityService.queryAvailableMemory(),
             memoryBandwidthGBs: AppleSiliconBandwidth.estimatedBandwidthGBs()
         )
-        return ModelFitScorer().rank(searchResults, useCase: useCase, device: device)
+        return ModelFitScorer().rank(searchResults, useCase: useCase ?? selectedUseCase, device: resolvedDevice)
+    }
+
+    /// The fit score for a single downloadable model under the current selection.
+    ///
+    /// Lets the row UI show a `SpeedClass` badge / `rationale` without re-ranking the
+    /// whole list. Returns `nil` for unscoreable (size 0) models. `device` is injectable
+    /// for deterministic tests; production passes `nil` for the real host profile.
+    public func fitScore(
+        for model: DownloadableModel,
+        useCase: ModelUseCase? = nil,
+        device: DeviceProfile? = nil
+    ) -> ModelFitScore? {
+        let resolvedDevice = device ?? DeviceProfile(
+            physicalMemoryBytes: deviceCapability.physicalMemory,
+            usableMemoryBytes: DeviceCapabilityService.queryAvailableMemory(),
+            memoryBandwidthGBs: AppleSiliconBandwidth.estimatedBandwidthGBs()
+        )
+        return ModelFitScorer().score(model, useCase: useCase ?? selectedUseCase, device: resolvedDevice)
+    }
+
+    // MARK: - Use-case persistence
+
+    /// Restores `selectedUseCase` from the injected defaults store, if any.
+    ///
+    /// Sets the backing value directly to avoid re-triggering `persistSelectedUseCase`
+    /// during init (a no-op write, but pointless churn).
+    private func restoreSelectedUseCase() {
+        guard let userDefaults,
+              let raw = userDefaults.string(forKey: Self.selectedUseCaseKey),
+              let restored = ModelUseCase(rawValue: raw) else { return }
+        // Assigning here fires didSet → persistSelectedUseCase, which writes back the
+        // same value. Harmless and keeps the property a plain stored var.
+        selectedUseCase = restored
+    }
+
+    /// Persists `selectedUseCase` when a defaults store was injected; otherwise no-op.
+    private func persistSelectedUseCase() {
+        userDefaults?.set(selectedUseCase.rawValue, forKey: Self.selectedUseCaseKey)
     }
 
     /// Whether a downloadable model's file already exists on disk.
