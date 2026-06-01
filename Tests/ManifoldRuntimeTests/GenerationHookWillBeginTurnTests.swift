@@ -188,7 +188,7 @@ final class GenerationHookWillBeginTurnTests: XCTestCase {
         ))
 
         // Await postGeneration — implies willBeginTurn already fired before it.
-        _ = try await withDeadline { await hook.awaitNextPostGeneration() }
+        _ = try await withTimeout(.seconds(10)) { await hook.awaitNextPostGeneration() }
 
         let calls = await hook.calls
         XCTAssertEqual(calls.count, 2, "Both willBeginTurn and postGeneration must fire")
@@ -212,7 +212,7 @@ final class GenerationHookWillBeginTurnTests: XCTestCase {
             config: TurnConfig()
         ))
 
-        let receivedSessionID = try await withDeadline { await hook.awaitNextWillBeginTurn() }
+        let receivedSessionID = try await withTimeout(.seconds(10)) { await hook.awaitNextWillBeginTurn() }
 
         XCTAssertEqual(receivedSessionID, sessionID, "willBeginTurn must receive the correct sessionID")
     }

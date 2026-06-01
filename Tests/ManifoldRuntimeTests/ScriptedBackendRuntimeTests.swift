@@ -120,7 +120,8 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             kind: .send(text: "test kv-cache"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        _ = await turn?.outcome
+        // Bound the outcome wait so a stall surfaces as a deterministic failure.
+        _ = try await withTimeout(.seconds(10)) { await turn?.outcome }
 
         drainTask.cancel()
         _ = await drainTask.value
@@ -160,7 +161,8 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             kind: .send(text: "throttle test"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        _ = await turn?.outcome
+        // Bound the outcome wait so a stall surfaces as a deterministic failure.
+        _ = try await withTimeout(.seconds(10)) { await turn?.outcome }
 
         drainTask.cancel()
         _ = await drainTask.value
@@ -199,7 +201,8 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             kind: .send(text: "error test"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        _ = await turn?.outcome
+        // Bound the outcome wait so a stall surfaces as a deterministic failure.
+        _ = try await withTimeout(.seconds(10)) { await turn?.outcome }
 
         drainTask.cancel()
         _ = await drainTask.value
@@ -237,14 +240,15 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             kind: .send(text: "first"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        _ = await turn1?.outcome
+        // Bound the outcome waits so a stall surfaces as a deterministic failure.
+        _ = try await withTimeout(.seconds(10)) { await turn1?.outcome }
 
         let turn2 = try await runtime.processTurnWithOutcome(TurnInput(
             sessionID: sessionID,
             kind: .send(text: "second"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        _ = await turn2?.outcome
+        _ = try await withTimeout(.seconds(10)) { await turn2?.outcome }
 
         drainTask.cancel()
         _ = await drainTask.value
