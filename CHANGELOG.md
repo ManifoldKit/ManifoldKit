@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.41.0](https://github.com/roryford/ManifoldKit/compare/v0.40.0...v0.41.0) (2026-05-31)
+
+This release completes the Glass Box observability system through P4, adds scripted backend tooling and a canned scenario library for host-app testing, and ships several bootstrap conveniences.
+
+### Highlights
+
+**Glass Box P1 — `ConversationEventKind`, JSONL trace, and `XCTAssertEventSubsequence`** — A stable `String`-rawValue enum covering all 26 `ConversationEvent` cases is now the shared key for JSONL traces and subsequence assertions. `ConversationEventTrace.save(to:)` writes a JSONL file alongside test artifacts for offline inspection. `XCTAssertEventSubsequence` takes an ordered list of `ConversationEventKind` values and fails with a diagnostic showing matched events, the first missing kind, and the full trace — making turn-loop regression tests self-describing. The compiler enforces the `event.kind` mapping when new cases are added. ([#1561](https://github.com/roryford/ManifoldKit/issues/1561))
+
+```swift
+let recorder = ConversationEventRecorder(runtime: runtime)
+let drain = recorder.start()
+try await runtime.send("Hello")
+await drain.value
+XCTAssertEventSubsequence(
+    [.streamStarted, .tokenEmitted, .streamFinished],
+    in: recorder.trace
+)
+```
+
+**Glass Box P2 — `ScriptedGenerationBackend`** — A deterministic `InferenceBackend` whose event sequence is fully scripted turn-by-turn. Any `GenerationEvent` can be emitted, delays injected, or errors thrown at precise points — making it straightforward to exercise KV-cache reuse hits, throttle signals, partial thinking blocks, and mid-stream failures in unit tests that would otherwise require a live model. ([#1562](https://github.com/roryford/ManifoldKit/issues/1562))
+
+```swift
+let backend = ScriptedGenerationBackend(turns: [
+    .kvCacheReuse(reuseCount: 256, then: ["Hello", " world"]),
+    .failMidStream(MyError.timeout, afterTokens: 3, tokens: ["A", "B", "C", "D"]),
+])
+```
+
+**Glass Box P3 — dual-mode scenario runner and `RuntimeScenarioRegistry`** — A `RuntimeScenario` bundles a scripted turn sequence, a structural event subsequence, and display metadata into a single definition that runs identically in CI (against `ScriptedGenerationBackend`) and in a live demo (against a real backend). `RuntimeScenarioRegistry.shared` is the single source of truth for both the test matrix gate (`test_allRegisteredScenarios_passInScriptedMode`) and the future demo-picker UI. ([#1563](https://github.com/roryford/ManifoldKit/issues/1563))
+
+**Glass Box P4 — research session, swap-the-brain, error-recovery, and handoff scenarios** — Seven canned scenarios are now in the shared registry, covering the full range of runtime behaviors the Glass Box ArchitectView is designed to visualise: multi-turn research with pre-turn compression, mid-turn backend capability degradation, graceful error recovery, and session handoff. `FixedCountPreTurnCompressionPolicy` fires at a configurable message-count threshold using a synthetic memory record, keeping scripted turn sequences undisrupted. ([#1567](https://github.com/roryford/ManifoldKit/issues/1567), [#1566](https://github.com/roryford/ManifoldKit/issues/1566))
+
+### Features
+
+* **`ManifoldBootstrap.makeInMemory`** — Public static factory that returns a fully-wired bootstrap backed by an ephemeral SwiftData in-memory store. Nothing is written to disk; all data is discarded when the instance is deallocated. `ManifoldBootstrap.isInMemory` lets callers detect ephemeral mode without inspecting container internals. Useful for test harnesses, onboarding flows, and incognito sessions. ([#1573](https://github.com/roryford/ManifoldKit/issues/1573))
+* **`addGenerationToolSources(_:)` on `ManifoldBootstrap`** — One-liner to register `ImageGenerationToolSource` and `VideoGenerationToolSource` from a `ChatViewModel`. Sources for nil services are silently skipped, so it's safe to call unconditionally. ([#1574](https://github.com/roryford/ManifoldKit/issues/1574))
+* **`VisionInputButton` — cross-platform vision input composer** — A compose-bar button that presents `PhotosPicker` on iOS and `NSOpenPanel` (image UTTypes only) on macOS. The button hides itself automatically when `BackendCapabilities.supportsVision` is `false`, so no conditional logic is needed in host UIs. Images are staged via the existing `ChatViewModel.stageAttachment(_:)` path. ([#1572](https://github.com/roryford/ManifoldKit/issues/1572))
+* **WWDC 2026 trait stubs (`SystemAIProviderExtension`, `CoreAI`)** — Pre-emptive manifest stubs with no associated targets or external dependencies, keeping the trait surface ready for the WWDC announcements. ([#1565](https://github.com/roryford/ManifoldKit/issues/1565))
+
+### Bug Fixes
+
+* **`WebSearchToolSource` URL crash** — Force-unwrap on `URL(string:)!` crashed when the base URL string was malformed; replaced with a `guard let` early-exit. ([#1558](https://github.com/roryford/ManifoldKit/issues/1558))
+* **`SessionListView` pin/unpin silent errors** — Four `try?` violations in the swipe-action and context-menu handlers are now `do/catch` with `errorMessage` alert surfacing, consistent with `renameSession` and `deleteSession`. ([#1564](https://github.com/roryford/ManifoldKit/issues/1564))
+* **`ArchitectView` exhaustive switches** — Replaced `default:` fallbacks in `isCompressionRelated` and `categoryColor(for:)` with explicit case enumeration so the compiler surfaces any new `ConversationEvent`/`ConversationEventKind` case. ([#1571](https://github.com/roryford/ManifoldKit/issues/1571))
+
 ## [0.40.0](https://github.com/roryford/ManifoldKit/compare/v0.39.1...v0.40.0) (2026-05-31)
 
 This release opens the Glass Box observability system with a runtime event tap and surfaces session pinning in the sidebar UI.
