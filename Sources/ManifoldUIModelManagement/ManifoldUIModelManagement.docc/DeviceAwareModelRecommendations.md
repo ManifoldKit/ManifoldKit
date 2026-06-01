@@ -35,11 +35,12 @@ State lives on `ModelManagementViewModel`:
 
 If you render your own model list, drive it with `ModelFitScorer` directly. Score or rank your candidates, then present the qualitative abstractions — not the raw figures.
 
-```swift,no-build
+```swift
 import ManifoldInference
 
-// Your candidate models (e.g. from a HuggingFace search or a curated catalog).
-let candidates: [DownloadableModel] = …
+// Your candidate models — replace with the results of a HuggingFace search
+// or a curated catalog. Empty here so the snippet stands alone.
+let candidates: [DownloadableModel] = []
 
 // Rank best-first for the user's task. `DeviceProfile.current` reads the host's
 // memory + estimated bandwidth; inject a fixed profile in tests for determinism.
