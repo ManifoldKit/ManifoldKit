@@ -596,6 +596,25 @@ public final class ModelManagementViewModel {
         return 2
     }
 
+    /// Ranks the current `searchResults` by composite model-fit score for a use case.
+    ///
+    /// Additive helper that layers `ModelFitScorer` (quality / speed / fit / context)
+    /// over the existing browse results. It does NOT alter `compatibilityTier(for:)` or
+    /// the default group sort — the authoritative will-it-run gate stays `ModelLoadPlan`.
+    /// Returns best-first.
+    ///
+    /// Next: a SwiftUI use-case picker that drives this ranking is the natural follow-up UI.
+    public func rankedVariants(
+        useCase: ModelUseCase = .general
+    ) -> [(DownloadableModel, ModelFitScore)] {
+        let device = DeviceProfile(
+            physicalMemoryBytes: deviceCapability.physicalMemory,
+            usableMemoryBytes: DeviceCapabilityService.queryAvailableMemory(),
+            memoryBandwidthGBs: AppleSiliconBandwidth.estimatedBandwidthGBs()
+        )
+        return ModelFitScorer().rank(searchResults, useCase: useCase, device: device)
+    }
+
     /// Whether a downloadable model's file already exists on disk.
     ///
     /// Uses a cached snapshot of discovered models to avoid repeated filesystem scans.
