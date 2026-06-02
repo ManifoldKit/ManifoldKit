@@ -1,3 +1,6 @@
+#if canImport(Darwin)
+import Darwin
+#endif
 import XCTest
 
 /// Phase 5 of #714: validates the **`sandbox-exec` net-deny isolation layer**.
@@ -61,8 +64,13 @@ final class SandboxExecNetDenyTests: XCTestCase {
         // can exceed the 242 s watchdog threshold when the compiler doesn't respond.
         // Run these tests locally only; they cover OS-level sandbox wiring, not
         // logic that changes per commit.
+        //
+        // Belt-and-suspenders: check both CI (generic) and GITHUB_ACTIONS (specific)
+        // because the XCTest child process's environment inheritance is not guaranteed
+        // to include every parent-shell variable on all runner configurations.
+        let env = ProcessInfo.processInfo.environment
         try XCTSkipIf(
-            ProcessInfo.processInfo.environment["CI"] == "true",
+            env["CI"] == "true" || env["GITHUB_ACTIONS"] == "true",
             "sandbox-exec tests skipped in CI: swift subprocess cold-start blocks the cooperative thread pool"
         )
         #if !os(macOS)
@@ -120,6 +128,15 @@ final class SandboxExecNetDenyTests: XCTestCase {
         if process.isRunning {
             process.terminate()
             XCTFail("sandbox-exec child did not exit within \(timeout)s")
+            // SIGTERM may be ignored by a sandboxed swift subprocess — escalate to
+            // SIGKILL after 3 s so waitUntilExit() below cannot block indefinitely.
+            let killDeadline = Date().addingTimeInterval(3)
+            while process.isRunning && Date() < killDeadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
         }
         process.waitUntilExit()
 
