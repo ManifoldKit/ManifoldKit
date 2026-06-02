@@ -23,11 +23,13 @@ public final class WebSearchToolSource: SessionToolSource {
     private let baseURL: String
     private let tokenProvider: any TokenProvider
     private let model: String
+    private let urlSession: URLSession
 
-    public init(baseURL: String, tokenProvider: any TokenProvider, model: String = "grok-4.3") {
+    public init(baseURL: String, tokenProvider: any TokenProvider, model: String = "grok-4.3", session: URLSession = URLSessionFactory.ephemeral()) {
         self.baseURL = baseURL
         self.tokenProvider = tokenProvider
         self.model = model
+        self.urlSession = session
     }
 
     nonisolated public func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
@@ -66,7 +68,7 @@ public final class WebSearchToolSource: SessionToolSource {
             "max_tokens": 1000
         ])
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let (responseData, response) = try await urlSession.data(for: request)
         let httpStatus = (response as? HTTPURLResponse)?.statusCode
         guard httpStatus == 200 else {
             return ToolResult(callId: toolName, content: "Search failed (HTTP \(httpStatus.map(String.init) ?? "unknown"))", errorKind: .transient)
