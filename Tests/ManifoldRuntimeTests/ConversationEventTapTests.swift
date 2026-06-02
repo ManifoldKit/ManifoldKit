@@ -115,7 +115,11 @@ final class ConversationEventTapTests: XCTestCase {
         let primaryDrainTask = Task { try await self.drain(runtime.events) }
 
         let turn = try await sendTurn(on: runtime)
-        let outcome = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        let outcome = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
         XCTAssertEqual(outcome?.reason, .stop)
         let messageID = try XCTUnwrap(outcome?.assistantMessageID)
 
@@ -175,7 +179,11 @@ final class ConversationEventTapTests: XCTestCase {
         let primaryTask = Task { try await self.drain(runtime.events) }
 
         let turn = try await sendTurn(on: runtime)
-        let outcome = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        let outcome = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
         let messageID = try XCTUnwrap(outcome?.assistantMessageID)
 
         let trace1 = try await drainTask1.value
@@ -246,7 +254,9 @@ final class ConversationEventTapTests: XCTestCase {
         await gate.release()
 
         let turn = try await turnTask.value
-        let _ = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        _ = try await withTimeout(.seconds(10)) { await turn?.outcome }
 
         let lateTrace = try await lateTask.value
 
@@ -284,7 +294,11 @@ final class ConversationEventTapTests: XCTestCase {
         // deregistration is an implementation detail, so the observable contract
         // is that the cancelled drain does not receive further events.
         let turn = try await sendTurn(on: runtime)
-        let outcome = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        let outcome = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
         XCTAssertEqual(outcome?.reason, .stop, "turn should complete normally after tap cancel")
         // The cancelled task completes without blocking.
         _ = await drainTask.value
@@ -324,7 +338,9 @@ final class ConversationEventTapTests: XCTestCase {
             kind: .send(text: "bye"),
             config: TurnConfig()
         ))
-        _ = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        _ = try await withTimeout(.seconds(10)) { await turn?.outcome }
 
         // Release the runtime — deinit fires and must finish all taps.
         runtime = nil

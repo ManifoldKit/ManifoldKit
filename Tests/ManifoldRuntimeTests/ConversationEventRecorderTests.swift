@@ -83,7 +83,11 @@ final class ConversationEventRecorderTests: XCTestCase {
             kind: .send(text: "go"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        let outcome = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        let outcome = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
         XCTAssertEqual(outcome?.reason, .stop)
         let messageID = try XCTUnwrap(outcome?.assistantMessageID)
 
@@ -145,7 +149,11 @@ final class ConversationEventRecorderTests: XCTestCase {
             kind: .send(text: "ping"),
             config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
-        let outcome = await turn?.outcome
+        // Bound the outcome wait so a generation-loop stall surfaces as a
+        // deterministic test failure instead of a 240 s CI watchdog kill.
+        let outcome = try await withTimeout(.seconds(10)) {
+            await turn?.outcome
+        }
         XCTAssertEqual(outcome?.reason, .stop)
         let messageID = try XCTUnwrap(outcome?.assistantMessageID)
 

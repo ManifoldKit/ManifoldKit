@@ -199,7 +199,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
             config: TurnConfig()
         ))
         let handle = try XCTUnwrap(maybeHandle)
-        let outcome = await handle.outcome
+        let outcome = try await withTimeout(.seconds(10)) { await handle.outcome }
         XCTAssertNil(outcome.error)
 
         let requests = await hostProvider.snapshot()
@@ -238,7 +238,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
             config: TurnConfig()
         ))
         let handle = try XCTUnwrap(maybeHandle)
-        let outcome = await handle.outcome
+        let outcome = try await withTimeout(.seconds(10)) { await handle.outcome }
 
         guard case let .contextAssembly(error)? = outcome.error else {
             return XCTFail("Expected context assembly failure, got \(String(describing: outcome.error))")
@@ -297,11 +297,11 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
             config: TurnConfig()
         ))
         let handle = try XCTUnwrap(maybeHandle)
-        let outcome = await handle.outcome
+        let outcome = try await withTimeout(.seconds(10)) { await handle.outcome }
         XCTAssertNil(outcome.error)
         XCTAssertEqual(outcome.assistantMessage?.content, "new answer")
 
-        let historyShapedEvent = try await withTimeout {
+        let historyShapedEvent = try await withTimeout(.seconds(10)) {
             await recorder.awaitHistoryShapedEvent()
         }
         guard case let .historyShaped(eventSessionID, diagnostics) = historyShapedEvent else {
@@ -361,7 +361,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
             config: TurnConfig()
         ))
         let handle = try XCTUnwrap(maybeHandle)
-        let outcome = await handle.outcome
+        let outcome = try await withTimeout(.seconds(10)) { await handle.outcome }
         XCTAssertNil(outcome.error)
 
         let capturedPayload = await capture.captured
