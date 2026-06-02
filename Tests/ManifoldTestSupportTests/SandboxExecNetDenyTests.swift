@@ -1,6 +1,3 @@
-#if canImport(Darwin)
-import Darwin
-#endif
 import XCTest
 
 /// Phase 5 of #714: validates the **`sandbox-exec` net-deny isolation layer**.
@@ -58,20 +55,17 @@ final class SandboxExecNetDenyTests: XCTestCase {
     /// `sandbox-exec` ships with macOS; gate Linux and any host where the
     /// binary is missing (e.g., a sandboxed CI runner that filtered it out).
     private func skipIfSandboxExecUnavailable() throws {
-        // test_networkFrameworkConnection spawns the Swift compiler as a subprocess
-        // (cold-start ≈ 30–120 s on CI) then calls Process.waitUntilExit() which
-        // blocks the cooperative thread pool thread until SIGTERM is handled — which
-        // can exceed the 242 s watchdog threshold when the compiler doesn't respond.
-        // Run these tests locally only; they cover OS-level sandbox wiring, not
-        // logic that changes per commit.
+        // These tests cover OS-level sandbox wiring that doesn't change per commit.
+        // They spawn subprocesses (including /usr/bin/swift with a cold-start cost of
+        // 30–120 s) which block the XCTest worker thread until the subprocess exits.
         //
-        // Belt-and-suspenders: check both CI (generic) and GITHUB_ACTIONS (specific)
-        // because the XCTest child process's environment inheritance is not guaranteed
-        // to include every parent-shell variable on all runner configurations.
-        let env = ProcessInfo.processInfo.environment
-        try XCTSkipIf(
-            env["CI"] == "true" || env["GITHUB_ACTIONS"] == "true",
-            "sandbox-exec tests skipped in CI: swift subprocess cold-start blocks the cooperative thread pool"
+        // Opt-in rather than opt-out: the test runs only when
+        // MANIFOLD_TEST_SANDBOX_EXEC=1 is set. This is reliable regardless of
+        // whether CI env vars propagate to the XCTest child process — a missing key
+        // evaluates to nil != "1", so the test skips by default everywhere CI runs.
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["MANIFOLD_TEST_SANDBOX_EXEC"] == "1",
+            "Skipped: set MANIFOLD_TEST_SANDBOX_EXEC=1 to run sandbox-exec network tests locally"
         )
         #if !os(macOS)
         throw XCTSkip("sandbox-exec is macOS-only")
@@ -128,15 +122,6 @@ final class SandboxExecNetDenyTests: XCTestCase {
         if process.isRunning {
             process.terminate()
             XCTFail("sandbox-exec child did not exit within \(timeout)s")
-            // SIGTERM may be ignored by a sandboxed swift subprocess — escalate to
-            // SIGKILL after 3 s so waitUntilExit() below cannot block indefinitely.
-            let killDeadline = Date().addingTimeInterval(3)
-            while process.isRunning && Date() < killDeadline {
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            if process.isRunning {
-                kill(process.processIdentifier, SIGKILL)
-            }
         }
         process.waitUntilExit()
 
