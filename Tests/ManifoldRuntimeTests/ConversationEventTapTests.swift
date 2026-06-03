@@ -325,10 +325,12 @@ final class ConversationEventTapTests: XCTestCase {
             await finishFlag.signal()
         }
 
-        // Drain primary stream to avoid blocking broadcasts.
-        let primaryTask = Task { [weak runtime] in
-            guard let runtime else { return }
-            for await _ in runtime.events {}
+        // Drain primary stream to avoid blocking broadcasts. Capture the
+        // stream itself, not the runtime: draining must not retain the runtime,
+        // or the drain loop would prevent the very deallocation it waits for.
+        let primaryStream = runtime!.events
+        let primaryTask = Task {
+            for await _ in primaryStream {}
         }
         defer { primaryTask.cancel() }
 
@@ -365,19 +367,34 @@ final class ConversationEventTapTests: XCTestCase {
 
     private actor FinishFlag {
         private var isSet = false
-        private var waiters: [CheckedContinuation<Void, Never>] = []
+        private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
         func signal() {
             guard !isSet else { return }
             isSet = true
             let pending = waiters
             waiters.removeAll()
-            for w in pending { w.resume() }
+            for w in pending.values { w.resume() }
         }
 
+        /// Cancellation-aware so a racing safety-net timeout can tear this
+        /// waiter down. Without this, a structured task group that cancels a
+        /// pending `wait()` would block forever awaiting the un-resumed
+        /// continuation — turning a clean 5 s test failure into a 240 s CI
+        /// watchdog kill.
         func wait() async {
             if isSet { return }
-            await withCheckedContinuation { waiters.append($0) }
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { waiters[id] = $0 }
+            } onCancel: {
+                Task { await self.resumeIfWaiting(id) }
+            }
+        }
+
+        private func resumeIfWaiting(_ id: UUID) {
+            guard let continuation = waiters.removeValue(forKey: id) else { return }
+            continuation.resume()
         }
     }
 }
