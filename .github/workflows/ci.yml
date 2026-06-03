@@ -314,13 +314,25 @@ jobs:
       # this step + 30-min kill on the Swift Testing step below) with zero
       # diagnostic signal about which test stalled. See the script header for
       # the design rationale.
+      #
+      # All three test invocations below pass the SAME trait set
+      # (`MCP,CloudSaaS`). `swift test --filter` always builds the whole test
+      # tree (the filter only gates execution), so a different trait set per
+      # invocation means a different conditional-compilation config and forces a
+      # full recompile each time — measured ~63s rebuilt on the Swift Testing
+      # step alone (CI log, run 26705440802). Using one superset trait set lets
+      # steps 2–3 reuse step 1's `.build` and drop to test-execution-only. The
+      # set is a superset (step 1 needs MCP, step 3 needs CloudSaaS, step 2 needs
+      # neither) — traits only ADD compiled code, so no suite's behavior changes.
+      # Keep all three in sync; diverging the traits silently reintroduces the
+      # redundant rebuilds.
       - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -332,7 +344,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --traits MCP,CloudSaaS --skip-update
 
       # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
       # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
@@ -357,7 +369,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits CloudSaaS --skip-update --min-passed 1
+        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --min-passed 1
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
