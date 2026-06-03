@@ -336,10 +336,18 @@ final class ToolCancellationContractTests: XCTestCase {
         let result = await dispatchTask.value
         XCTAssertEqual(result.errorKind, .cancelled)
 
-        // The handle's local scope ends when `withTaskCancellationHandler`
-        // unwinds with the thrown `CancellationError` from `Task.sleep`,
-        // at which point its deinit fires synchronously. The tracker must
-        // be back to zero with no further await needed.
+        // The handle deinits when `withTaskCancellationHandler` unwinds with the
+        // thrown `CancellationError`. That unwinding happens inside the child
+        // task the default `executeStreaming` wrapper spawns, so it is ordered
+        // *after* `dispatch` returns but is not synchronous with it. Bound-wait
+        // for the release rather than assuming it already happened — otherwise
+        // the assertion races the deinit and flakes under `--parallel`
+        // main-actor contention. A genuine leak holds `liveHandles == 1` past
+        // the deadline and still fails the assertion.
+        let releaseDeadline = Date().addingTimeInterval(2)
+        while tracker.liveHandles > 0 && Date() < releaseDeadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         XCTAssertEqual(
             tracker.liveHandles,
             0,
