@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.42.0](https://github.com/roryford/ManifoldKit/compare/v0.41.0...v0.42.0) (2026-06-03)
+
+Model-fit scoring and use-case-aware model ranking is the headline addition, alongside URLSession security hardening and a round of CI stability fixes.
+
+### Highlights
+
+**Model-fit scoring — use-case-aware ranking for the model browser** — A composite scoring layer ranks downloadable models across four normalised dimensions (quality, speed, fit, context) and combines them with use-case-specific weights. Six built-in use cases (`general`, `coding`, `reasoning`, `chat`, `multimodal`, `embedding`) tune the blend — `chat` favours speed, `reasoning` favours quality. The authoritative will-it-run gate (`ModelLoadPlan`) is unchanged; the scorer layers over it, gates non-runnable models below every runnable one, and never fabricates context lengths or memory figures. Inspired by [llmfit](https://github.com/AlexsJones/llmfit), reimplemented natively in Swift with no Rust dependency. ([#1581](https://github.com/roryford/ManifoldKit/issues/1581))
+
+```swift
+let scorer = ModelFitScorer()
+let ranked = scorer.rankedVariants(models: downloadableModels, useCase: .coding)
+// ranked[0] is the best-fit model for coding workloads on this device
+```
+
+### Bug Fixes
+
+* **`WebSearchToolSource` URLSession security** — `resolve` was calling `URLSession.shared.data(for:)` directly, bypassing the `URLSessionFactory` seam that enforces hop caps, credential stripping on cross-origin redirects, and scheme-downgrade prevention. Now injects `URLSessionFactory.ephemeral()` by default, closing the `DirectURLSessionConstructionAuditTest` failure that was blocking Dependabot auto-merges. ([#1583](https://github.com/roryford/ManifoldKit/issues/1583))
+* **CI stability: `ConversationEvent` timing fixes** — Three intermittent CI failures tied to unbounded waits are resolved. `ConversationEventRecorder`/tap outcome waits are now deadline-bounded ([#1584](https://github.com/roryford/ManifoldKit/issues/1584)); the `ConversationEventTap` teardown test no longer hangs the CI watchdog for 240 s ([#1591](https://github.com/roryford/ManifoldKit/issues/1591)); and the tool-cancellation bridged handle race and PinnedSession stall watchdog are deflaked under `--parallel` ([#1603](https://github.com/roryford/ManifoldKit/issues/1603)).
+
 ## [0.41.0](https://github.com/roryford/ManifoldKit/compare/v0.40.0...v0.41.0) (2026-05-31)
 
 This release completes the Glass Box observability system through P4, adds scripted backend tooling and a canned scenario library for host-app testing, and ships several bootstrap conveniences.
