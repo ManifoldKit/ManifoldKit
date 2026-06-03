@@ -4,11 +4,25 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Collapse all action bumps into one PR/week. Each PR is a full CI run
+    # (macOS, 10× billing); batching trades per-dep granularity for far fewer
+    # cold-compile runs. See CLAUDE.md "Issue & PR hygiene".
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: "swift"
     directory: "/"
     schedule:
       interval: "weekly"
+    # One PR/week for all swift dep bumps instead of one per dependency — a
+    # Package.resolved change busts the SPM cache and re-runs the full job
+    # matrix, so each dep PR is among the most expensive CI runs.
+    groups:
+      swift-dependencies:
+        patterns:
+          - "*"
     ignore:
       # ML deps are tightly coupled and must be updated together manually.
       # mlx-swift-lm is pinned to a commit (not a tag) due to a bug in 2.31.x —
