@@ -325,6 +325,23 @@ jobs:
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
       # two re-push cycles to triage. The job still fails because step 1 failed.
+      #
+      # Trait ordering across the three test steps minimises rebuilds.
+      # `swift test` rebuilds the whole test tree whenever the trait set changes
+      # (the filter only gates execution), and a rebuild differs per step:
+      #   step 1 (XCTest, parallel) — MUST be `MCP` only. Adding CloudSaaS pulls
+      #     the CloudSaaS backend suites into a parallel pass and destabilises the
+      #     conformance meta-contract + other timing-sensitive tests (see #1601).
+      #   step 3 (PinnedSession)    — MUST be `CloudSaaS`, and has a tight 120 s
+      #     stall watchdog that a full trait-change recompile blows through.
+      # So step 1 and step 3 unavoidably differ by one trait set → one rebuild.
+      # Put that rebuild HERE (step 2): this step is isolated, runs under the
+      # generous 240 s watchdog, and building `CloudSaaS` now means step 3 reuses
+      # this `.build` and stays test-execution-only under its 120 s budget.
+      # (Was previously trait-less, which forced TWO rebuilds: here AND at step 3
+      # — the latter timing out step 3's watchdog. See #1602.) `MCP` is dropped
+      # here intentionally: ManifoldInferenceSwiftTestingTests needs neither MCP
+      # nor CloudSaaS; CloudSaaS is chosen only so step 3 can reuse the build.
       - name: Test — Inference (Swift Testing, isolated process)
         id: test-inference-swift-testing
         if: always()
@@ -332,7 +349,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --traits CloudSaaS --skip-update
 
       # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
       # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
