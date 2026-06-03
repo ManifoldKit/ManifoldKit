@@ -144,6 +144,16 @@ jobs:
       # embeds paths in module fingerprints, making restored objects invalid on miss
       # while the cache-write cost is paid on every PR. Do not re-attempt without a
       # materially different strategy (e.g., content-addressed module cache).
+      #
+      # A *surgical* deps-only variant was also spiked (2026-06) and rejected. The
+      # dependency-built products are only ~33 MB (vs ~248 MB for our own modules),
+      # and restoring just those (with build.db/debug.yaml) DOES work — SwiftPM
+      # accepts them and skips recompiling ArgumentParser/ViewInspector/etc. But it
+      # saves ~0s wall-clock: dep compilation parallelizes behind our own ~248 MB
+      # local graph (the long pole), which changes every PR and can never be cached.
+      # Measured cold vs deps-restored: 40-44s both, within noise, before counting
+      # the ~67 MB cache I/O. The real floor is local-module + test compile and test
+      # execution, neither cacheable. Don't re-spike the deps cache.
 
       - name: Verify Swift toolchain matches Package.swift tools-version
         # The runner's Xcode (pinned above) ships a specific Swift version. If
