@@ -21,19 +21,22 @@ extension ManifoldBootstrap {
     /// await bootstrap.addGenerationToolSources(viewModel: chatViewModel)
     /// ```
     ///
-    /// Both sources are only active when the bootstrap has the corresponding
-    /// service wired: ``ImageGenerationToolSource`` requires
+    /// Each source is only active when the bootstrap has the corresponding
+    /// surface wired: ``ImageGenerationToolSource`` requires
     /// ``ManifoldBootstrap/imageGenerationService`` to be non-nil;
     /// ``VideoGenerationToolSource`` requires
-    /// ``ManifoldBootstrap/videoGenerationService`` to be non-nil. Sources for
-    /// nil services are silently skipped so the call is safe to issue
+    /// ``ManifoldBootstrap/videoGenerationService`` to be non-nil;
+    /// ``WebSearchToolSource`` requires
+    /// ``ManifoldBootstrap/webSearchRuntime`` to be non-nil. Sources for
+    /// unwired surfaces are silently skipped so the call is safe to issue
     /// unconditionally regardless of which generation surfaces your app enables.
     ///
     /// This replaces the more verbose:
     /// ```swift
     /// await bootstrap.addToolSources([
     ///     ImageGenerationToolSource(viewModel: chatVM),
-    ///     VideoGenerationToolSource(viewModel: chatVM)
+    ///     VideoGenerationToolSource(viewModel: chatVM),
+    ///     WebSearchToolSource(viewModel: chatVM)
     /// ])
     /// ```
     @MainActor
@@ -44,6 +47,9 @@ extension ManifoldBootstrap {
         }
         if videoGenerationService != nil {
             sources.append(VideoGenerationToolSource(viewModel: viewModel))
+        }
+        if webSearchRuntime != nil {
+            sources.append(WebSearchToolSource(viewModel: viewModel))
         }
         guard !sources.isEmpty else { return }
         await addToolSources(sources)

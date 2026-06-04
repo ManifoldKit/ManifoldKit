@@ -440,7 +440,6 @@ let package = Package(
             dependencies: [
                 "ManifoldRuntime",
                 "ManifoldInference",
-                .target(name: "ManifoldCloudCore", condition: .when(traits: ["CloudSaaS"])),
             ],
             path: "Sources/ManifoldUI",
             swiftSettings: [

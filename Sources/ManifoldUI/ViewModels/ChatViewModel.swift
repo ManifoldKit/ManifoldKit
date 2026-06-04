@@ -683,6 +683,22 @@ public final class ChatViewModel {
     /// generations. Driven by the `VideoGenerationRuntime` event drain.
     public internal(set) var videoGenerationProgress: [UUID: VideoGenerationProgress] = [:]
 
+    // MARK: - WebSearchRuntime
+    //
+    // Optional sibling to `_imageRuntime` / `_videoRuntime` for the web-search
+    // path. Hosts that opt in to web search install one via
+    // `configure(webSearchRuntime:)` (typically through `ManifoldBootstrap`);
+    // chat-only hosts leave this nil and `searchWeb(query:)` throws
+    // `.notConfigured`. Storage lives on the main type because extensions
+    // cannot add stored properties — all behavior lives in
+    // `ChatViewModel+WebSearch.swift`. Unlike image/video there is no event
+    // drain task or progress dictionary: web search is request/response and
+    // returns its result directly to the caller.
+
+    /// Backing storage for ``webSearchRuntime``. Internal so the
+    /// `ChatViewModel+WebSearch` extension can mutate it.
+    var _webSearchRuntime: (any WebSearchRuntime)?
+
     // MARK: - Private State
 
     var lastPressureLevel: MemoryPressureLevel = .nominal

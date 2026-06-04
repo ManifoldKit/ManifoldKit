@@ -11,4 +11,5 @@ public protocol ChatRuntimeBootstrap: AnyObject {
     var diagnosticsService: DiagnosticsService { get }
     var imageGenerationRuntime: ImageGenerationRuntime? { get }
     var videoGenerationRuntime: VideoGenerationRuntime? { get }
+    var webSearchRuntimePort: (any WebSearchRuntime)? { get }
 }

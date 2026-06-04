@@ -84,7 +84,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     /// usage is approved. These do legitimate network I/O — cloud backends,
     /// the model-download manager, test infra.
     ///
-    /// **Cap: 46 entries.** Adding to this list weakens Rule 1; require
+    /// **Cap: 47 entries.** Adding to this list weakens Rule 1; require
     /// reviewer sign-off and prefer to route new network code through
     /// `URLSessionProvider` (which is itself in this allowlist).
     private static let networkIOAllowlist: Set<String> = [
@@ -152,6 +152,15 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // Phase 3/Claude — adapter composition for the Anthropic Claude path.
         // Same `URLRequest`-only contract as `OpenAIAdapter.swift` above.
         "ManifoldCloud/ClaudeAdapter.swift",
+        // WebSearch runtime-boundary refactor — concrete `WebSearchRuntime`
+        // that performs the OpenAI-Chat-Completions-shaped `search_web` call
+        // (POST to `<baseURL>/chat/completions` with `search_parameters`).
+        // The network I/O moved here from `ManifoldUI/Tools/WebSearchToolSource`
+        // (which is now a thin forwarder) so the cloud layer owns it; the call
+        // already routes through `URLSessionFactory.ephemeral()` (also on this
+        // list). Same network boundary as the sibling cloud backends above —
+        // the work relocated to its correct home, no new outbound surface.
+        "ManifoldCloud/WebSearch/DefaultWebSearchRuntime.swift",
 
         // I1 network seam closure (#1140) — centralised redirect-guard
         // delegate, composite delegate, and seam factory live in
@@ -331,7 +340,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 46,
+            Self.networkIOAllowlist.count, 47,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }
