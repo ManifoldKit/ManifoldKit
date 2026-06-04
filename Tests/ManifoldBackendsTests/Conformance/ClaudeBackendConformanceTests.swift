@@ -19,7 +19,7 @@ final class ClaudeBackendConformanceTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "ClaudeBackend")
     }
 
     // MARK: - Universal invariants

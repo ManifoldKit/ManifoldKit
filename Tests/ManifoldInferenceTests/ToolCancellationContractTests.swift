@@ -342,8 +342,9 @@ final class ToolCancellationContractTests: XCTestCase {
         // *after* `dispatch` returns but is not synchronous with it. Bound-wait
         // for the release rather than assuming it already happened — otherwise
         // the assertion races the deinit and flakes under `--parallel`
-        // main-actor contention. A genuine leak holds `liveHandles == 1` past
-        // the deadline and still fails the assertion.
+        // main-actor contention (including the newly-compiled CloudSaaS backends
+        // that PR #1587 added to the parallel batch). A genuine leak holds
+        // `liveHandles == 1` past the deadline and still fails the assertion.
         let releaseDeadline = Date().addingTimeInterval(2)
         while tracker.liveHandles > 0 && Date() < releaseDeadline {
             try await Task.sleep(for: .milliseconds(5))

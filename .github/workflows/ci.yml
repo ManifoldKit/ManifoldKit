@@ -144,6 +144,16 @@ jobs:
       # embeds paths in module fingerprints, making restored objects invalid on miss
       # while the cache-write cost is paid on every PR. Do not re-attempt without a
       # materially different strategy (e.g., content-addressed module cache).
+      #
+      # A *surgical* deps-only variant was also spiked (2026-06) and rejected. The
+      # dependency-built products are only ~33 MB (vs ~248 MB for our own modules),
+      # and restoring just those (with build.db/debug.yaml) DOES work — SwiftPM
+      # accepts them and skips recompiling ArgumentParser/ViewInspector/etc. But it
+      # saves ~0s wall-clock: dep compilation parallelizes behind our own ~248 MB
+      # local graph (the long pole), which changes every PR and can never be cached.
+      # Measured cold vs deps-restored: 40-44s both, within noise, before counting
+      # the ~67 MB cache I/O. The real floor is local-module + test compile and test
+      # execution, neither cacheable. Don't re-spike the deps cache.
 
       - name: Verify Swift toolchain matches Package.swift tools-version
         # The runner's Xcode (pinned above) ships a specific Swift version. If
@@ -314,13 +324,42 @@ jobs:
       # this step + 30-min kill on the Swift Testing step below) with zero
       # diagnostic signal about which test stalled. See the script header for
       # the design rationale.
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
+      #
+      # All three test invocations below pass the SAME trait set
+      # (`MCP,CloudSaaS`). `swift test --filter` always builds the whole test
+      # tree (the filter only gates execution), so a different trait set per
+      # invocation means a different conditional-compilation config and forces a
+      # full recompile each time — measured ~63s rebuilt on the Swift Testing
+      # step alone (CI log, run 26705440802). Using one superset trait set lets
+      # steps 2–3 reuse step 1's `.build` and drop to test-execution-only. The
+      # set is a superset (step 1 needs MCP, step 3 needs CloudSaaS, step 2 needs
+      # neither) — traits only ADD compiled code, so no suite's behavior changes.
+      # Keep all three in sync; diverging the traits silently reintroduces the
+      # redundant rebuilds.
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
+
+      # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
+      # above. Under --parallel, swift-test schedules XCTest classes across workers
+      # concurrently, so ClaudeBackendConformanceTests.test_z_contract_metaContract
+      # can fire before the OpenAI* backend classes have loaded and registered their
+      # claims. The shared claims registry then looks incomplete and the meta-contract
+      # check fails (see CLAUDE.md "BackendContractChecks" note). Running this suite
+      # alone in a separate serial invocation guarantees every backend class loads and
+      # registers before any meta-contract assertion executes.
+      - name: Test — ManifoldBackendsTests (serial, claims-registry safe)
+        id: test-backends
+        if: always()
+        timeout-minutes: 30
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --traits MCP,CloudSaaS --skip-update
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -332,7 +371,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --traits MCP,CloudSaaS --skip-update
 
       # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
       # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
@@ -343,13 +382,12 @@ jobs:
       # workflow (a separate macos-15 runner). Folded in here to save ~90 billed
       # macOS-minutes per push. MCPHardeningTests are already covered by the
       # ManifoldMCPTests filter above; only this test requires the CloudSaaS trait.
-      # STALL_SECONDS is 240 (not 120) because this step changes the trait set
-      # from the prior steps (CloudSaaS vs MCP/none) and `swift test` rebuilds
-      # the whole test tree on a trait change — a legitimate ~2min compile that
-      # emits no "test progress" output. At 120s the stall watchdog SIGABRT'd
-      # that compile intermittently (flaking main, not just PRs). 240s matches
-      # the other two test steps and still catches a genuine runtime hang (the
-      # PinnedSession tests themselves run in <1s once built).
+      # STALL_SECONDS is 240 (not 120) for headroom: even with the same trait set
+      # as step 1, build-cache reuse is not guaranteed on every CI runner (cache
+      # restore may vary), so a legitimately cold build can take ~2min before the
+      # first test-progress line appears. 240s matches the other two steps and still
+      # catches a genuine runtime hang (the PinnedSession tests themselves run in <1s
+      # once built). At 120s the watchdog SIGABRT'd a cold build intermittently.
       - name: Test — PinnedSessionDelegate (CloudSaaS)
         if: always()
         id: test-pinned-session-delegate
@@ -357,7 +395,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits CloudSaaS --skip-update --min-passed 1
+        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --min-passed 1
 
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
@@ -366,6 +404,7 @@ jobs:
         if: failure()
         env:
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
+          BACKENDS_FAILED: ${{ steps.test-backends.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
           PINNED_SESSION_FAILED: ${{ steps.test-pinned-session-delegate.outcome == 'failure' }}
         run: |
@@ -375,6 +414,7 @@ jobs:
             echo "run-attempt=${{ github.run_attempt }}"
             echo "job=test"
             echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
+            echo "backends-failed=${BACKENDS_FAILED}"
             echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"
             echo "pinned-session-failed=${PINNED_SESSION_FAILED}"
           } > test-diagnostics/failed-steps.txt

@@ -15,7 +15,7 @@ final class OllamaBackendConformanceTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "OllamaBackend")
     }
 
     // MARK: - Universal invariants

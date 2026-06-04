@@ -43,7 +43,7 @@ final class FoundationBackendContractTests: XCTestCase,
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "FoundationBackend")
     }
 
     // XCTest bypasses Swift @available on test classes (ObjC runtime discovery).

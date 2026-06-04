@@ -18,7 +18,7 @@ final class OpenAIBackendConformanceTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "OpenAIBackend")
     }
 
     // MARK: - Universal invariants

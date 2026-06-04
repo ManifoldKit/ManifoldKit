@@ -32,7 +32,7 @@ final class LlamaBackendContractTests: XCTestCase,
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "LlamaBackend")
     }
 
     // MARK: - Universal invariants
