@@ -15,7 +15,7 @@ import ManifoldTestSupport
 // the existing declaration in MLXBackendGenerationTests.swift.
 
 /// Unit tests verifying that `MLXBackend` correctly routes thinking events through
-/// `ThinkingParser` when `config.thinkingMarkers` is set.
+/// `ThinkingTransform` when `config.thinkingMarkers` is set.
 ///
 /// Uses `MockMLXModelContainer` so no Metal / Apple Silicon hardware is required.
 final class MLXBackendThinkingTests: XCTestCase {
@@ -59,7 +59,7 @@ final class MLXBackendThinkingTests: XCTestCase {
 
     func test_thinkingTokensEmittedSeparatelyFromVisibleTokens() async throws {
         let mock = MockMLXModelContainer()
-        // The mock yields raw token strings; MLXBackend passes them through ThinkingParser
+        // The mock yields raw token strings; MLXBackend passes them through ThinkingTransform
         // when config.thinkingMarkers is non-nil.
         mock.tokensToYield = ["<think>", "reason", "</think>", "answer"]
 
@@ -115,7 +115,7 @@ final class MLXBackendThinkingTests: XCTestCase {
             XCTFail("Expected all three event types in the stream")
         }
 
-        // Sabotage check: setting config.thinkingMarkers = nil would bypass ThinkingParser,
+        // Sabotage check: setting config.thinkingMarkers = nil would bypass ThinkingTransform,
         // causing raw "<think>" text to appear as .token events and failing the thinkingTexts check.
     }
 
@@ -171,7 +171,7 @@ final class MLXBackendThinkingTests: XCTestCase {
         let backend = MLXBackend()
         backend._inject(mock)
 
-        // config.thinkingMarkers = nil → ThinkingParser disabled
+        // config.thinkingMarkers = nil → ThinkingTransform disabled
         let stream = try backend.generate(
             prompt: "hi",
             systemPrompt: nil,
@@ -192,17 +192,17 @@ final class MLXBackendThinkingTests: XCTestCase {
             if case .token(let t) = event { return t } else { return nil }
         }
         XCTAssertTrue(rawTokens.joined().contains("<think>"),
-            "Raw <think> tag must pass through as .token when ThinkingParser is disabled")
+            "Raw <think> tag must pass through as .token when ThinkingTransform is disabled")
 
-        // Sabotage check: always running ThinkingParser regardless of config.thinkingMarkers
+        // Sabotage check: always running ThinkingTransform regardless of config.thinkingMarkers
         // would produce .thinkingToken events here and fail the thinkingEvents.isEmpty check.
     }
 
-    // MARK: - 4. Custom (non-qwen3) thinking markers route through ThinkingParser (#513)
+    // MARK: - 4. Custom (non-qwen3) thinking markers route through ThinkingTransform (#513)
 
     /// Verifies that `ThinkingMarkers.custom(open:close:)` — the extensibility hook for
     /// non-Qwen3 reasoning formats (GPT-OSS `<|channel|>`, Gemma 4 variants, etc.) —
-    /// drives the MLX ThinkingParser the same way `.qwen3` does.
+    /// drives the MLX ThinkingTransform the same way `.qwen3` does.
     ///
     /// `MLXBackendThinkingTests` only exercised the qwen3 tag pair before this fixture,
     /// so any future marker variant would have landed against untested code.
@@ -210,7 +210,7 @@ final class MLXBackendThinkingTests: XCTestCase {
         let mock = MockMLXModelContainer()
         // GPT-OSS-style channel markers (representative non-qwen3 pair).
         let markers = ThinkingMarkers.custom(open: "<|channel|>analysis", close: "<|channel|>final")
-        // Interleave enough whitespace to keep the ThinkingParser's holdback buffer
+        // Interleave enough whitespace to keep the ThinkingTransform's holdback buffer
         // small and predictable; the parser treats the open/close markers as opaque
         // substrings regardless of the surrounding whitespace.
         mock.tokensToYield = [
@@ -339,7 +339,7 @@ final class MLXBackendThinkingTests: XCTestCase {
             if case .thinkingToken(let t) = ev { return t } else { return nil }
         }
         XCTAssertTrue(thinkingTexts.joined().contains("reason"),
-            "Auto-detected markers must drive ThinkingParser when config.thinkingMarkers is nil")
+            "Auto-detected markers must drive ThinkingTransform when config.thinkingMarkers is nil")
 
         // Sabotage check: removing the `?? autoDetectedMarkers` fallback in
         // MLXBackend.generate would leave `useThinkingParser` false here and
@@ -422,7 +422,7 @@ final class MLXBackendThinkingTests: XCTestCase {
     // MARK: - 7. maxThinkingTokens == 0 disables thinking entirely (#597)
 
     /// Verifies that `GenerationConfig.maxThinkingTokens == 0` short-circuits
-    /// the `ThinkingParser` on MLX so zero `.thinkingToken` / `.thinkingComplete`
+    /// the `ThinkingTransform` on MLX so zero `.thinkingToken` / `.thinkingComplete`
     /// events are emitted, and visible output still flows.
     ///
     /// Even with `thinkingMarkers = .qwen3` (which would normally activate the
@@ -432,7 +432,7 @@ final class MLXBackendThinkingTests: XCTestCase {
     func test_maxThinkingTokens_zero_disablesThinkingEntirely_regression597() async throws {
         let mock = MockMLXModelContainer()
         // A thinking-capable stream: the mock would normally have these routed
-        // through ThinkingParser and produce `.thinkingToken` + `.thinkingComplete`.
+        // through ThinkingTransform and produce `.thinkingToken` + `.thinkingComplete`.
         mock.tokensToYield = ["<think>", "reason", "</think>", "answer"]
 
         let backend = MLXBackend()

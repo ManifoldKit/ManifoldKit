@@ -224,7 +224,7 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
     /// Resolves the active thinking-marker pair from the per-request override
     /// (`config.thinkingMarkers`), then the load-time auto-detected markers.
     /// Returns `nil` when `config.maxThinkingTokens == 0` (issue #597) or when
-    /// neither source supplied markers — both cases keep `ThinkingParser` off.
+    /// neither source supplied markers — both cases keep `ThinkingTransform` off.
     ///
     /// Lives on the driver because marker resolution is generation-time policy.
     /// `MLXBackend.resolveThinkingMarkers` forwards to this for source-compat
@@ -277,16 +277,22 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
         var outputTokenCount = 0
         var isFirstToken = true
 
+        // Build the unified output-parsing chain. Order is `[tool, thinking]`:
+        // tool tags are stripped first, then the thinking transform re-scans the
+        // remaining visible `.token` text — preserving MLX's historical
+        // two-stage order exactly.
         let useThinkingParser = markers != nil
-        // ThinkingParser must always be initialized (its initializer can't take nil).
-        // When useThinkingParser is false the parser is never invoked, so the
-        // placeholder marker pair is never observed.
-        var thinkingParser = ThinkingParser(markers: markers ?? .qwen3)
-
-        // Tool-call parser activates only when tools are configured AND the model
-        // speaks a known dialect. It's a no-op pass-through otherwise.
+        // Tool-call stage activates only when tools are configured AND the model
+        // speaks a known dialect.
         let useToolParser = !config.tools.isEmpty && dialect != .unknown
-        var toolParser = MLXToolCallParser()
+        var stages: [Stage] = []
+        if useToolParser {
+            stages.append(.tool(ToolCallTransform(markers: MLXToolMarkers.markers())))
+        }
+        if useThinkingParser {
+            stages.append(.thinking(ThinkingTransform(markers: markers ?? .qwen3)))
+        }
+        var session = OutputParserSession(stages)
 
         // A thinking model that runs away on a 16 GB Mac can OOM mid-generation;
         // the budget gate breaks out of the stream once the limit is reached.
@@ -326,35 +332,22 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
             if Task.isCancelled { break }
             guard let text = generation.chunk else { continue }
 
-            let stageOneEvents: [GenerationEvent] = useToolParser
-                ? toolParser.process(text)
-                : [.token(text)]
-
-            for event in stageOneEvents {
-                let finalEvents: [GenerationEvent]
-                if case .token(let tokenText) = event, useThinkingParser {
-                    finalEvents = thinkingParser.process(tokenText)
-                } else {
-                    finalEvents = [event]
-                }
-
-                for finalEvent in finalEvents {
-                    if isFirstToken {
-                        switch finalEvent {
-                        case .token, .thinkingToken, .toolCall:
-                            generationStream.setPhase(.streaming)
-                            isFirstToken = false
-                        default: break
-                        }
+            for finalEvent in session.ingest(text) {
+                if isFirstToken {
+                    switch finalEvent {
+                    case .token, .thinkingToken, .toolCall:
+                        generationStream.setPhase(.streaming)
+                        isFirstToken = false
+                    default: break
                     }
-                    if case .token = finalEvent { outputTokenCount += 1 }
-                    continuation.yield(finalEvent)
-                    if case .thinkingToken = finalEvent {
-                        thinkingTokenCount += 1
-                        if let limit = config.maxThinkingTokens, thinkingTokenCount >= limit {
-                            thinkingLimitReached = true
-                            break
-                        }
+                }
+                if case .token = finalEvent { outputTokenCount += 1 }
+                continuation.yield(finalEvent)
+                if case .thinkingToken = finalEvent {
+                    thinkingTokenCount += 1
+                    if let limit = config.maxThinkingTokens, thinkingTokenCount >= limit {
+                        thinkingLimitReached = true
+                        break
                     }
                 }
             }
@@ -375,20 +368,11 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
             }
         }
 
-        // Flush both parsers' tail buffers. Tool-parser output flows through
-        // the thinking parser to preserve the streaming-loop's two-stage pipeline.
-        if useToolParser {
-            for event in toolParser.finalize() {
-                if case .token(let tokenText) = event, useThinkingParser {
-                    for finalEvent in thinkingParser.process(tokenText) {
-                        continuation.yield(finalEvent)
-                    }
-                } else {
-                    continuation.yield(event)
-                }
-            }
-        }
-        for event in thinkingParser.finalize() {
+        // Flush the chain's tail buffers. The session cascades each stage's
+        // finalize output through the stages downstream of it, so any text the
+        // tool stage releases is still scanned by the thinking stage — matching
+        // the previous two-stage finalize pipeline.
+        for event in session.finalize() {
             continuation.yield(event)
         }
 

@@ -1,10 +1,16 @@
-/// Stateful, chunk-safe parser that separates reasoning from visible text.
+/// Stream transform that separates reasoning from visible text.
 ///
-/// Emits `[GenerationEvent]` from each chunk rather than a plain `String`,
-/// allowing callers to route thinking content separately from visible content.
-/// Parameterized by `ThinkingMarkers` so the same logic handles both
-/// `<think>`/`</think>` (Qwen3, DeepSeek-R1) and custom model formats.
-public struct ThinkingParser {
+/// Drop-in replacement for the former `ThinkingParser`. Watches a single
+/// open/close marker pair (`ThinkingMarkers`) and re-routes text inside a
+/// thinking block to `.thinkingToken`, firing `.thinkingComplete` exactly on
+/// the depth 1→0 transition. Partial markers straddling a chunk boundary are
+/// held back via the shared ``overlap(_:_:)`` primitive.
+///
+/// As a ``StreamTransform`` it re-scans only `.token` payloads; `.thinkingToken`,
+/// `.thinkingComplete`, `.toolCall`, and every other event case pass through
+/// untouched. Behavior on a single `.token` chunk is byte-identical to the
+/// original `ThinkingParser.process`.
+public struct ThinkingTransform: StreamTransform {
     public let markers: ThinkingMarkers
     private var depth = 0
     private var buffer = ""
@@ -13,9 +19,20 @@ public struct ThinkingParser {
         self.markers = markers
     }
 
-    /// Process a chunk of streamed text. Returns a mix of `.token`,
-    /// `.thinkingToken`, and `.thinkingComplete` events.
-    public mutating func process(_ chunk: String) -> [GenerationEvent] {
+    public mutating func process(_ events: [GenerationEvent]) -> [GenerationEvent] {
+        var out: [GenerationEvent] = []
+        for event in events {
+            if case .token(let text) = event {
+                out += scan(text)
+            } else {
+                out.append(event)
+            }
+        }
+        return out
+    }
+
+    /// Single-chunk scan — preserves the exact `ThinkingParser.process` logic.
+    private mutating func scan(_ chunk: String) -> [GenerationEvent] {
         buffer += chunk
         var events: [GenerationEvent] = []
 
@@ -23,17 +40,17 @@ public struct ThinkingParser {
             let tag = depth > 0 ? markers.close : markers.open
 
             if let range = buffer.range(of: tag) {
-                // Emit everything before the tag as the current mode's event type
+                // Emit everything before the tag as the current mode's event type.
                 let before = String(buffer[..<range.lowerBound])
                 if !before.isEmpty {
                     events.append(depth > 0 ? .thinkingToken(before) : .token(before))
                 }
 
-                // Transition state
+                // Transition state.
                 if depth > 0 {
                     depth -= 1
                     if depth == 0 {
-                        // Only fire thinkingComplete on 1→0 transition (not for nested close tags)
+                        // Only fire thinkingComplete on 1→0 transition (not nested closes).
                         events.append(.thinkingComplete)
                     }
                 } else {
@@ -47,17 +64,9 @@ public struct ThinkingParser {
         }
 
         // Hold back only the longest suffix of the buffer that could be a
-        // non-empty prefix of the next marker, preventing premature emission of
-        // partial tags while flushing everything else immediately.
+        // non-empty prefix of the next marker, flushing everything else.
         let nextMarker = depth > 0 ? markers.close : markers.open
-        let maxCheck = min(buffer.count, nextMarker.count - 1)
-        var holdLength = 0
-        for length in stride(from: maxCheck, through: 1, by: -1) {
-            if nextMarker.hasPrefix(String(buffer.suffix(length))) {
-                holdLength = length
-                break
-            }
-        }
+        let holdLength = overlap(buffer, nextMarker)
         if buffer.count > holdLength {
             let confirmed = String(buffer.prefix(buffer.count - holdLength))
             buffer = holdLength > 0 ? String(buffer.suffix(holdLength)) : ""
@@ -69,7 +78,7 @@ public struct ThinkingParser {
         return events
     }
 
-    /// Flush the held-back buffer at stream end. Call once after the generation loop ends.
+    /// Flush the held-back buffer at stream end.
     /// Returns `.thinkingToken` if inside an unclosed block, `.token` otherwise.
     public mutating func finalize() -> [GenerationEvent] {
         guard !buffer.isEmpty else { return [] }
@@ -78,4 +87,3 @@ public struct ThinkingParser {
         return [depth > 0 ? .thinkingToken(remaining) : .token(remaining)]
     }
 }
-

@@ -158,7 +158,7 @@ public protocol SSEPayloadHandler: Sendable {
     /// thinking-token events, so handlers can stay stateless.
     ///
     /// Handlers that already know they are at a reasoning-block boundary
-    /// (e.g. an inline-tag parser using `ThinkingParser`) may emit
+    /// (e.g. an inline-tag parser using `ThinkingTransform`) may emit
     /// ``GenerationEvent/thinkingComplete`` themselves; the base loop's
     /// flag tracking is idempotent and will not duplicate the event.
     ///

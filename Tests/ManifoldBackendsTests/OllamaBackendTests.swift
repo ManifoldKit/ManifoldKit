@@ -1520,7 +1520,7 @@ struct OllamaBackendTests {
     /// into `message.content` as a `<think>…</think>` block. When no
     /// dedicated thinking field is ever seen on the stream and content
     /// contains `<think>`, the backend must route content through
-    /// `ThinkingParser` so callers still receive the usual thinkingToken /
+    /// `ThinkingTransform` so callers still receive the usual thinkingToken /
     /// thinkingComplete / token event shape instead of raw tags baked into
     /// visible output.
     @Test func streaming_thinkingInContentFallback_emitsThinkingEvents() async throws {

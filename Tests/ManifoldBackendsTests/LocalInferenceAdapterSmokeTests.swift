@@ -14,7 +14,7 @@ import ManifoldInference
 ///   2. Composes a `LocalToolCallShape` whose `shapeName` matches the
 ///      inline-XML witness shipped today.
 ///   3. Reports a `thinkingMarkerStrategy` consistent with how the driver
-///      actually engages `ThinkingParser`.
+///      actually engages `ThinkingTransform`.
 ///   4. Publishes a `declaredCapabilities` payload that is internally
 ///      coherent (e.g. `cancellationStyle == .cooperative` and
 ///      `isRemote == false`).

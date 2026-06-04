@@ -670,7 +670,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                     continuation.yield(event)
                 case .thinkingComplete:
                     // Handler emitted the boundary itself (e.g. an inline-
-                    // tag backend using `ThinkingParser`). Clear the flag
+                    // tag backend using `ThinkingTransform`). Clear the flag
                     // so we don't double-emit on the next `.token`.
                     wasThinking = false
                     continuation.yield(event)

@@ -28,7 +28,7 @@ public struct ThinkingMarkers: Sendable, Equatable, Codable {
     /// Gemma 4 thinking fine-tunes, which wrap chain-of-thought in a dedicated
     /// `<|turn>think\n` turn that closes with the standard `<|end_of_turn>` delimiter.
     ///
-    /// The close marker collides with normal turn separators, but `ThinkingParser` is
+    /// The close marker collides with normal turn separators, but `ThinkingTransform` is
     /// only active when thinking mode is enabled — and a thinking block always appears
     /// at the start of the model turn before any visible content — so the parser
     /// correctly transitions to visible-text mode after the first `<|end_of_turn>`.

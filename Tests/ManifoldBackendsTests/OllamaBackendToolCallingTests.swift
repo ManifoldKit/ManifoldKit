@@ -232,7 +232,7 @@ final class OllamaBackendToolCallingTests: XCTestCase {
         XCTAssertEqual(s, d, "start.callId must match delta.callId for the same entry")
         XCTAssertEqual(d, t, "delta.callId must match toolCall.id for the same entry")
         // The convention used by the backend is the `ollama-<name>-` prefix
-        // (matches MLXToolCallParser). Stricter than required by contract,
+        // (matches the MLX tool markers). Stricter than required by contract,
         // but pinning prevents accidental id-scheme drift.
         XCTAssertTrue(s.hasPrefix("ollama-no_id_call-"), "synth id should follow ollama-<name>-<token> convention; got \(s)")
     }

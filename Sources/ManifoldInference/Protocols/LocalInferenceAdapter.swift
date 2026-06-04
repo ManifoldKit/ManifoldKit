@@ -14,7 +14,7 @@ import Foundation
 /// - The tool-call wire shape (inline XML markers in both current families,
 ///   but pinned as a witness so a future C-API backend with a structured
 ///   tool-call channel slots in without copy-paste).
-/// - The thinking-marker strategy (whether the driver runs `ThinkingParser`
+/// - The thinking-marker strategy (whether the driver runs `ThinkingTransform`
 ///   eagerly, off-by-default, or never).
 /// - The static `BackendCapabilities` payload its owning backend declares —
 ///   pulled onto the adapter so `LocalBackendRealDriverCoverageTest` can
@@ -100,13 +100,13 @@ public struct InlineXMLToolCallMarkers: LocalToolCallShape {
 
 /// How a local driver emits thinking-token events.
 public enum LocalThinkingMarkerStrategy: Sendable, Equatable {
-    /// The driver runs `ThinkingParser` eagerly whenever markers are
+    /// The driver runs `ThinkingTransform` eagerly whenever markers are
     /// provided (either by caller override or load-time auto-detection)
     /// and `GenerationConfig.maxThinkingTokens != 0`. Both shipping
     /// drivers use this strategy.
     case eagerWhenMarkersPresent
 
-    /// The driver never engages `ThinkingParser` — every decoded chunk
+    /// The driver never engages `ThinkingTransform` — every decoded chunk
     /// surfaces as `.token`. Reserved for future native-bridge backends
     /// (e.g. Apple Foundation Models) where the host SDK already exposes
     /// reasoning blocks as typed events.

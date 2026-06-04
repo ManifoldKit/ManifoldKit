@@ -4,7 +4,24 @@ import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldLlama
 
-/// Unit tests for ``LlamaToolCallParser``.
+/// Test shim driving the unified `ToolCallTransform` (configured with
+/// `LlamaToolMarkers.markers()`) through the old `LlamaToolCallParser`-shaped
+/// API, so this suite keeps regression-testing the unified transform after the
+/// parser unification (#1593).
+private struct LlamaToolCallParser {
+    private var transform = ToolCallTransform(markers: LlamaToolMarkers.markers())
+
+    mutating func process(_ chunk: String) -> [GenerationEvent] {
+        transform.process([.token(chunk)])
+    }
+
+    mutating func finalize() -> [GenerationEvent] {
+        transform.finalize()
+    }
+}
+
+/// Unit tests for the unified tool-call transform under Llama markers
+/// (formerly `LlamaToolCallParser`).
 ///
 /// These tests exercise the parser logic only — no GGUF model is loaded and
 /// no hardware-specific symbols are invoked. They run under

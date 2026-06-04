@@ -446,7 +446,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
             let driver = LlamaGenerationDriver()
             // Manual override beats auto-detection. When neither is present,
-            // markers stays nil and the driver skips ThinkingParser entirely.
+            // markers stays nil and the driver skips ThinkingTransform entirely.
             let autoDetected = self.withStateLock { self._autoDetectedThinkingMarkers }
             let resolvedMarkers = config.thinkingMarkers ?? autoDetected
             let kvCoherent = await driver.run(
