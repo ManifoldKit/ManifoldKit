@@ -365,13 +365,12 @@ jobs:
       # workflow (a separate macos-15 runner). Folded in here to save ~90 billed
       # macOS-minutes per push. MCPHardeningTests are already covered by the
       # ManifoldMCPTests filter above; only this test requires the CloudSaaS trait.
-      # STALL_SECONDS is 240 (not 120) because this step changes the trait set
-      # from the prior steps (CloudSaaS vs MCP/none) and `swift test` rebuilds
-      # the whole test tree on a trait change — a legitimate ~2min compile that
-      # emits no "test progress" output. At 120s the stall watchdog SIGABRT'd
-      # that compile intermittently (flaking main, not just PRs). 240s matches
-      # the other two test steps and still catches a genuine runtime hang (the
-      # PinnedSession tests themselves run in <1s once built).
+      # STALL_SECONDS is 240 (not 120) for headroom: even with the same trait set
+      # as step 1, build-cache reuse is not guaranteed on every CI runner (cache
+      # restore may vary), so a legitimately cold build can take ~2min before the
+      # first test-progress line appears. 240s matches the other two steps and still
+      # catches a genuine runtime hang (the PinnedSession tests themselves run in <1s
+      # once built). At 120s the watchdog SIGABRT'd a cold build intermittently.
       - name: Test — PinnedSessionDelegate (CloudSaaS)
         if: always()
         id: test-pinned-session-delegate

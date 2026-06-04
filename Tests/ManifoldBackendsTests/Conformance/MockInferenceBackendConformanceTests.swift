@@ -34,10 +34,12 @@ final class MockInferenceBackendConformanceTests: XCTestCase,
 
     override func setUp() {
         super.setUp()
-        // Critical: clear the registry between tests. Per-capability claims
-        // recorded by an earlier test must not bleed into the current one
-        // (and confuse the meta-contract).
-        BackendContractChecks.resetCapabilityClaims()
+        // Critical: clear this backend's registry entries between tests so that
+        // per-capability claims recorded by an earlier test don't bleed into the
+        // current one and confuse the meta-contract. Scoped to "MockInferenceBackend"
+        // so concurrent backend classes under --parallel don't erase each other's
+        // in-flight claims.
+        BackendContractChecks.resetCapabilityClaims(forBackend: "MockInferenceBackend")
     }
 
     // MARK: - Universal invariants

@@ -28,7 +28,7 @@ final class MLXBackendConformanceTests: XCTestCase,
 
     override class func setUp() {
         super.setUp()
-        BackendContractChecks.resetCapabilityClaims()
+        BackendContractChecks.resetCapabilityClaims(forBackend: "MLXBackend")
     }
 
     // MARK: - Universal invariants

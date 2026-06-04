@@ -35,7 +35,7 @@ import ManifoldTestSupport
 /// ## Adding a new backend
 ///
 /// 1. Subclass `XCTestCase` under `Tests/ManifoldBackendsTests/Conformance/`.
-/// 2. Override `setUp` to call `BackendContractChecks.resetCapabilityClaims()`.
+/// 2. Override `class setUp` to call `BackendContractChecks.resetCapabilityClaims(forBackend: "YourBackend")`.
 /// 3. Add `test_contract_allInvariants()` calling the universal harness.
 /// 4. Add `test_contract_grammarFailClosed()` calling the false-claim family.
 /// 5. Add `test_contract_metaContract()` calling
@@ -103,12 +103,19 @@ enum BackendContractChecks {
         claims.insert("\(backendName)::\(capabilityFlag)")
     }
 
-    /// Clears all recorded claims. Call from `setUp()` so the registry doesn't
-    /// accumulate stale state across tests in the same process.
-    static func resetCapabilityClaims() {
+    /// Clears recorded claims for a specific backend. Call from `class setUp()`
+    /// so that a conformance test class starts each run with a clean slate for
+    /// its own backend without clobbering another class's claims when suites
+    /// run under `--parallel`.
+    ///
+    /// This is intentionally backend-scoped rather than a full `removeAll()`:
+    /// a global clear races with concurrently-running conformance classes whose
+    /// `class setUp()` fires while siblings are mid-test, wiping their in-flight
+    /// claims before `test_z_contract_metaContract` can read them.
+    static func resetCapabilityClaims(forBackend backendName: String) {
         claimsLock.lock()
         defer { claimsLock.unlock() }
-        claims.removeAll()
+        claims = claims.filter { !$0.hasPrefix("\(backendName)::") }
     }
 
     /// Snapshot of the current claim set, taken under lock for stability under

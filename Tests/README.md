@@ -145,9 +145,9 @@ Reference adopters live alongside their target:
            YourBackend()
        }
 
-       override func setUp() {
+       override class func setUp() {
            super.setUp()
-           BackendContractChecks.resetCapabilityClaims()
+           BackendContractChecks.resetCapabilityClaims(forBackend: "YourBackend")
        }
 
        func test_universalInvariants_allPass() {
