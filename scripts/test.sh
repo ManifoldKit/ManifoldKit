@@ -220,6 +220,7 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldTestSupportTests
     ManifoldAppIntentsTests
     ManifoldServerTests
+    ManifoldTurnLoopCharacterizationTests
 )
 # Local-profile filters extend the CI list with the suites PR #1382 proved
 # we need to hit when traits are on (KV cache reuse race, etc.).

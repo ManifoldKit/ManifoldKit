@@ -1,0 +1,2 @@
+0  id:<uuid:1> role:user content:"Edited text"
+1  id:<uuid:4> role:assistant content:"Edited reply"

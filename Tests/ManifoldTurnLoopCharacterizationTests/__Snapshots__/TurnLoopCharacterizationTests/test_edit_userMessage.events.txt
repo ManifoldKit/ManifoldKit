@@ -1,0 +1,17 @@
+0  messageInserted  id:<uuid:1> role:user content:"Original text"
+1  beforeContextAssembly  session:<uuid:2> prompt:"Original text" msgCount:1
+2  contextAssembled  slots:0
+3  streamStarted  id:<uuid:3>
+4  tokenEmitted  id:<uuid:3> delta:"Hello world"
+5  messageInserted  id:<uuid:3> role:assistant content:"Hello world"
+6  streamFinished  id:<uuid:3> reason:stop
+7  afterGeneration  id:<uuid:3> finalText:"Hello world"
+8  messageUpdated  id:<uuid:1> role:user content:"Edited text"
+9  messageRemoved  id:<uuid:3>
+10  beforeContextAssembly  session:<uuid:2> prompt:nil msgCount:1
+11  contextAssembled  slots:0
+12  streamStarted  id:<uuid:4>
+13  tokenEmitted  id:<uuid:4> delta:"Edited reply"
+14  messageInserted  id:<uuid:4> role:assistant content:"Edited reply"
+15  streamFinished  id:<uuid:4> reason:stop
+16  afterGeneration  id:<uuid:4> finalText:"Edited reply"
