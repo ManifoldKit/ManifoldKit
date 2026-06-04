@@ -336,13 +336,30 @@ jobs:
       # neither) — traits only ADD compiled code, so no suite's behavior changes.
       # Keep all three in sync; diverging the traits silently reintroduces the
       # redundant rebuilds.
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + Backends + TestSupport + AppIntents + Inference, parallel)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldBackendsTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
+
+      # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
+      # above. Under --parallel, swift-test schedules XCTest classes across workers
+      # concurrently, so ClaudeBackendConformanceTests.test_z_contract_metaContract
+      # can fire before the OpenAI* backend classes have loaded and registered their
+      # claims. The shared claims registry then looks incomplete and the meta-contract
+      # check fails (see CLAUDE.md "BackendContractChecks" note). Running this suite
+      # alone in a separate serial invocation guarantees every backend class loads and
+      # registers before any meta-contract assertion executes.
+      - name: Test — ManifoldBackendsTests (serial, claims-registry safe)
+        id: test-backends
+        if: always()
+        timeout-minutes: 30
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
+          STALL_SECONDS: "240"
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --traits MCP,CloudSaaS --skip-update
 
       # `if: always()` so a failing XCTest step still surfaces Swift Testing
       # failures in the same run — otherwise breakage in both harnesses costs
@@ -387,6 +404,7 @@ jobs:
         if: failure()
         env:
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
+          BACKENDS_FAILED: ${{ steps.test-backends.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
           PINNED_SESSION_FAILED: ${{ steps.test-pinned-session-delegate.outcome == 'failure' }}
         run: |
@@ -396,6 +414,7 @@ jobs:
             echo "run-attempt=${{ github.run_attempt }}"
             echo "job=test"
             echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
+            echo "backends-failed=${BACKENDS_FAILED}"
             echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"
             echo "pinned-session-failed=${PINNED_SESSION_FAILED}"
           } > test-diagnostics/failed-steps.txt
