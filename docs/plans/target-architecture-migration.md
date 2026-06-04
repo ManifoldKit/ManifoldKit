@@ -264,13 +264,23 @@ Delete the `@_exported import` facades after the ≥2-minor deprecation window.
 ## Sequencing summary (recommended order)
 1. **P0** (P0a decision, P0b bug, **P0c characterization harness**) — now, WWDC-independent.
 2. **P6** usability — pull forward (high adopter value, WWDC-independent).
-3. **P1** thin kernel — now, WWDC-independent; de-risks everything downstream.
-4. **— WWDC keynote 2026-06-08: re-confirm the rest —**
-5. **P2** engine carve — gated on P0a + P0c; persona review.
-6. **P3** driver + resumable Run model — rides P2.
-7. **P4** modality generify — parallel to P2/P3.
-8. **P5** trait→product — after satellites are products.
-9. **P7** retire shims — final breaking release, after the deprecation window.
+3. **Unify streaming filtering ([#1593](https://github.com/roryford/ManifoldKit/issues/1593))**
+   — after P0c, **before** the P1 moves; WWDC-independent. **Unify-then-decouple:** collapse
+   the four duplicated chunk-boundary prefix-hold parsers (`ThinkingBlockFilter`,
+   `ThinkingBlockManager`, the MLX/Llama tool-call parsers) into **one shared chunk-safe
+   parser placed in the Contract**, proven behaviour-preserving by the P0c goldens. Doing this
+   first means the P1/P2 moves relocate call sites onto *one shared parser* instead of
+   scattering four divergent copies across three tiers and re-unifying across the new
+   boundaries afterward (the re-coupling trap). Gated behind P0c because chunk-boundary
+   handling is correctness-sensitive. Also tees up the [#1595](https://github.com/roryford/ManifoldKit/issues/1595)
+   single-site fix (grammar-during-thinking).
+4. **P1** thin kernel — now, WWDC-independent; de-risks everything downstream.
+5. **— WWDC keynote 2026-06-08: re-confirm the rest —**
+6. **P2** engine carve — gated on P0a + P0c; persona review.
+7. **P3** driver + resumable Run model — rides P2.
+8. **P4** modality generify — parallel to P2/P3.
+9. **P5** trait→product — after satellites are products.
+10. **P7** retire shims — final breaking release, after the deprecation window.
 - *Deferred (not scheduled): multi-agent / plan-execute drivers — built only on adopter demand,
   as EDGE conformers on the P3 seam.*
 
