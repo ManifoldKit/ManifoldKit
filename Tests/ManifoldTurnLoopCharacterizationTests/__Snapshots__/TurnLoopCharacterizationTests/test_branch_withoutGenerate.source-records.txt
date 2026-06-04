@@ -1,0 +1,2 @@
+0  id:<uuid:1> role:user content:"Branch source"
+1  id:<uuid:3> role:assistant content:"Hello world"

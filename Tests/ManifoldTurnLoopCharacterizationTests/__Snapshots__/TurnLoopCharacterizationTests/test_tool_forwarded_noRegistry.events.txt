@@ -1,0 +1,8 @@
+0  messageInserted  id:<uuid:1> role:user content:"Forward a tool call"
+1  beforeContextAssembly  session:<uuid:2> prompt:"Forward a tool call" msgCount:1
+2  contextAssembled  slots:0
+3  streamStarted  id:<uuid:3>
+4  toolCallRequested  callId:tool-fwd-1 tool:search
+5  messageInserted  id:<uuid:3> role:assistant content:(empty)
+6  streamFinished  id:<uuid:3> reason:stop
+7  afterGeneration  id:<uuid:3> finalText:""

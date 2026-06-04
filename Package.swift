@@ -836,6 +836,25 @@ let package = Package(
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
+        // Turn-loop golden-transcript harness — gates the P2 engine carve.
+        // Snapshots the ConversationEvent stream + persisted records for every
+        // ConversationRuntime verb (send/regenerate/edit/cancel/branch) plus
+        // tool round-trip and tool-forwarded-no-registry cases. Runs in CI
+        // (both the XCTest and local profiles) so any turn-loop behaviour
+        // change surfaces as a snapshot diff before it lands. Will relocate
+        // into ManifoldEngineTests when P2 creates that target; golden files
+        // travel with the test.
+        .testTarget(
+            name: "ManifoldTurnLoopCharacterizationTests",
+            dependencies: [
+                "ManifoldRuntime",
+                "ManifoldInference",
+                "ManifoldPersistenceSwiftData",
+                "ManifoldTestSupport",
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+            ],
+            exclude: ["__Snapshots__"]
+        ),
         // Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic.
         // Trait-free so it never pulls MLX/Llama transitively — backend selection
         // happens in `ManifoldFuzzBackends` (importable real-backend factories),

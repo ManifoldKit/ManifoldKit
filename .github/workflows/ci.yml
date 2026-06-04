@@ -336,13 +336,13 @@ jobs:
       # neither) — traits only ADD compiled code, so no suite's behavior changes.
       # Keep all three in sync; diverging the traits silently reintroduces the
       # redundant rebuilds.
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference, parallel)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference + TurnLoopCharacterization, parallel)
         id: test-xctest-suites
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldInferenceTests --filter ManifoldTurnLoopCharacterizationTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --parallel
 
       # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
       # above. Under --parallel, swift-test schedules XCTest classes across workers

@@ -1,0 +1,8 @@
+0  messageInserted  id:<uuid:1> role:user content:"Hello"
+1  beforeContextAssembly  session:<uuid:2> prompt:"Hello" msgCount:1
+2  contextAssembled  slots:0
+3  streamStarted  id:<uuid:3>
+4  tokenEmitted  id:<uuid:3> delta:"Hello world"
+5  messageInserted  id:<uuid:3> role:assistant content:"Hello world"
+6  streamFinished  id:<uuid:3> reason:stop
+7  afterGeneration  id:<uuid:3> finalText:"Hello world"
