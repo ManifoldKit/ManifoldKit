@@ -12,11 +12,28 @@ public struct DownloadableModelRow: View {
 
     public let model: DownloadableModel
 
+    /// When `true`, render the device-aware speed badge and (if `rationale` is set)
+    /// the one-line "why". The browser passes `true` for search-result variants and
+    /// the recommended pick; it stays `false` for contexts (e.g. the curated
+    /// "Recommended for Your Device" section) that already convey fit some other way.
+    private let showFitGuidance: Bool
+
+    /// Pre-computed one-line justification shown under the row when non-`nil`.
+    /// Surfaced only on the top-ranked / recommended variant to avoid repeating it
+    /// on every row. Honest by construction — see `ModelFitScore.rationale`.
+    private let rationale: String?
+
     @Environment(ModelManagementViewModel.self) private var viewModel
     @Environment(FrameworkCapabilityService.self) private var capabilityService: FrameworkCapabilityService?
 
-    public init(model: DownloadableModel) {
+    public init(
+        model: DownloadableModel,
+        showFitGuidance: Bool = false,
+        rationale: String? = nil
+    ) {
         self.model = model
+        self.showFitGuidance = showFitGuidance
+        self.rationale = rationale
     }
 
     /// Resolves backend compatibility from the injected `FrameworkCapabilityService`
@@ -62,6 +79,8 @@ public struct DownloadableModelRow: View {
                             .foregroundStyle(.blue)
                             .accessibilityLabel("Curated model")
                     }
+
+                    speedBadge
                 }
 
                 Text(model.fileName)
@@ -98,6 +117,17 @@ public struct DownloadableModelRow: View {
                         .foregroundStyle(.secondary)
                         .accessibilityLabel("Unverified source — no SHA-256 hash available")
                 }
+
+                // One-line honest "why" on the recommended/top variant only. Built from
+                // qualitative buckets, never raw tok/s — see ModelFitScore.rationale.
+                if let rationale {
+                    Text(rationale)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.top, 1)
+                        .accessibilityLabel("Why: \(rationale)")
+                }
             }
 
             Spacer()
@@ -105,6 +135,36 @@ public struct DownloadableModelRow: View {
             trailingContent
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Speed Badge
+
+    /// Qualitative speed badge (Fast / Usable / Sluggish / Too slow) for the device.
+    ///
+    /// Shown only when `showFitGuidance` is set and the model has a usable size. We
+    /// present the `SpeedClass` *word*, never a raw tok/s decimal — the underlying
+    /// figure is a coarse estimate, and a bare number reads as a measured fact.
+    @ViewBuilder
+    private var speedBadge: some View {
+        if showFitGuidance, model.sizeBytes > 0, let score = viewModel.fitScore(for: model) {
+            let speed = score.speedClass
+            Text(speed.label)
+                .font(.caption2)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(speedTint(speed).opacity(0.15), in: Capsule())
+                .foregroundStyle(speedTint(speed))
+                .accessibilityLabel("Estimated speed: \(speed.label). Approximate guidance, not a guarantee.")
+        }
+    }
+
+    private func speedTint(_ speed: SpeedClass) -> Color {
+        switch speed {
+        case .fast:     return .green
+        case .usable:   return .blue
+        case .sluggish: return .orange
+        case .tooSlow:  return .red
+        }
     }
 
     // MARK: - Compatibility Badge

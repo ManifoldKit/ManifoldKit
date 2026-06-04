@@ -54,6 +54,13 @@ final class SandboxExecNetDenyTests: XCTestCase {
 
     /// `sandbox-exec` ships with macOS; gate Linux and any host where the
     /// binary is missing (e.g., a sandboxed CI runner that filtered it out).
+    ///
+    /// Also skipped by default: `test_networkFrameworkConnection` spawns the Swift
+    /// compiler as a subprocess (cold-start ≈ 30–120 s) and calls
+    /// `Process.waitUntilExit`, which blocks a cooperative thread-pool thread
+    /// for the full duration — exceeding the 242 s CI watchdog (see #1582).
+    /// Run these locally by setting `MANIFOLD_TEST_SANDBOX_EXEC=1`; they cover
+    /// OS-level sandbox wiring, not logic that changes per commit.
     private func skipIfSandboxExecUnavailable() throws {
         // These tests cover OS-level sandbox wiring that doesn't change per commit.
         // They spawn subprocesses (including /usr/bin/swift with a cold-start cost of
