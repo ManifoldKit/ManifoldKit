@@ -68,6 +68,31 @@ private final class CapturingEmbeddingBackend: EmbeddingBackend, @unchecked Send
     func unloadModel() { isModelLoaded = false }
 }
 
+/// Always returns an empty array — exercises the guard-let crash fix (#1622 item 2).
+private final class EmptyEmbeddingBackend: EmbeddingBackend, @unchecked Sendable {
+    var isModelLoaded: Bool = true
+    var dimensions: Int = 4
+    func loadModel(from url: URL) async throws { isModelLoaded = true }
+    func embed(_ texts: [String]) async throws -> [[Float]] { return [] }
+    func unloadModel() { isModelLoaded = false }
+}
+
+/// Throws on `insertDocument` — exercises the vector-rollback path (#1622 item 5).
+@MainActor
+private final class ThrowingDocumentStore: DocumentStore {
+    struct StoreError: Error {}
+    var insertedRecords: [DocumentRecord] = []
+    var deletedIDs: [UUID] = []
+
+    func insertDocument(_ record: DocumentRecord) throws { throw StoreError() }
+    func fetchDocuments() throws -> [DocumentRecord] { insertedRecords }
+    func fetchDocument(id: UUID) throws -> DocumentRecord? { nil }
+    func deleteDocument(id: UUID) throws {
+        insertedRecords.removeAll { $0.id == id }
+        deletedIDs.append(id)
+    }
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -314,6 +339,56 @@ final class RAGServiceTests: XCTestCase {
         }
         XCTAssertEqual(capturedTexts[0].utf8.count, maxBytes,
                        "query at exactly the limit must not be truncated")
+    }
+
+    // MARK: - Fix #1622 item 2: empty embedding guard
+
+    /// When the embedding backend returns an empty array the service must not crash;
+    /// it must fall back to keyword search instead.
+    func test_retrieve_embedReturnsEmpty_fallsBackToKeyword() async throws {
+        let vectorStore = FakeVectorStore()
+        let chunk = DocumentChunk(documentID: UUID(), text: "fallback hit", chunkIndex: 0)
+        await vectorStore.setKeywordResults([VectorSearchHit(chunk: chunk, documentTitle: "Doc", score: 1.0)])
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: EmptyEmbeddingBackend()
+        )
+
+        let slots = try await sut.retrieveSlots(query: "anything")
+        XCTAssertEqual(slots.count, 1, "Must fall back to keyword search when embed returns empty")
+        XCTAssertTrue(slots[0].content.contains("fallback hit"))
+        // Sabotage: removing the guard-let around embed().first would cause a crash
+        // (force-unwrapping nil from an empty array) instead of falling back here.
+    }
+
+    // MARK: - Fix #1622 item 5: non-atomic ingest rollback
+
+    /// When the metadata write fails after the vector chunks are already written,
+    /// the service must delete the orphaned vector entries and rethrow the error.
+    func test_ingest_documentStoreThrows_rollsBackVectors() async throws {
+        let vectorStore = FakeVectorStore()
+        let docStore = ThrowingDocumentStore()
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore)
+
+        let url = try writeTempFile(content: "Some content that will be chunked")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            try await sut.ingest(url: url)
+            XCTFail("Expected error from ThrowingDocumentStore")
+        } catch is ThrowingDocumentStore.StoreError {
+            // expected
+        }
+
+        let deleted = await vectorStore.deletedDocumentIDs
+        XCTAssertEqual(deleted.count, 1, "Vector chunks must be rolled back on metadata failure")
+        let inserted = await vectorStore.insertedChunks
+        // Inserted chunks use the same documentID that was rolled back.
+        XCTAssertEqual(deleted[0], inserted[0].documentID)
+        // Sabotage: removing the vectorStore.delete(documentID:) call from the catch block
+        // in RAGService.ingest would leave deleted.count == 0, failing this assertion.
     }
 
     func testDeleteDocumentRemovesFromBothStores() async throws {

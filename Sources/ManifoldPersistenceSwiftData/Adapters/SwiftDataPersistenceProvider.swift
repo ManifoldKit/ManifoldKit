@@ -240,9 +240,12 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
             predicate: #Predicate { $0.content.localizedStandardContains(needle) },
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
-        if terms.count == 1 {
-            descriptor.fetchLimit = limit
-        }
+        // Always cap the DB fetch to avoid loading the full history into memory on
+        // common first terms ("the", "I", …). Multi-term queries filter results
+        // in-memory after the fetch, so the cap may return fewer than `limit` hits
+        // when the first `limit` rows don't all satisfy every term — acceptable
+        // trade-off vs OOM on large message histories.
+        descriptor.fetchLimit = limit
 
         let results = try modelContext.fetch(descriptor)
         var hits: [MessageSearchHit] = []

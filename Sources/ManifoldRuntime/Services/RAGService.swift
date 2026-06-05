@@ -77,7 +77,18 @@ public actor RAGService {
             chunkCount: chunks.count,
             indexedAt: Date()
         )
-        try await documentStore.insertDocument(record)
+        do {
+            try await documentStore.insertDocument(record)
+        } catch {
+            // Compensate: if the metadata write fails, remove the already-written vector
+            // chunks so orphaned entries don't pollute search results permanently.
+            do {
+                try await vectorStore.delete(documentID: documentID)
+            } catch let rollbackError {
+                Log.inference.warning("RAGService: vector rollback failed after metadata insert failure: \(rollbackError.localizedDescription, privacy: .public)")
+            }
+            throw error
+        }
         return record
     }
 
@@ -140,7 +151,9 @@ public actor RAGService {
         let hits: [VectorSearchHit]
         if let backend = embeddingBackend, backend.isModelLoaded {
             do {
-                let queryEmbedding = try await backend.embed([cappedQuery])[0]
+                guard let queryEmbedding = try await backend.embed([cappedQuery]).first else {
+                    throw RAGError.emptyEmbeddingResult
+                }
                 hits = try await vectorStore.search(embedding: queryEmbedding, limit: limit)
             } catch {
                 Log.inference.warning("RAGService: embedding query failed, falling back to keyword search: \(error.localizedDescription)")
@@ -191,11 +204,16 @@ public actor RAGService {
 
 public enum RAGError: LocalizedError {
     case embeddingFailed(underlying: Error)
+    /// The embedding backend returned fewer results than expected (contract violation).
+    /// Retrieval falls back to keyword search.
+    case emptyEmbeddingResult
 
     public var errorDescription: String? {
         switch self {
         case .embeddingFailed(let error):
             return "Embedding failed: \(error.localizedDescription)"
+        case .emptyEmbeddingResult:
+            return "Embedding backend returned no results"
         }
     }
 }

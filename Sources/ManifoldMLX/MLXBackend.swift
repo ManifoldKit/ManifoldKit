@@ -203,6 +203,10 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         self.enableKVCacheReuse = enableKVCacheReuse
     }
 
+    deinit {
+        unloadModel()
+    }
+
     /// Forwards to `MLXGenerationDriver.resolveThinkingMarkers(...)`.
     ///
     /// The canonical implementation moved into the driver as part of Phase

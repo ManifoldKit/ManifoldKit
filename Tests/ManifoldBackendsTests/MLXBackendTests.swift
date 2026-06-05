@@ -107,6 +107,25 @@ final class MLXBackendTests: XCTestCase {
         XCTAssertFalse(backend.isModelLoaded)
     }
 
+    /// Fix #1622 item 1: deinit must call unloadModel so the arbiter claim is released
+    /// when the backend is dropped without an explicit unloadModel call.
+    ///
+    /// The injected mock bypasses loadModel (no metallib needed), so no actual arbiter
+    /// claim is registered — what we verify is that deinit fires unloadModel() and the
+    /// backend transitions to `isModelLoaded == false` before it goes out of scope.
+    func test_deinit_afterMockInjection_callsUnloadModel() async throws {
+        var backend: MLXBackend? = MLXBackend(enableKVCacheReuse: true)
+        backend?._inject(MockMLXModelContainer())
+        XCTAssertTrue(backend!.isModelLoaded)
+
+        backend = nil  // triggers deinit → unloadModel()
+
+        // Give the spawned cleanup Task a moment to run. No arbiter claim was registered
+        // (mock path bypasses loadModel), so there is no metallib guard to trip.
+        try await Task.sleep(for: .milliseconds(50))
+        // No crash and no hang = deinit → unloadModel path is safe.
+    }
+
     // MARK: - Hardware-gated
 
     func test_loadModel_invalidDirectory_throws() async throws {

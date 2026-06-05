@@ -94,7 +94,18 @@ internal actor MCPSession {
         // synchronously and cannot be async, so we spawn a detached Task to deliver
         // notifications/cancelled before the server wastes work on an abandoned call.
         return try await withTaskCancellationHandler {
-            try await withTimeout(requestTimeout) { [self] in
+            try await withTimeout(requestTimeout, onTimeout: { [self] in
+                // Remove the pending slot and resume its continuation so the operation
+                // task completes and the concurrency slot is freed. Without this the
+                // slot leaks permanently — a server that accepts but never answers the
+                // request ID would exhaust maxConcurrentRequests after enough timeouts.
+                let cancelParams: JSONSchemaValue = .object([
+                    "requestId": .string(id.description),
+                    "reason": .string("Request timeout"),
+                ])
+                await sendNotificationIgnoringErrors(method: "notifications/cancelled", params: cancelParams)
+                await timeoutPendingRequest(id: id)
+            }) { [self] in
                 try await withCheckedThrowingContinuation { continuation in
                     Task {
                         await registerPendingAndSend(
@@ -232,6 +243,12 @@ internal actor MCPSession {
         continuation.resume(throwing: error)
     }
 
+    // async bridge so @Sendable closures outside the actor can call into the isolated
+    // failPendingRequest without violating Swift 6 synchronous-actor-method rules.
+    private func timeoutPendingRequest(id: MCPRequestID) async {
+        failPendingRequest(id: id, error: MCPError.requestTimeout)
+    }
+
     private func registerPendingAndSend(
         id: MCPRequestID,
         request: MCPJSONRPCMessage,
@@ -249,6 +266,7 @@ internal actor MCPSession {
 
     private func withTimeout<T: Sendable>(
         _ timeout: Duration,
+        onTimeout: (@Sendable () async -> Void)? = nil,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
         // Use unstructured tasks so the timeout race doesn't wait for the operation
@@ -268,7 +286,7 @@ internal actor MCPSession {
                 if shouldResume { body() }
             }
 
-            Task {
+            let opTask = Task {
                 do {
                     let value = try await operation()
                     tryResume { continuation.resume(returning: value) }
@@ -281,8 +299,14 @@ internal actor MCPSession {
                 do {
                     try await Task.sleep(for: timeout)
                 } catch {
-                    return
+                    return  // sleep was cancelled — operation completed first
                 }
+                // Cancel the operation task and run the timeout callback before resuming
+                // the outer continuation. The callback is responsible for evicting the
+                // pending-request entry and resuming its inner continuation so the
+                // operation task can unblock and the concurrency slot is freed.
+                opTask.cancel()
+                if let onTimeout { await onTimeout() }
                 tryResume { continuation.resume(throwing: MCPError.requestTimeout) }
             }
         }
