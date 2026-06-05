@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldNetworking
 
 /// Tests for the shared IP-address classification logic in ``PrivateIPClassifier``.
 ///

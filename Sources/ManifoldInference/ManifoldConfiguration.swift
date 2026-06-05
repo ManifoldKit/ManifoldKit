@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldNetworking
 import os
 
 /// Global configuration for ManifoldKit. Set this once at app startup before

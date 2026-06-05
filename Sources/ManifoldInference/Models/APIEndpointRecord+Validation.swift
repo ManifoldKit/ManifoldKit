@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldNetworking
 
 extension APIEndpointRecord {
 

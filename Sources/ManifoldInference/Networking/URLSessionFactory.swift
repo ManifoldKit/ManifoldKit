@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldNetworking
 
 /// Centralised constructors for `URLSession` instances that always install
 /// ``RedirectGuardDelegate``.
