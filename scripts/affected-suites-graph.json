@@ -7,11 +7,17 @@
       "path": "Sources/ManifoldMacrosPlugin",
       "deps": []
     },
+    "ManifoldNetworking": {
+      "type": "regular",
+      "path": "Sources/ManifoldNetworking",
+      "deps": []
+    },
     "ManifoldInference": {
       "type": "regular",
       "path": "Sources/ManifoldInference",
       "deps": [
-        "ManifoldMacrosPlugin"
+        "ManifoldMacrosPlugin",
+        "ManifoldNetworking"
       ]
     },
     "ManifoldMCP": {
@@ -238,6 +244,15 @@
       "path": "Tests/ManifoldInferenceSwiftTestingTests",
       "deps": [
         "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldNetworkingTests": {
+      "type": "test",
+      "path": "Tests/ManifoldNetworkingTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldNetworking",
         "ManifoldTestSupport"
       ]
     },
