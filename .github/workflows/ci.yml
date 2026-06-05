@@ -152,7 +152,7 @@ jobs:
             elif [ "$affected" = "NONE" ]; then
               echo "Would run **no** test-job suites (change covered by sibling jobs or non-code paths)."
             else
-              n=$(printf '%s\n' $affected | wc -w | tr -d ' ')
+              n=$(printf '%s\n' "$affected" | wc -w | tr -d ' ')
               echo "Would run **${n}** affected test-job suite(s): \`${affected}\`"
             fi
             echo ""
