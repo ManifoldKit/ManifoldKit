@@ -77,7 +77,22 @@ public actor RAGService {
             chunkCount: chunks.count,
             indexedAt: Date()
         )
-        try await documentStore.insertDocument(record)
+        do {
+            try await documentStore.insertDocument(record)
+        } catch {
+            // Two-store ingest is not atomic: the vectors above are already in
+            // the flat-file index, but the SwiftData metadata row failed. The
+            // UI lists documents from `documentStore`, so without a compensating
+            // rollback the orphaned chunks would pollute search/citations
+            // forever while being invisible and undeletable. Best-effort delete
+            // the vector write, then surface the original failure.
+            do {
+                try await vectorStore.delete(documentID: documentID)
+            } catch let rollbackError {
+                Log.inference.error("RAGService: failed to roll back vector write for orphaned document \(documentID, privacy: .public): \(rollbackError.localizedDescription, privacy: .public)")
+            }
+            throw error
+        }
         return record
     }
 
@@ -140,7 +155,14 @@ public actor RAGService {
         let hits: [VectorSearchHit]
         if let backend = embeddingBackend, backend.isModelLoaded {
             do {
-                let queryEmbedding = try await backend.embed([cappedQuery])[0]
+                // `EmbeddingBackend.embed` does not guarantee output count ==
+                // input count. Subscripting `[0]` on an empty/short return is a
+                // runtime *trap* that the surrounding catch (designed to fall
+                // back to keyword search) cannot intercept — route the empty
+                // case through `throw` so it lands in the keyword fallback.
+                guard let queryEmbedding = try await backend.embed([cappedQuery]).first else {
+                    throw RAGError.embeddingFailed(underlying: InferenceError.inferenceFailure("Embedding backend returned no vectors for query"))
+                }
                 hits = try await vectorStore.search(embedding: queryEmbedding, limit: limit)
             } catch {
                 Log.inference.warning("RAGService: embedding query failed, falling back to keyword search: \(error.localizedDescription)")

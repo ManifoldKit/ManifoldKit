@@ -109,6 +109,30 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
         XCTAssertEqual(hits.count, 10, "Limit should cap result count")
     }
 
+    // #1622: the multi-term branch previously set NO fetchLimit, so a common
+    // first term loaded every matching row into RAM before the in-memory
+    // all-terms filter (OOM/stall on large histories). The store fetch is now
+    // bounded on all branches; this verifies the multi-term path still honours
+    // the caller's result limit when many rows match every term.
+    func test_searchMessages_multiTermRespectsLimit() async throws {
+        let session = ChatSessionRecord(title: "Multi Term Limit")
+        try await provider.insertSession(session)
+        for i in 0..<25 {
+            try await provider.insertMessage(ChatMessageRecord(
+                role: .user,
+                content: "dragon treasure row \(i)",
+                timestamp: Date(timeIntervalSince1970: Double(1_000 + i)),
+                sessionID: session.id
+            ))
+        }
+
+        let hits = try await provider.searchMessages(query: "dragon treasure", limit: 10)
+        XCTAssertEqual(hits.count, 10, "Multi-term search must cap results at the requested limit")
+        // Recent-first ordering must survive the bounded fetch.
+        XCTAssertTrue(hits.first?.snippet.contains("row 24") ?? false,
+                      "Most recent matching row should sort first under the bounded fetch")
+    }
+
     func test_searchMessages_snippetCentersOnMatchAndElides() async throws {
         let session = ChatSessionRecord(title: "Snippet")
         try await provider.insertSession(session)

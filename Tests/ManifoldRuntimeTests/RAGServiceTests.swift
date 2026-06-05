@@ -68,6 +68,38 @@ private final class CapturingEmbeddingBackend: EmbeddingBackend, @unchecked Send
     func unloadModel() { isModelLoaded = false }
 }
 
+/// Returns *fewer* vectors than inputs (here: none), reproducing a backend
+/// that does not guarantee output-count == input-count. Drives the
+/// `embed([...]).first else { throw }` fallback path.
+private final class EmptyResultEmbeddingBackend: EmbeddingBackend, @unchecked Sendable {
+    var isModelLoaded: Bool = true
+    var dimensions: Int = 4
+    var embedCallCount = 0
+
+    func loadModel(from url: URL) async throws { isModelLoaded = true }
+    func embed(_ texts: [String]) async throws -> [[Float]] {
+        embedCallCount += 1
+        return []  // shorter than `texts` — `[0]` would trap
+    }
+    func unloadModel() { isModelLoaded = false }
+}
+
+/// A document store whose `insertDocument` always throws, simulating a
+/// SwiftData metadata-row write failure after the vector write has landed.
+@MainActor
+private final class ThrowingDocumentStore: DocumentStore {
+    struct InsertFailure: Error {}
+    var insertCallCount = 0
+
+    func insertDocument(_ record: DocumentRecord) throws {
+        insertCallCount += 1
+        throw InsertFailure()
+    }
+    func fetchDocuments() throws -> [DocumentRecord] { [] }
+    func fetchDocument(id: UUID) throws -> DocumentRecord? { nil }
+    func deleteDocument(id: UUID) throws {}
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -314,6 +346,58 @@ final class RAGServiceTests: XCTestCase {
         }
         XCTAssertEqual(capturedTexts[0].utf8.count, maxBytes,
                        "query at exactly the limit must not be truncated")
+    }
+
+    // MARK: - #1622: embed empty result must fall back, not trap
+
+    /// When `embed` returns fewer vectors than inputs (here: empty), the old
+    /// `[0]` subscript was a runtime trap the surrounding do/catch could not
+    /// intercept. The `.first else { throw }` form must route the failure into
+    /// the keyword-search fallback instead.
+    func test_retrieve_embedReturnsEmpty_fallsBackToKeyword() async throws {
+        let vectorStore = FakeVectorStore()
+        let chunk = DocumentChunk(documentID: UUID(), text: "keyword fallback hit", chunkIndex: 0)
+        await vectorStore.setKeywordResults([VectorSearchHit(chunk: chunk, documentTitle: "Doc", score: 1.0)])
+
+        let backend = EmptyResultEmbeddingBackend()
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: backend
+        )
+
+        let result = try await sut.retrieve(query: "anything")
+
+        XCTAssertEqual(backend.embedCallCount, 1, "embed must have been attempted before falling back")
+        XCTAssertEqual(result.slots.count, 1)
+        XCTAssertTrue(result.slots[0].content.contains("keyword fallback hit"),
+                      "empty embed result must route into keyword fallback, not crash")
+    }
+
+    // MARK: - #1622: non-atomic ingest rollback
+
+    /// If the SwiftData metadata insert throws after the vectors were already
+    /// written, the orphaned chunks must be rolled back so they do not pollute
+    /// search/citations invisibly (the UI lists from `documentStore`).
+    func test_ingest_metadataInsertFails_rollsBackVectorWrite() async throws {
+        let vectorStore = FakeVectorStore()
+        let docStore = ThrowingDocumentStore()
+        let sut = RAGService(documentStore: docStore, vectorStore: vectorStore)
+
+        let url = try writeTempFile(content: "Some content to chunk and embed.")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            _ = try await sut.ingest(url: url)
+            XCTFail("ingest must rethrow the metadata-insert failure")
+        } catch is ThrowingDocumentStore.InsertFailure {
+            // expected — the original failure is surfaced
+        }
+
+        let inserted = await vectorStore.insertedChunks
+        XCTAssertFalse(inserted.isEmpty, "vectors were written before the metadata insert failed")
+        let deleted = await vectorStore.deletedDocumentIDs
+        XCTAssertEqual(deleted.count, 1, "the orphaned vector write must be rolled back exactly once")
     }
 
     func testDeleteDocumentRemovesFromBothStores() async throws {

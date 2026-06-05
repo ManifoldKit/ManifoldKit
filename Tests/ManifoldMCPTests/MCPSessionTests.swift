@@ -204,6 +204,74 @@ final class MCPSessionTests: XCTestCase {
         await session.close()
     }
 
+    // #1622: a request whose id is never answered must, on timeout, evict its
+    // pending entry (reclaiming the concurrency slot) and send
+    // notifications/cancelled. Previously the timeout resumed the outer
+    // continuation but leaked both the inner continuation and the slot, so after
+    // `maxConcurrentRequests` such events every sendRequest threw
+    // "Exceeded max concurrent" until reconnect.
+    func test_sendRequestTimeoutReleasesSlotAndNotifiesCancelled() async throws {
+        let descriptor = MCPServerDescriptor(
+            displayName: "Session Test",
+            transport: .streamableHTTP(endpoint: URL(string: "https://example.com/mcp")!, headers: [:]),
+            dataDisclosure: "test"
+        )
+
+        let codec = MCPJSONRPCCodec(maxMessageBytes: 4096, maxJSONNestingDepth: 8)
+        let transport = MockSessionTransport(codec: codec)
+        await transport.setRequestHandler { id, method, _ in
+            switch method {
+            case "initialize":
+                return .result(id: id, result: .object([
+                    "protocolVersion": .string("2025-03-26"),
+                    "serverInfo": .object(["name": .string("Demo"), "version": .string("1")]),
+                    "capabilities": .object([:]),
+                ]))
+            default:
+                // Never answer tools/list — force the timeout path.
+                return nil
+            }
+        }
+
+        let session = MCPSession(
+            descriptor: descriptor,
+            transport: transport,
+            codec: codec,
+            requestTimeout: .milliseconds(150),
+            maxConcurrentRequests: 1
+        )
+        _ = try await session.start()
+
+        do {
+            _ = try await session.sendRequest(method: "tools/list", params: nil)
+            XCTFail("Expected requestTimeout")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .requestTimeout)
+        }
+
+        // The slot must have been reclaimed. With maxConcurrentRequests == 1, a
+        // leaked slot would make this throw .transportFailure instead of timing
+        // out again.
+        do {
+            _ = try await session.sendRequest(method: "tools/list", params: nil)
+            XCTFail("Expected requestTimeout on the second request")
+        } catch let error as MCPError {
+            XCTAssertEqual(error, .requestTimeout,
+                           "Pending slot leaked: second request hit max-concurrency instead of timing out")
+        }
+
+        let sent = await transport.sentMessages()
+        XCTAssertTrue(sent.contains { message in
+            if case .notification(let method, _) = message {
+                return method == "notifications/cancelled"
+            }
+            return false
+        }, "Timeout path must send notifications/cancelled so the server stops working on the abandoned call")
+        // Sabotage: removing the failPendingRequest(id:) call in handleRequestTimeout would leak the slot, making the second request throw .transportFailure and failing the equality assertion above.
+
+        await session.close()
+    }
+
     func test_sendRequestEnforcesMaxConcurrentRequests() async throws {
         let descriptor = MCPServerDescriptor(
             displayName: "Session Test",

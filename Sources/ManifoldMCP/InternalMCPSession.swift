@@ -105,6 +105,8 @@ internal actor MCPSession {
                         )
                     }
                 }
+            } onTimeout: { [weak self] in
+                await self?.handleRequestTimeout(id: id)
             }
         } onCancel: { [weak self] in
             guard let session = self else { return }
@@ -232,6 +234,27 @@ internal actor MCPSession {
         continuation.resume(throwing: error)
     }
 
+    /// Cleanup invoked when the request timeout wins the race in ``withTimeout``.
+    ///
+    /// Without this, a server that accepts a request but never answers its id
+    /// leaks both the inner continuation and the `pendingRequests[id]`
+    /// concurrency slot permanently — after `maxConcurrentRequests` such events
+    /// every `sendRequest` throws "Exceeded max concurrent MCP requests" until
+    /// reconnect. Evict the entry (resuming the leaked continuation so the slot
+    /// is reclaimed) and tell the server to stop wasting work on the abandoned
+    /// call.
+    private func handleRequestTimeout(id: MCPRequestID) async {
+        failPendingRequest(id: id, error: MCPError.requestTimeout)
+        let cancelParams: JSONSchemaValue = .object([
+            "requestId": .string(id.description),
+            "reason": .string("Request timed out"),
+        ])
+        await sendNotificationIgnoringErrors(
+            method: "notifications/cancelled",
+            params: cancelParams
+        )
+    }
+
     private func registerPendingAndSend(
         id: MCPRequestID,
         request: MCPJSONRPCMessage,
@@ -249,7 +272,8 @@ internal actor MCPSession {
 
     private func withTimeout<T: Sendable>(
         _ timeout: Duration,
-        operation: @escaping @Sendable () async throws -> T
+        operation: @escaping @Sendable () async throws -> T,
+        onTimeout: @escaping @Sendable () async -> Void = {}
     ) async throws -> T {
         // Use unstructured tasks so the timeout race doesn't wait for the operation
         // task to drain. withThrowingTaskGroup waits for ALL child tasks on exit;
@@ -259,21 +283,20 @@ internal actor MCPSession {
         try await withCheckedThrowingContinuation { continuation in
             let resumed = OSAllocatedUnfairLock(initialState: false)
 
-            func tryResume(_ body: @Sendable () -> Void) {
-                let shouldResume = resumed.withLock { flag -> Bool in
+            func claimResume() -> Bool {
+                resumed.withLock { flag -> Bool in
                     guard !flag else { return false }
                     flag = true
                     return true
                 }
-                if shouldResume { body() }
             }
 
-            Task {
+            let operationTask = Task {
                 do {
                     let value = try await operation()
-                    tryResume { continuation.resume(returning: value) }
+                    if claimResume() { continuation.resume(returning: value) }
                 } catch {
-                    tryResume { continuation.resume(throwing: error) }
+                    if claimResume() { continuation.resume(throwing: error) }
                 }
             }
 
@@ -283,7 +306,17 @@ internal actor MCPSession {
                 } catch {
                     return
                 }
-                tryResume { continuation.resume(throwing: MCPError.requestTimeout) }
+                // The timeout won. Claim the resume slot first so the operation
+                // task's own completion becomes a no-op, then cancel it, run the
+                // caller's cleanup (evict the pending entry + notify the server —
+                // see `handleRequestTimeout`), and finally surface the timeout.
+                // Cancelling alone is not enough: the operation is suspended in a
+                // continuation awaiting a server reply, which cancellation cannot
+                // resume; the cleanup resumes it explicitly.
+                guard claimResume() else { return }
+                operationTask.cancel()
+                await onTimeout()
+                continuation.resume(throwing: MCPError.requestTimeout)
             }
         }
     }

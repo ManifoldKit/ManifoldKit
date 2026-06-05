@@ -240,9 +240,14 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
             predicate: #Predicate { $0.content.localizedStandardContains(needle) },
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
-        if terms.count == 1 {
-            descriptor.fetchLimit = limit
-        }
+        // Bound the store fetch on EVERY branch. Multi-term queries previously
+        // had no limit and matched only the first term in-store, then filtered
+        // the rest in Swift — a common first word on a large history loaded all
+        // matching rows into RAM (OOM/stall). The store fetch must over-fetch
+        // enough to survive the in-memory all-terms filter below, so multi-term
+        // queries fetch a widened cap rather than the exact `limit`; single-term
+        // queries need exactly `limit` because the in-memory filter is a no-op.
+        descriptor.fetchLimit = terms.count == 1 ? limit : limit * Self.multiTermFetchMultiplier
 
         let results = try modelContext.fetch(descriptor)
         var hits: [MessageSearchHit] = []
@@ -264,6 +269,13 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         }
         return hits
     }
+
+    /// Over-fetch factor for multi-term search. The store predicate matches only
+    /// the first term; the remaining terms are required in memory. A common first
+    /// term can knock out many candidates, so we fetch `limit * multiplier` rows
+    /// before the in-memory filter to keep recall high — while still bounding the
+    /// fetch so a common word on a huge history can't load every matching row.
+    private static let multiTermFetchMultiplier = 10
 
     private static func messageSearchTerms(from query: String) -> [String] {
         query.split(whereSeparator: \.isWhitespace).map(String.init)
