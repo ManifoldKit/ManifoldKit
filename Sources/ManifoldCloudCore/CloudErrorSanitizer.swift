@@ -31,12 +31,9 @@ import Foundation
 /// The function is pure, idempotent, and safe to call on already-sanitised
 /// input.
 ///
-/// Access level is intentionally `package` rather than `public`: host apps
-/// should never need to invoke the sanitiser directly because
-/// ``SSECloudBackend/checkStatusCode(_:bytes:)`` already applies it before
-/// constructing every `serverError`. Sibling backend subclasses inside this
-/// SPM package can still reach it when they need to match that behaviour for
-/// their own status-code paths.
+/// `public` so that sibling modules (`ManifoldCloud`) can call it when
+/// sanitising in-stream SSE error events as well as non-2xx HTTP bodies.
+/// Host apps should not need to invoke this directly.
 public enum CloudErrorSanitizer {
 
     /// Maximum length of the sanitised message in characters, including the

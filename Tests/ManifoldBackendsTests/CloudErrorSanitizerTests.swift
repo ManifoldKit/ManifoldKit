@@ -2,6 +2,7 @@
 import Testing
 import Foundation
 @testable import ManifoldBackends
+@testable import ManifoldCloud
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
@@ -302,6 +303,101 @@ struct CloudErrorSanitizerE2ETests {
             #expect(!message.contains("eyJ"))
             #expect(message == "Server error from \(host)")
         }
+    }
+}
+
+// MARK: - In-stream SSE error sanitization
+
+/// Regression tests for the two paths that previously bypassed
+/// ``CloudErrorSanitizer``: Anthropic `error` event and OpenAI Responses
+/// `response.error` event inside a 200-OK SSE stream.
+@Suite("CloudErrorSanitizer — in-stream SSE errors")
+struct CloudErrorSanitizerInStreamTests {
+
+    // MARK: Anthropic / Claude path
+
+    @Test func claudeSSE_htmlInErrorMessage_isSanitized() {
+        let json = #"{"type":"error","error":{"type":"api_error","message":"<img src=x onerror=alert(1)>"}}"#
+        let error = ClaudePayloadParser.parseStreamError(from: json)
+        guard case .parseError(let msg) = error else {
+            Issue.record("Expected .parseError, got \(String(describing: error))")
+            return
+        }
+        #expect(!msg.contains("<"), "HTML must be stripped")
+        #expect(msg == "Server error")
+    }
+
+    @Test func claudeSSE_jwtInErrorMessage_isRedacted() {
+        let json = #"{"type":"error","error":{"type":"api_error","message":"leaked token eyJhbGciOiJIUzI1NiJ9.abc.def"}}"#
+        let error = ClaudePayloadParser.parseStreamError(from: json)
+        guard case .parseError(let msg) = error else {
+            Issue.record("Expected .parseError, got \(String(describing: error))")
+            return
+        }
+        #expect(!msg.contains("eyJ"), "JWT must be redacted")
+        #expect(msg == "Server error")
+    }
+
+    @Test func claudeSSE_plainMessage_passesThroughUnchanged() {
+        let json = #"{"type":"error","error":{"type":"api_error","message":"Context length exceeded"}}"#
+        let error = ClaudePayloadParser.parseStreamError(from: json)
+        guard case .parseError(let msg) = error else {
+            Issue.record("Expected .parseError, got \(String(describing: error))")
+            return
+        }
+        #expect(msg == "Context length exceeded")
+    }
+
+    // MARK: OpenAI Responses path
+
+    @Test func openAIResponsesSSE_htmlInErrorMessage_isSanitized() throws {
+        let innerJSON = #"{"error":{"message":"<script>alert(1)</script>"}}"#
+        let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
+        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        guard let cloud = error as? CloudBackendError,
+              case .serverError(_, let msg) = cloud else {
+            Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")
+            return
+        }
+        #expect(!msg.contains("<"), "HTML must be stripped")
+        #expect(msg == "Server error")
+    }
+
+    @Test func openAIResponsesSSE_jwtInErrorMessage_isRedacted() throws {
+        let innerJSON = #"{"error":{"message":"leaked eyJhbGciOiJIUzI1NiJ9.abc.def"}}"#
+        let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
+        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        guard let cloud = error as? CloudBackendError,
+              case .serverError(_, let msg) = cloud else {
+            Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")
+            return
+        }
+        #expect(!msg.contains("eyJ"), "JWT must be redacted")
+        #expect(msg == "Server error")
+    }
+
+    @Test func openAIResponsesSSE_plainMessage_passesThroughUnchanged() throws {
+        let innerJSON = #"{"error":{"message":"Service temporarily unavailable"}}"#
+        let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
+        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        guard let cloud = error as? CloudBackendError,
+              case .serverError(_, let msg) = cloud else {
+            Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")
+            return
+        }
+        #expect(msg == "Service temporarily unavailable")
+    }
+
+    // MARK: - Helpers
+
+    /// Builds a ``NamedSSETransport``-shaped envelope JSON string.
+    private func makeNamedEnvelope(event: String, data: String) throws -> String {
+        let dict: [String: Any] = [
+            NamedSSETransport.eventNameKey: event,
+            NamedSSETransport.eventDataKey: data,
+        ]
+        let bytes = try JSONSerialization.data(withJSONObject: dict)
+        return String(decoding: bytes, as: UTF8.self)
     }
 }
 #endif

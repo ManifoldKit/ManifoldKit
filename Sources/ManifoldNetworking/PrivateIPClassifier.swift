@@ -130,6 +130,7 @@ package enum PrivateIPClassifier {
     static func classifyIPv4(_ octets: [UInt8]) -> BlockedAddressCategory? {
         let a = octets[0]
         let b = octets[1]
+        let c = octets[2]
 
         if a == 10 { return .privateHost }                           // 10.0.0.0/8 — RFC1918
         if a == 172 && (16...31).contains(b) { return .privateHost } // 172.16.0.0/12 — RFC1918
@@ -144,6 +145,15 @@ package enum PrivateIPClassifier {
         if a == 127 { return .multicastReserved }
         if (224...239).contains(a) { return .multicastReserved }     // 224.0.0.0/4 — multicast
         if a >= 240 { return .multicastReserved }                    // 240.0.0.0/4 — reserved / broadcast
+        // 198.18.0.0/15 — RFC 2544 benchmarking / network interconnect testing
+        if a == 198 && (18...19).contains(b) { return .multicastReserved }
+        // RFC 5737 TEST-NETs — documentation only, must never be externally routed
+        if a == 192 && b == 0 && c == 2 { return .multicastReserved }   // 192.0.2.0/24 TEST-NET-1
+        if a == 198 && b == 51 && c == 100 { return .multicastReserved } // 198.51.100.0/24 TEST-NET-2
+        if a == 203 && b == 0 && c == 113 { return .multicastReserved }  // 203.0.113.0/24 TEST-NET-3
+        // IANA Special-Purpose ranges
+        if a == 192 && b == 0 && c == 0 { return .multicastReserved }   // 192.0.0.0/24 — IANA Protocol Assignments
+        if a == 192 && b == 88 && c == 99 { return .multicastReserved }  // 192.88.99.0/24 — formerly 6to4 relay anycast
         return nil
     }
 
@@ -212,6 +222,13 @@ package enum PrivateIPClassifier {
         let isIPv4Mapped = words[0] == 0 && words[1] == 0 && words[2] == 0
             && words[3] == 0 && words[4] == 0 && words[5] == 0xffff
         if isIPv4Mapped { return .ipv4MappedLoopback }
+
+        // 64:ff9b::/96 — NAT64 (RFC 6146). Embeds an IPv4 address in the low 32
+        // bits; reject to prevent routing to mapped private addresses via the
+        // translation prefix, sidestepping the IPv4 classifier.
+        if words[0] == 0x0064 && words[1] == 0xff9b
+            && words[2] == 0 && words[3] == 0
+            && words[4] == 0 && words[5] == 0 { return .ipv4MappedLoopback }
 
         return nil
     }

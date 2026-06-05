@@ -260,4 +260,75 @@ final class PrivateIPClassifierTests: XCTestCase {
     func test_trailingDot_publicIP_isNil() {
         XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("1.1.1.1."))
     }
+
+    // MARK: - RFC 2544 Benchmarking (198.18.0.0/15)
+
+    func test_rfc2544_198_18_0_0_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("198.18.0.0"), .multicastReserved)
+    }
+
+    func test_rfc2544_198_19_255_255_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("198.19.255.255"), .multicastReserved)
+    }
+
+    func test_rfc2544_boundary_198_17_255_255_isNil() {
+        XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("198.17.255.255"))
+    }
+
+    func test_rfc2544_boundary_198_20_0_0_isNil() {
+        XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("198.20.0.0"))
+    }
+
+    // MARK: - RFC 5737 TEST-NETs
+
+    func test_testNet1_192_0_2_1_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("192.0.2.1"), .multicastReserved)
+    }
+
+    func test_testNet1_192_0_2_255_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("192.0.2.255"), .multicastReserved)
+    }
+
+    func test_testNet2_198_51_100_0_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("198.51.100.0"), .multicastReserved)
+    }
+
+    func test_testNet2_198_51_100_255_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("198.51.100.255"), .multicastReserved)
+    }
+
+    func test_testNet3_203_0_113_1_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("203.0.113.1"), .multicastReserved)
+    }
+
+    func test_testNet3_203_0_113_255_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("203.0.113.255"), .multicastReserved)
+    }
+
+    // MARK: - IANA Special-Purpose (192.0.0.0/24, 192.88.99.0/24)
+
+    func test_ianaSpecial_192_0_0_1_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("192.0.0.1"), .multicastReserved)
+    }
+
+    func test_formerly6to4_192_88_99_1_isReserved() {
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("192.88.99.1"), .multicastReserved)
+    }
+
+    // MARK: - NAT64 (64:ff9b::/96)
+
+    func test_nat64_blocksTranslationPrefix() {
+        // 64:ff9b::192.0.2.1 — NAT64 encoding of TEST-NET-1
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("64:ff9b::c000:201"), .ipv4MappedLoopback)
+    }
+
+    func test_nat64_blocksTranslationPrefixWithHighWords() {
+        // 64:ff9b::10.0.0.1 — NAT64 encoding of RFC1918 address
+        XCTAssertEqual(PrivateIPClassifier.classifyIPLiteral("64:ff9b::a00:1"), .ipv4MappedLoopback)
+    }
+
+    func test_nat64_boundary_differentPrefix_isNil() {
+        // 64:ff9c:: is NOT NAT64 — off-by-one on the second word
+        XCTAssertNil(PrivateIPClassifier.classifyIPLiteral("64:ff9c::1"))
+    }
 }
