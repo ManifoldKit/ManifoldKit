@@ -1,4 +1,5 @@
 import XCTest
+@testable import ManifoldNetworking
 @testable import ManifoldInference
 import ManifoldTestSupport
 

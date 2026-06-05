@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldNetworking
 
 /// Fans out `URLSession` delegate callbacks to multiple cooperating delegates.
 ///

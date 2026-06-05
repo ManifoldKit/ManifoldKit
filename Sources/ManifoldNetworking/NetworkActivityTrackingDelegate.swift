@@ -23,7 +23,10 @@ import Foundation
 /// All callbacks are forwarded to ``downstream`` so the caller-supplied
 /// data delegate (e.g. an SSE consumer) still sees them. This delegate is
 /// purely additive.
-final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+// `package` (was `internal`): extracted to `ManifoldNetworking` in P1a
+// (#1608); `URLSessionFactory` still lives in `ManifoldInference` and wires
+// this delegate in, so it must be visible across the package boundary.
+package final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     /// Center to notify. Defaults to ``NetworkActivityCenter/shared``.
     private let center: NetworkActivityCenter
@@ -38,14 +41,14 @@ final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDelegate, @
     private let lock = NSLock()
     private var tokens: [Int: NetworkActivityToken] = [:]
 
-    init(center: NetworkActivityCenter, downstream: URLSessionDataDelegate? = nil) {
+    package init(center: NetworkActivityCenter, downstream: URLSessionDataDelegate? = nil) {
         self.center = center
         self.downstream = downstream
     }
 
     // MARK: - URLSessionDataDelegate
 
-    func urlSession(
+    package func urlSession(
         _ session: URLSession,
         dataTask: URLSessionDataTask,
         didReceive response: URLResponse,
@@ -64,7 +67,7 @@ final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDelegate, @
         }
     }
 
-    func urlSession(
+    package func urlSession(
         _ session: URLSession,
         dataTask: URLSessionDataTask,
         didReceive data: Data
@@ -75,7 +78,7 @@ final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDelegate, @
 
     // MARK: - URLSessionTaskDelegate (forwarded via Composite)
 
-    func urlSession(
+    package func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: Error?

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import ManifoldNetworking
 import os
 
 /// `URLSessionTaskDelegate` that intercepts HTTP 30x redirects and applies

@@ -172,8 +172,9 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // NetworkActivity observable funnel (#1292) — implements
         // URLSessionDataDelegate so it can record begin/end of every task
         // that flows through `URLSessionFactory.ephemeral`. No new outbound
-        // calls; this file only *observes* the existing seam.
-        "ManifoldInference/Networking/NetworkActivityTrackingDelegate.swift",
+        // calls; this file only *observes* the existing seam. Relocated to the
+        // leaf `ManifoldNetworking` module in P1a (#1608).
+        "ManifoldNetworking/NetworkActivityTrackingDelegate.swift",
         // Network policy guard (#1294) — URLProtocol subclass registered on
         // every URLSessionConfiguration produced by URLSessionFactory. It
         // intercepts requests *before* socket open and fails blocked hosts

@@ -34,6 +34,10 @@ let package = Package(
         // explicit imports because not every host wants them in the build graph.
         .library(name: "ManifoldKit", targets: ["ManifoldKit"]),
         .library(name: "ManifoldInference", targets: ["ManifoldInference"]),
+        // Leaf networking primitives evicted from the ManifoldInference kernel
+        // in P1a (#1608): NetworkActivity observability funnel + PrivateIP
+        // classifier. Pure Foundation, zero upward dependencies.
+        .library(name: "ManifoldNetworking", targets: ["ManifoldNetworking"]),
         .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
         .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
@@ -176,9 +180,22 @@ let package = Package(
         // default); the `Sources/ManifoldInference/Macros/ToolSchema.swift`
         // declaration is wrapped in `#if Macros` so the public API is only
         // visible when the trait is enabled.
+        // ManifoldNetworking: leaf-level networking/transport primitives that
+        // carry no Contract dependency — the NetworkActivity observability
+        // funnel (consumed by HuggingFace downloads and any host UI) and the
+        // PrivateIPClassifier (consumed by the SSRF/DNS-rebind guards in
+        // ManifoldCloudCore + ManifoldMCP). Extracted from ManifoldInference in
+        // P1a (#1608) to thin the kernel. Zero dependencies — pure Foundation —
+        // so it can never leak ML/SwiftData/UI symbols (foundation-only gate).
+        .target(
+            name: "ManifoldNetworking",
+            dependencies: [],
+            path: "Sources/ManifoldNetworking"
+        ),
         .target(
             name: "ManifoldInference",
             dependencies: [
+                "ManifoldNetworking",
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/ManifoldInference",
@@ -637,6 +654,15 @@ let package = Package(
         .testTarget(
             name: "ManifoldInferenceSwiftTestingTests",
             dependencies: ["ManifoldInference", "ManifoldTestSupport"]
+        ),
+        // Re-homed from ManifoldInferenceTests in P1a (#1608) alongside the
+        // PrivateIPClassifier + NetworkActivity source. Depends on
+        // ManifoldInference too because NetworkActivityCenterTests exercises the
+        // URLSessionFactory/CompositeURLSessionDelegate wiring (which stays in
+        // the kernel) and on ManifoldTestSupport for MockURLProtocol.
+        .testTarget(
+            name: "ManifoldNetworkingTests",
+            dependencies: ["ManifoldNetworking", "ManifoldInference", "ManifoldTestSupport"]
         ),
         .testTarget(
             name: "ManifoldMCPTests",
