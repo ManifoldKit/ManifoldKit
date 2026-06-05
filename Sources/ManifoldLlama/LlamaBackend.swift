@@ -376,12 +376,17 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
         let reuseLen = max(0, min(commonPrefixLen, tokens.count - 2))
 
         // Trim the KV cache tail beyond the reuse prefix before flipping
-        // isGenerating. The context pointer is safe to snapshot here: the outer
-        // guard already verified context != nil, and unloadModel() can only nil
-        // it after acquiring stateLock — which we hold during the flip below.
-        if reuseLen > 0, let ctx = withStateLock({ context }),
-           let mem = llama_get_memory(ctx) {
-            llama_memory_seq_rm(mem, 0, Int32(reuseLen), -1)
+        // isGenerating. The C KV mutation must run *inside* stateLock, not after
+        // a snapshot-then-release: unloadModel()/secureWipe() nil and free
+        // `context` under the same lock, so a snapshot read followed by an
+        // unlocked `llama_memory_seq_rm` could touch a freed context
+        // (use-after-free) if teardown raced in between.
+        if reuseLen > 0 {
+            withStateLock {
+                if let ctx = context, let mem = llama_get_memory(ctx) {
+                    llama_memory_seq_rm(mem, 0, Int32(reuseLen), -1)
+                }
+            }
         }
 
         // Reset the cancellation flag and flip isGenerating atomically under the
@@ -531,14 +536,17 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// cancelled turn preserves the prefix so the model can continue from
     /// where it left off on the next `generate()`.
     public func resetConversation() {
-        let capturedContext = withStateLock { () -> OpaquePointer? in
+        // Run the C KV flush inside stateLock alongside the sessionKVState reset.
+        // Snapshotting `context` and releasing the lock before calling
+        // llama_memory_clear() would let a concurrent unloadModel()/secureWipe()
+        // free the context between the read and the C call (use-after-free).
+        withStateLock {
             sessionKVState = nil
-            return context
-        }
-        // Also flush the actual KV cache in the C context so any leftover
-        // positional state is gone before the next turn decodes from position 0.
-        if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
-            llama_memory_clear(mem, false)
+            // Also flush the actual KV cache in the C context so any leftover
+            // positional state is gone before the next turn decodes from position 0.
+            if let ctx = context, let mem = llama_get_memory(ctx) {
+                llama_memory_clear(mem, false)
+            }
         }
     }
 
@@ -552,14 +560,16 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// The KV state cache pointer is also nil-ed so the next
     /// ``generate(_:config:)`` call starts with a fresh context.
     public func secureWipe() {
-        let capturedContext = withStateLock { () -> OpaquePointer? in
+        // C KV zeroing runs inside stateLock with the sessionKVState reset for
+        // the same use-after-free reason as resetConversation(): teardown frees
+        // `context` under this lock.
+        withStateLock {
             sessionKVState = nil
-            return context
-        }
-        if let ctx = capturedContext, let mem = llama_get_memory(ctx) {
-            // true = zero the actual KV tensor data (key + value matrices),
-            // not just the positional/sequence metadata.
-            llama_memory_clear(mem, true)
+            if let ctx = context, let mem = llama_get_memory(ctx) {
+                // true = zero the actual KV tensor data (key + value matrices),
+                // not just the positional/sequence metadata.
+                llama_memory_clear(mem, true)
+            }
         }
     }
 

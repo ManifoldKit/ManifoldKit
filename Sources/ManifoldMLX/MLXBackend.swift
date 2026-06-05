@@ -203,6 +203,39 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         self.enableKVCacheReuse = enableKVCacheReuse
     }
 
+    deinit {
+        // A dropped instance (VM teardown, error path, A/B model swap) must
+        // release its per-UUID claim in `MLXResourceArbiter`. The arbiter only
+        // fires `MLX.Memory.clearCache()` on the *last* release, so a leaked
+        // claim means that guarantee never fires again and Metal buffers never
+        // return to the OS. `LlamaBackend.deinit` releases its C resources the
+        // same way (`LlamaBackend.swift:170`).
+        //
+        // deinit cannot be async and must never block (CLAUDE.md: no
+        // `DispatchSemaphore.wait()` under @MainActor ownership). Mirror
+        // `LlamaBackend`'s retain/detach/release pattern: snapshot the identity
+        // + chained cleanup under the lock, then hop off-actor in a detached
+        // task that captures only locals — never `self`.
+        //
+        // Guard on `_hasInitializedRuntime`: the arbiter's last release calls
+        // `MLX.Memory.clearCache()`, which traps with "Failed to load default
+        // metallib" when no real load ever initialized the runtime (injected
+        // test doubles). `_hasInitializedRuntime` is the container-presence
+        // proxy CLAUDE.md's MLX.Memory guard rule requires. It is also false
+        // after `unloadModel()` already ran, so the guard doubles as a
+        // double-release guard for the normal teardown path.
+        let snapshot: (hadRuntime: Bool, previousCleanup: Task<Void, Never>?, id: MLXResourceArbiter.BackendID) = withStateLock {
+            (_hasInitializedRuntime, _cleanupTask, backendID)
+        }
+        guard snapshot.hadRuntime else { return }
+        let previousCleanup = snapshot.previousCleanup
+        let id = snapshot.id
+        Task.detached {
+            await previousCleanup?.value
+            await MLXResourceArbiter.shared.release(backendID: id)
+        }
+    }
+
     /// Forwards to `MLXGenerationDriver.resolveThinkingMarkers(...)`.
     ///
     /// The canonical implementation moved into the driver as part of Phase
