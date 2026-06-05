@@ -411,6 +411,12 @@ let package = Package(
             dependencies: [
                 "ManifoldInference",
                 "ManifoldCloudCore",
+                // DefaultWebSearchRuntime conforms to the WebSearchRuntime port
+                // declared in ManifoldRuntime. This is a library→library edge
+                // (not a consumer→family edge) so it stays un-gated per the
+                // trait-gating rule. ManifoldRuntime is SwiftData-free, so this
+                // does not drag SwiftData into the family target.
+                "ManifoldRuntime",
             ],
             path: "Sources/ManifoldCloud",
             swiftSettings: [

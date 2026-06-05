@@ -97,7 +97,8 @@
       "path": "Sources/ManifoldCloud",
       "deps": [
         "ManifoldCloudCore",
-        "ManifoldInference"
+        "ManifoldInference",
+        "ManifoldRuntime"
       ]
     },
     "ManifoldBackends": {
