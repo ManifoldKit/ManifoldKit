@@ -87,6 +87,12 @@ Once registered, the model will call `generate_image` or `generate_video` autono
 
 ``VideoGenerationToolSource`` delegates to ``ChatViewModel/generateVideo(prompt:config:)`` using a fire-and-forget detached `Task`. ``VideoGenerationToolSource/resolve(toolName:arguments:session:)`` returns immediately — video generation is long-running (typically 30–60 seconds) and must not block the conversation turn executor. Progress and the completed video surface through ``ChatViewModel/videoGenerationProgress`` exactly as if the user had triggered generation directly.
 
+### Web search
+
+``WebSearchToolSource`` delegates to ``ChatViewModel/searchWeb(query:)`` when the model calls `search_web`. Unlike image and video — which insert a placeholder message and surface results asynchronously — web search is request/response: ``WebSearchToolSource/resolve(toolName:arguments:session:)`` awaits the search and returns the result text directly to the model inside the same conversation turn.
+
+Like the image/video tool sources, ``WebSearchToolSource`` is a thin forwarder with no network or cloud dependency. The actual HTTP call lives in the concrete ``WebSearchRuntime`` implementation (`DefaultWebSearchRuntime`, in `ManifoldCloud`), which the host wires via ``ChatViewModel/configure(webSearchRuntime:)``. This keeps `ManifoldUI` free of `URLSession` and backend-family imports.
+
 ## Registering tool sources
 
 When importing `ManifoldKit` (the umbrella module), use the one-liner convenience:
@@ -102,7 +108,8 @@ For apps that import `ManifoldPersistenceSwiftData` directly (without the umbrel
 ```swift,no-build
 await kit.bootstrap.addToolSources([
     ImageGenerationToolSource(viewModel: kit.viewModel),
-    VideoGenerationToolSource(viewModel: kit.viewModel)
+    VideoGenerationToolSource(viewModel: kit.viewModel),
+    WebSearchToolSource(viewModel: kit.viewModel)
 ])
 ```
 
@@ -110,10 +117,11 @@ Both calls replace the more verbose `conversationRuntime.updateSessionToolSource
 
 ### Prerequisites
 
-Both tool sources require their corresponding generation runtimes to be wired into the bootstrap before installation:
+Each tool source requires its corresponding generation runtime to be wired into the bootstrap before installation:
 
 - ``ImageGenerationToolSource`` — requires an ``ImageGenerationRuntime`` wired via `ManifoldBootstrap.build(imageGenerationService:)`.
 - ``VideoGenerationToolSource`` — requires a ``VideoGenerationRuntime`` wired into ``ChatViewModel``.
+- ``WebSearchToolSource`` — requires a ``WebSearchRuntime`` (e.g. `DefaultWebSearchRuntime` from `ManifoldCloud`) wired via `ManifoldBootstrap(webSearchRuntime:)` or ``ChatViewModel/configure(webSearchRuntime:)``.
 
 `addGenerationToolSources(viewModel:)` silently skips sources whose corresponding service is absent, so it is safe to call unconditionally — no conditional check required at the call site.
 

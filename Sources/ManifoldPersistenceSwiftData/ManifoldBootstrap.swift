@@ -132,6 +132,17 @@ public final class ManifoldBootstrap {
     /// `nil` when ``videoGenerationService`` is `nil`.
     public let videoRuntime: VideoGenerationRuntime?
 
+    /// The web-search runtime, when the host opted in to web search.
+    ///
+    /// Unlike image/video, the concrete implementation
+    /// (`DefaultWebSearchRuntime`) lives in `ManifoldCloud`, which
+    /// `ManifoldPersistenceSwiftData` cannot import (backend-family boundary).
+    /// The host constructs it and passes it via the `webSearchRuntime`
+    /// parameter; `ChatViewModel/configure(webSearchRuntime:)` is then wired
+    /// automatically through ``ChatRuntimeBootstrap``. `nil` when no runtime
+    /// was supplied.
+    public let webSearchRuntime: (any WebSearchRuntime)?
+
     /// The RAG knowledge-base service, when the host opted in via
     /// ``RAGConfiguration``. `nil` when bootstrapped without RAG.
     ///
@@ -159,6 +170,7 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService videoService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -233,6 +245,7 @@ public final class ManifoldBootstrap {
             self.videoRuntime = videoService.map {
                 VideoGenerationRuntime(service: $0, messageStore: resolvedPersistence)
             }
+            self.webSearchRuntime = webSearchRuntime
             self._isInMemory = isInMemory
         } catch {
             ManifoldConfiguration.shared = previousConfiguration
@@ -251,6 +264,7 @@ public final class ManifoldBootstrap {
         usageStore: SwiftDataUsageStore,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
         ragService: RAGService? = nil,
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -304,6 +318,7 @@ public final class ManifoldBootstrap {
         } else {
             self.videoRuntime = nil
         }
+        self.webSearchRuntime = webSearchRuntime
     }
 
     /// Constructs the ``RAGService`` for the given configuration, or returns
@@ -355,6 +370,7 @@ public final class ManifoldBootstrap {
         inferenceService: InferenceService? = nil,
         imageGenerationService: ImageGenerationService? = nil,
         videoGenerationService: VideoGenerationService? = nil,
+        webSearchRuntime: (any WebSearchRuntime)? = nil,
         diagnostics: DiagnosticsService = DiagnosticsService(),
         runtimeOptions: ConversationRuntimeOptions = ConversationRuntimeOptions(),
         sessionToolSources: [any SessionToolSource] = [],
@@ -409,6 +425,7 @@ public final class ManifoldBootstrap {
                     usageStore: usageStore,
                     imageGenerationService: imageGenerationService,
                     videoGenerationService: videoGenerationService,
+                    webSearchRuntime: webSearchRuntime,
                     ragService: ragService,
                     runtimeOptions: runtimeOptions,
                     sessionToolSources: sessionToolSources,
@@ -531,4 +548,5 @@ extension ManifoldBootstrap: ChatRuntimeBootstrap {
     public var diagnosticsService: DiagnosticsService { diagnostics }
     public var imageGenerationRuntime: ImageGenerationRuntime? { imageRuntime }
     public var videoGenerationRuntime: VideoGenerationRuntime? { videoRuntime }
+    public var webSearchRuntimePort: (any WebSearchRuntime)? { webSearchRuntime }
 }
