@@ -185,7 +185,12 @@ public struct GenerationConfig: Sendable, Codable {
     ///
     /// Cloud backends send this as their `max_tokens` API parameter.
     /// Local backends (Foundation, MLX, llama.cpp) use it to cap the generation loop.
-    /// `nil` means no explicit limit beyond the backend's own defaults.
+    ///
+    /// The initializer **defaults this to 2048**, a safety cap against runaway
+    /// generation and cost. Long-form output (summaries, code generation, RAG
+    /// answers) will be truncated at 2048 tokens unless you raise it. Pass
+    /// `maxOutputTokens: nil` explicitly to remove the cap and fall back to the
+    /// backend's own default limit. `nil` is never the default.
     public var maxOutputTokens: Int?
 
     /// Tool definitions made available to the model for this generation request.
