@@ -200,9 +200,18 @@ jobs:
         # ManifoldRuntime is a pure inference-orchestration module: no persistence
         # framework, no UI framework, no Observation. This keeps it usable from
         # any context that doesn't need a full app stack.
+        # `//` comments are stripped before matching so docs may name the
+        # forbidden frameworks when explaining the boundary.
         run: |
           set -euo pipefail
-          if grep -rn --include='*.swift' 'import SwiftData\|import SwiftUI\|import Observation' Sources/ManifoldRuntime/; then
+          violations=$(
+            find Sources/ManifoldRuntime -name '*.swift' -print0 \
+            | while IFS= read -r -d '' f; do
+                sed 's://.*$::' "$f" | grep -nE 'import (SwiftData|SwiftUI|Observation)' | sed "s|^|$f:|" || true
+              done
+          )
+          if [ -n "$violations" ]; then
+            echo "$violations"
             echo "::error::ManifoldRuntime must not import SwiftData, SwiftUI, or Observation."
             exit 1
           fi
@@ -211,9 +220,18 @@ jobs:
       - name: Lint — ManifoldRuntime must not use URLSession or Keychain
         # ManifoldRuntime must not perform networking or access the system keychain
         # directly — those concerns belong in ManifoldInference or ManifoldBackends.
+        # `//` comments are stripped before matching so docs may name the
+        # forbidden APIs when explaining the boundary (e.g. WebSearchRuntime).
         run: |
           set -euo pipefail
-          if grep -rn --include='*.swift' 'URLSession\|SecItemCopyMatching\|kSecClass' Sources/ManifoldRuntime/; then
+          violations=$(
+            find Sources/ManifoldRuntime -name '*.swift' -print0 \
+            | while IFS= read -r -d '' f; do
+                sed 's://.*$::' "$f" | grep -nE 'URLSession|SecItemCopyMatching|kSecClass' | sed "s|^|$f:|" || true
+              done
+          )
+          if [ -n "$violations" ]; then
+            echo "$violations"
             echo "::error::ManifoldRuntime must not use URLSession or Keychain."
             exit 1
           fi
