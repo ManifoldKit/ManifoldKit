@@ -87,10 +87,23 @@ public enum DefaultBackends {
         FoundationBackends.self,
     ]
 
+    /// Registers every compiled-in backend family with `service` and returns
+    /// how many backend capabilities (local model types + cloud providers) were
+    /// actually wired.
+    ///
+    /// Each registrar is trait-gated internally, so a minimal build can register
+    /// nothing — the returned count lets the caller fail fast on an empty,
+    /// never-generating service instead of launching a dead app (the footgun
+    /// audit's class D — "silent degradation where a fail-fast boundary check
+    /// belongs"). ``ManifoldKit/ManifoldKit/quickStart(configuration:)`` does
+    /// exactly this; hosts driving ``ManifoldBootstrap`` directly should check
+    /// the result too.
     @MainActor
-    public static func register(with service: InferenceService) {
+    @discardableResult
+    public static func register(with service: InferenceService) -> Int {
         for registrar in registrars {
             registrar.register(with: service)
         }
+        return service.registeredBackendSnapshot().count
     }
 }

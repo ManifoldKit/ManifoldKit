@@ -32,6 +32,15 @@ public struct EnabledBackends: Sendable, Equatable {
     /// Whether any cloud API backend is available.
     public var supportsCloudInference: Bool { !cloudProviders.isEmpty }
 
+    /// `true` when no local model type and no cloud provider is registered —
+    /// the assembled backend set is dead for the active trait / OS combination.
+    public var isEmpty: Bool { localModelTypes.isEmpty && cloudProviders.isEmpty }
+
+    /// Total registered backend capabilities (local model types + cloud
+    /// providers). Used by ``DefaultBackends/register(with:)`` to report how
+    /// many backends the build actually wired.
+    public var count: Int { localModelTypes.count + cloudProviders.count }
+
     public init(
         localModelTypes: Set<ModelType> = [],
         cloudProviders: Set<APIProvider> = []

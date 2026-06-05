@@ -191,7 +191,7 @@ enum ClaudePayloadParser {
               let message = error["message"] as? String else {
             return nil
         }
-        return .parseError(CloudErrorSanitizer.sanitize(message))
+        return .sanitizedParseError(message)
     }
 
     private static func parseObject(_ json: String) -> [String: Any]? {

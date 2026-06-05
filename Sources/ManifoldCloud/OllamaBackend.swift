@@ -599,7 +599,7 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
                 bytes,
                 extractor: { OllamaModelProbe.extractErrorMessage(from: $0) }
             )
-            throw CloudBackendError.serverError(statusCode: statusCode, message: message)
+            throw CloudBackendError.sanitizedServerError(statusCode: statusCode, rawMessage: message)
         }
     }
 

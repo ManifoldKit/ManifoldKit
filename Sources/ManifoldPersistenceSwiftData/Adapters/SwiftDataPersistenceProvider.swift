@@ -236,10 +236,6 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // in memory so words can match across non-adjacent parts of a message.
         let terms = Self.messageSearchTerms(from: trimmed)
         let needle = terms[0]
-        var descriptor = FetchDescriptor<ChatMessage>(
-            predicate: #Predicate { $0.content.localizedStandardContains(needle) },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
-        )
         // Bound the store fetch on EVERY branch. Multi-term queries previously
         // had no limit and matched only the first term in-store, then filtered
         // the rest in Swift — a common first word on a large history loaded all
@@ -247,7 +243,11 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // enough to survive the in-memory all-terms filter below, so multi-term
         // queries fetch a widened cap rather than the exact `limit`; single-term
         // queries need exactly `limit` because the in-memory filter is a no-op.
-        descriptor.fetchLimit = terms.count == 1 ? limit : limit * Self.multiTermFetchMultiplier
+        let descriptor = boundedMessageFetch(
+            predicate: #Predicate { $0.content.localizedStandardContains(needle) },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
+            limit: terms.count == 1 ? limit : limit * Self.multiTermFetchMultiplier
+        )
 
         let results = try modelContext.fetch(descriptor)
         var hits: [MessageSearchHit] = []
@@ -281,6 +281,28 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         query.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
+    /// Absolute safety ceiling for "fetch the whole session" reads
+    /// (``fetchMessages(for:)``). High enough that no realistic conversation is
+    /// truncated, low enough that a pathological session can't load unbounded
+    /// rows into RAM.
+    static let maxSessionMessageFetch = 10_000
+
+    /// Single builder for every `ChatMessage` *read* fetch. The `limit`
+    /// parameter is required, so no read path can construct a message fetch that
+    /// forgets to bound the store query — the footgun audit's class A
+    /// ("cross-cutting invariant wired into one branch only") applied to fetch
+    /// limits. Bulk-delete paths deliberately do not route through here: capping
+    /// a delete would leave orphaned rows, so they own their unbounded fetch.
+    private func boundedMessageFetch(
+        predicate: Predicate<ChatMessage>,
+        sortBy: [SortDescriptor<ChatMessage>],
+        limit: Int
+    ) -> FetchDescriptor<ChatMessage> {
+        var descriptor = FetchDescriptor<ChatMessage>(predicate: predicate, sortBy: sortBy)
+        descriptor.fetchLimit = limit
+        return descriptor
+    }
+
     // MARK: - Messages
 
     public func insertMessage(_ record: ChatMessageRecord) async throws {
@@ -308,31 +330,42 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     }
 
     public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+        // "Whole session" read. Bounded to the newest `maxSessionMessageFetch`
+        // rows so a pathological session can't load unbounded rows into RAM;
+        // fetched newest-first under the cap then reversed to ascending so that
+        // when the ceiling *is* hit we keep recent context (silently dropping the
+        // oldest beats dropping the newest for chat) — and we log, because a
+        // silently truncated session would corrupt prompt assembly and export.
+        let descriptor = boundedMessageFetch(
             predicate: #Predicate { $0.sessionID == sessionID },
-            sortBy: [SortDescriptor(\.timestamp)]
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
+            limit: Self.maxSessionMessageFetch
         )
-        return try modelContext.fetch(descriptor).map { $0.toRecord() }
+        let results = try modelContext.fetch(descriptor)
+        if results.count == Self.maxSessionMessageFetch {
+            Log.persistence.warning("fetchMessages(for:) hit the \(Self.maxSessionMessageFetch, privacy: .public)-row ceiling for a session; older messages were not loaded. Paginate via fetchMessages(for:before:limit:).")
+        }
+        return results.reversed().map { $0.toRecord() }
     }
 
     public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
         // Fetch newest-first, take `limit`, then reverse to ascending order.
-        var descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = boundedMessageFetch(
             predicate: #Predicate { $0.sessionID == sessionID },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
+            limit: limit
         )
-        descriptor.fetchLimit = limit
         let results = try modelContext.fetch(descriptor)
         return results.reversed().map { $0.toRecord() }
     }
 
     public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
         // Fetch messages older than `before`, newest-first, take `limit`, then reverse.
-        var descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = boundedMessageFetch(
             predicate: #Predicate { $0.sessionID == sessionID && $0.timestamp < before },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)],
+            limit: limit
         )
-        descriptor.fetchLimit = limit
         let results = try modelContext.fetch(descriptor)
         return results.reversed().map { $0.toRecord() }
     }

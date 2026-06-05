@@ -816,7 +816,7 @@ public final class InferenceService {
 
         if preferFast, let fast = fastBackend {
             do {
-                return try fast.generate(
+                return try fast.generateEnforcingCapabilities(
                     prompt: prompt,
                     systemPrompt: systemPrompt,
                     config: config
@@ -832,7 +832,7 @@ public final class InferenceService {
         guard let primary = lifecycle.backend else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
-        return try primary.generate(
+        return try primary.generateEnforcingCapabilities(
             prompt: prompt,
             systemPrompt: systemPrompt,
             config: config

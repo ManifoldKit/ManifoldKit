@@ -145,4 +145,33 @@ final class CachingTokenizerTests: XCTestCase {
         let provider: any TokenizerProvider = CachingTokenizer(wrapping: HeuristicTokenizer())
         XCTAssertEqual(provider.tokenCount("abcdefgh"), 2)
     }
+
+    // MARK: Bounded cache
+
+    /// The single-use contract was relaxed to reusable, so the cache is no
+    /// longer naturally lifetime-bounded. It must flush wholesale at
+    /// `maxEntries` so a long-lived instance can't grow without limit.
+    func test_cacheIsBoundedAndFlushesAtMaxEntries() {
+        let base = CountingTokenizer()
+        let cache = CachingTokenizer(wrapping: base)
+
+        // Fill exactly to the cap — each distinct string is a miss.
+        for i in 0..<CachingTokenizer.maxEntries {
+            _ = cache.tokenCount("s\(i)")
+        }
+        XCTAssertEqual(base.callCount, CachingTokenizer.maxEntries)
+
+        // At the cap (not over) the earliest key is still cached.
+        _ = cache.tokenCount("s0")
+        XCTAssertEqual(base.callCount, CachingTokenizer.maxEntries, "s0 should still be cached at the cap")
+
+        // One more distinct key trips the wholesale flush (count >= maxEntries),
+        // evicting s0 — re-querying it recomputes, proving the bound holds.
+        _ = cache.tokenCount("overflow")
+        _ = cache.tokenCount("s0")
+        XCTAssertEqual(
+            base.callCount, CachingTokenizer.maxEntries + 2,
+            "'overflow' and the re-query of evicted 's0' both recompute after the flush"
+        )
+    }
 }

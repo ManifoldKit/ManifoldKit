@@ -410,7 +410,7 @@ final class GenerationQueue {
                 config: config
             )
             GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: result.trimmedMessages)
-            return try backend.generate(
+            return try backend.generateEnforcingCapabilities(
                 prompt: result.prompt,
                 systemPrompt: nil,
                 config: config
@@ -440,7 +440,7 @@ final class GenerationQueue {
 
         GenerationHistoryInstaller.installHistory(on: backend, structuredMessages: messages)
 
-        return try backend.generate(
+        return try backend.generateEnforcingCapabilities(
             prompt: assembledPrompt,
             systemPrompt: effectiveSystemPrompt,
             config: config
