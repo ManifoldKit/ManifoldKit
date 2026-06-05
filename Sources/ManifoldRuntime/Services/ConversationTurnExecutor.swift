@@ -734,6 +734,16 @@ struct ConversationTurnExecutor: Sendable {
             sessionRecord: sessionRecord
         )
 
+        // Wire dispatch for the session tools we just advertised. Without this
+        // the model can *call* `generate_image` / `web_search` / etc. but the
+        // dispatch loop finds no registry executor and returns `unknownTool`
+        // (#1606). Registered after `advertisedTools` is computed so advertising
+        // is unaffected; unregistered once the stream fully drains below.
+        let registeredSessionToolNames = await registerSessionToolExecutors(
+            sources: turnSessionToolSources,
+            sessionRecord: sessionRecord
+        )
+
         let token: InferenceService.GenerationRequestToken
         let stream: GenerationStream
         do {
@@ -750,6 +760,7 @@ struct ConversationTurnExecutor: Sendable {
                 sessionID: sessionID
             )
         } catch {
+            await unregisterSessionToolExecutors(registeredSessionToolNames)
             let conversationError = ConversationError.inference(error)
             emit(.errorRaised(conversationError))
             await completeOutcome(
@@ -892,6 +903,14 @@ struct ConversationTurnExecutor: Sendable {
                 streamFailed = .inference(error)
             }
         }
+
+        // Tool dispatch is complete once the stream has drained — the dispatch
+        // loop runs on the producer side as we consume events. Unregister the
+        // session-scoped executors now so the shared registry doesn't carry a
+        // stale ``ChatSessionRecord`` binding into the next turn (#1606). All
+        // remaining exit paths below are post-stream, so this is the single
+        // cleanup point alongside the enqueue-failure path above.
+        await unregisterSessionToolExecutors(registeredSessionToolNames)
 
         // Flush remaining buffered tokens (normal end, error, or cancellation).
         if let batch = batcher.flush(now: ContinuousClock.now) {
@@ -1598,6 +1617,67 @@ struct ConversationTurnExecutor: Sendable {
             return Array(unioned.prefix(cap))
         }
         return unioned
+    }
+
+    /// Registers a ``ToolExecutor`` adapter for each session-source-advertised
+    /// tool so a model tool call actually reaches the source's `resolve`
+    /// instead of coming back as ``ToolResult/ErrorKind/unknownTool`` (#1606).
+    ///
+    /// Returns the set of tool names this call registered so the caller can
+    /// unregister exactly those when the turn ends — leaving a session-scoped
+    /// executor in the shared registry would bind later turns to a stale
+    /// ``ChatSessionRecord``.
+    ///
+    /// A tool already present in the registry (a host-installed executor) is
+    /// left untouched: the registry executor wins, matching the
+    /// advertising-path de-dupe in ``readAdvertisedToolDefinitions``. Like the
+    /// per-turn `setHandoffDetector` / `setPreToolUseHook` wiring, this mutates
+    /// shared `InferenceService` state and assumes one turn per service at a
+    /// time; concurrent turns on the same service are last-writer-wins.
+    private func registerSessionToolExecutors(
+        sources: [any SessionToolSource],
+        sessionRecord: ChatSessionRecord?
+    ) async -> Set<String> {
+        guard let sessionRecord, !sources.isEmpty else { return [] }
+
+        // Gather (source, definition) pairs off the main actor so the
+        // per-source async `toolDefinitions(for:)` calls don't pin MainActor.
+        var pairs: [(source: any SessionToolSource, definition: ToolDefinition)] = []
+        for source in sources {
+            let defs = await source.toolDefinitions(for: sessionRecord)
+            for def in defs {
+                pairs.append((source, def))
+            }
+        }
+        guard !pairs.isEmpty else { return [] }
+
+        return await MainActor.run {
+            guard let registry = inferenceService.toolRegistry else { return Set<String>() }
+            var registered: Set<String> = []
+            for pair in pairs {
+                // Don't clobber a host-installed executor of the same name.
+                guard registry.contains(name: pair.definition.name) == false else { continue }
+                registry.register(
+                    SessionToolSourceExecutor(
+                        definition: pair.definition,
+                        source: pair.source,
+                        session: sessionRecord
+                    )
+                )
+                registered.insert(pair.definition.name)
+            }
+            return registered
+        }
+    }
+
+    private func unregisterSessionToolExecutors(_ names: Set<String>) async {
+        guard !names.isEmpty else { return }
+        await MainActor.run {
+            guard let registry = inferenceService.toolRegistry else { return }
+            for name in names {
+                registry.unregister(name: name)
+            }
+        }
     }
 
     @MainActor
