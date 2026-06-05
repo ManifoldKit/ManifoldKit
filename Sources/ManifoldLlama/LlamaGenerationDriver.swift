@@ -196,13 +196,10 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         // When mirostat v2 is active it replaces the (temp, xtc, dist) tail with
         // a single `mirostat_v2` step that handles both temperature and final
         // selection.
-        let sparams = llama_sampler_chain_default_params()
-        guard let sampler = llama_sampler_chain_init(sparams) else {
-            await MainActor.run { generationStream.setPhase(.failed("Failed to create sampler")) }
-            continuation.finish(throwing: InferenceError.inferenceFailure("Failed to create sampler"))
-            return false
-        }
-        defer { llama_sampler_free(sampler) }
+
+        // Shared sampler parameters, computed once so the permissive (no-grammar)
+        // and strict (grammar) chains used by the thinking-phase gate (issue #1595)
+        // are byte-identical apart from the grammar stage.
 
         // Prefer the explicit `repetitionPenalty` knob when callers supplied it; fall
         // back to the legacy `repeatPenalty` field otherwise. The chain is added when
@@ -217,117 +214,189 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         let penaltiesActive = effectiveRepetitionPenalty > 1.0
             || effectivePresencePenalty != 0.0
             || effectiveFrequencyPenalty != 0.0
-        if penaltiesActive {
-            llama_sampler_chain_add(sampler, llama_sampler_init_penalties(
-                effectivePenaltyWindow,        // last_n tokens to penalize (shared window)
-                effectiveRepetitionPenalty,    // repeat penalty (multiplicative; 1.0 = no-op)
-                effectiveFrequencyPenalty,     // frequency penalty (additive; 0.0 = no-op)
-                effectivePresencePenalty       // presence penalty (additive; 0.0 = no-op)
-            ))
+
+        // Use the caller-supplied seed when available so consecutive runs with the same
+        // prompt + config produce identical token streams. `llama_sampler_init_dist`
+        // takes `uint32_t`, so we truncate the GenerationConfig's `UInt64` seed —
+        // collisions across the truncation boundary are not a correctness issue, only
+        // a slight loss of seed-space entropy. Falls back to a fresh random seed when
+        // the caller didn't request determinism. Computed once and shared by both
+        // chains so the seeded RNG sequence is consistent across a phase switch.
+        let samplerSeed: UInt32
+        if let seed = config.seed {
+            samplerSeed = UInt32(truncatingIfNeeded: seed)
+        } else {
+            samplerSeed = UInt32.random(in: 0...UInt32.max)
         }
 
-        // Grammar-constrained sampling: GBNF grammar from config, inserted at the
-        // front of the chain (right after penalties) so it prunes the logit
-        // distribution before any probability-based filter narrows the candidate
-        // set. Parse failure (invalid GBNF) is surfaced as an error — silent
-        // fallback to unconstrained sampling would produce output that violates
-        // the caller's grammar contract.
-        if let grammarString = config.grammar {
-            var grammarSamplerCreated = false
-            grammarString.withCString { grammarCStr in
-                "root".withCString { rootCStr in
-                    if let gs = llama_sampler_init_grammar(vocab, grammarCStr, rootCStr) {
-                        llama_sampler_chain_add(sampler, gs)
-                        grammarSamplerCreated = true
+        // Thinking-marker / grammar gating decision (issue #1595).
+        //
+        // `useParser` mirrors the value recomputed below for the generation loop:
+        // a thinking parser runs only when markers are present AND thinking is not
+        // explicitly disabled (`maxThinkingTokens == 0`). When a grammar AND a
+        // thinking parser are both active we must NOT let the grammar constrain the
+        // reasoning block, so we build two chains and gate which one samples each
+        // iteration. All other cases (no grammar, or grammar without thinking) keep
+        // the single-chain behaviour unchanged.
+        let thinkingDisabled = config.maxThinkingTokens == 0
+        let useParser = !thinkingDisabled && markers != nil
+        let hasGrammar = config.grammar != nil
+        let gateGrammarOnThinking = hasGrammar && useParser
+
+        // Outcome of building one sampler chain. `chainInitFailed` and
+        // `grammarParseFailed` map to the two distinct error paths the original
+        // single-chain code surfaced (different message + different KV-coherence
+        // return value), so collapsing them would lose that fidelity.
+        enum SamplerBuildOutcome {
+            case success(UnsafeMutablePointer<llama_sampler>)
+            case chainInitFailed
+            case grammarParseFailed
+        }
+
+        func makeSampler(includeGrammar: Bool) -> SamplerBuildOutcome {
+            let sparams = llama_sampler_chain_default_params()
+            guard let sampler = llama_sampler_chain_init(sparams) else {
+                return .chainInitFailed
+            }
+            if penaltiesActive {
+                llama_sampler_chain_add(sampler, llama_sampler_init_penalties(
+                    effectivePenaltyWindow,        // last_n tokens to penalize (shared window)
+                    effectiveRepetitionPenalty,    // repeat penalty (multiplicative; 1.0 = no-op)
+                    effectiveFrequencyPenalty,     // frequency penalty (additive; 0.0 = no-op)
+                    effectivePresencePenalty       // presence penalty (additive; 0.0 = no-op)
+                ))
+            }
+
+            // Grammar-constrained sampling: GBNF grammar from config, inserted at the
+            // front of the chain (right after penalties) so it prunes the logit
+            // distribution before any probability-based filter narrows the candidate
+            // set. Parse failure (invalid GBNF) is surfaced as an error — silent
+            // fallback to unconstrained sampling would produce output that violates
+            // the caller's grammar contract.
+            if includeGrammar, let grammarString = config.grammar {
+                var grammarSamplerCreated = false
+                grammarString.withCString { grammarCStr in
+                    "root".withCString { rootCStr in
+                        if let gs = llama_sampler_init_grammar(vocab, grammarCStr, rootCStr) {
+                            llama_sampler_chain_add(sampler, gs)
+                            grammarSamplerCreated = true
+                        }
                     }
                 }
-            }
-            if !grammarSamplerCreated {
-                await MainActor.run { generationStream.setPhase(.failed("Failed to parse GBNF grammar")) }
-                continuation.finish(throwing: InferenceError.inferenceFailure("Failed to parse GBNF grammar string"))
-                // run() returns Bool; the merge of #667 (grammar) and #668 (Bool return) left a bare
-                // return here. KV cache state is untouched at this point — no decode has run yet —
-                // so the cache is still coherent and the caller can keep `sessionKVState`.
-                return true
-            }
-        }
-
-        if let model = llama_get_model(context),
-           let dry = DRYSamplerDescriptor(config: config, nCtxTrain: llama_model_n_ctx_train(model)) {
-            let drySampler = withCStringArray(dry.options.sequenceBreakers) { breakers in
-                var mutableBreakers = breakers
-                return mutableBreakers.withUnsafeMutableBufferPointer { breakerBuffer in
-                    llama_sampler_init_dry(
-                        vocab,
-                        dry.nCtxTrain,
-                        dry.options.multiplier,
-                        dry.options.base,
-                        dry.options.allowedLength,
-                        dry.options.penaltyLastN,
-                        breakerBuffer.baseAddress,
-                        breakerBuffer.count
-                    )
+                if !grammarSamplerCreated {
+                    llama_sampler_free(sampler)
+                    return .grammarParseFailed
                 }
             }
-            llama_sampler_chain_add(sampler, drySampler)
-        }
 
-        // temperature == 0.0 means true greedy decoding: always pick the argmax token.
-        // The stochastic `dist` sampler introduces seed-dependent tie-breaking that can
-        // produce non-deterministic output when two logits are numerically equal (a
-        // realistic occurrence when the KV cache re-decode path uses a different Metal
-        // accumulation order than the original full-batch decode). Using the dedicated
-        // greedy sampler eliminates that randomness entirely.
-        if config.temperature <= 0.0 {
-            llama_sampler_chain_add(sampler, llama_sampler_init_greedy())
-        } else {
-            // Surface `config.topK` to the sampler chain. Historical default of 40 is
-            // preserved when the caller leaves it nil, so existing behaviour is unchanged
-            // for callers that never set the field (which previously had no effect).
-            let effectiveTopK = config.topK.map { Int32($0) } ?? 40
-            llama_sampler_chain_add(sampler, llama_sampler_init_top_k(effectiveTopK))
-            if config.topP < 1.0 {
-                llama_sampler_chain_add(sampler, llama_sampler_init_top_p(config.topP, 1))
-            }
-            // Honour `config.minP` when supplied; default to 0.05 for parity with prior behaviour.
-            let effectiveMinP = config.minP ?? 0.05
-            llama_sampler_chain_add(sampler, llama_sampler_init_min_p(effectiveMinP, 1))
-
-            // Use the caller-supplied seed when available so consecutive runs with the same
-            // prompt + config produce identical token streams. `llama_sampler_init_dist`
-            // takes `uint32_t`, so we truncate the GenerationConfig's `UInt64` seed —
-            // collisions across the truncation boundary are not a correctness issue, only
-            // a slight loss of seed-space entropy. Falls back to a fresh random seed when
-            // the caller didn't request determinism.
-            let samplerSeed: UInt32
-            if let seed = config.seed {
-                samplerSeed = UInt32(truncatingIfNeeded: seed)
-            } else {
-                samplerSeed = UInt32.random(in: 0...UInt32.max)
+            if let model = llama_get_model(context),
+               let dry = DRYSamplerDescriptor(config: config, nCtxTrain: llama_model_n_ctx_train(model)) {
+                let drySampler = withCStringArray(dry.options.sequenceBreakers) { breakers in
+                    var mutableBreakers = breakers
+                    return mutableBreakers.withUnsafeMutableBufferPointer { breakerBuffer in
+                        llama_sampler_init_dry(
+                            vocab,
+                            dry.nCtxTrain,
+                            dry.options.multiplier,
+                            dry.options.base,
+                            dry.options.allowedLength,
+                            dry.options.penaltyLastN,
+                            breakerBuffer.baseAddress,
+                            breakerBuffer.count
+                        )
+                    }
+                }
+                llama_sampler_chain_add(sampler, drySampler)
             }
 
-            // Mirostat v2 owns both the temperature step and the final token selection
-            // (it samples internally), so when it is active we skip temp/xtc/dist
-            // entirely. When inactive we keep the historical chain tail.
-            if let mirostat = MirostatV2SamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
-                llama_sampler_chain_add(sampler, llama_sampler_init_mirostat_v2(
-                    mirostat.resolvedSeed,
-                    mirostat.options.tau,
-                    mirostat.options.eta
-                ))
+            // temperature == 0.0 means true greedy decoding: always pick the argmax token.
+            // The stochastic `dist` sampler introduces seed-dependent tie-breaking that can
+            // produce non-deterministic output when two logits are numerically equal (a
+            // realistic occurrence when the KV cache re-decode path uses a different Metal
+            // accumulation order than the original full-batch decode). Using the dedicated
+            // greedy sampler eliminates that randomness entirely.
+            if config.temperature <= 0.0 {
+                llama_sampler_chain_add(sampler, llama_sampler_init_greedy())
             } else {
-                llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
-                if let xtc = XTCSamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
-                    llama_sampler_chain_add(sampler, llama_sampler_init_xtc(
-                        xtc.options.probability,
-                        xtc.options.threshold,
-                        xtc.options.minKeep,
-                        xtc.resolvedSeed
+                // Surface `config.topK` to the sampler chain. Historical default of 40 is
+                // preserved when the caller leaves it nil, so existing behaviour is unchanged
+                // for callers that never set the field (which previously had no effect).
+                let effectiveTopK = config.topK.map { Int32($0) } ?? 40
+                llama_sampler_chain_add(sampler, llama_sampler_init_top_k(effectiveTopK))
+                if config.topP < 1.0 {
+                    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(config.topP, 1))
+                }
+                // Honour `config.minP` when supplied; default to 0.05 for parity with prior behaviour.
+                let effectiveMinP = config.minP ?? 0.05
+                llama_sampler_chain_add(sampler, llama_sampler_init_min_p(effectiveMinP, 1))
+
+                // Mirostat v2 owns both the temperature step and the final token selection
+                // (it samples internally), so when it is active we skip temp/xtc/dist
+                // entirely. When inactive we keep the historical chain tail.
+                if let mirostat = MirostatV2SamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+                    llama_sampler_chain_add(sampler, llama_sampler_init_mirostat_v2(
+                        mirostat.resolvedSeed,
+                        mirostat.options.tau,
+                        mirostat.options.eta
                     ))
+                } else {
+                    llama_sampler_chain_add(sampler, llama_sampler_init_temp(config.temperature))
+                    if let xtc = XTCSamplerDescriptor(config: config, fallbackSeed: samplerSeed) {
+                        llama_sampler_chain_add(sampler, llama_sampler_init_xtc(
+                            xtc.options.probability,
+                            xtc.options.threshold,
+                            xtc.options.minKeep,
+                            xtc.resolvedSeed
+                        ))
+                    }
+                    llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
                 }
-                llama_sampler_chain_add(sampler, llama_sampler_init_dist(samplerSeed))
             }
+            return .success(sampler)
         }
+
+        // Strict chain: carries the grammar when the caller supplied one. This is the
+        // only chain used for non-thinking models and for thinking-disabled requests,
+        // so its construction path is identical to pre-#1595.
+        let outputSampler: UnsafeMutablePointer<llama_sampler>
+        switch makeSampler(includeGrammar: hasGrammar) {
+        case .success(let s):
+            outputSampler = s
+        case .chainInitFailed:
+            await MainActor.run { generationStream.setPhase(.failed("Failed to create sampler")) }
+            continuation.finish(throwing: InferenceError.inferenceFailure("Failed to create sampler"))
+            return false
+        case .grammarParseFailed:
+            await MainActor.run { generationStream.setPhase(.failed("Failed to parse GBNF grammar")) }
+            continuation.finish(throwing: InferenceError.inferenceFailure("Failed to parse GBNF grammar string"))
+            // KV cache state is untouched at this point — no decode has run yet —
+            // so the cache is still coherent and the caller can keep `sessionKVState`.
+            return true
+        }
+        defer { llama_sampler_free(outputSampler) }
+
+        // Permissive chain: identical to the strict chain minus the grammar stage.
+        // Built only when gating is required (grammar + thinking both active) and
+        // used while the model is inside its reasoning block so the schema cannot
+        // clamp `<think>…</think>` tokens. Grammar parse failure cannot occur here
+        // (includeGrammar == false). If the chain fails to initialise we fall back
+        // to the strict chain — grammar would then (incorrectly) constrain reasoning,
+        // but that is strictly better than aborting the generation outright.
+        let thinkingSampler: UnsafeMutablePointer<llama_sampler>? = {
+            guard gateGrammarOnThinking else { return nil }
+            switch makeSampler(includeGrammar: false) {
+            case .success(let s):
+                return s
+            case .chainInitFailed, .grammarParseFailed:
+                Self.logger.error("Failed to build thinking-phase sampler; grammar will apply during reasoning")
+                return nil
+            }
+        }()
+        defer { if let thinkingSampler { llama_sampler_free(thinkingSampler) } }
+
+        // Phase gate: starts permissive when gating, flips to strict on the first
+        // `.thinkingComplete`. A no-op (always strict) when not gating.
+        var grammarGate = GrammarPhaseGate(gateOnThinking: gateGrammarOnThinking)
 
         // MARK: Chunked prompt decode
 
@@ -425,8 +494,9 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         // every decoded token flows straight to `.token`. The model may still
         // emit raw `<think>` / `</think>` substrings, but the driver routes
         // them as visible text rather than `.thinkingToken` events.
-        let thinkingDisabled = config.maxThinkingTokens == 0
-        let useParser = !thinkingDisabled && markers != nil
+        // `thinkingDisabled` / `useParser` were computed once during sampler setup
+        // above (the grammar gate needs them before the chains are built); reuse
+        // those values here rather than re-deriving them.
         var thinkingTokenCount = 0
         // Flag set when maxThinkingTokens is reached so we can break the outer loop cleanly.
         var thinkingLimitReached = false
@@ -494,6 +564,12 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
             // Subsequent iterations sample from the 1-token gen batch
             // decoded at the end of the previous iteration, at index 0.
             let logitIndex: Int32 = iteration == 0 ? -1 : 0
+            // Phase-aware grammar (issue #1595): sample with the permissive chain
+            // while the model is reasoning, and with the strict (grammar) chain once
+            // `.thinkingComplete` has flipped the gate. `thinkingSampler` is non-nil
+            // only when gating is active and grammar is inactive, so the fallback to
+            // `outputSampler` covers every other case (no gating, or already strict).
+            let sampler = grammarGate.isGrammarActive ? outputSampler : (thinkingSampler ?? outputSampler)
             let token = llama_sampler_sample(sampler, context, logitIndex)
 
             if llama_vocab_is_eog(vocab, token) { break }
@@ -536,6 +612,11 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
                 // tool calls never appear inside thinking blocks, so the tool
                 // stage only sees post-thinking visible text.
                 let events = session.ingest(text)
+
+                // Advance the grammar phase gate: once the reasoning block closes
+                // (`.thinkingComplete`), the strict chain takes over for the next
+                // sampled token — the first real output token. No-op when not gating.
+                grammarGate.observe(events)
 
                 var visibleBudgetExceeded = false
                 for event in events {
