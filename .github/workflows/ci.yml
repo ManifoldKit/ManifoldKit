@@ -16,6 +16,7 @@ on:
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
+      - "scripts/ci-affected-suites.py"
   pull_request:
     branches: [main]
     paths:
@@ -31,6 +32,7 @@ on:
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
+      - "scripts/ci-affected-suites.py"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -103,9 +105,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          # paths-filter needs the parent commit to diff against on `push` events;
-          # `pull_request` works with the default shallow clone.
-          fetch-depth: 2
+          # fetch-depth: 0 so the Tier 0 selective-test resolver can compute the
+          # PR's merge-base diff (base...HEAD). The deps paths-filter below only
+          # needs the parent commit, but the three-dot diff needs both histories.
+          fetch-depth: 0
 
       - name: Detect dependency-graph changes
         id: deps-changed
@@ -290,6 +293,49 @@ jobs:
           swift package resolve
           git diff --exit-code Package.resolved || \
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
+
+      # Tier 0 selective-testing resolver (#1588) — DRY-RUN PHASE.
+      # Computes the affected-suite set from the PR diff and LOGS it (a
+      # `TIER0_DRYRUN ...` marker per run), but the test steps below still run
+      # the full hardcoded list. scripts/ci-tier0-dryrun-report.sh aggregates a
+      # week of these markers; once the projected ~15-20% reduction is confirmed
+      # against live traffic, wire steps 1-3 to these outputs (Phase 2).
+      # Fails open: any diff/describe error forces a full run, never an empty one.
+      - name: Resolve affected suites (dry-run)
+        id: suites
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            # Full suite always on push to main + nightly — selective is PR-only.
+            python3 scripts/ci-affected-suites.py --force-full
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          if ! git diff --name-only "$base"...HEAD > /tmp/tier0-changed.txt; then
+            echo "::warning::Tier 0 resolver: diff against base failed — forcing full run"
+            python3 scripts/ci-affected-suites.py --force-full
+            exit 0
+          fi
+          echo "Changed files in this PR:"; cat /tmp/tier0-changed.txt
+          python3 scripts/ci-affected-suites.py --changed-files /tmp/tier0-changed.txt
+
+      # Surface the dry-run decision in the job summary for at-a-glance review
+      # without digging into step logs. Removed when Phase 2 lands.
+      - name: Tier 0 dry-run summary
+        if: always() && steps.suites.outcome == 'success'
+        run: |
+          {
+            echo "### Tier 0 selective-testing (dry-run)"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| would force full | ${{ steps.suites.outputs.full }} |"
+            echo "| selected suites | ${{ steps.suites.outputs.suites }} |"
+            echo "| run backends | ${{ steps.suites.outputs.run_backends }} |"
+            echo "| run swift-testing | ${{ steps.suites.outputs.run_swift_testing }} |"
+            echo ""
+            echo "_Dry-run only — the full suite still ran this PR._"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests
