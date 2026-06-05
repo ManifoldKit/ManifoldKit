@@ -49,12 +49,12 @@ final class LocalBackendRealDriverCoverageTest: XCTestCase {
         CapabilitySentinel(
             label: "supportsToolCalling",
             claimed: { $0.supportsToolCalling },
-            sourceToken: "ToolCallParser"
+            sourceToken: "ToolCallTransform"
         ),
         CapabilitySentinel(
             label: "supportsThinking",
             claimed: { $0.supportsThinking },
-            sourceToken: "ThinkingParser"
+            sourceToken: "ThinkingTransform"
         ),
         CapabilitySentinel(
             label: "cancellationStyle == .cooperative",

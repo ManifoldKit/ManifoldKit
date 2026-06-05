@@ -267,7 +267,7 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
     private var thinkingTokenCount: Int = 0
     private var visibleLineCount: Int = 0
     private var sawThinkingField: Bool = false
-    private var contentParser: ThinkingParser?
+    private var contentParser: OutputParserSession?
     /// One-shot guard. Ollama can in principle emit `tool_calls[]` on
     /// successive NDJSON lines (older qwen2.5 builds split parallel calls
     /// across lines); finalisation must still be one-per-call. The
@@ -420,10 +420,10 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
         if contentParser == nil,
            !sawThinkingField,
            content.contains(fallbackMarkers.open) {
-            contentParser = ThinkingParser(markers: fallbackMarkers)
+            contentParser = OutputParserSession([.thinking(ThinkingTransform(markers: fallbackMarkers))])
         }
         if var parser = contentParser {
-            for event in parser.process(content) {
+            for event in parser.ingest(content) {
                 if !emit(event, into: &out) {
                     contentParser = parser
                     return

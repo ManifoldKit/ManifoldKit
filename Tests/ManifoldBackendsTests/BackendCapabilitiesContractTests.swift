@@ -138,14 +138,14 @@ final class BackendCapabilitiesContractTests: XCTestCase {
                        "MLXBackend does not expose a native JSON mode")
     }
 
-    /// MLXBackend routes generation through `ThinkingParser` when
+    /// MLXBackend routes generation through `ThinkingTransform` when
     /// `config.thinkingMarkers` is set, emitting `.thinkingToken` /
     /// `.thinkingComplete` events. Capability flag must reflect that (#480).
     func test_mlxBackend_supportsThinking() throws {
         try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
                           "MLXBackend requires Apple Silicon")
         XCTAssertTrue(MLXBackend().capabilities.supportsThinking,
-                      "MLXBackend emits thinking events via ThinkingParser — supportsThinking must be true")
+                      "MLXBackend emits thinking events via ThinkingTransform — supportsThinking must be true")
     }
 
     /// MLXBackend uses MLX's process-global GPU buffer cache and Metal

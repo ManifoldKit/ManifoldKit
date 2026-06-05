@@ -126,7 +126,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
     ///     re-decoding those tokens and emits `.kvCacheReuse(promptTokensReused:)`.
     ///   - maxTokens: Maximum number of new tokens to generate.
     ///   - config: Sampling parameters (temperature, topP, repeatPenalty).
-    ///   - markers: Thinking markers for the active template, or nil to disable ThinkingParser.
+    ///   - markers: Thinking markers for the active template, or nil to disable ThinkingTransform.
     ///     When non-nil, `.thinkingToken` / `.thinkingComplete` events are emitted for reasoning
     ///     content and `config.maxThinkingTokens` is enforced. When nil, every decoded chunk
     ///     surfaces as a plain `.token` event — there is no longer a sniff-mode fallback that
@@ -409,7 +409,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         //
         // 1. Eager — `markers != nil` (caller passed explicit markers, or the
         //    backend auto-detected them from the GGUF chat template). Every
-        //    decoded token flows through `ThinkingParser` from the first byte.
+        //    decoded token flows through `ThinkingTransform` from the first byte.
         //
         // 2. Disabled — `markers == nil`. The model does not advertise reasoning
         //    blocks, so every token yields `.token` with no tag scanning. Raw
@@ -427,10 +427,6 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         // them as visible text rather than `.thinkingToken` events.
         let thinkingDisabled = config.maxThinkingTokens == 0
         let useParser = !thinkingDisabled && markers != nil
-        // `ThinkingParser`'s initialiser requires a non-nil marker pair. When
-        // `useParser` is false the parser is never invoked, so the placeholder
-        // value is never observed.
-        var thinkingParser = ThinkingParser(markers: markers ?? .qwen3)
         var thinkingTokenCount = 0
         // Flag set when maxThinkingTokens is reached so we can break the outer loop cleanly.
         var thinkingLimitReached = false
@@ -462,7 +458,20 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         // into `.toolCall` events. When no tools are configured the parser is skipped
         // entirely — zero overhead on non-tool-calling generation paths.
         let useToolParser = !config.tools.isEmpty
-        var toolCallParser = LlamaToolCallParser()
+
+        // Build the unified output-parsing chain. Order is `[thinking, tool]`:
+        // thinking is stripped first, then the tool stage re-scans the remaining
+        // visible `.token` text — tool calls never appear inside a thinking
+        // block, so the tool stage only ever sees post-thinking text. Preserves
+        // Llama's historical two-stage order exactly.
+        var stages: [Stage] = []
+        if useParser {
+            stages.append(.thinking(ThinkingTransform(markers: markers ?? .qwen3)))
+        }
+        if useToolParser {
+            stages.append(.tool(ToolCallTransform(markers: LlamaToolMarkers.markers())))
+        }
+        var session = OutputParserSession(stages)
 
         // Repetition-window state: track the last decoded token string and how
         // many times it has appeared consecutively. Exceeding `maxRepeatWindow`
@@ -489,7 +498,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
 
             if llama_vocab_is_eog(vocab, token) { break }
 
-            // Decode token to text and route through ThinkingParser when active.
+            // Decode token to text and route through ThinkingTransform when active.
             if let text = LlamaTokenization.tokenToString(token, vocab: vocab, invalidUTF8Buffer: &invalidUTF8) {
                 // Single-token repetition guard: identical-token run of ≥maxRepeatWindow
                 // terminates the loop. Catches small-model repetition loops (e.g.
@@ -522,29 +531,11 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
                     }
                 }
 
-                // Build the list of events this token emits. Two paths, matching the
-                // two thinking-marker modes documented at the top of the loop:
-                let thinkingEvents: [GenerationEvent] = useParser
-                    ? thinkingParser.process(text)
-                    : [.token(text)]
-
-                // Route `.token` events through the tool-call parser when active.
-                // Non-token events (.thinkingToken, .thinkingComplete) pass straight
-                // through — tool calls never appear inside thinking blocks.
-                let events: [GenerationEvent]
-                if useToolParser {
-                    var routed: [GenerationEvent] = []
-                    for ev in thinkingEvents {
-                        if case .token(let t) = ev {
-                            routed += toolCallParser.process(t)
-                        } else {
-                            routed.append(ev)
-                        }
-                    }
-                    events = routed
-                } else {
-                    events = thinkingEvents
-                }
+                // Route the decoded token through the unified chain. The session
+                // runs the thinking transform then the tool transform in order;
+                // tool calls never appear inside thinking blocks, so the tool
+                // stage only sees post-thinking visible text.
+                let events = session.ingest(text)
 
                 var visibleBudgetExceeded = false
                 for event in events {
@@ -600,18 +591,12 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
             }
         }
 
-        // Flush any bytes held back by the tag-boundary buffer. Only matters when
-        // the parser was ever engaged — skipping the call when `useParser` stayed
-        // false avoids yielding spurious events from an untouched parser.
-        if useParser {
-            for event in thinkingParser.finalize() {
-                continuation.yield(event)
-            }
-        }
-        if useToolParser {
-            for event in toolCallParser.finalize() {
-                continuation.yield(event)
-            }
+        // Flush any bytes held back by the chain's tag-boundary buffers. The
+        // session cascades each stage's finalize output through the stages
+        // downstream of it (thinking → tool), and is a no-op when the chain is
+        // empty (neither thinking nor tool parsing was engaged).
+        for event in session.finalize() {
+            continuation.yield(event)
         }
 
         // Flush all pending Metal command buffers before returning.

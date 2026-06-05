@@ -206,7 +206,7 @@ struct SSEExtractEventsTests {
     // MARK: - (c) Handler-emitted .thinkingComplete is not double-injected
 
     /// A handler that already emits ``GenerationEvent/thinkingComplete``
-    /// itself (e.g. an inline-tag backend using `ThinkingParser`) must not
+    /// itself (e.g. an inline-tag backend using `ThinkingTransform`) must not
     /// get a second duplicate injected by the base loop. The internal
     /// `wasThinking` flag must clear when the handler's explicit event
     /// passes through.
@@ -216,7 +216,7 @@ struct SSEExtractEventsTests {
             case "THINK:pondering":
                 return [.thinkingToken("pondering")]
             case "THINK:DONE":
-                // Handler emits its own explicit close — e.g. ThinkingParser
+                // Handler emits its own explicit close — e.g. ThinkingTransform
                 // saw the `</think>` closing tag.
                 return [.thinkingComplete]
             case "TOKEN:answer":

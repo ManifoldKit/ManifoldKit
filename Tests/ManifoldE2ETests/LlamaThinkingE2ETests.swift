@@ -8,11 +8,11 @@ import ManifoldInference
 
 /// Hardware-gated end-to-end test for `LlamaBackend` driving a real thinking-capable
 /// GGUF (Qwen3-0.6B-Instruct-Q4_K_M or similar). Verifies the full
-/// `LlamaGenerationDriver` thinking-parser pipeline: per-token decode -> ThinkingParser
+/// `LlamaGenerationDriver` thinking-parser pipeline: per-token decode -> ThinkingTransform
 /// -> `.thinkingToken` / `.thinkingComplete` events -> visible `.token` events.
 ///
 /// All thinking-token tests in CI use `MockInferenceBackend`, which bypasses the real
-/// `LlamaGenerationDriver` integration with `ThinkingParser`. A regression in the C-API
+/// `LlamaGenerationDriver` integration with `ThinkingTransform`. A regression in the C-API
 /// token decode loop or in the parser wiring would only be caught manually — this test
 /// exercises that path on hardware.
 ///
@@ -212,12 +212,12 @@ final class LlamaThinkingE2ETests: XCTestCase {
         // primary signal this test is designed to catch.
         XCTAssertFalse(
             visibleText.contains("<think>"),
-            "Visible output must not contain raw <think> tag — ThinkingParser failed to strip it "
+            "Visible output must not contain raw <think> tag — ThinkingTransform failed to strip it "
             + "(model: \(modelURL.lastPathComponent), output prefix: \(visibleText.prefix(200)))"
         )
         XCTAssertFalse(
             visibleText.contains("</think>"),
-            "Visible output must not contain raw </think> tag — ThinkingParser failed to strip it "
+            "Visible output must not contain raw </think> tag — ThinkingTransform failed to strip it "
             + "(model: \(modelURL.lastPathComponent), output prefix: \(visibleText.prefix(200)))"
         )
     }

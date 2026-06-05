@@ -970,7 +970,7 @@ final class LlamaBackendTests: XCTestCase {
     // MARK: - maxThinkingTokens == 0 disables thinking entirely (#597)
 
     /// Closes #597 (Llama half) — exercises the `LlamaGenerationDriver` path that
-    /// short-circuits `ThinkingParser` when `config.maxThinkingTokens == 0`.
+    /// short-circuits `ThinkingTransform` when `config.maxThinkingTokens == 0`.
     ///
     /// With `thinkingMarkers = .qwen3` set on the config *and* `maxThinkingTokens = 0`,
     /// the driver must:
@@ -1028,7 +1028,7 @@ final class LlamaBackendTests: XCTestCase {
 
         XCTAssertEqual(thinkingTokenCount, 0,
             "maxThinkingTokens=0 must suppress every .thinkingToken event (#597) — "
-            + "driver must short-circuit ThinkingParser even when thinkingMarkers is set")
+            + "driver must short-circuit ThinkingTransform even when thinkingMarkers is set")
         XCTAssertEqual(thinkingCompleteCount, 0,
             "maxThinkingTokens=0 must suppress .thinkingComplete — no thinking phase entered")
         XCTAssertGreaterThan(visibleTokenCount, 0,

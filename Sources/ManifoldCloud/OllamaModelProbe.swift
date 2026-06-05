@@ -23,7 +23,7 @@ enum OllamaModelProbe {
     /// reasoning models ship by convention. ``ThinkingMarkers`` are extracted
     /// from the same template so the wire-format inline-fallback path
     /// (`OllamaBackend.parseResponseStream`) can route reasoning content
-    /// through ``ThinkingParser`` rather than hardcoding `<think>` even when
+    /// through ``ThinkingTransform`` rather than hardcoding `<think>` even when
     /// the loaded model uses a different marker family.
     ///
     /// Context length is read from `model_info.context_length`. On HTTP
