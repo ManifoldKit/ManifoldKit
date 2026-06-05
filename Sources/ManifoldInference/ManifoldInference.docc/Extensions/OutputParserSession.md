@@ -14,7 +14,7 @@ through the stages in declaration order. Every stage re-scans **only the
 (``GenerationEvent/thinkingToken(_:)``, ``GenerationEvent/thinkingComplete``,
 ``GenerationEvent/toolCall(_:)``, …) straight through untouched.
 
-```swift
+```swift,no-build
 var session = OutputParserSession([
     .thinking(ThinkingTransform(markers: .qwen3)),
     .tool(ToolCallTransform(markers: LlamaToolMarkers.markers())),
@@ -61,7 +61,7 @@ is how Llama folds its two competing open tags — Gemma-4 native `<|tool_call>`
 and the JSON fallback `<tool_call>` — into one stage: list Gemma-4 first and it
 wins a positional tie, preserving the original parser's preference.
 
-```swift
+```swift,no-build
 ToolCallTransform(markers: [
     ToolCallMarker(open: "<|tool_call>", close: "<|end_of_turn>") { body in /* … */ },
     ToolCallMarker(open: "<tool_call>",  close: "</tool_call>")   { body in /* … */ },
