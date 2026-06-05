@@ -221,5 +221,83 @@ final class LlamaThinkingE2ETests: XCTestCase {
             + "(model: \(modelURL.lastPathComponent), output prefix: \(visibleText.prefix(200)))"
         )
     }
+
+    /// Acceptance test for issue #1595: a thinking model with a STRICT grammar must
+    /// produce a free-form `<think>` reasoning block (NOT schema-constrained) followed
+    /// by schema-valid visible output (constrained).
+    ///
+    /// The grammar `root ::= [0-9]+` accepts digit strings only. Before the fix, the
+    /// grammar sampler ran on every step, so during reasoning it masked every
+    /// non-digit logit — including the letters of `<think>` itself. That made the
+    /// reasoning block unreachable (`thinkingTokenCount == 0`) and corrupted parsing.
+    /// After the phase-gating fix, the permissive chain samples the reasoning block
+    /// (so it contains natural-language, non-digit characters) and the strict chain
+    /// samples the visible answer (so it is digits-only).
+    ///
+    /// # Sabotage check
+    ///
+    /// Remove the gate — pass `outputSampler` unconditionally in
+    /// `LlamaGenerationDriver` instead of selecting on `grammarGate.isGrammarActive`.
+    /// The grammar then constrains the reasoning block: `thinkingTokenCount` collapses
+    /// to 0 (the model cannot emit `<think>`), and this test fails on the first
+    /// assertion. That is the regression signal.
+    func testLlamaBackend_thinkingModel_grammarConstrainsOnlyVisibleOutput() async throws {
+        let formattedPrompt = PromptTemplate.chatML.format(
+            messages: [(role: "user", content: "What is 17 × 23? Think step by step, then answer with only the number.")],
+            systemPrompt: nil
+        )
+        var config = GenerationConfig(
+            temperature: 0.3,
+            maxOutputTokens: 64,
+            thinkingMarkers: PromptTemplate.chatML.thinkingMarkers
+        )
+        // Strict: visible output may contain digits ONLY. Reasoning must be exempt.
+        config.grammar = "root ::= [0-9]+"
+
+        let stream = try backend.generate(
+            prompt: formattedPrompt,
+            systemPrompt: nil,
+            config: config
+        )
+
+        var thinkingText = ""
+        var thinkingTokenCount = 0
+        var visibleText = ""
+        for try await event in stream.events {
+            switch event {
+            case .thinkingToken(let t):
+                thinkingText += t
+                thinkingTokenCount += 1
+            case .token(let t):
+                visibleText += t
+            default:
+                continue
+            }
+        }
+
+        // Non-thinking fallback GGUFs trip findGGUFModel() but emit no reasoning;
+        // skip rather than fail so the suite stays actionable without a Qwen3 fixture.
+        try XCTSkipIf(
+            thinkingTokenCount == 0,
+            "GGUF '\(modelURL.lastPathComponent)' produced no reasoning with a strict grammar. "
+            + "Either it is not a thinking model, or the grammar leaked into the reasoning phase "
+            + "(the #1595 regression). Provision a Qwen3 fixture — see Tests/ManifoldE2ETests/README.md."
+        )
+
+        // Reasoning direction: the <think> block must be free-form. A digit-only
+        // grammar leaking into reasoning would make this impossible.
+        XCTAssertGreaterThan(thinkingTokenCount, 0,
+            "Reasoning block must be emitted free-form under a strict grammar (model: \(modelURL.lastPathComponent))")
+        XCTAssertTrue(thinkingText.contains { !$0.isNumber },
+            "Reasoning must NOT be schema-constrained — a digit-only grammar leaked into the <think> block "
+            + "(reasoning: \(thinkingText.prefix(200)), model: \(modelURL.lastPathComponent))")
+
+        // Output direction: the visible answer must satisfy the grammar exactly.
+        XCTAssertFalse(visibleText.isEmpty,
+            "Thinking + grammar must still produce a visible answer (model: \(modelURL.lastPathComponent))")
+        XCTAssertTrue(visibleText.allSatisfy { $0.isNumber },
+            "Visible output must be grammar-constrained to digits only; got: \(visibleText.debugDescription) "
+            + "(model: \(modelURL.lastPathComponent))")
+    }
 }
 #endif
