@@ -485,9 +485,9 @@ public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBack
             throw CloudBackendError.providerOverloaded(provider: "Claude", retryAfter: retryAfter)
         default:
             let sanitized = await drainAndSanitizeErrorBody(bytes)
-            throw CloudBackendError.serverError(
+            throw CloudBackendError.sanitizedServerError(
                 statusCode: statusCode,
-                message: sanitized
+                rawMessage: sanitized
             )
         }
     }

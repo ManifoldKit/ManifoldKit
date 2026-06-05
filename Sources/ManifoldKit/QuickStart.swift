@@ -86,7 +86,15 @@ public enum ManifoldKit {
 
             let bootstrap = try await task.value
 
-            DefaultBackends.register(with: bootstrap.inferenceService)
+            // Fail fast when the build compiled in zero backends for the active
+            // trait / OS combination. Without this the app launches fully wired
+            // — persistence, session list, composer enabled — then throws on the
+            // first turn with a confusing "No model loaded". Surfacing it here,
+            // at the assembly boundary, names the actual cause (missing traits).
+            let registeredBackends = DefaultBackends.register(with: bootstrap.inferenceService)
+            guard registeredBackends > 0 else {
+                throw ManifoldKitError.noBackendsRegistered
+            }
 
             let viewModel = ChatViewModel(
                 inferenceService: bootstrap.inferenceService,

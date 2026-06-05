@@ -747,7 +747,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
             throw CloudBackendError.rateLimited(retryAfter: retryAfter)
         default:
             let message = await drainAndSanitizeErrorBody(bytes)
-            throw CloudBackendError.serverError(statusCode: statusCode, message: message)
+            throw CloudBackendError.sanitizedServerError(statusCode: statusCode, rawMessage: message)
         }
     }
 
