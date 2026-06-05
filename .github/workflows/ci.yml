@@ -16,6 +16,11 @@ on:
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
+      # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
+      # resolver or its committed graph snapshot re-trigger CI and the dry-run
+      # logging — otherwise a change to the gate would bypass the gate.
+      - "scripts/affected-suites.sh"
+      - "scripts/affected-suites-graph.json"
   pull_request:
     branches: [main]
     paths:
@@ -31,6 +36,11 @@ on:
       - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
+      # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
+      # resolver or its committed graph snapshot re-trigger CI and the dry-run
+      # logging — otherwise a change to the gate would bypass the gate.
+      - "scripts/affected-suites.sh"
+      - "scripts/affected-suites-graph.json"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -51,6 +61,10 @@ jobs:
       cold-start: ${{ steps.filter.outputs.cold-start }}
       persistence: ${{ steps.filter.outputs.persistence }}
       foundation-only: ${{ steps.filter.outputs.foundation-only }}
+      # Tier 0 (issue #1588): the affected per-PR test-job suite list, or the
+      # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
+      # test --filter; nothing consumes it to change execution yet.
+      affected: ${{ steps.affected.outputs.affected }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -58,7 +72,13 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
+          # `list-files: json` exposes the full changed-file list as
+          # `steps.filter.outputs.all_files` (via the catch-all `all` filter
+          # below) for the Tier 0 resolver to map to affected suites.
+          list-files: json
           filters: |
+            all:
+              - '**'
             server:
               - 'Sources/ManifoldServer*/**'
               - 'Tests/ManifoldServerTests/**'
@@ -95,6 +115,50 @@ jobs:
               - 'Sources/ManifoldFoundation/**'
               - 'scripts/check-foundation-only-bundle.sh'
               - '.github/workflows/ci.yml'
+
+      # Tier 0 selective testing — DRY-RUN ONLY (issue #1588).
+      #
+      # Maps the diff to the subset of per-PR `test`-job suites it could affect,
+      # using the committed SwiftPM target-graph snapshot
+      # (scripts/affected-suites-graph.json) so this 1×-billed ubuntu job needs
+      # only jq — no Swift toolchain (ubuntu-latest has none; resolving the graph
+      # on Linux fails on the Apple-only MLX/llama deps anyway). The snapshot is
+      # derived purely from Package.swift and its freshness is guarded in the
+      # `test` job.
+      #
+      # This step changes NOTHING about what executes: the `test` job below still
+      # runs its full hard-coded --filter list. It only logs what a selective run
+      # WOULD do and publishes the result as the `affected` job output, so a later
+      # PR can wire it to --filter once a week of this data confirms the projected
+      # ~15–20% reduction. On push to main (and nightly) the resolver returns FULL
+      # — selective applies to pull_request only.
+      - name: Tier 0 — affected-suite resolver (dry-run, informational)
+        id: affected
+        env:
+          ALL_FILES: ${{ steps.filter.outputs.all_files }}
+          MANIFOLD_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+          files="${ALL_FILES:-[]}"
+          # Never let a resolver hiccup fail the cheap changes job; fall back to FULL.
+          affected="$(printf '%s' "$files" | jq -r '.[]?' | bash scripts/affected-suites.sh)" || affected=FULL
+          [ -z "$affected" ] && affected=FULL
+          echo "affected=$affected" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Tier 0 selective-testing — dry-run (issue #1588)"
+            echo ""
+            if [ "$affected" = "FULL" ]; then
+              echo "Would run the **full** test-job suite list (no narrowing)."
+            elif [ "$affected" = "NONE" ]; then
+              echo "Would run **no** test-job suites (change covered by sibling jobs or non-code paths)."
+            else
+              n=$(printf '%s\n' "$affected" | wc -w | tr -d ' ')
+              echo "Would run **${n}** affected test-job suite(s): \`${affected}\`"
+            fi
+            echo ""
+            echo "_Execution is unchanged — the \`test\` job still runs its full hard-coded \`--filter\` list. Tier 0 addresses the ~136s execution half only; compile (~127s) is Tier 2._"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Tier 0 dry-run: affected=${affected}"
 
   test:
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
@@ -290,6 +354,24 @@ jobs:
           swift package resolve
           git diff --exit-code Package.resolved || \
             (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
+
+      - name: Verify Tier 0 affected-suites graph snapshot is up to date
+        # The Tier 0 resolver (scripts/affected-suites.sh, issue #1588) reads a
+        # committed snapshot of the SwiftPM target graph so the ubuntu `changes`
+        # job can resolve affected suites with jq alone (no Swift on Linux). The
+        # snapshot is derived purely from Package.swift, so it can only drift when
+        # the manifest changes — gate on deps-changed (same as the lockfile check
+        # above) and fail if the committed copy is stale so it is regenerated in
+        # the same PR.
+        if: steps.deps-changed.outputs.deps == 'true'
+        run: |
+          set -euo pipefail
+          scripts/affected-suites.sh --generate > /tmp/affected-suites-graph.json
+          diff -u scripts/affected-suites-graph.json /tmp/affected-suites-graph.json || {
+            echo "::error::scripts/affected-suites-graph.json is stale — run 'scripts/affected-suites.sh --generate > scripts/affected-suites-graph.json' and commit."
+            exit 1
+          }
+          echo "Tier 0 affected-suites graph snapshot OK."
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests

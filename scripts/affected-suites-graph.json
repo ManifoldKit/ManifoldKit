@@ -1,0 +1,508 @@
+{
+  "generatedBy": "scripts/affected-suites.sh --generate (swift package dump-package)",
+  "note": "Committed snapshot of the SwiftPM target graph. Regenerate when Package.swift changes; CI guards freshness.",
+  "targets": {
+    "ManifoldMacrosPlugin": {
+      "type": "macro",
+      "path": "Sources/ManifoldMacrosPlugin",
+      "deps": []
+    },
+    "ManifoldNetworking": {
+      "type": "regular",
+      "path": "Sources/ManifoldNetworking",
+      "deps": []
+    },
+    "ManifoldInference": {
+      "type": "regular",
+      "path": "Sources/ManifoldInference",
+      "deps": [
+        "ManifoldMacrosPlugin",
+        "ManifoldNetworking"
+      ]
+    },
+    "ManifoldMCP": {
+      "type": "regular",
+      "path": "Sources/ManifoldMCP",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldMCPHost": {
+      "type": "regular",
+      "path": "Sources/ManifoldMCPHost",
+      "deps": [
+        "ManifoldMCP",
+        "ManifoldRuntime"
+      ]
+    },
+    "ManifoldRuntime": {
+      "type": "regular",
+      "path": "Sources/ManifoldRuntime",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldSkills": {
+      "type": "regular",
+      "path": "Sources/ManifoldSkills",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldRuntime"
+      ]
+    },
+    "ManifoldPersistenceSwiftData": {
+      "type": "regular",
+      "path": "Sources/ManifoldPersistenceSwiftData",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldRuntime"
+      ]
+    },
+    "StableDiffusion": {
+      "type": "regular",
+      "path": "Sources/StableDiffusion",
+      "deps": []
+    },
+    "ManifoldCloudCore": {
+      "type": "regular",
+      "path": "Sources/ManifoldCloudCore",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldMLX": {
+      "type": "regular",
+      "path": "Sources/ManifoldMLX",
+      "deps": [
+        "FluxSwift",
+        "ManifoldInference",
+        "StableDiffusion"
+      ]
+    },
+    "FluxSwift": {
+      "type": "regular",
+      "path": "Sources/FluxSwift",
+      "deps": []
+    },
+    "ManifoldLlama": {
+      "type": "regular",
+      "path": "Sources/ManifoldLlama",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldFoundation": {
+      "type": "regular",
+      "path": "Sources/ManifoldFoundation",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldCloud": {
+      "type": "regular",
+      "path": "Sources/ManifoldCloud",
+      "deps": [
+        "ManifoldCloudCore",
+        "ManifoldInference",
+        "ManifoldRuntime"
+      ]
+    },
+    "ManifoldBackends": {
+      "type": "regular",
+      "path": "Sources/ManifoldBackendsUmbrella",
+      "deps": [
+        "ManifoldCloud",
+        "ManifoldCloudCore",
+        "ManifoldFoundation",
+        "ManifoldInference",
+        "ManifoldLlama",
+        "ManifoldMLX"
+      ]
+    },
+    "ManifoldUI": {
+      "type": "regular",
+      "path": "Sources/ManifoldUI",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldRuntime"
+      ]
+    },
+    "ManifoldUIModelManagement": {
+      "type": "regular",
+      "path": "Sources/ManifoldUIModelManagement",
+      "deps": [
+        "ManifoldHuggingFace",
+        "ManifoldInference",
+        "ManifoldRuntime",
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldHuggingFace": {
+      "type": "regular",
+      "path": "Sources/ManifoldHuggingFace",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldKit": {
+      "type": "regular",
+      "path": "Sources/ManifoldKit",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldSkills",
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldVoice": {
+      "type": "regular",
+      "path": "Sources/ManifoldVoice",
+      "deps": [
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldTestSupport": {
+      "type": "regular",
+      "path": "Sources/ManifoldTestSupport",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime"
+      ]
+    },
+    "ManifoldContractTestSupport": {
+      "type": "regular",
+      "path": "Sources/ManifoldContractTestSupport",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldCoreTests": {
+      "type": "test",
+      "path": "Tests/ManifoldCoreTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldRuntimeTests": {
+      "type": "test",
+      "path": "Tests/ManifoldRuntimeTests",
+      "deps": [
+        "ManifoldContractTestSupport",
+        "ManifoldInference",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldSkillsTests": {
+      "type": "test",
+      "path": "Tests/ManifoldSkillsTests",
+      "deps": [
+        "ManifoldContractTestSupport",
+        "ManifoldInference",
+        "ManifoldRuntime",
+        "ManifoldSkills"
+      ]
+    },
+    "ManifoldPersistenceSwiftDataTests": {
+      "type": "test",
+      "path": "Tests/ManifoldPersistenceSwiftDataTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldTestSupportTests": {
+      "type": "test",
+      "path": "Tests/ManifoldTestSupportTests",
+      "deps": [
+        "ManifoldContractTestSupport",
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldInferenceTests": {
+      "type": "test",
+      "path": "Tests/ManifoldInferenceTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldMacrosPlugin",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldInferenceSwiftTestingTests": {
+      "type": "test",
+      "path": "Tests/ManifoldInferenceSwiftTestingTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldNetworkingTests": {
+      "type": "test",
+      "path": "Tests/ManifoldNetworkingTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldNetworking",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldMCPTests": {
+      "type": "test",
+      "path": "Tests/ManifoldMCPTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldMCP",
+        "ManifoldMCPHost",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldMCPE2ETests": {
+      "type": "test",
+      "path": "Tests/ManifoldMCPE2ETests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldMCP",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldBackendsTests": {
+      "type": "test",
+      "path": "Tests/ManifoldBackendsTests",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldCloud",
+        "ManifoldCloudCore",
+        "ManifoldFoundation",
+        "ManifoldInference",
+        "ManifoldLlama",
+        "ManifoldMLX",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport",
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldUITests": {
+      "type": "test",
+      "path": "Tests/ManifoldUITests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport",
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldVoiceTests": {
+      "type": "test",
+      "path": "Tests/ManifoldVoiceTests",
+      "deps": [
+        "ManifoldVoice"
+      ]
+    },
+    "ManifoldUIModelManagementTests": {
+      "type": "test",
+      "path": "Tests/ManifoldUIModelManagementTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport",
+        "ManifoldUI",
+        "ManifoldUIModelManagement"
+      ]
+    },
+    "ManifoldHuggingFaceTests": {
+      "type": "test",
+      "path": "Tests/ManifoldHuggingFaceTests",
+      "deps": [
+        "ManifoldHuggingFace",
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldServer": {
+      "type": "executable",
+      "path": "Sources/ManifoldServer",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldServerTests": {
+      "type": "test",
+      "path": "Tests/ManifoldServerTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldServer",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldE2ETests": {
+      "type": "test",
+      "path": "Tests/ManifoldE2ETests",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldCloud",
+        "ManifoldCloudCore",
+        "ManifoldFoundation",
+        "ManifoldHuggingFace",
+        "ManifoldInference",
+        "ManifoldLlama",
+        "ManifoldMLX",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport",
+        "ManifoldTools",
+        "ManifoldUI"
+      ]
+    },
+    "ManifoldSnapshotTests": {
+      "type": "test",
+      "path": "Tests/ManifoldSnapshotTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport",
+        "ManifoldUI",
+        "ManifoldUIModelManagement"
+      ]
+    },
+    "ManifoldTurnLoopCharacterizationTests": {
+      "type": "test",
+      "path": "Tests/ManifoldTurnLoopCharacterizationTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldFuzz": {
+      "type": "regular",
+      "path": "Sources/ManifoldFuzz",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldFuzzBackends": {
+      "type": "regular",
+      "path": "Sources/ManifoldFuzzBackends",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldFuzz",
+        "ManifoldInference"
+      ]
+    },
+    "fuzz-chat": {
+      "type": "executable",
+      "path": "Sources/fuzz-chat",
+      "deps": [
+        "ManifoldFuzz",
+        "ManifoldFuzzBackends",
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldFuzzTests": {
+      "type": "test",
+      "path": "Tests/ManifoldFuzzTests",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldFuzz",
+        "ManifoldFuzzBackends",
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldTools": {
+      "type": "regular",
+      "path": "Sources/ManifoldTools",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "manifold-tools": {
+      "type": "executable",
+      "path": "Sources/manifold-tools",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldInference",
+        "ManifoldTools"
+      ]
+    },
+    "ManifoldToolsTests": {
+      "type": "test",
+      "path": "Tests/ManifoldToolsTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldTestSupport",
+        "ManifoldTools"
+      ]
+    },
+    "ManifoldAppIntents": {
+      "type": "regular",
+      "path": "Sources/ManifoldAppIntents",
+      "deps": [
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldAppIntentsTests": {
+      "type": "test",
+      "path": "Tests/ManifoldAppIntentsTests",
+      "deps": [
+        "ManifoldAppIntents",
+        "ManifoldInference"
+      ]
+    },
+    "ManifoldMLXIntegrationTests": {
+      "type": "test",
+      "path": "Tests/ManifoldMLXIntegrationTests",
+      "deps": [
+        "ManifoldBackends",
+        "ManifoldInference",
+        "ManifoldMLX",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "APIFreezeTests": {
+      "type": "test",
+      "path": "Tests/APIFreezeTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldKitTests": {
+      "type": "test",
+      "path": "Tests/ManifoldKitTests",
+      "deps": [
+        "ManifoldKit"
+      ]
+    },
+    "ManifoldAuditSabotageSuiteTests": {
+      "type": "test",
+      "path": "Tests/ManifoldAuditSabotageSuiteTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    }
+  }
+}
