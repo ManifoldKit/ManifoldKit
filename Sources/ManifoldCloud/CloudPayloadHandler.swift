@@ -250,8 +250,8 @@ enum OpenAIResponsesPayloadParsing {
             return nil
         }
         guard envelope.name == "response.error" else { return nil }
-        let message = OpenAIResponsesBackend.parseErrorMessage(from: envelope.data) ?? "unknown error"
-        return CloudBackendError.serverError(statusCode: 500, message: message)
+        let message = OpenAIResponsesBackend.parseErrorMessage(from: envelope.data)
+        return CloudBackendError.serverError(statusCode: 500, message: CloudErrorSanitizer.sanitize(message))
     }
 }
 #endif // CloudSaaS
