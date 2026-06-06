@@ -9,18 +9,18 @@ import MLXLMCommon
 /// This is `@unchecked Sendable` because `LMInput` holds `MLXArray` values that are not
 /// marked `Sendable`. The wrapper is safe when access to the underlying value is
 /// serialised — e.g. produced and consumed within the same `Task`.
-public struct SendableLMInput: @unchecked Sendable {
-    public let value: LMInput
+struct SendableLMInput: @unchecked Sendable {
+    let value: LMInput
 
-    public init(_ value: LMInput) {
+    init(_ value: LMInput) {
         self.value = value
     }
 }
 
-public struct SendableKVCacheList: @unchecked Sendable {
-    public let value: [any KVCache]
+struct SendableKVCacheList: @unchecked Sendable {
+    let value: [any KVCache]
 
-    public init(_ value: [any KVCache]) {
+    init(_ value: [any KVCache]) {
         self.value = value
     }
 }
@@ -29,18 +29,18 @@ public struct SendableKVCacheList: @unchecked Sendable {
 
 /// Fake model container for unit-testing `MLXBackend` generation without hardware.
 ///
-/// Conforms to `MLXModelContainerProtocol` via an extension declared in
-/// `ManifoldBackendsTests` (where the internal protocol is visible). This avoids
-/// importing `ManifoldBackends` from `ManifoldTestSupport`.
-public final class MockMLXModelContainer: @unchecked Sendable {
+/// Conforms to `MLXModelContainerProtocol` via an extension below (where the
+/// internal protocol is visible). This avoids importing `ManifoldBackends` from
+/// `ManifoldTestSupport`.
+final class MockMLXModelContainer: @unchecked Sendable {
 
     // MARK: - Configuration
 
     /// Tokens the mock yields from `generate`. Defaults to a two-token sequence.
-    public var tokensToYield: [String] = ["Hello", " world"]
+    var tokensToYield: [String] = ["Hello", " world"]
 
     /// When set, `generate` throws this error instead of yielding tokens.
-    public var generateError: Error?
+    var generateError: Error?
 
     /// Simulates a chat-template / tokenizer rejection at `apply_chat_template` time.
     ///
@@ -50,59 +50,59 @@ public final class MockMLXModelContainer: @unchecked Sendable {
     /// or the template rejects the supplied message set (e.g. missing
     /// `<|assistant|>` marker, wrong role ordering). The error surfaces unwrapped
     /// through `MLXBackend.generate`'s GenerationStream — see issue #551.
-    public var simulatedTokenizerApplyFailure: Error?
+    var simulatedTokenizerApplyFailure: Error?
 
     /// Optional stand-in for the tokenizer's `chat_template` field. The mock does
     /// NOT itself apply a Jinja template — production MLXModelContainer does that
     /// internally — but tests can set this to document which template shape they
     /// are exercising and assert the backend hands compatible messages along.
-    public var simulatedChatTemplate: String?
+    var simulatedChatTemplate: String?
 
     /// Prepared prompt-token batches returned by successive `prepare` calls.
     ///
     /// When empty, the mock synthesizes a small token sequence from the message count.
-    public var preparedTokenBatches: [[Int]] = []
+    var preparedTokenBatches: [[Int]] = []
 
     /// Factory used to create the explicit cache passed to generation.
-    public var cacheFactory: @Sendable () -> [any KVCache] = { [KVCacheSimple()] }
+    var cacheFactory: @Sendable () -> [any KVCache] = { [KVCacheSimple()] }
 
     /// Extra tail tokens the mock appends to the cache during generation to model
     /// completion tokens extending beyond the prompt.
-    public var simulatedCacheCompletionTokenCount = 0
+    var simulatedCacheCompletionTokenCount = 0
 
     // MARK: - Observation
 
     /// Number of times prepared generation was called.
-    public private(set) var generateCallCount = 0
+    private(set) var generateCallCount = 0
 
     /// Number of times `prepare(messages:)` was called.
-    public private(set) var prepareCallCount = 0
+    private(set) var prepareCallCount = 0
 
     /// Number of times `makeCache(parameters:)` was called.
-    public private(set) var makeCacheCallCount = 0
+    private(set) var makeCacheCallCount = 0
 
     /// Last messages passed to `prepare`.
-    public private(set) var lastMessages: [[String: String]]?
+    private(set) var lastMessages: [[String: String]]?
 
     /// Last structured chat messages passed to `prepare(chat:)`.
-    public private(set) var lastChatMessages: [Chat.Message]?
+    private(set) var lastChatMessages: [Chat.Message]?
 
     /// Last `GenerateParameters` value passed to generation. Useful for asserting
     /// that `MLXBackend` forwards `temperature` / `topP` / `topK` / `minP` /
     /// `repetitionPenalty` from the caller's `GenerationConfig`.
-    public private(set) var lastParameters: GenerateParameters?
+    private(set) var lastParameters: GenerateParameters?
 
     /// Last prepared prompt-token batch returned by `prepare`.
-    public private(set) var lastPreparedTokenIds: [Int]?
+    private(set) var lastPreparedTokenIds: [Int]?
 
     /// Cache offsets observed at the start of generation.
-    public private(set) var lastInitialCacheOffsets: [Int]?
+    private(set) var lastInitialCacheOffsets: [Int]?
 
-    public init() {}
+    init() {}
 
-    // MARK: - Public helpers consumed by ManifoldBackendsTests conformance
+    // MARK: - Helpers consumed by MLXModelContainerProtocol conformance
 
-    public func prepareForGeneration(
+    func prepareForGeneration(
         messages: [[String: String]]
     ) async throws -> [Int] {
         prepareCallCount += 1
@@ -119,7 +119,7 @@ public final class MockMLXModelContainer: @unchecked Sendable {
         return promptTokens
     }
 
-    public func prepareForGeneration(
+    func prepareForGeneration(
         chat: [Chat.Message]
     ) async throws -> [Int] {
         prepareCallCount += 1
@@ -136,12 +136,12 @@ public final class MockMLXModelContainer: @unchecked Sendable {
         return promptTokens
     }
 
-    public func makeCacheForGeneration(parameters: GenerateParameters) -> [any KVCache] {
+    func makeCacheForGeneration(parameters: GenerateParameters) -> [any KVCache] {
         makeCacheCallCount += 1
         return cacheFactory()
     }
 
-    public func generatePreparedInput(
+    func generatePreparedInput(
         promptTokenIds: [Int],
         cache: SendableKVCacheList?,
         parameters: GenerateParameters

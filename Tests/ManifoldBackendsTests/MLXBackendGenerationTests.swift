@@ -11,21 +11,21 @@ import ManifoldInference
 // Conform MockMLXModelContainer to the internal protocol in this test target,
 // where both the internal protocol and the public mock type are visible.
 extension MockMLXModelContainer: MLXModelContainerProtocol {
-    public func prepare(messages: [[String : String]]) async throws -> MLXPreparedInput {
+    func prepare(messages: [[String : String]]) async throws -> MLXPreparedInput {
         let promptTokenIds = try await prepareForGeneration(messages: messages)
         return MLXPreparedInput(promptTokenIds: promptTokenIds)
     }
 
-    public func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
+    func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
         let promptTokenIds = try await prepareForGeneration(chat: chat.value)
         return MLXPreparedInput(promptTokenIds: promptTokenIds)
     }
 
-    public func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {
+    func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {
         MLXPromptCache(makeCacheForGeneration(parameters: parameters))
     }
 
-    public func generate(
+    func generate(
         input: MLXPreparedInput,
         cache: MLXPromptCache?,
         parameters: GenerateParameters
