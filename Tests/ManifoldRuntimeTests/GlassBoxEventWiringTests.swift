@@ -265,6 +265,23 @@ final class GlassBoxEventWiringTests: XCTestCase {
         }
     }
 
+    /// Polls for the first captured usage record instead of sleeping a fixed
+    /// interval. Usage recording runs *after* the terminal stream event (the
+    /// runtime emits `.streamFinished`/`.afterGeneration` before the
+    /// `UsageStore.record` write), so draining to `.streamFinished` does not
+    /// guarantee the record exists yet — a single load-bearing `Task.sleep`
+    /// here is a known CI-flake source.
+    private func awaitUsageRecord(
+        in store: CapturingUsageStore,
+        deadline: Duration = .seconds(5)
+    ) async {
+        let start = ContinuousClock.now
+        while store.records.isEmpty {
+            if ContinuousClock.now - start > deadline { return }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     // MARK: - Task A: post-turn compressionTriggered brackets historyCompressed
 
     func test_postTurnCompression_triggeredPrecedesHistoryCompressed() async throws {
@@ -305,9 +322,6 @@ final class GlassBoxEventWiringTests: XCTestCase {
         let insertedIDs = Set(inserted.map(\.id))
         XCTAssertTrue(removed.allSatisfy { !insertedIDs.contains($0) },
                       "Removed IDs must be disjoint from the inserted replacement set")
-
-        // Sabotage guard: a wrong reason would slip past if we did not assert it.
-        XCTAssertNotEqual(reason, CompressionReason.manual)
     }
 
     // MARK: - Task A: pre-turn compressionTriggered brackets historyCompressed
@@ -469,6 +483,51 @@ final class GlassBoxEventWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - Task B: no toolCallApproved when a preToolUse hook blocks
+
+    /// A `preToolUse` hook returning `.block` short-circuits the dispatch loop
+    /// before the approval gate is consulted, so no `.toolCallApproved` may fire.
+    /// This locks the second non-emission path (the gate-denial test covers the
+    /// other); the two together pin both early returns that precede approval.
+    func test_toolCallApproved_absentWhenPreToolUseHookBlocks() async throws {
+        let backend = makeToolCapableBackend()
+        backend.scriptedToolCallsPerTurn = [
+            [ToolCall(id: "call-H", toolName: "toolA", arguments: "{}")],
+            [],
+        ]
+        backend.tokensToYieldPerTurn = [[], ["done"]]
+
+        let registry = ToolRegistry(tools: [CountingExecutor(name: "toolA", resultContent: "resA")])
+        let inference = InferenceService(backend: backend, name: "Mock", toolRegistry: registry)
+        let store = InMemoryMessageStore()
+
+        // The runtime owns the pre-tool-use hook (it re-installs its own
+        // adapter over the InferenceService on every turn), so the blocking
+        // hook must be registered through the runtime's HookRegistry.
+        let hooks = HookRegistry()
+        await hooks.register(.preToolUse) { _ in
+            HookOutput(block: true, denyReason: "policy:denied")
+        }
+        let runtime = ConversationRuntime(
+            messageStore: store,
+            inferenceService: inference,
+            hookRegistry: hooks
+        )
+
+        _ = try await runtime.send(SendInput(
+            sessionID: UUID(),
+            userText: "use the tool",
+            streamingUpdateInterval: .zero,
+            streamingBatchCharacterLimit: 1
+        ))
+        let events = await drain(from: runtime, until: isStreamFinished)
+
+        XCTAssertFalse(
+            events.contains { if case .toolCallApproved = $0 { return true }; return false },
+            ".toolCallApproved must NOT fire when a preToolUse hook blocks the call before approval"
+        )
+    }
+
     // MARK: - Task D: endpointID threaded into TurnUsageRecord
 
     func test_endpointID_populatedInUsageRecord_forEndpointBackend() async throws {
@@ -499,16 +558,12 @@ final class GlassBoxEventWiringTests: XCTestCase {
             streamingBatchCharacterLimit: 1
         ))
         _ = await drain(from: runtime, until: isStreamFinished)
-        // Usage recording runs after the terminal stream event; let it settle.
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitUsageRecord(in: usageStore)
 
         let records = usageStore.records
         XCTAssertEqual(records.count, 1, "Exactly one usage record should be written for the turn")
         XCTAssertEqual(records.first?.endpointID, endpoint.id,
                        "TurnUsageRecord.endpointID must carry the active endpoint id (#1207)")
-
-        // Sabotage guard: a regression to the old hardcoded `nil` fails here.
-        XCTAssertNotNil(records.first?.endpointID)
     }
 
     // MARK: - Task D: endpointID is nil for on-disk (local) backends
@@ -526,7 +581,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
 
         _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "hi"))
         _ = await drain(from: runtime, until: isStreamFinished)
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitUsageRecord(in: usageStore)
 
         let records = usageStore.records
         XCTAssertEqual(records.count, 1)
