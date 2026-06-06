@@ -4,7 +4,13 @@ import Synchronization
 // MARK: - EventTapRegistry
 
 /// Maintains a mutable collection of AsyncStream continuations and fans out
-/// each ``ConversationEvent`` to every registered consumer.
+/// each `Event` to every registered consumer.
+///
+/// Generic over the event type so the same fan-out machinery backs
+/// ``ConversationRuntime``'s ``ConversationEvent`` taps as well as the
+/// ``ImageGenerationRuntime`` / ``VideoGenerationRuntime`` runtime-event taps.
+/// `Event` must be `Sendable` so the buffered continuations are safe to hold
+/// across actors.
 ///
 /// ### Yield-outside-lock invariant
 ///
@@ -14,12 +20,12 @@ import Synchronization
 /// calls back synchronously on the thread that detects stream cancellation,
 /// which re-enters `deregister`. If `yield` were called while the lock is held
 /// the re-entrant `deregister` would deadlock.
-final class EventTapRegistry: Sendable {
-    private let taps = Mutex<[UUID: AsyncStream<ConversationEvent>.Continuation]>([:])
+final class EventTapRegistry<Event: Sendable>: Sendable {
+    private let taps = Mutex<[UUID: AsyncStream<Event>.Continuation]>([:])
 
     /// Adds a continuation to the fan-out set and returns the opaque token
     /// needed to remove it later via ``deregister(_:)``.
-    func register(_ continuation: AsyncStream<ConversationEvent>.Continuation) -> UUID {
+    func register(_ continuation: AsyncStream<Event>.Continuation) -> UUID {
         let id = UUID()
         taps.withLock { $0[id] = continuation }
         return id
@@ -37,7 +43,7 @@ final class EventTapRegistry: Sendable {
     /// Continuations are snapshotted under the lock and then yielded to
     /// outside the lock. See the yield-outside-lock invariant for why this
     /// ordering matters.
-    func broadcast(_ event: ConversationEvent) {
+    func broadcast(_ event: Event) {
         let snapshot = taps.withLock { Array($0.values) }
         for continuation in snapshot {
             continuation.yield(event)
@@ -50,7 +56,7 @@ final class EventTapRegistry: Sendable {
     /// Continuations are snapshotted and cleared under the lock, then finished
     /// outside it — same ordering invariant as ``broadcast(_:)``.
     func finishAll() {
-        let snapshot = taps.withLock { existing -> [AsyncStream<ConversationEvent>.Continuation] in
+        let snapshot = taps.withLock { existing -> [AsyncStream<Event>.Continuation] in
             let values = Array(existing.values)
             existing.removeAll()
             return values

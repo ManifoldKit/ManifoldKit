@@ -75,6 +75,13 @@ public final class VideoGenerationRuntime {
     public let events: AsyncStream<VideoRuntimeEvent>
     private let continuation: AsyncStream<VideoRuntimeEvent>.Continuation
 
+    /// Fan-out registry for secondary observers installed via
+    /// ``addEventTap(bufferingPolicy:)``. Separate from the primary
+    /// ``events`` stream so a developer inspector (the Architect timeline) can
+    /// observe the same event flow the host adapter already drains, without
+    /// competing for the single-consumer ``events`` stream.
+    private let eventTaps = EventTapRegistry<VideoRuntimeEvent>()
+
     // MARK: In-flight state
     //
     // Tracks the consumer task for each in-flight generation by the
@@ -110,6 +117,34 @@ public final class VideoGenerationRuntime {
 
     deinit {
         continuation.finish()
+        eventTaps.finishAll()
+    }
+
+    // MARK: Secondary event taps
+
+    /// Installs a secondary multicast tap on this runtime's event flow.
+    ///
+    /// The returned stream receives every ``VideoRuntimeEvent`` the primary
+    /// ``events`` stream sees. The tap is independent of the primary consumer —
+    /// installing one does not starve ``events``, and a slow tap does not stall
+    /// generation. Mirrors ``ConversationRuntime/addEventTap(bufferingPolicy:)``
+    /// so a developer inspector can fold video-generation events into the same
+    /// timeline as conversation events.
+    ///
+    /// - Parameter bufferingPolicy: Controls what happens when the tap consumer
+    ///   falls behind. Defaults to `.unbounded` so no events are dropped; pass a
+    ///   bounded policy if you need backpressure semantics.
+    /// - Returns: An `AsyncStream` that delivers events until the runtime
+    ///   terminates, at which point the stream finishes normally.
+    public func addEventTap(
+        bufferingPolicy: AsyncStream<VideoRuntimeEvent>.Continuation.BufferingPolicy = .unbounded
+    ) -> AsyncStream<VideoRuntimeEvent> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { [eventTaps] continuation in
+            let id = eventTaps.register(continuation)
+            continuation.onTermination = { _ in
+                eventTaps.deregister(id)
+            }
+        }
     }
 
     // MARK: Commands
@@ -273,6 +308,7 @@ public final class VideoGenerationRuntime {
 
     private func emit(_ event: VideoRuntimeEvent) {
         continuation.yield(event)
+        eventTaps.broadcast(event)
     }
 }
 
