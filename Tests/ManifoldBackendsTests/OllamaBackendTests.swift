@@ -1731,6 +1731,71 @@ struct OllamaBackendTests {
                     "tag '\(tag)' contains 'cloud' but does not end in ':cloud' — must load normally")
         }
     }
+
+    // MARK: - requestIdleTimeout (slow cold-load protection)
+
+    @Test func requestIdleTimeout_defaultMatchesConstant() {
+        // Sabotage: removing the `requestIdleTimeout = defaultRequestIdleTimeout`
+        // line in OllamaBackend.init causes this to return nil.
+        let backend = OllamaBackend(urlSession: makeMockSession())
+        #expect(backend.requestIdleTimeout == OllamaBackend.defaultRequestIdleTimeout,
+                "OllamaBackend must default requestIdleTimeout to defaultRequestIdleTimeout so cold-loading servers aren't killed")
+    }
+
+    @Test func requestIdleTimeout_defaultIsGenerous() {
+        // 1800s matches the 30-min keepAlive default; anything below 600s
+        // would kill large models during a realistic VRAM load.
+        #expect(OllamaBackend.defaultRequestIdleTimeout >= 600,
+                "defaultRequestIdleTimeout must be at least 600s to survive slow model cold-loads")
+    }
+
+    @Test func requestIdleTimeout_stampsGenerationRequest() async throws {
+        let (backend, chatURL, showURL) = makeConfiguredBackendWithShow()
+        MockURLProtocol.stub(url: showURL, response: .immediate(data: apiShowBody(capabilities: []), statusCode: 200))
+        defer { MockURLProtocol.unstub(url: showURL) }
+        try await loadBackend(backend)
+
+        let doneChunk = ndjsonLine("""
+        {"model":"llama3.2","message":{"role":"assistant","content":"hi"},"done":true}
+        """)
+        MockURLProtocol.stub(url: chatURL, response: .sse(chunks: [doneChunk], statusCode: 200))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
+        for try await _ in stream.events {}
+
+        let captured = MockURLProtocol.capturedRequests.last { $0.url?.absoluteString.contains("api/chat") == true }
+        // Sabotage: removing the `request.timeoutInterval = timeout` line in
+        // SSECloudBackend.makeGenerationTaskContext causes the captured request
+        // to carry the URLRequest default (60s) rather than our 1800s.
+        #expect(
+            captured?.timeoutInterval == OllamaBackend.defaultRequestIdleTimeout,
+            "Generation request must carry requestIdleTimeout as URLRequest.timeoutInterval"
+        )
+    }
+
+    @Test func requestIdleTimeout_overridePropagates() async throws {
+        let (backend, chatURL, showURL) = makeConfiguredBackendWithShow()
+        backend.requestIdleTimeout = 42
+        MockURLProtocol.stub(url: showURL, response: .immediate(data: apiShowBody(capabilities: []), statusCode: 200))
+        defer { MockURLProtocol.unstub(url: showURL) }
+        try await loadBackend(backend)
+
+        let doneChunk = ndjsonLine("""
+        {"model":"llama3.2","message":{"role":"assistant","content":"ok"},"done":true}
+        """)
+        MockURLProtocol.stub(url: chatURL, response: .sse(chunks: [doneChunk], statusCode: 200))
+        defer { MockURLProtocol.unstub(url: chatURL) }
+
+        let stream = try backend.generate(prompt: "hi", systemPrompt: nil, config: .init())
+        for try await _ in stream.events {}
+
+        let captured = MockURLProtocol.capturedRequests.last { $0.url?.absoluteString.contains("api/chat") == true }
+        // Sabotage: changing backend.requestIdleTimeout = 42 to any other value
+        // or removing the wiring in makeGenerationTaskContext causes this to fail.
+        #expect(captured?.timeoutInterval == 42,
+                "Overriding requestIdleTimeout must propagate to URLRequest.timeoutInterval")
+    }
 }
 
 // MARK: - OllamaModelListService Tests
