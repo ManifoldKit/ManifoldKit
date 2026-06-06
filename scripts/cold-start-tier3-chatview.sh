@@ -68,6 +68,23 @@ import ManifoldKit
 import SwiftData
 import SwiftUI
 
+// A custom bubble style defined entirely in consumer code — proves the
+// MessageBubbleStyle protocol surface (Configuration, makeBody, the per-role
+// background hook) is usable from outside the package.
+@MainActor
+struct ColdStartBrandBubbleStyle: MessageBubbleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.content
+            .padding(10)
+            .background(
+                configuration.role == .user
+                    ? AnyShapeStyle(Color.accentColor)
+                    : AnyShapeStyle(.fill.tertiary),
+                in: RoundedRectangle(cornerRadius: 20)
+            )
+    }
+}
+
 @MainActor
 struct RootView: View {
     @State private var chatViewModel: ChatViewModel
@@ -99,6 +116,20 @@ struct RootView: View {
                     Text("API configuration")
                 }
             )
+            // Theming seams exercised from outside the package: Layer 1 tokens
+            // via .chatTheme(_:), Layer 2 chrome via a consumer-defined
+            // MessageBubbleStyle, Layer 3 per-message override with the
+            // defaultMessageView() fallback.
+            .chatTheme(
+                ChatTheme(
+                    userBubbleBackground: AnyShapeStyle(Color.indigo),
+                    cornerRadius: 20
+                )
+            )
+            .messageBubbleStyle(ColdStartBrandBubbleStyle())
+            .chatMessageRenderer { params in
+                params.defaultMessageView()
+            }
         }
         .environment(chatViewModel)
         .environment(sessionManager)
@@ -123,7 +154,7 @@ func run() throws -> Int32 {
 
     let root = RootView(runtime: runtime)
     _ = root.body
-    print("OK ChatView composed with @State/@Environment Observation and apiConfiguration builder")
+    print("OK ChatView composed with @State/@Environment Observation, apiConfiguration builder, .chatTheme/.messageBubbleStyle/.chatMessageRenderer seams")
     return 0
 }
 

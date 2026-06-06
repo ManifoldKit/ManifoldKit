@@ -10,6 +10,11 @@ struct ChatHistoryView: View {
 
     @Environment(ChatViewModel.self) private var viewModel
 
+    /// Optional host-supplied per-message renderer. When set, it is given the
+    /// chance to render each row; it falls through to the built-in bubble via
+    /// `params.defaultMessageView()`. Injected with `.chatMessageRenderer(_:)`.
+    @Environment(\.chatMessageRenderer) private var messageRenderer
+
     let customEmptyPlaceholder: AnyView?
     let linkPreviewProvider: LinkPreviewProvider?
     let contextMenuItemsBuilder: ((ChatMessageRecord) -> AnyView)?
@@ -89,14 +94,19 @@ struct ChatHistoryView: View {
             chip
         }
 
-        let bubble = MessageBubbleView(
+        // A host renderer (if any) gets first refusal on the row; it can take
+        // over specific messages and defer the rest to the built-in bubble via
+        // `params.defaultMessageView()`. Without a renderer this is the default
+        // bubble, unchanged.
+        let params = ChatMessageRenderParameters(
             message: message,
             isStreaming: isMessageStreaming(message),
             isPinned: viewModel.isMessagePinned(id: message.id),
+            session: viewModel.activeSession,
             linkPreviewProvider: linkPreviewProvider,
-            customKindRenderer: customKindRenderer,
-            session: viewModel.activeSession
+            customKindRenderer: customKindRenderer
         )
+        let bubble = messageRenderer?(params) ?? params.defaultMessageView()
 
         if let contextMenuItemsBuilder {
             bubble
