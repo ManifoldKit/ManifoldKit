@@ -541,7 +541,6 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
-                .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
             ],
             path: "Sources/ManifoldTestSupport",
             exclude: ["FuzzCalibrationCorpus"],
