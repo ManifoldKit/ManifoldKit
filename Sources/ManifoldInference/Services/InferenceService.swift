@@ -101,6 +101,11 @@ public final class InferenceService {
     public var isGenerating: Bool { generation.isGenerating }
     public var activeBackendName: String? { lifecycle.activeBackendName }
     public var activeModelName: String? { lifecycle.activeModelName }
+
+    /// Identity of the ``APIEndpointRecord`` backing the active endpoint
+    /// backend, or `nil` for on-disk model loads. Consumers attribute usage
+    /// accounting to the serving endpoint with this (#1207).
+    public var activeEndpointID: UUID? { lifecycle.activeEndpointID }
     public var modelLoadProgress: Double? { lifecycle.modelLoadProgress }
     public var modelLoadReadinessState: ModelLoadReadinessState {
         if lifecycle.isModelLoaded { return .ready }

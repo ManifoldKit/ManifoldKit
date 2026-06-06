@@ -18,6 +18,13 @@ final class ModelLifecycleCoordinator {
     private(set) var activeModelName: String?
     private(set) var modelLoadProgress: Double?
 
+    /// Identity of the ``APIEndpointRecord`` backing the active endpoint
+    /// backend, or `nil` for on-disk model loads (which have no endpoint
+    /// record). Threaded through the load commit so usage accounting can
+    /// attribute a turn to the endpoint that served it (#1207). Cleared on
+    /// unload alongside the other active-backend metadata.
+    private(set) var activeEndpointID: UUID?
+
     // MARK: - Backend
 
     private(set) var backend: (any InferenceBackend)?
@@ -237,6 +244,7 @@ final class ModelLifecycleCoordinator {
         backendName: String,
         backend newBackend: any InferenceBackend,
         modelName: String,
+        endpointID: UUID? = nil,
         loadOperation: @escaping @Sendable () async throws -> Void
     ) async throws {
         let request = beginLoadRequest(
@@ -264,7 +272,8 @@ final class ModelLifecycleCoordinator {
             request: request,
             backend: newBackend,
             backendName: backendName,
-            modelName: modelName
+            modelName: modelName,
+            endpointID: endpointID
         ) else {
             newBackend.unloadModel()
             logLoadEvent("load.suppress", request: request, reason: "stale-success", clearMetadata: true)
@@ -324,7 +333,8 @@ final class ModelLifecycleCoordinator {
             target: endpoint.provider.rawValue,
             backendName: cloudBackendName,
             backend: newBackend,
-            modelName: endpoint.modelName
+            modelName: endpoint.modelName,
+            endpointID: endpoint.id
         ) {
             try await newBackend.loadModel(from: backendURL, plan: cloudPlan)
         }
@@ -341,6 +351,7 @@ final class ModelLifecycleCoordinator {
         isModelLoaded = false
         activeBackendName = nil
         activeModelName = nil
+        activeEndpointID = nil
     }
 
     // MARK: - Capability Queries
@@ -505,7 +516,8 @@ final class ModelLifecycleCoordinator {
         request: LoadRequestToken,
         backend newBackend: any InferenceBackend,
         backendName: String,
-        modelName: String
+        modelName: String,
+        endpointID: UUID? = nil
     ) -> Bool {
         guard canCommitLoad(request) else { return false }
         backend = newBackend
@@ -513,6 +525,7 @@ final class ModelLifecycleCoordinator {
         modelLoadProgress = nil
         activeBackendName = backendName
         activeModelName = modelName
+        activeEndpointID = endpointID
         loadPhase = .loaded(request: request)
         logLoadEvent("load.commit", request: request, clearMetadata: true)
         return true

@@ -287,11 +287,15 @@ struct GenerationToolDispatchLoop {
         }
 
         if registry.requiresApproval(toolName: call.toolName) == false {
+            // Auto-approved: the tool is not gated, so it clears approval
+            // implicitly. Emit the approval signal before execution.
+            yieldEvent(.toolCallApproved(callId: call.id))
             return await dispatchStreaming(call, through: registry, onProgress: onProgress)
         }
 
         switch await toolApprovalGate.approve(call) {
         case .approved:
+            yieldEvent(.toolCallApproved(callId: call.id))
             return await dispatchStreaming(call, through: registry, onProgress: onProgress)
         case .denied(let reason):
             Log.inference.info(

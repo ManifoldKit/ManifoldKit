@@ -16,10 +16,12 @@ import ManifoldInference
 //     `.streamFinished`, `.afterGeneration`, `.errorRaised` — fire on the
 //     send happy path / cancel / failure
 // Tool call cases (`toolCallRequested`, `.toolCallApproved`,
-// `.toolCallCompleted`) and `.compressionTriggered` are present on the
-// surface so adapters can bind to them today; the runtime emits them in
-// later PRs as the corresponding behaviour migrates from
-// ``GenerationQueue`` and ``ChatViewModel``.
+// `.toolCallCompleted`) and `.compressionTriggered` are emitted by the
+// ``ConversationTurnExecutor``: the tool-call trio brackets each dispatched
+// tool (`.toolCallApproved` fires only when the call clears the approval
+// gate), and `.compressionTriggered` is the "before" signal that brackets
+// the "after" `.historyCompressed` on both the pre-turn and post-turn
+// compression paths.
 //
 // Phase 1.2.5 PR-B adds `.messageRemoved` and emits it
 // from the regenerate sub-flow when the runtime deletes the last assistant
@@ -174,12 +176,16 @@ public enum ConversationEvent: Sendable {
     /// `.streamFinished` and re-fetching the message.
     case afterGeneration(messageID: ChatMessage.ID, finalText: String)
 
-    /// History was compressed (older messages dropped to fit the context
-    /// window, or via a host-driven compression command). Load-bearing,
-    /// although PR-A does not emit it from the send sub-flow — context
-    /// management still lives in `GenerationQueue` for the pre-PR-A
-    /// surface. Reserved for later sub-flows that route compression
-    /// through the runtime.
+    /// History is about to be compressed (older messages dropped to fit the
+    /// context window). This is the "before" signal that brackets the
+    /// "after" ``historyCompressed(sessionID:insertedRecords:)``: the
+    /// ``ConversationTurnExecutor`` emits it on both the pre-turn and
+    /// post-turn compression paths, immediately before it replaces the
+    /// session's stored history. `removed` lists the record IDs that will be
+    /// dropped — derived from the compression policy's replacement set
+    /// (records present before compression but absent afterwards) — and
+    /// `reason` is ``CompressionReason/contextWindowExceeded`` for both
+    /// runtime-driven paths. Load-bearing.
     case compressionTriggered(removed: [ChatMessage.ID], reason: CompressionReason)
 
     /// Emitted when ``CompressionPolicy`` has replaced the session's message
@@ -196,15 +202,21 @@ public enum ConversationEvent: Sendable {
 
     // MARK: Tool calls
 
-    /// The model requested a tool invocation. Adapters that gate tools
-    /// behind user approval pause for explicit `.toolCallApproved` before
-    /// dispatching. PR-A does not emit this — the existing tool-loop
-    /// orchestration stays in `ChatViewModel`/`GenerationQueue`
-    /// until a follow-up PR routes it through the runtime.
+    /// The model requested a tool invocation. The runtime emits this from the
+    /// turn's stream-consumption loop the moment the backend surfaces a tool
+    /// call, before approval and dispatch. Adapters that gate tools behind
+    /// user approval pause for the matching `.toolCallApproved` before
+    /// rendering a running state.
     case toolCallRequested(ToolCall)
 
-    /// A tool call previously surfaced via ``toolCallRequested(_:)`` was
-    /// approved (either auto-approved or by an explicit user gate).
+    /// A tool call previously surfaced via ``toolCallRequested(_:)`` cleared
+    /// the approval gate and is about to execute. The runtime emits this only
+    /// on genuine approval — auto-approval (the tool does not require
+    /// approval) or an explicit `.approved` verdict from the dispatch loop's
+    /// ``ToolApprovalGate``. It is NOT emitted when a call is denied, blocked
+    /// by a pre-tool-use hook, short-circuited, or budget-exhausted; those
+    /// paths surface only a `.toolCallCompleted` carrying the synthesized
+    /// result. Appears between `.toolCallRequested` and `.toolCallCompleted`.
     case toolCallApproved(ToolCall.ID)
 
     /// A tool call completed; `ToolResult` carries the outcome (success
@@ -220,10 +232,18 @@ public enum ConversationEvent: Sendable {
     /// time this event fires.
     case agentHandoff(from: UUID?, to: UUID)
 
-    /// A skill was invoked through the skill dispatcher tool (W2C path —
-    /// stubbed here so adapters can begin pattern-matching against it
-    /// today; emission lands when the W2C wiring sees the skill dispatch
-    /// callsite).
+    /// A skill was invoked.
+    ///
+    /// Emission is deferred — there is no producer for this case today, and
+    /// none is planned in this PR. Skills currently surface as ordinary tools
+    /// via `ManifoldSkills` / `SkillToolSource`, so a skill invocation reaches
+    /// the runtime as a `.toolCallRequested` / `.toolCallApproved` /
+    /// `.toolCallCompleted` sequence rather than as a distinct skill event. No
+    /// skill identity is threaded through the dispatch loop, so the runtime
+    /// cannot honestly distinguish a skill-backed tool from any other tool at
+    /// the emission boundary. The case is retained so host adapters may
+    /// pattern-match it once skill identity is plumbed through; until then it
+    /// is a known non-emitted case.
     case skillInvoked(name: String, sessionID: UUID)
 
     /// A registered hook fired in response to an internal event boundary

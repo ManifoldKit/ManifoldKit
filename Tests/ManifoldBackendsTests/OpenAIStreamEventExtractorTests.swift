@@ -307,6 +307,7 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
+        case .toolCallApproved: return "toolCallApproved"
         case .kvCacheReuse: return "kvCacheReuse"
         case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"

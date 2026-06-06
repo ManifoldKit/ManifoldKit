@@ -155,6 +155,18 @@ struct ConversationTurnExecutor: Sendable {
                         PreTurnCompressionEmptyResultError()
                     )
                 }
+                // "Before" bracket for the `.historyCompressed` "after" signal.
+                // The removed set is computed from the policy's replacement
+                // output (records present before but absent from `compressed`)
+                // so the IDs are accurate rather than a placeholder — emitting
+                // it here, after `compressBeforeTurn` resolves but before the
+                // store mutation, keeps it ordered ahead of `.historyCompressed`
+                // without fabricating which records will actually be dropped.
+                let retainedIDs = Set(compressed.map(\.id))
+                let removedIDs = existingHistory.compactMap {
+                    retainedIDs.contains($0.id) ? nil : $0.id
+                }
+                emit(.compressionTriggered(removed: removedIDs, reason: .contextWindowExceeded))
                 do {
                     try await persistence.deleteMessages(for: sessionID)
                     for message in compressed {
@@ -855,6 +867,9 @@ struct ConversationTurnExecutor: Sendable {
                     assistantMessage.contentParts.append(.toolCall(call))
                     emit(.toolCallRequested(call))
 
+                case .recordToolApproval(let callId):
+                    emit(.toolCallApproved(callId))
+
                 case .appendToolResult(let result):
                     assistantMessage.contentParts.append(.toolResult(result))
                     emit(.toolCallCompleted(result.callId, result))
@@ -1140,12 +1155,14 @@ struct ConversationTurnExecutor: Sendable {
         if let usageStore, let usage {
             // `activeBackendName` is the closest proxy for the model
             // identifier available without threading extra state through
-            // enqueueAsync. A dedicated model-identifier accessor can be
-            // added in a follow-up (#1207 TODO).
+            // enqueueAsync. The endpoint identity is now threaded from the
+            // lifecycle coordinator (#1207) so endpoint-backed turns attribute
+            // usage to the serving ``APIEndpointRecord``.
             let backendName = await readActiveBackendName()
+            let endpointID = await readActiveEndpointID()
             let record = TurnUsage(
                 sessionID: sessionID,
-                endpointID: nil, // TODO: thread endpoint ID from InferenceService (#1207 follow-up)
+                endpointID: endpointID,
                 modelIdentifier: backendName ?? "unknown",
                 promptTokens: usage.promptTokens,
                 completionTokens: usage.completionTokens
@@ -1235,6 +1252,16 @@ struct ConversationTurnExecutor: Sendable {
                         )
                         return
                     }
+                    // "Before" bracket for `.historyCompressed`. Removed IDs are
+                    // derived from the policy's replacement set (records present
+                    // in `history` but absent from `compressed`) so the event
+                    // carries the real dropped records, emitted ahead of the
+                    // store mutation and the "after" `.historyCompressed`.
+                    let retainedIDs = Set(compressed.map(\.id))
+                    let removedIDs = history.compactMap {
+                        retainedIDs.contains($0.id) ? nil : $0.id
+                    }
+                    emit(.compressionTriggered(removed: removedIDs, reason: .contextWindowExceeded))
                     try await persistence.deleteMessages(for: sessionID)
                     for message in compressed {
                         try await persistence.insertMessage(message)
@@ -1688,6 +1715,11 @@ struct ConversationTurnExecutor: Sendable {
     @MainActor
     private func readActiveBackendName() async -> String? {
         inferenceService.activeBackendName
+    }
+
+    @MainActor
+    private func readActiveEndpointID() async -> UUID? {
+        inferenceService.activeEndpointID
     }
 
 
