@@ -50,7 +50,7 @@ public enum GenerationCapabilityRequirement: Sendable, Hashable, Codable {
     /// runs — the underlying `Set` storage iterates in insertion-dependent
     /// order. Not part of the public API contract; the case names happen to
     /// match `String(describing:)` today but callers should not rely on that.
-    var sortKey: String {
+    package var sortKey: String {
         switch self {
         case .toolCalling:                return "1.toolCalling"
         case .structuredOutput:           return "2.structuredOutput"

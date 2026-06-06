@@ -17,10 +17,16 @@
       "path": "Sources/ManifoldSecrets",
       "deps": []
     },
+    "ManifoldHardware": {
+      "type": "regular",
+      "path": "Sources/ManifoldHardware",
+      "deps": []
+    },
     "ManifoldInference": {
       "type": "regular",
       "path": "Sources/ManifoldInference",
       "deps": [
+        "ManifoldHardware",
         "ManifoldMacrosPlugin",
         "ManifoldNetworking",
         "ManifoldSecrets"
@@ -268,6 +274,15 @@
       "deps": [
         "ManifoldInference",
         "ManifoldSecrets",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldHardwareTests": {
+      "type": "test",
+      "path": "Tests/ManifoldHardwareTests",
+      "deps": [
+        "ManifoldHardware",
+        "ManifoldInference",
         "ManifoldTestSupport"
       ]
     },

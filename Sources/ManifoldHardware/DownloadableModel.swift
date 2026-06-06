@@ -130,11 +130,12 @@ public struct DownloadableModel: Identifiable, Sendable, Hashable {
 
 /// Errors raised by ``DownloadableModel/validate(fileName:)``.
 ///
-/// Kept `internal` deliberately: host apps should catch plain `Error` from
+/// Kept non-public deliberately: host apps should catch plain `Error` from
 /// `validate(fileName:)` and surface `localizedDescription`. Pinning the
 /// concrete cases as public API would freeze the category list and force
 /// downstream switches to change every time a new rejection rule is added.
-enum FileNameError: LocalizedError, Equatable {
+/// `package` access so tests within the same package can assert on specific cases.
+package enum FileNameError: LocalizedError, Equatable {
     case empty
     /// `..` or `.` component — classic path traversal.
     case pathTraversal
@@ -152,7 +153,7 @@ enum FileNameError: LocalizedError, Equatable {
     case tooLong
     case controlCharacter
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .empty:
             return "Model filename is empty."
@@ -260,6 +261,20 @@ public struct DownloadableModelGroup: Identifiable {
     public let displayName: String
     public let downloads: Int?
     public let variants: [DownloadableModel]
+
+    public init(
+        id: String,
+        repoID: String,
+        displayName: String,
+        downloads: Int?,
+        variants: [DownloadableModel]
+    ) {
+        self.id = id
+        self.repoID = repoID
+        self.displayName = displayName
+        self.downloads = downloads
+        self.variants = variants
+    }
 
     /// Human-readable size range (e.g., "1.6 GB – 7.7 GB"), or nil if all sizes are zero.
     public var sizeRange: String? {

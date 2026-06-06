@@ -920,6 +920,10 @@ extension InferenceService {
     }
 }
 
+// MARK: - BackendRegistrySampling Conformance
+
+extension InferenceService: BackendRegistrySampling {}
+
 // MARK: - Memory Pressure Events
 
 extension InferenceService {

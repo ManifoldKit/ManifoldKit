@@ -1,4 +1,9 @@
 import Foundation
+import os
+
+// Module-local logger — avoids importing ManifoldInference's `Log` enum
+// so ManifoldHardware stays a zero-dependency leaf module.
+private let promptLogger = Logger(subsystem: "com.manifoldkit", category: "prompt")
 
 /// Prompt template formats for models that require explicit chat formatting.
 ///
@@ -137,7 +142,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "<|im_start|>assistant\n"
-        Log.prompt.debug("Formatted \(messages.count) messages with ChatML template")
+        promptLogger.debug("Formatted \(messages.count) messages with ChatML template")
         return result
     }
 
@@ -163,7 +168,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        Log.prompt.debug("Formatted \(messages.count) messages with Llama 3 template")
+        promptLogger.debug("Formatted \(messages.count) messages with Llama 3 template")
         return result
     }
 
@@ -200,7 +205,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
             }
         }
 
-        Log.prompt.debug("Formatted \(messages.count) messages with Mistral template")
+        promptLogger.debug("Formatted \(messages.count) messages with Mistral template")
         return result
     }
 
@@ -234,7 +239,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "### Response:\n"
-        Log.prompt.debug("Formatted with Alpaca template (single-turn)")
+        promptLogger.debug("Formatted with Alpaca template (single-turn)")
         return result
     }
 
@@ -274,7 +279,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "<start_of_turn>model\n"
-        Log.prompt.debug("Formatted \(messages.count) messages with Gemma template")
+        promptLogger.debug("Formatted \(messages.count) messages with Gemma template")
         return result
     }
 
@@ -318,7 +323,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
                 // Silent skip would mask a tool author's mistake during prompt
                 // assembly. Surface it in the prompt log so the failure is
                 // discoverable without crashing generation.
-                Log.prompt.error("Failed to serialize tool declaration for Gemma 4 template: \(tool.name)")
+                promptLogger.error("Failed to serialize tool declaration for Gemma 4 template: \(tool.name)")
             }
         }
         // Only emit the system turn when at least one part survived
@@ -342,7 +347,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "<|turn>model\n"
-        Log.prompt.debug("Formatted \(messages.count) messages with Gemma 4 template")
+        promptLogger.debug("Formatted \(messages.count) messages with Gemma 4 template")
         return result
     }
 
@@ -355,7 +360,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
             paramsData = try JSONEncoder().encode(tool.parameters)
             paramsObject = try JSONSerialization.jsonObject(with: paramsData)
         } catch {
-            Log.prompt.warning("PromptTemplate: failed to encode parameters for tool '\(tool.name, privacy: .public)': \(error, privacy: .private)")
+            promptLogger.warning("PromptTemplate: failed to encode parameters for tool '\(tool.name, privacy: .public)': \(error, privacy: .private)")
             return nil
         }
 
@@ -369,7 +374,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
             guard let str = String(data: data, encoding: .utf8) else { return nil }
             return str
         } catch {
-            Log.prompt.warning("PromptTemplate: failed to serialize tool declaration for '\(tool.name, privacy: .public)': \(error, privacy: .private)")
+            promptLogger.warning("PromptTemplate: failed to serialize tool declaration for '\(tool.name, privacy: .public)': \(error, privacy: .private)")
             return nil
         }
     }
@@ -407,7 +412,7 @@ public enum PromptTemplate: String, CaseIterable, Sendable, Identifiable {
         }
 
         result += "<|assistant|>\n"
-        Log.prompt.debug("Formatted \(messages.count) messages with Phi template")
+        promptLogger.debug("Formatted \(messages.count) messages with Phi template")
         return result
     }
 }

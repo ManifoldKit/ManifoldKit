@@ -156,9 +156,9 @@ public struct CompiledBackends: Sendable, Equatable {
     }
 
     /// Maps a trait set to the corresponding build profile. Exposed at the
-    /// `internal` level so tests can drive every profile combination without
+    /// `package` level so tests can drive every profile combination without
     /// recompiling under different SwiftPM trait flags.
-    internal static func buildProfile(for traits: Set<BackendBuildTrait>) -> BackendBuildProfile {
+    package static func buildProfile(for traits: Set<BackendBuildTrait>) -> BackendBuildProfile {
         let hasOllama = traits.contains(.ollama)
         let hasCloudSaaS = traits.contains(.cloudSaaS)
 

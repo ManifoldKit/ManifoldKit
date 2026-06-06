@@ -42,6 +42,11 @@ let package = Package(
         // in P1b (#1609): KeychainService, SecureEnclaveKeyManager, SecureBytes.
         // Pure Security framework, zero upward dependencies.
         .library(name: "ManifoldSecrets", targets: ["ManifoldSecrets"]),
+        // Leaf device-capability + GGUF primitives evicted from the
+        // ManifoldInference kernel in P1c (#1610): device probing, memory-pressure
+        // broadcasting, GGUF parsing, and load-plan logic.
+        // Zero dependencies — pure system frameworks.
+        .library(name: "ManifoldHardware", targets: ["ManifoldHardware"]),
         .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
         .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
@@ -205,11 +210,22 @@ let package = Package(
             dependencies: [],
             path: "Sources/ManifoldSecrets"
         ),
+        // ManifoldHardware: device-capability probing, memory-pressure
+        // broadcasting, GGUF parsing, and load-plan logic extracted from the
+        // ManifoldInference kernel in P1c (#1610). Zero dependencies — pure
+        // system frameworks (Foundation, MachO, CryptoKit, Observation) — so it
+        // can never leak ML/SwiftData/UI symbols.
+        .target(
+            name: "ManifoldHardware",
+            dependencies: [],
+            path: "Sources/ManifoldHardware"
+        ),
         .target(
             name: "ManifoldInference",
             dependencies: [
                 "ManifoldNetworking",
                 "ManifoldSecrets",
+                "ManifoldHardware",
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/ManifoldInference",
@@ -691,6 +707,15 @@ let package = Package(
         .testTarget(
             name: "ManifoldSecretsTests",
             dependencies: ["ManifoldSecrets", "ManifoldInference", "ManifoldTestSupport"]
+        ),
+        // Re-homed from ManifoldInferenceTests in P1c (#1610) alongside the
+        // device-capability, GGUF, memory-pressure, and load-plan source.
+        // Depends on ManifoldInference too because MemoryPressureEventTests
+        // exercises InferenceService wiring, and on ManifoldTestSupport for
+        // MockInferenceBackend.
+        .testTarget(
+            name: "ManifoldHardwareTests",
+            dependencies: ["ManifoldHardware", "ManifoldInference", "ManifoldTestSupport"]
         ),
         .testTarget(
             name: "ManifoldMCPTests",

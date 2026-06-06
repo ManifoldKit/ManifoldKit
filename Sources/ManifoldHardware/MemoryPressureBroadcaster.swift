@@ -12,7 +12,7 @@ import os
 ///
 /// Thread-safety is provided by `OSAllocatedUnfairLock`, which is available
 /// on macOS 15 / iOS 18 — the n-1 minimum for this codebase.
-final class MemoryPressureBroadcaster: @unchecked Sendable {
+package final class MemoryPressureBroadcaster: @unchecked Sendable {
 
     private struct Registration {
         let key: UUID
@@ -22,6 +22,8 @@ final class MemoryPressureBroadcaster: @unchecked Sendable {
     // All mutable state is guarded by `lock`.
     private let lock = OSAllocatedUnfairLock(initialState: [UUID: AsyncStream<MemoryPressureEvent>.Continuation]())
 
+    package init() {}
+
     // MARK: - Subscriber Creation
 
     /// Creates a new ``AsyncStream<MemoryPressureEvent>`` and registers its
@@ -30,7 +32,7 @@ final class MemoryPressureBroadcaster: @unchecked Sendable {
     /// The stream finishes automatically when the subscriber lets it go out of
     /// scope (Swift's `AsyncStream` calls the `onTermination` handler, which
     /// removes the continuation from the registry).
-    func makeStream() -> AsyncStream<MemoryPressureEvent> {
+    package func makeStream() -> AsyncStream<MemoryPressureEvent> {
         let key = UUID()
         let stream = AsyncStream<MemoryPressureEvent>(bufferingPolicy: .bufferingNewest(64)) { [weak self] continuation in
             guard let self else {
@@ -52,7 +54,7 @@ final class MemoryPressureBroadcaster: @unchecked Sendable {
     // MARK: - Broadcast
 
     /// Sends `event` to every live subscriber.
-    func send(_ event: MemoryPressureEvent) {
+    package func send(_ event: MemoryPressureEvent) {
         let snapshot = lock.withLock { $0.values.map { $0 } }
         for continuation in snapshot {
             continuation.yield(event)
@@ -65,7 +67,7 @@ final class MemoryPressureBroadcaster: @unchecked Sendable {
     ///
     /// Call from the owning object's `deinit` to allow subscriber tasks to
     /// terminate cleanly rather than waiting forever.
-    func finishAll() {
+    package func finishAll() {
         let snapshot = lock.withLock { continuations -> [AsyncStream<MemoryPressureEvent>.Continuation] in
             let values = continuations.values.map { $0 }
             continuations.removeAll()

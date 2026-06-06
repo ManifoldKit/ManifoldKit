@@ -1,5 +1,6 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldHardware
+import ManifoldInference
 import ManifoldTestSupport
 
 /// Tests for the MemoryPressureEvent stream on InferenceService.

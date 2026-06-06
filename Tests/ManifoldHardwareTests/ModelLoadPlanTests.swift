@@ -1,5 +1,6 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldHardware
+import ManifoldInference
 
 /// Spec-coupled tests for `ModelLoadPlan`.
 ///

@@ -119,10 +119,12 @@ ALLOWLIST_PATHS=(
 
     # systemPrompt! in PromptTemplate — called only after a non-nil check
     # in the same scope (the if-let guard above); safe by local control flow.
-    # estimatedKVBytesPerToken! in ModelLoadPlan — accessed only when the
-    # ternary condition confirmed the optional is non-nil.
-    "ManifoldInference/Services/PromptTemplate.swift"
-    "ManifoldInference/Services/ModelLoadPlan.swift"
+    "ManifoldHardware/PromptTemplate.swift"
+
+    # estimatedKVBytesPerToken! in ModelLoadPlan and its ManifoldInference
+    # extension — accessed only when the ternary condition confirmed non-nil.
+    "ManifoldHardware/ModelLoadPlan.swift"
+    "ManifoldInference/Extensions/ModelLoadPlan+ModelInfo.swift"
 
     # as! SecKey — SecKey is a CF opaque type returned from the Keychain API
     # as `AnyObject`; the cast is guaranteed by the kSecReturnRef contract.

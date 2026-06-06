@@ -32,7 +32,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     // MARK: - Published State
 
     /// The current memory pressure level reported by the OS.
-    package internal(set) var pressureLevel: MemoryPressureLevel = .nominal
+    package var pressureLevel: MemoryPressureLevel = .nominal
 
     // MARK: - Private State
 
@@ -40,10 +40,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     private var source: DispatchSourceMemoryPressure?
 
     /// Serial queue for processing memory pressure events.
-    private let queue = DispatchQueue(
-        label: ManifoldConfiguration.shared.memoryPressureQueueLabel,
-        qos: .utility
-    )
+    private let queue: DispatchQueue
 
     /// Guards `_callbacks` from concurrent mutation.
     private let callbackLock = NSLock()
@@ -52,7 +49,14 @@ package final class MemoryPressureHandler: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
-    package init() {}
+    /// Creates a handler with the given GCD queue label.
+    ///
+    /// The label is injected rather than read from `ManifoldConfiguration` so that
+    /// `ManifoldHardware` remains a zero-dependency module. `InferenceService`
+    /// passes `ManifoldConfiguration.shared.memoryPressureQueueLabel` at call-site.
+    package init(queueLabel: String = "com.manifoldkit.memory-pressure") {
+        self.queue = DispatchQueue(label: queueLabel, qos: .utility)
+    }
 
     deinit {
         stopMonitoring()
