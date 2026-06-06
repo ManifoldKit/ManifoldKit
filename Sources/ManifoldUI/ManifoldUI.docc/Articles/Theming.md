@@ -18,7 +18,7 @@ Every layer is a thin semantic shell over SwiftUI's own resolution machinery. Th
 
 ``ChatTheme`` is a `Sendable` struct of semantic tokens. Inject it with the `.chatTheme(_:)` modifier; it cascades through the environment like `.tint(_:)` or `.font(_:)`, so a single call at the chat root reaches every bubble.
 
-```swift
+```swift,no-build
 ChatView(showModelManagement: $showModels) { APIConfigurationView() }
     .chatTheme(
         ChatTheme(
@@ -39,7 +39,7 @@ When you need to restructure the bubble *container* — a different shape, borde
 
 Three built-ins ship, exposed as static members the way Apple ships `.bordered`:
 
-```swift
+```swift,no-build
 ChatView(showModelManagement: $showModels) { APIConfigurationView() }
     .messageBubbleStyle(.iMessage)   // .plain (default), .iMessage, or .card
 ```
@@ -48,7 +48,7 @@ The default ``PlainMessageBubbleStyle`` reads the active ``ChatTheme``, which is
 
 A custom style receives a ``MessageBubbleConfiguration`` carrying the type-erased inner content, the sender ``ManifoldInference/MessageRole``, and whether the message is still streaming. It owns only the chrome — the rich inner content (message parts, agent badge, timestamps, streaming cursor) is built for you:
 
-```swift
+```swift,no-build
 struct OutlineBubbleStyle: MessageBubbleStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.content
@@ -67,7 +67,7 @@ Because `makeBody` returns a view, it can read `@Environment(\.colorScheme)`, th
 
 Sometimes one *kind* of message needs a bespoke view — a tool-call card, a rich receipt, a map. The `.chatMessageRenderer(_:)` modifier installs a closure that gets first refusal on every row. Handle the messages you care about and call `defaultMessageView()` for the rest:
 
-```swift
+```swift,no-build
 ChatView(showModelManagement: $showModels) { APIConfigurationView() }
     .chatMessageRenderer { params in
         if case .toolResult = params.message.kind {
@@ -81,6 +81,35 @@ ChatView(showModelManagement: $showModels) { APIConfigurationView() }
 This is the seam that BYO-UI consumers used to fork the whole message list to reach. The `defaultMessageView()` fallback is the key detail: you are never forced into all-or-nothing rendering. ``ChatMessageRenderParameters`` is an options struct, so future fields will not break your call site.
 
 > Note: A finer-grained per-content-part hook (text / tool-call / thinking blocks) is not yet exposed; it is tracked for a future release. Layers 1–3 cover the vast majority of customization needs today.
+
+## Putting it together
+
+A minimal app that adopts all three layers at once. `EmptyView()` stands in for the API-configuration sheet so the example compiles against `ManifoldUI` alone, without the optional `ManifoldUIModelManagement` module:
+
+```swift
+import SwiftUI
+import ManifoldUI
+
+@main
+struct ThemedChatApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ChatView(showModelManagement: .constant(false)) { EmptyView() }
+                .chatTheme(
+                    ChatTheme(
+                        userBubbleBackground: AnyShapeStyle(Color.indigo),
+                        cornerRadius: 22,
+                        bubblePadding: 14
+                    )
+                )
+                .messageBubbleStyle(.iMessage)
+                .chatMessageRenderer { params in
+                    params.defaultMessageView()
+                }
+        }
+    }
+}
+```
 
 ## Accessibility checklist
 
