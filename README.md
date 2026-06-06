@@ -380,6 +380,8 @@ open Advanced.xcodeproj
 
 AnyLanguageModel is HuggingFace's Swift package — it mirrors Apple's `FoundationModels` API and exposes many providers behind a single protocol. ManifoldKit and AnyLanguageModel occupy adjacent niches: AnyLanguageModel optimises for provider coverage and API familiarity; ManifoldKit optimises for production reliability and drop-in chat UI (`ChatView` + `SessionListView` + `ModelManagementSheet` on day one). Pick the one whose axis matches the problem you're solving.
 
+ManifoldKit also **consumes** AnyLanguageModel as a backend: the `AnyLanguageModel` trait is the supported path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint — so they plug into the same `ChatViewModel` and runtime as a native backend. See [docs/PROVIDER-BRIDGE.md](docs/PROVIDER-BRIDGE.md) for the provider list, URL/trait setup, and capability limits.
+
 ## Migrating from BaseChatKit
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL redirects, but:

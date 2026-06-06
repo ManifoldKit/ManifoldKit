@@ -56,3 +56,24 @@ AnyLanguageModel optimizes for provider abstraction — one protocol, many provi
 The internal consumer keeps building on its own vendored expander, so the ManifoldKit-side deletion does not affect it.
 
 ChatbotUI-iOS migrates its single-field usage from the old context property to the `systemPromptContext` dictionary: the dict was added in 0.6.0 as the forward-compatible replacement for that specific use case. Drop-in UI, `ChatViewModel`, `ModelManagementSheet`, `APIConfigurationView`, and the HuggingFace downloader all remain unchanged.
+
+---
+
+# Scope Decision — Gemini: bridge, not native backend (2026-06)
+
+**Decision: reach Gemini through the AnyLanguageModel bridge. Do not write a native Gemini backend at this time.**
+
+Context: graduating the AnyLanguageModel bridge to the documented provider-breadth path (issue #1638) raised the question of whether Gemini specifically warrants a native backend. Gemini is high-demand, and its API surfaces thinking/reasoning tokens that the generic bridge flattens (the bridge advertises `supportsThinking = false` and streams plain text only).
+
+Why bridge:
+
+- **Provider breadth is the goal, not per-provider depth.** The bridge unlocks Gemini, xAI, Groq, Mistral, OpenRouter, and others through one adapter. A native Gemini backend buys depth for one provider at the cost of an Nth cloud backend to maintain (auth, retry, pinning, streaming wire format, tool-call dialect, capability probe, conformance suite).
+- **The current gap is bounded and documented.** Bridged Gemini loses reasoning-token fidelity and ManifoldKit's operational guarantees (pinning, retry, circuit breaker, latest-wins cancellation). Both are stated in [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) so the limitation is visible, not silent.
+- **No measured consumer demand for native Gemini yet.** Consistent with the "delete what nobody used" discipline of 0.6.0, a native backend is speculative surface area until demand is observed.
+
+Revisit trigger — promote Gemini to a native backend when **either** holds:
+
+- A shipping consumer needs Gemini reasoning/thinking-token streaming (the bridge's flattening becomes a product gap, not a cosmetic one), or
+- A shipping consumer needs the operational guarantees (pinning / retry / circuit breaker / latest-wins) on Gemini traffic specifically.
+
+Until then, Gemini is a first-class **bridged** provider: documented, surfaced in the Feature Matrix, and held to the universal backend contract by `AnyLanguageModelConformanceTests`.
