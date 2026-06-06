@@ -147,20 +147,55 @@ final class LlamaGrammarSamplerTests: XCTestCase {
     // MARK: - 3. Capability flag is true without requiring a loaded model
 
     /// Verifies that `LlamaBackend().capabilities.supportsGrammarConstrainedSampling`
-    /// is `true` even before any model is loaded.
+    /// is `true` even before any model is loaded (no manifest → modelID defaults to
+    /// `""`, which does not contain "gemma", so grammar is enabled).
     ///
-    /// The flag is a static property of the backend type — it describes what the backend
-    /// *can* do with a loaded model, not the current model's state. Callers read this
-    /// flag before constructing `GenerationConfig.grammar` so they need a reliable
-    /// pre-load answer.
+    /// Callers read this flag before constructing `GenerationConfig.grammar` so they
+    /// need a reliable pre-load answer for non-Gemma models.
     ///
-    /// Sabotage check: change `supportsGrammarConstrainedSampling: true` to `false`
-    /// in `LlamaBackend.capabilities`. This assertion fails immediately.
+    /// Sabotage check: change `supportsGrammar = !modelID.lowercased().contains("gemma")`
+    /// to `supportsGrammar = false` in `LlamaBackend.capabilities`. This assertion fails.
     func test_grammar_capabilityFlagIsTrue() {
         let backend = LlamaBackend()
         XCTAssertTrue(backend.capabilities.supportsGrammarConstrainedSampling,
-                      "LlamaBackend must report supportsGrammarConstrainedSampling = true — "
-                    + "callers gate grammar-constrained generation on this flag")
+                      "LlamaBackend must report supportsGrammarConstrainedSampling = true when no "
+                    + "model is loaded — an unloaded backend has an empty modelID which is not Gemma")
+    }
+
+    // MARK: - 4. Grammar capability is disabled for Gemma models
+
+    /// Verifies that `supportsGrammarConstrainedSampling` is `false` when the loaded
+    /// manifest's `modelIdentifier` contains "gemma" (case-insensitive).
+    ///
+    /// Gemma's tokenizer does not produce valid output under GBNF grammar constraints
+    /// in llama.cpp — the generation stream is empty, causing the FiresideMemory
+    /// extraction pipeline to heuristic-fallback with 0 entities on every turn.
+    /// Disabling grammar for Gemma models forces callers to use JSON-mode-only
+    /// parsing, which works correctly for them.
+    ///
+    /// Sabotage check: remove `.lowercased().contains("gemma")` from the detection
+    /// logic in `LlamaBackend.capabilities`. A loaded Gemma manifest would incorrectly
+    /// advertise grammar support and this assertion would fail.
+    func test_grammar_capabilityFlagIsFalse_forGemmaModel() {
+        // Simulate a loaded Gemma manifest by directly setting _manifest via the
+        // internal test hook. We construct a minimal ModelManifest whose
+        // modelIdentifier contains "gemma".
+        let backend = LlamaBackend()
+        backend.injectManifestForTesting(
+            ModelManifest(
+                contextWindow: 8192,
+                supportsTools: false,
+                supportsThinking: false,
+                thinkingMarkers: nil,
+                supportsSeed: false,
+                supportedSamplingParameters: [.temperature, .topP],
+                modelIdentifier: "gemma-3-4b-q4_k_m",
+                producerKind: .local
+            )
+        )
+        XCTAssertFalse(backend.capabilities.supportsGrammarConstrainedSampling,
+                       "LlamaBackend must report supportsGrammarConstrainedSampling = false "
+                     + "for Gemma models — their tokenizer is incompatible with GBNF in llama.cpp")
     }
 }
 #endif

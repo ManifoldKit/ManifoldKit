@@ -50,6 +50,16 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var manifest: ModelManifest? { withStateLock { _manifest } }
 
+    /// Injects a ``ModelManifest`` for unit tests that need to assert on
+    /// capability flags that depend on the loaded model identity (e.g. Gemma
+    /// grammar detection) without performing a real GGUF load.
+    ///
+    /// Accessible via `@testable import ManifoldLlama`. Never call this in
+    /// production code — it bypasses the normal `loadModel` lifecycle.
+    func injectManifestForTesting(_ manifest: ModelManifest) {
+        withStateLock { _manifest = manifest }
+    }
+
     /// Per-token resident cost (bytes) learned from the most recent prefill via
     /// ``PrefillFootprintEstimator`` (issue #1592), or `nil` if no prefill has
     /// produced a stable sample yet. Callers that rebuild a ``ModelLoadPlan`` for
@@ -62,6 +72,12 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
+        let modelID = withStateLock { _manifest?.modelIdentifier ?? "" }
+        // Gemma's tokenizer does not produce valid output under GBNF grammar
+        // constraints in llama.cpp (empty stream, heuristic fallback extracts
+        // nothing). Disable grammar for Gemma models; JSON-mode-only parsing
+        // handles extraction correctly for them.
+        let supportsGrammar = !modelID.lowercased().contains("gemma")
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
         return BackendCapabilities(
@@ -83,7 +99,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             supportsStreaming: true,
             isRemote: false,
             supportsKVCachePersistence: true,
-            supportsGrammarConstrainedSampling: true,
+            supportsGrammarConstrainedSampling: supportsGrammar,
             supportsThinking: true,
             supportsVision: BackendVisionCapability.llamaSupportsImageInput
         )
