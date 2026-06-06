@@ -21,6 +21,12 @@ public struct ModelLoadPlan: Sendable {
         public let absoluteContextCeiling: Int
         public let headroomFraction: Double
         public let appOverheadBytes: UInt64
+        /// Measured per-token resident cost learned during a prior prefill
+        /// (see ``PrefillFootprintEstimator``). When present and non-zero it
+        /// overrides ``kvBytesPerToken`` for the memory-ceiling math, letting the
+        /// plan recompute `effectiveContextSize` against a *measured* budget. `nil`
+        /// (the default) leaves the static heuristic path byte-for-byte unchanged.
+        public let measuredBytesPerToken: UInt64?
 
         public init(
             modelFileSize: UInt64,
@@ -32,7 +38,8 @@ public struct ModelLoadPlan: Sendable {
             physicalMemoryBytes: UInt64,
             absoluteContextCeiling: Int,
             headroomFraction: Double,
-            appOverheadBytes: UInt64 = 0
+            appOverheadBytes: UInt64 = 0,
+            measuredBytesPerToken: UInt64? = nil
         ) {
             self.modelFileSize = modelFileSize
             self.memoryStrategy = memoryStrategy
@@ -44,6 +51,7 @@ public struct ModelLoadPlan: Sendable {
             self.absoluteContextCeiling = absoluteContextCeiling
             self.headroomFraction = headroomFraction
             self.appOverheadBytes = appOverheadBytes
+            self.measuredBytesPerToken = measuredBytesPerToken
         }
     }
 
@@ -179,11 +187,23 @@ public struct ModelLoadPlan: Sendable {
             ? reserveAfterHeadroom - residentBudget
             : 0
 
+        // Per-token cost for the memory math. Prefer a measured estimate (learned
+        // from a real prefill) when one diverges from the heuristic; fall back to
+        // the static `kvBytesPerToken` otherwise. When no measurement exists this
+        // resolves to `kvBytesPerToken`, keeping the static path byte-for-byte
+        // identical to the pre-adaptive behaviour.
+        let effectiveBytesPerToken: UInt64
+        if let measured = inputs.measuredBytesPerToken, measured > 0 {
+            effectiveBytesPerToken = measured
+        } else {
+            effectiveBytesPerToken = inputs.kvBytesPerToken
+        }
+
         // Memory-derived token ceiling. Guarding against div-by-zero when the caller
         // passed kvBytesPerToken == 0 (shouldn't happen in practice, but cheap to be safe).
-        let memoryCeiling: Int = inputs.kvBytesPerToken == 0
+        let memoryCeiling: Int = effectiveBytesPerToken == 0
             ? Int.max
-            : Int(kvBudget / inputs.kvBytesPerToken)
+            : Int(kvBudget / effectiveBytesPerToken)
 
         // Walk the ceilings in turn, recording a `Reason` each time a tighter bound wins.
         // `effective` tracks the winning value; we re-check against `requestedContextSize`
@@ -220,7 +240,7 @@ public struct ModelLoadPlan: Sendable {
         // Never pass 0 / negative to llama.cpp, even in pathological near-zero memory.
         let effectiveContextSize = max(1, effective)
 
-        let estimatedKV = UInt64(effectiveContextSize) * inputs.kvBytesPerToken
+        let estimatedKV = UInt64(effectiveContextSize) * effectiveBytesPerToken
         let total = residentBudget &+ estimatedKV  // residentBudget is already bounded
 
         // Impossible-fit guard: regardless of strategy, a model file that is
