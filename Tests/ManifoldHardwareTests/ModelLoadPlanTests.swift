@@ -1229,6 +1229,94 @@ final class ModelLoadPlanTests: XCTestCase {
         XCTAssertEqual(estimatePlan.verdict, .deny)
         XCTAssertEqual(estimatePlan.verdict, computePlan.verdict)
     }
+
+    // MARK: - Measured-budget recompute (issue #1592)
+
+    /// Builds inputs where the memory ceiling is the binding constraint, so a
+    /// change in per-token cost moves `effectiveContextSize`.
+    private func memoryBoundInputs(
+        kvBytesPerToken: UInt64,
+        measuredBytesPerToken: UInt64? = nil
+    ) -> ModelLoadPlan.Inputs {
+        ModelLoadPlan.Inputs(
+            modelFileSize: 0,
+            memoryStrategy: .external, // residentBudget == 0 keeps the math purely KV-driven
+            requestedContextSize: 50_000,
+            trainedContextLength: nil,
+            kvBytesPerToken: kvBytesPerToken,
+            availableMemoryBytes: 100_000_000, // 100 MB → memory ceiling below requested for high per-token costs
+            physicalMemoryBytes: 16 * oneGB,
+            absoluteContextCeiling: 128_000,
+            headroomFraction: 0.40,
+            measuredBytesPerToken: measuredBytesPerToken
+        )
+    }
+
+    /// A measured per-token cost that diverges from the heuristic must change the
+    /// effective context. Here the measured cost is 4× the heuristic, tightening
+    /// the memory ceiling below the requested context.
+    func test_measuredBytesPerToken_recomputesEffectiveContext() {
+        let staticPlan = ModelLoadPlan.compute(inputs: memoryBoundInputs(kvBytesPerToken: 1_000))
+        let measuredPlan = ModelLoadPlan.compute(
+            inputs: memoryBoundInputs(kvBytesPerToken: 1_000, measuredBytesPerToken: 4_000)
+        )
+
+        // Static: 60 MB KV budget / 1000 = 60_000 ceiling → requested 50_000 wins.
+        XCTAssertEqual(staticPlan.effectiveContextSize, 50_000)
+        // Measured: 60 MB / 4000 = 15_000 ceiling → memory now binds below requested.
+        XCTAssertEqual(measuredPlan.effectiveContextSize, 15_000)
+        XCTAssertNotEqual(
+            measuredPlan.effectiveContextSize, staticPlan.effectiveContextSize,
+            "A divergent measured cost must produce a different effective context"
+        )
+        XCTAssertTrue(measuredPlan.reasons.contains(where: {
+            if case .memoryCeilingReached = $0 { return true }
+            return false
+        }), "Measured tightening should annotate a memory-ceiling clamp")
+    }
+
+    /// Regression guard: absent a measurement, the plan is byte-for-byte identical
+    /// to the pre-adaptive static path. The `nil` default must change nothing.
+    func test_absentMeasurement_outcomeIdenticalToStaticPath() {
+        let withoutField = ModelLoadPlan.Inputs(
+            modelFileSize: 4 * oneGB,
+            memoryStrategy: .mappable,
+            requestedContextSize: 4096,
+            trainedContextLength: 8192,
+            kvBytesPerToken: 8_192,
+            availableMemoryBytes: 8 * oneGB,
+            physicalMemoryBytes: 16 * oneGB,
+            absoluteContextCeiling: 128_000,
+            headroomFraction: 0.40
+        )
+        let withNilMeasurement = ModelLoadPlan.Inputs(
+            modelFileSize: 4 * oneGB,
+            memoryStrategy: .mappable,
+            requestedContextSize: 4096,
+            trainedContextLength: 8192,
+            kvBytesPerToken: 8_192,
+            availableMemoryBytes: 8 * oneGB,
+            physicalMemoryBytes: 16 * oneGB,
+            absoluteContextCeiling: 128_000,
+            headroomFraction: 0.40,
+            measuredBytesPerToken: nil
+        )
+        XCTAssertEqual(
+            ModelLoadPlan.compute(inputs: withoutField).outcome,
+            ModelLoadPlan.compute(inputs: withNilMeasurement).outcome,
+            "A nil measurement must leave the outcome byte-for-byte unchanged"
+        )
+    }
+
+    /// A measured cost equal to the heuristic is a no-op — the adaptive path only
+    /// changes the outcome when it actually diverges.
+    func test_measuredEqualsHeuristic_isNoOp() {
+        let staticPlan = ModelLoadPlan.compute(inputs: memoryBoundInputs(kvBytesPerToken: 4_000))
+        let measuredPlan = ModelLoadPlan.compute(
+            inputs: memoryBoundInputs(kvBytesPerToken: 4_000, measuredBytesPerToken: 4_000)
+        )
+        XCTAssertEqual(measuredPlan.outcome, staticPlan.outcome)
+    }
 }
 
 // MARK: - Convenience accessor (test-scoped, avoids repeating `plan.outcome.totalEstimatedBytes`)

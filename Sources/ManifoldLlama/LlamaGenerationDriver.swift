@@ -3,6 +3,7 @@ import Foundation
 import LlamaSwift
 import os
 import ManifoldInference
+import ManifoldHardware
 
 /// Owns the token-generation loop for a single `LlamaBackend.generate()` call.
 ///
@@ -151,7 +152,18 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         markers: ThinkingMarkers?,
         isCancelled: () -> Bool,
         generationStream: GenerationStream,
-        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+        continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation,
+        // Adaptive prefill headroom (issue #1592). Defaults wire the real Mach
+        // footprint sampler and free-memory query; tests inject synthetic readings.
+        // `prefillFootprintSampler` returns this process's resident bytes; the
+        // chunk-to-chunk delta feeds the EWMA. `prefillHeadroomSampler` returns
+        // remaining free bytes, sampled fresh each chunk so the guard tracks live
+        // pressure. `onPrefillEstimate` reports the learned per-token cost back to
+        // the backend so a future load's `ModelLoadPlan` can use a measured budget.
+        prefillFootprintSampler: @Sendable () -> UInt64? = { AppMemoryUsage.currentBytes() },
+        prefillHeadroomSampler: @Sendable () -> UInt64? = { DeviceCapabilityService.queryAvailableMemory() },
+        prefillSafetyFactor: Double = 1.5,
+        onPrefillEstimate: (@Sendable (UInt64) -> Void)? = nil
     ) async -> Bool {
         Self.logger.debug("LlamaGenerationDriver run started")
 
@@ -408,6 +420,12 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         //
         // Start at `reuseLen` to skip the prefix whose KV state was preserved
         // by the caller. When reuseLen == 0 this is equivalent to starting at 0.
+        // Adaptive per-model footprint, learned across this prompt's chunks.
+        // Stays dormant (guard returns false, estimate nil) until the first
+        // accepted sample, so a single-chunk prompt behaves exactly as before.
+        var footprintEstimator = PrefillFootprintEstimator()
+        var prefillAborted = false
+
         var promptDecodeFailed = false
         var promptPos = reuseLen
         while promptPos < tokens.count {
@@ -415,6 +433,37 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
 
             let chunkSize = min(batchSize, tokens.count - promptPos)
             let isLastChunk = (promptPos + chunkSize) == tokens.count
+
+            // Pre-chunk abort guard: if the learned per-token cost predicts this
+            // chunk's transient growth (× safety factor) would overrun the free
+            // memory remaining right now, decline it and surface
+            // `.memoryInsufficient` rather than decoding into a jetsam/Metal kill.
+            // No-op until an estimate exists.
+            if let remaining = prefillHeadroomSampler(),
+               footprintEstimator.wouldExceedHeadroom(
+                   remainingBytes: remaining,
+                   nextChunkTokens: chunkSize,
+                   safetyFactor: prefillSafetyFactor
+               ) {
+                let required = footprintEstimator.predictedTransientBytes(
+                    forTokens: chunkSize,
+                    safetyFactor: prefillSafetyFactor
+                ) ?? remaining
+                Self.logger.error(
+                    "Llama prefill aborted: predicted \(required) bytes for next chunk exceeds \(remaining) free"
+                )
+                prefillAborted = true
+                llama_synchronize(context)
+                await MainActor.run {
+                    generationStream.setPhase(.failed("Insufficient memory for prefill"))
+                }
+                continuation.finish(
+                    throwing: InferenceError.memoryInsufficient(required: required, available: remaining)
+                )
+                break
+            }
+
+            let footprintBefore = prefillFootprintSampler()
 
             var promptBatch = llama_batch_init(Int32(chunkSize), 0, 1)
             for i in 0..<chunkSize {
@@ -434,7 +483,31 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
                 break
             }
 
+            // Sample resident footprint after the decode and fold the delta into
+            // the EWMA. Negative deltas (allocator/cache reclaim) are rejected by
+            // the estimator so they cannot bias the next prediction toward zero.
+            let footprintAfter = prefillFootprintSampler()
+            footprintEstimator.record(
+                beforeBytes: footprintBefore,
+                afterBytes: footprintAfter,
+                tokensProcessed: chunkSize
+            )
+
             promptPos += chunkSize
+        }
+
+        // A pre-chunk abort already finished the continuation with a thrown
+        // error; the KV cache holds a partially-decoded prefix, so report it
+        // incoherent to force a clean clear on the next turn.
+        if prefillAborted {
+            return false
+        }
+
+        // Surface the learned per-token cost so the backend can retain it and a
+        // subsequent load can recompute its `ModelLoadPlan` against a measured
+        // budget. Reported only when a real estimate exists.
+        if let measured = footprintEstimator.estimatedBytesPerToken {
+            onPrefillEstimate?(measured)
         }
 
         if promptDecodeFailed {

@@ -16,7 +16,8 @@ public extension ModelLoadPlan {
         strategy: MemoryStrategy,
         environment: ModelLoadPlan.Environment = .current,
         absoluteContextCeiling: Int = 128_000,
-        headroomFraction: Double = 0.40
+        headroomFraction: Double = 0.40,
+        measuredBytesPerToken: UInt64? = nil
     ) -> ModelLoadPlan {
         let kvBytesPerToken = (model.estimatedKVBytesPerToken ?? 0) > 0
             ? model.estimatedKVBytesPerToken!
@@ -44,7 +45,8 @@ public extension ModelLoadPlan {
             physicalMemoryBytes: environment.physicalMemoryBytes,
             absoluteContextCeiling: absoluteContextCeiling,
             headroomFraction: headroomFraction,
-            appOverheadBytes: appOverhead
+            appOverheadBytes: appOverhead,
+            measuredBytesPerToken: measuredBytesPerToken
         )
         return compute(inputs: inputs)
     }
@@ -75,7 +77,8 @@ public extension ModelLoadPlan {
         requestedContextSize: Int,
         environment: ModelLoadPlan.Environment = .current,
         absoluteContextCeiling: Int = 128_000,
-        headroomFraction: Double = 0.40
+        headroomFraction: Double = 0.40,
+        measuredBytesPerToken: UInt64? = nil
     ) -> ModelLoadPlan {
         switch model.modelType {
         case .foundation:
@@ -87,7 +90,8 @@ public extension ModelLoadPlan {
                 strategy: .resident,
                 environment: environment,
                 absoluteContextCeiling: absoluteContextCeiling,
-                headroomFraction: headroomFraction
+                headroomFraction: headroomFraction,
+                measuredBytesPerToken: measuredBytesPerToken
             )
         case .gguf:
             return compute(
@@ -96,7 +100,8 @@ public extension ModelLoadPlan {
                 strategy: .mappable,
                 environment: environment,
                 absoluteContextCeiling: absoluteContextCeiling,
-                headroomFraction: headroomFraction
+                headroomFraction: headroomFraction,
+                measuredBytesPerToken: measuredBytesPerToken
             )
         }
     }

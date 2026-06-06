@@ -50,6 +50,16 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var manifest: ModelManifest? { withStateLock { _manifest } }
 
+    /// Per-token resident cost (bytes) learned from the most recent prefill via
+    /// ``PrefillFootprintEstimator`` (issue #1592), or `nil` if no prefill has
+    /// produced a stable sample yet. Callers that rebuild a ``ModelLoadPlan`` for
+    /// the loaded model can pass this as `measuredBytesPerToken` so the plan
+    /// recomputes `effectiveContextSize` against a measured budget instead of the
+    /// static heuristic. Guarded by `stateLock`.
+    private var _lastMeasuredBytesPerToken: UInt64?
+
+    public var lastMeasuredBytesPerToken: UInt64? { withStateLock { _lastMeasuredBytesPerToken } }
+
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
@@ -466,7 +476,10 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
                     Task.isCancelled || self.cancelled.load(ordering: .sequentiallyConsistent)
                 },
                 generationStream: generationStream,
-                continuation: continuation
+                continuation: continuation,
+                onPrefillEstimate: { measured in
+                    self.withStateLock { self._lastMeasuredBytesPerToken = measured }
+                }
             )
             // A decode failure leaves the C KV cache in an undefined state.
             // Clear sessionKVState so the next turn does not attempt prefix reuse
