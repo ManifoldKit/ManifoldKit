@@ -47,7 +47,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
         let localRef = localBackend!
         let cloudSessionRef = cloudSession!
         service.registerBackendFactory { _ in localRef }
-        service.registerCloudBackendFactory { _ in
+        service.registerEndpointBackendFactory { _ in
             ConfiguringOpenAICloudBackend(urlSession: cloudSessionRef)
         }
 
@@ -120,9 +120,9 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     }
 
     /// Creates a fresh ChatViewModel wired to a custom cloud backend factory.
-    private func makeViewModel(cloudFactory: @escaping CloudBackendFactory) -> ChatViewModel {
+    private func makeViewModel(cloudFactory: @escaping EndpointBackendFactory) -> ChatViewModel {
         let service = InferenceService()
-        service.registerCloudBackendFactory(cloudFactory)
+        service.registerEndpointBackendFactory(cloudFactory)
         let viewModel = ChatViewModel(inferenceService: service)
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         viewModel.configure(persistence: persistence)

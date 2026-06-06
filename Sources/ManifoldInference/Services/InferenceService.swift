@@ -164,7 +164,7 @@ public final class InferenceService {
     }
 
     public func registerEndpointBackendFactory(_ factory: @escaping EndpointBackendFactory) {
-        lifecycle.registerCloudBackendFactory(factory)
+        lifecycle.registerEndpointBackendFactory(factory)
     }
 
     @available(*, deprecated, renamed: "registerEndpointBackendFactory(_:)")
@@ -206,7 +206,7 @@ public final class InferenceService {
     public func loadEndpointBackend(from endpoint: APIEndpointRecord) async throws {
         ensureProviderWired()
         generation.stopGeneration()
-        try await lifecycle.loadCloudBackend(from: endpoint)
+        try await lifecycle.loadEndpointBackend(from: endpoint)
     }
 
     /// Loads a cloud API backend from an `APIEndpointRecord` configuration.

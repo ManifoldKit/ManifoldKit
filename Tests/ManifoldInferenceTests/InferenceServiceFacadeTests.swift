@@ -89,7 +89,7 @@ final class InferenceServiceFacadeTests: XCTestCase {
 
         // Registration
         service.registerBackendFactory { _ in nil }
-        service.registerCloudBackendFactory { _ in nil }
+        service.registerEndpointBackendFactory { _ in nil }
         service.declareSupport(for: .gguf)
         service.declareSupport(for: .ollama)
 

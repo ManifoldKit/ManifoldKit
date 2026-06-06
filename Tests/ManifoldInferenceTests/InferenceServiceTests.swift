@@ -135,16 +135,16 @@ final class InferenceServiceTests: XCTestCase {
                      "debug init without modelName leaves activeModelName unknown, not a copy of the backend label")
     }
 
-    // MARK: - loadCloudBackend
+    // MARK: - loadEndpointBackend
 
-    func test_loadCloudBackend_invalidURL_throwsError() async {
+    func test_loadEndpointBackend_invalidURL_throwsError() async {
         let service = InferenceService()
         // A null byte makes URL(string:) return nil on all Apple platforms.
         let badURL = "http://foo\0bar"
         let endpoint = APIEndpointRecord(name: "Bad", provider: .custom, baseURL: badURL)
 
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected CloudBackendError.invalidURL to be thrown")
         } catch CloudBackendError.invalidURL(let raw) {
             XCTAssertEqual(raw, badURL)
@@ -153,9 +153,9 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    // MARK: - loadCloudBackend endpoint validation (SSRF guard)
+    // MARK: - loadEndpointBackend endpoint validation (SSRF guard)
 
-    func test_loadCloudBackend_privateIPv4_throwsInvalidURL() async {
+    func test_loadEndpointBackend_privateIPv4_throwsInvalidURL() async {
         let service = InferenceService()
         let cases = [
             "https://192.168.1.100/api",
@@ -165,7 +165,7 @@ final class InferenceServiceTests: XCTestCase {
         for baseURL in cases {
             let endpoint = APIEndpointRecord(name: "Private", provider: .custom, baseURL: baseURL)
             do {
-                try await service.loadCloudBackend(from: endpoint)
+                try await service.loadEndpointBackend(from: endpoint)
                 XCTFail("Expected CloudBackendError.invalidURL for \(baseURL)")
             } catch CloudBackendError.invalidURL {
                 // expected
@@ -175,7 +175,7 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_linkLocalIPv4_throwsInvalidURL() async {
+    func test_loadEndpointBackend_linkLocalIPv4_throwsInvalidURL() async {
         let service = InferenceService()
         let endpoint = APIEndpointRecord(
             name: "IMDS",
@@ -183,7 +183,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "https://169.254.169.254/latest/meta-data"
         )
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected CloudBackendError.invalidURL for link-local address")
         } catch CloudBackendError.invalidURL {
             // expected
@@ -198,7 +198,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "https://api.example.com"
         )
         do {
-            try await service.loadCloudBackend(from: publicEndpoint)
+            try await service.loadEndpointBackend(from: publicEndpoint)
         } catch CloudBackendError.invalidURL(let url) {
             XCTFail("Public endpoint should not be rejected as invalid URL, got \(url)")
         } catch {
@@ -207,7 +207,7 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_insecureRemoteScheme_throwsInvalidURL() async {
+    func test_loadEndpointBackend_insecureRemoteScheme_throwsInvalidURL() async {
         let service = InferenceService()
         let endpoint = APIEndpointRecord(
             name: "Insecure Remote",
@@ -215,7 +215,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "http://api.example.com"
         )
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected CloudBackendError.invalidURL for http:// remote endpoint")
         } catch CloudBackendError.invalidURL {
             // expected
@@ -224,7 +224,7 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_localhostHTTP_isNotRejectedByURLValidation() async {
+    func test_loadEndpointBackend_localhostHTTP_isNotRejectedByURLValidation() async {
         let service = InferenceService()
         let endpoint = APIEndpointRecord(
             name: "Local Ollama",
@@ -232,7 +232,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "http://localhost:11434"
         )
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
         } catch CloudBackendError.invalidURL(let url) {
             XCTFail("Localhost http:// should not fail URL validation, got invalidURL(\(url))")
         } catch {
@@ -240,7 +240,7 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_ipv6LinkLocal_throwsInvalidURL() async {
+    func test_loadEndpointBackend_ipv6LinkLocal_throwsInvalidURL() async {
         let service = InferenceService()
         let endpoint = APIEndpointRecord(
             name: "IPv6 Link-Local",
@@ -248,7 +248,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "https://[fe80::1]/api"
         )
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected CloudBackendError.invalidURL for IPv6 link-local address")
         } catch CloudBackendError.invalidURL {
             // expected
@@ -257,12 +257,12 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_noFactoryRegistered_throwsError() async {
+    func test_loadEndpointBackend_noFactoryRegistered_throwsError() async {
         let service = InferenceService()
         let endpoint = APIEndpointRecord(name: "Ollama", provider: .ollama)
 
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected InferenceError.inferenceFailure to be thrown")
         } catch InferenceError.inferenceFailure {
             // expected
@@ -271,14 +271,14 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_loadCloudBackend_setsIsModelLoaded() async throws {
+    func test_loadEndpointBackend_setsIsModelLoaded() async throws {
         let service = InferenceService()
         let mock = MockCloudURLModelBackend()
 
-        service.registerCloudBackendFactory { _ in mock }
+        service.registerEndpointBackendFactory { _ in mock }
 
         let endpoint = APIEndpointRecord(name: "Ollama", provider: .ollama)
-        try await service.loadCloudBackend(from: endpoint)
+        try await service.loadEndpointBackend(from: endpoint)
 
         XCTAssertTrue(service.isModelLoaded)
         XCTAssertEqual(service.activeBackendName, BackendName.ollama.rawValue)
@@ -289,15 +289,15 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertTrue(mock.didConfigureBeforeLoad)
     }
 
-    func test_loadCloudBackend_unloadsExistingModel() async throws {
+    func test_loadEndpointBackend_unloadsExistingModel() async throws {
         let firstMock = MockInferenceBackend()
         let service = InferenceService(backend: firstMock, name: "First")
 
         let cloudMock = MockCloudURLModelBackend()
-        service.registerCloudBackendFactory { _ in cloudMock }
+        service.registerEndpointBackendFactory { _ in cloudMock }
 
         let endpoint = APIEndpointRecord(name: "Ollama", provider: .ollama)
-        try await service.loadCloudBackend(from: endpoint)
+        try await service.loadEndpointBackend(from: endpoint)
 
         // The old backend should have been unloaded.
         XCTAssertEqual(firstMock.unloadCallCount, 1, "Old backend should be unloaded")
@@ -306,10 +306,10 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertEqual(service.activeBackendName, BackendName.ollama.rawValue)
     }
 
-    func test_loadCloudBackend_configuresKeychainBackend_beforeLoad() async throws {
+    func test_loadEndpointBackend_configuresKeychainBackend_beforeLoad() async throws {
         let service = InferenceService()
         let mock = MockCloudKeychainBackend()
-        service.registerCloudBackendFactory { _ in mock }
+        service.registerEndpointBackendFactory { _ in mock }
 
         let endpoint = APIEndpointRecord(
             name: "Claude",
@@ -317,7 +317,7 @@ final class InferenceServiceTests: XCTestCase {
             baseURL: "https://api.anthropic.com",
             modelName: "claude-sonnet-4-6"
         )
-        try await service.loadCloudBackend(from: endpoint)
+        try await service.loadEndpointBackend(from: endpoint)
 
         XCTAssertEqual(mock.configuredBaseURL?.absoluteString, endpoint.baseURL)
         XCTAssertEqual(mock.configuredModelName, endpoint.modelName)
@@ -325,15 +325,15 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertTrue(mock.didConfigureBeforeLoad)
     }
 
-    func test_loadCloudBackend_nonConfigurableBackend_throwsError() async {
+    func test_loadEndpointBackend_nonConfigurableBackend_throwsError() async {
         let service = InferenceService()
         let mock = MockInferenceBackend()
-        service.registerCloudBackendFactory { _ in mock }
+        service.registerEndpointBackendFactory { _ in mock }
 
         let endpoint = APIEndpointRecord(name: "Ollama", provider: .ollama)
 
         do {
-            try await service.loadCloudBackend(from: endpoint)
+            try await service.loadEndpointBackend(from: endpoint)
             XCTFail("Expected InferenceError.inferenceFailure when backend does not conform to config protocol")
         } catch InferenceError.inferenceFailure {
             // expected
@@ -384,12 +384,12 @@ final class InferenceServiceTests: XCTestCase {
         XCTAssertEqual(service.activeBackendName, BackendName.foundation.rawValue)
     }
 
-    func test_loadCloudBackend_rapidEndpointSwitch_latestRequestWins_staleCompletionSuppressed() async throws {
+    func test_loadEndpointBackend_rapidEndpointSwitch_latestRequestWins_staleCompletionSuppressed() async throws {
         let service = InferenceService()
         let firstBackend = ControlledLoadBackend()
         let secondBackend = ControlledLoadBackend()
 
-        service.registerCloudBackendFactory { provider in
+        service.registerEndpointBackendFactory { provider in
             switch provider {
             case .ollama:
                 firstBackend
@@ -404,12 +404,12 @@ final class InferenceServiceTests: XCTestCase {
         let secondEndpoint = makeEndpoint(name: "Second", provider: .lmStudio, modelName: "second-model")
 
         let firstTask = Task {
-            try await service.loadCloudBackend(from: firstEndpoint)
+            try await service.loadEndpointBackend(from: firstEndpoint)
         }
         await firstBackend.waitUntilLoadStarted()
 
         let secondTask = Task {
-            try await service.loadCloudBackend(from: secondEndpoint)
+            try await service.loadEndpointBackend(from: secondEndpoint)
         }
         await secondBackend.waitUntilLoadStarted()
 
@@ -681,25 +681,25 @@ final class InferenceServiceTests: XCTestCase {
         }
     }
 
-    func test_registerCloudBackendFactory_fallsBackToSecond() async throws {
+    func test_registerEndpointBackendFactory_fallsBackToSecond() async throws {
         let service = InferenceService()
 
         var firstCallCount = 0
-        service.registerCloudBackendFactory { provider in
+        service.registerEndpointBackendFactory { provider in
             firstCallCount += 1
             return nil  // always rejects
         }
 
         var secondCallCount = 0
         let secondMock = MockCloudURLModelBackend()
-        service.registerCloudBackendFactory { provider in
+        service.registerEndpointBackendFactory { provider in
             guard provider == .ollama else { return nil }
             secondCallCount += 1
             return secondMock
         }
 
         let endpoint = APIEndpointRecord(name: "Ollama", provider: .ollama)
-        try await service.loadCloudBackend(from: endpoint)
+        try await service.loadEndpointBackend(from: endpoint)
 
         XCTAssertEqual(firstCallCount, 1, "First cloud factory should be called once")
         XCTAssertEqual(secondCallCount, 1, "Second cloud factory should be called after first rejects")
@@ -784,13 +784,13 @@ final class InferenceServiceTests: XCTestCase {
                        "loadModel must NOT run on the main thread — blocking there triggers watchdog timeouts")
     }
 
-    func test_loadCloudBackend_doesNotCallBackendLoadOnMainThread() async throws {
+    func test_loadEndpointBackend_doesNotCallBackendLoadOnMainThread() async throws {
         let service = InferenceService()
         let mock = ControlledLoadBackend()
-        service.registerCloudBackendFactory { _ in mock }
+        service.registerEndpointBackendFactory { _ in mock }
 
         let endpointTask = Task {
-            try await service.loadCloudBackend(from: makeEndpoint(name: "Cloud", provider: .ollama, modelName: "m"))
+            try await service.loadEndpointBackend(from: makeEndpoint(name: "Cloud", provider: .ollama, modelName: "m"))
         }
         await mock.waitUntilLoadStarted()
 

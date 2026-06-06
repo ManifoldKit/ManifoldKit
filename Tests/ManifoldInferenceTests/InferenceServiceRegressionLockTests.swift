@@ -40,7 +40,7 @@ final class InferenceServiceRegressionLockTests: XCTestCase {
         let service = InferenceService()
         service.registerBackendFactory { _ in nil }
         service.declareSupport(for: .gguf)
-        service.registerCloudBackendFactory { _ in nil }
+        service.registerEndpointBackendFactory { _ in nil }
         service.declareSupport(for: .ollama)
 
         let snapshot = service.registeredBackendSnapshot()

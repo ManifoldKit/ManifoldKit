@@ -168,7 +168,7 @@ final class QuickStartTests: XCTestCase {
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
         let cloudBackend = QuickStartCloudBackend()
-        result.bootstrap.inferenceService.registerCloudBackendFactory { provider in
+        result.bootstrap.inferenceService.registerEndpointBackendFactory { provider in
             guard provider == .ollama else { return nil }
             return cloudBackend
         }
