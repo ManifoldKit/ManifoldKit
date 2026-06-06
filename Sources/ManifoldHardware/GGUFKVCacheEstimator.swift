@@ -66,7 +66,7 @@ package enum GGUFKVCacheEstimator {
         return UInt64(blockCount) * UInt64(keyWidth + valueWidth) * bytesPerElement
     }
 
-    static func estimateBytesPerToken(
+    package static func estimateBytesPerToken(
         from metadata: GGUFMetadata,
         bytesPerElement: UInt64 = defaultBytesPerElement
     ) -> UInt64? {

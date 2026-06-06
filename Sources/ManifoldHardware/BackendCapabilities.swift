@@ -16,16 +16,6 @@ public enum GenerationParameter: String, CaseIterable, Sendable, Codable {
     case llamaMirostatV2
 }
 
-/// How the backend loads model weights into memory.
-public enum MemoryStrategy: String, Sendable, Equatable, Codable {
-    /// Model must be fully resident in RAM (e.g., MLX on unified memory).
-    case resident
-    /// Model is memory-mapped; only active pages + KV cache need RAM (e.g., llama.cpp).
-    case mappable
-    /// No local model memory needed (cloud APIs, OS-managed models).
-    case external
-}
-
 /// How the backend responds to a cancellation request.
 public enum CancellationStyle: String, Sendable, Equatable, Codable {
     /// Cancels via Swift task cancellation.

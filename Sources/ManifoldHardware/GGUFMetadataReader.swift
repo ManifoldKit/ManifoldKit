@@ -1,19 +1,23 @@
 import Foundation
 import os
 
+// Module-local logger — avoids importing ManifoldInference's `Log` enum
+// so ManifoldHardware stays a zero-dependency leaf module.
+private let logger = Logger(subsystem: "com.manifoldkit", category: "gguf")
+
 /// Parsed metadata from a GGUF file header.
 ///
 /// Contains the subset of GGUF metadata fields relevant to inference:
 /// model name, architecture, context length, chat template, and file type (quantization).
-struct GGUFMetadata: Sendable, Equatable {
-    let generalName: String?
-    let generalArchitecture: String?
-    let contextLength: Int?
-    let chatTemplate: String?
-    let fileType: Int?
-    let kvCacheParameters: GGUFKVCacheParameters?
+package struct GGUFMetadata: Sendable, Equatable {
+    package let generalName: String?
+    package let generalArchitecture: String?
+    package let contextLength: Int?
+    package let chatTemplate: String?
+    package let fileType: Int?
+    package let kvCacheParameters: GGUFKVCacheParameters?
 
-    init(
+    package init(
         generalName: String?,
         generalArchitecture: String?,
         contextLength: Int?,
@@ -31,12 +35,12 @@ struct GGUFMetadata: Sendable, Equatable {
 }
 
 /// Errors that can occur when reading GGUF metadata.
-enum GGUFReaderError: LocalizedError {
+package enum GGUFReaderError: LocalizedError {
     case invalidMagic
     case unsupportedVersion(Int)
     case readError(String)
 
-    var errorDescription: String? {
+    package var errorDescription: String? {
         switch self {
         case .invalidMagic:
             "File is not a valid GGUF file (invalid magic bytes)"
@@ -53,7 +57,7 @@ enum GGUFReaderError: LocalizedError {
 /// Only reads the metadata key-value section at the start of the file. Tensor data
 /// (which can be many gigabytes) is never touched. Uses `FileHandle` for sequential
 /// reads to avoid loading the file into memory.
-struct GGUFMetadataReader {
+package struct GGUFMetadataReader {
 
     /// The four-byte magic at offset 0 of every GGUF file.
     private static let magicBytes: [UInt8] = [0x47, 0x47, 0x55, 0x46] // "GGUF"
@@ -85,7 +89,7 @@ struct GGUFMetadataReader {
     /// - Parameter url: Path to a `.gguf` file on disk.
     /// - Returns: Parsed metadata fields.
     /// - Throws: `GGUFReaderError` if the file is invalid or unreadable.
-    static func readMetadata(from url: URL) throws -> GGUFMetadata {
+    package static func readMetadata(from url: URL) throws -> GGUFMetadata {
         let handle: FileHandle
         do {
             handle = try FileHandle(forReadingFrom: url)
@@ -115,7 +119,7 @@ struct GGUFMetadataReader {
             // Metadata KV count
             let metadataCount: UInt64 = isV3 ? try readUInt64(from: handle) : UInt64(try readUInt32(from: handle))
 
-            Log.inference.debug("GGUF v\(version): \(metadataCount) metadata entries")
+            logger.debug("GGUF v\(version): \(metadataCount) metadata entries")
 
             // Keys we want to extract
             var generalName: String?
@@ -211,7 +215,7 @@ struct GGUFMetadataReader {
                 }
             }
 
-            Log.inference.info(
+            logger.info(
                 "GGUF metadata: name=\(generalName ?? "nil", privacy: .public), arch=\(generalArchitecture ?? "nil", privacy: .public), ctx=\(contextLength.map(String.init) ?? "nil", privacy: .public), template=\(chatTemplate != nil ? "present" : "nil", privacy: .public)"
             )
 
@@ -237,7 +241,7 @@ struct GGUFMetadataReader {
     ///
     /// - Parameter url: Path to check.
     /// - Returns: `true` if the first 4 bytes are the GGUF magic.
-    static func isValidGGUF(at url: URL) -> Bool {
+    package static func isValidGGUF(at url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
         defer { handle.closeFile() }
 

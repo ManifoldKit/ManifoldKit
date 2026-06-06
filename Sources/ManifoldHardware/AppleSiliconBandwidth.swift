@@ -93,7 +93,7 @@ public enum AppleSiliconBandwidth {
     /// M3 100 · M3 Pro 150 · M3 Max 400 (300 GB/s on the cut-down bin — we use 400);
     /// M4 120 · M4 Pro 273 · M4 Max 546.
     /// Order matters: check the most specific suffix (Ultra/Max/Pro) before the base chip.
-    static func bandwidth(forBrandString brand: String) -> Double {
+    package static func bandwidth(forBrandString brand: String) -> Double {
         let s = brand.lowercased()
         // Helper: does the brand mention this generation token ("m1".."m4")?
         func gen(_ token: String) -> Bool { s.contains(token) }
@@ -135,7 +135,7 @@ public enum AppleSiliconBandwidth {
     /// A14/A15 ~34 GB/s, A16 ~? (~50 GB/s estimated), A17 Pro ~? (~60 GB/s estimated),
     /// M-class iPads track their Mac counterparts. These are conservative estimates;
     /// Apple does not publish A-series bandwidth, so we err low.
-    static func bandwidth(forIOSMachine machine: String) -> Double {
+    package static func bandwidth(forIOSMachine machine: String) -> Double {
         // iPad with an M-series chip ("iPad14,x" Pro lines) — approximate as base M-class.
         // We cannot tell the exact M generation from the model string reliably, so use
         // a single conservative M-class figure rather than over-claiming.
@@ -193,17 +193,17 @@ public enum AppleSiliconBandwidth {
 /// Maps a GGUF quantization tag to an approximate bits-per-weight, used for the
 /// quality dimension. Lower bit-width trades capability for size; the scorer treats
 /// a wider quant as higher quality at equal parameter count.
-enum QuantizationBits {
+package enum QuantizationBits {
 
     /// Neutral default when the quant tag is missing or unrecognised (e.g. MLX
     /// snapshots that don't encode quant in the filename). 5.0 bpw sits between the
     /// common Q4 and Q6 levels so an unknown quant is neither rewarded nor punished.
-    static let neutralBitsPerWeight: Double = 5.0
+    package static let neutralBitsPerWeight: Double = 5.0
 
     /// Approximate effective bits-per-weight for a GGUF quant tag like "Q4_K_M".
     /// Figures are the well-known llama.cpp ggml type sizes (effective bpw including
     /// block overhead), rounded to one decimal.
-    static func bitsPerWeight(for tag: String?) -> Double {
+    package static func bitsPerWeight(for tag: String?) -> Double {
         guard let tag = tag?.uppercased() else { return neutralBitsPerWeight }
 
         // Full-precision floats first.

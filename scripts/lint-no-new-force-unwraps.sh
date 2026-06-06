@@ -122,7 +122,7 @@ ALLOWLIST_PATHS=(
     # estimatedKVBytesPerToken! in ModelLoadPlan — accessed only when the
     # ternary condition confirmed the optional is non-nil.
     "ManifoldInference/Services/PromptTemplate.swift"
-    "ManifoldInference/Services/ModelLoadPlan.swift"
+    "ManifoldHardware/ModelLoadPlan.swift"
 
     # as! SecKey — SecKey is a CF opaque type returned from the Keychain API
     # as `AnyObject`; the cast is guaranteed by the kSecReturnRef contract.

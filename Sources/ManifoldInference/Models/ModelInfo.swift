@@ -1,15 +1,5 @@
 import Foundation
 
-/// The inference backend a model requires, determined by its file format.
-public enum ModelType: Hashable, Sendable {
-    /// A single `.gguf` file — uses the llama.cpp backend.
-    case gguf
-    /// A directory containing `config.json` + `.safetensors` weights — uses MLX.
-    case mlx
-    /// Apple on-device model, no file needed.
-    case foundation
-}
-
 /// Represents a model available on disk (either a GGUF file or an MLX model directory).
 ///
 /// Construct via one of the factory initializers:

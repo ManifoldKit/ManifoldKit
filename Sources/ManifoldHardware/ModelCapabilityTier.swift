@@ -37,20 +37,22 @@ public enum ModelCapabilityTier: Int, Comparable, Codable, Sendable {
 
 extension ModelCapabilityTier {
 
-    /// Estimates a capability tier from model metadata without running any inference.
+    /// Estimates a capability tier from raw model metadata without running any inference.
     ///
     /// Uses on-disk file size as a proxy for parameter count. This is a conservative
     /// heuristic — use a ``ModelBenchmarkResult`` when measured data is available.
     ///
-    /// - Parameter modelInfo: The model whose size and type will be inspected.
+    /// - Parameters:
+    ///   - fileSize: On-disk file size in bytes.
+    ///   - modelType: The inference backend the model targets.
     /// - Returns: A tier estimate appropriate for the model's size and backend.
-    public static func estimate(from modelInfo: ModelInfo) -> ModelCapabilityTier {
-        switch modelInfo.modelType {
+    public static func estimate(fileSize: UInt64, modelType: ModelType) -> ModelCapabilityTier {
+        switch modelType {
         case .foundation:
             // Apple Foundation Model is approximately 3B parameters.
             return .fast
         case .gguf, .mlx:
-            let gb = Double(modelInfo.fileSize) / 1_073_741_824
+            let gb = Double(fileSize) / 1_073_741_824
             switch gb {
             case ..<2:    return .minimal
             case 2..<5:   return .fast

@@ -1,6 +1,6 @@
 import CryptoKit
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldHardware
 
 final class GGUFSignedManifestVerifierTests: XCTestCase {
     private struct AcceptingSignatureVerifier: GGUFSignedManifestSignatureVerifying {

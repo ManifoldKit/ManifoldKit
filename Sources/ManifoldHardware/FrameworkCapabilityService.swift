@@ -50,6 +50,19 @@ public struct EnabledBackends: Sendable, Equatable {
     }
 }
 
+// MARK: - BackendRegistrySampling
+
+/// A type that can snapshot the currently registered backend capabilities.
+///
+/// Adopted by `InferenceService` in `ManifoldInference` so that
+/// `FrameworkCapabilityService` can accept it without importing the concrete
+/// type — keeping `ManifoldHardware` a zero-dependency leaf module.
+@MainActor
+public protocol BackendRegistrySampling: AnyObject {
+    /// Returns a snapshot of the currently registered backends.
+    func registeredBackendSnapshot() -> EnabledBackends
+}
+
 // MARK: - FrameworkCapabilityService
 
 /// A single, observable service that exposes framework settings and runtime
@@ -87,7 +100,7 @@ public final class FrameworkCapabilityService {
 
     // MARK: - Private
 
-    private let inferenceService: InferenceService
+    private let backendSource: any BackendRegistrySampling & ModelTypeCompatibilityProvider
 
     // MARK: - Init
 
@@ -95,8 +108,12 @@ public final class FrameworkCapabilityService {
     ///
     /// Call `refresh()` after registering backends with the inference service
     /// to populate `enabledBackends`.
-    public init(inferenceService: InferenceService) {
-        self.inferenceService = inferenceService
+    ///
+    /// - Parameter inferenceService: Any type that conforms to both
+    ///   `BackendRegistrySampling` and `ModelTypeCompatibilityProvider`.
+    ///   `InferenceService` satisfies this constraint.
+    public init(inferenceService: any BackendRegistrySampling & ModelTypeCompatibilityProvider) {
+        self.backendSource = inferenceService
         self.compiledBackends = .current
         // Start with an empty snapshot; caller invokes refresh() after backend registration.
         self.enabledBackends = EnabledBackends()
@@ -109,38 +126,38 @@ public final class FrameworkCapabilityService {
     /// Call this once after `DefaultBackends.register(with:)` returns so that
     /// `enabledBackends` reflects the actual registered state.
     public func refresh() {
-        enabledBackends = inferenceService.registeredBackendSnapshot()
+        enabledBackends = backendSource.registeredBackendSnapshot()
     }
 
     // MARK: - Compatibility Queries
 
     /// Returns whether the given local model type has a registered backend.
     public func compatibility(for modelType: ModelType) -> ModelCompatibilityResult {
-        inferenceService.compatibility(for: modelType)
+        backendSource.compatibility(for: modelType)
     }
 
     /// Returns whether the given API provider has a registered backend.
     public func compatibility(for provider: APIProvider) -> ModelCompatibilityResult {
-        inferenceService.compatibility(for: provider)
+        backendSource.compatibility(for: provider)
     }
 
     /// Returns `true` iff a backend for the given local model type is registered.
     public func canLoad(modelType: ModelType) -> Bool {
-        inferenceService.canLoad(modelType: modelType)
+        backendSource.canLoad(modelType: modelType)
     }
 
     /// Returns `true` iff a backend for the given API provider is registered.
     public func canLoad(provider: APIProvider) -> Bool {
-        inferenceService.canLoad(provider: provider)
+        backendSource.canLoad(provider: provider)
     }
 
     /// Human-readable reason a model type is unavailable, or `nil` if supported.
     public func unavailableReason(for modelType: ModelType) -> String? {
-        inferenceService.unavailableReason(for: modelType)
+        backendSource.unavailableReason(for: modelType)
     }
 
     /// Human-readable reason an API provider is unavailable, or `nil` if supported.
     public func unavailableReason(for provider: APIProvider) -> String? {
-        inferenceService.unavailableReason(for: provider)
+        backendSource.unavailableReason(for: provider)
     }
 }

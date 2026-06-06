@@ -8,14 +8,14 @@ import Foundation
 /// 2. If a Jinja chat template string is present, pattern-match on template tokens.
 /// 3. If only the model name is available, use keyword heuristics.
 /// 4. Falls back to ChatML (the most widely compatible format).
-struct PromptTemplateDetector {
+package struct PromptTemplateDetector {
 
     /// Detects the best prompt template from GGUF metadata.
     ///
     /// Architecture wins for unambiguous formats. For ambiguous architectures
     /// (e.g. "llama", where many fine-tunes use different chat formats), the
     /// Jinja template takes precedence over the architecture field.
-    static func detect(from metadata: GGUFMetadata) -> PromptTemplate {
+    package static func detect(from metadata: GGUFMetadata) -> PromptTemplate {
         // 1. Architecture wins for unambiguous formats — some phi3/phi4 Jinja templates
         //    contain <|im_start|> in compatibility branches, which fires the ChatML
         //    heuristic before the phi-specific token check.
@@ -46,7 +46,7 @@ struct PromptTemplateDetector {
     /// the primary `<|start_header_id|>` markers. Checking ChatML first would
     /// misidentify every Llama-3 GGUF as ChatML, causing the generation loop to
     /// apply the wrong prompt format and leak `<|im_end|>` tokens in the output.
-    static func detect(fromChatTemplate template: String) -> PromptTemplate {
+    package static func detect(fromChatTemplate template: String) -> PromptTemplate {
         if template.contains("<|start_header_id|>") { return .llama3 }
         if template.contains("<|im_start|>") { return .chatML }
         // Gemma 4 uses <|turn> — check before Gemma 1/2/3's <start_of_turn> since
@@ -73,7 +73,7 @@ struct PromptTemplateDetector {
     /// pairs collapses to the most-Qwen-like one. That's deliberate — the
     /// chat-template tags say what the model *emits*, and Qwen-style is the
     /// default for the families we ship presets for.
-    static func detectThinkingMarkers(from chatTemplate: String) -> ThinkingMarkers? {
+    package static func detectThinkingMarkers(from chatTemplate: String) -> ThinkingMarkers? {
         if chatTemplate.contains("<think>") && chatTemplate.contains("</think>") {
             return .qwen3
         }
@@ -97,7 +97,7 @@ struct PromptTemplateDetector {
     /// Detects a prompt template from the GGUF `general.architecture` field.
     ///
     /// Maps known architecture identifiers to their canonical prompt formats.
-    static func detect(fromArchitecture arch: String) -> PromptTemplate {
+    package static func detect(fromArchitecture arch: String) -> PromptTemplate {
         switch arch.lowercased() {
         case "mistral": return .mistral
         case "gemma4", "gemma-4": return .gemma4
@@ -113,7 +113,7 @@ struct PromptTemplateDetector {
     ///
     /// Least reliable strategy -- only used as a last resort when neither a chat
     /// template nor architecture string is available.
-    static func detect(fromFileName name: String) -> PromptTemplate {
+    package static func detect(fromFileName name: String) -> PromptTemplate {
         let lower = name.lowercased()
         if lower.contains("llama") { return .llama3 }
         if lower.contains("mistral") { return .mistral }

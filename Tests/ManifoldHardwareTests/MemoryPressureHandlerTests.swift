@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldHardware
 
 final class MemoryPressureHandlerTests: XCTestCase {
 
