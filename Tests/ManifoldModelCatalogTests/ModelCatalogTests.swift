@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldModelCatalog
 
 final class ModelCatalogTests: XCTestCase {
 

@@ -15,7 +15,7 @@ extension APIEndpointRecord {
     /// `APIEndpoint.validate()` and `APIEndpointValidationReason` (ManifoldCore).
     /// This method throws `CloudBackendError.invalidURL` for any rejection so
     /// callers that only need a pass/fail answer do not need to import ManifoldCore.
-    func validate() throws {
+    package func validate() throws {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let url = URL(string: trimmed),

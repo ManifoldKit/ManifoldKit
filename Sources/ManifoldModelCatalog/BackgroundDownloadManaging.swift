@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Protocol surface consumed by the stock model-management UI.
 ///

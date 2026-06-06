@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Errors from cloud API backends (OpenAI-compatible and Claude).
 public enum CloudBackendError: LocalizedError, CategorizedError {

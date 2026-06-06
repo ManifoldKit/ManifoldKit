@@ -1,6 +1,7 @@
 import XCTest
+import ManifoldInference
 import ManifoldTestSupport
-@testable import ManifoldInference
+@testable import ManifoldModelCatalog
 
 final class ModelStorageServiceTests: XCTestCase {
 

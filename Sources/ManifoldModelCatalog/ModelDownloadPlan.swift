@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Supported digest algorithms for model download verification.
 public enum ModelFileChecksumAlgorithm: String, Sendable, Hashable, Codable {

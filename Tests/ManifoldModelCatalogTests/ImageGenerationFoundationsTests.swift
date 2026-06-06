@@ -1,7 +1,8 @@
 import XCTest
 import Foundation
 import CoreFoundation
-@testable import ManifoldInference
+import ManifoldInference
+@testable import ManifoldModelCatalog
 
 /// Foundational tests for the image-generation surface introduced alongside
 /// ``ImageGenerationBackend``. Covers value-type Codable behaviour for the
