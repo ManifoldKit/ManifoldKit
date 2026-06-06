@@ -1,8 +1,15 @@
 # ManifoldKit
 
-A modular SwiftUI framework for building chat interfaces powered by local and cloud LLMs on Apple platforms.
+[![CI](https://github.com/roryford/ManifoldKit/actions/workflows/ci.yml/badge.svg)](https://github.com/roryford/ManifoldKit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/roryford/ManifoldKit?sort=semver)](https://github.com/roryford/ManifoldKit/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/roryford/ManifoldKit)](LICENSE)
+[![Swift 6.1+](https://img.shields.io/badge/Swift-6.1%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%2018%2B%20%7C%20macOS%2015%2B-blue)](#requirements)
+[![SwiftPM](https://img.shields.io/badge/SwiftPM-compatible-brightgreen?logo=swift&logoColor=white)](#install)
 
-ManifoldKit ships a production-ready chat UI with pluggable inference backends, model management, and SwiftData persistence. Drop it into your app, call one bootstrap, and you have a working chat interface that survives real failures — streaming retries, latest-wins model handoff, memory admission, certificate pinning, and a mock backend for app-level testing. See [docs/RELIABILITY.md](docs/RELIABILITY.md) for the source-backed contract.
+The only open-source Swift package that bundles UI, turn-loop runtime, persistence, and multi-backend inference into one drop-in chat product for Apple platforms.
+
+ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS 15+. Import one umbrella package and you get a SwiftUI `ChatView`, the `ConversationRuntime` turn loop (send / regenerate / edit / cancel / branch), SwiftData persistence, model download and management UI, and inference backends spanning on-device (MLX, llama.cpp, Apple Foundation Models) and cloud (OpenAI, Anthropic, Ollama, LAN) — all behind one `InferenceBackend` protocol. Competitors ship a single layer; ManifoldKit ships the assembled product and the wiring between layers. It survives real failures — streaming retries, latest-wins model handoff, memory admission, certificate pinning, and a mock backend for app-level testing. See [docs/RELIABILITY.md](docs/RELIABILITY.md) for the source-backed contract, or [docs/POSITIONING.md](docs/POSITIONING.md) for the full "why ManifoldKit vs. the field" rationale.
 
 ## Hello World
 
@@ -45,6 +52,35 @@ Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaun
 Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
 Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample).
 
+## Why ManifoldKit
+
+**Full-stack altitude.** Import one umbrella package and ship a multi-backend chat app: SwiftUI `ChatView`, the `ConversationRuntime` turn loop, SwiftData persistence, model download/management UI, and the backends — already wired together. Most alternatives hand you one layer (a UI kit, an engine wrapper, or a thin cloud client) and leave the rest as an exercise. Here the integration is the product.
+
+**Backend portability.** MLX, llama.cpp/GGUF, Apple Foundation Models, cloud (OpenAI Chat + Responses, Anthropic, Ollama, LAN), and the AnyLanguageModel bridge (Gemini, xAI, Groq, Mistral) all sit behind one `InferenceBackend` protocol. Streaming, tool calling, thinking/reasoning tokens, RAG, and structured output behave identically across every backend, so swapping engines is a config change, not a rewrite. AnyLanguageModel is wrapped as a complementary provider backend — see [How ManifoldKit compares to AnyLanguageModel](#how-manifoldkit-compares-to-anylanguagemodel).
+
+**n-1 OS reach, WWDC-ready.** ManifoldKit serves iOS 18 / macOS 15 — the installed base that Apple Foundation Models (OS-26-only, AI-hardware-gated, 4096-token cap, single fixed model) can't reach — and wraps Foundation Models as just one more backend instead of competing with it. Trait gating means one codebase yields either a ~5 MB `FoundationOnly` App Store build or the full local + cloud + RAG + voice + image-gen stack. Pre-wired stub traits (`SystemAIProviderExtension`, `CoreAI`) mean whatever Apple ships next September is one more backend, not a migration. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy).
+
+**Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 5,700+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
+
+ManifoldKit is **decomposable, not monolithic**: 14 trait-gated modules. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
+
+## What's already in the box
+
+Table-stakes capabilities that ship today (verified in source):
+
+- **Token streaming** across every backend (`GenerationStream` / `GenerationEvent`).
+- **Multi-provider abstraction** — one `InferenceBackend` protocol, local + cloud.
+- **Tool / function calling** with a per-request tool ceiling guide for local models.
+- **Structured / typed output**, capability-routed by `StructuredOutputRouter` across GBNF, Foundation guided-generation, JSON-Schema, and JSON-prompting.
+- **Reasoning / thinking tokens** surfaced as first-class events.
+- **MCP client *and* server** ([ManifoldMCP](Sources/ManifoldMCP) + the `Server` trait).
+- **RAG with citations.**
+- **Human-in-the-loop tool approval** via `ToolApprovalGate`.
+- **Metrics + cost estimation** for observability.
+- **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo). See [docs/QUICKSTART-IMAGE-GEN.md](docs/QUICKSTART-IMAGE-GEN.md).
+
+**Honest current state:** ManifoldKit is pre-1.0 — breaking changes can land between minor versions. RAG reranking is not yet shipped ([#1637](https://github.com/roryford/ManifoldKit/issues/1637)), and some reliability features (e.g. mid-stream resume) are deliberately deferred and documented in [docs/RELIABILITY.md](docs/RELIABILITY.md).
+
 ## Beyond chat
 
 The same backend, model-management, persistence, and download infrastructure that powers the chat UI is reusable for non-chat consumers. The framing is "chat-first" because that's the most complete reference integration, but the public surface explicitly supports:
@@ -76,6 +112,23 @@ The same backend, model-management, persistence, and download infrastructure tha
 Pick traits to scope which backends and capabilities ship with your build. The full trait → capability table is generated from `Sources/ManifoldKit/FeatureMatrix.swift` and rendered to [docs/FeatureMatrix.md](docs/FeatureMatrix.md).
 
 Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `MCP`, `Voice`, `Tools`, `AppIntents`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
+
+## ManifoldKit vs. the field
+
+Most Swift AI projects are excellent at one layer. ManifoldKit's claim is narrow and checkable: it's the only open-source *package* that fills every column.
+
+| Project / category | Chat UI | Turn-loop runtime | Persistence | Multi-backend local + cloud | Reusable as a package |
+|---|---|---|---|---|---|
+| **ManifoldKit** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| UI-only kits (Exyte/Chat, MessageKit, SwiftyChat) | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Engine-only (LocalLLMClient, AnyLanguageModel, swift-transformers, LLM.swift) | ❌ | ❌ | ❌ | partial¹ | ✅ |
+| Thin cloud clients (MacPaw/OpenAI, SwiftAnthropic) | ❌ | ❌ | ❌ | ❌ (one provider) | ✅ |
+| Apple Foundation Models | ❌ | ❌ | ❌ | ❌ (one capped model, OS 26+) | ✅ |
+| Full-stack apps (fullmoon, Enchanted) | ✅ | ✅ | ✅ | partial | ❌ (fork, not a package) |
+
+¹ LocalLLMClient is the closest multi-engine analog (multiple local engines behind one interface) but ships no UI, persistence, or cloud backends.
+
+Each row is genuinely strong at its own layer — a UI kit renders beautiful bubbles, a cloud client is a clean SDK, Foundation Models is free and on-device. The point isn't that they're weak; it's that assembling them into a shipping chat product is the work ManifoldKit already did. Cross-language demand is proven (React's assistant-ui sees ~200k downloads/month; Vercel ships a chatbot template) — there is no Swift equivalent until this one. Full rationale in [docs/POSITIONING.md](docs/POSITIONING.md).
 
 ## Install
 

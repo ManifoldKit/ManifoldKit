@@ -12,6 +12,27 @@ Cross-session notes. Not a tracker — real work lives in GitHub issues.
   When P0 lands, update the `feedback_mock_backend_and_events_test_patterns` note
   (the single-consumer `runtime.events` workaround is what the tap retires).
 
+## Positioning / distribution follow-ups (2026-06-06)
+
+Came out of the competitive-positioning pass (see [docs/POSITIONING.md](docs/POSITIONING.md)
++ [docs/LAUNCH-BRIEF.md](docs/LAUNCH-BRIEF.md)). Tracked issues: RAG rerank
+[#1637](https://github.com/roryford/ManifoldKit/issues/1637), AnyLanguageModel bridge
+[#1638](https://github.com/roryford/ManifoldKit/issues/1638). The rest are DX/polish kept
+off the tracker per issue-hygiene policy — fold into a PR opportunistically:
+
+- **Structured-output ergonomic surface.** The machinery is complete and capability-routed
+  (`StructuredOutputStrategy` / `StructuredOutputTarget` / `StructuredOutputRouter`), but a
+  consumer must assemble a `StructuredOutputTarget` and know the routing. A one-liner
+  convenience (`generate(MyType.self)`) or `@Generable`-style macro on top would match the
+  Apple/Vercel ergonomics — pure sugar over the existing surface, not new capability.
+  (`Sources/ManifoldInference/Models/StructuredOutputStrategy.swift`)
+- **`streamIdleTimeout` defaults to unset.** Idle-timeout stall detection exists but is
+  opt-in; cloud backends never synthesize `streamInterrupted` on a silent EOF. Consider a
+  conservative default so the common case gets stall detection for free. Documented as a
+  deliberate decision in `docs/RELIABILITY.md`.
+- **Pre-launch discoverability (repo settings, not a PR):** set GitHub topics, add a README
+  badge row, ship a 1280×640 social preview, set `homepageUrl`. See LAUNCH-BRIEF §1 P0.
+
 ## Footgun audit follow-ups (2026-06-05)
 
 Tracked issues: security [#1621](https://github.com/roryford/ManifoldKit/issues/1621),
