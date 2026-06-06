@@ -52,20 +52,20 @@ final class MLXBackendEventOrderParityTests: XCTestCase {
         switch event {
         case .token: return "token"
         case .thinkingToken: return "thinkingToken"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature: return "thinkingSignature"
         case .kvCacheReuse: return "kvCacheReuse"
         case .toolCallStart: return "toolCallStart"
         case .toolCallArgumentsDelta: return "toolCallArgumentsDelta"
         case .toolCall: return "toolCall"
         case .toolResult: return "toolResult"
-        case .toolLoopLimitReached: return "toolLoopLimitReached"
+        case .toolIterationLimitExceeded: return "toolIterationLimitExceeded"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .usage: return "usage"
         case .prefillProgress: return "prefillProgress"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested: return "handoffRequested"
         }
     }

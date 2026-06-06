@@ -42,7 +42,7 @@ extension InferenceService {
 
     // MARK: Enqueue
 
-    /// Off-main variant of ``enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:maxThinkingTokens:jsonMode:grammar:tools:toolChoice:maxToolIterations:priority:sessionID:)``.
+    /// Off-main variant of ``enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:maxThinkingTokens:jsonMode:grammar:tools:toolChoice:maxToolIterations:priority:requestGroupID:)``.
     ///
     /// Hops to the main actor to invoke the queued enqueue path. The
     /// returned ``GenerationRequestToken`` and ``GenerationStream`` are both
@@ -67,7 +67,7 @@ extension InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil,
+        requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
         preToolUseHook: PreToolUseHook? = nil
     ) async throws -> (token: GenerationRequestToken, stream: GenerationStream) {
@@ -93,7 +93,7 @@ extension InferenceService {
                     maxToolIterations: maxToolIterations
                 ),
                 priority: priority,
-                sessionID: sessionID,
+                requestGroupID: requestGroupID,
                 handoffDetector: handoffDetector,
                 preToolUseHook: preToolUseHook
             )

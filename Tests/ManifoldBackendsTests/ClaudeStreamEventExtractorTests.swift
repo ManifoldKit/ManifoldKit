@@ -80,14 +80,14 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
     //
     // thinking block: two thinking_delta + signature_delta + content_block_stop,
     // then a text block with one text_delta. Required events:
-    //   thinkingToken × 2, thinkingSignature, thinkingComplete (handoff),
+    //   thinkingToken × 2, thinkingSignature, thinkingCompleted (handoff),
     //   token("Answer.")
     //
-    // The exact ordering of thinkingSignature relative to thinkingComplete
+    // The exact ordering of thinkingSignature relative to thinkingCompleted
     // depends on whether the signature_delta arrives before or after the
     // first text frame. In this fixture signature_delta arrives inside the
     // thinking block (before content_block_stop), so the order is:
-    //   thinkingToken × 2 → thinkingSignature → thinkingComplete → token
+    //   thinkingToken × 2 → thinkingSignature → thinkingCompleted → token
     func test_extractor_thinkingWithSignature_yieldsHandoffAndSignature() throws {
         let events = try driveExtractor(scenario: "thinking/with-signature")
 
@@ -102,8 +102,8 @@ final class ClaudeStreamEventExtractorTests: XCTestCase {
         XCTAssertEqual(signatures, ["sig_opaque_abc123"],
                        "Anthropic signatures must round-trip verbatim — multi-turn replay is rejected if dropped")
 
-        let sawHandoff = events.contains { if case .thinkingComplete = $0 { return true } else { return false } }
-        XCTAssertTrue(sawHandoff, "extractor must emit .thinkingComplete on the thinking→text boundary")
+        let sawHandoff = events.contains { if case .thinkingCompleted = $0 { return true } else { return false } }
+        XCTAssertTrue(sawHandoff, "extractor must emit .thinkingCompleted on the thinking→text boundary")
 
         let tokens = events.compactMap { event -> String? in
             if case .token(let t) = event { return t } else { return nil }
@@ -307,20 +307,20 @@ final class ClaudeStreamEventExtractorParityTests: XCTestCase {
         switch event {
         case .token(let s): return "token(\(s))"
         case .thinkingToken(let s): return "thinkingToken(\(s))"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature(let s): return "thinkingSignature(\(s))"
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
         case .usage(let p, let c): return "usage(\(p),\(c))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
-        case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
+        case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }

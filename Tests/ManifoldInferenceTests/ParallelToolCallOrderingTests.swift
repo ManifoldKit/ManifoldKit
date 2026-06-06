@@ -55,9 +55,9 @@ final class ParallelToolCallOrderingTests: XCTestCase {
             case .toolCall(let c):
                 calls.append(c)
             case .prefillProgress, .token, .usage,
-                 .thinkingToken, .thinkingComplete, .thinkingSignature,
-                 .toolResult, .toolProgress, .toolLoopLimitReached,
-                 .kvCacheReuse, .diagnosticThrottle,
+                 .thinkingToken, .thinkingCompleted, .thinkingSignature,
+                 .toolResult, .toolProgress, .toolIterationLimitExceeded,
+                 .kvCacheReuse, .throttleDiagnostic,
                  .toolCallStart, .toolCallArgumentsDelta,
                  .toolDispatchStarted, .toolDispatchCompleted,
                  .handoffRequested:

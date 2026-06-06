@@ -29,7 +29,7 @@ private let sseDone = Data("data: [DONE]\n\n".utf8)
 /// that thinking events bracket content correctly.
 private enum EventCategory: Equatable {
     case thinkingToken(String)
-    case thinkingComplete
+    case thinkingCompleted
     case token(String)
     case usage
 }
@@ -37,14 +37,14 @@ private enum EventCategory: Equatable {
 private func categorise(_ event: GenerationEvent) -> EventCategory? {
     switch event {
     case .thinkingToken(let t): return .thinkingToken(t)
-    case .thinkingComplete: return .thinkingComplete
+    case .thinkingCompleted: return .thinkingCompleted
     case .token(let t): return .token(t)
     case .usage: return .usage
     case .toolCall: return nil
     case .toolResult: return nil
-    case .toolLoopLimitReached: return nil
+    case .toolIterationLimitExceeded: return nil
     case .kvCacheReuse: return nil
-    case .diagnosticThrottle: return nil
+    case .throttleDiagnostic: return nil
     case .thinkingSignature: return nil
     case .toolCallStart, .toolCallArgumentsDelta: return nil
     case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted: return nil
@@ -119,7 +119,7 @@ struct ClaudeExtendedThinkingTests {
             if let cat = categorise(event) { categories.append(cat) }
         }
 
-        // Must see the two thinking tokens, exactly one thinkingComplete before
+        // Must see the two thinking tokens, exactly one thinkingCompleted before
         // any visible token, then the two visible tokens. Usage events may be
         // interleaved but order between thinking/content is pinned.
         let contentEvents = categories.filter {
@@ -129,17 +129,17 @@ struct ClaudeExtendedThinkingTests {
         #expect(contentEvents == [
             .thinkingToken("Let me"),
             .thinkingToken(" think..."),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("The answer"),
             .token(" is 42."),
         ], "Got: \(contentEvents)")
 
-        // .thinkingComplete must fire exactly once.
-        let completeCount = categories.filter { $0 == .thinkingComplete }.count
+        // .thinkingCompleted must fire exactly once.
+        let completeCount = categories.filter { $0 == .thinkingCompleted }.count
         #expect(completeCount == 1)
     }
 
-    /// Non-thinking response (plain Claude call) must never fire .thinkingComplete
+    /// Non-thinking response (plain Claude call) must never fire .thinkingCompleted
     /// and must pass tokens through unchanged.
     @Test func nonReasoningResponse_noThinkingCompleteFires() async throws {
         let (backend, url) = makeBackend()
@@ -169,14 +169,14 @@ struct ClaudeExtendedThinkingTests {
             switch event {
             case .token(let t): tokens.append(t)
             case .thinkingToken: sawThinking = true
-            case .thinkingComplete: sawThinkingComplete = true
+            case .thinkingCompleted: sawThinkingComplete = true
             default: break
             }
         }
 
         #expect(tokens == ["Hello", " world"])
         #expect(!sawThinking, "No thinking tokens should be emitted for a non-reasoning response")
-        #expect(!sawThinkingComplete, ".thinkingComplete must not fire when no thinking was ever seen")
+        #expect(!sawThinkingComplete, ".thinkingCompleted must not fire when no thinking was ever seen")
     }
 
     /// Request wiring: when `maxThinkingTokens` is set, the outbound request
@@ -264,12 +264,12 @@ struct OpenAIReasoningTests {
         #expect(contentEvents == [
             .thinkingToken("Analysing"),
             .thinkingToken(" the prompt..."),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("The answer"),
             .token(" is 42."),
         ], "Got: \(contentEvents)")
 
-        let completeCount = categories.filter { $0 == .thinkingComplete }.count
+        let completeCount = categories.filter { $0 == .thinkingCompleted }.count
         #expect(completeCount == 1)
     }
 
@@ -300,7 +300,7 @@ struct OpenAIReasoningTests {
 
         #expect(categories == [
             .thinkingToken("Considering"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("done"),
         ])
     }
@@ -334,14 +334,14 @@ struct OpenAIReasoningTests {
             switch event {
             case .token(let t): tokens.append(t)
             case .thinkingToken: sawThinking = true
-            case .thinkingComplete: sawThinkingComplete = true
+            case .thinkingCompleted: sawThinkingComplete = true
             default: break
             }
         }
 
         #expect(tokens == ["Hello", " there"])
         #expect(!sawThinking)
-        #expect(!sawThinkingComplete, ".thinkingComplete must not fire for plain Chat Completions streams")
+        #expect(!sawThinkingComplete, ".thinkingCompleted must not fire for plain Chat Completions streams")
     }
 }
 #endif

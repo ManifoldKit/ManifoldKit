@@ -14,7 +14,7 @@ import SwiftUI
 struct ThinkingBlockView: View {
     let text: String
     /// True only while the reasoning block itself is still open (i.e. no
-    /// `.thinkingComplete` event has been received yet). Distinct from the
+    /// `.thinkingCompleted` event has been received yet). Distinct from the
     /// overall message `isStreaming` flag.
     let isThinkingStreaming: Bool
 

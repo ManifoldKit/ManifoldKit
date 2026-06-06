@@ -73,7 +73,7 @@ final class GrammarPhaseGateTests: XCTestCase {
     }
 
     /// The flip must land on the FIRST post-`</think>` token, not one token late.
-    /// `.thinkingComplete` fires in the same ingest that consumes the close marker,
+    /// `.thinkingCompleted` fires in the same ingest that consumes the close marker,
     /// so the very next sample is strict.
     func test_grammarEngagesOnFirstTokenAfterThinkingComplete() {
         let chunks = ["<think>", "x", "</think>", "first", "second"]
@@ -112,16 +112,16 @@ final class GrammarPhaseGateTests: XCTestCase {
     func test_observe_isIdempotentOnceActive() {
         var gate = GrammarPhaseGate(gateOnThinking: true)
         XCTAssertFalse(gate.isGrammarActive)
-        gate.observe([.thinkingComplete])
+        gate.observe([.thinkingCompleted])
         XCTAssertTrue(gate.isGrammarActive)
         // A nested/duplicate close or stray thinking token must not reopen the gate.
         gate.observe([.thinkingToken("x")])
-        gate.observe([.thinkingComplete])
+        gate.observe([.thinkingCompleted])
         XCTAssertTrue(gate.isGrammarActive, "Grammar must stay engaged once the block has closed")
     }
 
     /// `.thinkingToken` events alone (reasoning still in progress) must NOT engage
-    /// the grammar — only the `.thinkingComplete` boundary does.
+    /// the grammar — only the `.thinkingCompleted` boundary does.
     func test_thinkingTokensAloneDoNotEngageGrammar() {
         var gate = GrammarPhaseGate(gateOnThinking: true)
         gate.observe([.thinkingToken("still"), .thinkingToken(" reasoning")])

@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" viewBox="0 0 1600 900">
+  <title id="title">ManifoldKit assembled full-stack hero diagram</title>
+  <desc id="desc">An isometric four-layer ManifoldKit stack showing UI, runtime, persistence, and backends as one assembled product, while other categories own only one layer.</desc>
+  <defs>
+    <style>
+      :root {
+        --ink: #111b2d;
+        --muted: #607083;
+        --paper: #f6f8f3;
+        --blue: #1868b7;
+        --blue-side: #0d477f;
+        --teal: #087b78;
+        --teal-side: #075753;
+        --green: #29845d;
+        --green-side: #1f5f44;
+        --amber: #cb7326;
+        --amber-side: #935018;
+        --line: #d8dfd4;
+      }
+      .bg { fill: url(#background); }
+      .halo { fill: url(#halo); opacity: .9; }
+      .brand { fill: var(--ink); font: 900 72px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .headline { fill: var(--ink); font: 850 38px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .subhead { fill: var(--muted); font: 600 23px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .micro { fill: var(--muted); font: 700 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .code-pill { fill: #111b2d; }
+      .code-text { fill: #dff4ea; font: 800 22px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0; }
+      .spark { fill: #f3a43b; }
+      .layer-title { fill: white; font: 900 32px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .layer-sub { fill: rgba(255,255,255,.88); font: 700 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .chip { fill: rgba(255,255,255,.2); stroke: rgba(255,255,255,.38); stroke-width: 1.2; }
+      .chip-text { fill: white; font: 800 15px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .brace { fill: none; stroke: #111b2d; stroke-width: 7; stroke-linecap: round; opacity: .92; }
+      .brace-text { fill: #111b2d; font: 900 22px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .ghost-top { fill: #eef2eb; stroke: #d5ddd2; stroke-width: 2; }
+      .ghost-side { fill: #dfe7dd; }
+      .ghost-label { fill: #6d796e; font: 900 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .ghost-note { fill: #7b8679; font: 700 15px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .callout { fill: white; stroke: #d8dfd4; stroke-width: 2; }
+      .callout-title { fill: var(--ink); font: 900 20px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .callout-sub { fill: var(--muted); font: 700 16px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .caption { fill: var(--ink); font: 850 24px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+      .caption-sub { fill: var(--muted); font: 650 20px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; }
+    </style>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfbf7"/>
+      <stop offset=".52" stop-color="#edf4f0"/>
+      <stop offset="1" stop-color="#f6f0e4"/>
+    </linearGradient>
+    <radialGradient id="halo" cx=".56" cy=".42" r=".55">
+      <stop offset="0" stop-color="#cbe9df"/>
+      <stop offset=".5" stop-color="#e7f0e9"/>
+      <stop offset="1" stop-color="#f6f8f3" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="stackShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="34" stdDeviation="30" flood-color="#172033" flood-opacity=".22"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#172033" flood-opacity=".13"/>
+    </filter>
+    <linearGradient id="uiTop" x1="0" x2="1">
+      <stop offset="0" stop-color="#1f7fcb"/>
+      <stop offset="1" stop-color="#39a1df"/>
+    </linearGradient>
+    <linearGradient id="runtimeTop" x1="0" x2="1">
+      <stop offset="0" stop-color="#0b8f89"/>
+      <stop offset="1" stop-color="#23b3a7"/>
+    </linearGradient>
+    <linearGradient id="dataTop" x1="0" x2="1">
+      <stop offset="0" stop-color="#319164"/>
+      <stop offset="1" stop-color="#62b979"/>
+    </linearGradient>
+    <linearGradient id="backendTop" x1="0" x2="1">
+      <stop offset="0" stop-color="#d17825"/>
+      <stop offset="1" stop-color="#ee9b3d"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b6c1b8"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <ellipse class="halo" cx="930" cy="430" rx="620" ry="420"/>
+  <circle cx="1465" cy="105" r="210" fill="#e5ece6" opacity=".75"/>
+  <circle cx="95" cy="812" r="260" fill="#ece3d5" opacity=".72"/>
+
+  <g>
+    <text class="brand" x="92" y="116">ManifoldKit</text>
+    <text class="headline" x="98" y="168">One import that ships the stack.</text>
+    <text class="subhead" x="100" y="208">UI, runtime, data, and backends.</text>
+    <text class="subhead" x="100" y="238">Already wired. Ready to ship.</text>
+    <rect class="code-pill" x="100" y="282" width="314" height="58" rx="29"/>
+    <text class="code-text" x="130" y="319">import ManifoldKit</text>
+    <circle class="spark" cx="446" cy="311" r="6"/>
+    <circle class="spark" cx="470" cy="292" r="4"/>
+    <circle class="spark" cx="476" cy="332" r="3"/>
+  </g>
+
+  <g filter="url(#stackShadow)">
+    <!-- UI slab -->
+    <path d="M 500 230 L 1030 164 L 1244 238 L 713 316 Z" fill="url(#uiTop)"/>
+    <path d="M 713 316 L 1244 238 L 1244 302 L 713 382 Z" fill="var(--blue-side)"/>
+    <path d="M 500 230 L 713 316 L 713 382 L 500 294 Z" fill="#135a9b"/>
+
+    <!-- Runtime slab -->
+    <path d="M 500 342 L 1030 276 L 1244 350 L 713 428 Z" fill="url(#runtimeTop)"/>
+    <path d="M 713 428 L 1244 350 L 1244 414 L 713 494 Z" fill="var(--teal-side)"/>
+    <path d="M 500 342 L 713 428 L 713 494 L 500 406 Z" fill="#086b66"/>
+
+    <!-- Persistence slab -->
+    <path d="M 500 454 L 1030 388 L 1244 462 L 713 540 Z" fill="url(#dataTop)"/>
+    <path d="M 713 540 L 1244 462 L 1244 526 L 713 606 Z" fill="var(--green-side)"/>
+    <path d="M 500 454 L 713 540 L 713 606 L 500 518 Z" fill="#28764f"/>
+
+    <!-- Backends slab -->
+    <path d="M 500 566 L 1030 500 L 1244 574 L 713 652 Z" fill="url(#backendTop)"/>
+    <path d="M 713 652 L 1244 574 L 1244 638 L 713 718 Z" fill="var(--amber-side)"/>
+    <path d="M 500 566 L 713 652 L 713 718 L 500 630 Z" fill="#af641f"/>
+  </g>
+
+  <g>
+    <text class="layer-title" x="645" y="246">UI</text>
+    <text class="layer-sub" x="645" y="274">ChatView + sessions + model UI</text>
+    <rect class="chip" x="904" y="210" width="96" height="30" rx="15"/>
+    <text class="chip-text" x="925" y="230">ChatView</text>
+    <rect class="chip" x="1014" y="238" width="146" height="30" rx="15"/>
+    <text class="chip-text" x="1034" y="258">Model UI</text>
+
+    <text class="layer-title" x="632" y="360">Runtime</text>
+    <text class="layer-sub" x="632" y="388">send / regenerate / edit / cancel / branch</text>
+    <rect class="chip" x="936" y="324" width="130" height="30" rx="15"/>
+    <text class="chip-text" x="956" y="344">tool approval</text>
+    <rect class="chip" x="1078" y="344" width="138" height="30" rx="15"/>
+    <text class="chip-text" x="1098" y="364">metrics + cost</text>
+
+    <text class="layer-title" x="620" y="472">Persistence</text>
+    <text class="layer-sub" x="620" y="500">SwiftData stores + migrations</text>
+    <rect class="chip" x="956" y="434" width="132" height="30" rx="15"/>
+    <text class="chip-text" x="976" y="454">MessageStore</text>
+
+    <text class="layer-title" x="617" y="585">Backends</text>
+    <text class="layer-sub" x="617" y="613">MLX, GGUF, Apple, cloud, bridge</text>
+    <rect class="chip" x="918" y="544" width="66" height="30" rx="15"/>
+    <text class="chip-text" x="940" y="564">MLX</text>
+    <rect class="chip" x="998" y="526" width="120" height="30" rx="15"/>
+    <text class="chip-text" x="1020" y="546">OpenAI</text>
+    <rect class="chip" x="1034" y="588" width="100" height="30" rx="15"/>
+    <text class="chip-text" x="1055" y="608">Ollama</text>
+  </g>
+
+  <g>
+    <path class="brace" d="M 430 232 C 388 245 388 292 424 307 L 424 641 C 388 655 388 704 430 716"/>
+    <text class="brace-text" transform="translate(374 650) rotate(-90)">owned end to end</text>
+  </g>
+
+  <g filter="url(#softShadow)" opacity=".92">
+    <path class="ghost-top" d="M 1288 220 L 1436 202 L 1490 222 L 1342 244 Z"/>
+    <path class="ghost-side" d="M 1342 244 L 1490 222 L 1490 258 L 1342 282 Z"/>
+    <text class="ghost-label" x="1322" y="226">UI kits</text>
+    <text class="ghost-note" x="1322" y="249">one layer</text>
+
+    <path class="ghost-top" d="M 1290 555 L 1438 537 L 1492 557 L 1344 579 Z"/>
+    <path class="ghost-side" d="M 1344 579 L 1492 557 L 1492 593 L 1344 617 Z"/>
+    <text class="ghost-label" x="1315" y="562">engines</text>
+    <text class="ghost-note" x="1315" y="585">tokens only</text>
+
+    <path class="ghost-top" d="M 1286 645 L 1434 627 L 1488 647 L 1340 669 Z"/>
+    <path class="ghost-side" d="M 1340 669 L 1488 647 L 1488 683 L 1340 707 Z"/>
+    <text class="ghost-label" x="1309" y="652">cloud SDKs</text>
+    <text class="ghost-note" x="1309" y="675">one API</text>
+  </g>
+
+  <g>
+    <path d="M 1248 282 C 1290 276 1298 262 1322 244" fill="none" stroke="#b6c1b8" stroke-width="3" marker-end="url(#arrow)" opacity=".55"/>
+    <path d="M 1248 608 C 1290 598 1300 590 1324 579" fill="none" stroke="#b6c1b8" stroke-width="3" marker-end="url(#arrow)" opacity=".55"/>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect class="callout" x="112" y="682" width="360" height="98" rx="26"/>
+    <text class="callout-title" x="142" y="724">Competitors sell a layer.</text>
+    <text class="callout-sub" x="142" y="754">ManifoldKit sells the assembled product.</text>
+  </g>
+
+  <text class="caption" x="100" y="830">ChatView + ConversationRuntime + SwiftData + model-management UI + every backend.</text>
+  <text class="caption-sub" x="100" y="864">Competitors hand you one layer and a wiring diagram. ManifoldKit hands you the product.</text>
+</svg>

@@ -21,7 +21,7 @@
 ///
 /// ## The boundary signal
 ///
-/// `.thinkingComplete` is the one unambiguous "reasoning has ended, visible output
+/// `.thinkingCompleted` is the one unambiguous "reasoning has ended, visible output
 /// begins" signal. It fires on the depth 1→0 transition *in the same iteration*
 /// that consumes the close marker, so flipping the gate there means the **next**
 /// sampled token — the first real output token — is grammar-constrained.
@@ -33,7 +33,7 @@
 /// `<think>` block on a given turn; defaulting to strict would mask the open
 /// marker and break reasoning (the original bug). The cost: if a thinking-capable
 /// model is given a grammar but chooses *not* to think on a turn (no block, so
-/// `.thinkingComplete` never fires), its output stays unconstrained. This is an
+/// `.thinkingCompleted` never fires), its output stays unconstrained. This is an
 /// intentional trade-off — protecting the common "always reasons, `<think>` first"
 /// contract is worth more than the rare skip-thinking-with-grammar corner. Callers
 /// needing a hard grammar guarantee should disable thinking, which turns gating off
@@ -50,7 +50,7 @@ public struct GrammarPhaseGate: Sendable {
 
     /// - Parameter gateOnThinking: pass `true` only when a grammar *and* an active
     ///   thinking parser are both present. The gate then starts permissive and
-    ///   flips to strict on the first `.thinkingComplete`. Pass `false` to keep the
+    ///   flips to strict on the first `.thinkingCompleted`. Pass `false` to keep the
     ///   grammar (or absence of one) active from the first token.
     public init(gateOnThinking: Bool) {
         self.gated = gateOnThinking
@@ -63,7 +63,7 @@ public struct GrammarPhaseGate: Sendable {
     public mutating func observe(_ events: [GenerationEvent]) {
         guard gated, !isGrammarActive else { return }
         for event in events {
-            if case .thinkingComplete = event {
+            if case .thinkingCompleted = event {
                 isGrammarActive = true
                 return
             }

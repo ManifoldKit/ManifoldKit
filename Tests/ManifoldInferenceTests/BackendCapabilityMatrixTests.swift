@@ -182,7 +182,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
             switch event {
             case .thinkingToken:
                 sawThinkingToken = true
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 sawThinkingComplete = true
             default:
                 break
@@ -191,7 +191,7 @@ final class BackendCapabilityMatrixTests: XCTestCase {
 
         XCTAssertTrue(warnings.snapshot().isEmpty)
         XCTAssertTrue(sawThinkingToken, "a backend advertising thinking must surface reasoning tokens when produced")
-        XCTAssertTrue(sawThinkingComplete, "thinking tokens must be closed by thinkingComplete")
+        XCTAssertTrue(sawThinkingComplete, "thinking tokens must be closed by thinkingCompleted")
     }
 
     private func capabilities(

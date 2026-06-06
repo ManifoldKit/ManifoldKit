@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" viewBox="0 0 1600 900">
+  <title id="title">GenerationStream backend fan diagram</title>
+  <desc id="desc">A single GenerationStream protocol fans out to local, Apple, cloud, LAN, and AnyLanguageModel bridge backends.</desc>
+  <defs>
+    <style>
+      :root {
+        --ink: #16212f;
+        --muted: #66717f;
+        --paper: #f7f9f7;
+        --panel: #ffffff;
+        --line: #b8c3bb;
+        --blue: #2267a8;
+        --teal: #127a73;
+        --green: #2f7d59;
+        --amber: #c87328;
+      }
+      .bg { fill: var(--paper); }
+      .headline { fill: var(--ink); font: 800 52px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .subhead { fill: var(--muted); font: 500 24px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .group { fill: var(--panel); stroke: #dbe2dc; stroke-width: 2; }
+      .group-label { fill: var(--muted); font: 800 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; letter-spacing: 0; text-transform: uppercase; }
+      .core { fill: #16212f; }
+      .core-title { fill: white; font: 800 34px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .core-sub { fill: #cdd6d0; font: 600 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .edge { fill: none; stroke: var(--line); stroke-width: 4; stroke-linecap: round; }
+      .node { fill: white; stroke-width: 3; }
+      .node-text { fill: var(--ink); font: 800 22px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .relay { fill: #fff7ed; stroke: var(--amber); stroke-width: 3; }
+      .relay-text { fill: #8a4519; font: 800 20px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .chip { fill: #e8f0ec; stroke: #d4ded7; stroke-width: 1; }
+      .chip-text { fill: #314035; font: 800 18px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .caption { fill: var(--muted); font: 600 21px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+    </style>
+    <filter id="shadow" x="-12%" y="-12%" width="124%" height="124%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#172033" flood-opacity=".13"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b8c3bb"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <text class="headline" x="96" y="100">One Protocol, Every Backend.</text>
+  <text class="subhead" x="100" y="142">Same stream surface for local models, Apple frameworks, cloud APIs, and provider bridges.</text>
+
+  <g opacity=".82">
+    <rect class="group" x="720" y="190" width="450" height="130" rx="24"/>
+    <text class="group-label" x="752" y="232">On-device</text>
+    <rect class="group" x="720" y="352" width="450" height="130" rx="24"/>
+    <text class="group-label" x="752" y="394">Apple</text>
+    <rect class="group" x="720" y="514" width="450" height="172" rx="24"/>
+    <text class="group-label" x="752" y="556">Cloud and LAN</text>
+    <rect class="group" x="1220" y="352" width="300" height="286" rx="24"/>
+    <text class="group-label" x="1252" y="394">Via bridge</text>
+  </g>
+
+  <path class="edge" marker-end="url(#arrow)" d="M 482 420 C 560 285 628 250 725 255"/>
+  <path class="edge" marker-end="url(#arrow)" d="M 482 420 C 582 407 625 415 725 415"/>
+  <path class="edge" marker-end="url(#arrow)" d="M 482 420 C 560 580 625 602 725 602"/>
+  <path class="edge" marker-end="url(#arrow)" d="M 482 420 C 720 430 930 430 1225 470"/>
+
+  <g filter="url(#shadow)">
+    <rect class="core" x="120" y="330" width="360" height="170" rx="36"/>
+    <text class="core-title" x="170" y="407">GenerationStream</text>
+    <text class="core-sub" x="171" y="446">one protocol surface</text>
+  </g>
+
+  <g>
+    <rect class="node" x="770" y="244" width="130" height="50" rx="25" stroke="#2267a8"/>
+    <text class="node-text" x="812" y="278">MLX</text>
+    <rect class="node" x="920" y="244" width="190" height="50" rx="25" stroke="#2267a8"/>
+    <text class="node-text" x="950" y="278">llama.cpp</text>
+
+    <rect class="node" x="790" y="404" width="320" height="54" rx="27" stroke="#127a73"/>
+    <text class="node-text" x="832" y="440">Foundation Models</text>
+
+    <rect class="node" x="762" y="584" width="110" height="50" rx="25" stroke="#2f7d59"/>
+    <text class="node-text" x="789" y="618">OpenAI</text>
+    <rect class="node" x="890" y="584" width="126" height="50" rx="25" stroke="#2f7d59"/>
+    <text class="node-text" x="918" y="618">Claude</text>
+    <rect class="node" x="1034" y="584" width="112" height="50" rx="25" stroke="#2f7d59"/>
+    <text class="node-text" x="1060" y="618">Ollama</text>
+    <rect class="node" x="812" y="636" width="94" height="42" rx="21" stroke="#2f7d59"/>
+    <text class="node-text" x="834" y="664" style="font-size:18px">LAN</text>
+    <rect class="node" x="924" y="636" width="184" height="42" rx="21" stroke="#2f7d59"/>
+    <text class="node-text" x="948" y="664" style="font-size:18px">Responses API</text>
+
+    <rect class="relay" x="1248" y="440" width="244" height="62" rx="31"/>
+    <text class="relay-text" x="1278" y="479">AnyLanguageModel</text>
+    <path class="edge" marker-end="url(#arrow)" d="M 1370 502 L 1370 540"/>
+    <rect class="node" x="1250" y="550" width="106" height="42" rx="21" stroke="#c87328"/>
+    <text class="node-text" x="1276" y="578" style="font-size:18px">Gemini</text>
+    <rect class="node" x="1374" y="550" width="78" height="42" rx="21" stroke="#c87328"/>
+    <text class="node-text" x="1400" y="578" style="font-size:18px">xAI</text>
+    <rect class="node" x="1250" y="600" width="88" height="42" rx="21" stroke="#c87328"/>
+    <text class="node-text" x="1274" y="628" style="font-size:18px">Groq</text>
+    <rect class="node" x="1356" y="600" width="110" height="42" rx="21" stroke="#c87328"/>
+    <text class="node-text" x="1377" y="628" style="font-size:18px">Mistral</text>
+  </g>
+
+  <g>
+    <rect class="chip" x="210" y="750" width="134" height="42" rx="21"/>
+    <text class="chip-text" x="239" y="778">streaming</text>
+    <rect class="chip" x="360" y="750" width="156" height="42" rx="21"/>
+    <text class="chip-text" x="386" y="778">tool calling</text>
+    <rect class="chip" x="532" y="750" width="190" height="42" rx="21"/>
+    <text class="chip-text" x="558" y="778">structured output</text>
+    <rect class="chip" x="738" y="750" width="174" height="42" rx="21"/>
+    <text class="chip-text" x="764" y="778">thinking tokens</text>
+    <rect class="chip" x="928" y="750" width="82" height="42" rx="21"/>
+    <text class="chip-text" x="958" y="778">MCP</text>
+  </g>
+
+  <text class="caption" x="100" y="846">Swap engines by changing descriptors. The stream, tools, structured output, and thinking-token surface stay the same.</text>
+</svg>

@@ -30,5 +30,5 @@ public enum PreToolUseOutcome: Sendable, Equatable {
 public typealias PreToolUseHook = @Sendable (
     _ toolName: String,
     _ arguments: String,
-    _ sessionID: UUID?
+    _ requestGroupID: UUID?
 ) async -> PreToolUseOutcome

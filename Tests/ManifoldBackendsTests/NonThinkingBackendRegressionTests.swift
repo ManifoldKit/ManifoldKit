@@ -3,7 +3,7 @@ import ManifoldInference
 import ManifoldTestSupport
 
 /// Regression tests verifying that backends not configured for thinking do not
-/// emit `.thinkingToken` or `.thinkingComplete` events, and that the new
+/// emit `.thinkingToken` or `.thinkingCompleted` events, and that the new
 /// `GenerationEvent` cases are handled without crashes across the system.
 final class NonThinkingBackendRegressionTests: XCTestCase {
 
@@ -28,12 +28,12 @@ final class NonThinkingBackendRegressionTests: XCTestCase {
 
         let thinkingEvents = allEvents.filter { event in
             if case .thinkingToken = event { return true }
-            if case .thinkingComplete = event { return true }
+            if case .thinkingCompleted = event { return true }
             return false
         }
 
         XCTAssertTrue(thinkingEvents.isEmpty,
-            "A backend with no thinking config must emit zero .thinkingToken or .thinkingComplete events")
+            "A backend with no thinking config must emit zero .thinkingToken or .thinkingCompleted events")
 
         let visibleTokens = allEvents.compactMap { event -> String? in
             if case .token(let t) = event { return t } else { return nil }
@@ -41,7 +41,7 @@ final class NonThinkingBackendRegressionTests: XCTestCase {
         XCTAssertEqual(visibleTokens, ["hello"],
             "MockInferenceBackend with no thinking config must still emit all configured .token events")
 
-        // Sabotage check: if MockInferenceBackend always emitted .thinkingComplete after tokens,
+        // Sabotage check: if MockInferenceBackend always emitted .thinkingCompleted after tokens,
         // thinkingEvents would be non-empty and this assertion would fail.
     }
 
@@ -69,12 +69,12 @@ final class NonThinkingBackendRegressionTests: XCTestCase {
         }
 
         // Verify the expected event sequence:
-        // .thinkingToken("thought"), .thinkingComplete, .token("visible")
+        // .thinkingToken("thought"), .thinkingCompleted, .token("visible")
         let thinkingTokens = events.compactMap { e -> String? in
             if case .thinkingToken(let t) = e { return t } else { return nil }
         }
         let completions = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         let tokens = events.compactMap { e -> String? in
             if case .token(let t) = e { return t } else { return nil }
@@ -83,7 +83,7 @@ final class NonThinkingBackendRegressionTests: XCTestCase {
         XCTAssertEqual(completions.count, 1)
         XCTAssertEqual(tokens, ["visible"])
 
-        // Sabotage check: if the mock didn't emit .thinkingComplete after thinking tokens,
+        // Sabotage check: if the mock didn't emit .thinkingCompleted after thinking tokens,
         // the completions count would be 0 and this test would fail.
     }
 }

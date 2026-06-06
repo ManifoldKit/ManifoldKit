@@ -189,7 +189,7 @@ final class SessionAutoRenameTests: XCTestCase {
         let (activeToken, _) = try! service.enqueue(
             messages: [(role: "user", content: "Tell me a long story")],
             priority: .userInitiated,
-            sessionID: nil
+            requestGroupID: nil
         )
         _ = activeToken // silence unused-variable warning
 

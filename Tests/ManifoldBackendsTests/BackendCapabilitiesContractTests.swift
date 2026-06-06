@@ -116,7 +116,7 @@ final class BackendCapabilitiesContractTests: XCTestCase {
     }
 
     /// `LlamaGenerationDriver` already filters thinking markers and emits
-    /// `.thinkingToken` / `.thinkingComplete`, so the capability flag must
+    /// `.thinkingToken` / `.thinkingCompleted`, so the capability flag must
     /// advertise it for consumers gating reasoning UI (#480).
     func test_llamaBackend_supportsThinking() throws {
         try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
@@ -140,7 +140,7 @@ final class BackendCapabilitiesContractTests: XCTestCase {
 
     /// MLXBackend routes generation through `ThinkingTransform` when
     /// `config.thinkingMarkers` is set, emitting `.thinkingToken` /
-    /// `.thinkingComplete` events. Capability flag must reflect that (#480).
+    /// `.thinkingCompleted` events. Capability flag must reflect that (#480).
     func test_mlxBackend_supportsThinking() throws {
         try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
                           "MLXBackend requires Apple Silicon")

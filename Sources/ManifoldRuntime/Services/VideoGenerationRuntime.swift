@@ -275,3 +275,18 @@ public final class VideoGenerationRuntime {
         continuation.yield(event)
     }
 }
+
+// MARK: - AsyncSequence Conformance
+
+extension VideoGenerationRuntime: AsyncSequence {
+    public typealias Element = VideoRuntimeEvent
+    public typealias AsyncIterator = AsyncStream<VideoRuntimeEvent>.AsyncIterator
+
+    /// Returns an iterator over the video runtime events in this stream.
+    ///
+    /// Allows idiomatic iteration with `for await event in runtime { … }`
+    /// instead of `for await event in runtime.events { … }`.
+    public nonisolated func makeAsyncIterator() -> AsyncStream<VideoRuntimeEvent>.AsyncIterator {
+        events.makeAsyncIterator()
+    }
+}

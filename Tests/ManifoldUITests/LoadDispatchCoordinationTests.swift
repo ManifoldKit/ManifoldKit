@@ -112,7 +112,7 @@ final class LoadDispatchCoordinationTests: XCTestCase {
         let firstBackend = ControlledLoadBackend()
         let secondBackend = ControlledLoadBackend()
         let vm = makeViewModel { service in
-            service.registerCloudBackendFactory { provider in
+            service.registerEndpointBackendFactory { provider in
                 switch provider {
                 case .ollama:
                     firstBackend
@@ -291,7 +291,7 @@ private actor ControlledLoadGate {
 }
 
 private final class ControlledLoadBackend: InferenceBackend,
-                                           CloudBackendURLModelConfigurable,
+                                           EndpointBackendURLModelConfigurable,
                                            @unchecked Sendable {
     private let stateLock = NSLock()
     private let gate = ControlledLoadGate()

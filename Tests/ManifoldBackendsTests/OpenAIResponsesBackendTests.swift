@@ -58,7 +58,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
 
     private enum EventCategory: Equatable {
         case thinkingToken(String)
-        case thinkingComplete
+        case thinkingCompleted
         case token(String)
         case usage
     }
@@ -66,11 +66,11 @@ final class OpenAIResponsesBackendTests: XCTestCase {
     private func categorise(_ event: GenerationEvent) -> EventCategory? {
         switch event {
         case .thinkingToken(let t): return .thinkingToken(t)
-        case .thinkingComplete: return .thinkingComplete
+        case .thinkingCompleted: return .thinkingCompleted
         case .token(let t): return .token(t)
         case .usage: return .usage
-        case .toolCall, .toolResult, .toolLoopLimitReached, .kvCacheReuse,
-             .diagnosticThrottle, .thinkingSignature,
+        case .toolCall, .toolResult, .toolIterationLimitExceeded, .kvCacheReuse,
+             .throttleDiagnostic, .thinkingSignature,
              .toolCallStart, .toolCallArgumentsDelta,
              .toolDispatchStarted, .toolDispatchCompleted,
              .prefillProgress, .toolProgress,
@@ -82,7 +82,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
     // MARK: - Tests
 
     /// Reasoning summary deltas surface as `.thinkingToken`, and a single
-    /// `.thinkingComplete` is emitted on the transition to visible content.
+    /// `.thinkingCompleted` is emitted on the transition to visible content.
     func test_reasoningSummaryDeltas_emitThinkingTokensThenCompleteThenContent() async throws {
         let (backend, url) = makeBackend()
 
@@ -118,17 +118,17 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         XCTAssertEqual(contentEvents, [
             .thinkingToken("Analysing"),
             .thinkingToken(" the prompt..."),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("The answer"),
             .token(" is 42."),
         ], "Got: \(contentEvents)")
 
-        let completeCount = categories.filter { $0 == .thinkingComplete }.count
-        XCTAssertEqual(completeCount, 1, ".thinkingComplete must fire exactly once")
+        let completeCount = categories.filter { $0 == .thinkingCompleted }.count
+        XCTAssertEqual(completeCount, 1, ".thinkingCompleted must fire exactly once")
     }
 
     /// An explicit `response.reasoning_summary_text.done` event also flushes
-    /// `.thinkingComplete`, even before any visible content delta arrives.
+    /// `.thinkingCompleted`, even before any visible content delta arrives.
     func test_reasoningSummaryDoneEvent_emitsThinkingCompleteOnce() async throws {
         let (backend, url) = makeBackend()
 
@@ -155,12 +155,12 @@ final class OpenAIResponsesBackendTests: XCTestCase {
 
         XCTAssertEqual(categories, [
             .thinkingToken("Pondering"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("hi"),
         ])
     }
 
-    /// Plain (non-reasoning) responses must never emit `.thinkingComplete`,
+    /// Plain (non-reasoning) responses must never emit `.thinkingCompleted`,
     /// matching the behaviour of `OpenAIBackend` for non-reasoning models.
     func test_emptyReasoning_noThinkingCompleteEmitted() async throws {
         let (backend, url) = makeBackend()
@@ -188,7 +188,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
             switch event {
             case .token(let t): tokens.append(t)
             case .thinkingToken: sawThinking = true
-            case .thinkingComplete: sawThinkingComplete = true
+            case .thinkingCompleted: sawThinkingComplete = true
             default: break
             }
         }
@@ -196,7 +196,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         XCTAssertEqual(tokens, ["Hello", " world"])
         XCTAssertFalse(sawThinking)
         XCTAssertFalse(sawThinkingComplete,
-                       ".thinkingComplete must not fire when no reasoning was streamed")
+                       ".thinkingCompleted must not fire when no reasoning was streamed")
     }
 
     /// `response.error` events are surfaced as a thrown error so callers see
@@ -266,7 +266,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
 
         XCTAssertEqual(categories, [
             .thinkingToken("Thinking..."),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("done"),
         ])
     }
@@ -323,7 +323,7 @@ final class OpenAIResponsesBackendTests: XCTestCase {
     }
 
     /// Stream errors that fire while the parser is still inside a thinking
-    /// block must emit `.thinkingComplete` before rethrowing — otherwise UI
+    /// block must emit `.thinkingCompleted` before rethrowing — otherwise UI
     /// consumers hang in a thinking-only state. Pins the parser-error path
     /// through `ThinkingBlockManager.flushIfOpen`.
     func test_errorMidThinkingBlock_emitsThinkingCompleteBeforeThrow() async throws {
@@ -355,8 +355,8 @@ final class OpenAIResponsesBackendTests: XCTestCase {
         }
 
         XCTAssertTrue(threw, "expected response.error to throw out of the stream")
-        XCTAssertEqual(observed, [.thinkingToken("Pondering"), .thinkingComplete],
-                       ".thinkingComplete must fire before the throw — got \(observed)")
+        XCTAssertEqual(observed, [.thinkingToken("Pondering"), .thinkingCompleted],
+                       ".thinkingCompleted must fire before the throw — got \(observed)")
     }
 }
 #endif

@@ -9,7 +9,7 @@ import ManifoldInference
 /// Hardware-gated end-to-end test for `LlamaBackend` driving a real thinking-capable
 /// GGUF (Qwen3-0.6B-Instruct-Q4_K_M or similar). Verifies the full
 /// `LlamaGenerationDriver` thinking-parser pipeline: per-token decode -> ThinkingTransform
-/// -> `.thinkingToken` / `.thinkingComplete` events -> visible `.token` events.
+/// -> `.thinkingToken` / `.thinkingCompleted` events -> visible `.token` events.
 ///
 /// All thinking-token tests in CI use `MockInferenceBackend`, which bypasses the real
 /// `LlamaGenerationDriver` integration with `ThinkingTransform`. A regression in the C-API
@@ -114,7 +114,7 @@ final class LlamaThinkingE2ETests: XCTestCase {
 
     /// Asserts the full thinking pipeline:
     /// - at least one `.thinkingToken` event
-    /// - exactly one `.thinkingComplete` event before the first visible `.token`
+    /// - exactly one `.thinkingCompleted` event before the first visible `.token`
     /// - non-empty visible output
     /// - visible output does NOT contain raw `<think>` / `</think>` tags
     ///   (the parser must strip them — leaking tags is a hard regression signal).
@@ -160,7 +160,7 @@ final class LlamaThinkingE2ETests: XCTestCase {
                 if sawFirstVisibleToken {
                     XCTFail("Received .thinkingToken after visible .token — reasoning must precede visible output (model: \(modelURL.lastPathComponent))")
                 }
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 thinkingCompleteCount += 1
                 if !sawFirstVisibleToken {
                     firstTokenAfterThinkingComplete = true
@@ -194,12 +194,12 @@ final class LlamaThinkingE2ETests: XCTestCase {
         XCTAssertEqual(
             thinkingCompleteCount,
             1,
-            "Exactly one .thinkingComplete event must fire (got \(thinkingCompleteCount), model: \(modelURL.lastPathComponent))"
+            "Exactly one .thinkingCompleted event must fire (got \(thinkingCompleteCount), model: \(modelURL.lastPathComponent))"
         )
         XCTAssertEqual(
             firstTokenAfterThinkingComplete,
             true,
-            ".thinkingComplete must fire before the first visible .token (model: \(modelURL.lastPathComponent))"
+            ".thinkingCompleted must fire before the first visible .token (model: \(modelURL.lastPathComponent))"
         )
         XCTAssertFalse(
             visibleText.isEmpty,

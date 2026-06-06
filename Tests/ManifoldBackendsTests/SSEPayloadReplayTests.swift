@@ -297,7 +297,7 @@ final class SSEPayloadReplayTests: XCTestCase {
     /// silently dropped by `parseToken` because it only matches `text_delta`.
     ///
     /// FIXME(#527): when thinking support lands, flip these assertions to expect
-    /// `.thinkingToken("Let me reason...")` + `.thinkingComplete` before the
+    /// `.thinkingToken("Let me reason...")` + `.thinkingCompleted` before the
     /// final `.token("Answer.")`.
     func test_claude_thinkingBlocks_todayDropsThinkingContent() async throws {
         let sseText = """

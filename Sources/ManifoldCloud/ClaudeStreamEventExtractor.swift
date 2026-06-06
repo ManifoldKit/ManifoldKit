@@ -226,7 +226,7 @@ enum ClaudePayloadParser {
 /// surface can only emit the events whose decision is local to one frame
 /// (`.token`, `.thinkingToken`). The full Claude event vocabulary —
 /// `.toolCallStart` / `.toolCallArgumentsDelta` / `.toolCall`,
-/// `.thinkingSignature`, `.thinkingComplete` transition, `.usage` — requires
+/// `.thinkingSignature`, `.thinkingCompleted` transition, `.usage` — requires
 /// cross-frame state (index-keyed tool-use accumulator, the open-thinking
 /// flag, the once-only tool-call finalisation guard).
 /// `ClaudeStreamEventExtractor` owns that state.
@@ -443,7 +443,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     }
 
     /// Flushes pending state at stream end. Yields a trailing
-    /// `.thinkingComplete` if a thinking block is still open, and finalises
+    /// `.thinkingCompleted` if a thinking block is still open, and finalises
     /// any tool_use indices that never received their own
     /// `content_block_stop` (truncated upstream, hangup).
     ///
@@ -464,7 +464,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
 
     private func flushThinking(into out: inout [GenerationEvent]) {
         guard thinking.isOpen else { return }
-        out.append(.thinkingComplete)
+        out.append(.thinkingCompleted)
         thinking = ThinkingBlockManager()
     }
 

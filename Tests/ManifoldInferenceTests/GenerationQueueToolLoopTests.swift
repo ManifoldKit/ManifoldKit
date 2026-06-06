@@ -9,7 +9,7 @@ import ManifoldTestSupport
 ///   `.toolResult` surfaces on the stream, next turn is invoked with the
 ///   result threaded through tool-aware history
 /// - iteration cap: after `maxToolIterations` tool calls the loop stops and
-///   emits `.toolLoopLimitReached(iterations:)`
+///   emits `.toolIterationLimitExceeded(iterations:)`
 /// - repeat-call short-circuit: identical `(name, args)` twice in a row
 ///   bypasses the executor
 /// - byte-budget guard: a tool that returns huge content terminates the loop
@@ -314,7 +314,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
 
     func test_loopCap_emitsToolLoopLimitReached() async throws {
         // Model emits a distinct tool call on every turn — coordinator must
-        // stop at `maxToolIterations` and surface `.toolLoopLimitReached`.
+        // stop at `maxToolIterations` and surface `.toolIterationLimitExceeded`.
         // Arguments vary per turn so the repeat-call short-circuit does not
         // bypass executor invocations.
         let executor = RecordingExecutor(name: "spam") { _ in
@@ -337,7 +337,7 @@ final class GenerationQueueToolLoopTests: XCTestCase {
         let events = try await collectEvents(stream)
 
         let limits = events.compactMap { event -> Int? in
-            if case .toolLoopLimitReached(let n) = event { return n } else { return nil }
+            if case .toolIterationLimitExceeded(let n) = event { return n } else { return nil }
         }
         // Sabotage check: deleting the `iterations > limit` guard in
         // runToolDispatchLoop lets the loop run forever (test times out) or,
@@ -441,7 +441,7 @@ extension GenerationQueue {
         messages: [(role: String, content: String)],
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             messages: messages,
@@ -456,7 +456,7 @@ extension GenerationQueue {
             toolChoice: config.toolChoice,
             maxToolIterations: config.maxToolIterations,
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 }

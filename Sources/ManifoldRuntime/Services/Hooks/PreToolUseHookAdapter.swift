@@ -41,10 +41,10 @@ public enum PreToolUseHookAdapter {
     ) -> @Sendable (
         _ toolName: String,
         _ arguments: String,
-        _ sessionID: UUID?
+        _ requestGroupID: UUID?
     ) async -> PreToolUseOutcome {
-        return { toolName, arguments, sessionID in
-            let sid = sessionID ?? UUID()
+        return { toolName, arguments, requestGroupID in
+            let sid = requestGroupID ?? UUID()
             let input = HookInput(
                 event: .preToolUse,
                 sessionID: sid,

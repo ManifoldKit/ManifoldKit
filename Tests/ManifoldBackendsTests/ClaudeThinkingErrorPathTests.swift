@@ -9,7 +9,7 @@ import ManifoldTestSupport
 
 /// Pins the `ThinkingBlockManager.flushIfOpen` parser-error path for Claude:
 /// when an upstream `error` event interrupts an open thinking block, the
-/// stream must yield `.thinkingComplete` before the throw so consumers don't
+/// stream must yield `.thinkingCompleted` before the throw so consumers don't
 /// hang in a thinking-only state.
 ///
 /// This file uses XCTest (not Swift Testing) on purpose — see
@@ -76,7 +76,7 @@ final class ClaudeThinkingErrorPathTests: XCTestCase {
             for try await event in stream.events {
                 switch event {
                 case .thinkingToken: sawThinkingToken = true
-                case .thinkingComplete: sawThinkingComplete = true
+                case .thinkingCompleted: sawThinkingComplete = true
                 default: break
                 }
             }
@@ -87,7 +87,7 @@ final class ClaudeThinkingErrorPathTests: XCTestCase {
         XCTAssertTrue(sawThinkingToken, "expected at least one .thinkingToken before the error event")
         XCTAssertTrue(threw, "expected the upstream error event to throw out of the stream")
         XCTAssertTrue(sawThinkingComplete,
-                      ".thinkingComplete must fire before the throw so consumers don't hang in a thinking-only state")
+                      ".thinkingCompleted must fire before the throw so consumers don't hang in a thinking-only state")
     }
 }
 #endif

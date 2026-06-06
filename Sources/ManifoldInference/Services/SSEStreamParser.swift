@@ -24,7 +24,7 @@ import Foundation
 /// ``extractEvents(from:)`` is the primary entry point: it maps one SSE
 /// payload to zero or more ``GenerationEvent`` values. This lets a single
 /// chunk surface ``GenerationEvent/token(_:)``, ``GenerationEvent/thinkingToken(_:)``,
-/// or ``GenerationEvent/thinkingComplete`` as the provider's wire format
+/// or ``GenerationEvent/thinkingCompleted`` as the provider's wire format
 /// requires, without forcing the base class to reinterpret a raw string.
 ///
 /// The default implementation wraps the legacy ``extractToken(from:)``
@@ -46,7 +46,7 @@ public protocol SSEPayloadHandler: Sendable {
     ///
     /// Returning multiple events from one payload lets a handler distinguish
     /// thinking/reasoning deltas from regular text deltas natively. For
-    /// lifecycle-style `.thinkingComplete` events that cannot be derived
+    /// lifecycle-style `.thinkingCompleted` events that cannot be derived
     /// from a single chunk (e.g. OpenAI's `reasoning_content` → `content`
     /// transition), the `SSECloudBackend` base loop injects the event on
     /// the first non-thinking-token event that follows one or more
@@ -54,7 +54,7 @@ public protocol SSEPayloadHandler: Sendable {
     ///
     /// Handlers that already know they are at a reasoning-block boundary
     /// (e.g. an inline-tag parser using `ThinkingTransform`) may emit
-    /// ``GenerationEvent/thinkingComplete`` themselves; the base loop's
+    /// ``GenerationEvent/thinkingCompleted`` themselves; the base loop's
     /// flag tracking is idempotent and will not duplicate the event.
     ///
     /// The default implementation wraps ``extractToken(from:)`` so existing
@@ -399,21 +399,21 @@ package struct SSEStreamParser {
                         if Task.isCancelled { break }
 
                         for event in handler.extractEvents(from: payload) {
-                            // Lifecycle: inject a single `.thinkingComplete`
+                            // Lifecycle: inject a single `.thinkingCompleted`
                             // when the stream transitions from a thinking-
                             // token run back to a plain token. Handlers that
-                            // emit `.thinkingComplete` themselves clear the
+                            // emit `.thinkingCompleted` themselves clear the
                             // flag before reaching here, so no duplicate.
                             switch event {
                             case .thinkingToken:
                                 wasThinking = true
                                 continuation.yield(event)
-                            case .thinkingComplete:
+                            case .thinkingCompleted:
                                 wasThinking = false
                                 continuation.yield(event)
                             case .token:
                                 if wasThinking {
-                                    continuation.yield(.thinkingComplete)
+                                    continuation.yield(.thinkingCompleted)
                                     wasThinking = false
                                 }
                                 continuation.yield(event)

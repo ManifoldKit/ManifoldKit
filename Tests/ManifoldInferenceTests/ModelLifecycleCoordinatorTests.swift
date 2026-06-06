@@ -7,7 +7,7 @@ import os
 /// The coordinator's `beginLoadRequest`, `canCommitLoad`, `invalidateOutstandingLoads`,
 /// `finishLoadAttemptWithSuccess`, and `finishLoadAttemptWithFailure` methods are all
 /// private. These tests exercise them indirectly through the public/internal API:
-/// `loadModel(from:)`, `loadCloudBackend(from:)`, and `unloadModel()`, then assert
+/// `loadModel(from:)`, `loadEndpointBackend(from:)`, and `unloadModel()`, then assert
 /// on the observable state properties (`isModelLoaded`, `activeBackendName`,
 /// `modelLoadProgress`).
 ///

@@ -88,7 +88,7 @@ public struct BackendCapabilities: Sendable, Equatable, Codable {
     public let supportsGrammarConstrainedSampling: Bool
 
     /// If true, the backend can emit ``GenerationEvent/thinkingToken(_:)`` and
-    /// ``GenerationEvent/thinkingComplete`` events for reasoning content. Consumers use this
+    /// ``GenerationEvent/thinkingCompleted`` events for reasoning content. Consumers use this
     /// static capability flag to gate thinking-related UI (reasoning disclosure group,
     /// thinking budget slider) rather than inferring it from the active `PromptTemplate`.
     ///

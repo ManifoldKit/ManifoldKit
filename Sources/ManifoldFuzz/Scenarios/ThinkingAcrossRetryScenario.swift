@@ -6,9 +6,9 @@ import ManifoldInference
 /// and the second attempt produces a clean stream.
 ///
 /// Asserts that across the whole user-visible interaction (merged retry
-/// timeline), at most **one** `.thinkingComplete` event reaches the consumer.
+/// timeline), at most **one** `.thinkingCompleted` event reaches the consumer.
 /// Double-complete would signal the retry handler re-replayed the partial
-/// thinking block without invalidating the earlier `.thinkingComplete`,
+/// thinking block without invalidating the earlier `.thinkingCompleted`,
 /// leaving downstream consumers double-closing the thinking container.
 ///
 /// The retry shape is intentionally minimal — this scenario operates at the
@@ -18,7 +18,7 @@ import ManifoldInference
 /// sees whatever a retry-shaped composition of two streams yields.
 public struct ThinkingAcrossRetryScenario: FuzzScenario {
     public let id = "thinking-across-retry"
-    public let humanName = "Retry after mid-thinking failure yields at most one .thinkingComplete"
+    public let humanName = "Retry after mid-thinking failure yields at most one .thinkingCompleted"
 
     public init() {}
 
@@ -67,7 +67,7 @@ public struct ThinkingAcrossRetryScenario: FuzzScenario {
 
         // The retry policy must also invalidate any thinking events it
         // already surfaced to the consumer before retrying, otherwise a
-        // second `.thinkingComplete` from the fresh stream would ride on top
+        // second `.thinkingCompleted` from the fresh stream would ride on top
         // of the first one. The canonical shape for this is "drop any
         // partial-stream events from the pre-retry attempt". We model that
         // here by resetting `merged` before consuming the retry — a real
@@ -80,7 +80,7 @@ public struct ThinkingAcrossRetryScenario: FuzzScenario {
         }
 
         let thinkingCompleteCount = merged.reduce(0) { acc, e in
-            if case .thinkingComplete = e { return acc + 1 }
+            if case .thinkingCompleted = e { return acc + 1 }
             return acc
         }
         let thinkingTokenCount = merged.reduce(0) { acc, e in
@@ -92,7 +92,7 @@ public struct ThinkingAcrossRetryScenario: FuzzScenario {
             return ScenarioOutcome(
                 scenarioId: id,
                 invariantHeld: false,
-                failureReason: "retry surfaced \(thinkingCompleteCount) .thinkingComplete events",
+                failureReason: "retry surfaced \(thinkingCompleteCount) .thinkingCompleted events",
                 events: merged
             )
         }
@@ -100,7 +100,7 @@ public struct ThinkingAcrossRetryScenario: FuzzScenario {
             return ScenarioOutcome(
                 scenarioId: id,
                 invariantHeld: false,
-                failureReason: ".thinkingComplete emitted after retry without any .thinkingToken",
+                failureReason: ".thinkingCompleted emitted after retry without any .thinkingToken",
                 events: merged
             )
         }

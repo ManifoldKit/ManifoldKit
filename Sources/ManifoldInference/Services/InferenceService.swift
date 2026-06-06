@@ -60,9 +60,9 @@ public enum ModelLoadReadinessState: Equatable, Sendable {
 ///   The queue is processed sequentially regardless of backend type.
 /// - **Priority ordering**: `.userInitiated` > `.normal` > `.background`.
 ///   Within the same priority, requests execute in FIFO order.
-/// - **Session scoping**: requests carry an optional session ID.
+/// - **Request-group scoping**: requests carry an optional request group ID.
 ///   `discardRequests(notMatching:)` cancels all requests not belonging to the
-///   specified session. Requests with `nil` sessionID are session-agnostic.
+///   specified group. Requests with `nil` requestGroupID are group-agnostic.
 /// - **Per-request cancellation**: `cancel(_:)` removes a queued request or stops
 ///   the active one, then drains the next item.
 /// - **Max queue depth**: excess `enqueue()` calls throw. Default: 8.
@@ -164,7 +164,7 @@ public final class InferenceService {
     }
 
     public func registerEndpointBackendFactory(_ factory: @escaping EndpointBackendFactory) {
-        lifecycle.registerCloudBackendFactory(factory)
+        lifecycle.registerEndpointBackendFactory(factory)
     }
 
     @available(*, deprecated, renamed: "registerEndpointBackendFactory(_:)")
@@ -206,7 +206,7 @@ public final class InferenceService {
     public func loadEndpointBackend(from endpoint: APIEndpointRecord) async throws {
         ensureProviderWired()
         generation.stopGeneration()
-        try await lifecycle.loadCloudBackend(from: endpoint)
+        try await lifecycle.loadEndpointBackend(from: endpoint)
     }
 
     /// Loads a cloud API backend from an `APIEndpointRecord` configuration.
@@ -429,7 +429,7 @@ public final class InferenceService {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
         return try generation.enqueue(
@@ -437,11 +437,11 @@ public final class InferenceService {
             systemPrompt: systemPrompt,
             config: config,
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
-    /// Structured-message variant of ``enqueue(messages:config:priority:sessionID:)``.
+    /// Structured-message variant of ``enqueue(messages:config:priority:requestGroupID:)``.
     ///
     /// Threads ``StructuredMessage`` through the queue so cloud backends
     /// with structured wire formats (Anthropic) can replay prior assistant
@@ -451,7 +451,7 @@ public final class InferenceService {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil,
+        requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
         preToolUseHook: PreToolUseHook? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
@@ -461,7 +461,7 @@ public final class InferenceService {
             systemPrompt: systemPrompt,
             config: config,
             priority: priority,
-            sessionID: sessionID,
+            requestGroupID: requestGroupID,
             handoffDetector: handoffDetector,
             preToolUseHook: preToolUseHook
         )
@@ -470,8 +470,8 @@ public final class InferenceService {
     /// Parameterized enqueue retained as a source-compatible builder.
     ///
     /// Assembles a ``GenerationConfig`` from the individual sampling
-    /// parameters and forwards to ``enqueue(messages:config:priority:sessionID:)``.
-    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(messages:config:priority:sessionID:).")
+    /// parameters and forwards to ``enqueue(messages:config:priority:requestGroupID:)``.
+    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(messages:config:priority:requestGroupID:).")
     public func enqueue(
         messages: [Message],
         systemPrompt: String? = nil,
@@ -491,7 +491,7 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             messages: messages,
@@ -514,12 +514,12 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
     /// Tuple-shaped enqueue retained for one minor while consumers migrate
-    /// to the typed ``enqueue(messages:config:priority:sessionID:)`` overload.
+    /// to the typed ``enqueue(messages:config:priority:requestGroupID:)`` overload.
     @available(*, deprecated, message: "Use [Message] with .system/.user/.assistant and a GenerationConfig — raw role strings are typo-prone.")
     public func enqueue(
         messages: [(role: String, content: String)],
@@ -535,7 +535,7 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
         return try generation.enqueue(
@@ -559,12 +559,12 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
     /// Parameterized structured-message enqueue retained as a source-compatible builder.
-    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(structuredMessages:config:priority:sessionID:).")
+    @available(*, deprecated, message: "Build a GenerationConfig and call enqueue(structuredMessages:config:priority:requestGroupID:).")
     public func enqueue(
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String? = nil,
@@ -584,7 +584,7 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages,
@@ -607,7 +607,7 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
@@ -620,9 +620,9 @@ public final class InferenceService {
         generation.cancel(token)
     }
 
-    public func discardRequests(notMatching sessionID: UUID) async {
+    public func discardRequests(notMatching requestGroupID: UUID) async {
         ensureProviderWired()
-        await generation.discardRequests(notMatching: sessionID)
+        await generation.discardRequests(notMatching: requestGroupID)
     }
 
     public var lastTokenUsage: (promptTokens: Int, completionTokens: Int)? {
@@ -743,7 +743,7 @@ public final class InferenceService {
     /// ``HookRegistry`` and the Inference layer. Hosts compose hooks via
     /// ``ConversationRuntime`` instead of calling this directly.
     package func setPreToolUseHook(
-        _ hook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
+        _ hook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)?
     ) {
         generation.preToolUseHook = hook
     }

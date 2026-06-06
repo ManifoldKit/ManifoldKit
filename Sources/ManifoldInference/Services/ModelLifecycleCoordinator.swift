@@ -36,7 +36,7 @@ final class ModelLifecycleCoordinator {
     // MARK: - Backend Registry
 
     private var backendFactories: [BackendFactory] = []
-    private var cloudBackendFactories: [CloudBackendFactory] = []
+    private var cloudBackendFactories: [EndpointBackendFactory] = []
     private var supportedLocalModelTypes: Set<ModelType> = []
     private var supportedCloudProviders: Set<APIProvider> = []
 
@@ -109,7 +109,7 @@ final class ModelLifecycleCoordinator {
         backendFactories.append(factory)
     }
 
-    func registerCloudBackendFactory(_ factory: @escaping CloudBackendFactory) {
+    func registerEndpointBackendFactory(_ factory: @escaping EndpointBackendFactory) {
         cloudBackendFactories.append(factory)
     }
 
@@ -272,7 +272,7 @@ final class ModelLifecycleCoordinator {
         }
     }
 
-    func loadCloudBackend(from endpoint: APIEndpointRecord) async throws {
+    func loadEndpointBackend(from endpoint: APIEndpointRecord) async throws {
         // Validate before unloading the current model so a bad endpoint doesn't
         // leave the user with no backend at all.
         try endpoint.validate()
@@ -288,15 +288,15 @@ final class ModelLifecycleCoordinator {
         guard let newBackend = createCloudBackend(for: endpoint.provider) else {
             throw InferenceError.inferenceFailure(
                 "No registered cloud backend factory can handle provider \(endpoint.provider.rawValue). "
-                + "Register a CloudBackendFactory before loading cloud backends."
+                + "Register an EndpointBackendFactory before loading endpoint backends."
             )
         }
 
         switch endpoint.provider {
         case .claude, .openAI, .openAIResponses, .custom:
-            guard let keychainConfigurable = newBackend as? CloudBackendKeychainConfigurable else {
+            guard let keychainConfigurable = newBackend as? EndpointBackendKeychainConfigurable else {
                 throw InferenceError.inferenceFailure(
-                    "Cloud backend \(type(of: newBackend)) must conform to CloudBackendKeychainConfigurable "
+                    "Endpoint backend \(type(of: newBackend)) must conform to EndpointBackendKeychainConfigurable "
                     + "for provider \(endpoint.provider.rawValue)."
                 )
             }
@@ -307,9 +307,9 @@ final class ModelLifecycleCoordinator {
             )
 
         case .ollama, .lmStudio:
-            guard let urlModelConfigurable = newBackend as? CloudBackendURLModelConfigurable else {
+            guard let urlModelConfigurable = newBackend as? EndpointBackendURLModelConfigurable else {
                 throw InferenceError.inferenceFailure(
-                    "Cloud backend \(type(of: newBackend)) must conform to CloudBackendURLModelConfigurable "
+                    "Endpoint backend \(type(of: newBackend)) must conform to EndpointBackendURLModelConfigurable "
                     + "for provider \(endpoint.provider.rawValue)."
                 )
             }

@@ -27,7 +27,7 @@ public protocol CloudStreamEventConsumer: AnyObject, Sendable {
     func consume(payload: String) -> [GenerationEvent]
 
     /// Flushes pending state at stream end. Implementations yield any
-    /// open-thinking close (`.thinkingComplete`) and any buffered tool
+    /// open-thinking close (`.thinkingCompleted`) and any buffered tool
     /// calls the upstream never accompanied with an explicit
     /// `finish_reason`. Pass `cancelled: true` to suppress phantom tool
     /// emissions when the consumer is being dropped mid-stream.

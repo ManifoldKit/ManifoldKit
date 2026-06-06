@@ -5,7 +5,7 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
 
-/// Tests for #482 / #604: two ``GenerationEvent/thinkingComplete`` events
+/// Tests for #482 / #604: two ``GenerationEvent/thinkingCompleted`` events
 /// on a single assistant turn must produce two distinct ``MessagePart/thinking``
 /// parts (not one concatenated). Per-block signatures must round-trip onto
 /// each part independently so the next replay against Anthropic carries the

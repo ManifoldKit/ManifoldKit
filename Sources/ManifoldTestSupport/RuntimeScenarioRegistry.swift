@@ -62,11 +62,11 @@ extension RuntimeScenario {
         ]
     )
 
-    /// Verifies that a `diagnosticThrottle` advisory does not abort generation.
+    /// Verifies that a `throttleDiagnostic` advisory does not abort generation.
     public static let diagnosticThrottleAdvisory = RuntimeScenario(
         id: "diagnostic-throttle-advisory",
         displayName: "Diagnostic Throttle Advisory",
-        scenarioDescription: "Backend emits a diagnosticThrottle event before tokens. Verifies the runtime treats the advisory as informational.",
+        scenarioDescription: "Backend emits a throttleDiagnostic event before tokens. Verifies the runtime treats the advisory as informational.",
         userMessages: ["What is the throttle status?"],
         scriptedTurns: [
             .throttle(reason: "rate-limit-burst", then: ["Throttle", " noted", "."])

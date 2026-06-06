@@ -213,12 +213,12 @@ final class InferenceServiceProgressTests: XCTestCase {
     func test_modelLoadProgress_cloudLoadAlsoPublishesProgress() async throws {
         let service = InferenceService()
         let backend = ProgressReportingCloudBackend()
-        service.registerCloudBackendFactory { provider in
+        service.registerEndpointBackendFactory { provider in
             provider == .ollama ? backend : nil
         }
 
         let endpoint = APIEndpointRecord(name: "Test", provider: .ollama, modelName: "demo")
-        let task = Task { try await service.loadCloudBackend(from: endpoint) }
+        let task = Task { try await service.loadEndpointBackend(from: endpoint) }
         await backend.waitUntilLoadStarted()
 
         XCTAssertEqual(service.modelLoadProgress, 0.0)
@@ -374,10 +374,10 @@ private final class ProgressReportingBackend: InferenceBackend,
 }
 
 /// Cloud variant of `ProgressReportingBackend` that conforms to the
-/// URL+model configurable protocol so `loadCloudBackend(from:)` accepts it.
+/// URL+model configurable protocol so `loadEndpointBackend(from:)` accepts it.
 private final class ProgressReportingCloudBackend: InferenceBackend,
                                                    LoadProgressReporting,
-                                                   CloudBackendURLModelConfigurable,
+                                                   EndpointBackendURLModelConfigurable,
                                                    @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false

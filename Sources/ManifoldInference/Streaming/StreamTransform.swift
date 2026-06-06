@@ -2,7 +2,7 @@
 ///
 /// Each transform consumes a batch of `[GenerationEvent]`, re-scans **only the
 /// `.token` payloads** against its own markers, and passes every other event
-/// case (`.thinkingToken`, `.thinkingComplete`, `.toolCall`, usage, lifecycle,
+/// case (`.thinkingToken`, `.thinkingCompleted`, `.toolCall`, usage, lifecycle,
 /// …) straight through untouched. This is the composition contract that lets
 /// the drivers chain a thinking stage and a tool-call stage in either order:
 /// the upstream stage's structured output is never re-interpreted downstream,

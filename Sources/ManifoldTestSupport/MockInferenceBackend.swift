@@ -17,7 +17,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
     /// Multi-block reasoning script. When non-empty this **takes precedence
     /// over** ``thinkingTokensToYield``: each inner array is one reasoning
     /// block, emitted as a sequence of `.thinkingToken` events followed by
-    /// a `.thinkingComplete`. Used by tests that exercise the multi-block
+    /// a `.thinkingCompleted`. Used by tests that exercise the multi-block
     /// finalize path (#604: Anthropic emits one signature per block).
     public var thinkingBlocksToYield: [[String]] = []
 
@@ -254,7 +254,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                 if !multiBlocks.isEmpty {
                     // Multi-block reasoning script: each inner array is one
                     // `<think>…</think>` round, separated by its own
-                    // `.thinkingComplete`. Lets tests assert the per-block
+                    // `.thinkingCompleted`. Lets tests assert the per-block
                     // finalize → multi-`.thinking`-part contract.
                     for (idx, block) in multiBlocks.enumerated() {
                         for t in block {
@@ -265,7 +265,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                         if idx < signatures.count, let sig = signatures[idx] {
                             continuation.yield(.thinkingSignature(sig))
                         }
-                        continuation.yield(.thinkingComplete)
+                        continuation.yield(.thinkingCompleted)
                     }
                 } else {
                     for t in thinkingTokens {
@@ -273,7 +273,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
                         continuation.yield(.thinkingToken(t))
                     }
                     if !thinkingTokens.isEmpty && !Task.isCancelled {
-                        continuation.yield(.thinkingComplete)
+                        continuation.yield(.thinkingCompleted)
                     }
                 }
                 for token in tokens {

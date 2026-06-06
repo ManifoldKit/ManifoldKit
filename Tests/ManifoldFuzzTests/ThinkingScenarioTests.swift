@@ -83,8 +83,8 @@ final class ThinkingScenarioTests: XCTestCase {
             "maxThinkingTokens=0 must suppress every .thinkingToken event"
         )
         XCTAssertFalse(
-            outcome.events.contains { if case .thinkingComplete = $0 { return true } else { return false } },
-            "maxThinkingTokens=0 must suppress every .thinkingComplete event"
+            outcome.events.contains { if case .thinkingCompleted = $0 { return true } else { return false } },
+            "maxThinkingTokens=0 must suppress every .thinkingCompleted event"
         )
         XCTAssertTrue(
             outcome.events.contains { if case .token = $0 { return true } else { return false } },
@@ -100,24 +100,24 @@ final class ThinkingScenarioTests: XCTestCase {
         )
 
         let completeCount = outcome.events.reduce(0) { acc, e in
-            if case .thinkingComplete = e { return acc + 1 }
+            if case .thinkingCompleted = e { return acc + 1 }
             return acc
         }
         XCTAssertLessThanOrEqual(
             completeCount,
             1,
-            "cancelled stream must not fire .thinkingComplete more than once"
+            "cancelled stream must not fire .thinkingCompleted more than once"
         )
 
-        // If any thinkingComplete appeared at all, at least one thinkingToken
+        // If any thinkingCompleted appeared at all, at least one thinkingToken
         // must have preceded it — the canonical "no dangling complete" rule.
         if let completeIdx = outcome.events.firstIndex(where: {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }) {
             let precedingTokens = outcome.events.prefix(completeIdx).contains {
                 if case .thinkingToken = $0 { return true } else { return false }
             }
-            XCTAssertTrue(precedingTokens, "dangling .thinkingComplete with no prior .thinkingToken")
+            XCTAssertTrue(precedingTokens, "dangling .thinkingCompleted with no prior .thinkingToken")
         }
     }
 
@@ -129,13 +129,13 @@ final class ThinkingScenarioTests: XCTestCase {
         )
 
         let completeCount = outcome.events.reduce(0) { acc, e in
-            if case .thinkingComplete = e { return acc + 1 }
+            if case .thinkingCompleted = e { return acc + 1 }
             return acc
         }
         XCTAssertLessThanOrEqual(
             completeCount,
             1,
-            "retry must not surface more than one .thinkingComplete to the consumer"
+            "retry must not surface more than one .thinkingCompleted to the consumer"
         )
     }
 

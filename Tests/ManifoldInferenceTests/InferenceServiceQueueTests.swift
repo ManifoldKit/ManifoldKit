@@ -382,17 +382,17 @@ final class InferenceServiceQueueTests: XCTestCase {
         let _ = try service.enqueue(
             messages: [("user", "active")],
             priority: .normal,
-            sessionID: sessionA
+            requestGroupID: sessionA
         )
         let (_, streamA) = try service.enqueue(
             messages: [("user", "queued-A")],
             priority: .normal,
-            sessionID: sessionA
+            requestGroupID: sessionA
         )
         let (_, streamB) = try service.enqueue(
             messages: [("user", "queued-B")],
             priority: .normal,
-            sessionID: sessionB
+            requestGroupID: sessionB
         )
 
         await service.discardRequests(notMatching: sessionB)
@@ -410,24 +410,24 @@ final class InferenceServiceQueueTests: XCTestCase {
                        "Session B request should be promoted to active after A is discarded")
     }
 
-    // MARK: - 10. nil sessionID never discarded
+    // MARK: - 10. nil requestGroupID never discarded
 
     func test_discardRequests_nilSessionID_neverDiscarded() async throws {
         let (service, _) = makeService()
         let sessionB = UUID()
 
         let _ = try service.enqueue(messages: [("user", "active")], priority: .normal)
-        // nil sessionID — session-agnostic.
+        // nil requestGroupID — group-agnostic.
         let (_, streamNil) = try service.enqueue(
             messages: [("user", "agnostic")],
             priority: .normal,
-            sessionID: nil
+            requestGroupID: nil
         )
 
         await service.discardRequests(notMatching: sessionB)
 
         XCTAssertEqual(streamNil.phase, .queued,
-                       "nil sessionID should survive discardRequests")
+                       "nil requestGroupID should survive discardRequests")
     }
 
     // MARK: - 11. isGenerating false when queue empty

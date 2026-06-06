@@ -7,7 +7,7 @@ import ManifoldHardware
 /// `ManifoldCore` provides a SwiftData `@Model APIEndpoint` that maps to this
 /// record, but inference orchestration only depends on the record so consumers
 /// with their own persistence layer can still call
-/// ``InferenceService/loadCloudBackend(from:)``.
+/// ``InferenceService/loadEndpointBackend(from:)``.
 public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
     public var id: UUID
     public var name: String

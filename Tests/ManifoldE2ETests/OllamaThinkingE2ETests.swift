@@ -105,7 +105,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
     // MARK: - Thinking Tests
 
     /// Test A — Thinking models must emit `.thinkingToken` events and fire
-    /// exactly one `.thinkingComplete` before the first visible `.token`.
+    /// exactly one `.thinkingCompleted` before the first visible `.token`.
     func testThinkingModel_emitsThinkingEventsBeforeVisibleOutput() async throws {
         // qwen3.5:4b can spend well over 1k tokens reasoning through the
         // train-meeting prompt before emitting any visible content. When
@@ -134,7 +134,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
                 if sawFirstVisibleToken {
                     XCTFail("Received .thinkingToken after visible .token — reasoning must precede visible output on this backend")
                 }
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 thinkingCompleteCount += 1
                 if !sawFirstVisibleToken {
                     firstTokenAfterThinkingComplete = true
@@ -158,12 +158,12 @@ final class OllamaThinkingE2ETests: XCTestCase {
         XCTAssertEqual(
             thinkingCompleteCount,
             1,
-            "Exactly one .thinkingComplete event must fire (got \(thinkingCompleteCount), model: \(modelName!))"
+            "Exactly one .thinkingCompleted event must fire (got \(thinkingCompleteCount), model: \(modelName!))"
         )
         XCTAssertEqual(
             firstTokenAfterThinkingComplete,
             true,
-            ".thinkingComplete must fire before the first visible .token (model: \(modelName!))"
+            ".thinkingCompleted must fire before the first visible .token (model: \(modelName!))"
         )
         XCTAssertFalse(
             visibleText.isEmpty,
@@ -201,7 +201,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
             switch event {
             case .thinkingToken:
                 thinkingTokenCount += 1
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 thinkingCompleteCount += 1
             case .token(let text):
                 visibleText += text
@@ -218,7 +218,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
         XCTAssertEqual(
             thinkingCompleteCount,
             0,
-            "maxThinkingTokens=0 must fire zero .thinkingComplete events (got \(thinkingCompleteCount), model: \(modelName!))"
+            "maxThinkingTokens=0 must fire zero .thinkingCompleted events (got \(thinkingCompleteCount), model: \(modelName!))"
         )
         XCTAssertFalse(
             visibleText.isEmpty,
@@ -264,7 +264,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
             switch event {
             case .thinkingToken:
                 thinkingTokenCount += 1
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 thinkingCompleteCount += 1
             case .token(let text):
                 visibleText += text
@@ -285,7 +285,7 @@ final class OllamaThinkingE2ETests: XCTestCase {
         XCTAssertEqual(
             thinkingCompleteCount,
             1,
-            "Exactly one .thinkingComplete event must fire even when capped (got \(thinkingCompleteCount), model: \(modelName!))"
+            "Exactly one .thinkingCompleted event must fire even when capped (got \(thinkingCompleteCount), model: \(modelName!))"
         )
         XCTAssertFalse(
             visibleText.isEmpty,

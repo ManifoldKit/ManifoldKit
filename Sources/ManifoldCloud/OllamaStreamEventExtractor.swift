@@ -108,7 +108,7 @@ enum OllamaPayloadParser {
     /// This method only surfaces visible content; reasoning-model `thinking`
     /// fields are handled inline by ``parseResponseStream(bytes:config:continuation:)``
     /// so they can be emitted as ``GenerationEvent/thinkingToken(_:)`` with
-    /// proper ``GenerationEvent/thinkingComplete`` bracketing. Kept for the
+    /// proper ``GenerationEvent/thinkingCompleted`` bracketing. Kept for the
     /// ``SSEPayloadHandler`` protocol conformance and external callers.
     static func extractToken(from json: String) -> String? {
         guard let parsed = parseLine(json) else { return nil }
@@ -124,7 +124,7 @@ enum OllamaPayloadParser {
     /// one. Exposed for symmetry with ``extractToken(from:)``; streaming
     /// callers use the inline logic in
     /// ``parseResponseStream(bytes:config:continuation:)`` to bracket
-    /// thinking emissions with ``GenerationEvent/thinkingComplete``.
+    /// thinking emissions with ``GenerationEvent/thinkingCompleted``.
     static func extractThinking(from json: String) -> String? {
         guard let parsed = parseLine(json),
               let thinking = parsed.thinking,
@@ -220,7 +220,7 @@ enum OllamaPayloadParser {
 /// emit events whose decision is local to one frame (`.token`,
 /// `.thinkingToken`). The full Ollama event vocabulary —
 /// `.toolCallStart` / `.toolCallArgumentsDelta` / `.toolCall`, `.usage`,
-/// the implicit `.thinkingComplete` transition, the inline `<think>`-tag
+/// the implicit `.thinkingCompleted` transition, the inline `<think>`-tag
 /// fallback parser, and the per-stream visible/thinking caps — requires
 /// cross-frame state that lives here.
 ///
@@ -360,7 +360,7 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
         // (no done-chunk, no empty-thinking transition), close it out so
         // consumers don't hang in a thinking-only state.
         if thinkingOpen && !cancelled {
-            out.append(.thinkingComplete)
+            out.append(.thinkingCompleted)
             thinkingOpen = false
         }
         return out
@@ -394,13 +394,13 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
             thinkingTokenCount += 1
             return
         }
-        // Transition from thinking → content. Fire `.thinkingComplete`
+        // Transition from thinking → content. Fire `.thinkingCompleted`
         // exactly once on the first empty-thinking line we see after any
         // non-empty thinking was emitted. Skipped when the fallback parser
         // is driving state — the parser closes its own thinking block via
-        // its own `.thinkingComplete`.
+        // its own `.thinkingCompleted`.
         if thinkingOpen && contentParser == nil {
-            out.append(.thinkingComplete)
+            out.append(.thinkingCompleted)
             thinkingOpen = false
         }
     }
@@ -451,10 +451,10 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
         }
         // Ollama can terminate with `"done":true` while thinking is still
         // the only content emitted (reasoning model hits num_predict mid-
-        // think). Flush `.thinkingComplete` so consumers don't leave the
+        // think). Flush `.thinkingCompleted` so consumers don't leave the
         // thinking block open.
         if thinkingOpen {
-            out.append(.thinkingComplete)
+            out.append(.thinkingCompleted)
             thinkingOpen = false
         }
     }
@@ -476,7 +476,7 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
     /// Emit one parser-produced event while honouring per-stream caps.
     /// Returns `false` when the visible-token cap was hit (caller stops
     /// producing further events on this line). Only handles
-    /// `.token`/`.thinkingToken`/`.thinkingComplete` — anything else is
+    /// `.token`/`.thinkingToken`/`.thinkingCompleted` — anything else is
     /// forwarded verbatim.
     private func emit(_ event: GenerationEvent, into out: inout [GenerationEvent]) -> Bool {
         switch event {
@@ -488,8 +488,8 @@ public final class OllamaStreamEventExtractor: CloudStreamEventConsumer, @unchec
             thinkingOpen = true
             thinkingTokenCount += 1
             return true
-        case .thinkingComplete:
-            out.append(.thinkingComplete)
+        case .thinkingCompleted:
+            out.append(.thinkingCompleted)
             thinkingOpen = false
             return true
         case .token(let text):

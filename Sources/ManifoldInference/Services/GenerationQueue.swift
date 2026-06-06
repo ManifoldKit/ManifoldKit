@@ -102,7 +102,7 @@ final class GenerationQueue {
     /// Session-aware handoff detector hook. The runtime sets this so the
     /// dispatch loop can intercept synthetic `transfer_to_<agent>` tool
     /// calls without the queue itself learning about ``ChatSessionRecord``.
-    /// The closure receives the in-flight request's `sessionID` (may be
+    /// The closure receives the in-flight request's `requestGroupID` (may be
     /// `nil` for sessionless flows) and the model-emitted ``ToolCall``;
     /// returning `.handoff(...)` triggers a ``GenerationEvent/handoffRequested(_:)``
     /// emission and short-circuits regular tool dispatch. `nil` (the
@@ -110,10 +110,10 @@ final class GenerationQueue {
     var handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)?
 
     /// Pre-tool-use hook installed by the runtime. Receives the in-flight
-    /// request's `sessionID` so adapters can route to per-session hook
+    /// request's `requestGroupID` so adapters can route to per-session hook
     /// registries. The dispatch loop calls this before each tool call;
     /// `nil` preserves the legacy single-host surface.
-    var preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
+    var preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)?
 
     // MARK: - Test Seam
 
@@ -160,7 +160,7 @@ final class GenerationQueue {
     private struct QueuedRequest {
         let token: GenerationRequestToken
         let priority: GenerationPriority
-        let sessionID: UUID?
+        let requestGroupID: UUID?
         /// Structured conversation history. Carries thinking signatures and
         /// tool parts intact so cloud backends with structured wire formats
         /// (Anthropic) can replay them on multi-turn requests; text-only
@@ -179,7 +179,7 @@ final class GenerationQueue {
         /// Per-request pre-tool-use hook, captured at enqueue time. See
         /// ``handoffDetector`` for the rationale. `nil` falls back to the
         /// queue-level ``preToolUseHook``.
-        let preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)?
+        let preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)?
     }
 
     // MARK: - Queue State (Private)
@@ -452,7 +452,7 @@ final class GenerationQueue {
     /// The single value-typed enqueue entry point.
     ///
     /// Takes a pre-built ``GenerationConfig`` plus the small non-config triple
-    /// (`priority`, `sessionID`, and the structured `messages`/`systemPrompt`).
+    /// (`priority`, `requestGroupID`, and the structured `messages`/`systemPrompt`).
     /// Every parameterized convenience overload funnels here after assembling a
     /// config, so the capability gates, queue-depth check, token/stream
     /// construction, and FIFO+priority insertion live in exactly one place.
@@ -461,9 +461,9 @@ final class GenerationQueue {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil,
+        requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
-        preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ sessionID: UUID?) async -> PreToolUseOutcome)? = nil
+        preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         guard let backend = currentBackend, isBackendLoaded else {
             throw InferenceError.inferenceFailure("No model loaded")
@@ -501,7 +501,7 @@ final class GenerationQueue {
         let request = QueuedRequest(
             token: token,
             priority: priority,
-            sessionID: sessionID,
+            requestGroupID: requestGroupID,
             messages: messages,
             systemPrompt: systemPrompt,
             config: config,
@@ -580,7 +580,7 @@ final class GenerationQueue {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
@@ -603,7 +603,7 @@ final class GenerationQueue {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
@@ -632,7 +632,7 @@ final class GenerationQueue {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        sessionID: UUID? = nil
+        requestGroupID: UUID? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages,
@@ -655,7 +655,7 @@ final class GenerationQueue {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            sessionID: sessionID
+            requestGroupID: requestGroupID
         )
     }
 
@@ -738,7 +738,7 @@ final class GenerationQueue {
     /// `.critical` thermal state. Returns immediately when thermal state is
     /// `.serious` or below, or when the surrounding task has been cancelled.
     ///
-    /// Emits `GenerationEvent.diagnosticThrottle` exactly once per pause
+    /// Emits `GenerationEvent.throttleDiagnostic` exactly once per pause
     /// cycle — on entry, before the first sleep — so UI surfaces can show
     /// "device throttling — paused" without being spammed every re-check.
     /// Generation resumes silently when thermal pressure drops; downstream
@@ -754,7 +754,7 @@ final class GenerationQueue {
         // once and the consumer keeps showing the throttle hint until the
         // next regular event flows through.
         self.continuations[token]?.yield(
-            .diagnosticThrottle(reason: "thermalState=.critical")
+            .throttleDiagnostic(reason: "thermalState=.critical")
         )
         Log.inference.warning(
             "GenerationQueue: pausing generation — ProcessInfo.thermalState == .critical"
@@ -795,9 +795,9 @@ final class GenerationQueue {
         // Bind the per-request hook closures explicitly so the type checker
         // doesn't have to infer them inside the giant init expression below.
         let boundPreToolUseHook: PreToolUseHook? = effectivePreToolUseHook.map { hook in
-            let sessionID = request.sessionID
+            let requestGroupID = request.requestGroupID
             return { @Sendable toolName, arguments, _ in
-                await hook(toolName, arguments, sessionID)
+                await hook(toolName, arguments, requestGroupID)
             }
         }
         let loop = GenerationToolDispatchLoop(
@@ -824,8 +824,8 @@ final class GenerationQueue {
                 await self?.pauseWhileThermalCritical(token: token)
             },
             handoffDetector: effectiveHandoffDetector.map { detector in
-                { [sessionID = request.sessionID] call in
-                    detector(sessionID, call)
+                { [requestGroupID = request.requestGroupID] call in
+                    detector(requestGroupID, call)
                 }
             },
             preToolUseHook: boundPreToolUseHook
@@ -865,16 +865,16 @@ final class GenerationQueue {
         }
     }
 
-    func discardRequests(notMatching sessionID: UUID) async {
+    func discardRequests(notMatching requestGroupID: UUID) async {
         requestQueue.removeAll { req in
-            guard let reqSession = req.sessionID, reqSession != sessionID else { return false }
+            guard let reqGroup = req.requestGroupID, reqGroup != requestGroupID else { return false }
             req.stream.setPhase(.failed("Session changed"))
             finishAndDiscard(req.token, error: InferenceError.inferenceFailure("Session changed"))
             return true
         }
         if let active = activeRequest,
-           let activeSession = active.sessionID,
-           activeSession != sessionID {
+           let activeGroup = active.requestGroupID,
+           activeGroup != requestGroupID {
             // Capture the active task handle before `cancel` clears it. The
             // task's `defer` block in `drainQueue` clears `activeRequest`,
             // releases `isGenerating`, and finishes the continuation; if the

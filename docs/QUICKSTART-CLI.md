@@ -340,14 +340,14 @@ The `switch` above only matches two cases — `.token` and `.thinkingToken` — 
 | `.toolCallStart(callId: String, name: String)`                        | Streaming providers only — beginning of a tool call whose arguments stream as deltas.    |
 | `.toolCallArgumentsDelta(callId: String, textDelta: String)`          | JSON-arguments fragment for an in-flight streamed tool call.                             |
 | `.thinkingToken(String)`                                              | A fragment of model reasoning (inside a thinking block).                                 |
-| `.thinkingComplete`                                                   | Reasoning block closed; finalize any accumulated thinking content.                       |
+| `.thinkingCompleted`                                                   | Reasoning block closed; finalize any accumulated thinking content.                       |
 | `.thinkingSignature(String)`                                          | Anthropic-only opaque signature attached to the most recent thinking block.              |
-| `.toolLoopLimitReached(iterations: Int)`                              | Orchestrator stopped the tool-dispatch loop at `maxToolIterations`.                      |
+| `.toolIterationLimitExceeded(iterations: Int)`                              | Orchestrator stopped the tool-dispatch loop at `maxToolIterations`.                      |
 | `.toolResult(ToolResult)`                                             | Result of a tool the orchestrator dispatched on your behalf.                             |
 | `.kvCacheReuse(promptTokensReused: Int)`                              | Backend reused KV-cache prefix from the previous turn — that many tokens skipped decode. |
-| `.diagnosticThrottle(reason: String)`                                 | Runtime paused generation (e.g. thermal pressure); surface this in your UI.              |
+| `.throttleDiagnostic(reason: String)`                                 | Runtime paused generation (e.g. thermal pressure); surface this in your UI.              |
 | `.toolDispatchStarted(callId: String, name: String, attempt: Int)`    | Orchestrator began handling a tool call — pin spinners / start timers here.              |
-| `.toolDispatchCompleted(callId: String, durationMs: Int, errorKind: ToolResult.ErrorKind?)` | Orchestrator finished handling a tool call (success or failure).         |
+| `.toolDispatchCompleted(callId: String, durationMilliseconds: Int, errorKind: ToolResult.ErrorKind?)` | Orchestrator finished handling a tool call (success or failure).         |
 
 Adding a case to `GenerationEvent` is source-breaking for exhaustive `switch` statements — that's why the snippets in this guide always include `default: break`. If you'd rather opt into the compiler warning when a new case lands, switch on `@unknown default:` instead.
 

@@ -28,12 +28,12 @@ public actor SessionScriptRunner {
         public var topP: Float
         public var repeatPenalty: Float
         public var maxOutputTokens: Int?
-        /// Session id applied to every enqueue. When the script carries
+        /// Request group ID applied to every enqueue. When the script carries
         /// multiple logical sessions, use ``SessionScriptRunner/execute(_:)``
         /// per-script and compose captures externally; within a single script
-        /// the `sessionLabel` field pins the id so the service's session-scoped
+        /// the `sessionLabel` field pins the id so the service's request-scoped
         /// discard/cancel semantics apply.
-        public var sessionID: UUID?
+        public var requestGroupID: UUID?
 
         public init(
             modelId: String = "mock-model",
@@ -44,7 +44,7 @@ public actor SessionScriptRunner {
             topP: Float = 0.9,
             repeatPenalty: Float = 1.1,
             maxOutputTokens: Int? = 256,
-            sessionID: UUID? = nil
+            requestGroupID: UUID? = nil
         ) {
             self.modelId = modelId
             self.modelURL = modelURL
@@ -54,7 +54,7 @@ public actor SessionScriptRunner {
             self.topP = topP
             self.repeatPenalty = repeatPenalty
             self.maxOutputTokens = maxOutputTokens
-            self.sessionID = sessionID
+            self.requestGroupID = requestGroupID
         }
     }
 
@@ -89,7 +89,7 @@ public actor SessionScriptRunner {
         // into the next enqueue. Edits/deletes mutate it in-place.
         var messages: [ChatMessage] = []
         var steps: [SessionCapture.StepResult] = []
-        let scriptSessionID: UUID = options.sessionID ?? UUID()
+        let scriptSessionID: UUID = options.requestGroupID ?? UUID()
 
         for (index, step) in script.steps.enumerated() {
             let t0 = ContinuousClock.now
@@ -99,7 +99,7 @@ public actor SessionScriptRunner {
                 let record = await runTurn(
                     messages: messages,
                     systemPrompt: script.systemPrompt,
-                    sessionID: scriptSessionID,
+                    requestGroupID: scriptSessionID,
                     stepIndex: index,
                     step: step
                 )
@@ -124,7 +124,7 @@ public actor SessionScriptRunner {
                 let record = await runTurn(
                     messages: messages,
                     systemPrompt: script.systemPrompt,
-                    sessionID: scriptSessionID,
+                    requestGroupID: scriptSessionID,
                     stepIndex: index,
                     step: step
                 )
@@ -201,7 +201,7 @@ public actor SessionScriptRunner {
     private func runTurn(
         messages: [ChatMessage],
         systemPrompt: String?,
-        sessionID: UUID,
+        requestGroupID: UUID,
         stepIndex: Int,
         step: SessionScript.Step
     ) async -> RunRecord {
@@ -230,7 +230,7 @@ public actor SessionScriptRunner {
                         maxOutputTokens: options.maxOutputTokens
                     ),
                     priority: .normal,
-                    sessionID: sessionID
+                    requestGroupID: requestGroupID
                 )
                 return .success((r.token, r.stream))
             } catch {

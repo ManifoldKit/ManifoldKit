@@ -6,10 +6,10 @@ import ManifoldInference
 ///
 /// 1. The stream terminates cleanly (no thrown error on the normal cancel
 ///    path — the backend's cancellation style is cooperative).
-/// 2. No `.thinkingComplete` event lands *after* cancellation. An unmatched
-///    `.thinkingComplete` would leave downstream UI holding a phantom
+/// 2. No `.thinkingCompleted` event lands *after* cancellation. An unmatched
+///    `.thinkingCompleted` would leave downstream UI holding a phantom
 ///    ``ManifoldInference/MessagePart/thinking`` container.
-/// 3. The number of `.thinkingComplete` events is at most the number of
+/// 3. The number of `.thinkingCompleted` events is at most the number of
 ///    `.thinkingToken` events — the invariant "complete must follow at least
 ///    one token" holds across cancellation too.
 public struct CancelDuringThinkingScenario: FuzzScenario {
@@ -27,7 +27,7 @@ public struct CancelDuringThinkingScenario: FuzzScenario {
             ],
             emitThinkingComplete: true,
             // Give the consumer a deterministic window between the first
-            // thinking token and the thinkingComplete event to land its
+            // thinking token and the thinkingCompleted event to land its
             // cancel. Without this pause the backend would race through the
             // thinking burst before the scenario's cancel reached it.
             pauseBeforeThinkingComplete: .milliseconds(50)
@@ -74,7 +74,7 @@ public struct CancelDuringThinkingScenario: FuzzScenario {
             return false
         }
         let thinkingCompleteIdxs = observed.indices.filter {
-            if case .thinkingComplete = observed[$0] { return true }
+            if case .thinkingCompleted = observed[$0] { return true }
             return false
         }
 
@@ -87,15 +87,15 @@ public struct CancelDuringThinkingScenario: FuzzScenario {
             )
         }
 
-        // `.thinkingComplete` is permitted iff it came before cancellation
+        // `.thinkingCompleted` is permitted iff it came before cancellation
         // landed (we've already emitted at least one thinking token by then).
-        // What must *not* happen: a dangling `.thinkingComplete` with zero
-        // preceding thinking tokens, or multiple `.thinkingComplete`s.
+        // What must *not* happen: a dangling `.thinkingCompleted` with zero
+        // preceding thinking tokens, or multiple `.thinkingCompleted`s.
         if thinkingCompleteIdxs.count > 1 {
             return ScenarioOutcome(
                 scenarioId: id,
                 invariantHeld: false,
-                failureReason: "multiple .thinkingComplete events across a cancelled stream",
+                failureReason: "multiple .thinkingCompleted events across a cancelled stream",
                 events: observed
             )
         }
@@ -106,7 +106,7 @@ public struct CancelDuringThinkingScenario: FuzzScenario {
                 return ScenarioOutcome(
                     scenarioId: id,
                     invariantHeld: false,
-                    failureReason: "dangling .thinkingComplete with no preceding .thinkingToken",
+                    failureReason: "dangling .thinkingCompleted with no preceding .thinkingToken",
                     events: observed
                 )
             }

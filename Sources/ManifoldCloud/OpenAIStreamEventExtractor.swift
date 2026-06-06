@@ -10,7 +10,7 @@ import ManifoldCloudCore
 /// can only emit the events whose decision is local to one frame
 /// (`.token`, `.thinkingToken`). The full OpenAI Chat Completions event
 /// vocabulary — `.toolCallStart` / `.toolCallArgumentsDelta` / `.toolCall`,
-/// `.usage`, `.prefillProgress`, and the implicit `.thinkingComplete`
+/// `.usage`, `.prefillProgress`, and the implicit `.thinkingCompleted`
 /// transition — requires cross-frame state (index-keyed tool-call delta
 /// buffers, the open-thinking flag, the once-only tool-call finalisation
 /// guard). `OpenAIStreamEventExtractor` owns that state.
@@ -69,8 +69,8 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
 
         if let progress = OpenAIChatCompletionsPayloadParsing.parsePrefillProgress(from: payload) {
             out.append(.prefillProgress(
-                nPast: progress.nPast,
-                nTotal: progress.nTotal,
+                tokensProcessed: progress.nPast,
+                tokensTotal: progress.nTotal,
                 tokensPerSecond: progress.tokensPerSecond
             ))
             return out
@@ -150,7 +150,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
     }
 
     /// Flushes pending state at stream end. Yields a trailing
-    /// `.thinkingComplete` if a thinking block is still open, and finalises
+    /// `.thinkingCompleted` if a thinking block is still open, and finalises
     /// any buffered tool calls that arrived without an explicit
     /// `finish_reason` (compat servers that close the stream silently).
     ///
@@ -170,7 +170,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
 
     private func flushThinking(into out: inout [GenerationEvent]) {
         guard thinking.isOpen else { return }
-        out.append(.thinkingComplete)
+        out.append(.thinkingCompleted)
         thinking = ThinkingBlockManager()
     }
 

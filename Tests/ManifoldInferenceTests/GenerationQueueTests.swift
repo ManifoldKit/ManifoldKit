@@ -492,14 +492,14 @@ final class GenerationQueueTests: XCTestCase {
 
         // Active request belongs to keepSession.
         let (_, activeStream) = try coord.enqueue(
-            messages: [("user", "active")], priority: .normal, sessionID: keepSession
+            messages: [("user", "active")], priority: .normal, requestGroupID: keepSession
         )
         // Queued: one matching keep, one not.
         let (_, keepStream) = try coord.enqueue(
-            messages: [("user", "keep")], priority: .normal, sessionID: keepSession
+            messages: [("user", "keep")], priority: .normal, requestGroupID: keepSession
         )
         let (_, dropStream) = try coord.enqueue(
-            messages: [("user", "drop")], priority: .normal, sessionID: dropSession
+            messages: [("user", "drop")], priority: .normal, requestGroupID: dropSession
         )
 
         await coord.discardRequests(notMatching: keepSession)
@@ -708,7 +708,7 @@ final class GenerationQueueTests: XCTestCase {
     /// When the per-token loop sees `.critical` thermal state mid-stream, the
     /// coordinator must pause via the injected sleep hook, re-check the
     /// provider after each sleep, and resume cleanly when the state drops
-    /// below `.critical`. Exactly one `.diagnosticThrottle` event must be
+    /// below `.critical`. Exactly one `.throttleDiagnostic` event must be
     /// emitted per pause cycle (not one per re-check tick).
     ///
     /// The test injects a deterministic provider that returns `.critical` for
@@ -755,7 +755,7 @@ final class GenerationQueueTests: XCTestCase {
             switch event {
             case .token(let t):
                 tokens.append(t)
-            case .diagnosticThrottle(let reason):
+            case .throttleDiagnostic(let reason):
                 throttleEvents.append(reason)
             default:
                 break
@@ -765,7 +765,7 @@ final class GenerationQueueTests: XCTestCase {
         XCTAssertEqual(tokens, ["a", "b"], "generation must complete after pause")
         XCTAssertEqual(
             throttleEvents.count, 1,
-            "exactly one .diagnosticThrottle event must be emitted per pause cycle, not per re-check"
+            "exactly one .throttleDiagnostic event must be emitted per pause cycle, not per re-check"
         )
         XCTAssertTrue(
             throttleEvents.first?.contains("critical") ?? false,
@@ -834,7 +834,7 @@ final class GenerationQueueTests: XCTestCase {
         // below is the real assertion that the activeTask unwinds.
         var sawThrottle = false
         for try await event in stream.events {
-            if case .diagnosticThrottle = event {
+            if case .throttleDiagnostic = event {
                 sawThrottle = true
                 break
             }

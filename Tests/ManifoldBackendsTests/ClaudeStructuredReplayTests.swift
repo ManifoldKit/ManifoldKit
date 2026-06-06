@@ -223,7 +223,7 @@ final class ClaudeStructuredReplayTests: XCTestCase {
 
     /// A thinking block's `signature_delta` event must surface as a
     /// ``GenerationEvent/thinkingSignature`` event in the parsed stream,
-    /// emitted before the matching ``thinkingComplete``.
+    /// emitted before the matching ``thinkingCompleted``.
     func test_streamParse_emitsThinkingSignatureEvent() async throws {
         let (backend, url) = try await makeBackend()
         let chunks: [Data] = [
@@ -243,18 +243,18 @@ final class ClaudeStructuredReplayTests: XCTestCase {
             switch event {
             case .thinkingToken(let t): observed.append("thinkingToken:\(t)")
             case .thinkingSignature(let s): observed.append("signature:\(s)")
-            case .thinkingComplete: observed.append("thinkingComplete")
+            case .thinkingCompleted: observed.append("thinkingCompleted")
             case .token(let t): observed.append("token:\(t)")
             default: break
             }
         }
         XCTAssertTrue(observed.contains("signature:abc"),
             "Stream must surface signature_delta as `.thinkingSignature` so the UI can attach it to the persisted thinking part. Observed: \(observed)")
-        // Order check: the signature must arrive before thinkingComplete.
+        // Order check: the signature must arrive before thinkingCompleted.
         let sigIdx = observed.firstIndex(of: "signature:abc") ?? -1
-        let completeIdx = observed.firstIndex(of: "thinkingComplete") ?? -2
+        let completeIdx = observed.firstIndex(of: "thinkingCompleted") ?? -2
         XCTAssertLessThan(sigIdx, completeIdx,
-            "Signature must precede thinkingComplete so the consumer has it before applying the finalize")
+            "Signature must precede thinkingCompleted so the consumer has it before applying the finalize")
     }
 }
 #endif

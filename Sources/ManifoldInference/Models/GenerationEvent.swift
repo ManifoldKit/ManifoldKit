@@ -12,7 +12,7 @@
 /// ### Queue-emitted lifecycle events
 ///
 /// ``toolDispatchStarted(callId:name:attempt:)`` and
-/// ``toolDispatchCompleted(callId:durationMs:errorKind:)`` are emitted by the
+/// ``toolDispatchCompleted(callId:durationMilliseconds:errorKind:)`` are emitted by the
 /// **queue** (`GenerationQueue`), not by individual backends.
 /// Backends emit only ``toolCall(_:)`` (and, when
 /// streaming, ``toolCallStart(callId:name:)`` and
@@ -41,10 +41,10 @@ public enum GenerationEvent: Sendable, Equatable {
     /// Progress update while the backend is evaluating prompt tokens before the
     /// first generated content token is available.
     ///
-    /// `nPast` is how many prompt tokens have been evaluated so far, `nTotal`
-    /// is the total prompt-token count for this request, and
+    /// `tokensProcessed` is how many prompt tokens have been evaluated so far,
+    /// `tokensTotal` is the total prompt-token count for this request, and
     /// `tokensPerSecond` is the backend-reported prompt-eval throughput.
-    case prefillProgress(nPast: Int, nTotal: Int, tokensPerSecond: Double)
+    case prefillProgress(tokensProcessed: Int, tokensTotal: Int, tokensPerSecond: Double)
 
     /// A fragment of generated text (typically one token).
     case token(String)
@@ -83,7 +83,7 @@ public enum GenerationEvent: Sendable, Equatable {
     case thinkingToken(String)
 
     /// Reasoning block complete (depth 1→0 transition). Finalize accumulated thinking content.
-    case thinkingComplete
+    case thinkingCompleted
 
     /// Provider-supplied opaque signature attached to the most recent
     /// thinking block. Emitted by backends (Anthropic) whose APIs require
@@ -94,7 +94,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// same block. Consumers attach the signature to the in-flight
     /// reasoning accumulator so it lands on the persisted
     /// ``MessagePart/thinking(_:signature:)`` part once
-    /// ``thinkingComplete`` arrives. Backends without a signature concept
+    /// ``thinkingCompleted`` arrives. Backends without a signature concept
     /// (MLX inline `<think>`, OpenAI `reasoning_content`, Llama) never
     /// emit this event.
     case thinkingSignature(String)
@@ -105,7 +105,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// Emitted exactly once per turn when the loop stops for this reason. The
     /// associated value is the iteration count that ran before termination, so
     /// UI surfaces can differentiate a budget hit from an organic stop.
-    case toolLoopLimitReached(iterations: Int)
+    case toolIterationLimitExceeded(iterations: Int)
 
     /// Result of a tool dispatched by the orchestrator in response to a
     /// ``toolCall(_:)`` event.
@@ -139,7 +139,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// on every re-check tick. UI surfaces can use this to show a "device
     /// throttling — paused" hint while the loop blocks between tokens.
     /// `reason` is a short, human-readable string the UI may display verbatim.
-    case diagnosticThrottle(reason: String)
+    case throttleDiagnostic(reason: String)
 
     /// Emitted by the orchestrator immediately before it begins handling a
     /// model-emitted ``ToolCall``.
@@ -160,7 +160,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// Emitted by the orchestrator after tool-call handling settles,
     /// regardless of outcome.
     ///
-    /// Fires after the matching ``toolResult(_:)`` event. `durationMs` is the
+    /// Fires after the matching ``toolResult(_:)`` event. `durationMilliseconds` is the
     /// monotonic handling latency in milliseconds (>= 0), measured from
     /// ``toolDispatchStarted(callId:name:attempt:)`` to this event with a
     /// monotonic clock so wall-clock adjustments (NTP, user time changes) do
@@ -171,7 +171,7 @@ public enum GenerationEvent: Sendable, Equatable {
     /// when handling produced an error result and `nil` on success — its
     /// value matches the ``ToolResult/errorKind`` of the `.toolResult` event
     /// with the same `callId`.
-    case toolDispatchCompleted(callId: String, durationMs: Int, errorKind: ToolResult.ErrorKind?)
+    case toolDispatchCompleted(callId: String, durationMilliseconds: Int, errorKind: ToolResult.ErrorKind?)
 
     /// The orchestrator detected a synthetic `transfer_to_<agent>` tool call
     /// and classified it as an agent handoff. Emitted in lieu of the regular

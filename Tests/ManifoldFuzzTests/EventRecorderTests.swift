@@ -7,7 +7,7 @@ import ManifoldInference
 final class EventRecorderTests: XCTestCase {
 
     /// A stream that throws mid-thinking-block must still surface the partial
-    /// reasoning it accumulated since the last `.thinkingComplete`. Without
+    /// reasoning it accumulated since the last `.thinkingCompleted`. Without
     /// this, detectors that rely on `thinkingRaw`/`thinkingParts` go blind on
     /// mid-stream failures (network drop, KV decode error, OOM) — they see a
     /// clean capture even though the model emitted and the harness saw real
@@ -36,17 +36,17 @@ final class EventRecorderTests: XCTestCase {
             "partial-apartial-b",
             "thinkingRaw must retain every thinking token seen before the throw"
         )
-        XCTAssertEqual(capture.thinkingCompleteCount, 0, "no thinkingComplete event was emitted")
+        XCTAssertEqual(capture.thinkingCompleteCount, 0, "no thinkingCompleted event was emitted")
     }
 
-    /// Sanity check the success path: when `.thinkingComplete` drains the
+    /// Sanity check the success path: when `.thinkingCompleted` drains the
     /// buffer, the post-loop flush is a no-op — no duplicate entries, no
     /// empty strings.
     func test_consume_successPath_doesNotDuplicateCompletedThinkingBlock() async {
         let stream = GenerationStream(AsyncThrowingStream<GenerationEvent, Error> { continuation in
             continuation.yield(.thinkingToken("hello "))
             continuation.yield(.thinkingToken("world"))
-            continuation.yield(.thinkingComplete)
+            continuation.yield(.thinkingCompleted)
             continuation.yield(.token("response"))
             continuation.finish()
         })

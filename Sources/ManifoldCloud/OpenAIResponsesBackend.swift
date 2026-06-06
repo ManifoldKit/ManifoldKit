@@ -29,7 +29,7 @@ import ManifoldCloudCore
 /// ```
 ///
 /// Reasoning summaries surface as ``GenerationEvent/thinkingToken(_:)``
-/// values, with a single ``GenerationEvent/thinkingComplete`` injected on
+/// values, with a single ``GenerationEvent/thinkingCompleted`` injected on
 /// the transition to visible output. This routing mirrors the convention
 /// used by ``ClaudeBackend`` and ``OpenAIBackend`` so consumers can stay
 /// agnostic of the wire format.
@@ -52,7 +52,7 @@ import ManifoldCloudCore
 ///     }
 /// }
 /// ```
-public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, CloudBackendURLModelConfigurable, CloudBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendURLModelConfigurable, EndpointBackendKeychainConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Responses)
     //
