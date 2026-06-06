@@ -202,7 +202,7 @@ final class ModelLoadCoordinator {
         }
 
         do {
-            try await inferenceService.loadCloudBackend(from: endpoint)
+            try await inferenceService.loadEndpointBackend(from: endpoint)
         } catch is CancellationError {
             return
         } catch {

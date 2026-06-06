@@ -132,6 +132,62 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
 
     // MARK: - Init
 
+    /// Internal initializer used by registrar and framework-internal infrastructure.
+    ///
+    /// This path is identical to the public `init(urlSession:)` with a `nil` session
+    /// but is NOT marked deprecated, so framework-internal callers
+    /// (``CloudBackends``, ``TraitAwareServerBackendProvider``, etc.) don't generate
+    /// deprecation warnings when following the recommended migration path.
+    /// External consumers building `OllamaBackend` directly should use the public
+    /// init or register via `DefaultBackends.register(_:)`.
+    internal init(_registrar: Void) {
+        self.adapter = OllamaAdapter(
+            capabilities: Self.defaultAdapterCapabilities,
+            requestBuilder: { _, _, _, _ in
+                throw CloudBackendError.invalidURL(
+                    "OllamaAdapter.requestBuilder is not the live path; the OllamaBackend installs a CloudAdapterRouting that delegates to its own buildRequest override."
+                )
+            }
+        )
+        super.init(
+            defaultModelName: "llama3.2",
+            urlSession: URLSessionProvider.unpinned,
+            payloadHandler: CloudPayloadHandler.ollama
+        )
+        requestIdleTimeout = OllamaBackend.defaultRequestIdleTimeout
+        let weakSelfBox = WeakOllamaBackendBox(self)
+        let routing = CloudAdapterRouting(
+            payloadHandler: adapter.payloadHandler,
+            framedTransport: adapter.framedTransport,
+            streamFinalizer: adapter.streamFinalizer,
+            errorBodyDecoder: adapter.errorBodyDecoder,
+            buildRequest: { prompt, systemPrompt, config in
+                guard let backend = weakSelfBox.value else {
+                    throw CloudBackendError.backendDeallocated
+                }
+                return try backend.buildRequest(
+                    prompt: prompt,
+                    systemPrompt: systemPrompt,
+                    config: config
+                )
+            },
+            streamConsumerFactory: {
+                guard let backend = weakSelfBox.value else {
+                    return OllamaStreamEventExtractor(
+                        config: GenerationConfig(),
+                        autoDetectedMarkers: nil
+                    )
+                }
+                let (config, markers) = backend.snapshotForExtractor()
+                return OllamaStreamEventExtractor(
+                    config: config,
+                    autoDetectedMarkers: markers
+                )
+            }
+        )
+        self.configure(adapterRouting: routing)
+    }
+
     /// Creates an Ollama backend.
     ///
     /// - Parameter urlSession: Custom URLSession for testing. Pass `nil` to use the default.

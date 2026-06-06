@@ -5,9 +5,14 @@ import Observation
 /// Return `nil` if this factory does not handle the given type.
 public typealias BackendFactory = @MainActor (ModelType) -> (any InferenceBackend)?
 
+/// A factory closure that creates an endpoint-based inference backend for the given API provider.
+/// Return `nil` if this factory does not handle the given provider.
+public typealias EndpointBackendFactory = @MainActor (APIProvider) -> (any InferenceBackend)?
+
 /// A factory closure that creates a cloud inference backend for the given API provider.
 /// Return `nil` if this factory does not handle the given provider.
-public typealias CloudBackendFactory = @MainActor (APIProvider) -> (any InferenceBackend)?
+@available(*, deprecated, renamed: "EndpointBackendFactory")
+public typealias CloudBackendFactory = EndpointBackendFactory
 
 /// Readiness state for the primary model managed by ``InferenceService``.
 public enum ModelLoadReadinessState: Equatable, Sendable {
@@ -113,11 +118,15 @@ public final class InferenceService {
 
     public var capabilities: BackendCapabilities? { lifecycle.capabilities }
 
-    /// The currently-loaded cloud backend, if any. Host apps can use this to
-    /// call ``SSECloudBackend/configure(baseURL:tokenProvider:modelName:)``
-    /// after ``loadCloudBackend(from:)`` to inject a rotating token provider
+    /// The currently-loaded endpoint-based backend, if any. Host apps can use
+    /// this to call ``SSECloudBackend/configure(baseURL:tokenProvider:modelName:)``
+    /// after ``loadEndpointBackend(from:)`` to inject a rotating token provider
     /// without going through the static Keychain path.
-    public var currentCloudBackend: (any InferenceBackend)? { lifecycle.backend }
+    public var currentEndpointBackend: (any InferenceBackend)? { lifecycle.backend }
+
+    /// The currently-loaded cloud backend, if any.
+    @available(*, deprecated, renamed: "currentEndpointBackend")
+    public var currentCloudBackend: (any InferenceBackend)? { currentEndpointBackend }
 
     // MARK: - Deny Policy
 
@@ -154,8 +163,13 @@ public final class InferenceService {
         lifecycle.registerBackendFactory(factory)
     }
 
-    public func registerCloudBackendFactory(_ factory: @escaping CloudBackendFactory) {
+    public func registerEndpointBackendFactory(_ factory: @escaping EndpointBackendFactory) {
         lifecycle.registerCloudBackendFactory(factory)
+    }
+
+    @available(*, deprecated, renamed: "registerEndpointBackendFactory(_:)")
+    public func registerCloudBackendFactory(_ factory: @escaping CloudBackendFactory) {
+        registerEndpointBackendFactory(factory)
     }
 
     public func declareSupport(for modelType: ModelType) {
@@ -185,13 +199,22 @@ public final class InferenceService {
         pressureBroadcaster.send(.didReload(modelID: modelInfo.id))
     }
 
-    /// Loads a cloud API backend from an `APIEndpointRecord` configuration.
+    /// Loads an endpoint-based backend (cloud SaaS, Ollama, LM Studio, etc.)
+    /// from an ``APIEndpointRecord`` configuration.
     ///
     /// Follows the same latest-wins/stale-suppression semantics as `loadModel`.
-    public func loadCloudBackend(from endpoint: APIEndpointRecord) async throws {
+    public func loadEndpointBackend(from endpoint: APIEndpointRecord) async throws {
         ensureProviderWired()
         generation.stopGeneration()
         try await lifecycle.loadCloudBackend(from: endpoint)
+    }
+
+    /// Loads a cloud API backend from an `APIEndpointRecord` configuration.
+    ///
+    /// Follows the same latest-wins/stale-suppression semantics as `loadModel`.
+    @available(*, deprecated, renamed: "loadEndpointBackend(from:)")
+    public func loadCloudBackend(from endpoint: APIEndpointRecord) async throws {
+        try await loadEndpointBackend(from: endpoint)
     }
 
     /// Unloads the current model and frees all associated memory.

@@ -434,10 +434,25 @@ struct ChatCLICloud {
         try await inference.loadCloudBackend(from: endpoint)
 
         let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
+
+        // Reasoning-tuned models (Qwen3, DeepSeek-R1, etc.) emit `.thinkingToken`
+        // events before — or instead of — `.token` events. A bare `if case .token`
+        // pattern drops all thinking content silently, producing zero stdout output
+        // when pointed at one of these models. Route thinking tokens to stderr so
+        // they don't pollute piped output; response tokens go to stdout as normal.
+        // If you see nothing on stdout, check stderr for thinking content — that
+        // confirms the model is responding but its response is reasoning-only.
+        // Generation errors surface as thrown errors from the async sequence itself,
+        // not as a GenerationEvent case — the outer `try` handles them.
         for try await event in stream.events {
-            if case .token(let text) = event {
+            switch event {
+            case .token(let text):
                 print(text, terminator: "")
                 fflush(stdout)
+            case .thinkingToken(let text):
+                FileHandle.standardError.write(Data(text.utf8))
+            default:
+                break
             }
         }
         print("")

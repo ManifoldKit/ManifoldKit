@@ -41,11 +41,7 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
                 "No Ollama model installed. Pull one with: ollama pull qwen3.5:4b"
             )
         }
-        // FIXME(#714): expected deprecation warning until the next major
-        // release flips `Ollama` out of default traits. The fuzz harness
-        // is internal infrastructure that exercises the trait-gated init
-        // directly.
-        let backend = OllamaBackend()
+        let backend = OllamaBackend(_registrar: ())
         backend.configure(baseURL: baseURL, modelName: model)
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
         let markers = RunRecord.MarkerSnapshot(open: "<think>", close: "</think>")

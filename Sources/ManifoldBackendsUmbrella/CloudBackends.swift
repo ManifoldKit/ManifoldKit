@@ -16,7 +16,7 @@ public enum CloudBackends: BackendRegistrar {
         PinnedSessionDelegate.loadDefaultPins()
         #endif
 
-        service.registerCloudBackendFactory { provider in
+        service.registerEndpointBackendFactory { provider in
             switch provider {
             #if CloudSaaS
             case .claude:                     return ClaudeBackend()
@@ -24,12 +24,7 @@ public enum CloudBackends: BackendRegistrar {
             case .openAIResponses:            return OpenAIResponsesBackend()
             #endif
             #if Ollama
-            // FIXME(#714): expected deprecation warning until the next major
-            // release flips `Ollama` out of default traits. This internal
-            // registration is the supported migration path consumers are
-            // pointed at — silencing the warning here would defeat the
-            // signal it sends to direct callers of `OllamaBackend()`.
-            case .ollama:                     return OllamaBackend()
+            case .ollama:                     return OllamaBackend(_registrar: ())
             #endif
             default: return nil
             }

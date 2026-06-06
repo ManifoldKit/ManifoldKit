@@ -180,6 +180,21 @@ public final class GenerationStream: Sendable {
     }
 }
 
+// MARK: - AsyncSequence Conformance
+
+extension GenerationStream: AsyncSequence {
+    public typealias Element = GenerationEvent
+    public typealias AsyncIterator = AsyncThrowingStream<GenerationEvent, Error>.AsyncIterator
+
+    /// Returns an iterator over the generation events in this stream.
+    ///
+    /// Allows idiomatic iteration with `for try await event in stream { … }`
+    /// instead of `for try await event in stream.events { … }`.
+    public nonisolated func makeAsyncIterator() -> AsyncThrowingStream<GenerationEvent, Error>.AsyncIterator {
+        events.makeAsyncIterator()
+    }
+}
+
 // MARK: - Thread-safe Atomics
 
 /// Lock-protected boolean for cross-task signaling.
