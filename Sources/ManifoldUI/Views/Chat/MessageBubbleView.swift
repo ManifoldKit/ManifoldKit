@@ -231,9 +231,13 @@ public struct MessageBubbleView: View {
     }
 
     private var systemBubble: some View {
-        // System notices are centered text, not a chrome'd bubble, so they read
-        // theme metrics/fonts directly rather than routing through the style.
-        VStack(spacing: theme.contentSpacing * typeScale) {
+        // System notices are centered text rather than a left/right bubble, so
+        // they honor the Layer-1 ``ChatTheme`` tokens (font, padding, and the
+        // per-role `systemBubbleBackground`) directly instead of routing through
+        // the ``MessageBubbleStyle`` layer. The default `systemBubbleBackground`
+        // is clear, so this reproduces the historical chrome-free look exactly.
+        let chrome = theme.chrome(for: .system, scale: typeScale)
+        return VStack(spacing: theme.contentSpacing * typeScale) {
             Text(message.content)
                 .font(theme.bubbleFont)
                 .italic()
@@ -243,7 +247,8 @@ public struct MessageBubbleView: View {
             timestampLabel
                 .foregroundStyle(.tertiary)
         }
-        .padding(theme.bubblePadding * typeScale)
+        .padding(chrome.padding)
+        .background(chrome.background, in: RoundedRectangle(cornerRadius: chrome.cornerRadius))
         .frame(maxWidth: .infinity)
     }
 

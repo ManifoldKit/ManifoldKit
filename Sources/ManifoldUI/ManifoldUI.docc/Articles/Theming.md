@@ -70,7 +70,7 @@ Sometimes one *kind* of message needs a bespoke view — a tool-call card, a ric
 ```swift
 ChatView(showModelManagement: $showModels) { APIConfigurationView() }
     .chatMessageRenderer { params in
-        if params.message.kind == .toolResult {
+        if case .toolResult = params.message.kind {
             AnyView(ToolResultCard(message: params.message))
         } else {
             params.defaultMessageView()   // built-in bubble, fully themed

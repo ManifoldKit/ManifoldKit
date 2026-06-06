@@ -84,7 +84,7 @@ public extension View {
     /// ```swift
     /// ChatView(showModelManagement: $show)
     ///     .chatMessageRenderer { params in
-    ///         if params.message.kind == .toolResult {
+    ///         if case .toolResult = params.message.kind {
     ///             AnyView(MyToolCard(message: params.message))
     ///         } else {
     ///             params.defaultMessageView()
@@ -93,8 +93,8 @@ public extension View {
     /// ```
     ///
     /// - Note: A per-content-part hook (text / tool-call / thinking blocks) is
-    ///   not yet exposed; threading it through `MessagePartsView` is tracked by
-    ///   `// TODO(#1640)` and intentionally deferred to keep this change bounded.
+    ///   not yet exposed; threading it through `MessagePartsView` is intentionally
+    ///   deferred to keep this change bounded (tracked by issue #1640).
     func chatMessageRenderer(_ renderer: @escaping ChatMessageRenderer) -> some View {
         environment(\.chatMessageRenderer, renderer)
     }
