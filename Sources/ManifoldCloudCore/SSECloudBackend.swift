@@ -175,6 +175,23 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// `nil` disables idle detection (default).
     public var streamIdleTimeout: Duration?
 
+    /// Per-request HTTP idle timeout, applied as `URLRequest.timeoutInterval`
+    /// on every generation request.
+    ///
+    /// When non-nil, overrides the session-level `timeoutIntervalForRequest`
+    /// from ``URLSessionProvider`` for each generation call. Use a generous
+    /// value for LAN/local backends where the server may need time to load a
+    /// model into VRAM before producing the first byte.
+    ///
+    /// `nil` (default) leaves `URLRequest.timeoutInterval` unset, so the
+    /// session configuration's `timeoutIntervalForRequest` governs idle behavior.
+    ///
+    /// Distinct from ``streamIdleTimeout``, which is an application-level gate
+    /// that fires when no SSE *event* arrives within a window after the
+    /// connection is already open and streaming. This property controls the
+    /// HTTP-layer idle window before the first byte.
+    public var requestIdleTimeout: TimeInterval?
+
     /// Per-backend override for the SSE / NDJSON stream caps that defend
     /// against hostile upstream servers. When `nil` (default), the value
     /// from `ManifoldConfiguration.shared.sseStreamLimits` is used at
@@ -551,6 +568,10 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         generationID: UInt64,
         eventIDTracker: SSEEventIDTracker
     ) -> SSEGenerationTaskContext {
+        var request = request
+        if let timeout = requestIdleTimeout {
+            request.timeoutInterval = timeout
+        }
         let capturedStrategy = retryStrategy
         let capturedBaseURL = baseURL
         return SSEGenerationTaskContext(

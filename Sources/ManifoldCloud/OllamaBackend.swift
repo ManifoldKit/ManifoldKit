@@ -70,6 +70,16 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
         withStateLock { _isThinkingModel }
     }
 
+    /// Default per-request idle timeout for Ollama connections.
+    ///
+    /// Large models may need several minutes to load into VRAM and prefill a
+    /// long prompt before any response byte arrives. This generous default
+    /// prevents the connection from being killed during that load phase.
+    /// Matches the ``keepAlive`` default of 30 minutes.
+    ///
+    /// Override via ``SSECloudBackend/requestIdleTimeout`` after init.
+    public static let defaultRequestIdleTimeout: TimeInterval = 1800
+
     /// Conservative floor for `num_ctx` when the caller did not plumb a real
     /// context budget via `ModelLoadPlan` (`.cloud()` default is `1`).
     /// Ollama's server-side `OLLAMA_CONTEXT_LENGTH` defaults to 2048 tokens,
@@ -152,6 +162,10 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
             urlSession: urlSession ?? URLSessionProvider.unpinned,
             payloadHandler: CloudPayloadHandler.ollama
         )
+        // Ollama servers often need time to load a model into VRAM before the
+        // first response byte arrives. Set a generous HTTP-layer idle timeout
+        // so that cold-start latency isn't misreported as a network failure.
+        requestIdleTimeout = OllamaBackend.defaultRequestIdleTimeout
 
         // Phase 3/Ollama — install adapter routing so the stream loop runs
         // in `CloudRoutedStreamParser` driving a fresh
@@ -559,9 +573,10 @@ public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigura
     // visible caps reach the extractor.
     //
     // TODO: (#189) Detect Ollama model-loading state and set GenerationStream
-    // phase to .loading. Requires the monitoring task pattern from
-    // GenerationStream to detect the pre-first-token stall that indicates
-    // Ollama is loading the model into VRAM.
+    // phase to .loading. The pre-first-token stall is no longer killed by a
+    // short HTTP timeout (see `defaultRequestIdleTimeout`), but the phase
+    // still shows as .streaming during the load window. Requires a monitoring
+    // task that detects the stall and surfaces it as .loading.
 
     public override func parseResponseStream(
         bytes: URLSession.AsyncBytes,
