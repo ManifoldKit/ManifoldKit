@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// A bitset of sampling parameters a backend's request payload accepts on
 /// behalf of the loaded model.

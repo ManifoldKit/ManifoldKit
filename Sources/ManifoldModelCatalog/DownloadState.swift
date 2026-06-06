@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// The status of a model download.
 public enum DownloadStatus: Sendable {

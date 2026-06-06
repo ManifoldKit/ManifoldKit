@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Represents a model available on disk (either a GGUF file or an MLX model directory).
 ///
@@ -60,7 +61,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     /// Returns the benchmark-confirmed tier when one is available, otherwise falls back
     /// to the stored ``capabilityTier``, and finally to a static file-size estimate.
     public var effectiveCapabilityTier: ModelCapabilityTier {
-        benchmarkResult?.tier ?? capabilityTier ?? ModelCapabilityTier.estimate(from: self)
+        benchmarkResult?.tier ?? capabilityTier ?? ModelCapabilityTier.estimate(fileSize: fileSize, modelType: modelType)
     }
 
     /// Human-readable file size (e.g. "2.3 GB").
@@ -139,7 +140,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         }
 
         // Static tier estimate; may be upgraded by a benchmark result later.
-        self.capabilityTier = ModelCapabilityTier.estimate(from: self)
+        self.capabilityTier = ModelCapabilityTier.estimate(fileSize: fileSize, modelType: modelType)
 
         // Auto-detect a companion mmproj file in the same directory.
         // Only scans when the model filename does not start with "mmproj" so
@@ -249,7 +250,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
 
         // Mirror the optional initialiser's static-tier estimate so the throwing
         // and optional paths produce equivalent ModelInfo values for the same file.
-        info.capabilityTier = ModelCapabilityTier.estimate(from: info)
+        info.capabilityTier = ModelCapabilityTier.estimate(fileSize: info.fileSize, modelType: info.modelType)
 
         // Auto-detect a companion mmproj file in the same directory.
         if !url.lastPathComponent.lowercased().hasPrefix("mmproj") {
@@ -338,7 +339,7 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         self.benchmarkResult = nil
 
         // Static tier estimate; may be upgraded by a benchmark result later.
-        self.capabilityTier = ModelCapabilityTier.estimate(from: self)
+        self.capabilityTier = ModelCapabilityTier.estimate(fileSize: fileSize, modelType: modelType)
     }
 
     // MARK: - Memberwise
@@ -476,6 +477,6 @@ extension ModelInfo {
         }
 
         // Static tier estimate; may be upgraded by a benchmark result later.
-        self.capabilityTier = ModelCapabilityTier.estimate(from: self)
+        self.capabilityTier = ModelCapabilityTier.estimate(fileSize: fileSize, modelType: modelType)
     }
 }

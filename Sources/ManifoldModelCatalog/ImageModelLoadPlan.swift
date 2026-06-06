@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Pre-load memory budget decision for an image-generation model.
 ///

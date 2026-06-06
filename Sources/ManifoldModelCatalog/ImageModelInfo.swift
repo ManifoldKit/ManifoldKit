@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Identity for an image-generation model on disk.
 ///

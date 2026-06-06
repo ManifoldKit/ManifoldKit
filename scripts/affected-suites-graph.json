@@ -22,12 +22,22 @@
       "path": "Sources/ManifoldHardware",
       "deps": []
     },
+    "ManifoldModelCatalog": {
+      "type": "regular",
+      "path": "Sources/ManifoldModelCatalog",
+      "deps": [
+        "ManifoldHardware",
+        "ManifoldNetworking",
+        "ManifoldSecrets"
+      ]
+    },
     "ManifoldInference": {
       "type": "regular",
       "path": "Sources/ManifoldInference",
       "deps": [
         "ManifoldHardware",
         "ManifoldMacrosPlugin",
+        "ManifoldModelCatalog",
         "ManifoldNetworking",
         "ManifoldSecrets"
       ]
@@ -162,6 +172,7 @@
       "deps": [
         "ManifoldBackends",
         "ManifoldInference",
+        "ManifoldModelCatalog",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSkills",
@@ -283,6 +294,15 @@
       "deps": [
         "ManifoldHardware",
         "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldModelCatalogTests": {
+      "type": "test",
+      "path": "Tests/ManifoldModelCatalogTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldModelCatalog",
         "ManifoldTestSupport"
       ]
     },

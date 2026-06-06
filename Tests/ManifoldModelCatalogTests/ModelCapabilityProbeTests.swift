@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldModelCatalog
 
 /// Verifies that ``ModelCapabilityProbe`` detects vision/audio capability
 /// from the durable JSON keys (`vision_config`, `audio_config`,

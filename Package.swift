@@ -47,6 +47,13 @@ let package = Package(
         // broadcasting, GGUF parsing, and load-plan logic.
         // Zero dependencies — pure system frameworks.
         .library(name: "ManifoldHardware", targets: ["ManifoldHardware"]),
+        // Model discovery/catalog/benchmark + image/video-gen records evicted
+        // from the ManifoldInference kernel in P1d (#1611): ModelInfo,
+        // ModelManifest, ModelCatalog, ModelStorageService, DiagnosticsService,
+        // SettingsService, ModelBenchmarkRunner, and all image/video-gen types.
+        // Depends on ManifoldHardware (for ModelLoadPlan, GGUF, capability types)
+        // and the leaf security/networking primitives.
+        .library(name: "ManifoldModelCatalog", targets: ["ManifoldModelCatalog"]),
         .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
         .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
@@ -220,12 +227,28 @@ let package = Package(
             dependencies: [],
             path: "Sources/ManifoldHardware"
         ),
+        // ManifoldModelCatalog: model discovery/catalog/benchmark + image/video-gen
+        // records extracted from the ManifoldInference kernel in P1d (#1611).
+        // Depends on ManifoldHardware for load-plan, GGUF, and capability types;
+        // on ManifoldNetworking + ManifoldSecrets for ManifoldConfiguration wiring.
+        // `@_exported import ManifoldModelCatalog` in ManifoldInference preserves
+        // source compatibility for all existing `import ManifoldInference` call sites.
+        .target(
+            name: "ManifoldModelCatalog",
+            dependencies: [
+                .target(name: "ManifoldHardware"),
+                .target(name: "ManifoldNetworking"),
+                .target(name: "ManifoldSecrets"),
+            ],
+            path: "Sources/ManifoldModelCatalog"
+        ),
         .target(
             name: "ManifoldInference",
             dependencies: [
                 "ManifoldNetworking",
                 "ManifoldSecrets",
                 "ManifoldHardware",
+                "ManifoldModelCatalog",
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/ManifoldInference",
@@ -544,6 +567,7 @@ let package = Package(
             name: "ManifoldKit",
             dependencies: [
                 "ManifoldInference",
+                "ManifoldModelCatalog",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldBackends",
@@ -716,6 +740,20 @@ let package = Package(
         .testTarget(
             name: "ManifoldHardwareTests",
             dependencies: ["ManifoldHardware", "ManifoldInference", "ManifoldTestSupport"]
+        ),
+        // Re-homed from ManifoldInferenceTests in P1d (#1611) alongside the
+        // model-catalog, model-storage, model-discovery, and image/video-gen
+        // source. Depends on ManifoldInference too because several tests
+        // exercise InferenceService wiring, and on ManifoldTestSupport for
+        // MockInferenceBackend and mock URL protocols.
+        .testTarget(
+            name: "ManifoldModelCatalogTests",
+            dependencies: [
+                "ManifoldModelCatalog",
+                "ManifoldInference",
+                "ManifoldTestSupport",
+            ],
+            path: "Tests/ManifoldModelCatalogTests"
         ),
         .testTarget(
             name: "ManifoldMCPTests",

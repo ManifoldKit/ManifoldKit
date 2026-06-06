@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Sidecar metadata catalog layered over ``ModelStorageService``.
 ///

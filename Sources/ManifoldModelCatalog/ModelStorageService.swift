@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Manages on-disk storage of model files (GGUF and MLX format).
 ///
@@ -43,10 +44,10 @@ public final class ModelStorageService: @unchecked Sendable {
         self.fallbackDirectoryOverride = nil
     }
 
-    /// Internal init for test isolation — lets tests supply a specific bundle
+    /// Package init for test isolation — lets tests supply a specific bundle
     /// identifier and override the `~/Documents/Models` fallback location so
     /// per-test scratch directories aren't polluted by ambient host state.
-    init(
+    package init(
         fileManager: FileManager = .default,
         baseDirectory: URL? = nil,
         bundleIdentifier: String? = nil,
