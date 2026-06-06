@@ -35,12 +35,14 @@ import ManifoldTestSupport
 /// ## Adding a new backend
 ///
 /// 1. Subclass `XCTestCase` under `Tests/ManifoldBackendsTests/Conformance/`.
-/// 2. Override `class setUp` to call `BackendContractChecks.resetCapabilityClaims(forBackend: "YourBackend")`.
-/// 3. Add `test_contract_allInvariants()` calling the universal harness.
-/// 4. Add `test_contract_grammarFailClosed()` calling the false-claim family.
-/// 5. Add `test_contract_metaContract()` calling
-///    `BackendContractChecks.assertCapabilityMetaContract(...)` last so
-///    every per-capability test has had a chance to record claims.
+/// 2. Add `test_contract_allInvariants()` calling the universal harness.
+/// 3. Add `test_contract_grammarFailClosed()` calling the false-claim family.
+/// 4. Add a single `test_contract_allCapabilityClaims()` that calls
+///    `BackendContractChecks.resetCapabilityClaims(forBackend:)` at the top,
+///    then all `claimWithoutBehaviouralAssertion` calls, then
+///    `assertCapabilityMetaContract(...)` — all in one method body.
+///    This keeps the entire registry lifecycle inside one process, so the
+///    test is safe under `swift test --parallel`.
 enum BackendContractChecks {
 
     // MARK: - Original universal invariants (preserved verbatim)
@@ -103,15 +105,14 @@ enum BackendContractChecks {
         claims.insert("\(backendName)::\(capabilityFlag)")
     }
 
-    /// Clears recorded claims for a specific backend. Call from `class setUp()`
-    /// so that a conformance test class starts each run with a clean slate for
-    /// its own backend without clobbering another class's claims when suites
-    /// run under `--parallel`.
+    /// Clears recorded claims for a specific backend. Call at the top of
+    /// `test_contract_allCapabilityClaims()` so each method invocation starts
+    /// with a clean slate without clobbering another backend's claims when
+    /// suites run under `--parallel`.
     ///
     /// This is intentionally backend-scoped rather than a full `removeAll()`:
-    /// a global clear races with concurrently-running conformance classes whose
-    /// `class setUp()` fires while siblings are mid-test, wiping their in-flight
-    /// claims before `test_z_contract_metaContract` can read them.
+    /// a global clear could race with concurrently-running conformance classes,
+    /// wiping their in-flight claims.
     static func resetCapabilityClaims(forBackend backendName: String) {
         claimsLock.lock()
         defer { claimsLock.unlock() }
@@ -181,9 +182,9 @@ enum BackendContractChecks {
     }
 
     /// Asserts that every declared-true tracked flag for `backendName` has at
-    /// least one recorded claim. Run this AFTER every per-capability assertion
-    /// family for the backend; e.g. the last test method on the conformance
-    /// XCTestCase subclass.
+    /// least one recorded claim. Call this at the end of
+    /// `test_contract_allCapabilityClaims()`, after all
+    /// `claimWithoutBehaviouralAssertion` calls for the backend.
     static func assertCapabilityMetaContract(
         backendName: String,
         capabilities: BackendCapabilities,

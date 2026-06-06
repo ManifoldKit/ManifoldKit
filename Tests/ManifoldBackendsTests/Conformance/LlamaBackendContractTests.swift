@@ -30,11 +30,6 @@ final class LlamaBackendContractTests: XCTestCase,
         LlamaBackend()
     }
 
-    override class func setUp() {
-        super.setUp()
-        BackendContractChecks.resetCapabilityClaims(forBackend: "LlamaBackend")
-    }
-
     // MARK: - Universal invariants
 
     // Sabotage-evidence: assertAllInvariants trips on invariant 1 if
@@ -43,63 +38,46 @@ final class LlamaBackendContractTests: XCTestCase,
         assertUniversalBackendContract()
     }
 
-    // MARK: - Per-capability claims
+    // MARK: - Per-capability claims + meta-contract
 
-    /// LlamaBackend declares `supportsToolCalling = true`. Full behavioural
-    /// proof requires a loaded GGUF model and lives in the E2E tier. This
-    /// claim records the obligation in the meta-contract registry until the
-    /// parameterised fixture suite covers it under `RUN_SLOW_TESTS=1`.
-    func test_contract_supportsToolCalling_claim() {
+    /// All bootstrap claims and the meta-contract assertion are collapsed into
+    /// one method so the registry is built and verified within a single process.
+    /// Under `swift test --parallel` each test method runs in an isolated worker
+    /// process; splitting claim recording across several methods meant the
+    /// meta-contract reader saw an empty registry in its worker. (#1601)
+    ///
+    /// Full behavioural proofs for each flag:
+    /// - `supportsToolCalling`: requires a loaded GGUF model; lives in the E2E tier.
+    /// - `supportsThinking`: requires a thinking-capable GGUF model; lives in the E2E tier.
+    /// - `supportsTokenCounting`: exercised in the E2E suite against a loaded model.
+    /// - `supportsKVCachePersistence`: requires a loaded model and KV-cache telemetry.
+    /// - `supportsGrammarConstrainedSampling`: requires a loaded GGUF model; lives in the E2E tier.
+    func test_contract_allCapabilityClaims() {
+        // Reset first so a prior run of this method in the same process doesn't
+        // leave stale claims that could mask a newly-removed flag.
+        BackendContractChecks.resetCapabilityClaims(forBackend: contractBackendName)
+
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsToolCalling"
         )
-    }
-
-    /// LlamaBackend declares `supportsThinking = true`. Behavioural proof
-    /// requires a thinking-capable GGUF model and lives in the E2E tier; this
-    /// claim records the meta-contract obligation.
-    func test_contract_supportsThinking_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsThinking"
         )
-    }
-
-    /// LlamaBackend declares `supportsTokenCounting = true`. Behavioural proof
-    /// is exercised in the E2E suite against a loaded model; this claim records
-    /// the meta-contract obligation.
-    func test_contract_supportsTokenCounting_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsTokenCounting"
         )
-    }
-
-    /// LlamaBackend declares `supportsKVCachePersistence = true`. Behavioural
-    /// proof requires a loaded model and KV-cache telemetry; this claim records
-    /// the meta-contract obligation.
-    func test_contract_supportsKVCachePersistence_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsKVCachePersistence"
         )
-    }
-
-    /// LlamaBackend declares `supportsGrammarConstrainedSampling = true`.
-    /// Behavioural proof (grammar-constrained generation) requires a loaded
-    /// GGUF model and lives in the E2E tier; this claim records the
-    /// meta-contract obligation.
-    func test_contract_supportsGrammarConstrainedSampling_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsGrammarConstrainedSampling"
         )
-    }
 
-    // MARK: - Meta-contract (MUST be last)
-
-    func test_z_contract_metaContract() {
         BackendContractChecks.assertCapabilityMetaContract(
             backendName: contractBackendName,
             capabilities: LlamaBackend().capabilities
