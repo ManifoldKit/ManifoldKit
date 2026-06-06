@@ -1,5 +1,7 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldSecrets
+import ManifoldInference
+import Security
 
 /// Tests for KeychainService secure storage operations.
 ///

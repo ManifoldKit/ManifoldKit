@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import ManifoldInference
+@testable import ManifoldSecrets
 @testable import ManifoldBackends
 
 #if Ollama || CloudSaaS

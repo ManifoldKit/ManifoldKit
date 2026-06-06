@@ -218,6 +218,7 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldBackendsTests
     ManifoldInferenceTests
     ManifoldNetworkingTests
+    ManifoldSecretsTests
     ManifoldTestSupportTests
     ManifoldAppIntentsTests
     ManifoldServerTests

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import os
 
 /// Errors thrown by `KeychainService` when the underlying SecItem call fails.
 ///
@@ -71,9 +72,35 @@ public enum KeychainError: Error, Equatable, Sendable, LocalizedError {
 /// they do not sync to iCloud and are not available when the device is locked.
 public enum KeychainService {
 
-    private static var serviceName: String {
-        ManifoldConfiguration.shared.keychainServiceName
+    // A closure that returns the Keychain service name. ManifoldInference
+    // wires this to `ManifoldConfiguration.shared.keychainServiceName` via
+    // the re-export shim so that `ManifoldSecrets` can remain a zero-
+    // dependency leaf while still picking up the host app's configured
+    // bundle identifier.
+    //
+    // The default value mirrors the ManifoldConfiguration fallback:
+    // `ManifoldConfiguration.frameworkDefaultBundleIdentifier + ".apikeys"`.
+    //
+    // Marked `nonisolated(unsafe)` because the closure reference is protected
+    // by the caller's synchronisation guarantees: ManifoldConfiguration's
+    // `shared` setter (which updates this) is itself guarded by an
+    // OSAllocatedUnfairLock, and tests set it synchronously before any
+    // KeychainService call. Reads are stateless (the closure is called, not
+    // captured). This is safe for the same reason @unchecked Sendable is used
+    // for synchronous-callback capture boxes — the shared state is never
+    // mutated concurrently with a read.
+    nonisolated(unsafe) package static var serviceNameProvider: @Sendable () -> String = {
+        "com.manifoldkit.apikeys"
     }
+
+    private static var serviceName: String {
+        serviceNameProvider()
+    }
+
+    // os.Logger for security-category diagnostics. ManifoldSecrets is a
+    // zero-dependency leaf so it uses the os framework directly rather than
+    // the ManifoldInference `Log` convenience enum.
+    private static let log = Logger(subsystem: "com.manifoldkit", category: "security")
 
     /// Stores or updates an API key for the given account identifier.
     ///
@@ -112,7 +139,7 @@ public enum KeychainService {
 
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
-            Log.inference.error(
+            log.error(
                 "KeychainService.store failed: status=\(addStatus, privacy: .public) account=\(account, privacy: .private)"
             )
             throw KeychainError.storeFailed(addStatus)
@@ -182,7 +209,7 @@ public enum KeychainService {
 
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            Log.inference.error(
+            log.error(
                 "KeychainService.delete failed: status=\(status, privacy: .public) account=\(account, privacy: .private)"
             )
             throw KeychainError.deleteFailed(status)
@@ -220,7 +247,7 @@ public enum KeychainService {
             return []
         }
         guard status == errSecSuccess else {
-            Log.security.warning("KeychainService.allAccounts SecItemCopyMatching failed with status \(status)")
+            log.warning("KeychainService.allAccounts SecItemCopyMatching failed with status \(status)")
             return []
         }
         guard let items = result as? [[String: Any]] else {
@@ -241,7 +268,7 @@ public enum KeychainService {
     package static func sweep(validAccounts: Set<String>) -> Int {
         let stored = allAccounts()
         guard !stored.isEmpty else {
-            Log.security.info("KeychainService.sweep: namespace empty, nothing to reap")
+            log.info("KeychainService.sweep: namespace empty, nothing to reap")
             return 0
         }
 
@@ -252,12 +279,12 @@ public enum KeychainService {
                 reaped += 1
             } catch {
                 // Individual failure must not abort the sweep — keep reaping.
-                Log.security.warning("KeychainService.sweep: failed to delete orphaned account: \(error.localizedDescription, privacy: .public)")
+                log.warning("KeychainService.sweep: failed to delete orphaned account: \(error.localizedDescription, privacy: .public)")
                 continue
             }
         }
 
-        Log.security.info("KeychainService.sweep: reaped \(reaped) orphaned Keychain item(s) from \(stored.count) stored")
+        log.info("KeychainService.sweep: reaped \(reaped) orphaned Keychain item(s) from \(stored.count) stored")
         return reaped
     }
 }
