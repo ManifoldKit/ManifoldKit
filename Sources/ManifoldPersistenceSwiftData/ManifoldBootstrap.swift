@@ -15,10 +15,36 @@ import ManifoldInference
 /// let bootstrap = try ManifoldBootstrap(configuration: config, ragConfiguration: rag)
 /// bootstrap.ragService?.ingest(url: myDocumentURL)
 /// ```
+///
+/// ## Reranking (optional)
+///
+/// Supply a ``Reranker`` to add a cross-encoder rerank stage after cosine
+/// retrieval. The retriever widens its candidate pool, the reranker re-scores
+/// each passage against the query, and the top results are injected. On-device,
+/// `LlamaReranker` (from `ManifoldLlama`) wraps a RANK-pooling cross-encoder
+/// GGUF such as `bge-reranker`:
+///
+/// ```swift
+/// let reranker = LlamaReranker()
+/// try await reranker.loadModel(from: bgeRerankerGGUFURL)
+/// let rag = RAGConfiguration(
+///     embeddingBackend: myLlamaEmbeddingBackend,
+///     reranker: reranker
+/// )
+/// ```
+///
+/// When `reranker` is `nil` (the default) or its model is not loaded, retrieval
+/// behaves exactly as it does without reranking — including the keyword
+/// fallback.
 public struct RAGConfiguration: Sendable {
     /// Optional embedding backend for semantic search. When `nil`, retrieval
     /// falls back to case-insensitive keyword search.
     public var embeddingBackend: (any EmbeddingBackend)?
+    /// Optional reranker for the post-retrieve, pre-inject stage. When `nil`
+    /// (or not ready), retrieval behaves exactly as it did before reranking
+    /// existed. Supply `LlamaReranker` (from `ManifoldLlama`) loaded with a
+    /// cross-encoder GGUF (e.g. `bge-reranker`) to enable it.
+    public var reranker: (any Reranker)?
     /// Character count per chunk. Default: 1800.
     public var chunkSize: Int
     /// Character overlap between consecutive chunks. Default: 200.
@@ -31,12 +57,14 @@ public struct RAGConfiguration: Sendable {
 
     public init(
         embeddingBackend: (any EmbeddingBackend)? = nil,
+        reranker: (any Reranker)? = nil,
         chunkSize: Int = 1800,
         chunkOverlap: Int = 200,
         topK: Int = 5,
         vectorStoreURL: URL? = nil
     ) {
         self.embeddingBackend = embeddingBackend
+        self.reranker = reranker
         self.chunkSize = chunkSize
         self.chunkOverlap = chunkOverlap
         self.topK = topK
@@ -360,6 +388,7 @@ public final class ManifoldBootstrap {
             documentStore: documentStore,
             vectorStore: vectorStore,
             embeddingBackend: ragConfig.embeddingBackend,
+            reranker: ragConfig.reranker,
             chunker: chunker
         )
     }
