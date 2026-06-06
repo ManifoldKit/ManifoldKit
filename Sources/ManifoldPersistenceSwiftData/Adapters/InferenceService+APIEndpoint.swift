@@ -2,7 +2,7 @@ import Foundation
 import ManifoldInference
 
 // Source-compatibility shim: lets callers continue to pass the SwiftData
-// `@Model APIEndpoint` directly to `InferenceService.loadCloudBackend(from:)`.
+// `@Model APIEndpoint` directly to `InferenceService.loadEndpointBackend(from:)`.
 // The underlying inference API now operates on the storage-agnostic
 // `APIEndpointRecord`; this extension converts the @Model to a record.
 extension APIEndpoint {
@@ -31,15 +31,22 @@ extension APIEndpoint {
 
 extension InferenceService {
 
-    /// Loads a cloud API backend from a SwiftData `APIEndpoint`.
+    /// Loads an endpoint-based backend from a SwiftData `APIEndpoint`.
     ///
     /// Convenience overload that validates the endpoint URL using the canonical
     /// ``APIEndpoint/validate()`` check — blocking private/link-local SSRF targets,
     /// insecure schemes, and malformed URLs — before converting to an
     /// `APIEndpointRecord` and delegating to the storage-agnostic core API.
     @MainActor
-    public func loadCloudBackend(from endpoint: APIEndpoint) async throws {
+    public func loadEndpointBackend(from endpoint: APIEndpoint) async throws {
         try endpoint.validate().get()
-        try await loadCloudBackend(from: endpoint.record)
+        try await loadEndpointBackend(from: endpoint.record)
+    }
+
+    /// Loads a cloud API backend from a SwiftData `APIEndpoint`.
+    @available(*, deprecated, renamed: "loadEndpointBackend(from:)")
+    @MainActor
+    public func loadCloudBackend(from endpoint: APIEndpoint) async throws {
+        try await loadEndpointBackend(from: endpoint)
     }
 }

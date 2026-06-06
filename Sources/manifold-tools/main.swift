@@ -376,11 +376,7 @@ func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> an
         return MockFactory.make(for: scenario)
     case .ollama:
         #if Ollama
-        // FIXME(#714): expected deprecation warning until the next major
-        // release flips `Ollama` out of default traits. manifold-tools is internal
-        // infrastructure that intentionally exercises the trait-gated init
-        // directly.
-        let backend = OllamaBackend()
+        let backend = OllamaBackend(_registrar: ())
         backend.configure(baseURL: cli.ollamaBaseURL, modelName: model)
         try await backend.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
         return backend

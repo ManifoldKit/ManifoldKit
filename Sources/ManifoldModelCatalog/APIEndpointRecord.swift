@@ -37,4 +37,23 @@ public struct APIEndpointRecord: Sendable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.isEnabled = isEnabled
     }
+
+    /// Convenience initializer for headless / CLI consumers that only need to
+    /// call ``InferenceService/loadEndpointBackend(from:)`` and don't have a
+    /// persistence layer to supply the full set of metadata fields.
+    ///
+    /// Sets `name` to `modelName`, derives `keychainAccount` from a freshly
+    /// generated `id`, and uses sensible defaults for `createdAt` and
+    /// `isEnabled`.
+    public init(provider: APIProvider, baseURL: String, modelName: String) {
+        let id = UUID()
+        self.id = id
+        self.provider = provider
+        self.baseURL = baseURL
+        self.modelName = modelName
+        self.name = modelName
+        self.keychainAccount = id.uuidString
+        self.createdAt = Date()
+        self.isEnabled = true
+    }
 }

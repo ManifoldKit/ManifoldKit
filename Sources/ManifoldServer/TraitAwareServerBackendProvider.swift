@@ -226,7 +226,7 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         guard let baseURL = URL(string: selection.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw ServerError.invalidConfiguration("--ollama-base-url must be a valid URL.")
         }
-        let backend = OllamaBackend()
+        let backend = OllamaBackend(_registrar: ())
         backend.configure(baseURL: baseURL, modelName: modelName)
         try await backend.loadModel(from: baseURL, plan: .cloud(requestedContextSize: 8192))
         return backend
