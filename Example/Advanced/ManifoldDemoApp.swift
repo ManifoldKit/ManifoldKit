@@ -379,8 +379,8 @@ struct ManifoldDemoApp: App {
             }
             return false
         }
-        vm.configure(runtime: runtime)
-        sessionManager.configure(runtime: runtime)
+        vm.configure(bootstrap: runtime)
+        sessionManager.configure(bootstrap: runtime)
         modelManagementViewModel.benchmarkCache = runtime.benchmarkCache
         // Use the runtime's classificationService so title generation routes
         // to the auxiliary backend (FoundationBackend on iOS 26+/macOS 26+)

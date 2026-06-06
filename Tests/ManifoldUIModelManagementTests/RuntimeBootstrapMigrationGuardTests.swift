@@ -33,8 +33,8 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
 
         let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
         let sessionManager = SessionManagerViewModel()
-        chatViewModel.configure(runtime: runtime)
-        sessionManager.configure(runtime: runtime)
+        chatViewModel.configure(bootstrap: runtime)
+        sessionManager.configure(bootstrap: runtime)
 
         // Real architectural invariant: ManifoldBootstrap owns a single
         // SessionStore + MessageStore adapter, and both view models must
@@ -43,13 +43,13 @@ final class RuntimeBootstrapMigrationGuardTests: XCTestCase {
         // smoke check (persistence != nil) doesn't defend this — it would
         // pass even if each view model received its own independent provider,
         // which would silently break cross-view-model session visibility.
-        // Sabotage check: change `configure(runtime:)` on either view model
+        // Sabotage check: change `configure(bootstrap:)` on either view model
         // to wrap `runtime.persistence` in a fresh `SwiftDataPersistenceProvider`
         // and this identity assertion fails.
         XCTAssertNotNil(chatViewModel.persistence,
-            "ChatViewModel.configure(runtime:) must install the runtime's persistence provider")
+            "ChatViewModel.configure(bootstrap:) must install the runtime's persistence provider")
         XCTAssertNotNil(sessionManager.persistence,
-            "SessionManagerViewModel.configure(runtime:) must install the runtime's persistence provider")
+            "SessionManagerViewModel.configure(bootstrap:) must install the runtime's persistence provider")
         XCTAssertTrue((chatViewModel.persistence as AnyObject) === (sessionManager.persistence as AnyObject),
             "Both view models must share the runtime's single persistence provider instance")
 
