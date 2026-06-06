@@ -4,12 +4,6 @@
 # subset of per-PR `test`-job suites that could be affected, using the SwiftPM
 # target dependency graph.
 #
-# STATUS: DRY-RUN. The `test` job in .github/workflows/ci.yml still executes its
-# full hard-coded `--filter` list. This script only *computes and logs* what a
-# selective run WOULD execute and publishes it as a `changes`-job output, so a
-# later PR can wire it to `--filter` once a week of live data confirms the
-# projected ~15–20% reduction (see issue #1588). Nothing here changes what runs.
-#
 # WHY a committed graph snapshot instead of `swift package describe` in CI:
 #   The `changes` job runs on ubuntu-latest (1× billing) specifically to AVOID a
 #   10×-billed macOS runner. ubuntu-latest ships no Swift toolchain, and
