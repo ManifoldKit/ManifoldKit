@@ -18,13 +18,15 @@ enum OllamaModelProbe {
     /// auto-detected thinking markers, and the model's true context window.
     ///
     /// Thinking detection prefers `capabilities: ["thinking", ...]` (surfaced
-    /// by modern Ollama releases) and falls back to scanning the Jinja
-    /// `template` field for `<think>` / `{{ if .Thinking }}` markers that
-    /// reasoning models ship by convention. ``ThinkingMarkers`` are extracted
-    /// from the same template so the wire-format inline-fallback path
-    /// (`OllamaBackend.parseResponseStream`) can route reasoning content
-    /// through ``ThinkingTransform`` rather than hardcoding `<think>` even when
-    /// the loaded model uses a different marker family.
+    /// by modern Ollama releases) and falls back to auto-detecting marker pairs
+    /// from the Jinja `template` field via ``ThinkingMarkers/fromChatTemplate(_:)``.
+    /// Any template that yields a recognised ``ThinkingMarkers`` preset — including
+    /// Gemma 4's `<|turn>think\n` / `<|end_of_turn>` family which Ollama does not
+    /// yet advertise in the capabilities list — causes the thinking flag to be
+    /// set. ``ThinkingMarkers`` are surfaced on the probe result so the
+    /// wire-format fallback path (`OllamaBackend.parseResponseStream`) can route
+    /// reasoning content through ``ThinkingTransform`` without hardcoding a
+    /// specific marker pair.
     ///
     /// Context length is read from `model_info.context_length`. On HTTP
     /// failures or shape mismatches the probe returns ``ShowProbe/empty``;
@@ -77,11 +79,11 @@ enum OllamaModelProbe {
         var detectedMarkers: ThinkingMarkers?
         if let template = json["template"] as? String {
             detectedMarkers = ThinkingMarkers.fromChatTemplate(template)
-            if !thinking {
-                let legacyMarkers = ["<think>", "</think>", "{{ if .Thinking }}", "{{if .Thinking}}"]
-                if legacyMarkers.contains(where: { template.contains($0) }) {
-                    thinking = true
-                }
+            // Any template that carries a recognised marker pair implies
+            // thinking capability — covers Gemma 4 (`<|turn>think\n`) and other
+            // families that Ollama's capabilities list doesn't yet advertise.
+            if !thinking && detectedMarkers != nil {
+                thinking = true
             }
         }
 

@@ -127,6 +127,53 @@ final class OllamaManifestProbeTests: XCTestCase {
         XCTAssertTrue(manifest.supportsThinking)
     }
 
+    // MARK: - Gemma 4 thinking backfill (#1664)
+
+    /// Gemma 4 uses `<|turn>think\n` / `<|end_of_turn>` markers, which older
+    /// Ollama releases do not advertise in `capabilities`. The probe must
+    /// set `thinking = true` via the template backfill path so callers know
+    /// the model is a reasoning variant even when the capabilities list is absent.
+    func test_manifest_backfillsThinkingForGemma4Template() async throws {
+        let session = makeMockSession()
+        let backend = OllamaBackend(urlSession: session)
+        let baseURL = URL(string: "http://ollama-\(UUID().uuidString).test")!
+        backend.configure(baseURL: baseURL, modelName: "gemma4:12b")
+
+        // Gemma 4 chat template — contains both marker halves but no
+        // `capabilities: ["thinking"]` field, which is the pre-fix failure mode.
+        let gemma4Template = """
+            {%- if messages[0].role == 'system' -%}
+            <|turn>system
+            {{ messages[0].content }}<|end_of_turn>
+            {%- endif -%}
+            {%- for message in messages -%}
+            <|turn>{{ message.role }}
+            {{ message.content }}<|end_of_turn>
+            {%- endfor -%}
+            <|turn>think\n
+            """
+        let showURL = baseURL.appendingPathComponent("api/show")
+        MockURLProtocol.stub(
+            url: showURL,
+            response: .immediate(
+                data: showResponse(
+                    capabilities: ["completion"],
+                    template: gemma4Template
+                ),
+                statusCode: 200
+            )
+        )
+        addTeardownBlock { MockURLProtocol.unstub(url: showURL) }
+
+        try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
+
+        let manifest = try XCTUnwrap(backend.manifest)
+        XCTAssertTrue(manifest.supportsThinking,
+                      "Gemma 4 templates with <|turn>think\\n must set thinking=true even without capabilities:[thinking]")
+        XCTAssertEqual(manifest.thinkingMarkers, .gemma4,
+                       "Probe must surface Gemma 4 marker preset so the stream extractor routes reasoning content correctly")
+    }
+
     // MARK: - Probe failure → conservative defaults
 
     func test_manifest_fallsBackOnShowProbeFailure() async throws {
