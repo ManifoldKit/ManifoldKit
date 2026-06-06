@@ -11,6 +11,10 @@ private actor FakeVectorStore: VectorStore {
     var deletedDocumentIDs: [UUID] = []
     var searchResults: [VectorSearchHit] = []
     var keywordResults: [VectorSearchHit] = []
+    /// Records the `limit` the service requested so tests can assert candidate
+    /// widening (or the absence of it).
+    var lastSearchLimit: Int?
+    var lastKeywordLimit: Int?
 
     func insert(chunks: [DocumentChunk], documentTitle: String, embeddings: [[Float]]) throws {
         insertedChunks.append(contentsOf: chunks)
@@ -18,10 +22,47 @@ private actor FakeVectorStore: VectorStore {
         insertedTitles.append(contentsOf: [String](repeating: documentTitle, count: chunks.count))
     }
 
-    func search(embedding: [Float], limit: Int) throws -> [VectorSearchHit] { searchResults }
-    func keywordSearch(query: String, limit: Int) throws -> [VectorSearchHit] { keywordResults }
+    func search(embedding: [Float], limit: Int) throws -> [VectorSearchHit] {
+        lastSearchLimit = limit
+        return searchResults
+    }
+    func keywordSearch(query: String, limit: Int) throws -> [VectorSearchHit] {
+        lastKeywordLimit = limit
+        return keywordResults
+    }
     func delete(documentID: UUID) throws { deletedDocumentIDs.append(documentID) }
     func deleteAll() throws { insertedChunks.removeAll() }
+}
+
+// MARK: - Reranker fakes
+
+/// Reorders candidates with a caller-supplied closure (or reports itself not
+/// ready). Lets a test inject a known re-ranking and assert the service honours
+/// it.
+private struct FakeReranker: Reranker {
+    let ready: Bool
+    let reorder: @Sendable ([VectorSearchHit]) -> [VectorSearchHit]
+
+    init(ready: Bool = true, reorder: @escaping @Sendable ([VectorSearchHit]) -> [VectorSearchHit]) {
+        self.ready = ready
+        self.reorder = reorder
+    }
+
+    var isReady: Bool { ready }
+
+    func rerank(query: String, candidates: [VectorSearchHit], limit: Int) async throws -> [VectorSearchHit] {
+        Array(reorder(candidates).prefix(limit))
+    }
+}
+
+/// A ready reranker whose `rerank` always throws — drives the graceful
+/// fall-back-to-first-stage path.
+private struct ThrowingReranker: Reranker {
+    struct Boom: Error {}
+    var isReady: Bool { true }
+    func rerank(query: String, candidates: [VectorSearchHit], limit: Int) async throws -> [VectorSearchHit] {
+        throw Boom()
+    }
 }
 
 @MainActor
@@ -414,6 +455,135 @@ final class RAGServiceTests: XCTestCase {
         let deleted = await vectorStore.deletedDocumentIDs
         XCTAssertTrue(deleted.contains(record.id))
         XCTAssertTrue(docStore.deletedIDs.contains(record.id))
+    }
+
+    // MARK: - #1637: rerank stage
+
+    /// Three semantic hits arrive in a deliberately *wrong* cosine order — the
+    /// most relevant passage ("C") is ranked last by the bi-encoder. A reranker
+    /// that knows C is best must pull it to the front of both the injected slot
+    /// content and the citation list.
+    func test_retrieve_rerankReordersKnownBadCosineOrdering() async throws {
+        let docID = UUID()
+        let hitA = VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "AAA passage", chunkIndex: 0), documentTitle: "Doc", score: 0.90)
+        let hitB = VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "BBB passage", chunkIndex: 1), documentTitle: "Doc", score: 0.80)
+        let hitC = VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "CCC passage", chunkIndex: 2), documentTitle: "Doc", score: 0.70)
+
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setSearchResults([hitA, hitB, hitC])  // bad order: C last
+
+        // Reranker knows the true relevance is C > A > B.
+        let reranker = FakeReranker { hits in
+            hits.sorted { lhs, rhs in
+                func rank(_ t: String) -> Int { t.hasPrefix("CCC") ? 0 : t.hasPrefix("AAA") ? 1 : 2 }
+                return rank(lhs.chunk.text) < rank(rhs.chunk.text)
+            }
+        }
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: FakeEmbeddingBackend(isModelLoaded: true),
+            reranker: reranker
+        )
+
+        let result = try await sut.retrieve(query: "which is most relevant?", limit: 3)
+
+        // Citations reflect the reranked order, not the cosine order.
+        XCTAssertEqual(result.citations.map(\.chunkIndex), [2, 0, 1],
+                       "reranker must reorder citations C, A, B")
+        // The injected slot content leads with the reranked-best passage.
+        let content = result.slots.first?.content ?? ""
+        guard let cPos = content.range(of: "CCC passage")?.lowerBound,
+              let aPos = content.range(of: "AAA passage")?.lowerBound else {
+            return XCTFail("slot content must contain reranked passages")
+        }
+        XCTAssertLessThan(cPos, aPos, "reranked-best passage must appear first in the slot")
+
+        // Sabotage: if the service ignored the reranker and used cosine order,
+        // citations would be [0, 1, 2] and this equality would fail.
+        XCTAssertNotEqual(result.citations.map(\.chunkIndex), [0, 1, 2])
+    }
+
+    /// With a reranker loaded, the first-stage fetch must be widened to
+    /// `limit * rerankCandidateMultiplier` so the cross-encoder has more
+    /// candidates to reorder.
+    func test_retrieve_withReranker_widensCandidatePool() async throws {
+        let vectorStore = FakeVectorStore()
+        let hit = VectorSearchHit(chunk: DocumentChunk(documentID: UUID(), text: "x", chunkIndex: 0), documentTitle: "Doc", score: 0.9)
+        await vectorStore.setSearchResults([hit])
+
+        let reranker = FakeReranker { $0 }  // ready, identity reorder
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: FakeEmbeddingBackend(isModelLoaded: true),
+            reranker: reranker
+        )
+
+        _ = try await sut.retrieve(query: "anything", limit: 5)
+
+        let requested = await vectorStore.lastSearchLimit
+        XCTAssertEqual(requested, 5 * RAGService.rerankCandidateMultiplier,
+                       "candidate pool must be widened to limit*\(RAGService.rerankCandidateMultiplier) when a reranker is active")
+    }
+
+    /// Passthrough default: a `PassthroughReranker` (or no reranker) must leave
+    /// retrieval byte-for-byte unchanged — same fetch width, same ordering,
+    /// same citations as the pre-rerank pipeline.
+    func test_retrieve_passthroughDefault_leavesRetrievalUnchanged() async throws {
+        let docID = UUID()
+        let hits = [
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "first", chunkIndex: 0), documentTitle: "Doc", score: 0.9),
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "second", chunkIndex: 1), documentTitle: "Doc", score: 0.8),
+        ]
+
+        func run(reranker: (any Reranker)?) async throws -> (limit: Int?, citations: [Int]) {
+            let vectorStore = FakeVectorStore()
+            await vectorStore.setSearchResults(hits)
+            let sut = RAGService(
+                documentStore: FakeDocumentStore(),
+                vectorStore: vectorStore,
+                embeddingBackend: FakeEmbeddingBackend(isModelLoaded: true),
+                reranker: reranker
+            )
+            let result = try await sut.retrieve(query: "q", limit: 5)
+            let limit = await vectorStore.lastSearchLimit
+            return (limit, result.citations.map(\.chunkIndex))
+        }
+
+        let baseline = try await run(reranker: nil)
+        let passthrough = try await run(reranker: PassthroughReranker())
+
+        XCTAssertEqual(baseline.limit, 5, "no reranker must fetch exactly `limit`, not a widened pool")
+        XCTAssertEqual(passthrough.limit, 5, "PassthroughReranker must not widen the candidate pool")
+        XCTAssertEqual(baseline.citations, passthrough.citations,
+                       "passthrough reranker must produce identical results to no reranker")
+        XCTAssertEqual(passthrough.citations, [0, 1], "ordering must be unchanged from the first stage")
+    }
+
+    /// A reranker that throws must degrade to the first-stage ordering rather
+    /// than failing the retrieval.
+    func test_retrieve_rerankFailure_fallsBackToFirstStage() async throws {
+        let docID = UUID()
+        let hits = (0..<3).map {
+            VectorSearchHit(chunk: DocumentChunk(documentID: docID, text: "p\($0)", chunkIndex: $0), documentTitle: "Doc", score: Float(0.9) - Float($0) * 0.1)
+        }
+        let vectorStore = FakeVectorStore()
+        await vectorStore.setSearchResults(hits)
+
+        let sut = RAGService(
+            documentStore: FakeDocumentStore(),
+            vectorStore: vectorStore,
+            embeddingBackend: FakeEmbeddingBackend(isModelLoaded: true),
+            reranker: ThrowingReranker()
+        )
+
+        let result = try await sut.retrieve(query: "q", limit: 2)
+
+        XCTAssertEqual(result.citations.count, 2, "must trim the widened pool back to `limit` even on rerank failure")
+        XCTAssertEqual(result.citations.map(\.chunkIndex), [0, 1],
+                       "rerank failure must preserve the first-stage cosine ordering")
     }
 
     // MARK: - Helpers

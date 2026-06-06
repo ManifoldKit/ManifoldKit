@@ -73,12 +73,12 @@ Table-stakes capabilities that ship today (verified in source):
 - **Structured / typed output**, capability-routed by `StructuredOutputRouter` across GBNF, Foundation guided-generation, JSON-Schema, and JSON-prompting.
 - **Reasoning / thinking tokens** surfaced as first-class events.
 - **MCP client *and* server** ([ManifoldMCP](Sources/ManifoldMCP) + the `Server` trait).
-- **RAG with citations.**
+- **RAG with citations**, including an optional cross-encoder rerank stage (`Reranker` port; on-device `LlamaReranker` for `bge-reranker`-class GGUFs).
 - **Human-in-the-loop tool approval** via `ToolApprovalGate`.
 - **Metrics + cost estimation** for observability.
 - **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo). See [docs/QUICKSTART-IMAGE-GEN.md](docs/QUICKSTART-IMAGE-GEN.md).
 
-**Status:** ManifoldKit is pre-1.0; breaking changes can land between minor versions. RAG reranking is not yet shipped ([#1637](https://github.com/roryford/ManifoldKit/issues/1637)). Deferred reliability features (e.g. mid-stream resume) are tracked in [docs/RELIABILITY.md](docs/RELIABILITY.md).
+**Status:** ManifoldKit is pre-1.0; breaking changes can land between minor versions. Deferred reliability features (e.g. mid-stream resume) are tracked in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 
 ## Beyond chat
 
