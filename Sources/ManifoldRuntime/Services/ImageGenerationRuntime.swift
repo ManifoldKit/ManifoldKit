@@ -295,3 +295,18 @@ public final class ImageGenerationRuntime {
         return service.loadedModel?.id ?? "unknown"
     }
 }
+
+// MARK: - AsyncSequence Conformance
+
+extension ImageGenerationRuntime: AsyncSequence {
+    public typealias Element = ImageRuntimeEvent
+    public typealias AsyncIterator = AsyncStream<ImageRuntimeEvent>.AsyncIterator
+
+    /// Returns an iterator over the image runtime events in this stream.
+    ///
+    /// Allows idiomatic iteration with `for await event in runtime { … }`
+    /// instead of `for await event in runtime.events { … }`.
+    public nonisolated func makeAsyncIterator() -> AsyncStream<ImageRuntimeEvent>.AsyncIterator {
+        events.makeAsyncIterator()
+    }
+}

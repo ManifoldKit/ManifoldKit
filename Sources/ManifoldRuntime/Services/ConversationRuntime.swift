@@ -548,3 +548,23 @@ public final class ConversationRuntime: Sendable {
         try await processTurn(input.asTurnInput)
     }
 }
+
+// MARK: - AsyncSequence Conformance
+
+extension ConversationRuntime: AsyncSequence {
+    public typealias Element = ConversationEvent
+    public typealias AsyncIterator = AsyncStream<ConversationEvent>.AsyncIterator
+
+    /// Returns an iterator over the conversation lifecycle events emitted by
+    /// this runtime.
+    ///
+    /// Allows idiomatic iteration with `for await event in runtime { … }`
+    /// instead of `for await event in runtime.events { … }`.
+    ///
+    /// - Note: The ``events`` stream is single-consumer by design and capped at
+    ///   500 buffered events. See the type documentation for details on
+    ///   multi-consumer observation via ``addEventTap(bufferingPolicy:)``.
+    public nonisolated func makeAsyncIterator() -> AsyncStream<ConversationEvent>.AsyncIterator {
+        events.makeAsyncIterator()
+    }
+}

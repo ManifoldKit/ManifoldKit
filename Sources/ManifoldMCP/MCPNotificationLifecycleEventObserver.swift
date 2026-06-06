@@ -53,3 +53,18 @@ public final class MCPNotificationLifecycleEventObserver: MCPLifecycleEventObser
         #endif
     }
 }
+
+// MARK: - AsyncSequence Conformance
+
+extension MCPNotificationLifecycleEventObserver: AsyncSequence {
+    public typealias Element = MCPLifecycleEvent
+    public typealias AsyncIterator = AsyncStream<MCPLifecycleEvent>.AsyncIterator
+
+    /// Returns an iterator over the lifecycle events emitted by this observer.
+    ///
+    /// Allows idiomatic iteration with `for await event in observer { … }`
+    /// instead of `for await event in observer.events { … }`.
+    public nonisolated func makeAsyncIterator() -> AsyncStream<MCPLifecycleEvent>.AsyncIterator {
+        events.makeAsyncIterator()
+    }
+}

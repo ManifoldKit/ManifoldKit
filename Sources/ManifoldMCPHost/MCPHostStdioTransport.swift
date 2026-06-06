@@ -183,4 +183,19 @@ public enum MCPHostTransportError: Error, LocalizedError, Sendable {
         }
     }
 }
+
+// MARK: - AsyncSequence Conformance
+
+extension MCPHostStdioTransport: AsyncSequence {
+    public typealias Element = Data
+    public typealias AsyncIterator = AsyncThrowingStream<Data, Error>.AsyncIterator
+
+    /// Returns an iterator over the incoming framed messages on this transport.
+    ///
+    /// Allows idiomatic iteration with `for try await message in transport { … }`
+    /// instead of `for try await message in transport.incomingMessages { … }`.
+    public nonisolated func makeAsyncIterator() -> AsyncThrowingStream<Data, Error>.AsyncIterator {
+        incomingMessages.makeAsyncIterator()
+    }
+}
 #endif
