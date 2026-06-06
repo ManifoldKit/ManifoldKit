@@ -44,7 +44,12 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
         let backend = OllamaBackend(_registrar: ())
         backend.configure(baseURL: baseURL, modelName: model)
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
-        let markers = RunRecord.MarkerSnapshot(open: "<think>", close: "</think>")
+        // Use the markers the probe auto-detected from the model's chat template
+        // (e.g. Gemma 4 uses `<|turn>think\n` / `<|end_of_turn>`, not `<think>`).
+        // Fall back to Qwen3-style tags only when the probe found nothing.
+        let autoMarkers = backend.manifest?.thinkingMarkers
+        let markers = autoMarkers.map { RunRecord.MarkerSnapshot(open: $0.open, close: $0.close) }
+            ?? RunRecord.MarkerSnapshot(open: "<think>", close: "</think>")
         return FuzzRunner.BackendHandle(
             backend: backend,
             modelId: model,
