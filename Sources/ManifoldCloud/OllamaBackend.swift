@@ -132,15 +132,17 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     // MARK: - Init
 
-    /// Internal initializer used by registrar and framework-internal infrastructure.
+    /// Package-internal initializer used by registrar and framework-internal infrastructure.
     ///
     /// This path is identical to the public `init(urlSession:)` with a `nil` session
     /// but is NOT marked deprecated, so framework-internal callers
     /// (``CloudBackends``, ``TraitAwareServerBackendProvider``, etc.) don't generate
     /// deprecation warnings when following the recommended migration path.
-    /// External consumers building `OllamaBackend` directly should use the public
-    /// init or register via `DefaultBackends.register(_:)`.
-    internal init(_registrar: Void) {
+    /// `package` (not `internal`) because ``CloudBackends`` lives in the
+    /// `ManifoldBackendsUmbrella` module and calls this across the module boundary
+    /// under `#if Ollama`. External consumers building `OllamaBackend` directly
+    /// should use the public init or register via `DefaultBackends.register(_:)`.
+    package init(_registrar: Void) {
         self.adapter = OllamaAdapter(
             capabilities: Self.defaultAdapterCapabilities,
             requestBuilder: { _, _, _, _ in
