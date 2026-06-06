@@ -19,7 +19,6 @@ Add the package, then drop this into your app entry point. `ManifoldKit.quickSta
 import SwiftUI
 import SwiftData
 import ManifoldKit
-import ManifoldUI
 
 @main
 struct MyChatApp: App {

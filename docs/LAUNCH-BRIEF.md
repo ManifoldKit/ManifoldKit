@@ -223,7 +223,6 @@ persistence + multi-backend inference into one drop-in chat product.**
 ```swift
 import SwiftUI
 import ManifoldKit
-import ManifoldUI
 
 @main
 struct MyChatApp: App {

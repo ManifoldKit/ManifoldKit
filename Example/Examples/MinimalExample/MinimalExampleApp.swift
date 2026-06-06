@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData // needed for .modelContainer modifier type inference
 import ManifoldKit
-import ManifoldUI
 
 /// The simplest possible ManifoldKit app.
 ///

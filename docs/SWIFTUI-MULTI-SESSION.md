@@ -303,7 +303,6 @@ Target dependencies (add what you need):
 ```swift,no-build
 import SwiftUI
 import ManifoldKit
-import ManifoldUI
 import ManifoldUIModelManagement   // optional — omit if you don't want the model browser
 
 @main
@@ -396,7 +395,6 @@ struct MyChatApp: App {
 ```swift,no-build
 import SwiftUI
 import ManifoldKit
-import ManifoldUI
 import ManifoldUIModelManagement
 
 struct RootView: View {
