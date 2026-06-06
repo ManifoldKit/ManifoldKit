@@ -37,8 +37,8 @@ final class RuntimeConfigurationTests: XCTestCase {
         )
         let sessionManager = SessionManagerViewModel()
 
-        chatViewModel.configure(runtime: runtime)
-        sessionManager.configure(runtime: runtime)
+        chatViewModel.configure(bootstrap: runtime)
+        sessionManager.configure(bootstrap: runtime)
 
         guard let chatPersistence = chatViewModel.persistence else {
             XCTFail("ChatViewModel should be configured with runtime persistence")
@@ -57,7 +57,7 @@ final class RuntimeConfigurationTests: XCTestCase {
         let persistedIDs = try await runtime.persistence.fetchSessions().map(\.id)
         XCTAssertEqual(persistedIDs, [created.id])
 
-        // `configure(runtime:)` schedules a fire-and-forget `loadSessions()`
+        // `configure(bootstrap:)` schedules a fire-and-forget `loadSessions()`
         // (autoLoad: true). Drain it before the runtime / SwiftData container
         // tears down, otherwise the in-flight fetch races teardown and traps.
         await sessionManager.autoLoadTask?.value
@@ -93,10 +93,10 @@ final class RuntimeConfigurationTests: XCTestCase {
         )
         let sessionManager = SessionManagerViewModel()
 
-        chatViewModel.configure(runtime: runtime)
-        sessionManager.configure(runtime: runtime)
+        chatViewModel.configure(bootstrap: runtime)
+        sessionManager.configure(bootstrap: runtime)
         chatViewModel.refreshModels()
-        // `configure(runtime:)` schedules a fire-and-forget `loadSessions()`.
+        // `configure(bootstrap:)` schedules a fire-and-forget `loadSessions()`.
         // Drain it deterministically so the explicit reload below is the
         // observed sequence and the in-flight fetch can't race teardown.
         await sessionManager.autoLoadTask?.value
@@ -153,11 +153,11 @@ final class RuntimeConfigurationTests: XCTestCase {
         try await runtime.persistence.insertSession(session)
 
         let chatViewModel = ChatViewModel(inferenceService: runtime.inferenceService)
-        chatViewModel.configure(runtime: runtime)
+        chatViewModel.configure(bootstrap: runtime)
         await chatViewModel.endpointRefreshTask?.value
 
         XCTAssertEqual(chatViewModel.availableEndpoints.map(\.id), [endpointID],
-            "configure(runtime:) should load selectable endpoints through the runtime endpoint store")
+            "configure(bootstrap:) should load selectable endpoints through the runtime endpoint store")
 
         var freshEndpoint = originalEndpoint
         freshEndpoint.name = "Fresh Endpoint"

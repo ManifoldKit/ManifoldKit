@@ -18,7 +18,7 @@
 #   - `ManifoldBootstrap` → `ChatViewModel` link shape (ManifoldInference,
 #     ManifoldRuntime, ManifoldPersistenceSwiftData, ManifoldUI products
 #     must all be reachable from a single downstream consumer).
-#   - `ChatViewModel.configure(runtime:)` ergonomics — wires persistence
+#   - `ChatViewModel.configure(bootstrap:)` ergonomics — wires persistence
 #     and endpoint stores from the bootstrap in one call.
 #   - The ambient `vm.inputText = "..."; await vm.sendMessage()` pattern
 #     that all production hosts use, including the fact that `sendMessage`
@@ -64,7 +64,7 @@ cd "$WORK"
 #   - ManifoldInference            — InferenceService, InferenceBackend, BackendCapabilities, ModelLoadPlan, ModelInfo
 #   - ManifoldRuntime              — SendInput, ConversationRuntime (transitively via ManifoldPersistenceSwiftData)
 #   - ManifoldPersistenceSwiftData — ManifoldBootstrap, ModelContainerFactory, SwiftDataPersistenceProvider
-#   - ManifoldUI                   — ChatViewModel, ChatViewModel.configure(runtime:)
+#   - ManifoldUI                   — ChatViewModel, ChatViewModel.configure(bootstrap:)
 cat > Package.swift <<EOF
 // swift-tools-version: 6.2
 import PackageDescription
@@ -214,7 +214,7 @@ func run() async throws -> Int32 {
         inferenceService: bootstrap.inferenceService,
         conversationRuntime: bootstrap.conversationRuntime
     )
-    vm.configure(runtime: bootstrap)
+    vm.configure(bootstrap: bootstrap)
 
     vm.activeSession = sessionRecord
 

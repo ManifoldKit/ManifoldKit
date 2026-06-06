@@ -4,7 +4,7 @@ import ManifoldRuntime
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 
-/// Defends the `ChatViewModel.configure(_:)` convenience method that wires both
+/// Defends the `ChatViewModel.configure(bootstrap:)` method that wires both
 /// runtimes into a view model in a single call (PR 9 / umbrella #1002).
 ///
 /// Tests 3 and 4 from the BootstrapImageWiring spec live here because
@@ -30,7 +30,7 @@ final class BootstrapConfigureImageWiringTests: XCTestCase {
         )
     }
 
-    // MARK: - Test 3: configure(_:) wires imageRuntime into ChatViewModel when opted in
+    // MARK: - Test 3: configure(bootstrap:) wires imageRuntime into ChatViewModel when opted in
 
     func test_configure_wiresImageRuntimeIntoViewModel_whenOptedIn() throws {
         let service = ImageGenerationService()
@@ -47,11 +47,11 @@ final class BootstrapConfigureImageWiringTests: XCTestCase {
             "chatViewModel.imageRuntime must be nil before configure(_:) is called"
         )
 
-        chatViewModel.configure(bootstrap)
+        chatViewModel.configure(bootstrap: bootstrap)
 
         // After configure — imageRuntime must be the bootstrap's runtime instance.
         // Sabotage: remove `if let imageRuntime = bootstrap.imageRuntime { configure(imageRuntime: imageRuntime) }`
-        // from RuntimeConfiguration.configure(_:) and this assertion fails.
+        // from RuntimeConfiguration.configure(bootstrap:) and this assertion fails.
         XCTAssertNotNil(
             chatViewModel.imageRuntime,
             "chatViewModel.imageRuntime must be non-nil after configure(_:) when bootstrap has an imageRuntime"
@@ -62,7 +62,7 @@ final class BootstrapConfigureImageWiringTests: XCTestCase {
         )
     }
 
-    // MARK: - Test 4: configure(_:) without image service leaves chatViewModel.imageRuntime nil
+    // MARK: - Test 4: configure(bootstrap:) without image service leaves chatViewModel.imageRuntime nil
 
     func test_configure_doesNotWireImageRuntime_whenNotOptedIn() throws {
         // A bootstrap constructed without imageGenerationService must not
@@ -74,7 +74,7 @@ final class BootstrapConfigureImageWiringTests: XCTestCase {
             conversationRuntime: bootstrap.conversationRuntime
         )
 
-        chatViewModel.configure(bootstrap)
+        chatViewModel.configure(bootstrap: bootstrap)
 
         XCTAssertNil(
             chatViewModel.imageRuntime,

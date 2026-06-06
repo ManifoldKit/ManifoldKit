@@ -26,30 +26,6 @@ extension ChatViewModel {
             configure(webSearchRuntime: webSearchRuntime)
         }
     }
-
-    /// Preferred bootstrap path for apps that assemble shared services through
-    /// a ``ChatRuntimeBootstrap``. Wires the persistence and endpoint stores
-    /// onto the view model.
-    ///
-    /// Behaviour preserved as a deprecation shim — pre-I6 this overload did
-    /// not wire `imageGenerationRuntime`. New callers should use
-    /// ``configure(bootstrap:)``, which wires the image runtime when present.
-    @available(*, deprecated, renamed: "configure(bootstrap:)", message: "Use configure(bootstrap:) — it also wires imageGenerationRuntime when the bootstrap exposes one.")
-    @MainActor
-    public func configure(runtime: any ChatRuntimeBootstrap) {
-        configure(persistence: runtime.persistenceStores)
-        configure(endpointStore: runtime.apiEndpointStore)
-    }
-
-    /// Wires the bootstrap's runtimes into this ``ChatViewModel``.
-    ///
-    /// Equivalent to ``configure(bootstrap:)``. Retained as a deprecation
-    /// shim for one minor while adopters migrate.
-    @available(*, deprecated, renamed: "configure(bootstrap:)", message: "Use configure(bootstrap:) — same behaviour, more explicit argument label.")
-    @MainActor
-    public func configure(_ bootstrap: any ChatRuntimeBootstrap) {
-        configure(bootstrap: bootstrap)
-    }
 }
 
 extension SessionManagerViewModel {
@@ -88,11 +64,5 @@ extension SessionManagerViewModel {
         // `sessions` array immediately after `await`. `autoLoad: false` above
         // prevents a concurrent fire-and-forget Task from racing this fetch.
         await loadSessions()
-    }
-
-    /// Deprecated shim kept for one minor.
-    @available(*, deprecated, renamed: "configure(bootstrap:)", message: "Use configure(bootstrap:) — same behaviour.")
-    public func configure(runtime: any ChatRuntimeBootstrap) {
-        configure(bootstrap: runtime)
     }
 }
