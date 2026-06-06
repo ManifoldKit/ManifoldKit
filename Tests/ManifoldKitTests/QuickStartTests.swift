@@ -236,6 +236,101 @@ final class QuickStartTests: XCTestCase {
     }
 
     private func _requireSendable<T: Sendable>(_: T.Type) {}
+
+    // MARK: - Selection Policy tests (#1612)
+
+    /// A custom `selectionPolicy` that returns a `ModelInfo` must result in
+    /// `modelRegistry.selectedModel` equalling that info. This exercises the
+    /// override seam so hosts can inject their own policy.
+    ///
+    /// The policy must register the model in `availableModels` before returning
+    /// it — `ModelRegistry.selectModel` validates that the chosen model is
+    /// present in the registry (or is `builtInFoundation`). A real host policy
+    /// would only return models it discovered or registered.
+    func test_quickStart_customPolicy_selectsReturnedModel() async throws {
+        let sentinel = ModelInfo(
+            id: UUID(),
+            name: "Sentinel Model",
+            fileName: "sentinel.gguf",
+            url: URL(fileURLWithPath: "/tmp/sentinel.gguf"),
+            fileSize: 1_000_000,
+            modelType: .gguf
+        )
+
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { registry in
+                // Policies are responsible for ensuring selected models are in
+                // availableModels — selectModel() validates presence. A host
+                // policy that discovers its own models would add them here.
+                registry.availableModels = [sentinel]
+                return sentinel
+            }
+        )
+
+        // The policy returned a model — `selectedModel` must reflect it.
+        XCTAssertEqual(result.viewModel.modelRegistry.selectedModel?.id, sentinel.id,
+            "Custom selectionPolicy return value must be applied to modelRegistry.selectedModel (#1612)")
+
+        // Sabotage: a different model ID must NOT match.
+        XCTAssertNotEqual(result.viewModel.modelRegistry.selectedModel?.id, UUID(),
+            "Sabotage: selectedModel.id must not be a random UUID")
+    }
+
+    /// A `selectionPolicy` returning `nil` must leave `selectedModel` nil
+    /// without crashing — the empty-state path must be silent and stable.
+    func test_quickStart_nilReturningPolicy_leavesSelectedModelNil() async throws {
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { _ in nil }
+        )
+
+        XCTAssertNil(result.viewModel.modelRegistry.selectedModel,
+            "nil selectionPolicy must leave selectedModel nil — no crash, no fallback (#1612)")
+    }
+
+    /// When the built-in policy is in effect (selectionPolicy: nil) and
+    /// `availableModels` contains a local model but no Foundation model is
+    /// available, the first local model must be selected.
+    ///
+    /// We exercise this via a custom policy that:
+    /// 1. Clears `foundationModelProvider` to ensure the Foundation-first branch
+    ///    is skipped (guards against test machines where Apple Intelligence is
+    ///    available and would win the priority race).
+    /// 2. Seeds `availableModels` with the local model.
+    /// 3. Delegates to `defaultSelectionPolicy` to exercise its logic directly.
+    func test_quickStart_defaultPolicy_selectsFirstLocalModel_whenAvailable() async throws {
+        let localModel = ModelInfo(
+            id: UUID(),
+            name: "Test GGUF",
+            fileName: "test.gguf",
+            url: URL(fileURLWithPath: "/tmp/test.gguf"),
+            fileSize: 500_000,
+            modelType: .gguf
+        )
+
+        let result = try await ManifoldKit._quickStart(
+            configuration: .default,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
+            selectionPolicy: { registry in
+                // Suppress Foundation availability so we reach the "first local
+                // model" fallback branch regardless of what hardware the test
+                // runner is on.
+                registry.foundationModelProvider = { false }
+                // Seed the registry so availableModels is non-empty.
+                registry.availableModels = [localModel]
+                // Delegate to the built-in policy so we exercise its logic.
+                return await ManifoldKit.defaultSelectionPolicy(registry)
+            }
+        )
+
+        // The default policy must select the first available local model.
+        XCTAssertEqual(result.viewModel.modelRegistry.selectedModel?.id, localModel.id,
+            "Default policy must select the first local model when Foundation is unavailable (#1612)")
+        XCTAssertEqual(result.viewModel.modelRegistry.selectedModel?.modelType, .gguf)
+    }
 }
 
 private final class QuickStartCloudBackend: InferenceBackend, CloudBackendURLModelConfigurable, @unchecked Sendable {

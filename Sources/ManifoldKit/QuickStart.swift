@@ -65,10 +65,20 @@ public enum ManifoldKit {
     }
 
     /// Internal seam used by tests to inject a custom (or throwing) model
-    /// container factory. Production callers go through ``quickStart(configuration:)``.
+    /// container factory and an optional selection policy. Production callers
+    /// go through ``quickStart(configuration:)``.
+    ///
+    /// - Parameters:
+    ///   - configuration: The framework configuration.
+    ///   - makeModelContainer: Factory closure that produces the SwiftData container.
+    ///   - selectionPolicy: An optional closure that receives the populated
+    ///     `ModelRegistry` and returns the `ModelInfo` to select, or `nil` to
+    ///     leave no model selected. When `nil` (the default), the built-in
+    ///     Foundation-first → first-local → labeled-empty-state policy runs.
     static func _quickStart(
         configuration: ManifoldConfiguration,
-        makeModelContainer: @MainActor @escaping () throws -> ModelContainer
+        makeModelContainer: @MainActor @escaping () throws -> ModelContainer,
+        selectionPolicy: (@MainActor (ModelRegistry) async -> ModelInfo?)? = nil
     ) async throws -> QuickStartResult {
         do {
             // Drive the bootstrap stream to completion. We don't surface
@@ -102,6 +112,16 @@ public enum ManifoldKit {
             )
             viewModel.configure(persistence: bootstrap.persistence)
             viewModel.configure(endpointStore: bootstrap.endpointStore)
+
+            // Wire the Foundation-model availability probe so `refresh()`
+            // prepends the built-in model when Apple Intelligence is available.
+            // Done before the selection policy so `availableModels` reflects
+            // the full local catalogue at policy-evaluation time.
+            #if canImport(FoundationModels)
+            if #available(iOS 26, macOS 26, *) {
+                viewModel.modelRegistry.foundationModelProvider = { FoundationBackend.isAvailable }
+            }
+            #endif
 
             // Wire the session manager and await its initial load so that
             // `sessionManager.sessions` is populated before this call returns
@@ -144,10 +164,70 @@ public enum ManifoldKit {
                 await viewModel.switchToSession(initialSession)
             }
 
+            // Apply the backend-selection policy (#1612). Running after session
+            // wiring means the chat surface is live regardless of whether a
+            // model is chosen; the composer enables itself once `selectedModel`
+            // becomes non-nil.
+            //
+            // `refresh()` is required before the policy runs so `availableModels`
+            // reflects on-disk GGUFs + the Foundation model (when the provider
+            // above returned true). Failure to scan the models directory is
+            // non-fatal: the empty-state path will fire, surfacing a clear
+            // placeholder rather than a silent blank composer.
+            do {
+                try viewModel.modelRegistry.refresh()
+            } catch {
+                Log.quickStart.warning("quickStart: model registry refresh failed; no model will be pre-selected: \(error, privacy: .public)")
+            }
+
+            let effectivePolicy = selectionPolicy ?? ManifoldKit.defaultSelectionPolicy
+            let chosen = await effectivePolicy(viewModel.modelRegistry)
+            if let chosen {
+                viewModel.modelRegistry.selectModel(chosen)
+            } else {
+                // Neither the built-in policy nor the host-supplied policy found
+                // a model. Leave `selectedModel` nil so the UI can surface an
+                // explicit "No model available — add one to get started" state
+                // rather than a silent blank composer.
+                Log.quickStart.info("quickStart: no model selected — host UI should prompt the user to add a model")
+            }
+
             return QuickStartResult(bootstrap: bootstrap, viewModel: viewModel, sessionManager: sessionManager)
         } catch {
             throw ManifoldKitError.from(error)
         }
+    }
+
+    // MARK: - Built-in selection policy
+
+    /// The default backend-selection policy applied by `quickStart()`.
+    ///
+    /// Priority order:
+    /// 1. Foundation model — selected when running on iOS 26+ / macOS 26+ and
+    ///    the Foundation backend is compiled in and available at runtime.
+    /// 2. First local model — the first entry in `availableModels` (populated
+    ///    by `refresh()`), which skips cloud/endpoint-configured backends that
+    ///    have no `ModelInfo` representation in the registry.
+    /// 3. Nil — no model is pre-selected; the UI must prompt the user to add one.
+    @MainActor
+    static func defaultSelectionPolicy(_ registry: ModelRegistry) async -> ModelInfo? {
+        // Foundation-first: on Apple-Intelligence-capable devices the built-in
+        // model is always the lowest-friction starting point — no download, no
+        // disk space, no endpoint configuration required.
+        #if canImport(FoundationModels)
+        if #available(iOS 26, macOS 26, *) {
+            if DefaultBackends.canLoad(modelType: .foundation),
+               let provider = registry.foundationModelProvider, provider() {
+                return .builtInFoundation
+            }
+        }
+        #endif
+
+        // Fall back to the first local model discovered on disk. All ModelType
+        // cases (.gguf, .mlx, .foundation) represent local backends — there is
+        // no "remote" ModelType in the registry (cloud backends are addressed
+        // through APIEndpointRecord + APIProvider, not ModelInfo).
+        return registry.availableModels.first
     }
 }
 
