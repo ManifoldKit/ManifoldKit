@@ -2,7 +2,7 @@
 
 > **Audience:** procurement, compliance, and security teams evaluating ManifoldKit
 > for use in regulated environments (healthcare, federal-adjacent, finance,
-> defense). This document is the honest answer to the question
+> defense). This document answers the question
 > "are your cryptographic primitives FIPS 140-3 validated?"
 >
 > **TL;DR:** ManifoldKit does not hold a FIPS 140-3 validation certificate, and does not
@@ -174,7 +174,7 @@ Apple's CoreCrypto validation typically requires:
 A regulated downstream app is responsible for confirming each of these matches
 its deployment.
 
-## Honest gap list — things ManifoldKit does outside the validated boundary
+## Gap list — things ManifoldKit does outside the validated boundary
 
 This list is what an enterprise security reviewer should know before signing
 off. It is exhaustive as of v0.12.2.
@@ -278,7 +278,7 @@ Use this when responding to a procurement security review:
       explicitly approved for the data classification in scope.
 - [ ] The application code's own crypto usage (your code, not ManifoldKit's) has
       been audited against the same boundary criteria as §3 above.
-- [ ] The honest gap list (§"Honest gap list") has been reviewed and any
+- [ ] The gap list (§"Gap list") has been reviewed and any
       gaps that affect your deployment have a documented mitigation or
       acceptance.
 - [ ] Cert-lifecycle ownership: the team that owns the deployment knows when

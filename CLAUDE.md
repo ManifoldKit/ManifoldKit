@@ -198,7 +198,7 @@ CI must pass all suites before merge. `ManifoldBackendsTests` runs without hardw
 CI is macOS-only (10× billing). Cost scales with **run count**, and each run pays an ~8-min cold `swift build` floor before any test executes (compiled-artifact caching is ruled out — see `ci.yml`). The dominant lever is therefore fewer runs, not faster ones. Recent baseline: 183 PRs merged in 14 days across **384 CI runs** (a 2.1× re-run tax). Default is **fewer, larger units of work**. (Note: GitHub's native merge queue is org-only and unavailable on this personal-account repo, so batching is a discipline, not something CI enforces.)
 
 - **No phased feature splits.** Ship a feature as one PR, not P0→P5 (Glass Box shipped as 8 separate PRs of ≤8 files each = 8 cold-compile runs for one feature). If it's too big to review at once, stack it behind a draft and merge the stack as one — do not open a CI-triggering PR per phase.
-- **Don't open issues for follow-ups, phases, or "while I'm here" cleanups.** The tracker is for real bugs and feature asks with external visibility. Use `TODO.md` or code comments for cross-session notes. Default to no when considering opening an issue.
+- **Don't open issues for follow-ups, phases, or "while I'm here" cleanups.** The tracker is for real bugs and feature asks with external visibility. Use code comments for cross-session notes. Default to no when considering opening an issue.
 - **One feature = one PR across all backends.** Don't fan out per-backend (past storms hit 15–24 PRs/day). Ship as one PR with a backend checklist in the body.
 - **Tests and docs ship in the feature PR**, not as follow-ups.
 - **Single-file PRs are a smell.** Batch them. (19% of the last 14 days' PRs touched one file.)
