@@ -141,10 +141,14 @@ let package = Package(
         // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
         // The MLXHuggingFace macro generates `AutoTokenizer.from(modelFolder:)` which lives here.
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.2.0"),
-        // Pinned version: 2.8772.0 (Package.resolved rev 3fec82010cfbe56aa78bb4177c8f4f33dace8779).
-        // Wraps llama.cpp build b8772 as a pre-built xcframework binary.
-        // See docs/LLAMA_CONTRACT.md for the full C API contract, threading rules, and upgrade procedure.
-        .package(url: "https://github.com/mattt/llama.swift", from: "2.8772.0"),
+        // Pinned EXACT to 2.9505.0 (Package.resolved rev 11efdff6cfadc8ed2f998dc6f50d68d3e35237f9).
+        // Wraps llama.cpp as a pre-built xcframework binary. mattt/llama.swift auto-tags a new
+        // version per upstream commit; a floating `from:` lets CI resolution drift to the newest
+        // tag, and the cached SwiftPM clone can land in an `unable to read tree` state for a
+        // just-pushed revision — breaking every CI run repo-wide regardless of the lockfile. Exact
+        // pinning keeps resolution deterministic. Bump intentionally (and re-verify the C API
+        // contract) per docs/LLAMA_CONTRACT.md's upgrade procedure.
+        .package(url: "https://github.com/mattt/llama.swift", exact: "2.9505.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
