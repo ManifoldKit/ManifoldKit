@@ -190,6 +190,13 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
         )
         if prepared.reuseLen > 0 {
             continuation.yield(.kvCacheReuse(promptTokensReused: prepared.reuseLen))
+        } else if kvCacheReuseEligible {
+            // Surface *why* a reuse-eligible turn fell back to a full prefill —
+            // hybrid/recurrent layers that can't slice show up here instead of
+            // an invisible performance cliff.
+            Self.logger.debug(
+                "MLX prompt-cache reuse missed: \(prepared.reuseReason.description, privacy: .public)"
+            )
         }
 
         let result = try await run(

@@ -2,10 +2,38 @@
 import Foundation
 @preconcurrency import MLX
 import MLXLMCommon
+import os
 import ManifoldInference
 
 /// Coordinates prompt KV-cache reuse for `MLXBackend`.
+///
+/// ## Type-aware, per-layer reuse (hybrid architectures)
+///
+/// Reuse is decided **per layer**, keyed off each layer's own cache type, not
+/// gated on the whole model being a single homogeneous `KVCacheSimple` stack.
+/// Hybrid architectures (e.g. Qwen3-Next-style models that mix full-attention
+/// layers with recurrent / sliding-window layers) therefore no longer fall off
+/// an invisible cliff: layers whose cache type can be reduced to the reuse
+/// length are reused, and when a layer genuinely cannot be reused the turn
+/// falls back to a full prefill with a logged ``PromptCacheReuseReason`` rather
+/// than silently re-prefilling.
+///
+/// **Correctness boundary (unchanged from the v0.5.3 incident contract):** the
+/// number of reused tokens is always the byte-exact common-prefix length of the
+/// two prompts. Per-layer handling only changes *which layers* can be restored
+/// to that length — never *whether* the prefix must match exactly. A layer is
+/// reducible to the reuse length `L` only when its post-restore offset already
+/// equals `L` (verbatim continuation, valid for any cache type) or the cache is
+/// trimmable and `trim` removes exactly the excess (the MLX library's own
+/// `trimPromptCache` contract). Any per-layer failure aborts reuse for the turn
+/// and a fresh cache is allocated for the full prompt — there is no unsafe
+/// partial reuse.
 enum MLXPromptCacheCoordinator {
+    private static let logger = Logger(
+        subsystem: ManifoldConfiguration.shared.logSubsystem,
+        category: "inference"
+    )
+
     struct CachedLayerState {
         let cacheTypeName: String
         let offset: Int
@@ -44,6 +72,95 @@ enum MLXPromptCacheCoordinator {
         let promptTokenIds: [Int]
     }
 
+    // MARK: - Diagnostic reasons
+
+    /// Why prompt-cache reuse did or did not happen on a given turn.
+    ///
+    /// Surfaced (logged) on a miss so a hybrid model that can't reuse fails
+    /// *loudly* with a reason rather than silently re-prefilling.
+    enum PromptCacheReuseReason: Equatable, Sendable, CustomStringConvertible {
+        /// Reuse succeeded: `promptTokensReused` leading tokens were restored.
+        case reused(promptTokensReused: Int)
+        /// Reuse was not attempted (feature disabled / no eligible snapshot path).
+        case notEligible
+        /// No usable snapshot exists from a prior turn.
+        case noSnapshot
+        /// The prepared prompt was too short to reuse (need more than one token).
+        case promptTooShort
+        /// The new prompt shares no usable token prefix with the snapshot.
+        case noCommonPrefix
+        /// Snapshot and live layer counts disagree (model/cache shape changed).
+        case layerCountMismatch(snapshot: Int, live: Int)
+        /// A layer's live cache type differs from the snapshot's recorded type.
+        case layerTypeMismatch(layerIndex: Int, expected: String, found: String)
+        /// A layer cannot be reduced to the reuse length: its cache type is not
+        /// trimmable and the reuse length is shorter than the cached prefix
+        /// (e.g. a recurrent/hybrid layer after a divergent edit).
+        case layerNotReusable(layerIndex: Int, cacheTypeName: String)
+
+        var didReuse: Bool {
+            if case .reused = self { return true }
+            return false
+        }
+
+        var description: String {
+            switch self {
+            case .reused(let n): return "reused(\(n) prompt tokens)"
+            case .notEligible: return "not eligible for reuse this turn"
+            case .noSnapshot: return "no snapshot from a prior turn"
+            case .promptTooShort: return "prompt too short to reuse"
+            case .noCommonPrefix: return "no common prompt prefix"
+            case .layerCountMismatch(let s, let l):
+                return "layer count mismatch (snapshot=\(s), live=\(l))"
+            case .layerTypeMismatch(let i, let e, let f):
+                return "layer \(i) type mismatch (expected \(e), found \(f))"
+            case .layerNotReusable(let i, let t):
+                return "layer \(i) (\(t)) is not reusable at the byte-exact prefix length"
+            }
+        }
+    }
+
+    /// Why a post-generation snapshot was or wasn't captured for next-turn reuse.
+    enum PromptCacheCaptureReason: Equatable, Sendable, CustomStringConvertible {
+        case captured(layers: Int)
+        case emptyPrompt
+        case noCaches
+        case cancelled
+        /// A layer's offset is below the prompt length — its prompt-prefix state
+        /// can no longer be recovered.
+        case layerOffsetBelowPrompt(layerIndex: Int)
+        /// A layer holds more tokens than the prompt (generated tail) but its
+        /// cache type cannot be trimmed back to prompt-only state (e.g. a
+        /// recurrent/hybrid layer captured post-generation).
+        case layerNotTrimmable(layerIndex: Int, cacheTypeName: String)
+
+        var description: String {
+            switch self {
+            case .captured(let n): return "captured(\(n) layers)"
+            case .emptyPrompt: return "empty prompt"
+            case .noCaches: return "no cache layers"
+            case .cancelled: return "generation cancelled"
+            case .layerOffsetBelowPrompt(let i):
+                return "layer \(i) offset is below the prompt length"
+            case .layerNotTrimmable(let i, let t):
+                return "layer \(i) (\(t)) cannot be trimmed back to prompt-only state"
+            }
+        }
+    }
+
+    /// Per-layer descriptor consumed by ``planReuse(layers:liveLayerCount:reusedCount:)``.
+    ///
+    /// Carries only the non-GPU properties the reuse decision needs, so the
+    /// planning rule is unit-testable without touching Metal.
+    struct LayerReusePlanInput: Equatable {
+        let snapshotTypeName: String
+        let snapshotOffset: Int
+        let snapshotStateIsEmpty: Bool
+        let liveTypeName: String
+        let liveIsTrimmable: Bool
+        let liveIsKVCacheSimple: Bool
+    }
+
     /// Result of `prepareInputAndCache(...)`.
     struct PreparedGenerationInputs {
         let generationInput: MLXPreparedInput
@@ -54,20 +171,104 @@ enum MLXPromptCacheCoordinator {
         /// Number of leading prompt tokens whose KV state was restored from
         /// the previous turn. `0` when no reuse occurred.
         let reuseLen: Int
+        /// Diagnostic outcome of the reuse attempt for this turn.
+        let reuseReason: PromptCacheReuseReason
     }
 
     static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
     }
 
+    // MARK: - Pure, Metal-free reuse planning
+
+    /// The single source of truth for whether a layer currently holding
+    /// `currentOffset` tokens can be reduced to exactly `targetOffset`.
+    ///
+    /// Verbatim continuation (`currentOffset == targetOffset`) is valid for any
+    /// cache type; otherwise the surplus can only be dropped from a trimmable
+    /// cache. Shared by both the capture and restore paths and by `planReuse`.
+    static func layerCanReduce(
+        currentOffset: Int,
+        targetOffset: Int,
+        isTrimmable: Bool
+    ) -> Bool {
+        guard currentOffset >= targetOffset else { return false }
+        return currentOffset == targetOffset || isTrimmable
+    }
+
+    /// Decides whether the full layer set can be restored to `reusedCount`,
+    /// returning `.reused` when every layer is eligible or the first blocking
+    /// reason otherwise. Pure — performs no GPU work — so it is the unit-test
+    /// seam for type-aware, per-layer eligibility.
+    static func planReuse(
+        layers: [LayerReusePlanInput],
+        liveLayerCount: Int,
+        reusedCount: Int
+    ) -> PromptCacheReuseReason {
+        guard reusedCount > 0 else { return .noCommonPrefix }
+        guard liveLayerCount == layers.count else {
+            return .layerCountMismatch(snapshot: layers.count, live: liveLayerCount)
+        }
+        for (index, layer) in layers.enumerated() {
+            guard layer.liveTypeName == layer.snapshotTypeName else {
+                return .layerTypeMismatch(
+                    layerIndex: index,
+                    expected: layer.snapshotTypeName,
+                    found: layer.liveTypeName
+                )
+            }
+            // Empty-state layers are restored by setting the offset directly,
+            // which only `KVCacheSimple` supports here.
+            if layer.snapshotStateIsEmpty, !layer.liveIsKVCacheSimple {
+                return .layerNotReusable(
+                    layerIndex: index,
+                    cacheTypeName: layer.snapshotTypeName
+                )
+            }
+            guard layerCanReduce(
+                currentOffset: layer.snapshotOffset,
+                targetOffset: reusedCount,
+                isTrimmable: layer.liveIsTrimmable
+            ) else {
+                return .layerNotReusable(
+                    layerIndex: index,
+                    cacheTypeName: layer.snapshotTypeName
+                )
+            }
+        }
+        return .reused(promptTokensReused: reusedCount)
+    }
+
+    /// Builds `LayerReusePlanInput`s by reading only the non-GPU properties of
+    /// the freshly-allocated live caches and the recorded snapshot. Lets callers
+    /// (and tests with fake `KVCache`s) drive `planReuse` without materialising
+    /// tensors.
+    static func planInputs(
+        live: [any KVCache],
+        snapshot: Snapshot
+    ) -> [LayerReusePlanInput] {
+        zip(live, snapshot.layers).map { liveCache, layer in
+            LayerReusePlanInput(
+                snapshotTypeName: layer.cacheTypeName,
+                snapshotOffset: layer.offset,
+                snapshotStateIsEmpty: layer.state.isEmpty,
+                liveTypeName: String(describing: type(of: liveCache)),
+                liveIsTrimmable: liveCache.isTrimmable,
+                liveIsKVCacheSimple: liveCache is KVCacheSimple
+            )
+        }
+    }
+
     /// Prepares the model input, allocates a KV cache, and applies the
     /// longest-common-prefix reuse heuristic when an eligible snapshot exists.
     ///
-    /// **CRITICAL:** the reuse path here is byte-identical to the inline
-    /// version it replaced — `longestCommonPrefixLength` clamped to
-    /// `promptTokenIds.count - 1`, gated by `isSupportedPromptCache` and
-    /// `promptTokenIds.count > 1`. Behaviour drift here corrupts the KV cache
-    /// across turns (see v0.5.3 incident).
+    /// **CRITICAL:** the reuse path here preserves the byte-exact prefix-match
+    /// contract — `longestCommonPrefixLength` clamped to
+    /// `promptTokenIds.count - 1`, gated by `promptTokenIds.count > 1`. Reuse is
+    /// now decided per layer (see ``restorePromptCache``); when any layer is not
+    /// reusable the cache is re-allocated fresh for the full prompt so a partial
+    /// restore can never leak into a full-prefill turn. Behaviour drift here
+    /// corrupts the KV cache across turns (see v0.5.3 incident).
     @MainActor
     static func prepareInputAndCache(
         container: any MLXModelContainerProtocol,
@@ -83,7 +284,7 @@ enum MLXPromptCacheCoordinator {
             } else {
                 try await container.prepare(messages: messages)
             }
-        let cache = try await container.makeCache(parameters: generateConfig)
+        var cache = try await container.makeCache(parameters: generateConfig)
         let promptTokenIds: [Int]? = if kvCacheReuseEligible {
             preparedInput.promptTokenIds
         } else {
@@ -92,20 +293,50 @@ enum MLXPromptCacheCoordinator {
 
         var generationInput = preparedInput
         var reuseLen = 0
-        if kvCacheReuseEligible,
-           let snapshot,
-           let promptTokenIds,
-           isSupportedPromptCache(cache.value),
-           promptTokenIds.count > 1 {
+        var reuseReason: PromptCacheReuseReason = kvCacheReuseEligible ? .noSnapshot : .notEligible
+
+        if kvCacheReuseEligible, !cache.value.isEmpty {
+            guard let snapshot, let promptTokenIds else {
+                // reuseReason already .noSnapshot
+                return PreparedGenerationInputs(
+                    generationInput: generationInput,
+                    cache: cache,
+                    promptTokenIds: promptTokenIds,
+                    reuseLen: reuseLen,
+                    reuseReason: reuseReason
+                )
+            }
+            guard promptTokenIds.count > 1 else {
+                reuseReason = .promptTooShort
+                return PreparedGenerationInputs(
+                    generationInput: generationInput,
+                    cache: cache,
+                    promptTokenIds: promptTokenIds,
+                    reuseLen: reuseLen,
+                    reuseReason: reuseReason
+                )
+            }
             let commonPrefixLen = longestCommonPrefixLength(
                 promptTokenIds,
                 snapshot.promptTokens
             )
             let candidate = min(commonPrefixLen, promptTokenIds.count - 1)
-            if candidate > 0,
-               restorePromptCache(snapshot, into: cache, reusedPromptTokenCount: candidate) {
-                generationInput = preparedInput.suffix(from: candidate)
-                reuseLen = candidate
+            reuseReason = restorePromptCache(
+                snapshot,
+                into: cache,
+                reusedPromptTokenCount: candidate
+            )
+            if case .reused(let restored) = reuseReason {
+                generationInput = preparedInput.suffix(from: restored)
+                reuseLen = restored
+            } else {
+                // A per-layer failure may have partially mutated `cache`.
+                // Discard it and allocate a clean cache for the full prompt so
+                // no half-restored state ever pairs with a full prefill.
+                cache = try await container.makeCache(parameters: generateConfig)
+                logger.debug(
+                    "MLX prompt-cache reuse declined: \(reuseReason.description, privacy: .public)"
+                )
             }
         }
 
@@ -113,12 +344,9 @@ enum MLXPromptCacheCoordinator {
             generationInput: generationInput,
             cache: cache,
             promptTokenIds: promptTokenIds,
-            reuseLen: reuseLen
+            reuseLen: reuseLen,
+            reuseReason: reuseReason
         )
-    }
-
-    static func isSupportedPromptCache(_ caches: [any KVCache]) -> Bool {
-        !caches.isEmpty && caches.allSatisfy { $0 is KVCacheSimple }
     }
 
     static func makeSnapshotCaptureTask(
@@ -142,8 +370,9 @@ enum MLXPromptCacheCoordinator {
     /// 1. `LanguageModel.prepare(_:cache:windowSize:)` consumes any cached prefix
     ///    from the front of the prepared prompt and only evaluates the remaining
     ///    suffix, so restored caches must be paired with the uncached prompt tail.
-    /// 2. `KVCacheSimple.copy()/state/metaState/trim(_:)` are sufficient to clone
-    ///    and shrink prompt-only state safely for text-only models.
+    /// 2. `KVCache.copy()/state/metaState/trim(_:)` are sufficient to clone and
+    ///    shrink prompt-only state for trimmable caches — the same contract MLX's
+    ///    own `trimPromptCache` relies on.
     /// 3. Future `mlx-swift-lm` bumps must rerun the MLX KV-cache integration and
     ///    performance suite before this contract is trusted unchanged.
     ///
@@ -156,21 +385,39 @@ enum MLXPromptCacheCoordinator {
         from cache: MLXPromptCache,
         promptTokens: [Int]
     ) -> Snapshot? {
-        guard !promptTokens.isEmpty, isSupportedPromptCache(cache.value) else {
-            return nil
+        let (snapshot, reason) = captureSnapshot(from: cache, promptTokens: promptTokens)
+        if snapshot == nil {
+            logger.debug(
+                "MLX prompt-cache snapshot skipped: \(reason.description, privacy: .public)"
+            )
         }
+        return snapshot
+    }
+
+    /// Per-layer snapshot capture. Returns the captured snapshot (or `nil`) plus
+    /// the diagnostic reason. Each layer is independently reduced to prompt-only
+    /// state via its own cache type's `trim`; a layer that cannot be reduced
+    /// (e.g. a recurrent/hybrid layer post-generation) is reported rather than
+    /// silently discarding the whole snapshot.
+    @MainActor
+    static func captureSnapshot(
+        from cache: MLXPromptCache,
+        promptTokens: [Int]
+    ) -> (Snapshot?, PromptCacheCaptureReason) {
+        guard !promptTokens.isEmpty else { return (nil, .emptyPrompt) }
+        guard !cache.value.isEmpty else { return (nil, .noCaches) }
         // Early-exit if the surrounding generation task was cancelled — `copy()`
         // and `eval` materialise full prompt-prefix tensors per layer, which is
         // expensive enough to be worth skipping when a reset/unload already
         // invalidated the snapshot we'd be writing.
-        if Task.isCancelled { return nil }
+        if Task.isCancelled { return (nil, .cancelled) }
 
         var layers: [CachedLayerState] = []
         layers.reserveCapacity(cache.value.count)
-        for original in cache.value {
-            if Task.isCancelled { return nil }
+        for (index, original) in cache.value.enumerated() {
+            if Task.isCancelled { return (nil, .cancelled) }
             guard original.offset >= promptTokens.count else {
-                return nil
+                return (nil, .layerOffsetBelowPrompt(layerIndex: index))
             }
 
             if original.state.isEmpty {
@@ -191,7 +438,13 @@ enum MLXPromptCacheCoordinator {
             let excess = copy.offset - promptTokens.count
             if excess > 0 {
                 guard copy.isTrimmable, copy.trim(excess) == excess else {
-                    return nil
+                    return (
+                        nil,
+                        .layerNotTrimmable(
+                            layerIndex: index,
+                            cacheTypeName: String(describing: type(of: copy))
+                        )
+                    )
                 }
             }
 
@@ -206,45 +459,77 @@ enum MLXPromptCacheCoordinator {
                 )
             )
         }
-        return Snapshot(promptTokens: promptTokens, layers: layers)
+        return (
+            Snapshot(promptTokens: promptTokens, layers: layers),
+            .captured(layers: layers.count)
+        )
     }
 
-    private static func restorePromptCache(
+    /// Restores `snapshot` into `cache`, reducing each layer to exactly
+    /// `reusedPromptTokenCount` tokens. Returns the per-layer-aware reuse
+    /// outcome; on any non-`.reused` result the caller must treat `cache` as
+    /// spent (it may be partially mutated) and allocate a fresh one.
+    @MainActor
+    static func restorePromptCache(
         _ snapshot: Snapshot,
         into cache: MLXPromptCache,
         reusedPromptTokenCount: Int
-    ) -> Bool {
-        guard reusedPromptTokenCount > 0,
-              cache.value.count == snapshot.layers.count,
-              isSupportedPromptCache(cache.value) else {
-            return false
+    ) -> PromptCacheReuseReason {
+        guard reusedPromptTokenCount > 0 else { return .noCommonPrefix }
+        guard cache.value.count == snapshot.layers.count else {
+            return .layerCountMismatch(
+                snapshot: snapshot.layers.count,
+                live: cache.value.count
+            )
         }
 
         for (index, layer) in snapshot.layers.enumerated() {
             var target = cache.value[index]
-            guard String(describing: type(of: target)) == layer.cacheTypeName else {
-                return false
+            let liveTypeName = String(describing: type(of: target))
+            guard liveTypeName == layer.cacheTypeName else {
+                return .layerTypeMismatch(
+                    layerIndex: index,
+                    expected: layer.cacheTypeName,
+                    found: liveTypeName
+                )
             }
             if layer.state.isEmpty {
-                guard let target = target as? KVCacheSimple else { return false }
-                target.offset = layer.offset
-                target.metaState = layer.metaState
+                guard let simple = target as? KVCacheSimple else {
+                    return .layerNotReusable(
+                        layerIndex: index,
+                        cacheTypeName: layer.cacheTypeName
+                    )
+                }
+                simple.offset = layer.offset
+                simple.metaState = layer.metaState
             } else {
                 target.state = layer.state.map { $0[.ellipsis] }
                 target.metaState = layer.metaState
             }
 
-            guard target.offset >= reusedPromptTokenCount else { return false }
+            // `layerCanReduce` is the pre-flight model; the offset/trim guards
+            // below are the authoritative arbiter against the *post-restore*
+            // cache (e.g. a rotating cache whose trimmability depends on its
+            // restored offset).
+            guard target.offset >= reusedPromptTokenCount else {
+                return .layerNotReusable(
+                    layerIndex: index,
+                    cacheTypeName: layer.cacheTypeName
+                )
+            }
             let excess = target.offset - reusedPromptTokenCount
             if excess > 0 {
                 guard target.isTrimmable, target.trim(excess) == excess else {
-                    return false
+                    return .layerNotReusable(
+                        layerIndex: index,
+                        cacheTypeName: layer.cacheTypeName
+                    )
                 }
             }
         }
 
         eval(cache.value)
-        return true
+        return .reused(promptTokensReused: reusedPromptTokenCount)
     }
 }
 #endif
