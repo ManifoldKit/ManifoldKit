@@ -13,7 +13,7 @@ final class HotPathPerformanceTests: XCTestCase {
         let mediumContent = String(repeating: "This is a medium-length message. ", count: 10)
         let longContent = String(repeating: "This is a longer message with more content to process. ", count: 50)
 
-        let messages: [ChatMessageRecord] = (0..<200).map { i in
+        let messages: [ChatMessage] = (0..<200).map { i in
             let role: MessageRole = i % 2 == 0 ? .user : .assistant
             let content: String
             switch i % 3 {
@@ -21,7 +21,7 @@ final class HotPathPerformanceTests: XCTestCase {
             case 1: content = mediumContent
             default: content = longContent
             }
-            return ChatMessageRecord(role: role, content: content, sessionID: Self.sessionID)
+            return ChatMessage(role: role, content: content, sessionID: Self.sessionID)
         }
         let systemPrompt = "You are a helpful assistant that provides detailed answers."
 

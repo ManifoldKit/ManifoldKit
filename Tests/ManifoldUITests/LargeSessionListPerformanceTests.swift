@@ -115,7 +115,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
         var sessionIDs: [UUID] = []
         sessionIDs.reserveCapacity(sessionCount)
         for i in 0..<sessionCount {
-            let record = ChatSessionRecord(
+            let record = ChatSession(
                 title: "Session \(i)",
                 updatedAt: base.addingTimeInterval(Double(i))
             )
@@ -131,7 +131,7 @@ final class LargeSessionListPerformanceTests: XCTestCase {
                 let body = isNeedle
                     ? "Earlier we discussed findme as a topic worth revisiting."
                     : "Generic chat content for session \(i) message \(j)."
-                try await persistence.insertMessage(ChatMessageRecord(
+                try await persistence.insertMessage(ChatMessage(
                     role: j.isMultiple(of: 2) ? .user : .assistant,
                     content: body,
                     timestamp: base.addingTimeInterval(Double(i * messagesPerSession + j)),

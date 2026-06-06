@@ -37,13 +37,13 @@ import ManifoldInference
 ///         return contextUtilization >= threshold
 ///     }
 ///
-///     func compress(history: [ChatMessageRecord], sessionID: UUID,
-///                   generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] {
+///     func compress(history: [ChatMessage], sessionID: UUID,
+///                   generate: @Sendable ([ChatMessage]) async throws -> String) async throws -> [ChatMessage] {
 ///         // Build a summarisation prompt from old messages, call generate(),
 ///         // return summary + recent messages
 ///         let summary = try await generate(history)
 ///         // Use kind: .memory so summary records don't appear in user-facing exports.
-///         let summaryMessage = ChatMessageRecord(
+///         let summaryMessage = ChatMessage(
 ///             role: .system,
 ///             content: summary,
 ///             sessionID: sessionID,
@@ -74,10 +74,10 @@ public protocol CompressionPolicy: Sendable {
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compress(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         sessionID: UUID,
-        generate: @Sendable ([ChatMessageRecord]) async throws -> String
-    ) async throws -> [ChatMessageRecord]
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage]
 
     /// Called after history has been compressed and the replacement records
     /// have been persisted. Implementations use this for post-compression
@@ -89,9 +89,9 @@ public protocol CompressionPolicy: Sendable {
     /// - Parameters:
     ///   - sessionID: The session that was compressed.
     ///   - insertedRecords: The full replacement record set, in insertion order.
-    func postCompress(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async
+    func postCompress(sessionID: UUID, insertedRecords: [ChatMessage]) async
 }
 
 extension CompressionPolicy {
-    public func postCompress(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async {}
+    public func postCompress(sessionID: UUID, insertedRecords: [ChatMessage]) async {}
 }

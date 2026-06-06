@@ -14,17 +14,17 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
 
     @MainActor
     final class InMemoryMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -37,7 +37,7 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -99,10 +99,10 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
     // MARK: - Actors for capturing side effects
 
     actor RecordCapture {
-        private(set) var capturedRecords: [ChatMessageRecord]?
+        private(set) var capturedRecords: [ChatMessage]?
         private(set) var capturedSessionID: UUID?
 
-        func record(sessionID: UUID, records: [ChatMessageRecord]) {
+        func record(sessionID: UUID, records: [ChatMessage]) {
             capturedSessionID = sessionID
             capturedRecords = records
         }
@@ -119,14 +119,14 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
         }
 
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
-            [ChatMessageRecord(role: .assistant, content: summaryContent, sessionID: sessionID)]
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
         }
 
-        func postCompress(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async {
+        func postCompress(sessionID: UUID, insertedRecords: [ChatMessage]) async {
             await capture.record(sessionID: sessionID, records: insertedRecords)
         }
     }
@@ -268,11 +268,11 @@ final class CompressionEventInsertedRecordsTests: XCTestCase {
             }
 
             func compress(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 sessionID: UUID,
-                generate: @Sendable ([ChatMessageRecord]) async throws -> String
-            ) async throws -> [ChatMessageRecord] {
-                [ChatMessageRecord(role: .assistant, content: summaryContent, sessionID: sessionID)]
+                generate: @Sendable ([ChatMessage]) async throws -> String
+            ) async throws -> [ChatMessage] {
+                [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
             }
             // postCompress not implemented — uses default no-op extension.
         }

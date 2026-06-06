@@ -72,7 +72,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     func test_saveSettingsToSession_updatesSessionProperties() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
-        let session = ChatSessionRecord(title: "Settings Test")
+        let session = ManifoldInference.ChatSession(title: "Settings Test")
         try await persistence.insertSession(session)
 
         vm.activeSession = session
@@ -112,13 +112,13 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     func test_switchToSession_loadsSessionSettings() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
-        var sessionA = ChatSessionRecord(title: "Session A")
+        var sessionA = ManifoldInference.ChatSession(title: "Session A")
         sessionA.temperature = 0.2
         sessionA.topP = 0.5
         sessionA.repeatPenalty = 1.0
         sessionA.systemPrompt = "Prompt A"
 
-        var sessionB = ChatSessionRecord(title: "Session B")
+        var sessionB = ManifoldInference.ChatSession(title: "Session B")
         sessionB.temperature = 0.9
         sessionB.topP = 0.95
         sessionB.repeatPenalty = 1.3
@@ -142,7 +142,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     func test_switchToSession_clearsMessages() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence(mock: MockInferenceBackend())
 
-        let sessionA = ChatSessionRecord(title: "Session A")
+        let sessionA = ManifoldInference.ChatSession(title: "Session A")
 
         vm.activeSession = sessionA
         vm.inputText = "Hello"
@@ -152,7 +152,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         XCTAssertGreaterThan(countBeforeSwitch, 0,
                              "Should have messages before switching")
 
-        let sessionB = ChatSessionRecord(title: "Session B")
+        let sessionB = ManifoldInference.ChatSession(title: "Session B")
 
         await vm.switchToSession(sessionB)
 
@@ -163,7 +163,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_clearChat_whenPersistenceDeleteFails_reloadsPersistedMessages() async throws {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
-        let session = ChatSessionRecord(title: "Clear Chat Failure")
+        let session = ManifoldInference.ChatSession(title: "Clear Chat Failure")
         try await persistence.insertSession(session)
         vm.activeSession = session
 
@@ -215,7 +215,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
             "Foundation model should be in availableModels after refreshModels()"
         )
 
-        var session = ChatSessionRecord(title: "Model Restore Session")
+        var session = ManifoldInference.ChatSession(title: "Model Restore Session")
         session.selectedModelID = foundationModel.id
 
         await vm.switchToSession(session)
@@ -240,7 +240,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
             "Precondition: missingModelID must not be in availableModels"
         )
 
-        var session = ChatSessionRecord(title: "Missing Model Session")
+        var session = ManifoldInference.ChatSession(title: "Missing Model Session")
         session.selectedModelID = missingModelID
 
         await vm.switchToSession(session)
@@ -255,7 +255,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let model = ModelInfo.builtInFoundation
         let expectedID = model.id
 
-        let session = ChatSessionRecord(title: "Persist Model Session")
+        let session = ManifoldInference.ChatSession(title: "Persist Model Session")
         try await persistence.insertSession(session)
 
         vm.activeSession = session
@@ -295,7 +295,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         vm.setAvailableEndpoints([endpoint])
         vm.selectedModel = ModelInfo.builtInFoundation
 
-        var session = ChatSessionRecord(title: "Endpoint Session")
+        var session = ManifoldInference.ChatSession(title: "Endpoint Session")
         session.selectedEndpointID = endpoint.id
         session.selectedModelID = ModelInfo.builtInFoundation.id
 
@@ -311,7 +311,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         vm.setAvailableEndpoints([oldEndpoint])
         vm.selectedEndpoint = oldEndpoint
 
-        var session = ChatSessionRecord(title: "Missing Endpoint Session")
+        var session = ManifoldInference.ChatSession(title: "Missing Endpoint Session")
         session.selectedEndpointID = UUID()
 
         await vm.switchToSession(session)
@@ -325,7 +325,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         vm.setAvailableEndpoints([oldEndpoint])
         vm.selectedEndpoint = oldEndpoint
 
-        let session = ChatSessionRecord(title: "Local Model Session")
+        let session = ManifoldInference.ChatSession(title: "Local Model Session")
 
         await vm.switchToSession(session)
 
@@ -346,7 +346,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let (vm, _, persistence) = try makeViewModelWithPersistence()
 
         let endpoint = APIEndpointRecord(name: "Delayed Endpoint", provider: .openAI)
-        var session = ChatSessionRecord(title: "Deferred Endpoint Session")
+        var session = ManifoldInference.ChatSession(title: "Deferred Endpoint Session")
         session.selectedEndpointID = endpoint.id
         try await persistence.insertSession(session)
         vm.activeSession = session
@@ -366,7 +366,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let endpoint = APIEndpointRecord(name: "Claude", provider: .claude)
         vm.setAvailableEndpoints([endpoint])
 
-        let session = ChatSessionRecord(title: "Persist Endpoint Session")
+        let session = ManifoldInference.ChatSession(title: "Persist Endpoint Session")
         try await persistence.insertSession(session)
         vm.activeSession = session
         vm.selectedEndpoint = endpoint
@@ -380,7 +380,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
     func test_switchToSession_usesDefaultsForNilSettings() async throws {
         let (vm, _, _) = try makeViewModelWithPersistence()
 
-        let session = ChatSessionRecord(title: "Defaults Session")
+        let session = ManifoldInference.ChatSession(title: "Defaults Session")
 
         vm.temperature = 0.1
         vm.topP = 0.1
@@ -402,7 +402,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Original", " reply"]
         let (vm, _) = makeViewModelWithMock(mock: mock)
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         vm.inputText = "Question"
 
         await vm.sendMessage()
@@ -432,7 +432,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["Reply"]
         let (vm, _) = makeViewModelWithMock(mock: mock)
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         vm.inputText = "Hello"
 
         await vm.sendMessage()
@@ -455,7 +455,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_sendMessage_whitespaceOnlyInput_isNoop() async {
         let (vm, mock) = makeViewModelWithMock()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         vm.inputText = "   \n  "
 
         await vm.sendMessage()
@@ -468,7 +468,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_sendMessage_tabAndNewlineInput_isNoop() async {
         let (vm, mock) = makeViewModelWithMock()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         vm.inputText = "\t\n\r\n  \t"
 
         await vm.sendMessage()
@@ -485,7 +485,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["OK"]
         let (vm, _) = makeViewModelWithMock(mock: mock)
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
 
         vm.errorMessage = "Previous error that should be cleared"
         vm.inputText = "Hello"
@@ -513,13 +513,13 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_exportChat_markdownFormat_returnsNonEmptyOutput() {
         let (vm, _) = makeViewModelWithMock()
-        vm.activeSession = ChatSessionRecord(title: "Export Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Export Test")
 
         // Manually add messages to test export without triggering generation.
         let sessionID = vm.activeSession!.id
         vm.messages = [
-            ChatMessageRecord(role: .user, content: "What is 2+2?", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "4", sessionID: sessionID)
+            ManifoldInference.ChatMessage(role: .user, content: "What is 2+2?", sessionID: sessionID),
+            ManifoldInference.ChatMessage(role: .assistant, content: "4", sessionID: sessionID)
         ]
 
         let markdown = vm.exportChat(format: .markdown)
@@ -539,12 +539,12 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_exportChat_plainTextFormat_returnsNonEmptyOutput() {
         let (vm, _) = makeViewModelWithMock()
-        vm.activeSession = ChatSessionRecord(title: "Plain Export")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Plain Export")
 
         let sessionID = vm.activeSession!.id
         vm.messages = [
-            ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "Hi there", sessionID: sessionID)
+            ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID),
+            ManifoldInference.ChatMessage(role: .assistant, content: "Hi there", sessionID: sessionID)
         ]
 
         let plainText = vm.exportChat(format: .plainText)
@@ -560,7 +560,7 @@ final class ViewModelEdgeCaseTests: XCTestCase {
 
     func test_exportChat_emptyMessages_returnsHeaderOnly() {
         let (vm, _) = makeViewModelWithMock()
-        vm.activeSession = ChatSessionRecord(title: "Empty Chat")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Empty Chat")
         vm.messages = []
 
         let markdown = vm.exportChat(format: .markdown)

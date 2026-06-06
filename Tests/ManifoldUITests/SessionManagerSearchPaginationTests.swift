@@ -75,9 +75,9 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
         let s1 = try await seedSession(title: "S1")
         let s2 = try await seedSession(title: "S2")
         let s3 = try await seedSession(title: "S3")
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "tell me about NEEDLE in haystack", sessionID: s1.id))
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "no match here", sessionID: s2.id))
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "more needle talk", sessionID: s3.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "tell me about NEEDLE in haystack", sessionID: s1.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "no match here", sessionID: s2.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "more needle talk", sessionID: s3.id))
         await vm.loadSessions()
 
         await vm.runMessageSearch("needle")
@@ -90,7 +90,7 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
 
     func test_messageSearch_emptyQueryClearsResults() async throws {
         let s1 = try await seedSession(title: "S1")
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "needle", sessionID: s1.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "needle", sessionID: s1.id))
         await vm.runMessageSearch("needle")
         XCTAssertFalse(vm.messageMatchSessions.isEmpty)
 
@@ -102,7 +102,7 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
 
     func test_messageSearch_snippetIsHighlightable() async throws {
         let s = try await seedSession(title: "S")
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "find the NEEDLE here", sessionID: s.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "find the NEEDLE here", sessionID: s.id))
 
         await vm.runMessageSearch("needle")
 
@@ -213,8 +213,8 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func seedSession(title: String, updatedAt: Date = Date()) async throws -> ChatSessionRecord {
-        let record = ChatSessionRecord(title: title, updatedAt: updatedAt)
+    private func seedSession(title: String, updatedAt: Date = Date()) async throws -> ManifoldInference.ChatSession {
+        let record = ManifoldInference.ChatSession(title: title, updatedAt: updatedAt)
         try await persistence.insertSession(record)
         return record
     }
@@ -222,7 +222,7 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
     private func seedSessions(titles: [String], spacingSeconds: TimeInterval = 1) async throws {
         let base = Date(timeIntervalSince1970: 1_000_000)
         for (i, title) in titles.enumerated() {
-            try await persistence.insertSession(ChatSessionRecord(
+            try await persistence.insertSession(ManifoldInference.ChatSession(
                 title: title,
                 updatedAt: base.addingTimeInterval(Double(i) * spacingSeconds)
             ))
@@ -232,7 +232,7 @@ final class SessionManagerSearchPaginationTests: XCTestCase {
     private func seedSessions(count: Int, prefix: String, spacingSeconds: TimeInterval) async throws {
         let base = Date(timeIntervalSince1970: 1_000_000)
         for i in 0..<count {
-            try await persistence.insertSession(ChatSessionRecord(
+            try await persistence.insertSession(ManifoldInference.ChatSession(
                 title: "\(prefix)\(i)",
                 updatedAt: base.addingTimeInterval(Double(i) * spacingSeconds)
             ))

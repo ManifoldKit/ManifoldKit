@@ -43,8 +43,8 @@ public enum ConversationExporter {
 
     /// Serialises `messages` via `format` and writes the result to disk.
     public static func export(
-        session: ChatSessionRecord,
-        messages: [ChatMessageRecord],
+        session: ChatSession,
+        messages: [ChatMessage],
         format: ConversationExportFormat,
         directory: URL? = nil
     ) throws -> ShareableFile {
@@ -73,7 +73,7 @@ public enum ConversationExporter {
     /// independently — custom ``ConversationExportFormat`` adopters can return
     /// arbitrary strings, so we never trust the value verbatim in a path
     /// component.
-    static func sanitisedFilename(for session: ChatSessionRecord, fileExtension: String) -> String {
+    static func sanitisedFilename(for session: ChatSession, fileExtension: String) -> String {
         let stem = sanitiseStem(session.title)
         let ext = sanitiseFileExtension(fileExtension)
         return "\(stem).\(ext)"

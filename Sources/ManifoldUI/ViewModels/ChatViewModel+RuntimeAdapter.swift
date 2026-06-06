@@ -23,18 +23,18 @@ extension ChatViewModel {
     // directly. The implementations live on the coordinator; these wrappers preserve
     // the existing call sites without modification.
 
-    static func appendVisibleText(_ batch: String, into msg: inout ChatMessageRecord) {
+    static func appendVisibleText(_ batch: String, into msg: inout ChatMessage) {
         ChatGenerationCoordinator.appendVisibleText(batch, into: &msg)
     }
 
-    static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessageRecord) {
+    static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessage) {
         ChatGenerationCoordinator.writeThinkingPartialText(partial, into: &msg)
     }
 
     // MARK: - Post-generation tasks
 
     /// Forwarding shell — delegates to the coordinator.
-    func runPostGenerationTasks(message: ChatMessageRecord, session: ChatSessionRecord) {
+    func runPostGenerationTasks(message: ChatMessage, session: ChatSession) {
         generationCoordinator.runPostGenerationTasks(message: message, session: session)
     }
 }

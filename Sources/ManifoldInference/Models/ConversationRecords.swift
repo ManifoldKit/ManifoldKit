@@ -6,7 +6,7 @@ import Foundation
 /// backend. The default implementation in `ManifoldCore` is
 /// `SwiftDataPersistenceProvider`, but consumers can substitute any storage
 /// layer that produces these records.
-public struct ChatSessionRecord: Identifiable, Hashable, Sendable {
+public struct ChatSession: Identifiable, Hashable, Sendable {
     public var id: UUID
     public var title: String
     public var createdAt: Date
@@ -104,11 +104,7 @@ public enum MessageStatus: String, Codable, Hashable, Sendable {
 
 /// Plain-data snapshot of a chat message for use across persistence boundaries.
 ///
-/// > Note: This type is intentionally named `ChatMessageRecord` rather than
-/// > `MessageRecord`. A rename would be a large semver hit requiring all
-/// > downstream consumers to update their source. The name is stable across
-/// > the v0.x series; a rename (if ever) would ship as a v1.0 breaking change.
-public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
+public struct ChatMessage: Identifiable, Hashable, Sendable {
     public var id: UUID
     public var role: MessageRole
     public var contentParts: [MessagePart]
@@ -211,3 +207,12 @@ public struct ChatMessageRecord: Identifiable, Hashable, Sendable {
         self.agentID = agentID
     }
 }
+
+// MARK: - Deprecation Aliases
+
+@available(*, deprecated, renamed: "ChatSession")
+public typealias ChatSessionRecord = ChatSession
+
+@available(*, deprecated, renamed: "ChatMessage")
+public typealias ChatMessageRecord = ChatMessage
+

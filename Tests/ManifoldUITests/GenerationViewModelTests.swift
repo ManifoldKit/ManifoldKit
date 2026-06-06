@@ -224,7 +224,7 @@ final class ChatViewModelTests: XCTestCase {
 
     func test_sendMessage_noModelLoaded_setsError() async {
         let vm = await makeViewModel()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         vm.inputText = "Tell me a story"
 
         await vm.sendMessage()
@@ -510,7 +510,7 @@ final class ChatViewModelTests: XCTestCase {
         await vm.sendMessage()
 
         let originalCount = vm.messages.count
-        let fakeMessage = ChatMessageRecord(role: .user, content: "Fake", sessionID: UUID())
+        let fakeMessage = ChatMessage(role: .user, content: "Fake", sessionID: UUID())
 
         await vm.editMessage(fakeMessage.id, newContent: "Edited")
 

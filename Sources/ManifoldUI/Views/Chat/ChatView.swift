@@ -58,11 +58,11 @@ public struct ChatView<APIConfig: View>: View {
     /// Defaults to `nil`, in which case only the built-in items appear.
     /// The closure is invoked per message so hosts can vary items by role
     /// or content.
-    private let contextMenuItemsBuilder: ((ChatMessageRecord) -> AnyView)?
+    private let contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
 
     /// Optional renderer for non-user-visible kind records. By default these are hidden.
     /// Hosts supply this to render memory bubbles, annotation labels, or other internal records.
-    private let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+    private let customKindRenderer: ((ChatMessage) -> AnyView)?
 
     public init(
         showModelManagement: Binding<Bool>,
@@ -132,7 +132,7 @@ public struct ChatView<APIConfig: View>: View {
     /// Creates a ``ChatView`` with host-supplied extra items appended to each
     /// message's context menu.
     ///
-    /// The `contextMenuItems` closure is invoked per ``ChatMessageRecord``;
+    /// The `contextMenuItems` closure is invoked per ``ChatMessage``;
     /// items it returns render after the built-in pin/copy/edit/regenerate/
     /// branch/delete actions. Use this overload to add app-specific actions
     /// such as "Reply", "Translate", or "Send to…" without forking the
@@ -140,7 +140,7 @@ public struct ChatView<APIConfig: View>: View {
     public init<ExtraItems: View>(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
@@ -155,7 +155,7 @@ public struct ChatView<APIConfig: View>: View {
     public init<ExtraItems: View, ComposerAccessory: View>(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
@@ -172,7 +172,7 @@ public struct ChatView<APIConfig: View>: View {
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
@@ -188,7 +188,7 @@ public struct ChatView<APIConfig: View>: View {
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
@@ -213,7 +213,7 @@ public struct ChatView<APIConfig: View>: View {
     public init<KindView: View>(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder customKindRenderer: @escaping (ChatMessageRecord) -> KindView,
+        @ViewBuilder customKindRenderer: @escaping (ChatMessage) -> KindView,
         @ViewBuilder apiConfiguration: @escaping () -> APIConfig
     ) {
         self._showModelManagement = showModelManagement
@@ -288,7 +288,7 @@ public struct ChatView<APIConfig: View>: View {
     public init<ExtraItems: View>(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems
     ) where APIConfig == EmptyView {
         self.init(
             showModelManagement: showModelManagement,
@@ -301,7 +301,7 @@ public struct ChatView<APIConfig: View>: View {
     public init<ExtraItems: View, ComposerAccessory: View>(
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
     ) where APIConfig == EmptyView {
         self.init(
@@ -317,7 +317,7 @@ public struct ChatView<APIConfig: View>: View {
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems
     ) where APIConfig == EmptyView {
         self.init(
             showModelManagement: showModelManagement,
@@ -332,7 +332,7 @@ public struct ChatView<APIConfig: View>: View {
         showModelManagement: Binding<Bool>,
         linkPreviewProvider: LinkPreviewProvider? = nil,
         @ViewBuilder emptyState: () -> EmptyContent,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems,
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems,
         @ViewBuilder composerAccessory: @escaping () -> ComposerAccessory
     ) where APIConfig == EmptyView {
         self.init(
@@ -456,7 +456,7 @@ public struct ChatView<APIConfig: View>: View {
 
     static func canConsumeScrollToMessageRequest(
         _ request: ChatScrollToMessageRequest,
-        in messages: [ChatMessageRecord]
+        in messages: [ChatMessage]
     ) -> Bool {
         ChatHistoryScrollBehavior.canConsumeScrollToMessageRequest(request, in: messages)
     }

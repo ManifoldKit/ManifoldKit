@@ -13,7 +13,7 @@ import ManifoldInference
 public struct ChatMessageRenderParameters {
 
     /// The record to render.
-    public let message: ChatMessageRecord
+    public let message: ChatMessage
 
     /// `true` while this message is the actively-streaming assistant turn.
     public let isStreaming: Bool
@@ -24,17 +24,17 @@ public struct ChatMessageRenderParameters {
     // Internal collaborators threaded into the default renderer. Kept
     // non-public: a consumer reaches them only indirectly via
     // `defaultMessageView()`, which keeps the surface additive.
-    let session: ChatSessionRecord?
+    let session: ChatSession?
     let linkPreviewProvider: LinkPreviewProvider?
-    let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+    let customKindRenderer: ((ChatMessage) -> AnyView)?
 
     init(
-        message: ChatMessageRecord,
+        message: ChatMessage,
         isStreaming: Bool,
         isPinned: Bool,
-        session: ChatSessionRecord?,
+        session: ChatSession?,
         linkPreviewProvider: LinkPreviewProvider?,
-        customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+        customKindRenderer: ((ChatMessage) -> AnyView)?
     ) {
         self.message = message
         self.isStreaming = isStreaming

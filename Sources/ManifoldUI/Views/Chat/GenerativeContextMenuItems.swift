@@ -21,10 +21,10 @@ import ManifoldInference
 /// - **Animate as Video** — when the message contains a generated image
 ///   and a ``VideoGenerationRuntime`` is configured.
 public struct GenerativeContextMenuItems: View {
-    let message: ChatMessageRecord
+    let message: ChatMessage
     let viewModel: ChatViewModel
 
-    public init(message: ChatMessageRecord, viewModel: ChatViewModel) {
+    public init(message: ChatMessage, viewModel: ChatViewModel) {
         self.message = message
         self.viewModel = viewModel
     }

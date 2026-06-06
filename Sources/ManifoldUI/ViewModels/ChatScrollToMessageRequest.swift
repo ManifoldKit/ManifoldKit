@@ -16,12 +16,12 @@ public struct ChatScrollToMessageRequest: Sendable, Identifiable, Hashable {
     public var id: UUID { requestID }
 
     public let requestID: UUID
-    public let messageID: ChatMessageRecord.ID
+    public let messageID: ChatMessage.ID
     public let anchor: ChatMessageScrollAnchor?
 
     public init(
         requestID: UUID = UUID(),
-        messageID: ChatMessageRecord.ID,
+        messageID: ChatMessage.ID,
         anchor: ChatMessageScrollAnchor? = nil
     ) {
         self.requestID = requestID

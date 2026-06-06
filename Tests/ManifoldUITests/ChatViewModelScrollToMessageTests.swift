@@ -55,8 +55,8 @@ final class ChatViewModelScrollToMessageTests: XCTestCase {
 
     func test_chatViewConsumesOnlyWhenRequestedMessageIsLoaded() {
         let sessionID = UUID()
-        let requested = ChatMessageRecord(role: .user, content: "target", sessionID: sessionID)
-        let other = ChatMessageRecord(role: .assistant, content: "other", sessionID: sessionID)
+        let requested = ChatMessage(role: .user, content: "target", sessionID: sessionID)
+        let other = ChatMessage(role: .assistant, content: "other", sessionID: sessionID)
         let request = ChatScrollToMessageRequest(messageID: requested.id, anchor: .top)
 
         XCTAssertTrue(

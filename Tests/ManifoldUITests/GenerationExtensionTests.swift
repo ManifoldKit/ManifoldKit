@@ -27,7 +27,7 @@ final class GenerationExtensionTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         return vm
     }
 
@@ -43,7 +43,7 @@ final class GenerationExtensionTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         return vm
     }
 
@@ -66,7 +66,7 @@ final class GenerationExtensionTests: XCTestCase {
 
     func test_tokenUsage_capturedPerGeneration_notCrossContaminated() async {
         // The risk: if the backend overwrites `lastUsage` before the first message
-        // captures it, the wrong token counts get attached to a ChatMessage.
+        // captures it, the wrong token counts get attached to a ManifoldInference.ChatMessage.
         // This test sends two sequential messages and asserts that each assistant
         // message receives the token counts from *its own* generation, not the other.
         let mock = TokenTrackingMockBackend()
@@ -238,7 +238,7 @@ final class GenerationExtensionTests: XCTestCase {
         let longContent = String(repeating: "word ", count: 200) // ~1000 chars = ~250 tokens
         for i in 0..<10 {
             let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
-            let msg = ChatMessageRecord(role: role, content: longContent, sessionID: sessionID)
+            let msg = ManifoldInference.ChatMessage(role: role, content: longContent, sessionID: sessionID)
             vm.messages.append(msg)
         }
 

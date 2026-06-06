@@ -108,9 +108,9 @@ final class ManifoldBootstrapTests: XCTestCase {
         // its anchoring indirectly: a session inserted through the provider
         // must be reachable via the runtime's modelContainer.mainContext —
         // proof that both surfaces are wired to a single coherent store.
-        let session = ChatSessionRecord(title: "Wiring Identity Probe")
+        let session = ManifoldInference.ChatSession(title: "Wiring Identity Probe")
         try await runtime.persistence.insertSession(session)
-        let descriptor = FetchDescriptor<ChatSession>()
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>()
         let entitiesViaContainer = try runtime.modelContainer.mainContext.fetch(descriptor)
         XCTAssertTrue(entitiesViaContainer.contains(where: { $0.id == session.id }),
             "Session inserted via runtime.persistence must be visible through runtime.modelContainer.mainContext")
@@ -129,7 +129,7 @@ final class ManifoldBootstrapTests: XCTestCase {
         )
 
         let endpoint = APIEndpointRecord(name: "Shared Endpoint", provider: .openAI)
-        var session = ChatSessionRecord(title: "Shared Session")
+        var session = ManifoldInference.ChatSession(title: "Shared Session")
         session.selectedEndpointID = endpoint.id
 
         try await runtime.endpointStore.insertEndpoint(endpoint)
@@ -155,7 +155,7 @@ final class ManifoldBootstrapTests: XCTestCase {
             ),
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
-        let session = ChatSessionRecord(title: "Runtime Session")
+        let session = ManifoldInference.ChatSession(title: "Runtime Session")
 
         try await runtime.persistence.insertSession(session)
 

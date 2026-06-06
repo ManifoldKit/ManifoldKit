@@ -33,12 +33,12 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         }
 
         func compressBeforeTurn(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             await counter.increment()
-            return [ChatMessageRecord(
+            return [ChatMessage(
                 role: .assistant,
                 content: summaryContent,
                 sessionID: sessionID,
@@ -57,10 +57,10 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         }
 
         func compressBeforeTurn(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             await counter.increment()
             return history
         }
@@ -74,10 +74,10 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
 
         func compressBeforeTurn(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             throw PolicyError()
         }
     }
@@ -86,18 +86,18 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
 
         func compressBeforeTurn(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             return []
         }
     }
 
     /// Records which sessionID and insertedRecords were passed to postCompressBeforeTurn.
     actor PostCompressObserver {
-        var calledWith: (sessionID: UUID, insertedRecords: [ChatMessageRecord])?
-        func record(sessionID: UUID, insertedRecords: [ChatMessageRecord]) {
+        var calledWith: (sessionID: UUID, insertedRecords: [ChatMessage])?
+        func record(sessionID: UUID, insertedRecords: [ChatMessage]) {
             calledWith = (sessionID, insertedRecords)
         }
     }
@@ -109,11 +109,11 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
         func shouldCompressBeforeTurn(messageCount: Int, lastPromptTokens: Int?) -> Bool { true }
 
         func compressBeforeTurn(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
-            return [ChatMessageRecord(
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
+            return [ChatMessage(
                 role: .assistant,
                 content: summaryContent,
                 sessionID: sessionID,
@@ -121,7 +121,7 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
             )]
         }
 
-        func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async {
+        func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessage]) async {
             await observer.record(sessionID: sessionID, insertedRecords: insertedRecords)
         }
     }
@@ -508,10 +508,10 @@ final class PreTurnCompressionPolicyTests: XCTestCase {
                 return false
             }
             func compressBeforeTurn(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 sessionID: UUID,
-                generate: @Sendable ([ChatMessageRecord]) async throws -> String
-            ) async throws -> [ChatMessageRecord] { history }
+                generate: @Sendable ([ChatMessage]) async throws -> String
+            ) async throws -> [ChatMessage] { history }
         }
 
         let backend = makeMock(tokensToYield: ["seed reply"])

@@ -13,8 +13,8 @@ final class ConversationEventSubsequenceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private static func message(role: MessageRole = .user) -> ChatMessageRecord {
-        ChatMessageRecord(
+    private static func message(role: MessageRole = .user) -> ChatMessage {
+        ChatMessage(
             id: UUID(),
             role: role,
             content: "hello",

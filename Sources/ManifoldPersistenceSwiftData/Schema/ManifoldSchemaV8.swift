@@ -29,7 +29,7 @@ public enum ManifoldSchemaV8: VersionedSchema {
             ManifoldSchemaV4.APIEndpoint.self,
             ManifoldSchemaV4.ModelBenchmarkCache.self,
             ManifoldSchemaV5.RagDocument.self,
-            ManifoldSchemaV6.TurnUsageRecordModel.self,
+            ManifoldSchemaV6.TurnUsageModel.self,
         ]
     }
 

@@ -5,9 +5,9 @@ import ManifoldInference
 /// A single row in the session list showing the chat title and relative timestamp.
 public struct SessionRowView: View {
 
-    public let session: ChatSessionRecord
+    public let session: ChatSession
 
-    public init(session: ChatSessionRecord) {
+    public init(session: ChatSession) {
         self.session = session
     }
 
@@ -29,7 +29,7 @@ public struct SessionRowView: View {
 }
 
 #Preview("Recent Session") {
-    SessionRowView(session: ChatSessionRecord(
+    SessionRowView(session: ChatSession(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         title: "Travel Planning",
         createdAt: Date(),
@@ -38,7 +38,7 @@ public struct SessionRowView: View {
 }
 
 #Preview("Long Title") {
-    SessionRowView(session: ChatSessionRecord(
+    SessionRowView(session: ChatSession(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
         title: "This is a really long chat title that should be truncated in the row view",
         createdAt: Date(timeIntervalSinceNow: -86400 * 30),

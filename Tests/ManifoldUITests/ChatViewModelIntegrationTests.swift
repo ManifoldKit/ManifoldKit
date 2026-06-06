@@ -55,25 +55,25 @@ final class ChatViewModelIntegrationTests: XCTestCase {
 
     /// Creates a session, activates it, and returns it.
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+    private func createAndActivateSession(title: String = "Test Chat") async -> ManifoldInference.ChatSession {
         let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
         return session
     }
 
-    /// Fetches all ChatMessages from the database for a given session ID.
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    /// Fetches all ManifoldInference.ChatMessages from the database for a given session ID.
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    /// Fetches all ChatSessions from the database.
-    private func fetchSessions() -> [ChatSession] {
-        let descriptor = FetchDescriptor<ChatSession>(
+    /// Fetches all ManifoldInference.ChatSessions from the database.
+    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return (try? context.fetch(descriptor)) ?? []
@@ -328,8 +328,8 @@ final class ChatViewModelIntegrationTests: XCTestCase {
     // MARK: - Empty Response DB Verification
 
     /// Verifies that when the backend yields no tokens, no blank assistant
-    /// `ChatMessage` record is ever written to the SwiftData store.
-    /// The check fetches ALL `ChatMessage` rows (not scoped by session) to
+    /// `ManifoldSchemaV9.ChatMessage` record is ever written to the SwiftData store.
+    /// The check fetches ALL `ManifoldSchemaV9.ChatMessage` rows (not scoped by session) to
     /// catch any phantom insert that might slip through.
     func test_emptyResponse_neverPersistedToDatabase() async {
         let session = await createAndActivateSession()
@@ -343,9 +343,9 @@ final class ChatViewModelIntegrationTests: XCTestCase {
             "Only the user message should remain in vm.messages after an empty response")
         XCTAssertEqual(vm.messages[0].role, .user)
 
-        // Database: fetch ALL ChatMessage records (not scoped to session) to
+        // Database: fetch ALL ManifoldSchemaV9.ChatMessage records (not scoped to session) to
         // confirm no blank assistant row was ever inserted.
-        let allMessagesDescriptor = FetchDescriptor<ChatMessage>(
+        let allMessagesDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
         let allDbMessages = (try? context.fetch(allMessagesDescriptor)) ?? []
@@ -465,7 +465,7 @@ final class ChatViewModelIntegrationTests: XCTestCase {
         vm.inputText = "What is the meaning of life?"
         await vm.sendMessage()
 
-        // Re-fetch from the session manager since ChatSessionRecord is a value type
+        // Re-fetch from the session manager since ManifoldInference.ChatSession is a value type
         let updatedSession = sessionManager.sessions.first { $0.id == newSession.id }
         XCTAssertNotEqual(updatedSession?.title, "New Chat", "Title should be auto-generated")
         XCTAssertTrue(updatedSession?.title.contains("What is the meaning of life") == true,

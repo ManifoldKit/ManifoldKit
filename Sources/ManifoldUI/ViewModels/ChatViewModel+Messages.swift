@@ -81,7 +81,7 @@ extension ChatViewModel {
     ///   record, or `.runtime(error)` when the underlying runtime surfaces an
     ///   error.
     @discardableResult
-    public func sendMessage(_ text: String) async throws -> ChatMessageRecord {
+    public func sendMessage(_ text: String) async throws -> ChatMessage {
         // Check preconditions BEFORE invoking the runtime so callers that
         // pattern-match on SendMessageError see the precondition case rather
         // than an opaque runtime error. The inner sendMessage() also performs
@@ -394,7 +394,7 @@ extension ChatViewModel {
     /// Calling this repeatedly for the same message creates distinct requests
     /// so observers can deterministically consume each command.
     public func requestScrollToMessage(
-        id messageID: ChatMessageRecord.ID,
+        id messageID: ChatMessage.ID,
         anchor: ChatMessageScrollAnchor? = nil
     ) {
         scrollToMessageRequest = ChatScrollToMessageRequest(messageID: messageID, anchor: anchor)

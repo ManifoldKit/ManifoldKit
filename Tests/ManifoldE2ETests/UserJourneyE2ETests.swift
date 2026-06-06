@@ -144,7 +144,7 @@ final class UserJourneyE2ETests {
         // the in-memory array. If persistence silently broke, this fetch would
         // return zero rows even though vm.messages still holds them.
         let sessionID = session.id
-        var descriptor = FetchDescriptor<ChatMessage>(
+        var descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -186,7 +186,7 @@ final class UserJourneyE2ETests {
         // partial.
         let cancelID = cancelledAssistant.id
         let expectedPartial = cancelledAssistant.content
-        let cancelDescriptor = FetchDescriptor<ChatMessage>(
+        let cancelDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == cancelID }
         )
         let cancelRows = try context.fetch(cancelDescriptor)
@@ -246,7 +246,7 @@ final class UserJourneyE2ETests {
 
         // DB-side history check: after cancel + regenerate, persistence should
         // contain exactly the six visible turns with no orphaned assistant row.
-        descriptor = FetchDescriptor<ChatMessage>(
+        descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -307,7 +307,7 @@ final class UserJourneyE2ETests {
         // of modelB.id, confirming this assertion catches the real persistence
         // contract and is not accidentally vacuous.
         let storedSessionID = session.id
-        let sessionDescriptor = FetchDescriptor<ChatSession>(
+        let sessionDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == storedSessionID }
         )
         let storedSessions = try context.fetch(sessionDescriptor)

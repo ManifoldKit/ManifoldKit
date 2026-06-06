@@ -66,7 +66,7 @@ final class ChatPersistenceAdapterTests: XCTestCase {
         let adapter = ChatPersistenceAdapter()
         adapter.configure(persistence: provider())
 
-        let session = ChatSessionRecord(title: "Test")
+        let session = ManifoldInference.ChatSession(title: "Test")
         adapter.activeSession = session
 
         // Should complete without crashing; no messages in the store.
@@ -80,7 +80,7 @@ final class ChatPersistenceAdapterTests: XCTestCase {
         let adapter = ChatPersistenceAdapter()
         // No persistence configured.
 
-        let session = ChatSessionRecord(title: "New Chat")
+        let session = ManifoldInference.ChatSession(title: "New Chat")
         do {
             try await adapter.insertSession(session)
             XCTFail("Expected insertSession to throw when persistence is not configured")

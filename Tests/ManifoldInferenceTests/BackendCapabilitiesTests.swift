@@ -385,7 +385,7 @@ final class BackendCapabilitiesTests: XCTestCase {
             supportsSystemPrompt: true
         )
         let messages = (0..<5).map { _ in
-            ChatMessageRecord(role: .user, content: String(repeating: "x", count: 10), sessionID: UUID())
+            ChatMessage(role: .user, content: String(repeating: "x", count: 10), sessionID: UUID())
         }
 
         let result = PromptAssembler.assemble(
@@ -452,7 +452,7 @@ final class BackendCapabilitiesTests: XCTestCase {
             supportsSystemPrompt: false
         )
         let messages = (0..<5).map { _ in
-            ChatMessageRecord(role: .user, content: String(repeating: "x", count: 10), sessionID: UUID())
+            ChatMessage(role: .user, content: String(repeating: "x", count: 10), sessionID: UUID())
         }
 
         let result = PromptAssembler.assemble(

@@ -14,12 +14,12 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
 
     @MainActor
     final class TestMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -28,7 +28,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
         func deleteMessage(_ messageID: UUID) async throws {
             messages.removeValue(forKey: messageID)
         }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values.filter { $0.sessionID == sessionID }.sorted { $0.timestamp < $1.timestamp }
         }
         func deleteMessages(for sessionID: UUID) async throws {
@@ -145,7 +145,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
 
     func test_generateImage_withoutConfiguredRuntime_throwsNotConfigured() async {
         let vm = makeViewModel()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         do {
             _ = try await vm.generateImage(prompt: "x", config: ImageGenerationConfig())
             XCTFail("Expected throw")
@@ -198,7 +198,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
         let (runtime, _) = try await makeRuntime(backend: backend)
         let vm = makeViewModel()
         vm.configure(imageRuntime: runtime)
-        vm.activeSession = ChatSessionRecord(title: "Image Test")
+        vm.activeSession = ChatSession(title: "Image Test")
 
         let messageID = try await vm.generateImage(
             prompt: "a cat",
@@ -231,7 +231,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
         let (runtime, _) = try await makeRuntime(backend: backend)
         let vm = makeViewModel()
         vm.configure(imageRuntime: runtime)
-        vm.activeSession = ChatSessionRecord(title: "Fail Test")
+        vm.activeSession = ChatSession(title: "Fail Test")
 
         let messageID = try await vm.generateImage(
             prompt: "broken",
@@ -255,7 +255,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
         let (runtime, _) = try await makeRuntime(backend: backend)
         let vm = makeViewModel()
         vm.configure(imageRuntime: runtime)
-        vm.activeSession = ChatSessionRecord(title: "Cancel Test")
+        vm.activeSession = ChatSession(title: "Cancel Test")
 
         let messageID = try await vm.generateImage(
             prompt: "slow",
@@ -304,7 +304,7 @@ final class ChatViewModelImageGenerationTests: XCTestCase {
             runtime1 as AnyObject
         )
 
-        vm.activeSession = ChatSessionRecord(title: "Reconf Test")
+        vm.activeSession = ChatSession(title: "Reconf Test")
         let messageID = try await vm.generateImage(
             prompt: "second",
             config: ImageGenerationConfig(steps: 1, width: 64, height: 64, outputDirectory: outDir)

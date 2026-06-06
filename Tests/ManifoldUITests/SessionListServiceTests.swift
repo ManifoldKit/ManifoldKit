@@ -116,7 +116,7 @@ final class SessionListServiceTests: XCTestCase {
 
     func test_deleteSession_throwsOnMissingSession_andEmitsNothing() async throws {
         let collector = attachCollector()
-        let ghost = ChatSessionRecord(title: "Ghost")
+        let ghost = ManifoldInference.ChatSession(title: "Ghost")
 
         do {
             try await service.deleteSession(ghost.id)
@@ -256,9 +256,9 @@ final class SessionListServiceTests: XCTestCase {
         let s1 = try await service.createSession(title: "S1")
         let s2 = try await service.createSession(title: "S2")
         let s3 = try await service.createSession(title: "S3")
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "tell me about NEEDLE in haystack", sessionID: s1.id))
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "no match here", sessionID: s2.id))
-        try await persistence.insertMessage(ChatMessageRecord(role: .user, content: "more needle talk", sessionID: s3.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "tell me about NEEDLE in haystack", sessionID: s1.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "no match here", sessionID: s2.id))
+        try await persistence.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "more needle talk", sessionID: s3.id))
         let collector = attachCollector()
 
         await service.runMessageSearch("needle")
@@ -387,8 +387,8 @@ final class SessionListServiceTests: XCTestCase {
 
     // MARK: - Seeding
 
-    private func seedSession(title: String, updatedAt: Date = Date()) async throws -> ChatSessionRecord {
-        let record = ChatSessionRecord(title: title, updatedAt: updatedAt)
+    private func seedSession(title: String, updatedAt: Date = Date()) async throws -> ManifoldInference.ChatSession {
+        let record = ManifoldInference.ChatSession(title: title, updatedAt: updatedAt)
         try await persistence.insertSession(record)
         return record
     }
@@ -396,7 +396,7 @@ final class SessionListServiceTests: XCTestCase {
     private func seedSessions(titles: [String], spacingSeconds: TimeInterval = 1) async throws {
         let base = Date(timeIntervalSince1970: 1_000_000)
         for (i, title) in titles.enumerated() {
-            try await persistence.insertSession(ChatSessionRecord(
+            try await persistence.insertSession(ManifoldInference.ChatSession(
                 title: title,
                 updatedAt: base.addingTimeInterval(Double(i) * spacingSeconds)
             ))
@@ -406,7 +406,7 @@ final class SessionListServiceTests: XCTestCase {
     private func seedSessions(count: Int) async throws {
         let base = Date(timeIntervalSince1970: 1_000_000)
         for i in 0..<count {
-            try await persistence.insertSession(ChatSessionRecord(
+            try await persistence.insertSession(ManifoldInference.ChatSession(
                 title: "S\(i)",
                 updatedAt: base.addingTimeInterval(Double(i))
             ))

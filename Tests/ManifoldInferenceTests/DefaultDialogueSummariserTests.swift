@@ -13,12 +13,12 @@ final class DefaultDialogueSummariserTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeTurns(sessionID: UUID = UUID()) -> [ChatMessageRecord] {
+    private func makeTurns(sessionID: UUID = UUID()) -> [ChatMessage] {
         [
-            ChatMessageRecord(role: .user, content: "What is the weather in Paris?", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "It is 18°C and sunny in Paris.", sessionID: sessionID),
-            ChatMessageRecord(role: .user, content: "Thanks! And in Rome?", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "Rome is currently 22°C.", sessionID: sessionID),
+            ChatMessage(role: .user, content: "What is the weather in Paris?", sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "It is 18°C and sunny in Paris.", sessionID: sessionID),
+            ChatMessage(role: .user, content: "Thanks! And in Rome?", sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "Rome is currently 22°C.", sessionID: sessionID),
         ]
     }
 
@@ -127,7 +127,7 @@ final class DefaultDialogueSummariserTests: XCTestCase {
         mock.isModelLoaded = true
         mock.tokensToYield = ["Single turn summary."]
         let summariser = DefaultDialogueSummariser()
-        let turn = ChatMessageRecord(role: .user, content: "Hello!", sessionID: UUID())
+        let turn = ChatMessage(role: .user, content: "Hello!", sessionID: UUID())
 
         let result = try await summariser.summarise(turns: [turn], using: mock)
 

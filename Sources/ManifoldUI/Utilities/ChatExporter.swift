@@ -5,7 +5,7 @@ import ManifoldRuntime
 /// Converts chat session data to exportable formats.
 ///
 /// `ChatExporter` is a lightweight, provider-agnostic utility that serialises a
-/// list of ``ChatMessageRecord`` values into a string or a temporary file URL
+/// list of ``ChatMessage`` values into a string or a temporary file URL
 /// ready for use with SwiftUI's `ShareLink`.
 ///
 /// ```swift
@@ -32,7 +32,7 @@ public enum ChatExporter {
     /// - Returns: The formatted string.
     public static func string(
         title: String,
-        messages: [ChatMessageRecord],
+        messages: [ChatMessage],
         format: ExportFormat = .markdown
     ) -> String {
         ChatExportService.export(
@@ -57,7 +57,7 @@ public enum ChatExporter {
     ///   write fails.
     public static func exportFile(
         title: String,
-        messages: [ChatMessageRecord],
+        messages: [ChatMessage],
         format: ExportFormat = .markdown
     ) throws -> URL {
         let content = string(title: title, messages: messages, format: format)

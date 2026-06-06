@@ -54,7 +54,7 @@ final class FoundationModelE2ETests: XCTestCase {
         vm.configure(persistence: persistence)
 
         // Create and activate a session
-        let record = ChatSessionRecord(title: "E2E Test")
+        let record = ManifoldInference.ChatSession(title: "E2E Test")
         try await persistence.insertSession(record)
         await vm.switchToSession(record)
 
@@ -73,8 +73,8 @@ final class FoundationModelE2ETests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessageRecord] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldInference.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -145,7 +145,7 @@ final class FoundationModelE2ETests: XCTestCase {
     func test_realInference_afterSessionSwitch_generatesSuccessfully() async throws {
         // Simulate a session switch mid-session, which calls resetConversation()
         // and clears FoundationBackend.session. generate() must still work.
-        let secondSession = ChatSessionRecord(title: "Second Session")
+        let secondSession = ManifoldInference.ChatSession(title: "Second Session")
         try await SwiftDataPersistenceProvider(modelContext: context).insertSession(secondSession)
 
         await vm.switchToSession(secondSession)  // → resetConversation() → session = nil

@@ -188,7 +188,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
     @MainActor
     final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
         /// When set, the next `deleteMessage` call throws this error instead
         /// of performing the delete. Cleared after the throw so subsequent
@@ -203,7 +203,7 @@ final class ConversationRuntimeTests: XCTestCase {
         /// inserts succeed normally.
         var insertError: (any Error)?
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             if let error = insertError {
                 insertError = nil
                 throw error
@@ -214,7 +214,7 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             if let error = updateError {
                 updateError = nil
                 throw error
@@ -238,7 +238,7 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -257,7 +257,7 @@ final class ConversationRuntimeTests: XCTestCase {
     /// behaviour is covered by an explicit test below.
     @MainActor
     final class RuntimeSessionStore: SessionStore {
-        private(set) var sessions: [UUID: ChatSessionRecord] = [:]
+        private(set) var sessions: [UUID: ChatSession] = [:]
         private(set) var updateCount: Int = 0
         /// When set, the next `insertSession` call throws this error instead
         /// of performing the insert. Cleared after the throw.
@@ -269,7 +269,7 @@ final class ConversationRuntimeTests: XCTestCase {
         /// of returning sessions. Cleared after the throw.
         var fetchError: (any Error)?
 
-        func insertSession(_ session: ChatSessionRecord) async throws {
+        func insertSession(_ session: ChatSession) async throws {
             if let error = insertError {
                 insertError = nil
                 throw error
@@ -277,7 +277,7 @@ final class ConversationRuntimeTests: XCTestCase {
             sessions[session.id] = session
         }
 
-        func updateSession(_ session: ChatSessionRecord) async throws {
+        func updateSession(_ session: ChatSession) async throws {
             if let error = updateError {
                 updateError = nil
                 throw error
@@ -295,7 +295,7 @@ final class ConversationRuntimeTests: XCTestCase {
             }
         }
 
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             if let error = fetchError {
                 fetchError = nil
                 throw error
@@ -311,7 +311,7 @@ final class ConversationRuntimeTests: XCTestCase {
         private let queue = DispatchQueue(label: "HookRecorder.lock")
         private var _records: [(role: MessageRole, sessionID: UUID, content: String)] = []
 
-        func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+        func messageDidWrite(_ record: ChatMessage, in sessionID: ChatSession.ID) async {
             queue.sync {
                 _records.append((record.role, sessionID, record.content))
             }
@@ -1428,7 +1428,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
         let sessions = RuntimeSessionStore()
-        let original = ChatSessionRecord(title: "Test")
+        let original = ChatSession(title: "Test")
         try await sessions.insertSession(original)
 
         let (runtime, _, _, _) = makeRuntime(mock: mock, sessionStore: sessions)
@@ -1451,7 +1451,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let mock = MockInferenceBackend()
         mock.tokensToYield = ["ok"]
         let sessions = RuntimeSessionStore()
-        let original = ChatSessionRecord(title: "Test")
+        let original = ChatSession(title: "Test")
         try await sessions.insertSession(original)
         sessions.updateError = ChatPersistenceError.sessionNotFound(original.id)
 
@@ -1531,8 +1531,8 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let sessionID = UUID()
         // Seed: one user + one assistant message already in the store.
-        let userMsg = ChatMessageRecord(role: .user, content: "original question", sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "old answer", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "original question", sessionID: sessionID)
+        let assistantMsg = ChatMessage(role: .assistant, content: "old answer", sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -1592,7 +1592,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let sessionID = UUID()
 
         // Only a user message — no assistant to replace.
-        let userMsg = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "hello", sessionID: sessionID)
         try await store.insertMessage(userMsg)
 
         do {
@@ -1643,8 +1643,8 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
-        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "a", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessage(role: .assistant, content: "a", sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -1705,9 +1705,9 @@ final class ConversationRuntimeTests: XCTestCase {
         // Explicit timestamps ensure fetchMessages returns them in insertion order
         // regardless of same-millisecond Date() collisions in the in-memory store.
         let t0 = Date()
-        let userMsg = ChatMessageRecord(role: .user, content: "original question", timestamp: t0, sessionID: sessionID)
-        let assistantMsg1 = ChatMessageRecord(role: .assistant, content: "first answer", timestamp: t0.addingTimeInterval(1), sessionID: sessionID)
-        let assistantMsg2 = ChatMessageRecord(role: .assistant, content: "follow-up", timestamp: t0.addingTimeInterval(2), sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "original question", timestamp: t0, sessionID: sessionID)
+        let assistantMsg1 = ChatMessage(role: .assistant, content: "first answer", timestamp: t0.addingTimeInterval(1), sessionID: sessionID)
+        let assistantMsg2 = ChatMessage(role: .assistant, content: "follow-up", timestamp: t0.addingTimeInterval(2), sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg1)
         try await store.insertMessage(assistantMsg2)
@@ -1781,8 +1781,8 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let sessionID = UUID()
         let base = Date(timeIntervalSinceReferenceDate: 0)
-        let userMsg = ChatMessageRecord(role: .user, content: "question", timestamp: base, sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "original answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "question", timestamp: base, sessionID: sessionID)
+        let assistantMsg = ChatMessage(role: .assistant, content: "original answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -1820,7 +1820,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
-        let userMsg = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "hello", sessionID: sessionID)
         try await store.insertMessage(userMsg)
 
         let bogusID = UUID()
@@ -1853,8 +1853,8 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
-        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "a", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessage(role: .assistant, content: "a", sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -1903,9 +1903,9 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
-        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
-        let trailing1 = ChatMessageRecord(role: .assistant, content: "t1", sessionID: sessionID)
-        let trailing2 = ChatMessageRecord(role: .assistant, content: "t2", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "q", sessionID: sessionID)
+        let trailing1 = ChatMessage(role: .assistant, content: "t1", sessionID: sessionID)
+        let trailing2 = ChatMessage(role: .assistant, content: "t2", sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(trailing1)
         try await store.insertMessage(trailing2)
@@ -1960,15 +1960,15 @@ final class ConversationRuntimeTests: XCTestCase {
         // Seed: user + assistant + user (branch at assistant, index 1).
         // Explicit timestamps ensure stable sort ordering in the in-memory store.
         let base = Date(timeIntervalSinceReferenceDate: 0)
-        let msg0 = ChatMessageRecord(role: .user, content: "question", timestamp: base, sessionID: sessionID)
-        let msg1 = ChatMessageRecord(role: .assistant, content: "answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
-        let msg2 = ChatMessageRecord(role: .user, content: "follow-up", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        let msg0 = ChatMessage(role: .user, content: "question", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "answer", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessage(role: .user, content: "follow-up", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
         try await store.insertMessage(msg0)
         try await store.insertMessage(msg1)
         try await store.insertMessage(msg2)
 
         // Insert the source session so touchSession / title lookup works.
-        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source Chat")
+        let sourceSession = ChatSession(id: sessionID, title: "Source Chat")
         try await sessions!.insertSession(sourceSession)
 
         let input = BranchInput(
@@ -2032,13 +2032,13 @@ final class ConversationRuntimeTests: XCTestCase {
         // Seed: user + assistant + user (branch at last user — index 2).
         // Explicit timestamps ensure stable sort ordering in the in-memory store.
         let base = Date(timeIntervalSinceReferenceDate: 0)
-        let msg0 = ChatMessageRecord(role: .user, content: "first", timestamp: base, sessionID: sessionID)
-        let msg1 = ChatMessageRecord(role: .assistant, content: "reply", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
-        let msg2 = ChatMessageRecord(role: .user, content: "second", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        let msg0 = ChatMessage(role: .user, content: "first", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "reply", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessage(role: .user, content: "second", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
         try await store.insertMessage(msg0)
         try await store.insertMessage(msg1)
         try await store.insertMessage(msg2)
-        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source")
+        let sourceSession = ChatSession(id: sessionID, title: "Source")
         try await sessionStore.insertSession(sourceSession)
 
         let maybeTurn = try await runtime.processTurnWithOutcome(TurnInput(
@@ -2073,11 +2073,11 @@ final class ConversationRuntimeTests: XCTestCase {
         let newSessionID = UUID()
 
         let base = Date(timeIntervalSinceReferenceDate: 0)
-        let msg0 = ChatMessageRecord(role: .user, content: "q", timestamp: base, sessionID: sessionID)
-        let msg1 = ChatMessageRecord(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg0 = ChatMessage(role: .user, content: "q", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
         try await store.insertMessage(msg0)
         try await store.insertMessage(msg1)
-        let sourceSession = ChatSessionRecord(id: sessionID, title: "Source")
+        let sourceSession = ChatSession(id: sessionID, title: "Source")
         try await sessions!.insertSession(sourceSession)
 
         let input = BranchInput(
@@ -2104,7 +2104,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime()
         let sessionID = UUID()
 
-        let msg0 = ChatMessageRecord(role: .user, content: "hello", sessionID: sessionID)
+        let msg0 = ChatMessage(role: .user, content: "hello", sessionID: sessionID)
         try await store.insertMessage(msg0)
 
         let bogusID = UUID()
@@ -2459,8 +2459,8 @@ final class ConversationRuntimeTests: XCTestCase {
         let newSessionID = UUID()
 
         let base = Date(timeIntervalSinceReferenceDate: 0)
-        let msg0 = ChatMessageRecord(role: .user, content: "q", timestamp: base, sessionID: sessionID)
-        let msg1 = ChatMessageRecord(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg0 = ChatMessage(role: .user, content: "q", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "a", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
         try await store.insertMessage(msg0)
         try await store.insertMessage(msg1)
 
@@ -2517,8 +2517,8 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        let userMsg = ChatMessageRecord(role: .user, content: "q", sessionID: sessionID)
-        let assistantMsg = ChatMessageRecord(role: .assistant, content: "old", sessionID: sessionID)
+        let userMsg = ChatMessage(role: .user, content: "q", sessionID: sessionID)
+        let assistantMsg = ChatMessage(role: .assistant, content: "old", sessionID: sessionID)
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
@@ -2610,7 +2610,7 @@ final class ConversationRuntimeTests: XCTestCase {
         )
 
         let sessionID = UUID()
-        try await store.insertMessage(ChatMessageRecord(
+        try await store.insertMessage(ChatMessage(
             role: .user,
             content: "ping",
             sessionID: sessionID

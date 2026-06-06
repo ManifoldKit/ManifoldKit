@@ -18,7 +18,7 @@ private struct StubGenerateImageToolSource: SessionToolSource {
     static let toolName = "generate_image"
     static let successContent = "image-generated"
 
-    func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+    func toolDefinitions(for session: ManifoldInference.ChatSession) async -> [ToolDefinition] {
         [
             ToolDefinition(
                 name: Self.toolName,
@@ -37,7 +37,7 @@ private struct StubGenerateImageToolSource: SessionToolSource {
     func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ManifoldInference.ChatSession
     ) async throws -> ToolResult {
         guard toolName == Self.toolName else {
             return ToolResult(callId: toolName, content: "unexpected tool", errorKind: .unknownTool)
@@ -81,7 +81,7 @@ final class SessionToolSourceDispatchTest: XCTestCase {
     /// below fail, which is the falsifiability the tripwire exists for.
     func test_advertisedSessionTool_dispatchesToResolve_notUnknownTool() async throws {
         let stack = try InMemoryPersistenceHarness.make()
-        let session = ChatSessionRecord(id: UUID(), title: "dispatch")
+        let session = ManifoldInference.ChatSession(id: UUID(), title: "dispatch")
         try await stack.provider.insertSession(session)
 
         let backend = Self.toolCapableBackend()
@@ -140,11 +140,11 @@ final class SessionToolSourceDispatchTest: XCTestCase {
 
     /// The per-turn session executor must not leak into the shared registry:
     /// once the turn ends, `generate_image` is gone again so the next turn
-    /// re-binds it to a fresh ``ChatSessionRecord`` rather than reusing a stale
+    /// re-binds it to a fresh ``ManifoldInference.ChatSession`` rather than reusing a stale
     /// one.
     func test_sessionToolExecutor_unregisteredAfterTurn() async throws {
         let stack = try InMemoryPersistenceHarness.make()
-        let session = ChatSessionRecord(id: UUID(), title: "leak-check")
+        let session = ManifoldInference.ChatSession(id: UUID(), title: "leak-check")
         try await stack.provider.insertSession(session)
 
         let backend = Self.toolCapableBackend()

@@ -47,15 +47,15 @@ final class ChatViewModelIngestTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func fetchSessions() -> [ChatSession] {
-        let descriptor = FetchDescriptor<ChatSession>(
+    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -107,8 +107,8 @@ final class ChatViewModelIngestTests: XCTestCase {
     }
 
     func test_switchToSession_clearsDraftAttachments() async throws {
-        let first = ChatSessionRecord(title: "First")
-        let second = ChatSessionRecord(title: "Second")
+        let first = ManifoldInference.ChatSession(title: "First")
+        let second = ManifoldInference.ChatSession(title: "Second")
         try await vm.persistence?.insertSession(first)
         try await vm.persistence?.insertSession(second)
         await vm.switchToSession(first)

@@ -57,7 +57,7 @@ final class ViewSnapshotTests: XCTestCase {
     func test_messageBubble_userMessage() {
         assertDumpSnapshot(
             MessageBubbleView(
-                message: ChatMessageRecord(id: fixedID, role: .user, content: "Hello, tell me a story.", timestamp: fixedDate, sessionID: fixedSessionID),
+                message: ChatMessage(id: fixedID, role: .user, content: "Hello, tell me a story.", timestamp: fixedDate, sessionID: fixedSessionID),
                 isStreaming: false
             ),
             named: "user_message"
@@ -67,7 +67,7 @@ final class ViewSnapshotTests: XCTestCase {
     func test_messageBubble_assistantMessage() {
         assertDumpSnapshot(
             MessageBubbleView(
-                message: ChatMessageRecord(id: fixedID, role: .assistant, content: "Once upon a time...", timestamp: fixedDate, sessionID: fixedSessionID),
+                message: ChatMessage(id: fixedID, role: .assistant, content: "Once upon a time...", timestamp: fixedDate, sessionID: fixedSessionID),
                 isStreaming: false
             ),
             named: "assistant_message"
@@ -77,7 +77,7 @@ final class ViewSnapshotTests: XCTestCase {
     func test_messageBubble_assistantStreaming() {
         assertDumpSnapshot(
             MessageBubbleView(
-                message: ChatMessageRecord(id: fixedID, role: .assistant, content: "Once upon a time...", timestamp: fixedDate, sessionID: fixedSessionID),
+                message: ChatMessage(id: fixedID, role: .assistant, content: "Once upon a time...", timestamp: fixedDate, sessionID: fixedSessionID),
                 isStreaming: true
             ),
             named: "assistant_streaming"
@@ -87,7 +87,7 @@ final class ViewSnapshotTests: XCTestCase {
     func test_messageBubble_systemMessage() {
         assertDumpSnapshot(
             MessageBubbleView(
-                message: ChatMessageRecord(id: fixedID, role: .system, content: "You are a creative assistant.", timestamp: fixedDate, sessionID: fixedSessionID),
+                message: ChatMessage(id: fixedID, role: .system, content: "You are a creative assistant.", timestamp: fixedDate, sessionID: fixedSessionID),
                 isStreaming: false
             ),
             named: "system_message"
@@ -233,7 +233,7 @@ final class ViewSnapshotTests: XCTestCase {
 
     func test_sessionRow_recent() {
         assertDumpSnapshot(
-            SessionRowView(session: ChatSessionRecord(
+            SessionRowView(session: ChatSession(
                 id: fixedID,
                 title: "Travel Planning",
                 createdAt: fixedDate,
@@ -245,7 +245,7 @@ final class ViewSnapshotTests: XCTestCase {
 
     func test_sessionRow_longTitle() {
         assertDumpSnapshot(
-            SessionRowView(session: ChatSessionRecord(
+            SessionRowView(session: ChatSession(
                 id: fixedID,
                 title: "This is a really long chat title that should be truncated in the row view",
                 createdAt: fixedDate,

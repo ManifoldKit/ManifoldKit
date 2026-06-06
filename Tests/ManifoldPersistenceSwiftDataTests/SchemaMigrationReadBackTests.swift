@@ -20,7 +20,7 @@ final class SchemaMigrationReadBackTests: XCTestCase {
 
     // MARK: - Full-chain migration read-back
 
-    /// Seeds a V3 store with a ``ChatSession``, a ``ChatMessage``, a
+    /// Seeds a V3 store with a ``ManifoldSchemaV9.ChatSession``, a ``ManifoldSchemaV9.ChatMessage``, a
     /// ``SamplerPreset``, and an ``APIEndpoint``, then opens the same file with
     /// the current ``ModelContainerFactory`` (schema V5, plan V3→V4→V5) and
     /// asserts every record survives the two-hop migration intact.
@@ -98,29 +98,29 @@ final class SchemaMigrationReadBackTests: XCTestCase {
         )
         let ctx = ModelContext(migratedContainer)
 
-        // --- ChatSession ---
-        let sessions = try ctx.fetch(FetchDescriptor<ChatSession>(
+        // --- ManifoldSchemaV9.ChatSession ---
+        let sessions = try ctx.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(sessions.count, 1,
-            "ChatSession must survive V3→V5 migration (id: \(sessionID))")
+            "ManifoldSchemaV9.ChatSession must survive V3→V5 migration (id: \(sessionID))")
         let migratedSession = try XCTUnwrap(sessions.first)
         XCTAssertEqual(migratedSession.title, sessionNonce,
-            "ChatSession.title must be preserved verbatim through migration")
+            "ManifoldSchemaV9.ChatSession.title must be preserved verbatim through migration")
 
-        // --- ChatMessage ---
-        let messages = try ctx.fetch(FetchDescriptor<ChatMessage>(
+        // --- ManifoldSchemaV9.ChatMessage ---
+        let messages = try ctx.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == messageID }
         ))
         XCTAssertEqual(messages.count, 1,
-            "ChatMessage must survive V3→V5 migration (id: \(messageID))")
+            "ManifoldSchemaV9.ChatMessage must survive V3→V5 migration (id: \(messageID))")
         let migratedMessage = try XCTUnwrap(messages.first)
         XCTAssertEqual(migratedMessage.content, messageNonce,
-            "ChatMessage.content must be preserved verbatim through migration")
+            "ManifoldSchemaV9.ChatMessage.content must be preserved verbatim through migration")
         XCTAssertEqual(migratedMessage.role, .user,
-            "ChatMessage.role must be preserved through migration")
+            "ManifoldSchemaV9.ChatMessage.role must be preserved through migration")
         XCTAssertEqual(migratedMessage.sessionID, sessionID,
-            "ChatMessage.sessionID must be preserved through migration")
+            "ManifoldSchemaV9.ChatMessage.sessionID must be preserved through migration")
 
         // --- SamplerPreset ---
         // V4 added optional penalty columns; they must be nil for a V3 row.

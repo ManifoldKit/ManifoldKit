@@ -13,17 +13,17 @@ final class CompressionPolicyTests: XCTestCase {
 
     @MainActor
     final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -36,7 +36,7 @@ final class CompressionPolicyTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -138,12 +138,12 @@ final class CompressionPolicyTests: XCTestCase {
         }
 
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             await counter.increment()
-            return [ChatMessageRecord(role: .assistant, content: summaryContent, sessionID: sessionID)]
+            return [ChatMessage(role: .assistant, content: summaryContent, sessionID: sessionID)]
         }
     }
 
@@ -160,10 +160,10 @@ final class CompressionPolicyTests: XCTestCase {
         }
 
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             await counter.increment()
             return history
         }
@@ -178,10 +178,10 @@ final class CompressionPolicyTests: XCTestCase {
         }
 
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             throw CompressionError()
         }
     }
@@ -194,10 +194,10 @@ final class CompressionPolicyTests: XCTestCase {
         }
 
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             return []  // Intentionally returns nothing — should be treated as an error.
         }
     }
@@ -483,14 +483,14 @@ final class CompressionPolicyTests: XCTestCase {
             }
 
             func compress(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 sessionID: UUID,
-                generate: @Sendable ([ChatMessageRecord]) async throws -> String
-            ) async throws -> [ChatMessageRecord] {
+                generate: @Sendable ([ChatMessage]) async throws -> String
+            ) async throws -> [ChatMessage] {
                 // Return history with fresh IDs + same sessionID so they can
                 // be re-inserted (store rejects duplicates for existing IDs).
                 return history.map {
-                    ChatMessageRecord(role: $0.role, content: $0.content, sessionID: $0.sessionID)
+                    ChatMessage(role: $0.role, content: $0.content, sessionID: $0.sessionID)
                 }
             }
         }
@@ -528,8 +528,8 @@ final class CompressionPolicyTests: XCTestCase {
         // fetches fresh history before calling compress(). The history passed
         // to compress() must include the just-inserted assistant message.
         actor HistoryCapture {
-            private(set) var capturedHistory: [ChatMessageRecord]?
-            func capture(_ history: [ChatMessageRecord]) { capturedHistory = history }
+            private(set) var capturedHistory: [ChatMessage]?
+            func capture(_ history: [ChatMessage]) { capturedHistory = history }
         }
 
         let capture = HistoryCapture()
@@ -542,14 +542,14 @@ final class CompressionPolicyTests: XCTestCase {
             }
 
             func compress(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 sessionID: UUID,
-                generate: @Sendable ([ChatMessageRecord]) async throws -> String
-            ) async throws -> [ChatMessageRecord] {
+                generate: @Sendable ([ChatMessage]) async throws -> String
+            ) async throws -> [ChatMessage] {
                 await capture.capture(history)
                 // Return the same history (re-wrapped with fresh IDs).
                 return history.map {
-                    ChatMessageRecord(role: $0.role, content: $0.content, sessionID: $0.sessionID)
+                    ChatMessage(role: $0.role, content: $0.content, sessionID: $0.sessionID)
                 }
             }
         }
@@ -606,8 +606,8 @@ final class CompressionPolicyTests: XCTestCase {
                 Task { await capture.record(contextUtilization) }
                 return false
             }
-            func compress(history: [ChatMessageRecord], sessionID: UUID,
-                          generate: @Sendable ([ChatMessageRecord]) async throws -> String) async throws -> [ChatMessageRecord] { history }
+            func compress(history: [ChatMessage], sessionID: UUID,
+                          generate: @Sendable ([ChatMessage]) async throws -> String) async throws -> [ChatMessage] { history }
         }
 
         // UsageReportingBackend emits promptTokens=50, contextSize=1024 (see makeMockWithUsage + UsageReportingBackend.lastUsage).
@@ -644,7 +644,7 @@ final class CompressionPolicyTests: XCTestCase {
         // insert → fetch cycle with their kind intact.
         let store = RuntimeMessageStore()
         let sessionID = UUID()
-        let summary = ChatMessageRecord(
+        let summary = ChatMessage(
             role: .system,
             content: "A summary of earlier events",
             sessionID: sessionID,

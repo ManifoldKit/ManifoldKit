@@ -33,7 +33,7 @@ public final class ChatViewModel {
     public enum TurnState {
         case idle
         case generating
-        case completed(ChatMessageRecord)
+        case completed(ChatMessage)
         case failed(any Error)
     }
 
@@ -105,7 +105,7 @@ public final class ChatViewModel {
     // MARK: - Session
 
     /// The currently active chat session. Set via `switchToSession(_:)`.
-    public var activeSession: ChatSessionRecord? {
+    public var activeSession: ChatSession? {
         get { persistenceAdapter.activeSession }
         set { persistenceAdapter.activeSession = newValue }
     }
@@ -115,7 +115,7 @@ public final class ChatViewModel {
 
     /// Called when a session might need its title auto-generated.
     /// Set by the view layer to connect to SessionManagerViewModel.
-    public var onFirstMessage: (@MainActor (ChatSessionRecord, String) async -> Void)?
+    public var onFirstMessage: (@MainActor (ChatSession, String) async -> Void)?
 
     /// Called after ``branch(from:)`` forks a conversation, with the new
     /// session's ID. Hosts wire this to their session-manager flow so the
@@ -221,7 +221,7 @@ public final class ChatViewModel {
     }
 
     /// Ordered messages for the active session.
-    public internal(set) var messages: [ChatMessageRecord] {
+    public internal(set) var messages: [ChatMessage] {
         get { persistenceAdapter.messages }
         set { persistenceAdapter.messages = newValue }
     }
@@ -343,7 +343,7 @@ public final class ChatViewModel {
 
     /// IDs of messages that are pinned in the current session.
     ///
-    /// Populated from ``ChatSessionRecord/pinnedMessageIDs`` when switching
+    /// Populated from ``ChatSession/pinnedMessageIDs`` when switching
     /// sessions. Persisted back to the session on changes.
     public internal(set) var pinnedMessageIDs: Set<UUID> {
         get { persistenceAdapter.pinnedMessageIDs }

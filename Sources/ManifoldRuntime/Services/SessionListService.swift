@@ -23,7 +23,7 @@ import ManifoldInference
 public enum SessionListEvent: Sendable {
     /// A page of sessions was loaded. Adapters either replace (`offset == 0`)
     /// or append (`offset > 0`) based on the carried offset.
-    case sessionsLoaded([ChatSessionRecord], hasMore: Bool, offset: Int)
+    case sessionsLoaded([ChatSession], hasMore: Bool, offset: Int)
 
     /// A session's title was changed (manual rename or auto-rename).
     case sessionRenamed(UUID, title: String)
@@ -53,14 +53,14 @@ public enum SessionListEvent: Sendable {
 
 /// Snapshot of search state emitted in ``SessionListEvent/searchResultsChanged(_:)``.
 public struct SearchResults: Sendable {
-    public let titleMatches: [ChatSessionRecord]
+    public let titleMatches: [ChatSession]
     public let messageHitsBySession: [UUID: [MessageSearchHit]]
-    public let messageMatchSessions: [ChatSessionRecord]
+    public let messageMatchSessions: [ChatSession]
 
     public init(
-        titleMatches: [ChatSessionRecord],
+        titleMatches: [ChatSession],
         messageHitsBySession: [UUID: [MessageSearchHit]],
-        messageMatchSessions: [ChatSessionRecord]
+        messageMatchSessions: [ChatSession]
     ) {
         self.titleMatches = titleMatches
         self.messageHitsBySession = messageHitsBySession
@@ -181,8 +181,8 @@ package final class SessionListService: Sendable {
     /// drops in tandem.
     @MainActor
     @discardableResult
-    package func createSession(title: String = "New Chat") async throws -> ChatSessionRecord {
-        let record = ChatSessionRecord(title: title)
+    package func createSession(title: String = "New Chat") async throws -> ChatSession {
+        let record = ChatSession(title: title)
         try await persistence.insertSession(record)
         await emitFirstPage()
         return record
@@ -228,7 +228,7 @@ package final class SessionListService: Sendable {
     /// callers that double-tap a pin affordance do not pay for a redundant
     /// `pinnedAt` reset, which would otherwise reshuffle the pinned bucket.
     @MainActor
-    package func pinSession(_ session: ChatSessionRecord) async throws {
+    package func pinSession(_ session: ChatSession) async throws {
         guard !session.isPinned else { return }
         var updated = session
         updated.isPinned = true
@@ -241,7 +241,7 @@ package final class SessionListService: Sendable {
     /// Unpins a session and emits `.sessionPinChanged(_, isPinned: false)`
     /// followed by `.sessionsLoaded`. No-op when the session is not pinned.
     @MainActor
-    package func unpinSession(_ session: ChatSessionRecord) async throws {
+    package func unpinSession(_ session: ChatSession) async throws {
         guard session.isPinned else { return }
         var updated = session
         updated.isPinned = false
@@ -253,7 +253,7 @@ package final class SessionListService: Sendable {
 
     /// Renames a session and emits `.sessionRenamed` followed by `.sessionsLoaded`.
     @MainActor
-    package func renameSession(_ session: ChatSessionRecord, title: String) async throws {
+    package func renameSession(_ session: ChatSession, title: String) async throws {
         var updated = session
         updated.title = title
         updated.updatedAt = Date()
@@ -274,7 +274,7 @@ package final class SessionListService: Sendable {
     /// previous `fetchSessionsPage` helper for tests that want to assert on
     /// raw page contents without VM mutation.
     @MainActor
-    package func fetchPage(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+    package func fetchPage(offset: Int, limit: Int) async throws -> [ChatSession] {
         try await persistence.fetchSessions(offset: offset, limit: limit)
     }
 
@@ -306,7 +306,7 @@ package final class SessionListService: Sendable {
     /// The adapter passes its currently loaded `sessions` so the service does
     /// not need to re-fetch persistence for a client-side filter.
     @MainActor
-    package func runTitleSearch(_ query: String, against sessions: [ChatSessionRecord]) {
+    package func runTitleSearch(_ query: String, against sessions: [ChatSession]) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             emit(.searchResultsChanged(.empty))
@@ -403,7 +403,7 @@ package final class SessionListService: Sendable {
     /// failures are recorded on diagnostics in distinct categories.
     @MainActor
     package func autoRenameSession(
-        _ session: ChatSessionRecord,
+        _ session: ChatSession,
         firstMessage: String,
         inferenceService: InferenceService
     ) async {
@@ -438,7 +438,7 @@ package final class SessionListService: Sendable {
     /// 50-character word-boundary truncation. Fallback for callers without
     /// inference. No-op when the session is no longer named "New Chat".
     @MainActor
-    package func autoGenerateTitle(for session: ChatSessionRecord, firstMessage: String) async {
+    package func autoGenerateTitle(for session: ChatSession, firstMessage: String) async {
         guard session.title == "New Chat" else { return }
         let maxLength = 50
         var title = firstMessage.trimmingCharacters(in: .whitespacesAndNewlines)

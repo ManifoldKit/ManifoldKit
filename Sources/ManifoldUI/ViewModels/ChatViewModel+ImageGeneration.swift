@@ -21,7 +21,7 @@ import ManifoldInference
 /// ``ChatViewModel/generateImage(prompt:config:)``.
 public struct ImageGenerationProgress: Sendable, Equatable {
 
-    /// The placeholder ``ChatMessageRecord/ID`` the generation is writing to.
+    /// The placeholder ``ChatMessage/ID`` the generation is writing to.
     public let messageID: UUID
 
     /// User-supplied prompt the generation was started with.
@@ -127,7 +127,7 @@ extension ChatViewModel {
 
     /// Begin an image generation in the active conversation.
     ///
-    /// Inserts a placeholder ``ChatMessageRecord`` immediately (via the
+    /// Inserts a placeholder ``ChatMessage`` immediately (via the
     /// runtime's `MessageStore` port) and dispatches a consumer task that
     /// updates ``imageGenerationProgress`` from runtime events. Returns the
     /// placeholder message ID synchronously so the caller can pair UI state
@@ -136,7 +136,7 @@ extension ChatViewModel {
     /// - Parameters:
     ///   - prompt: User-supplied prompt.
     ///   - config: Sampling and diffusion parameters.
-    /// - Returns: The placeholder ``ChatMessageRecord/ID``.
+    /// - Returns: The placeholder ``ChatMessage/ID``.
     /// - Throws: ``ChatViewModelImageError/notConfigured`` if no runtime is
     ///   installed, ``ChatViewModelImageError/noActiveConversation`` if
     ///   there is no active session, or any persistence error from the
@@ -187,7 +187,7 @@ extension ChatViewModel {
                 error: nil
             )
             if let sessionID = activeSessionID {
-                let placeholder = ChatMessageRecord(
+                let placeholder = ChatMessage(
                     id: messageID,
                     role: .assistant,
                     contentParts: [],

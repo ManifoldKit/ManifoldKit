@@ -16,17 +16,17 @@ final class AuxiliaryInferenceServiceTests: XCTestCase {
 
     @MainActor
     final class FakeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        private(set) var messages: [UUID: ChatMessage] = [:]
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
         func deleteMessage(_ messageID: UUID) async throws {
             messages.removeValue(forKey: messageID)
         }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -164,34 +164,34 @@ final class AuxiliaryInferenceServiceTests: XCTestCase {
 /// Minimal combined in-memory store for SessionListService tests.
 @MainActor
 private final class InMemorySessionAndMessageStore: SessionStore, MessageStore {
-    private(set) var sessions: [UUID: ChatSessionRecord] = [:]
-    private(set) var messages: [UUID: ChatMessageRecord] = [:]
+    private(set) var sessions: [UUID: ChatSession] = [:]
+    private(set) var messages: [UUID: ChatMessage] = [:]
 
     // SessionStore
-    func insertSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws {
         sessions[session.id] = session
     }
-    func updateSession(_ session: ChatSessionRecord) async throws {
+    func updateSession(_ session: ChatSession) async throws {
         sessions[session.id] = session
     }
     func deleteSession(_ id: UUID) async throws {
         sessions.removeValue(forKey: id)
     }
-    func fetchSessions() async throws -> [ChatSessionRecord] {
+    func fetchSessions() async throws -> [ChatSession] {
         sessions.values.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     // MessageStore
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
     func deleteMessage(_ messageID: UUID) async throws {
         messages.removeValue(forKey: messageID)
     }
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values
             .filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }

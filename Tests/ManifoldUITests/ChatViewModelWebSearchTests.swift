@@ -85,7 +85,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
     func test_toolSource_definesSearchWebTool() async {
         let vm = makeViewModel()
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let defs = await source.toolDefinitions(for: session)
         XCTAssertEqual(defs.count, 1)
         XCTAssertEqual(defs.first?.name, "search_web")
@@ -98,7 +98,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
         vm.configure(webSearchRuntime: runtime)
 
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let result = try await source.resolve(
             toolName: "search_web",
             arguments: #"{"query": "recent news"}"#,
@@ -112,7 +112,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
     func test_toolSource_resolve_unknownTool_returnsUnknownToolError() async throws {
         let vm = makeViewModel()
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let result = try await source.resolve(
             toolName: "not_search",
             arguments: #"{"query": "x"}"#,
@@ -126,7 +126,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
         let vm = makeViewModel()
         vm.configure(webSearchRuntime: runtime)
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let result = try await source.resolve(
             toolName: "search_web",
             arguments: #"{"query": "   "}"#,
@@ -142,7 +142,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
         let vm = makeViewModel()
         vm.configure(webSearchRuntime: runtime)
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let result = try await source.resolve(
             toolName: "search_web",
             arguments: #"{"query": "q"}"#,
@@ -157,7 +157,7 @@ final class ChatViewModelWebSearchTests: XCTestCase {
         // tool maps to a transient error result rather than trapping.
         let vm = makeViewModel()
         let source = WebSearchToolSource(viewModel: vm)
-        let session = ChatSessionRecord(title: "T")
+        let session = ChatSession(title: "T")
         let result = try await source.resolve(
             toolName: "search_web",
             arguments: #"{"query": "q"}"#,

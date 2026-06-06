@@ -6,7 +6,7 @@ import ManifoldRuntime
 import ManifoldTestSupport
 
 /// Integration tests for the multi-agent write path (#1495): the
-/// `ChatSessionRecord.agents` registry must survive an insert→fetch and an
+/// `ManifoldInference.ChatSession.agents` registry must survive an insert→fetch and an
 /// update→fetch round-trip losslessly, and `activeAgentID` must still resolve
 /// against a fetched agent afterwards.
 ///
@@ -50,7 +50,7 @@ final class SwiftDataAgentRoundTripTests: XCTestCase {
     func test_insertSession_persistsAgents() async throws {
         let researcher = makeAgent(name: "Researcher", prompt: "find facts", description: "research role", tools: ["search"])
         let writer = makeAgent(name: "Writer", prompt: "compose prose")
-        let record = ChatSessionRecord(
+        let record = ManifoldInference.ChatSession(
             title: "Multi-agent",
             agents: [researcher, writer],
             activeAgentID: researcher.id
@@ -77,7 +77,7 @@ final class SwiftDataAgentRoundTripTests: XCTestCase {
     func test_updateSession_reconcilesAgents_add_modify_remove() async throws {
         let keep = makeAgent(name: "Keep", prompt: "v1", tools: ["a"])
         let drop = makeAgent(name: "Drop", prompt: "remove me")
-        var record = ChatSessionRecord(
+        var record = ManifoldInference.ChatSession(
             title: "Reconcile",
             agents: [keep, drop],
             activeAgentID: keep.id
@@ -109,7 +109,7 @@ final class SwiftDataAgentRoundTripTests: XCTestCase {
     func test_updateSession_clearingAgents_removesAllRows() async throws {
         let a = makeAgent(name: "A", prompt: "a")
         let b = makeAgent(name: "B", prompt: "b")
-        var record = ChatSessionRecord(title: "Clearable", agents: [a, b])
+        var record = ManifoldInference.ChatSession(title: "Clearable", agents: [a, b])
         try await provider.insertSession(record)
 
         record.agents = []

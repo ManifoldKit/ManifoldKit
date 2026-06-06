@@ -6,8 +6,8 @@ final class ChatExportServiceTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    private func makeMessage(role: MessageRole, content: String) -> ChatMessageRecord {
-        ChatMessageRecord(role: role, content: content, sessionID: sessionID)
+    private func makeMessage(role: MessageRole, content: String) -> ChatMessage {
+        ChatMessage(role: role, content: content, sessionID: sessionID)
     }
 
     // MARK: - Plain Text
@@ -190,7 +190,7 @@ final class ChatExportServiceTests: XCTestCase {
     func test_export_memoryKind_excludedFromPlainText() {
         let messages = [
             makeMessage(role: .user, content: "Hello"),
-            ChatMessageRecord(role: .system, content: "A summary", sessionID: sessionID, kind: .memory("summary")),
+            ChatMessage(role: .system, content: "A summary", sessionID: sessionID, kind: .memory("summary")),
             makeMessage(role: .assistant, content: "Hi!")
         ]
         let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .plainText)
@@ -202,7 +202,7 @@ final class ChatExportServiceTests: XCTestCase {
     func test_export_memoryKind_excludedFromMarkdown() {
         let messages = [
             makeMessage(role: .user, content: "Tell me something"),
-            ChatMessageRecord(role: .system, content: "Compressed memory", sessionID: sessionID, kind: .memory("memory")),
+            ChatMessage(role: .system, content: "Compressed memory", sessionID: sessionID, kind: .memory("memory")),
             makeMessage(role: .assistant, content: "Sure!")
         ]
         let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .markdown)
@@ -213,8 +213,8 @@ final class ChatExportServiceTests: XCTestCase {
 
     func test_export_chatKind_includedInExports() {
         let messages = [
-            ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, kind: .chat),
-            ChatMessageRecord(role: .assistant, content: "Hi!", sessionID: sessionID, kind: .chat)
+            ChatMessage(role: .user, content: "Hello", sessionID: sessionID, kind: .chat),
+            ChatMessage(role: .assistant, content: "Hi!", sessionID: sessionID, kind: .chat)
         ]
         let result = ChatExportService.export(messages: messages, sessionTitle: "Test", format: .plainText)
         XCTAssertTrue(result.contains("User: Hello"), "chat-kind user records must appear in exports")

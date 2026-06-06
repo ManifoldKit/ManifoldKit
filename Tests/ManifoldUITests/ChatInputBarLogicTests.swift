@@ -59,7 +59,7 @@ final class ChatInputBarLogicTests: XCTestCase {
 
     func test_canSend_falseWhenNoModelLoaded() async {
         let vm = await makeViewModel()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         vm.inputText = "Hello"
         XCTAssertFalse(vm.isModelLoaded, "Precondition: no model loaded")
         XCTAssertFalse(canSend(vm), "canSend should be false without a loaded model")
@@ -121,7 +121,7 @@ final class ChatInputBarLogicTests: XCTestCase {
 
     func test_textFieldDisabled_whenNoModel() async {
         let vm = await makeViewModel()
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         XCTAssertTrue(isTextFieldDisabled(vm), "Text field should be disabled without a loaded model")
     }
 
@@ -166,7 +166,7 @@ final class ChatInputBarLogicTests: XCTestCase {
         let (vm, _) = makeViewModelWithMock()
         let sessionID = vm.activeSession!.id
         vm.messages = [
-            ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+            ChatMessage(role: .user, content: "Hello", sessionID: sessionID)
         ]
         XCTAssertFalse(showRegenerateButton(vm), "Regenerate should be hidden when last message is from user")
     }
@@ -175,8 +175,8 @@ final class ChatInputBarLogicTests: XCTestCase {
         let (vm, _) = makeViewModelWithMock()
         let sessionID = vm.activeSession!.id
         vm.messages = [
-            ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "Hi", sessionID: sessionID)
+            ChatMessage(role: .user, content: "Hello", sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "Hi", sessionID: sessionID)
         ]
         vm.transitionPhase(to: .waitingForFirstToken)
         vm.transitionPhase(to: .streaming)

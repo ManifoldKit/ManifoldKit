@@ -19,8 +19,8 @@ final class HandoffDetectorTests: XCTestCase {
         )
     }
 
-    private func makeSession(agents: [Agent], active: Agent?) -> ChatSessionRecord {
-        ChatSessionRecord(
+    private func makeSession(agents: [Agent], active: Agent?) -> ChatSession {
+        ChatSession(
             id: UUID(),
             title: "Fixture",
             agents: agents,

@@ -51,15 +51,15 @@ final class CancellationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+    private func createAndActivateSession(title: String = "Test Chat") async -> ManifoldInference.ChatSession {
         let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
         return session
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -124,7 +124,7 @@ final class CancellationTests: XCTestCase {
         let cancelledAssistant = vm.messages[1]
         let cancelledAssistantID = cancelledAssistant.id
 
-        let cancelledDescriptor = FetchDescriptor<ChatMessage>(
+        let cancelledDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == cancelledAssistantID }
         )
         XCTAssertEqual(
@@ -138,7 +138,7 @@ final class CancellationTests: XCTestCase {
         await vm.regenerateLastResponse()
 
         let sessionID = session.id
-        let sessionDescriptor = FetchDescriptor<ChatMessage>(
+        let sessionDescriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )

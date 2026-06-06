@@ -55,7 +55,7 @@ final class SessionQueueIsolationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") async throws -> ChatSessionRecord {
+    private func createAndActivateSession(title: String = "Test Chat") async throws -> ManifoldInference.ChatSession {
         let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)

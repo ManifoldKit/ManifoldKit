@@ -7,10 +7,10 @@ import ManifoldInference
 /// importer never partially writes a conversation (session exists, messages
 /// lost) because the caller forgot to pass one side.
 public struct ImportedConversation: Sendable {
-    public let session: ChatSessionRecord
-    public let messages: [ChatMessageRecord]
+    public let session: ChatSession
+    public let messages: [ChatMessage]
 
-    public init(session: ChatSessionRecord, messages: [ChatMessageRecord]) {
+    public init(session: ChatSession, messages: [ChatMessage]) {
         self.session = session
         self.messages = messages
     }

@@ -52,7 +52,7 @@ final class ChatExportIntegrationTests: XCTestCase {
     private func createAndActivateSession(
         vm: ChatViewModel,
         title: String = "Test Chat"
-    ) async throws -> ChatSessionRecord {
+    ) async throws -> ManifoldInference.ChatSession {
         let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)

@@ -15,10 +15,10 @@ final class JSONLImportFormatTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Builds a ChatSessionRecord with deterministic IDs and timestamps for
+    /// Builds a ChatSession with deterministic IDs and timestamps for
     /// comparison across encode/decode.
-    private func makeSession(id: UUID? = nil) -> ChatSessionRecord {
-        ChatSessionRecord(
+    private func makeSession(id: UUID? = nil) -> ChatSession {
+        ChatSession(
             id: id ?? sessionID,
             title: "Test Session",
             createdAt: Date(timeIntervalSinceReferenceDate: 0),
@@ -31,8 +31,8 @@ final class JSONLImportFormatTests: XCTestCase {
         role: MessageRole,
         content: String,
         offset: TimeInterval = 0
-    ) -> ChatMessageRecord {
-        ChatMessageRecord(
+    ) -> ChatMessage {
+        ChatMessage(
             id: id,
             role: role,
             content: content,
@@ -66,7 +66,7 @@ final class JSONLImportFormatTests: XCTestCase {
 
     func test_roundtrip_preservesTimestamp() throws {
         let knownDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
-        let msg = ChatMessageRecord(
+        let msg = ChatMessage(
             role: .user,
             content: "timed",
             timestamp: knownDate,

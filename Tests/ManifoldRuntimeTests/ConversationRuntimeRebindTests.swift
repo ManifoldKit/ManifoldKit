@@ -16,17 +16,17 @@ final class ConversationRuntimeRebindTests: XCTestCase {
     // MARK: - Stores (shared shape with HandoffScenarioTests)
 
     final class InMemoryMessageStore: MessageStore {
-        var messages: [UUID: ChatMessageRecord] = [:]
+        var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
         func deleteMessage(_ messageID: UUID) async throws { messages.removeValue(forKey: messageID) }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values.filter { $0.sessionID == sessionID }.sorted { $0.timestamp < $1.timestamp }
         }
         func deleteMessages(for sessionID: UUID) async throws {
@@ -36,12 +36,12 @@ final class ConversationRuntimeRebindTests: XCTestCase {
     }
 
     final class InMemorySessionStore: SessionStore {
-        var sessions: [UUID: ChatSessionRecord] = [:]
-        func insertSession(_ session: ChatSessionRecord) async throws { sessions[session.id] = session }
-        func updateSession(_ session: ChatSessionRecord) async throws { sessions[session.id] = session }
+        var sessions: [UUID: ChatSession] = [:]
+        func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
         func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
         func deleteAll() async throws { sessions.removeAll() }
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
         func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
@@ -55,10 +55,10 @@ final class ConversationRuntimeRebindTests: XCTestCase {
     /// and drops them when the binding is cleared.
     struct StubToolSource: SessionToolSource {
         let toolName: String
-        func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+        func toolDefinitions(for session: ChatSession) async -> [ToolDefinition] {
             [ToolDefinition(name: toolName, description: "stub", parameters: .object([:]))]
         }
-        func resolve(toolName: String, arguments: String, session: ChatSessionRecord) async throws -> ToolResult {
+        func resolve(toolName: String, arguments: String, session: ChatSession) async throws -> ToolResult {
             ToolResult(callId: "", content: "")
         }
     }
@@ -109,7 +109,7 @@ final class ConversationRuntimeRebindTests: XCTestCase {
         )
         let sessionID = UUID()
         try await sessionStore.insertSession(
-            ChatSessionRecord(id: sessionID, title: "Rebind")
+            ChatSession(id: sessionID, title: "Rebind")
         )
         return Fixture(
             runtime: runtime,
@@ -317,7 +317,7 @@ final class ConversationRuntimeRebindTests: XCTestCase {
             pipeline: nil
         )
         let sessionID = UUID()
-        try await sessionStore.insertSession(ChatSessionRecord(id: sessionID, title: "Hook"))
+        try await sessionStore.insertSession(ChatSession(id: sessionID, title: "Hook"))
 
         // Single long-running collector across both turns. `runtime.events`
         // is single-consumer — creating a second `for await` over it after

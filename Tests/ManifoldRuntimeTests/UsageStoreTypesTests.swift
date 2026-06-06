@@ -1,17 +1,17 @@
 import XCTest
 @testable import ManifoldRuntime
 
-/// Unit tests for ``TurnUsageRecord`` and ``UsageSummary`` value semantics.
+/// Unit tests for ``TurnUsage`` and ``UsageSummary`` value semantics.
 ///
 /// These types are part of the port surface and must round-trip through
 /// `Codable` and expose the right defaults. A compile-time guard ensures
 /// the ``UsageSummary`` init stays in sync with the stored-property set.
 final class UsageStoreTypesTests: XCTestCase {
 
-    // MARK: - TurnUsageRecord
+    // MARK: - TurnUsage
 
     func test_turnUsageRecord_defaultsToNilOptionals() {
-        let record = TurnUsageRecord(
+        let record = TurnUsage(
             sessionID: UUID(),
             endpointID: nil,
             modelIdentifier: "llama-3",
@@ -25,7 +25,7 @@ final class UsageStoreTypesTests: XCTestCase {
 
     func test_turnUsageRecord_defaultTimestampIsRecent() {
         let before = Date()
-        let record = TurnUsageRecord(
+        let record = TurnUsage(
             sessionID: UUID(),
             endpointID: nil,
             modelIdentifier: "test",
@@ -38,17 +38,17 @@ final class UsageStoreTypesTests: XCTestCase {
     }
 
     func test_turnUsageRecord_defaultIDIsNonNil() {
-        let r1 = TurnUsageRecord(
+        let r1 = TurnUsage(
             sessionID: UUID(), endpointID: nil, modelIdentifier: "m",
             promptTokens: 1, completionTokens: 1)
-        let r2 = TurnUsageRecord(
+        let r2 = TurnUsage(
             sessionID: UUID(), endpointID: nil, modelIdentifier: "m",
             promptTokens: 1, completionTokens: 1)
         XCTAssertNotEqual(r1.id, r2.id, "Each call to init should produce a distinct UUID.")
     }
 
     func test_turnUsageRecord_codableRoundTrip() throws {
-        let original = TurnUsageRecord(
+        let original = TurnUsage(
             id: UUID(),
             sessionID: UUID(),
             endpointID: UUID(),
@@ -65,7 +65,7 @@ final class UsageStoreTypesTests: XCTestCase {
         decoder.dateDecodingStrategy = .secondsSince1970
 
         let data = try encoder.encode(original)
-        let decoded = try decoder.decode(TurnUsageRecord.self, from: data)
+        let decoded = try decoder.decode(TurnUsage.self, from: data)
 
         XCTAssertEqual(decoded.id, original.id)
         XCTAssertEqual(decoded.sessionID, original.sessionID)

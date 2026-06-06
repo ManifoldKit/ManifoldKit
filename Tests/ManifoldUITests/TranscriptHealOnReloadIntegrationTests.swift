@@ -40,8 +40,8 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSession() async -> ChatSessionRecord {
-        let session = ChatSessionRecord(title: "Heal-On-Reload")
+    private func makeSession() async -> ManifoldInference.ChatSession {
+        let session = ManifoldInference.ChatSession(title: "Heal-On-Reload")
         try! await stack.provider.insertSession(session)
         return session
     }
@@ -50,7 +50,7 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
     /// transcript. The "valid cloud-API history payload" assertion in this
     /// suite collapses to "this set is empty" — both Anthropic's and OpenAI's
     /// validators reject any history with a non-empty version of this set.
-    private func orphanCallIDs(in records: [ChatMessageRecord]) -> Set<String> {
+    private func orphanCallIDs(in records: [ManifoldInference.ChatMessage]) -> Set<String> {
         var calls: Set<String> = []
         var results: Set<String> = []
         for r in records {
@@ -69,7 +69,7 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
 
     func test_sessionReload_synthesisesResultForOrphanToolCall() async throws {
         let session = await makeSession()
-        let userMsg = ChatMessageRecord(
+        let userMsg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Write a file",
             timestamp: Date(timeIntervalSince1970: 1000),
@@ -80,7 +80,7 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
             toolName: "writeFile",
             arguments: "{\"path\":\"/tmp/x\",\"contents\":\"hi\"}"
         )
-        let assistantMsg = ChatMessageRecord(
+        let assistantMsg = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [.text("On it"), .toolCall(orphanCall)],
             timestamp: Date(timeIntervalSince1970: 1001),
@@ -122,7 +122,7 @@ final class TranscriptHealOnReloadIntegrationTests: XCTestCase {
         let session = await makeSession()
         let call = ToolCall(id: "paired-1", toolName: "search", arguments: "{}")
         let result = ToolResult(callId: "paired-1", content: "ok")
-        let assistantMsg = ChatMessageRecord(
+        let assistantMsg = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [.toolCall(call), .toolResult(result), .text("done")],
             timestamp: Date(timeIntervalSince1970: 1000),

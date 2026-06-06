@@ -7,7 +7,7 @@ import ManifoldInference
 /// boundary message injected into the next turn's structured history).
 ///
 /// Lives in `ManifoldRuntime` alongside ``HandoffToolSource`` because it
-/// operates on the storage-agnostic ``ChatSessionRecord`` — the same input
+/// operates on the storage-agnostic ``ChatSession`` — the same input
 /// the protocol takes — and is consumed by ``ConversationTurnExecutor``.
 /// Extracting it from the executor keeps the classification logic unit-
 /// testable in isolation (no inference dependency at the test seam).
@@ -26,7 +26,7 @@ public enum HandoffDetector {
     ///   so the dispatch loop routes the call through the normal registry.
     public static func classify(
         _ call: ToolCall,
-        in session: ChatSessionRecord
+        in session: ChatSession
     ) -> HandoffDetectionResult {
         guard call.toolName.hasPrefix(transferToolPrefix) else {
             return .regular(call)

@@ -6,7 +6,7 @@ import SwiftData
 /// Default ``UsageStore`` backed by SwiftData.
 ///
 /// Operates on the ``ModelContext`` injected at init time, converting between
-/// ``TurnUsageRecordModel`` `@Model` rows and ``TurnUsageRecord`` value types
+/// ``TurnUsageModel`` `@Model` rows and ``TurnUsage`` value types
 /// at the boundary.
 ///
 /// `@MainActor` isolation mirrors ``SwiftDataEndpointStore`` and other adapters
@@ -28,8 +28,8 @@ public final class SwiftDataUsageStore: UsageStore {
 
     // MARK: - UsageStore
 
-    public func record(_ record: TurnUsageRecord) async throws {
-        let model = TurnUsageRecordModel(
+    public func record(_ record: TurnUsage) async throws {
+        let model = TurnUsageModel(
             id: record.id,
             sessionID: record.sessionID,
             endpointID: record.endpointID,
@@ -46,7 +46,7 @@ public final class SwiftDataUsageStore: UsageStore {
 
     public func summary(sinceDays: Int) async throws -> UsageSummary {
         let cutoff = cutoffDate(sinceDays: sinceDays)
-        let descriptor = FetchDescriptor<TurnUsageRecordModel>(
+        let descriptor = FetchDescriptor<TurnUsageModel>(
             predicate: #Predicate { $0.timestamp >= cutoff }
         )
         let records = try modelContext.fetch(descriptor)
@@ -55,15 +55,15 @@ public final class SwiftDataUsageStore: UsageStore {
 
     public func summary(forEndpoint endpointID: UUID, sinceDays: Int) async throws -> UsageSummary {
         let cutoff = cutoffDate(sinceDays: sinceDays)
-        let descriptor = FetchDescriptor<TurnUsageRecordModel>(
+        let descriptor = FetchDescriptor<TurnUsageModel>(
             predicate: #Predicate { $0.endpointID == endpointID && $0.timestamp >= cutoff }
         )
         let records = try modelContext.fetch(descriptor)
         return aggregate(records)
     }
 
-    public func recentRecords(limit: Int) async throws -> [TurnUsageRecord] {
-        var descriptor = FetchDescriptor<TurnUsageRecordModel>(
+    public func recentRecords(limit: Int) async throws -> [TurnUsage] {
+        var descriptor = FetchDescriptor<TurnUsageModel>(
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
         descriptor.fetchLimit = limit
@@ -80,7 +80,7 @@ public final class SwiftDataUsageStore: UsageStore {
     }
 
     /// Reduces a sequence of fetched model rows into a ``UsageSummary``.
-    private func aggregate(_ rows: [TurnUsageRecordModel]) -> UsageSummary {
+    private func aggregate(_ rows: [TurnUsageModel]) -> UsageSummary {
         var promptTotal = 0
         var completionTotal = 0
         var cachedInputTotal = 0

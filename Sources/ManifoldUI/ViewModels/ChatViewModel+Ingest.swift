@@ -42,7 +42,7 @@ extension ChatViewModel {
         // last viewed. Mirrors the SessionManagerViewModel path but stays
         // on ChatViewModel so hosts without a session manager (AppIntent,
         // deep-link) can still handoff cleanly.
-        let session = ChatSessionRecord(title: "New Chat")
+        let session = ChatSession(title: "New Chat")
         do {
             try await persistenceAdapter.insertSession(session)
         } catch {

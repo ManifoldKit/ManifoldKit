@@ -29,7 +29,7 @@ final class SessionPinningTests: XCTestCase {
     // MARK: - Default state
 
     func test_insertSession_defaultsToUnpinned() async throws {
-        let record = ChatSessionRecord(title: "Default")
+        let record = ManifoldInference.ChatSession(title: "Default")
         try await provider.insertSession(record)
 
         let fetched = try await provider.fetchSessions()
@@ -41,7 +41,7 @@ final class SessionPinningTests: XCTestCase {
     // MARK: - Pin / unpin round-trip
 
     func test_pinning_persistsAcrossFetch() async throws {
-        let record = ChatSessionRecord(title: "Pin me")
+        let record = ManifoldInference.ChatSession(title: "Pin me")
         try await provider.insertSession(record)
 
         var updated = record
@@ -56,7 +56,7 @@ final class SessionPinningTests: XCTestCase {
     }
 
     func test_unpinning_clearsState() async throws {
-        let record = ChatSessionRecord(
+        let record = ManifoldInference.ChatSession(
             title: "Unpin",
             isPinned: true,
             pinnedAt: Date(timeIntervalSince1970: 1_500_000)
@@ -82,15 +82,15 @@ final class SessionPinningTests: XCTestCase {
         // Two pinned sessions and two unpinned. Pinned-at order is the
         // *opposite* of updatedAt order so the test fails if the sort falls
         // back to updatedAt within the pinned bucket.
-        let unpinnedRecent = ChatSessionRecord(title: "U-recent", updatedAt: now.addingTimeInterval(300))
-        let unpinnedOld = ChatSessionRecord(title: "U-old", updatedAt: now.addingTimeInterval(100))
-        let pinnedOlderActivity = ChatSessionRecord(
+        let unpinnedRecent = ManifoldInference.ChatSession(title: "U-recent", updatedAt: now.addingTimeInterval(300))
+        let unpinnedOld = ManifoldInference.ChatSession(title: "U-old", updatedAt: now.addingTimeInterval(100))
+        let pinnedOlderActivity = ManifoldInference.ChatSession(
             title: "P-older-activity",
             updatedAt: now.addingTimeInterval(50),
             isPinned: true,
             pinnedAt: now.addingTimeInterval(900)   // pinned more recently
         )
-        let pinnedRecentActivity = ChatSessionRecord(
+        let pinnedRecentActivity = ManifoldInference.ChatSession(
             title: "P-recent-activity",
             updatedAt: now.addingTimeInterval(400),
             isPinned: true,
@@ -117,7 +117,7 @@ final class SessionPinningTests: XCTestCase {
         // bucket across pages cleanly — pinned[2] surfaces on page 2 before
         // any unpinned record.
         for i in 0..<3 {
-            try await provider.insertSession(ChatSessionRecord(
+            try await provider.insertSession(ManifoldInference.ChatSession(
                 title: "P\(i)",
                 updatedAt: now,
                 isPinned: true,
@@ -125,7 +125,7 @@ final class SessionPinningTests: XCTestCase {
             ))
         }
         for i in 0..<2 {
-            try await provider.insertSession(ChatSessionRecord(
+            try await provider.insertSession(ManifoldInference.ChatSession(
                 title: "U\(i)",
                 updatedAt: now.addingTimeInterval(TimeInterval(-100 - i))
             ))

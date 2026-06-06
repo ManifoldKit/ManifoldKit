@@ -35,7 +35,7 @@ import ManifoldInference
 /// ## Persistence
 ///
 /// On ``generate(prompt:config:in:)`` the runtime inserts a placeholder
-/// ``ChatMessageRecord`` (role `.assistant`, empty `contentParts`) into the
+/// ``ChatMessage`` (role `.assistant`, empty `contentParts`) into the
 /// message store. Backend progress events are forwarded as
 /// ``VideoRuntimeEvent/progress(messageID:fractionComplete:)`` *without*
 /// touching the store — UI subscribes to events for the in-flight indicator;
@@ -82,7 +82,7 @@ public final class VideoGenerationRuntime {
     // mutation happens from main-actor methods and the runtime itself is
     // `@MainActor`.
 
-    private var inFlight: [ChatMessageRecord.ID: Task<Void, Never>] = [:]
+    private var inFlight: [ChatMessage.ID: Task<Void, Never>] = [:]
 
     // MARK: Init
 
@@ -116,7 +116,7 @@ public final class VideoGenerationRuntime {
 
     /// Begins a video generation in the supplied session.
     ///
-    /// Persists a placeholder ``ChatMessageRecord`` (role `.assistant`,
+    /// Persists a placeholder ``ChatMessage`` (role `.assistant`,
     /// empty `contentParts`) before returning, then submits the generation
     /// request to the backend (which may involve a network round-trip) and
     /// starts a detached task that forwards backend events through ``events``.
@@ -129,7 +129,7 @@ public final class VideoGenerationRuntime {
     ///   - prompt: User-supplied prompt.
     ///   - config: Video generation parameters.
     ///   - sessionID: The session the placeholder message belongs to.
-    /// - Returns: The placeholder ``ChatMessageRecord/ID`` so the host can
+    /// - Returns: The placeholder ``ChatMessage/ID`` so the host can
     ///   pair UI state with the in-flight generation.
     /// - Throws: Persistence errors from the placeholder insert, or backend
     ///   submission errors (auth, rate limit, network).
@@ -138,12 +138,12 @@ public final class VideoGenerationRuntime {
         prompt: String,
         config: VideoGenerationConfig,
         in sessionID: UUID
-    ) async throws -> ChatMessageRecord.ID {
+    ) async throws -> ChatMessage.ID {
         // Insert placeholder synchronously so the caller observes the
         // message ID before any event fires. Empty `contentParts` because
         // we don't have a `.generatedVideo` payload yet — the placeholder
         // is finalised via `updateMessage` when the backend completes.
-        let placeholder = ChatMessageRecord(
+        let placeholder = ChatMessage(
             role: .assistant,
             contentParts: [],
             sessionID: sessionID
@@ -191,7 +191,7 @@ public final class VideoGenerationRuntime {
     /// Idempotent — cancelling an unknown or already-finished message is a
     /// no-op. The terminal ``VideoRuntimeEvent/cancelled(messageID:)`` event
     /// fires once the underlying stream observes the cancellation.
-    public func cancel(messageID: ChatMessageRecord.ID) async {
+    public func cancel(messageID: ChatMessage.ID) async {
         guard let task = inFlight[messageID] else { return }
         task.cancel()
         // Don't await `task.value` — the consumer task itself emits the
@@ -204,9 +204,9 @@ public final class VideoGenerationRuntime {
 
     private func consume(
         stream: AsyncThrowingStream<VideoGenerationEvent, Error>,
-        messageID: ChatMessageRecord.ID,
+        messageID: ChatMessage.ID,
         prompt: String,
-        placeholder: ChatMessageRecord,
+        placeholder: ChatMessage,
         snapshot: VideoGenerationConfigSnapshot
     ) async {
         defer {

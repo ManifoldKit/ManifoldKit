@@ -7,7 +7,7 @@ import ManifoldInference
 extension ChatViewModel {
 
     /// Switches to a different chat session, loading its messages and settings.
-    public func switchToSession(_ session: ChatSessionRecord) async {
+    public func switchToSession(_ session: ChatSession) async {
         // Drive the UI back to idle synchronously so the toolbar/stop button
         // observes the transition immediately. The runtime handle and queue
         // tear-down are awaited by `sessionManager.teardown` before any

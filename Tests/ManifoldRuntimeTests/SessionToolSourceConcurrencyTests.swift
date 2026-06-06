@@ -22,14 +22,14 @@ private actor MutableToolRegistry {
 private struct RegistryBackedToolSource: SessionToolSource {
     let registry: MutableToolRegistry
 
-    func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+    func toolDefinitions(for session: ChatSession) async -> [ToolDefinition] {
         await registry.snapshot()
     }
 
     func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ChatSession
     ) async throws -> ToolResult {
         let snapshot = await registry.snapshot()
         guard snapshot.contains(where: { $0.name == toolName }) else {
@@ -61,7 +61,7 @@ final class SessionToolSourceConcurrencyTests: XCTestCase {
         await registry.replace(with: baseline)
 
         let source = RegistryBackedToolSource(registry: registry)
-        let session = ChatSessionRecord(id: UUID(), title: "concurrency fixture")
+        let session = ChatSession(id: UUID(), title: "concurrency fixture")
 
         await withTaskGroup(of: Int.self) { group in
             // Writers: alternate between two equivalent definition sets so

@@ -1,14 +1,14 @@
 import XCTest
 import ManifoldInference
 
-/// Tests for `ChatMessageRecord.hasVisibleContent` and the interaction between
+/// Tests for `ChatMessage.hasVisibleContent` and the interaction between
 /// `.thinking` parts and the `content` property.
-final class ChatMessageRecordVisibleContentTests: XCTestCase {
+final class ChatMessageVisibleContentTests: XCTestCase {
 
     // MARK: - 1. Thinking-only message has no visible content
 
     func test_hasVisibleContent_false_forThinkingOnly() {
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             role: .assistant,
             contentParts: [.thinking("I reasoned about this."), .thinking("And then some more.")],
             sessionID: UUID()
@@ -24,7 +24,7 @@ final class ChatMessageRecordVisibleContentTests: XCTestCase {
     // MARK: - 2. Text-only message has visible content
 
     func test_hasVisibleContent_true_forText() {
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             role: .assistant,
             content: "Here is the answer.",
             sessionID: UUID()
@@ -37,7 +37,7 @@ final class ChatMessageRecordVisibleContentTests: XCTestCase {
     // MARK: - 3. Mixed parts — thinking + text
 
     func test_hasVisibleContent_true_forMixed() {
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             role: .assistant,
             contentParts: [.thinking("internal reasoning"), .text("The answer is 42.")],
             sessionID: UUID()
@@ -53,7 +53,7 @@ final class ChatMessageRecordVisibleContentTests: XCTestCase {
     // MARK: - 4. content property excludes thinking parts
 
     func test_contentProperty_excludesThinking() {
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             role: .assistant,
             contentParts: [.thinking("internal reasoning"), .text("answer")],
             sessionID: UUID()
@@ -67,7 +67,7 @@ final class ChatMessageRecordVisibleContentTests: XCTestCase {
     }
 
     func test_contentProperty_withMultipleTextParts_concatenatesBoth() {
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             role: .assistant,
             contentParts: [
                 .thinking("step 1"),

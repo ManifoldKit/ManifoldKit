@@ -43,7 +43,7 @@ final class ChatViewModelScenePhaseIntegrationTests: XCTestCase {
         let service = InferenceService(backend: slowBackend, name: "SlowMock")
         vm = ChatViewModel(inferenceService: service)
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        vm.activeSession = ChatSessionRecord(title: "Scene Phase Integration")
+        vm.activeSession = ChatSession(title: "Scene Phase Integration")
     }
 
     override func tearDown() async throws {

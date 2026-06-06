@@ -45,31 +45,31 @@ final class PersistenceIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createSession(title: String = "Persistence Test") async -> ChatSession {
-        let session = ChatSession(title: title)
+    private func createSession(title: String = "Persistence Test") async -> ManifoldSchemaV9.ChatSession {
+        let session = ManifoldSchemaV9.ChatSession(title: title)
         context.insert(session)
         try? context.save()
         await vm.switchToSession(session.toRecord())
         return session
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchAllMessages() -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchAllMessages() -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchSessions() -> [ChatSession] {
-        let descriptor = FetchDescriptor<ChatSession>()
+    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>()
         return (try? context.fetch(descriptor)) ?? []
     }
 
@@ -82,7 +82,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         // Do NOT call configure(persistence:)
 
         // Create a session and set it directly so loadMessages has a sessionID.
-        let session = ChatSession(title: "Test")
+        let session = ManifoldSchemaV9.ChatSession(title: "Test")
         unconfiguredVM.activeSession = session.toRecord()
 
         await unconfiguredVM.loadMessages()
@@ -99,7 +99,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
 
         // Manually add a message to the in-memory messages array.
-        let dummyMessage = ChatMessage(role: .user, content: "stale", sessionID: UUID())
+        let dummyMessage = ManifoldSchemaV9.ChatMessage(role: .user, content: "stale", sessionID: UUID())
         vm.messages = [dummyMessage.toRecord()]
         XCTAssertEqual(vm.messages.count, 1)
 
@@ -119,9 +119,9 @@ final class PersistenceIntegrationTests: XCTestCase {
         let session = await createSession()
 
         // Insert messages with explicit timestamps out of order.
-        let msg1 = ChatMessage(role: .user, content: "First", sessionID: session.id)
-        let msg2 = ChatMessage(role: .assistant, content: "Second", sessionID: session.id)
-        let msg3 = ChatMessage(role: .user, content: "Third", sessionID: session.id)
+        let msg1 = ManifoldSchemaV9.ChatMessage(role: .user, content: "First", sessionID: session.id)
+        let msg2 = ManifoldSchemaV9.ChatMessage(role: .assistant, content: "Second", sessionID: session.id)
+        let msg3 = ManifoldSchemaV9.ChatMessage(role: .user, content: "Third", sessionID: session.id)
 
         // Set timestamps to enforce ordering.
         msg1.timestamp = Date(timeIntervalSince1970: 1000)
@@ -147,7 +147,7 @@ final class PersistenceIntegrationTests: XCTestCase {
     func test_saveMessage_insertsIntoContextAndFetchesBack() async {
         let session = await createSession()
 
-        let message = ChatMessage(role: .user, content: "Persisted message", sessionID: session.id)
+        let message = ManifoldSchemaV9.ChatMessage(role: .user, content: "Persisted message", sessionID: session.id)
         try! await vm.saveMessage(message.toRecord())
 
         let fetched = fetchMessages(for: session.id)
@@ -160,8 +160,8 @@ final class PersistenceIntegrationTests: XCTestCase {
     func test_saveMessage_multipleMessages_allPersisted() async {
         let session = await createSession()
 
-        let msg1 = ChatMessage(role: .user, content: "User msg", sessionID: session.id)
-        let msg2 = ChatMessage(role: .assistant, content: "Assistant msg", sessionID: session.id)
+        let msg1 = ManifoldSchemaV9.ChatMessage(role: .user, content: "User msg", sessionID: session.id)
+        let msg2 = ManifoldSchemaV9.ChatMessage(role: .assistant, content: "Assistant msg", sessionID: session.id)
         try! await vm.saveMessage(msg1.toRecord())
         try! await vm.saveMessage(msg2.toRecord())
 
@@ -174,7 +174,7 @@ final class PersistenceIntegrationTests: XCTestCase {
     func test_deleteMessage_removesFromContext() async {
         let session = await createSession()
 
-        let message = ChatMessage(role: .user, content: "To be deleted", sessionID: session.id)
+        let message = ManifoldSchemaV9.ChatMessage(role: .user, content: "To be deleted", sessionID: session.id)
         try! await vm.saveMessage(message.toRecord())
         XCTAssertEqual(fetchMessages(for: session.id).count, 1)
 
@@ -188,8 +188,8 @@ final class PersistenceIntegrationTests: XCTestCase {
     func test_deleteMessage_onlyRemovesTargetMessage() async {
         let session = await createSession()
 
-        let msg1 = ChatMessage(role: .user, content: "Keep this", sessionID: session.id)
-        let msg2 = ChatMessage(role: .assistant, content: "Delete this", sessionID: session.id)
+        let msg1 = ManifoldSchemaV9.ChatMessage(role: .user, content: "Keep this", sessionID: session.id)
+        let msg2 = ManifoldSchemaV9.ChatMessage(role: .assistant, content: "Delete this", sessionID: session.id)
         try! await vm.saveMessage(msg1.toRecord())
         try! await vm.saveMessage(msg2.toRecord())
         XCTAssertEqual(fetchMessages(for: session.id).count, 2)
@@ -321,7 +321,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     func test_sessionRecord_promptTemplate_roundTrips() async throws {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
-        var record = ChatSessionRecord(title: "Template Test")
+        var record = ManifoldInference.ChatSession(title: "Template Test")
         record.promptTemplate = .llama3
         try await persistence.insertSession(record)
 
@@ -333,7 +333,7 @@ final class PersistenceIntegrationTests: XCTestCase {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
         let pinA = UUID()
         let pinB = UUID()
-        var record = ChatSessionRecord(title: "Pin Test")
+        var record = ManifoldInference.ChatSession(title: "Pin Test")
         record.pinnedMessageIDs = [pinA, pinB]
         try await persistence.insertSession(record)
 
@@ -343,7 +343,7 @@ final class PersistenceIntegrationTests: XCTestCase {
 
     func test_sessionRecord_defaults_roundTrip() async throws {
         let persistence = SwiftDataPersistenceProvider(modelContext: context)
-        let record = ChatSessionRecord(title: "Defaults Test")
+        let record = ManifoldInference.ChatSession(title: "Defaults Test")
         try await persistence.insertSession(record)
 
         let fetched = try await persistence.fetchSessions().first { $0.id == record.id }

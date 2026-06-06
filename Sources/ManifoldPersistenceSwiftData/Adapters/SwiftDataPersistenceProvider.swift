@@ -13,8 +13,8 @@ import SwiftData
 /// want a true per-port impl can wire two custom types of their own.
 ///
 /// Operates on the ``ModelContext`` injected at init time, converting between
-/// SwiftData `@Model` objects and plain ``ChatSessionRecord`` /
-/// ``ChatMessageRecord`` value types at the boundary.
+/// SwiftData `@Model` objects and plain ``ManifoldInference.ChatSession`` /
+/// ``ManifoldInference.ChatMessage`` value types at the boundary.
 @MainActor
 public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, TransactionalMessageStore {
 
@@ -43,7 +43,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
     // MARK: - Sessions
 
-    public func insertSession(_ record: ChatSessionRecord) async throws {
+    public func insertSession(_ record: ManifoldInference.ChatSession) async throws {
         let session = ChatSession(title: record.title)
         session.id = record.id
         session.createdAt = record.createdAt
@@ -68,7 +68,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         await fireSessionHooks(record)
     }
 
-    public func updateSession(_ record: ChatSessionRecord) async throws {
+    public func updateSession(_ record: ManifoldInference.ChatSession) async throws {
         guard let session = try fetchSwiftDataSession(id: record.id) else {
             throw ChatPersistenceError.sessionNotFound(record.id)
         }
@@ -192,7 +192,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         try modelContext.save()
     }
 
-    public func fetchSessions() async throws -> [ChatSessionRecord] {
+    public func fetchSessions() async throws -> [ManifoldInference.ChatSession] {
         // Pinned sessions surface above the chronological list (#1301). The
         // primary key is `isPinned` descending so true sorts above false; the
         // pinned bucket is then ordered by `pinnedAt` desc (most recently
@@ -209,7 +209,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return try modelContext.fetch(descriptor).map { $0.toRecord() }
     }
 
-    public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+    public func fetchSessions(offset: Int, limit: Int) async throws -> [ManifoldInference.ChatSession] {
         var descriptor = FetchDescriptor<ChatSession>(
             sortBy: [
                 SortDescriptor(\.pinnedSortKey, order: .reverse),
@@ -305,14 +305,14 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
     // MARK: - Messages
 
-    public func insertMessage(_ record: ChatMessageRecord) async throws {
+    public func insertMessage(_ record: ManifoldInference.ChatMessage) async throws {
         let message = makeSwiftDataMessage(from: record)
         modelContext.insert(message)
         try modelContext.save()
         await fireMessageHooks(record)
     }
 
-    public func updateMessage(_ record: ChatMessageRecord) async throws {
+    public func updateMessage(_ record: ManifoldInference.ChatMessage) async throws {
         guard let message = try fetchSwiftDataMessage(id: record.id) else {
             throw ChatPersistenceError.messageNotFound(record.id)
         }
@@ -329,7 +329,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         try modelContext.save()
     }
 
-    public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID) async throws -> [ManifoldInference.ChatMessage] {
         // "Whole session" read. Bounded to the newest `maxSessionMessageFetch`
         // rows so a pathological session can't load unbounded rows into RAM;
         // fetched newest-first under the cap then reversed to ascending so that
@@ -348,7 +348,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return results.reversed().map { $0.toRecord() }
     }
 
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ManifoldInference.ChatMessage] {
         // Fetch newest-first, take `limit`, then reverse to ascending order.
         let descriptor = boundedMessageFetch(
             predicate: #Predicate { $0.sessionID == sessionID },
@@ -359,7 +359,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return results.reversed().map { $0.toRecord() }
     }
 
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ManifoldInference.ChatMessage] {
         // Fetch messages older than `before`, newest-first, take `limit`, then reverse.
         let descriptor = boundedMessageFetch(
             predicate: #Predicate { $0.sessionID == sessionID && $0.timestamp < before },
@@ -383,7 +383,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     public func performMessageMutations(_ mutations: [MessageStoreMutation]) async throws {
         guard !mutations.isEmpty else { return }
 
-        var writtenRecords: [ChatMessageRecord] = []
+        var writtenRecords: [ManifoldInference.ChatMessage] = []
         do {
             for mutation in mutations {
                 switch mutation {
@@ -435,14 +435,14 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// Fires registered message-write hooks in registration order.
     /// Hook errors are not surfaceable: hooks must not throw, and a failing
     /// hook cannot roll back the committed write.
-    private func fireMessageHooks(_ record: ChatMessageRecord) async {
+    private func fireMessageHooks(_ record: ManifoldInference.ChatMessage) async {
         guard !messageHooks.isEmpty else { return }
         for hook in messageHooks {
             await hook.messageDidWrite(record, in: record.sessionID)
         }
     }
 
-    private func fireSessionHooks(_ record: ChatSessionRecord) async {
+    private func fireSessionHooks(_ record: ManifoldInference.ChatSession) async {
         guard !sessionHooks.isEmpty else { return }
         for hook in sessionHooks {
             await hook.sessionDidWrite(record)
@@ -465,7 +465,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return try modelContext.fetch(descriptor).first
     }
 
-    private func makeSwiftDataMessage(from record: ChatMessageRecord) -> ChatMessage {
+    private func makeSwiftDataMessage(from record: ManifoldInference.ChatMessage) -> ChatMessage {
         let message = ChatMessage(role: record.role, contentParts: record.contentParts, sessionID: record.sessionID)
         message.id = record.id
         message.timestamp = record.timestamp
@@ -477,7 +477,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         return message
     }
 
-    private func applyMutableMessageFields(from record: ChatMessageRecord, to message: ChatMessage) {
+    private func applyMutableMessageFields(from record: ManifoldInference.ChatMessage, to message: ChatMessage) {
         message.contentParts = record.contentParts
         message.promptTokens = record.promptTokens
         message.completionTokens = record.completionTokens
@@ -491,15 +491,15 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
 extension ChatSession {
     /// Converts a SwiftData model to a plain record.
-    func toRecord() -> ChatSessionRecord {
+    func toRecord() -> ManifoldInference.ChatSession {
         record
     }
 }
 
 extension ChatMessage {
     /// Converts a SwiftData model to a plain record.
-    func toRecord() -> ChatMessageRecord {
-        ChatMessageRecord(
+    func toRecord() -> ManifoldInference.ChatMessage {
+        ManifoldInference.ChatMessage(
             id: id,
             role: role,
             contentParts: contentParts,

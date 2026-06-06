@@ -43,7 +43,7 @@ final class SessionListServiceDeleteAllTests: XCTestCase {
 
     func test_deleteAllSessions_emitsExactlyOneTerminalEvent() async throws {
         for i in 0..<6 {
-            try await stack.provider.insertSession(ChatSessionRecord(title: "S\(i)"))
+            try await stack.provider.insertSession(ChatSession(title: "S\(i)"))
         }
 
         // Attach the sink *after* the seed so we only capture the deleteAll
@@ -86,7 +86,7 @@ final class SessionListServiceDeleteAllTests: XCTestCase {
         // Errors propagate to the caller, but observable state must not
         // briefly show "empty" and then "restored" if persistence failed —
         // so the service emits nothing when the store throws.
-        try await stack.provider.insertSession(ChatSessionRecord(title: "S0"))
+        try await stack.provider.insertSession(ChatSession(title: "S0"))
 
         let injector = ErrorInjectingPersistenceProvider(wrapping: stack.provider)
         injector.shouldThrowOnDeleteAll = ChatPersistenceError.providerNotConfigured

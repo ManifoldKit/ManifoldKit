@@ -51,7 +51,7 @@ final class PostGenerationTaskTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test") async -> ChatSessionRecord {
+    private func createAndActivateSession(title: String = "Test") async -> ManifoldInference.ChatSession {
         let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
@@ -237,7 +237,7 @@ private final class OrderCapturingTask: PostGenerationTask, Sendable {
         self.index = index
         self.box = box
     }
-    func run(message: ChatMessageRecord, session: ChatSessionRecord) async throws {
+    func run(message: ManifoldInference.ChatMessage, session: ManifoldInference.ChatSession) async throws {
         await box.append(index)
     }
 }

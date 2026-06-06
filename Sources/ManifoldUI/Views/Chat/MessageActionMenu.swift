@@ -14,17 +14,17 @@ import ManifoldInference
 /// the extra items render after the default set.
 public struct MessageActionMenuModifier<ExtraItems: View>: ViewModifier {
 
-    public let message: ChatMessageRecord
+    public let message: ChatMessage
     public let viewModel: ChatViewModel
-    private let extraItems: (ChatMessageRecord) -> ExtraItems
+    private let extraItems: (ChatMessage) -> ExtraItems
 
     @State private var isEditing: Bool = false
     @State private var editText: String = ""
 
     public init(
-        message: ChatMessageRecord,
+        message: ChatMessage,
         viewModel: ChatViewModel,
-        @ViewBuilder extraItems: @escaping (ChatMessageRecord) -> ExtraItems
+        @ViewBuilder extraItems: @escaping (ChatMessage) -> ExtraItems
     ) {
         self.message = message
         self.viewModel = viewModel
@@ -163,7 +163,7 @@ extension View {
     /// Attaches a context menu with the default message actions (pin, copy,
     /// edit, regenerate, branch, delete).
     public func messageActionMenu(
-        message: ChatMessageRecord,
+        message: ChatMessage,
         viewModel: ChatViewModel
     ) -> some View {
         modifier(MessageActionMenuModifier(message: message, viewModel: viewModel) { _ in
@@ -174,9 +174,9 @@ extension View {
     /// Attaches a context menu with the default message actions plus the
     /// host-supplied items rendered after the defaults.
     public func messageActionMenu<ExtraItems: View>(
-        message: ChatMessageRecord,
+        message: ChatMessage,
         viewModel: ChatViewModel,
-        @ViewBuilder contextMenuItems: @escaping (ChatMessageRecord) -> ExtraItems
+        @ViewBuilder contextMenuItems: @escaping (ChatMessage) -> ExtraItems
     ) -> some View {
         modifier(MessageActionMenuModifier(
             message: message,
@@ -190,7 +190,7 @@ extension View {
     Text("Long press me for actions")
         .padding()
         .messageActionMenu(
-            message: ChatMessageRecord(
+            message: ChatMessage(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                 role: .user,
                 content: "Hello, world!",

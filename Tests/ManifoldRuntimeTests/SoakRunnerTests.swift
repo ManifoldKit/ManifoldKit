@@ -134,19 +134,19 @@ final class SoakRunnerTests: XCTestCase {
     /// RSS regression is from the store itself or from leaked runtime state.
     @MainActor
     private final class SoakMessageStore: MessageStore {
-        private var messages: [UUID: ChatMessageRecord] = [:]
+        private var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
         var messageCount: Int { messages.count }
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -162,7 +162,7 @@ final class SoakRunnerTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }

@@ -45,15 +45,15 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func fetchSessions() -> [ChatSession] {
-        let descriptor = FetchDescriptor<ChatSession>(
+    private func fetchSessions() -> [ManifoldSchemaV9.ChatSession] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
@@ -134,7 +134,7 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
 
     func test_urlPayload_appendToActive_appendsURLStringToDraft() async {
         // Seed a session and an existing draft.
-        let session = ChatSessionRecord(title: "Existing")
+        let session = ManifoldInference.ChatSession(title: "Existing")
         try? await vm.persistence?.insertSession(session)
         await vm.switchToSession(session)
         vm.inputText = "look at this"
@@ -152,7 +152,7 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
     }
 
     func test_urlPayload_appendToActive_emptyDraft_replacesWithURLString() async {
-        let session = ChatSessionRecord(title: "Existing")
+        let session = ManifoldInference.ChatSession(title: "Existing")
         try? await vm.persistence?.insertSession(session)
         await vm.switchToSession(session)
         vm.inputText = ""
@@ -166,7 +166,7 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
     // MARK: - image × .draft
 
     func test_imagePayload_draft_setsEmptyDraftWithoutSending() async {
-        let session = ChatSessionRecord(title: "Existing")
+        let session = ManifoldInference.ChatSession(title: "Existing")
         try? await vm.persistence?.insertSession(session)
         await vm.switchToSession(session)
         vm.inputText = "should be replaced"
@@ -194,7 +194,7 @@ final class ChatViewModelIngestPendingPayloadTests: XCTestCase {
     }
 
     func test_imagePayload_appendToActive_keepsDraftTextAndAddsAttachment() async {
-        let session = ChatSessionRecord(title: "Existing")
+        let session = ManifoldInference.ChatSession(title: "Existing")
         try? await vm.persistence?.insertSession(session)
         await vm.switchToSession(session)
         vm.inputText = "Please inspect this"

@@ -108,7 +108,7 @@ func makeTestChatViewModel(
     }
 
     if activateSession {
-        vm.activeSession = ChatSessionRecord(title: "Test Session")
+        vm.activeSession = ChatSession(title: "Test Session")
     }
 
     return TestChatViewModelHarness(

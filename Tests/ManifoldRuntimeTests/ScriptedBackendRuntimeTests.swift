@@ -20,17 +20,17 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
 
     private final class ScriptedTestMessageStore: MessageStore, @unchecked Sendable {
         private let lock = NSLock()
-        private var messages: [UUID: ChatMessageRecord] = [:]
+        private var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             let snapshot = upsert(message)
             for hook in snapshot {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard lock.withLock({ messages[message.id] != nil }) else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -44,7 +44,7 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             lock.withLock { messages.removeValue(forKey: messageID) }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             lock.withLock {
                 messages.values
                     .filter { $0.sessionID == sessionID }
@@ -62,7 +62,7 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
             lock.withLock { hooks.append(hook) }
         }
 
-        private func upsert(_ message: ChatMessageRecord) -> [any MessageStorePostWriteHook] {
+        private func upsert(_ message: ChatMessage) -> [any MessageStorePostWriteHook] {
             lock.withLock {
                 messages[message.id] = message
                 return hooks

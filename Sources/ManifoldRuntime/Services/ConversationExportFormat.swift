@@ -31,5 +31,5 @@ public protocol ConversationExportFormat: Sendable {
     /// - Throws: Implementations only throw at serialization boundaries
     ///   (e.g. JSON encoder failures). Format-internal invariants should not
     ///   throw — Swift's type system enforces the input shape.
-    func export(session: ChatSessionRecord, messages: [ChatMessageRecord]) throws -> Data
+    func export(session: ChatSession, messages: [ChatMessage]) throws -> Data
 }

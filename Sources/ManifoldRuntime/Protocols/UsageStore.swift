@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - TurnUsageRecord
+// MARK: - TurnUsage
 
 /// An immutable snapshot of token counts produced by one generation turn.
 ///
@@ -10,7 +10,7 @@ import Foundation
 ///
 /// `cachedInputTokens` and `cacheWriteTokens` are Anthropic-specific;
 /// they remain `nil` for backends that do not report prompt-cache metrics.
-public struct TurnUsageRecord: Sendable, Codable {
+public struct TurnUsage: Sendable, Codable {
     public let id: UUID
     public let sessionID: UUID
     /// The UUID of the cloud API endpoint that served the turn.
@@ -52,7 +52,7 @@ public struct TurnUsageRecord: Sendable, Codable {
 
 // MARK: - UsageSummary
 
-/// Aggregated token totals across a set of ``TurnUsageRecord`` values.
+/// Aggregated token totals across a set of ``TurnUsage`` values.
 public struct UsageSummary: Sendable {
     public let totalPromptTokens: Int
     public let totalCompletionTokens: Int
@@ -94,10 +94,10 @@ public struct UsageSummary: Sendable {
 @MainActor
 public protocol UsageStore: AnyObject, Sendable {
 
-    /// Persists a single ``TurnUsageRecord``.
+    /// Persists a single ``TurnUsage``.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func record(_ record: TurnUsageRecord) async throws
+    func record(_ record: TurnUsage) async throws
 
     /// Returns aggregated token totals across all stored records whose
     /// `timestamp` falls within the last `sinceDays` calendar days.
@@ -119,5 +119,11 @@ public protocol UsageStore: AnyObject, Sendable {
     ///
     /// - Parameter limit: Maximum number of records to return.
     /// - Throws: Storage errors from the underlying store.
-    func recentRecords(limit: Int) async throws -> [TurnUsageRecord]
+    func recentRecords(limit: Int) async throws -> [TurnUsage]
 }
+
+// MARK: - Deprecation Alias
+
+@available(*, deprecated, renamed: "TurnUsage")
+public typealias TurnUsageRecord = TurnUsage
+

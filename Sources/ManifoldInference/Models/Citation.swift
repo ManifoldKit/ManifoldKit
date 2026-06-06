@@ -6,7 +6,7 @@ import Foundation
 /// One ``Citation`` is produced per ``VectorSearchHit`` returned by
 /// ``VectorStore/search(embedding:limit:)`` /
 /// ``VectorStore/keywordSearch(query:limit:)``. ``ConversationRuntime`` attaches
-/// the citation list to the assistant ``ChatMessageRecord`` it produces so the
+/// the citation list to the assistant ``ChatMessage`` it produces so the
 /// UI can render a "Sources" disclosure beneath the bubble.
 ///
 /// The struct is intentionally minimal: ``documentTitle`` + ``chunkIndex``

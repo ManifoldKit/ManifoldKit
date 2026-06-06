@@ -2,16 +2,16 @@ import Foundation
 import ManifoldInference
 
 // Source-compatibility shim: lets callers convert the SwiftData `@Model`
-// `ChatSession` into the storage-agnostic `ChatSessionRecord` used by
+// `ChatSession` into the storage-agnostic `ManifoldInference.ChatSession` used by
 // ManifoldInference APIs.
 extension ChatSession {
 
     /// Returns a storage-agnostic snapshot of this session suitable for
     /// passing to inference services that don't depend on SwiftData.
-    public var record: ChatSessionRecord {
+    public var record: ManifoldInference.ChatSession {
         // Map SwiftData @Model Agent rows to the storage-agnostic
         // ManifoldInference.Agent value type so consumers downstream of
-        // ChatSessionRecord (HandoffToolSource, ConversationTurnExecutor)
+        // ManifoldInference.ChatSession (HandoffToolSource, ConversationTurnExecutor)
         // don't need to import the persistence module.
         //
         // The inverse — persisting `agents` back into Agent rows — lives in
@@ -27,7 +27,7 @@ extension ChatSession {
                 allowedToolNames: row.allowedToolNames
             )
         }
-        return ChatSessionRecord(
+        return ManifoldInference.ChatSession(
             id: id,
             title: title,
             createdAt: createdAt,

@@ -36,7 +36,7 @@ final class SessionStoreDeleteAllTests: XCTestCase {
 
     func test_deleteAll_removesEverySession() async throws {
         for i in 0..<5 {
-            let s = ChatSessionRecord(title: "S\(i)")
+            let s = ManifoldInference.ChatSession(title: "S\(i)")
             try await provider.insertSession(s)
         }
         let preCount = try await provider.fetchSessions().count
@@ -52,14 +52,14 @@ final class SessionStoreDeleteAllTests: XCTestCase {
     // MARK: - (b) messages purged — no orphans
 
     func test_deleteAll_purgesAllMessages_noOrphans() async throws {
-        let s1 = ChatSessionRecord(title: "S1")
-        let s2 = ChatSessionRecord(title: "S2")
+        let s1 = ManifoldInference.ChatSession(title: "S1")
+        let s2 = ManifoldInference.ChatSession(title: "S2")
         try await provider.insertSession(s1)
         try await provider.insertSession(s2)
         for sid in [s1.id, s2.id] {
             for n in 0..<3 {
                 try await provider.insertMessage(
-                    ChatMessageRecord(role: .user, content: "m\(n)", sessionID: sid)
+                    ManifoldInference.ChatMessage(role: .user, content: "m\(n)", sessionID: sid)
                 )
             }
         }
@@ -79,9 +79,9 @@ final class SessionStoreDeleteAllTests: XCTestCase {
         let post2 = try await provider.fetchMessages(for: s2.id)
         XCTAssertEqual(post1, [])
         XCTAssertEqual(post2, [])
-        let remainingMessages = try stack.context.fetch(FetchDescriptor<ChatMessage>())
+        let remainingMessages = try stack.context.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>())
         XCTAssertTrue(remainingMessages.isEmpty,
-                      "No ChatMessage rows may survive deleteAll(); found \(remainingMessages.count)")
+                      "No ChatMessage (SwiftData @Model) rows may survive deleteAll(); found \(remainingMessages.count)")
     }
 
     // MARK: - (c) single transaction
@@ -92,7 +92,7 @@ final class SessionStoreDeleteAllTests: XCTestCase {
         // the context is clean afterwards. The stronger guarantee — atomicity
         // — is covered by `test_deleteAll_isAtomic_*` below.
         for i in 0..<10 {
-            try await provider.insertSession(ChatSessionRecord(title: "S\(i)"))
+            try await provider.insertSession(ManifoldInference.ChatSession(title: "S\(i)"))
         }
 
         try await provider.deleteAll()
@@ -112,7 +112,7 @@ final class SessionStoreDeleteAllTests: XCTestCase {
         // SwiftData context never sees the staged deletes, so a subsequent
         // fetch must return the full pre-call state.
         for i in 0..<4 {
-            try await provider.insertSession(ChatSessionRecord(title: "S\(i)"))
+            try await provider.insertSession(ManifoldInference.ChatSession(title: "S\(i)"))
         }
         let before = try await provider.fetchSessions()
         XCTAssertEqual(before.count, 4)

@@ -11,10 +11,10 @@ public final class MockPostGenerationTask: PostGenerationTask, @unchecked Sendab
     public private(set) var callCount = 0
 
     /// Messages received by each invocation, in call order.
-    public private(set) var receivedMessages: [ChatMessageRecord] = []
+    public private(set) var receivedMessages: [ChatMessage] = []
 
     /// Sessions received by each invocation, in call order.
-    public private(set) var receivedSessions: [ChatSessionRecord] = []
+    public private(set) var receivedSessions: [ChatSession] = []
 
     /// When non-nil, thrown on every call to ``run(message:session:)``.
     public var errorToThrow: Error? = nil
@@ -24,7 +24,7 @@ public final class MockPostGenerationTask: PostGenerationTask, @unchecked Sendab
 
     public init() {}
 
-    public func run(message: ChatMessageRecord, session: ChatSessionRecord) async throws {
+    public func run(message: ChatMessage, session: ChatSession) async throws {
         callCount += 1
         receivedMessages.append(message)
         receivedSessions.append(session)

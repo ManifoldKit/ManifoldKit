@@ -57,7 +57,7 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
         }
 
         let messageID = UUID()
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             id: messageID,
             role: .user,
             content: "Hello world",  // 11 chars → CharTokenizer yields 11
@@ -99,7 +99,7 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
 
         // Step 1: insert a short message and prime the cache.
         let messageID = UUID()
-        let initial = ChatMessageRecord(
+        let initial = ChatMessage(
             id: messageID,
             role: .user,
             content: "x",  // 1 char → 1 token
@@ -113,7 +113,7 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
         // Step 2: emit `.messageUpdated` with the SAME UUID but a much longer
         // body. The adapter replaces the in-memory record but leaves the
         // cache entry untouched.
-        let updated = ChatMessageRecord(
+        let updated = ChatMessage(
             id: messageID,
             role: .user,
             content: String(repeating: "a", count: 80),  // 80 chars → 80 tokens
@@ -151,7 +151,7 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
 
         // Populate the cache via `.messageInserted` + estimate.
         let messageID = UUID()
-        let record = ChatMessageRecord(
+        let record = ChatMessage(
             id: messageID,
             role: .user,
             content: "Hello",
@@ -183,7 +183,7 @@ final class TokenCountCacheInvalidationTests: XCTestCase {
         let service = InferenceService(backend: backend, name: "CacheInvalidation")
         let vm = ChatViewModel(inferenceService: service)
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        vm.activeSession = ChatSessionRecord(title: "CacheInvalidation")
+        vm.activeSession = ChatSession(title: "CacheInvalidation")
         return vm
     }
 }

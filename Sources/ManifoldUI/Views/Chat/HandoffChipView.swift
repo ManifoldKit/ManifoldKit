@@ -3,7 +3,7 @@ import ManifoldInference
 
 /// Inter-bubble chip rendered at agent transitions in the persisted message
 /// sequence. Derived purely from the `agentID` attribution on adjacent
-/// ``ChatMessageRecord`` values — the chip is **not** wired to the
+/// ``ChatMessage`` values — the chip is **not** wired to the
 /// ``ManifoldRuntime/ConversationEvent/agentHandoff(from:to:)`` event stream.
 ///
 /// Why decouple from the event stream? Events fire during live generation;

@@ -2,7 +2,7 @@ import ManifoldInference
 
 // Source-compatibility shims so callers can pass an @Model `ChatSession` to the
 // `SettingsService` resolution helpers, even though those helpers now operate
-// on the storage-agnostic `ChatSessionRecord` after the ManifoldInference split.
+// on the storage-agnostic `ManifoldInference.ChatSession` after the ManifoldInference split.
 extension SettingsService {
 
     /// Returns the effective temperature, using session override if available.

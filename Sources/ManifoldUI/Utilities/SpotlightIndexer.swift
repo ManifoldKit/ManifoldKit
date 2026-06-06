@@ -25,7 +25,7 @@ public enum SpotlightIndexer {
     ///     by this app. Defaults to ``defaultDomainIdentifier``; pass your
     ///     host app's bundle identifier for best results.
     public static func index(
-        sessions: [ChatSessionRecord],
+        sessions: [ChatSession],
         domainIdentifier: String = defaultDomainIdentifier
     ) {
         var items: [CSSearchableItem] = []

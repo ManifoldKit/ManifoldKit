@@ -37,13 +37,13 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
     // MARK: - MessageStorePostWriteHook
 
     func test_messageHook_firesAfterInsertCommit() async throws {
-        let session = ChatSessionRecord(title: "S")
+        let session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
 
         let hook = RecordingMessageHook()
         provider.addPostWriteHook(hook)
 
-        let record = ChatMessageRecord(role: .user, content: "hi", sessionID: session.id)
+        let record = ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)
         try await provider.insertMessage(record)
 
         XCTAssertEqual(hook.records.count, 1)
@@ -57,9 +57,9 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
     }
 
     func test_messageHook_firesAfterUpdate() async throws {
-        let session = ChatSessionRecord(title: "S")
+        let session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
-        var record = ChatMessageRecord(role: .user, content: "hi", sessionID: session.id)
+        var record = ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)
         try await provider.insertMessage(record)
 
         let hook = RecordingMessageHook()
@@ -72,7 +72,7 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
     }
 
     func test_messageHook_multipleHooks_fireInRegistrationOrder() async throws {
-        let session = ChatSessionRecord(title: "S")
+        let session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
 
         let order = OrderRecorder()
@@ -80,7 +80,7 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
         provider.addPostWriteHook(OrderingMessageHook(label: "second", order: order))
         provider.addPostWriteHook(OrderingMessageHook(label: "third", order: order))
 
-        let record = ChatMessageRecord(role: .user, content: "x", sessionID: session.id)
+        let record = ManifoldInference.ChatMessage(role: .user, content: "x", sessionID: session.id)
         try await provider.insertMessage(record)
 
         XCTAssertEqual(order.snapshot(), ["first", "second", "third"])
@@ -92,9 +92,9 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
         // case (audit/index a fresh record) needs the record's content,
         // which is gone post-delete. Phase 1.2.1 ships the post-write
         // contract; a hypothetical post-delete hook is a separate primitive.
-        let session = ChatSessionRecord(title: "S")
+        let session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
-        let record = ChatMessageRecord(role: .user, content: "doomed", sessionID: session.id)
+        let record = ManifoldInference.ChatMessage(role: .user, content: "doomed", sessionID: session.id)
         try await provider.insertMessage(record)
 
         let hook = RecordingMessageHook()
@@ -111,7 +111,7 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
         let hook = RecordingSessionHook()
         provider.addPostWriteHook(hook)
 
-        let session = ChatSessionRecord(title: "S")
+        let session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
 
         XCTAssertEqual(hook.records.count, 1)
@@ -119,7 +119,7 @@ final class SwiftDataPersistenceProviderHookTests: XCTestCase {
     }
 
     func test_sessionHook_firesAfterUpdate() async throws {
-        var session = ChatSessionRecord(title: "S")
+        var session = ManifoldInference.ChatSession(title: "S")
         try await provider.insertSession(session)
 
         let hook = RecordingSessionHook()
@@ -139,7 +139,7 @@ private final class RecordingMessageHook: MessageStorePostWriteHook, @unchecked 
     private let queue = DispatchQueue(label: "RecordingMessageHook.lock")
     private var _records: [(messageID: UUID, sessionID: UUID)] = []
 
-    func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+    func messageDidWrite(_ record: ManifoldInference.ChatMessage, in sessionID: ManifoldInference.ChatSession.ID) async {
         queue.sync {
             _records.append((record.id, sessionID))
         }
@@ -152,13 +152,13 @@ private final class RecordingMessageHook: MessageStorePostWriteHook, @unchecked 
 
 private final class RecordingSessionHook: SessionStorePostWriteHook, @unchecked Sendable {
     private let queue = DispatchQueue(label: "RecordingSessionHook.lock")
-    private var _records: [ChatSessionRecord] = []
+    private var _records: [ManifoldInference.ChatSession] = []
 
-    func sessionDidWrite(_ record: ChatSessionRecord) async {
+    func sessionDidWrite(_ record: ManifoldInference.ChatSession) async {
         queue.sync { _records.append(record) }
     }
 
-    var records: [ChatSessionRecord] {
+    var records: [ManifoldInference.ChatSession] {
         queue.sync { _records }
     }
 }
@@ -180,7 +180,7 @@ private struct OrderingMessageHook: MessageStorePostWriteHook {
     let label: String
     let order: OrderRecorder
 
-    func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+    func messageDidWrite(_ record: ManifoldInference.ChatMessage, in sessionID: ManifoldInference.ChatSession.ID) async {
         order.append(label)
     }
 }

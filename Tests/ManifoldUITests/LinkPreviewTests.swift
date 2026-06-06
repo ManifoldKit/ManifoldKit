@@ -79,7 +79,7 @@ final class LinkPreviewTests: XCTestCase {
     }
 
     func test_messageBubbleAcceptsLinkPreviewProviderSeam() {
-        let message = ChatMessageRecord(
+        let message = ChatMessage(
             role: .assistant,
             content: "See https://example.com",
             sessionID: UUID()

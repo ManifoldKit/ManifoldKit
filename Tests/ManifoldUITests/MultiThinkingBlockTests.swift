@@ -24,7 +24,7 @@ final class MultiThinkingBlockTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         // Force per-token flushes so partial-streaming writes happen on
         // every event and the test sees deterministic ordering.
         vm.thinkingStreamingUpdateInterval = .zero

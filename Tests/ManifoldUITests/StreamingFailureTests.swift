@@ -40,15 +40,15 @@ final class StreamingFailureTests: XCTestCase {
     }
 
     @discardableResult
-    private func createAndActivateSession(vm: ChatViewModel, title: String = "Test Chat") async -> ChatSessionRecord {
+    private func createAndActivateSession(vm: ChatViewModel, title: String = "Test Chat") async -> ManifoldInference.ChatSession {
         let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
         return session
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )

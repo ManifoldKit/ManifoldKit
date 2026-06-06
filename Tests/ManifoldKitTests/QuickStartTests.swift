@@ -134,7 +134,7 @@ final class QuickStartTests: XCTestCase {
         // Insert a second, more-recent session directly through the
         // persistence port so we can verify "selects the existing
         // most-recent" rather than "always creates a fresh one".
-        let preExisting = ChatSessionRecord(title: "From a previous launch")
+        let preExisting = ManifoldInference.ChatSession(title: "From a previous launch")
         try await firstResult.bootstrap.persistence.insertSession(preExisting)
 
         let secondResult = try await ManifoldKit._quickStart(

@@ -46,14 +46,14 @@ public struct FixedCountPreTurnCompressionPolicy: PreTurnCompressionPolicy {
     }
 
     public func compressBeforeTurn(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         sessionID: UUID,
-        generate: @Sendable ([ChatMessageRecord]) async throws -> String
-    ) async throws -> [ChatMessageRecord] {
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage] {
         // Return a single memory record instead of calling `generate` — the
         // scripted backend's turns are pre-assigned to user turns, and consuming
         // one here would mis-align the scripted turn sequence.
-        [ChatMessageRecord(
+        [ChatMessage(
             role: .system,
             content: summaryContent,
             sessionID: sessionID,

@@ -25,17 +25,17 @@ final class SummarisationHookTests: XCTestCase {
     // MARK: - In-memory MessageStore
 
     final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -48,7 +48,7 @@ final class SummarisationHookTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -66,13 +66,13 @@ final class SummarisationHookTests: XCTestCase {
     // MARK: - In-memory SessionStore (thin, for pinned-IDs)
 
     final class InMemorySessionStore: SessionStore {
-        var sessions: [UUID: ChatSessionRecord] = [:]
+        var sessions: [UUID: ChatSession] = [:]
 
-        func insertSession(_ session: ChatSessionRecord) async throws {
+        func insertSession(_ session: ChatSession) async throws {
             sessions[session.id] = session
         }
 
-        func updateSession(_ session: ChatSessionRecord) async throws {
+        func updateSession(_ session: ChatSession) async throws {
             sessions[session.id] = session
         }
 
@@ -84,7 +84,7 @@ final class SummarisationHookTests: XCTestCase {
             sessions.removeAll()
         }
 
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             Array(sessions.values)
         }
     }
@@ -94,13 +94,13 @@ final class SummarisationHookTests: XCTestCase {
     /// A summariser that returns a fixed string and records what it was given.
     actor RecordingDialogueSummariser: DialogueSummariser {
         let fixedResponse: String
-        private(set) var capturedTurns: [ChatMessageRecord] = []
+        private(set) var capturedTurns: [ChatMessage] = []
 
         init(fixedResponse: String = "NONCE-SUMMARY-42: Previously discussed weather in Paris and Rome.") {
             self.fixedResponse = fixedResponse
         }
 
-        func summarise(turns: [ChatMessageRecord], using backend: any InferenceBackend) async throws -> String {
+        func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String {
             capturedTurns = turns
             return fixedResponse
         }
@@ -108,7 +108,7 @@ final class SummarisationHookTests: XCTestCase {
 
     /// A summariser that always returns an empty string.
     struct EmptyDialogueSummariser: DialogueSummariser {
-        func summarise(turns: [ChatMessageRecord], using backend: any InferenceBackend) async throws -> String { "" }
+        func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String { "" }
     }
 
     // MARK: - UsageReportingBackend (mirrors CompressionPolicyTests)
@@ -278,7 +278,7 @@ final class SummarisationHookTests: XCTestCase {
         for i in 1...6 {
             let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
             let offset = Double(i) * 0.1
-            let msg = ChatMessageRecord(
+            let msg = ChatMessage(
                 role: role,
                 content: "Turn \(i) content",
                 timestamp: Date(timeIntervalSince1970: offset),
@@ -346,7 +346,7 @@ final class SummarisationHookTests: XCTestCase {
         var insertedIDs: [UUID] = []
         for i in 1...6 {
             let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
-            let msg = ChatMessageRecord(
+            let msg = ChatMessage(
                 role: role,
                 content: "Message \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(i)),
@@ -403,7 +403,7 @@ final class SummarisationHookTests: XCTestCase {
         let sessionID = UUID()
 
         // Insert session record.
-        var session = ChatSessionRecord(id: sessionID, title: "Test")
+        var session = ChatSession(id: sessionID, title: "Test")
 
         let hook = SummarisationHook(
             messageStore: store,
@@ -426,7 +426,7 @@ final class SummarisationHookTests: XCTestCase {
         var pinnedIDs: Set<UUID> = []
         for i in 1...8 {
             let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
-            let msg = ChatMessageRecord(
+            let msg = ChatMessage(
                 role: role,
                 content: "Message \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(i)),
@@ -501,7 +501,7 @@ final class SummarisationHookTests: XCTestCase {
 
         for i in 1...6 {
             let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
-            let msg = ChatMessageRecord(
+            let msg = ChatMessage(
                 role: role,
                 content: "Turn \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(i)),
@@ -560,7 +560,7 @@ final class SummarisationHookTests: XCTestCase {
 
         for i in 1...6 {
             let role: MessageRole = i.isMultiple(of: 2) ? .assistant : .user
-            let msg = ChatMessageRecord(
+            let msg = ChatMessage(
                 role: role,
                 content: "Turn \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(i)),

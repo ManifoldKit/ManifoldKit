@@ -8,7 +8,7 @@ import Foundation
 /// can highlight it without re-searching.
 ///
 /// Lives alongside ``MessageStore`` (the producer) in `ManifoldRuntime`. The
-/// record types it summarises (``ChatMessageRecord``, ``ChatSessionRecord``)
+/// record types it summarises (``ChatMessage``, ``ChatSession``)
 /// remain in `ManifoldInference` because inference-layer services (prompt
 /// assembly, context-window management, transcript healing) traffic in them
 /// independently of any persistence port.

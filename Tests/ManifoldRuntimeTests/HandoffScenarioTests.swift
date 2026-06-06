@@ -12,17 +12,17 @@ final class HandoffScenarioTests: XCTestCase {
     // MARK: - Stores
 
     final class InMemoryMessageStore: MessageStore {
-        var messages: [UUID: ChatMessageRecord] = [:]
+        var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
         func deleteMessage(_ messageID: UUID) async throws { messages.removeValue(forKey: messageID) }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values.filter { $0.sessionID == sessionID }.sorted { $0.timestamp < $1.timestamp }
         }
         func deleteMessages(for sessionID: UUID) async throws {
@@ -32,12 +32,12 @@ final class HandoffScenarioTests: XCTestCase {
     }
 
     final class InMemorySessionStore: SessionStore {
-        var sessions: [UUID: ChatSessionRecord] = [:]
-        func insertSession(_ session: ChatSessionRecord) async throws { sessions[session.id] = session }
-        func updateSession(_ session: ChatSessionRecord) async throws { sessions[session.id] = session }
+        var sessions: [UUID: ChatSession] = [:]
+        func insertSession(_ session: ChatSession) async throws { sessions[session.id] = session }
+        func updateSession(_ session: ChatSession) async throws { sessions[session.id] = session }
         func deleteSession(_ sessionID: UUID) async throws { sessions.removeValue(forKey: sessionID) }
         func deleteAll() async throws { sessions.removeAll() }
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
         func addPostWriteHook(_ hook: any SessionStorePostWriteHook) {}
@@ -77,7 +77,7 @@ final class HandoffScenarioTests: XCTestCase {
 
         let (researcher, writer) = makeAgents()
         let sessionID = UUID()
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: sessionID,
             title: "Handoff scenario",
             agents: [researcher, writer],
@@ -194,7 +194,7 @@ final class HandoffScenarioTests: XCTestCase {
     func test_handoff_softCapDoesNotTruncate_advertisedList() async {
         let active = Agent(name: "A", systemPrompt: "", description: "")
         let others = (0..<4).map { Agent(name: "Agent\($0)", systemPrompt: "", description: "") }
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "Big",
             agents: [active] + others,

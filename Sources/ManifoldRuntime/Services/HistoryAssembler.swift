@@ -15,9 +15,9 @@ struct HistoryAssembler: Sendable {
     }
 
     func assemble(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         context: TurnContext
-    ) async throws -> [ChatMessageRecord] {
+    ) async throws -> [ChatMessage] {
         var current = history
         for provider in providers {
             let contributions = try await provider.contribute(history: current, context: context)
@@ -31,8 +31,8 @@ struct HistoryAssembler: Sendable {
 
     private func apply(
         _ contributions: [HistoryContribution],
-        to history: [ChatMessageRecord]
-    ) -> [ChatMessageRecord] {
+        to history: [ChatMessage]
+    ) -> [ChatMessage] {
         var result = history
         // Process contributions in reverse depth order so earlier insertions
         // don't shift indices used by later ones in the same batch.
@@ -48,7 +48,7 @@ struct HistoryAssembler: Sendable {
 
     private func insertionIndex(
         for position: HistoryInsertionPosition,
-        in history: [ChatMessageRecord]
+        in history: [ChatMessage]
     ) -> Int {
         switch position {
         case .head:
@@ -68,7 +68,7 @@ struct HistoryAssembler: Sendable {
 
     // MARK: - Invariant check
 
-    private func assertChronologicalOrder(_ history: [ChatMessageRecord]) {
+    private func assertChronologicalOrder(_ history: [ChatMessage]) {
         #if DEBUG
         let chatRecords = history.filter { $0.kind == .chat && ($0.role == .user || $0.role == .assistant) }
         for i in 1 ..< chatRecords.count {

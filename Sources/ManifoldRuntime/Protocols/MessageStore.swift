@@ -20,7 +20,7 @@ public protocol MessageStore: AnyObject, Sendable {
     /// write commits.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func insertMessage(_ message: ChatMessageRecord) async throws
+    func insertMessage(_ message: ChatMessage) async throws
 
     /// Updates an existing chat message.
     ///
@@ -30,7 +30,7 @@ public protocol MessageStore: AnyObject, Sendable {
     /// - Throws:
     ///   - ``ChatPersistenceError/messageNotFound(_:)`` when the message does not exist.
     ///   - Storage errors from the underlying store.
-    func updateMessage(_ message: ChatMessageRecord) async throws
+    func updateMessage(_ message: ChatMessage) async throws
 
     /// Deletes a chat message.
     ///
@@ -42,7 +42,7 @@ public protocol MessageStore: AnyObject, Sendable {
     /// Fetches messages for a session in timestamp order.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord]
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage]
 
     /// Fetches the most recent messages for a session, up to `limit`.
     ///
@@ -51,7 +51,7 @@ public protocol MessageStore: AnyObject, Sendable {
     /// timestamp.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord]
+    func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessage]
 
     /// Fetches messages older than `before` for a session, up to `limit`.
     ///
@@ -59,7 +59,7 @@ public protocol MessageStore: AnyObject, Sendable {
     /// Returns an empty array when no older messages exist.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord]
+    func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessage]
 
     /// Deletes all messages for a session.
     ///
@@ -97,9 +97,9 @@ public protocol MessageStore: AnyObject, Sendable {
 /// as one unit of work so multi-row edits can commit consistently.
 public enum MessageStoreMutation: Sendable, Equatable {
     /// Insert a new message record.
-    case insert(ChatMessageRecord)
+    case insert(ChatMessage)
     /// Update an existing message record.
-    case update(ChatMessageRecord)
+    case update(ChatMessage)
     /// Delete one message by id.
     case delete(UUID)
     /// Delete every message belonging to a session.
@@ -129,13 +129,13 @@ public protocol TransactionalMessageStore: MessageStore {
 extension MessageStore {
 
     /// Default: fetches all messages then returns the last `limit`.
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
         let all = try await fetchMessages(for: sessionID)
         return Array(all.suffix(limit))
     }
 
     /// Default: fetches all messages then filters to those before `before`.
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessage] {
         let all = try await fetchMessages(for: sessionID)
         let older = all.filter { $0.timestamp < before }
         return Array(older.suffix(limit))
@@ -175,8 +175,8 @@ extension MessageStore {
 ///   guarantees compose at the use-case layer instead.
 public protocol MessageStorePostWriteHook: Sendable {
     func messageDidWrite(
-        _ record: ChatMessageRecord,
-        in sessionID: ChatSessionRecord.ID
+        _ record: ChatMessage,
+        in sessionID: ChatSession.ID
     ) async
 }
 

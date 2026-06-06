@@ -168,7 +168,7 @@ public struct JSONLImportFormat: ConversationImportFormat {
             throw JSONLImportError.noMessages
         }
 
-        var messages: [ChatMessageRecord] = []
+        var messages: [ChatMessage] = []
         messages.reserveCapacity(messageLines.count)
 
         let decoder = JSONDecoder()
@@ -218,7 +218,7 @@ public struct JSONLImportFormat: ConversationImportFormat {
                 messageID = UUID()
             }
 
-            let record = ChatMessageRecord(
+            let record = ChatMessage(
                 id: messageID,
                 role: role,
                 content: messageLine.content,
@@ -228,7 +228,7 @@ public struct JSONLImportFormat: ConversationImportFormat {
             messages.append(record)
         }
 
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: sessionID,
             title: sessionTitle,
             createdAt: sessionCreatedAt,

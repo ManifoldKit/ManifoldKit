@@ -33,8 +33,8 @@ final class ContextEstimatorTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    private func makeMessage(_ content: String, id: UUID = UUID()) -> ChatMessageRecord {
-        ChatMessageRecord(id: id, role: .user, content: content, sessionID: sessionID)
+    private func makeMessage(_ content: String, id: UUID = UUID()) -> ChatMessage {
+        ChatMessage(id: id, role: .user, content: content, sessionID: sessionID)
     }
 
     // MARK: - Tests

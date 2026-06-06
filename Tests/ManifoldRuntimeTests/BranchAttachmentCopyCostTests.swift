@@ -19,10 +19,10 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
 
     @MainActor
     final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
@@ -32,11 +32,11 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
         /// Synchronous insert used only by the perf measure block. The async
         /// `insertMessage` is what production code goes through; this is a
         /// shortcut so XCTMeasure doesn't have to bridge across actors.
-        func directInsert(_ message: ChatMessageRecord) {
+        func directInsert(_ message: ChatMessage) {
             messages[message.id] = message
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -52,7 +52,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -69,13 +69,13 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
 
     @MainActor
     final class RuntimeSessionStore: SessionStore {
-        private(set) var sessions: [UUID: ChatSessionRecord] = [:]
+        private(set) var sessions: [UUID: ChatSession] = [:]
 
-        func insertSession(_ session: ChatSessionRecord) async throws {
+        func insertSession(_ session: ChatSession) async throws {
             sessions[session.id] = session
         }
 
-        func updateSession(_ session: ChatSessionRecord) async throws {
+        func updateSession(_ session: ChatSession) async throws {
             guard sessions[session.id] != nil else {
                 throw ChatPersistenceError.sessionNotFound(session.id)
             }
@@ -88,7 +88,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
             }
         }
 
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
     }
@@ -121,7 +121,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
 
         let sourceSessionID = UUID()
         try await sessionStore.insertSession(
-            ChatSessionRecord(id: sourceSessionID, title: "Vision Source")
+            ChatSession(id: sourceSessionID, title: "Vision Source")
         )
 
         let imageData = ImageFixtures.largeJPEG(approxBytes: imageBytes)
@@ -139,7 +139,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
             } else {
                 parts = [.text("response-\(index)")]
             }
-            let record = ChatMessageRecord(
+            let record = ChatMessage(
                 role: role,
                 contentParts: parts,
                 timestamp: base.addingTimeInterval(TimeInterval(index)),
@@ -168,9 +168,9 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
     /// produces an independent copy. Mutating the source after branch must not
     /// affect the branched session.
     ///
-    /// Sabotage check (verified manually): replacing `ChatMessageRecord` copy
+    /// Sabotage check (verified manually): replacing `ChatMessage` copy
     /// in `branch(...)` with a shared reference would break this — but
-    /// `ChatMessageRecord` is a struct, so copying is by value. This test pins
+    /// `ChatMessage` is a struct, so copying is by value. This test pins
     /// that contract: the branch result is a value-copied snapshot, not a
     /// live view onto the source.
     func test_branchedSessionIsIndependent() async throws {
@@ -212,7 +212,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
     /// State pre-built in `setUp` so the `measure {}` block sees only the
     /// deep-copy work, not the fixture seed.
     private var perfStore: RuntimeMessageStore?
-    private var perfSourceMessages: [ChatMessageRecord] = []
+    private var perfSourceMessages: [ChatMessage] = []
 
     /// Nightly-gated perf measurement of the deep-copy that
     /// `ConversationRuntime.branch(...)` performs per message.
@@ -227,7 +227,7 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
     /// that dominates a real branch operation.
     ///
     /// Initial measurement (May 2026, 10×100 KB fixture): mean ~16 µs over
-    /// 10 iterations. The `ChatMessageRecord` struct copy is cheap because
+    /// 10 iterations. The `ChatMessage` struct copy is cheap because
     /// `Data` (and therefore `MessagePart.image(data:)`) is COW — the bytes
     /// are not duplicated until the destination mutates. This is a genuine
     /// finding: the audit's "branch deep-copies every byte" claim is too
@@ -248,11 +248,11 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
         measure {
             let newSessionID = UUID()
             // Replicate ConversationRuntime.branch's inner copy loop. Each
-            // ChatMessageRecord is a struct, so the assignment performs the
+            // ChatMessage is a struct, so the assignment performs the
             // value-copy of `contentParts` (including image data bytes) the
             // audit is interested in.
             for original in sourceMessages {
-                let copy = ChatMessageRecord(
+                let copy = ChatMessage(
                     role: original.role,
                     contentParts: original.contentParts,
                     timestamp: original.timestamp,

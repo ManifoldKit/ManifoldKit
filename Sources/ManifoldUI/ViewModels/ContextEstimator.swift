@@ -11,7 +11,7 @@ import ManifoldInference
 struct ContextEstimator {
 
     struct Inputs {
-        let messages: [ChatMessageRecord]
+        let messages: [ChatMessage]
         let systemPrompt: String
         let modelContextLength: Int?
         let contextSizeOverride: Int?

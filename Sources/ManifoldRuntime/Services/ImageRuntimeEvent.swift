@@ -13,7 +13,7 @@ import ManifoldInference
 // `ImageRuntimeEvent` is also distinct from the backend-level
 // `ImageGenerationEvent` (`progress(step:total:)` / `completed(URL)`):
 // the runtime translates between layers, keying every event to a
-// `ChatMessageRecord.ID` so adapters can pair UI state to the right
+// `ChatMessage.ID` so adapters can pair UI state to the right
 // placeholder slot.
 
 /// Events emitted by ``ImageGenerationRuntime``.
@@ -22,7 +22,7 @@ import ManifoldInference
 /// parallel enum rather than additional cases on the text-side surface so
 /// exhaustive switches in text consumers stay closed. The runtime translates
 /// the backend-level ``ImageGenerationEvent`` (raw step + URL) into these
-/// runtime-level events keyed to a placeholder ``ChatMessageRecord/ID``.
+/// runtime-level events keyed to a placeholder ``ChatMessage/ID``.
 public enum ImageRuntimeEvent: Sendable, Equatable {
 
     /// Generation started for the placeholder message at `messageID`. The
@@ -30,20 +30,20 @@ public enum ImageRuntimeEvent: Sendable, Equatable {
     /// `contentParts` — adapters render a "generating" affordance until the
     /// terminal ``completed(messageID:payload:)`` event updates the message
     /// in place.
-    case started(messageID: ChatMessageRecord.ID, prompt: String)
+    case started(messageID: ChatMessage.ID, prompt: String)
 
     /// Denoising progress. `step` is 1-indexed; `totalSteps` is the value
     /// the caller passed in ``ImageGenerationConfig/steps`` (after any
     /// backend-side clamping). Intermediate state is **not** persisted —
     /// adapters subscribe to events for progressive UI; persistence stays
     /// minimal until completion.
-    case progress(messageID: ChatMessageRecord.ID, step: Int, totalSteps: Int)
+    case progress(messageID: ChatMessage.ID, step: Int, totalSteps: Int)
 
     /// Generation completed; the persisted message at `messageID` now
     /// carries a single ``MessagePart/generatedImage(_:)`` part with
     /// `payload`. Adapters refresh their view-state for `messageID` from
     /// the store (the runtime has already written through ``MessageStore``).
-    case completed(messageID: ChatMessageRecord.ID, payload: ImageMessagePayload)
+    case completed(messageID: ChatMessage.ID, payload: ImageMessagePayload)
 
     /// Generation failed. Carries the underlying error so adapters can
     /// surface user-facing error UI; the placeholder message at `messageID`
@@ -51,12 +51,12 @@ public enum ImageRuntimeEvent: Sendable, Equatable {
     /// adapters can either render an inline failure indicator or call
     /// ``MessageStore/deleteMessage(_:)`` to drop the slot — the runtime
     /// emits the event, the host decides UX.
-    case failed(messageID: ChatMessageRecord.ID, error: any Error)
+    case failed(messageID: ChatMessage.ID, error: any Error)
 
     /// User cancelled before completion. The placeholder message at
     /// `messageID` remains in the store with empty `contentParts`; same
     /// host-decides-UX policy as ``failed(messageID:error:)``.
-    case cancelled(messageID: ChatMessageRecord.ID)
+    case cancelled(messageID: ChatMessage.ID)
 
     // MARK: - Equatable
 

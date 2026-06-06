@@ -18,7 +18,7 @@ import Foundation
 /// gap and decide what to do next.
 ///
 /// The healer is a value-only type with no state — it operates on
-/// ``ChatMessageRecord`` arrays (or raw ``MessagePart`` arrays for tests) and
+/// ``ChatMessage`` arrays (or raw ``MessagePart`` arrays for tests) and
 /// returns a new array with synthesised result parts inserted directly after
 /// each orphan call. Healing is idempotent: re-running it on an already-healed
 /// transcript is a no-op.
@@ -37,9 +37,9 @@ public enum TranscriptHealer {
     /// - A content string explaining the call was interrupted, including the
     ///   original arguments string so the user (and the model) can see what
     ///   was attempted.
-    public static func heal(_ records: [ChatMessageRecord]) -> [ChatMessageRecord] {
+    public static func heal(_ records: [ChatMessage]) -> [ChatMessage] {
         let resultIDs = collectResultCallIDs(from: records)
-        var healed: [ChatMessageRecord] = []
+        var healed: [ChatMessage] = []
         healed.reserveCapacity(records.count)
         for record in records {
             healed.append(healRecord(record, resultIDs: resultIDs))
@@ -91,7 +91,7 @@ public enum TranscriptHealer {
 
     // MARK: - Internal helpers
 
-    static func collectResultCallIDs(from records: [ChatMessageRecord]) -> Set<String> {
+    static func collectResultCallIDs(from records: [ChatMessage]) -> Set<String> {
         var ids: Set<String> = []
         for record in records {
             for part in record.contentParts {
@@ -104,9 +104,9 @@ public enum TranscriptHealer {
     }
 
     static func healRecord(
-        _ record: ChatMessageRecord,
+        _ record: ChatMessage,
         resultIDs: Set<String>
-    ) -> ChatMessageRecord {
+    ) -> ChatMessage {
         let healedParts = healParts(record.contentParts, resultIDs: resultIDs)
         if healedParts.count == record.contentParts.count {
             return record

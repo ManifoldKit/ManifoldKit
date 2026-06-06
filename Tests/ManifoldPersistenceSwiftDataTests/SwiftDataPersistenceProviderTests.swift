@@ -35,7 +35,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         let modelID = UUID()
         let endpointID = UUID()
         let pinned: Set<UUID> = [UUID(), UUID()]
-        let record = ChatSessionRecord(
+        let record = ManifoldInference.ChatSession(
             title: "Round Trip",
             systemPrompt: "be concise",
             selectedModelID: modelID,
@@ -73,7 +73,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     /// `title`) committed between a turn-start snapshot and the touch must
     /// survive — the narrow write reads the live row, not the stale snapshot.
     func test_touch_doesNotClobberConcurrentTitleEdit() async throws {
-        let original = ChatSessionRecord(title: "Original")
+        let original = ManifoldInference.ChatSession(title: "Original")
         try await provider.insertSession(original)
 
         // A turn captured this snapshot at its start (mimics the old
@@ -105,7 +105,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     func test_setActiveAgent_doesNotClobberConcurrentEdit() async throws {
         let agentA = UUID()
         let agentB = UUID()
-        let original = ChatSessionRecord(title: "Original", activeAgentID: agentA)
+        let original = ManifoldInference.ChatSession(title: "Original", activeAgentID: agentA)
         try await provider.insertSession(original)
 
         let staleSnapshot = original
@@ -138,9 +138,9 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
 
     func test_fetchSessions_ordersByUpdatedAtDescending() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let older = ChatSessionRecord(title: "Older", updatedAt: now)
-        let newer = ChatSessionRecord(title: "Newer", updatedAt: now.addingTimeInterval(60))
-        let middle = ChatSessionRecord(title: "Middle", updatedAt: now.addingTimeInterval(30))
+        let older = ManifoldInference.ChatSession(title: "Older", updatedAt: now)
+        let newer = ManifoldInference.ChatSession(title: "Newer", updatedAt: now.addingTimeInterval(60))
+        let middle = ManifoldInference.ChatSession(title: "Middle", updatedAt: now.addingTimeInterval(30))
 
         try await provider.insertSession(older)
         try await provider.insertSession(newer)
@@ -151,7 +151,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_updateSession_persistsFieldChanges() async throws {
-        var record = ChatSessionRecord(title: "Before")
+        var record = ManifoldInference.ChatSession(title: "Before")
         try await provider.insertSession(record)
 
         record.title = "After"
@@ -167,7 +167,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_updateSession_throwsWhenSessionMissing() async throws {
-        let record = ChatSessionRecord(title: "Ghost")
+        let record = ManifoldInference.ChatSession(title: "Ghost")
         do {
             try await provider.updateSession(record)
             XCTFail("Expected updateSession to throw for missing session")
@@ -177,10 +177,10 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_deleteSession_removesSessionAndItsMessages() async throws {
-        let session = ChatSessionRecord(title: "To Delete")
+        let session = ManifoldInference.ChatSession(title: "To Delete")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "hi", sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .assistant, content: "hello", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .assistant, content: "hello", sessionID: session.id))
 
         try await provider.deleteSession(session.id)
 
@@ -203,9 +203,9 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     // MARK: - Messages
 
     func test_insertMessage_roundTripsAllFields() async throws {
-        let session = ChatSessionRecord(title: "Msg Test")
+        let session = ManifoldInference.ChatSession(title: "Msg Test")
         try await provider.insertSession(session)
-        let record = ChatMessageRecord(
+        let record = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "answer",
             sessionID: session.id,
@@ -225,9 +225,9 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_insertMessage_doesNotPersistTransientStatus() async throws {
-        let session = ChatSessionRecord(title: "Status Test")
+        let session = ManifoldInference.ChatSession(title: "Status Test")
         try await provider.insertSession(session)
-        let record = ChatMessageRecord(
+        let record = ManifoldInference.ChatMessage(
             role: .user,
             content: "hello",
             sessionID: session.id,
@@ -242,24 +242,24 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_fetchMessages_ordersByTimestampAscending() async throws {
-        let session = ChatSessionRecord(title: "Order Test")
+        let session = ManifoldInference.ChatSession(title: "Order Test")
         try await provider.insertSession(session)
         let base = Date(timeIntervalSince1970: 1_000)
         // Insert in reverse order to prove the fetch re-sorts.
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "C", timestamp: base.addingTimeInterval(20), sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "A", timestamp: base, sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "B", timestamp: base.addingTimeInterval(10), sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "C", timestamp: base.addingTimeInterval(20), sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "A", timestamp: base, sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "B", timestamp: base.addingTimeInterval(10), sessionID: session.id))
 
         let fetched = try await provider.fetchMessages(for: session.id)
         XCTAssertEqual(fetched.map(\.content), ["A", "B", "C"])
     }
 
     func test_fetchRecentMessages_returnsTailInAscendingOrder() async throws {
-        let session = ChatSessionRecord(title: "Recent Test")
+        let session = ManifoldInference.ChatSession(title: "Recent Test")
         try await provider.insertSession(session)
         let base = Date(timeIntervalSince1970: 1_000)
         for i in 0..<5 {
-            try await provider.insertMessage(ChatMessageRecord(
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
                 role: .user,
                 content: "m\(i)",
                 timestamp: base.addingTimeInterval(Double(i)),
@@ -272,11 +272,11 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_fetchMessagesBefore_returnsOlderPageInAscendingOrder() async throws {
-        let session = ChatSessionRecord(title: "Before Test")
+        let session = ManifoldInference.ChatSession(title: "Before Test")
         try await provider.insertSession(session)
         let base = Date(timeIntervalSince1970: 1_000)
         for i in 0..<5 {
-            try await provider.insertMessage(ChatMessageRecord(
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
                 role: .user,
                 content: "m\(i)",
                 timestamp: base.addingTimeInterval(Double(i)),
@@ -291,17 +291,17 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     }
 
     func test_fetchMessagesBefore_returnsEmptyAtOldestCursor() async throws {
-        let session = ChatSessionRecord(title: "Empty Before")
+        let session = ManifoldInference.ChatSession(title: "Empty Before")
         try await provider.insertSession(session)
         let base = Date(timeIntervalSince1970: 1_000)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "first", timestamp: base, sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "first", timestamp: base, sessionID: session.id))
 
         let older = try await provider.fetchMessages(for: session.id, before: base, limit: 10)
         XCTAssertTrue(older.isEmpty)
     }
 
     func test_updateMessage_throwsWhenMissing() async throws {
-        let ghost = ChatMessageRecord(role: .user, content: "ghost", sessionID: UUID())
+        let ghost = ManifoldInference.ChatMessage(role: .user, content: "ghost", sessionID: UUID())
         do {
             try await provider.updateMessage(ghost)
             XCTFail("Expected updateMessage to throw for missing message")
@@ -323,14 +323,14 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
     /// The exact bug shape that silently nukes user data: a session-scoped
     /// delete that accidentally matches messages in other sessions.
     func test_deleteMessages_doesNotCascadeAcrossSessions() async throws {
-        let sessionA = ChatSessionRecord(title: "A")
-        let sessionB = ChatSessionRecord(title: "B")
+        let sessionA = ManifoldInference.ChatSession(title: "A")
+        let sessionB = ManifoldInference.ChatSession(title: "B")
         try await provider.insertSession(sessionA)
         try await provider.insertSession(sessionB)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "A1", sessionID: sessionA.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "A2", sessionID: sessionA.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "A1", sessionID: sessionA.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "A2", sessionID: sessionA.id))
         let keptID = UUID()
-        try await provider.insertMessage(ChatMessageRecord(id: keptID, role: .user, content: "B1", sessionID: sessionB.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(id: keptID, role: .user, content: "B1", sessionID: sessionB.id))
 
         try await provider.deleteMessages(for: sessionA.id)
 
@@ -390,7 +390,7 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
 
     func test_pinnedMessageIDs_roundTripsThroughProvider() async throws {
         let pin = UUID()
-        var record = ChatSessionRecord(title: "Pin", pinnedMessageIDs: [pin])
+        var record = ManifoldInference.ChatSession(title: "Pin", pinnedMessageIDs: [pin])
         try await provider.insertSession(record)
 
         record.pinnedMessageIDs = [pin, UUID()]

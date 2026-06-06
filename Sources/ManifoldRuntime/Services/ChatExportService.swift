@@ -29,7 +29,7 @@ public enum ChatExportService {
 
     /// Exports messages in the specified format.
     public static func export(
-        messages: [ChatMessageRecord],
+        messages: [ChatMessage],
         sessionTitle: String,
         format: ExportFormat
     ) -> String {
@@ -43,7 +43,7 @@ public enum ChatExportService {
 
     // MARK: - Plain Text
 
-    private static func exportPlainText(messages: [ChatMessageRecord], title: String) -> String {
+    private static func exportPlainText(messages: [ChatMessage], title: String) -> String {
         var lines: [String] = []
         lines.append("Chat: \(title)")
         lines.append("Exported from \(ManifoldConfiguration.shared.appName): \(formattedDate())")
@@ -64,7 +64,7 @@ public enum ChatExportService {
 
     // MARK: - Markdown
 
-    private static func exportMarkdown(messages: [ChatMessageRecord], title: String) -> String {
+    private static func exportMarkdown(messages: [ChatMessage], title: String) -> String {
         var lines: [String] = []
         lines.append("# \(title)")
         lines.append("")

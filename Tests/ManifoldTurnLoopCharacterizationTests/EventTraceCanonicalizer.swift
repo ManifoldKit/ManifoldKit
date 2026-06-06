@@ -25,10 +25,10 @@ struct EventTraceCanonicalizer {
             .joined(separator: "\n")
     }
 
-    /// Serializes persisted ``ChatMessageRecord`` values to a newline-separated
+    /// Serializes persisted ``ChatMessage`` values to a newline-separated
     /// string. Use the same instance that serialized the events so UUID labels
     /// are shared.
-    mutating func serialize(records: [ChatMessageRecord]) -> String {
+    mutating func serialize(records: [ChatMessage]) -> String {
         records.enumerated().map { i, r in
             let text = r.content
             let c = text.isEmpty ? "(empty)" : "\"\(text.prefix(80))\""

@@ -10,8 +10,8 @@ public struct SessionListView: View {
 
     @Environment(SessionManagerViewModel.self) private var sessionManager
 
-    @State private var sessionToDelete: ChatSessionRecord?
-    @State private var sessionToRename: ChatSessionRecord?
+    @State private var sessionToDelete: ChatSession?
+    @State private var sessionToRename: ChatSession?
     @State private var renameText: String = ""
     @State private var errorMessage: String?
 
@@ -36,7 +36,7 @@ public struct SessionListView: View {
             } else {
                 List(selection: $sessionManager.activeSession) {
                     let pinned = sessionManager.pinnedSessions
-                    let unpinned: [ChatSessionRecord] = {
+                    let unpinned: [ChatSession] = {
                         let trimmed = sessionManager.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard trimmed.isEmpty else { return sessionManager.displayedSessions }
                         let pinnedIDs = Set(pinned.map(\.id))
@@ -249,7 +249,7 @@ public struct SessionListView: View {
     }
 
     @ViewBuilder
-    private func rowContent(for session: ChatSessionRecord) -> some View {
+    private func rowContent(for session: ChatSession) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             SessionRowView(session: session)
 

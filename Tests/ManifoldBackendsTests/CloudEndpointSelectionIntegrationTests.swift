@@ -89,7 +89,7 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
     }
 
     @discardableResult
-    private func makeSession(title: String = "Test") async throws -> ChatSessionRecord {
+    private func makeSession(title: String = "Test") async throws -> ManifoldInference.ChatSession {
         let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)

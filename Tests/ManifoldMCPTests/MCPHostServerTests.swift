@@ -16,16 +16,16 @@ final class ManifoldMCPHostTests: XCTestCase {
 
     /// Builds a minimal host backed by in-memory stores and a MockInferenceBackend.
     private func makeHost(
-        sessions: [ChatSessionRecord] = [],
-        messages: [ChatMessageRecord] = []
+        sessions: [ChatSession] = [],
+        messages: [ChatMessage] = []
     ) -> (host: ManifoldMCPHost, sessionStore: StubSessionStore, messageStore: StubMessageStore) {
         let fixture = makeRuntimeHost(sessions: sessions, messages: messages)
         return (fixture.host, fixture.sessionStore, fixture.messageStore)
     }
 
     private func makeRuntimeHost(
-        sessions: [ChatSessionRecord] = [],
-        messages: [ChatMessageRecord] = [],
+        sessions: [ChatSession] = [],
+        messages: [ChatMessage] = [],
         tokensToYield: [String] = ["Hello", " world"]
     ) -> (
         host: ManifoldMCPHost,
@@ -166,7 +166,7 @@ final class ManifoldMCPHostTests: XCTestCase {
     // MARK: - resources/list
 
     func test_resourcesList_includesSessions() async throws {
-        let session = ChatSessionRecord(id: UUID(), title: "Test Session")
+        let session = ChatSession(id: UUID(), title: "Test Session")
         let (host, _, _) = makeHost(sessions: [session])
 
         let result = try await sendRequest(
@@ -210,8 +210,8 @@ final class ManifoldMCPHostTests: XCTestCase {
 
     func test_resourcesRead_returnsMessagesForSession() async throws {
         let sessionID = UUID()
-        let session = ChatSessionRecord(id: sessionID, title: "My Session")
-        let message = ChatMessageRecord(
+        let session = ChatSession(id: sessionID, title: "My Session")
+        let message = ChatMessage(
             id: UUID(), role: .user, content: "Hello world",
             timestamp: Date(), sessionID: sessionID
         )
@@ -283,7 +283,7 @@ final class ManifoldMCPHostTests: XCTestCase {
     // MARK: - tools/call: list_sessions
 
     func test_toolCall_listSessions_returnsSessions() async throws {
-        let session = ChatSessionRecord(id: UUID(), title: "Alpha Session")
+        let session = ChatSession(id: UUID(), title: "Alpha Session")
         let (host, _, _) = makeHost(sessions: [session])
 
         let result = try await sendRequest(
@@ -334,7 +334,7 @@ final class ManifoldMCPHostTests: XCTestCase {
 
     func test_toolCall_sendMessage_returnsOutcomeTextWithoutStealingRuntimeEvents() async throws {
         let sessionID = UUID()
-        let session = ChatSessionRecord(id: sessionID, title: "MCP Session")
+        let session = ChatSession(id: sessionID, title: "MCP Session")
         let fixture = makeRuntimeHost(
             sessions: [session],
             tokensToYield: ["MCP", " reply"]
@@ -387,14 +387,14 @@ final class ManifoldMCPHostTests: XCTestCase {
 /// the class is globally-actor-isolated and the protocol requires @MainActor.
 @MainActor
 private final class StubSessionStore: SessionStore, @unchecked Sendable {
-    private var sessions: [ChatSessionRecord]
+    private var sessions: [ChatSession]
 
-    init(sessions: [ChatSessionRecord] = []) {
+    init(sessions: [ChatSession] = []) {
         self.sessions = sessions
     }
 
-    func insertSession(_ session: ChatSessionRecord) async throws { sessions.append(session) }
-    func updateSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws { sessions.append(session) }
+    func updateSession(_ session: ChatSession) async throws {
         guard let idx = sessions.firstIndex(where: { $0.id == session.id }) else {
             throw ChatPersistenceError.sessionNotFound(session.id)
         }
@@ -403,7 +403,7 @@ private final class StubSessionStore: SessionStore, @unchecked Sendable {
     func deleteSession(_ sessionID: UUID) async throws {
         sessions.removeAll { $0.id == sessionID }
     }
-    func fetchSessions() async throws -> [ChatSessionRecord] { sessions }
+    func fetchSessions() async throws -> [ChatSession] { sessions }
 }
 
 /// Simple in-memory MessageStore for test purposes.
@@ -411,14 +411,14 @@ private final class StubSessionStore: SessionStore, @unchecked Sendable {
 /// the class is globally-actor-isolated and the protocol requires @MainActor.
 @MainActor
 private final class StubMessageStore: MessageStore, @unchecked Sendable {
-    private var messages: [ChatMessageRecord]
+    private var messages: [ChatMessage]
 
-    init(messages: [ChatMessageRecord] = []) {
+    init(messages: [ChatMessage] = []) {
         self.messages = messages
     }
 
-    func insertMessage(_ message: ChatMessageRecord) async throws { messages.append(message) }
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws { messages.append(message) }
+    func updateMessage(_ message: ChatMessage) async throws {
         guard let idx = messages.firstIndex(where: { $0.id == message.id }) else {
             throw ChatPersistenceError.messageNotFound(message.id)
         }
@@ -427,7 +427,7 @@ private final class StubMessageStore: MessageStore, @unchecked Sendable {
     func deleteMessage(_ messageID: UUID) async throws {
         messages.removeAll { $0.id == messageID }
     }
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.filter { $0.sessionID == sessionID }
     }
     func deleteMessages(for sessionID: UUID) async throws {

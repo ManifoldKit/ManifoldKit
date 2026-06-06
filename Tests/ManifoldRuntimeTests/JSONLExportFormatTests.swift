@@ -7,12 +7,12 @@ final class JSONLExportFormatTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    private func makeRecord() -> ChatSessionRecord {
-        ChatSessionRecord(id: sessionID, title: "JSONL Session")
+    private func makeRecord() -> ChatSession {
+        ChatSession(id: sessionID, title: "JSONL Session")
     }
 
-    private func makeMessage(role: MessageRole, content: String, offset: TimeInterval = 0) -> ChatMessageRecord {
-        ChatMessageRecord(
+    private func makeMessage(role: MessageRole, content: String, offset: TimeInterval = 0) -> ChatMessage {
+        ChatMessage(
             role: role,
             content: content,
             timestamp: Date(timeIntervalSinceReferenceDate: 0).addingTimeInterval(offset),
@@ -127,7 +127,7 @@ final class JSONLExportFormatTests: XCTestCase {
         // `"content":""` would mislead training-data pipelines, so the JSONL
         // export must drop these rows entirely.
         let format = JSONLExportFormat()
-        let thinkingOnly = ChatMessageRecord(
+        let thinkingOnly = ChatMessage(
             role: .assistant,
             contentParts: [.thinking("internal monologue")],
             timestamp: Date(timeIntervalSinceReferenceDate: 0),

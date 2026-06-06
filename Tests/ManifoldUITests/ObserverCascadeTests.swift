@@ -77,7 +77,7 @@ final class ObserverCascadeTests: XCTestCase {
             inferenceService: inference,
             conversationRuntime: runtime
         )
-        vm.activeSession = ChatSessionRecord(title: "ObserverCascade")
+        vm.activeSession = ManifoldInference.ChatSession(title: "ObserverCascade")
 
         // Counters for unrelated properties. Each tracker self-rearms by
         // dispatching back to `@MainActor` from inside the `onChange`
@@ -205,15 +205,15 @@ private final class CascadeProbe {
 /// Minimal in-memory `MessageStore` for the runtime to persist into. Mirrors
 /// the `RuntimeMessageStore` pattern from `ChatViewModelRuntimeAdapterTests`.
 private final class ObserverCascadeMessageStore: MessageStore, @unchecked Sendable {
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ManifoldInference.ChatMessage] = [:]
     private var hooks: [any MessageStorePostWriteHook] = []
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ManifoldInference.ChatMessage) async throws {
         messages[message.id] = message
         for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ManifoldInference.ChatMessage) async throws {
         guard messages[message.id] != nil else {
             throw ChatPersistenceError.messageNotFound(message.id)
         }
@@ -227,7 +227,7 @@ private final class ObserverCascadeMessageStore: MessageStore, @unchecked Sendab
         }
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ManifoldInference.ChatMessage] {
         messages.values
             .filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }

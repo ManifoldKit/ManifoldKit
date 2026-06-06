@@ -286,7 +286,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
     private struct Harness {
         let vm: ChatViewModel
         let backend: PerceivedLatencyBackend
-        let session: ChatSessionRecord
+        let session: ManifoldInference.ChatSession
     }
 
     private func makeHarness(backend: PerceivedLatencyBackend) -> Harness {
@@ -339,7 +339,7 @@ final class IntegratedStreamingPerformanceTests: XCTestCase {
                 // markdown rendering to be exercised, but small enough to
                 // keep fixture build reasonable.
                 let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
-                let record = ChatMessageRecord(
+                let record = ManifoldInference.ChatMessage(
                     role: role,
                     content: body,
                     timestamp: base.addingTimeInterval(Double(i)),

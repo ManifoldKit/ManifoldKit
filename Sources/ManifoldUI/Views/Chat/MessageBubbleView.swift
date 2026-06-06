@@ -12,7 +12,7 @@ import ManifoldInference
 /// conversation history is trimmed to fit the context window.
 public struct MessageBubbleView: View {
 
-    public let message: ChatMessageRecord
+    public let message: ChatMessage
     public let isStreaming: Bool
     public let isPinned: Bool
     public let linkPreviewProvider: LinkPreviewProvider?
@@ -20,15 +20,15 @@ public struct MessageBubbleView: View {
     /// Optional renderer for non-user-visible kind records. When `nil` (the default),
     /// records with `kind.isUserVisible == false` render as `EmptyView`. Hosts can
     /// supply a closure here (via ``ChatView``) to render memory or annotation bubbles.
-    public let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+    public let customKindRenderer: ((ChatMessage) -> AnyView)?
 
-    /// The session this message belongs to. Used to resolve ``ChatMessageRecord/agentID``
-    /// against ``ChatSessionRecord/agents`` for per-agent badge rendering. When `nil`
+    /// The session this message belongs to. Used to resolve ``ChatMessage/agentID``
+    /// against ``ChatSession/agents`` for per-agent badge rendering. When `nil`
     /// (or when the message's `agentID` does not resolve), the bubble falls back to
     /// role-based rendering. This is the architect-flagged dangling-reference path —
     /// an agent may have been deleted out from under a message that still references
     /// it, and the UI must not crash or surface "unknown agent" text in that case.
-    public let session: ChatSessionRecord?
+    public let session: ChatSession?
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -48,12 +48,12 @@ public struct MessageBubbleView: View {
     @ScaledMetric(relativeTo: .body) private var typeScale: CGFloat = 1
 
     public init(
-        message: ChatMessageRecord,
+        message: ChatMessage,
         isStreaming: Bool,
         isPinned: Bool = false,
         linkPreviewProvider: LinkPreviewProvider? = nil,
-        customKindRenderer: ((ChatMessageRecord) -> AnyView)? = nil,
-        session: ChatSessionRecord? = nil
+        customKindRenderer: ((ChatMessage) -> AnyView)? = nil,
+        session: ChatSession? = nil
     ) {
         self.message = message
         self.isStreaming = isStreaming
@@ -354,7 +354,7 @@ public struct MessageBubbleView: View {
     /// reading hidden payloads inline.
     /// Exposed so the accessibility contract can be asserted by tests without
     /// duplicating the string-building logic.
-    public static func accessibilityLabel(for message: ChatMessageRecord) -> String {
+    public static func accessibilityLabel(for message: ChatMessage) -> String {
         let roleName: String = switch message.role {
         case .user: "User"
         case .assistant: "Assistant"
@@ -369,7 +369,7 @@ public struct MessageBubbleView: View {
         return suffixes.isEmpty ? base : "\(base). \(suffixes.joined(separator: " "))"
     }
 
-    public static func statusText(for message: ChatMessageRecord) -> String? {
+    public static func statusText(for message: ChatMessage) -> String? {
         guard message.role == .user, let status = message.status else { return nil }
         return switch status {
         case .sending: "Sending…"
@@ -378,7 +378,7 @@ public struct MessageBubbleView: View {
         }
     }
 
-    public static func statusAccessibilityLabel(for message: ChatMessageRecord) -> String? {
+    public static func statusAccessibilityLabel(for message: ChatMessage) -> String? {
         guard message.role == .user, let status = message.status else { return nil }
         return switch status {
         case .sending: "Message sending"
@@ -392,7 +392,7 @@ public struct MessageBubbleView: View {
 
 #Preview("User Message") {
     MessageBubbleView(
-        message: ChatMessageRecord(role: .user, content: "Hello, tell me a story about a dragon.", sessionID: UUID()),
+        message: ChatMessage(role: .user, content: "Hello, tell me a story about a dragon.", sessionID: UUID()),
         isStreaming: false
     )
     .environment(ChatViewModel())
@@ -400,7 +400,7 @@ public struct MessageBubbleView: View {
 
 #Preview("Assistant Message") {
     MessageBubbleView(
-        message: ChatMessageRecord(role: .assistant, content: "Once upon a time, in a land far away, there lived a magnificent dragon named Ember.", sessionID: UUID()),
+        message: ChatMessage(role: .assistant, content: "Once upon a time, in a land far away, there lived a magnificent dragon named Ember.", sessionID: UUID()),
         isStreaming: false
     )
     .environment(ChatViewModel())
@@ -408,7 +408,7 @@ public struct MessageBubbleView: View {
 
 #Preview("Assistant Streaming") {
     MessageBubbleView(
-        message: ChatMessageRecord(role: .assistant, content: "Once upon a time...", sessionID: UUID()),
+        message: ChatMessage(role: .assistant, content: "Once upon a time...", sessionID: UUID()),
         isStreaming: true
     )
     .environment(ChatViewModel())
@@ -416,7 +416,7 @@ public struct MessageBubbleView: View {
 
 #Preview("System Message") {
     MessageBubbleView(
-        message: ChatMessageRecord(role: .system, content: "You are a creative storytelling assistant.", sessionID: UUID()),
+        message: ChatMessage(role: .system, content: "You are a creative storytelling assistant.", sessionID: UUID()),
         isStreaming: false
     )
 }

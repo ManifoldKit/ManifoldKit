@@ -11,7 +11,7 @@ import ManifoldTestSupport
 ///
 /// Each test targets `isMessagePinned`, `pinMessage`, and `unpinMessage` to confirm that
 /// the Boolean value powering the visual indicator is correct across all relevant state
-/// transitions, and that pin state is persisted to the active ChatSession.
+/// transitions, and that pin state is persisted to the active ManifoldSchemaV9.ChatSession.
 @MainActor
 final class PinnedMessageIndicatorTests: XCTestCase {
 
@@ -38,17 +38,17 @@ final class PinnedMessageIndicatorTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createSession(title: String = "Pin Test") async -> ChatSession {
-        let session = ChatSession(title: title)
+    private func createSession(title: String = "Pin Test") async -> ManifoldSchemaV9.ChatSession {
+        let session = ManifoldSchemaV9.ChatSession(title: title)
         context.insert(session)
         try? context.save()
         await vm.switchToSession(session.toRecord())
         return session
     }
 
-    private func makeMessage() -> ChatMessage {
+    private func makeMessage() -> ManifoldSchemaV9.ChatMessage {
         let sessionID = vm.activeSession!.id
-        let message = ChatMessage(role: .user, content: "Test message", sessionID: sessionID)
+        let message = ManifoldSchemaV9.ChatMessage(role: .user, content: "Test message", sessionID: sessionID)
         vm.messages.append(message.toRecord())
         return message
     }

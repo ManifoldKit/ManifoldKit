@@ -53,7 +53,7 @@ final class ChatA11yContractTests: XCTestCase {
     // MARK: - MessageBubbleView
 
     func test_messageBubble_userRole_hasContractAccessibilityLabel() throws {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Hello, tell me about dragons.",
             sessionID: sessionID
@@ -75,7 +75,7 @@ final class ChatA11yContractTests: XCTestCase {
     }
 
     func test_messageBubble_assistantRole_hasContractAccessibilityLabel() throws {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "Once upon a time...",
             sessionID: sessionID
@@ -96,7 +96,7 @@ final class ChatA11yContractTests: XCTestCase {
     }
 
     func test_messageBubble_systemRole_hasContractAccessibilityLabel() throws {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .system,
             content: "You are a helpful assistant.",
             sessionID: sessionID
@@ -120,9 +120,9 @@ final class ChatA11yContractTests: XCTestCase {
         // The static helper on MessageBubbleView is what the view uses internally.
         // Keeping a direct unit test on it provides a second line of defense if the
         // view-tree inspection ever breaks due to a SwiftUI internals change.
-        let user = ChatMessageRecord(role: .user, content: "Hi", sessionID: sessionID)
-        let assistant = ChatMessageRecord(role: .assistant, content: "Hello", sessionID: sessionID)
-        let system = ChatMessageRecord(role: .system, content: "Be concise", sessionID: sessionID)
+        let user = ManifoldInference.ChatMessage(role: .user, content: "Hi", sessionID: sessionID)
+        let assistant = ManifoldInference.ChatMessage(role: .assistant, content: "Hello", sessionID: sessionID)
+        let system = ManifoldInference.ChatMessage(role: .system, content: "Be concise", sessionID: sessionID)
 
         XCTAssertEqual(
             MessageBubbleView.accessibilityLabel(for: user),
@@ -141,7 +141,7 @@ final class ChatA11yContractTests: XCTestCase {
     func test_messageBubble_withThinkingParts_appendsIncludesReasoning() {
         // A message whose contentParts include a .thinking block must announce
         // reasoning presence so VoiceOver users know they can expand it.
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [
                 .thinking("Let me reason about this."),
@@ -164,7 +164,7 @@ final class ChatA11yContractTests: XCTestCase {
     }
 
     func test_messageBubble_withAudioPart_appendsIncludesAudio() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             contentParts: [
                 .audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 2, waveform: nil)
@@ -183,7 +183,7 @@ final class ChatA11yContractTests: XCTestCase {
 
     func test_messageBubble_withoutThinkingParts_doesNotAppendIncludesReasoning() {
         // A plain text message must NOT have the reasoning suffix.
-        let msg = ChatMessageRecord(role: .assistant, content: "Just text.", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .assistant, content: "Just text.", sessionID: sessionID)
 
         let label = MessageBubbleView.accessibilityLabel(for: msg)
 
@@ -202,12 +202,12 @@ final class ChatA11yContractTests: XCTestCase {
     func test_sabotage_thinkingPresentLabelDiffersFromPlainLabel() {
         // Confirms that the thinking suffix actually changes the label — guards
         // against a regression where the suffix is silently dropped.
-        let withThinking = ChatMessageRecord(
+        let withThinking = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [.thinking("some reasoning"), .text("answer")],
             sessionID: sessionID
         )
-        let withoutThinking = ChatMessageRecord(role: .assistant, content: "answer", sessionID: sessionID)
+        let withoutThinking = ManifoldInference.ChatMessage(role: .assistant, content: "answer", sessionID: sessionID)
 
         XCTAssertNotEqual(
             MessageBubbleView.accessibilityLabel(for: withThinking),
@@ -336,7 +336,7 @@ final class ChatA11yContractTests: XCTestCase {
     // manually sabotage-and-revert the source each run.
 
     func test_sabotage_wrongFormatFailsContract() {
-        let msg = ChatMessageRecord(role: .user, content: "Hi", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .user, content: "Hi", sessionID: sessionID)
 
         // The old (pre-contract) format: "user: Hi". Kept here as the sabotage
         // baseline — if someone reverts the source to this format the real

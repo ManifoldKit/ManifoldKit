@@ -27,7 +27,7 @@ final class MemoryAndConcurrencyTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: handler
         )
-        vm.activeSession = ChatSessionRecord(title: "Test Session")
+        vm.activeSession = ChatSession(title: "Test Session")
         return (vm, mock, handler)
     }
 
@@ -47,7 +47,7 @@ final class MemoryAndConcurrencyTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Slow Test Session")
+        vm.activeSession = ChatSession(title: "Slow Test Session")
         return (vm, slow)
     }
 
@@ -176,7 +176,7 @@ final class MemoryAndConcurrencyTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Rapid Test")
+        vm.activeSession = ChatSession(title: "Rapid Test")
 
         // Fire 3 sends in rapid succession as separate tasks.
         var tasks: [Task<Void, Never>] = []

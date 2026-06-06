@@ -217,13 +217,13 @@ private struct StubToolExecutor: ToolExecutor, Sendable {
 // MARK: - Minimal in-memory MessageStore for this test file
 
 private final class CapTestMessageStore: MessageStore, @unchecked Sendable {
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ChatMessage] = [:]
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
 
@@ -231,7 +231,7 @@ private final class CapTestMessageStore: MessageStore, @unchecked Sendable {
         messages.removeValue(forKey: messageID)
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values.filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }
     }

@@ -141,17 +141,17 @@ public enum RuntimeScenarioRunner {
 private final class ScenarioMessageStore: MessageStore, @unchecked Sendable {
 
     private let lock = NSLock()
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ChatMessage] = [:]
     private var hooks: [any MessageStorePostWriteHook] = []
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         let snapshot = upsertAndSnapshotHooks(message)
         for hook in snapshot {
             await hook.messageDidWrite(message, in: message.sessionID)
         }
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         let snapshot = upsertAndSnapshotHooks(message)
         for hook in snapshot {
             await hook.messageDidWrite(message, in: message.sessionID)
@@ -162,7 +162,7 @@ private final class ScenarioMessageStore: MessageStore, @unchecked Sendable {
         removeMessage(id: messageID)
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messagesForSession(sessionID)
     }
 
@@ -176,7 +176,7 @@ private final class ScenarioMessageStore: MessageStore, @unchecked Sendable {
 
     // MARK: - Sync lock-helpers (avoid NSLock.unlock in async ctx)
 
-    private func upsertAndSnapshotHooks(_ message: ChatMessageRecord) -> [any MessageStorePostWriteHook] {
+    private func upsertAndSnapshotHooks(_ message: ChatMessage) -> [any MessageStorePostWriteHook] {
         lock.lock()
         defer { lock.unlock() }
         messages[message.id] = message
@@ -189,7 +189,7 @@ private final class ScenarioMessageStore: MessageStore, @unchecked Sendable {
         messages.removeValue(forKey: id)
     }
 
-    private func messagesForSession(_ sessionID: UUID) -> [ChatMessageRecord] {
+    private func messagesForSession(_ sessionID: UUID) -> [ChatMessage] {
         lock.lock()
         defer { lock.unlock() }
         return messages.values

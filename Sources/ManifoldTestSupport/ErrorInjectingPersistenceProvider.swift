@@ -41,13 +41,13 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
         self.wrapped = wrapped
     }
 
-    public func insertSession(_ session: ChatSessionRecord) async throws {
+    public func insertSession(_ session: ChatSession) async throws {
         insertSessionCallCount += 1
         if let error = shouldThrowOnInsertSession { throw error }
         try await wrapped.insertSession(session)
     }
 
-    public func updateSession(_ session: ChatSessionRecord) async throws {
+    public func updateSession(_ session: ChatSession) async throws {
         updateSessionCallCount += 1
         if let error = shouldThrowOnUpdateSession { throw error }
         try await wrapped.updateSession(session)
@@ -58,19 +58,19 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
         try await wrapped.deleteSession(sessionID)
     }
 
-    public func fetchSessions() async throws -> [ChatSessionRecord] {
+    public func fetchSessions() async throws -> [ChatSession] {
         fetchSessionsCallCount += 1
         if let error = shouldThrowOnFetchSessions { throw error }
         return try await wrapped.fetchSessions()
     }
 
-    public func insertMessage(_ message: ChatMessageRecord) async throws {
+    public func insertMessage(_ message: ChatMessage) async throws {
         insertMessageCallCount += 1
         if let error = shouldThrowOnInsertMessage { throw error }
         try await wrapped.insertMessage(message)
     }
 
-    public func updateMessage(_ message: ChatMessageRecord) async throws {
+    public func updateMessage(_ message: ChatMessage) async throws {
         updateMessageCallCount += 1
         try await wrapped.updateMessage(message)
     }
@@ -80,19 +80,19 @@ public final class ErrorInjectingPersistenceProvider: SessionStore, MessageStore
         try await wrapped.deleteMessage(messageID)
     }
 
-    public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         fetchMessagesCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
         return try await wrapped.fetchMessages(for: sessionID)
     }
 
-    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchRecentMessages(for sessionID: UUID, limit: Int) async throws -> [ChatMessage] {
         fetchRecentMessagesCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
         return try await wrapped.fetchRecentMessages(for: sessionID, limit: limit)
     }
 
-    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessageRecord] {
+    public func fetchMessages(for sessionID: UUID, before: Date, limit: Int) async throws -> [ChatMessage] {
         fetchMessagesBeforeCallCount += 1
         if let error = shouldThrowOnFetchMessages { throw error }
         return try await wrapped.fetchMessages(for: sessionID, before: before, limit: limit)

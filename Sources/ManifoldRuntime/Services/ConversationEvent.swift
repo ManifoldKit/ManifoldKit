@@ -70,19 +70,19 @@ public enum ConversationEvent: Sendable {
     /// A new message was inserted into the active conversation. Fires for
     /// both the user message the runtime persists at the start of a turn
     /// and the assistant message the runtime persists at the end.
-    case messageInserted(ChatMessageRecord)
+    case messageInserted(ChatMessage)
 
     /// A previously persisted message was removed from the conversation.
     /// Fires when the runtime deletes a message on behalf of a sub-flow
     /// (e.g. regenerate deletes the last assistant message before replacing
     /// it). Adapters remove the matching message from their view-state array.
-    case messageRemoved(messageID: ChatMessageRecord.ID)
+    case messageRemoved(messageID: ChatMessage.ID)
 
     /// A previously persisted message's content was updated in place.
     /// Fires when the runtime modifies an existing message (e.g. edit
     /// sub-flow changes a message's content). Adapters update the matching
     /// message in their view-state array.
-    case messageUpdated(ChatMessageRecord)
+    case messageUpdated(ChatMessage)
 
     /// A new session was created by branching from an existing conversation.
     /// Fires synchronously (before `branch` returns) after the copied messages
@@ -93,42 +93,42 @@ public enum ConversationEvent: Sendable {
     /// The runtime queued a generation request and the underlying stream
     /// started. Carries the assistant message ID the stream will write
     /// into so adapters can pair token deltas with the right message slot.
-    case streamStarted(messageID: ChatMessageRecord.ID)
+    case streamStarted(messageID: ChatMessage.ID)
 
     /// A token (or a small batch of tokens) was emitted by the backend.
     /// Adapters concatenate `delta` onto the assistant message body for
     /// display.
-    case tokenEmitted(messageID: ChatMessageRecord.ID, delta: String)
+    case tokenEmitted(messageID: ChatMessage.ID, delta: String)
 
     /// The backend reported token usage for the turn. Fires before the
     /// terminal stream event when usage is available, including partial-output
     /// error and cancellation paths. The runtime also copies these counts onto
     /// the persisted assistant message when one is saved.
-    case tokenUsageRecorded(messageID: ChatMessageRecord.ID, promptTokens: Int, completionTokens: Int)
+    case tokenUsageRecorded(messageID: ChatMessage.ID, promptTokens: Int, completionTokens: Int)
 
     /// The model began emitting a thinking block. Fires when the first thinking
     /// token arrives. Adapters use this to show a "Thinking…" indicator.
-    case thinkingStarted(messageID: ChatMessageRecord.ID)
+    case thinkingStarted(messageID: ChatMessage.ID)
 
     /// A batch of thinking tokens was flushed. Same cadence as `.tokenEmitted`
     /// (batcher-controlled). Adapters concatenate `partialText` for progressive
     /// display. Does not carry the signature — that arrives with `.thinkingFinalized`.
-    case thinkingUpdated(messageID: ChatMessageRecord.ID, partialText: String)
+    case thinkingUpdated(messageID: ChatMessage.ID, partialText: String)
 
     /// The thinking block completed. `text` is the full thinking content;
     /// `signature` is the server-verification value (non-nil for extended-thinking
     /// backends) that must be round-tripped on the next request. Adapters persist
     /// both and hide the thinking content behind a disclosure UI.
-    case thinkingFinalized(messageID: ChatMessageRecord.ID, text: String, signature: String?)
+    case thinkingFinalized(messageID: ChatMessage.ID, text: String, signature: String?)
 
     /// The repetition detector fired. The runtime has already called `cancelAsync`
     /// on the in-flight token; adapters surface this as a user-visible warning
     /// (distinct from `.errorRaised` — the model ran, it just looped).
-    case loopDetected(messageID: ChatMessageRecord.ID)
+    case loopDetected(messageID: ChatMessage.ID)
 
     /// The stream terminated. `reason` distinguishes normal completion,
     /// user-initiated cancel, empty output, and length-limited stop.
-    case streamFinished(messageID: ChatMessageRecord.ID, reason: FinishReason)
+    case streamFinished(messageID: ChatMessage.ID, reason: FinishReason)
 
     /// An error surfaced during the turn. Adapters route to user-facing
     /// error UI; the runtime has already cleaned up partial state by the
@@ -172,7 +172,7 @@ public enum ConversationEvent: Sendable {
     /// `messageID`. Load-bearing — adapters key post-turn work (analytics,
     /// summarisation) against this case rather than chasing
     /// `.streamFinished` and re-fetching the message.
-    case afterGeneration(messageID: ChatMessageRecord.ID, finalText: String)
+    case afterGeneration(messageID: ChatMessage.ID, finalText: String)
 
     /// History was compressed (older messages dropped to fit the context
     /// window, or via a host-driven compression command). Load-bearing,
@@ -180,7 +180,7 @@ public enum ConversationEvent: Sendable {
     /// management still lives in `GenerationQueue` for the pre-PR-A
     /// surface. Reserved for later sub-flows that route compression
     /// through the runtime.
-    case compressionTriggered(removed: [ChatMessageRecord.ID], reason: CompressionReason)
+    case compressionTriggered(removed: [ChatMessage.ID], reason: CompressionReason)
 
     /// Emitted when ``CompressionPolicy`` has replaced the session's message
     /// history with a compressed version. Consumers that cache the message
@@ -192,7 +192,7 @@ public enum ConversationEvent: Sendable {
     ///
     /// This case is emitted by the ``ConversationTurnExecutor`` inline
     /// compression path introduced alongside ``CompressionPolicy``.
-    case historyCompressed(sessionID: UUID, insertedRecords: [ChatMessageRecord])
+    case historyCompressed(sessionID: UUID, insertedRecords: [ChatMessage])
 
     // MARK: Tool calls
 

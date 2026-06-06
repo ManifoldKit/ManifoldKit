@@ -19,7 +19,7 @@ public final class HandoffToolSource: SessionToolSource, @unchecked Sendable {
 
     public init() {}
 
-    public func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+    public func toolDefinitions(for session: ChatSession) async -> [ToolDefinition] {
         // Single-agent (or empty) sessions have no peer to transfer to.
         guard session.agents.count > 1 else { return [] }
 
@@ -52,7 +52,7 @@ public final class HandoffToolSource: SessionToolSource, @unchecked Sendable {
     public func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ChatSession
     ) async throws -> ToolResult {
         // Handoff tools must be intercepted upstream by the dispatch loop's
         // ``HandoffDetector`` integration — reaching `resolve` means the

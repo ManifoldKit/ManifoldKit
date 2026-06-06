@@ -49,14 +49,14 @@ final class ConversationImporterIntegrationTests: XCTestCase {
         title: String = "Imported",
         messageCount: Int = 3
     ) -> ImportedConversation {
-        let session = ChatSessionRecord(
+        let session = ManifoldInference.ChatSession(
             id: sessionID,
             title: title,
             createdAt: Date(timeIntervalSinceReferenceDate: 0),
             updatedAt: Date(timeIntervalSinceReferenceDate: 0)
         )
         let messages = (0..<messageCount).map { i in
-            ChatMessageRecord(
+            ManifoldInference.ChatMessage(
                 role: i.isMultiple(of: 2) ? .user : .assistant,
                 content: "message \(i)",
                 timestamp: Date(timeIntervalSinceReferenceDate: TimeInterval(i)),
@@ -124,7 +124,7 @@ final class ConversationImporterIntegrationTests: XCTestCase {
     }
 
     func test_importConversation_zeroMessages_onlySessionWritten() async throws {
-        let session = ChatSessionRecord(id: UUID(), title: "Empty Chat")
+        let session = ManifoldInference.ChatSession(id: UUID(), title: "Empty Chat")
         let conversation = ImportedConversation(session: session, messages: [])
 
         try await importer.importConversation(conversation)
@@ -151,14 +151,14 @@ final class ConversationImporterIntegrationTests: XCTestCase {
     func test_importConversation_preservesMessageUUIDs() async throws {
         let sessionID = UUID()
         let knownMsgID = UUID()
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             id: knownMsgID,
             role: .user,
             content: "known id message",
             timestamp: Date(timeIntervalSinceReferenceDate: 0),
             sessionID: sessionID
         )
-        let session = ChatSessionRecord(id: sessionID, title: "UUID Test")
+        let session = ManifoldInference.ChatSession(id: sessionID, title: "UUID Test")
         let conversation = ImportedConversation(session: session, messages: [msg])
 
         try await importer.importConversation(conversation)

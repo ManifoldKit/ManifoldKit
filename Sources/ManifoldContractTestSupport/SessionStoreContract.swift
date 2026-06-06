@@ -32,8 +32,8 @@ extension SessionStoreContract where Self: XCTestCase {
     private func makeSession(
         title: String = "Test Session",
         updatedAt: Date = Date()
-    ) -> ChatSessionRecord {
-        ChatSessionRecord(title: title, updatedAt: updatedAt)
+    ) -> ChatSession {
+        ChatSession(title: title, updatedAt: updatedAt)
     }
 
     // MARK: - Empty-store baseline
@@ -191,9 +191,9 @@ extension SessionStoreContract where Self: XCTestCase {
         // Insert 5 sessions with distinct updatedAt timestamps so ordering is
         // deterministic. Most-recently-updated ordering means descending
         // timestamp → [s4, s3, s2, s1, s0].
-        var sessions: [ChatSessionRecord] = []
+        var sessions: [ChatSession] = []
         for i in 0..<5 {
-            let s = ChatSessionRecord(
+            let s = ChatSession(
                 title: "Session \(i)",
                 updatedAt: base.addingTimeInterval(Double(i))
             )

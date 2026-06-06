@@ -44,9 +44,9 @@ final class SchemaMigrationTests: XCTestCase {
 
     func test_publicTypealiases_matchCurrentSchemaModelTypes() {
         // ChatMessage is redefined at V9 to carry agentID.
-        XCTAssertEqual(ObjectIdentifier(ChatMessage.self), ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self))
+        XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self), ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self))
         // ChatSession is redefined at V9 to carry activeAgentID / activeSkillName / agents.
-        XCTAssertEqual(ObjectIdentifier(ChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
+        XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
         // Agent is introduced at V9.
         XCTAssertEqual(ObjectIdentifier(Agent.self), ObjectIdentifier(ManifoldSchemaV9.Agent.self))
         // Other model types remain at V4.
@@ -61,10 +61,10 @@ final class SchemaMigrationTests: XCTestCase {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
         let sessionID = UUID()
-        let message = ChatMessage(role: .user, content: "ping", sessionID: sessionID)
+        let message = ManifoldSchemaV9.ChatMessage(role: .user, content: "ping", sessionID: sessionID)
         context.insert(message)
         try context.save()
-        let descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )
         let fetched = try context.fetch(descriptor)
@@ -92,7 +92,7 @@ final class SchemaMigrationTests: XCTestCase {
             let container = try ModelContainerFactory.makeContainer(configurations: [config])
             let context = ModelContext(container)
 
-            let session = ChatSession(title: "Persisted session")
+            let session = ManifoldSchemaV9.ChatSession(title: "Persisted session")
             context.insert(session)
             try context.save()
             originalSessionID = session.id
@@ -101,7 +101,7 @@ final class SchemaMigrationTests: XCTestCase {
         let reopenConfig = ModelConfiguration(url: storeURL)
         let reopenedContainer = try ModelContainerFactory.makeContainer(configurations: [reopenConfig])
         let reopenedContext = ModelContext(reopenedContainer)
-        let fetchedSessions = try reopenedContext.fetch(FetchDescriptor<ChatSession>(
+        let fetchedSessions = try reopenedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == originalSessionID }
         ))
 
@@ -187,7 +187,7 @@ final class SchemaMigrationTests: XCTestCase {
             configurations: [ModelConfiguration(url: storeURL)]
         )
         let migratedContext = ModelContext(migratedContainer)
-        let fetched = try migratedContext.fetch(FetchDescriptor<ChatSession>(
+        let fetched = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(fetched.count, 1)
@@ -256,7 +256,7 @@ final class SchemaMigrationTests: XCTestCase {
         )
         let migratedContext = ModelContext(migratedContainer)
 
-        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<ChatSession>(
+        let fetchedSessions = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         ))
         XCTAssertEqual(fetchedSessions.count, 1)
@@ -272,21 +272,21 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertTrue(migratedSession.agents.isEmpty,
                       "V9 lightweight migration must default agents to an empty array for rows written under V8")
 
-        let fetchedMessages = try migratedContext.fetch(FetchDescriptor<ChatMessage>(
+        let fetchedMessages = try migratedContext.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == messageID }
         ))
         XCTAssertEqual(fetchedMessages.count, 1)
         let migratedMessage = try XCTUnwrap(fetchedMessages.first)
         XCTAssertEqual(migratedMessage.content, "pre-V9 history")
         XCTAssertNil(migratedMessage.agentID,
-                     "V9 lightweight migration must default ChatMessage.agentID to nil for rows written under V8")
+                     "V9 lightweight migration must default ManifoldSchemaV9.ChatMessage.agentID to nil for rows written under V8")
     }
 
     func test_schemaOwnedModelAndPublicAlias_areInterchangeable() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        // Use the V9 class (the current schema's ChatMessage type) so the
+        // Use the V9 class (the current schema's ManifoldSchemaV9.ChatMessage type) so the
         // SwiftData schema validator finds all required columns (kindRaw,
         // agentID, etc.).
         let nestedMessage = ManifoldSchemaV9.ChatMessage(role: .user, content: "alias check", sessionID: UUID())
@@ -294,28 +294,28 @@ final class SchemaMigrationTests: XCTestCase {
         try context.save()
         let nestedMessageID = nestedMessage.id
 
-        let fetchedViaAlias = try context.fetch(FetchDescriptor<ChatMessage>(
+        let fetchedViaAlias = try context.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == nestedMessageID }
         ))
         XCTAssertEqual(fetchedViaAlias.count, 1)
         XCTAssertEqual(fetchedViaAlias.first?.content, "alias check")
     }
 
-    // MARK: - Codable round-trip (ChatMessage)
+    // MARK: - Codable round-trip (ManifoldSchemaV9.ChatMessage)
 
     func test_chatMessage_codableRoundTrip() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
         let sessionID = UUID()
-        let message = ChatMessage(role: .user, content: "Hello, world!", sessionID: sessionID)
+        let message = ManifoldSchemaV9.ChatMessage(role: .user, content: "Hello, world!", sessionID: sessionID)
         message.promptTokens = 10
         message.completionTokens = 42
 
         context.insert(message)
         try context.save()
 
-        let descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )
         let fetched = try context.fetch(descriptor)
@@ -327,13 +327,13 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(fetched0.completionTokens, 42)
     }
 
-    // MARK: - Codable round-trip (ChatSession)
+    // MARK: - Codable round-trip (ManifoldSchemaV9.ChatSession)
 
     func test_chatSession_codableRoundTrip() throws {
         let container = try ModelContainerFactory.makeInMemoryContainer()
         let context = ModelContext(container)
 
-        let session = ChatSession(title: "Migration test")
+        let session = ManifoldSchemaV9.ChatSession(title: "Migration test")
         session.systemPrompt = "You are helpful."
         session.temperature = 0.8
 
@@ -341,7 +341,7 @@ final class SchemaMigrationTests: XCTestCase {
         try context.save()
 
         let sessionID = session.id
-        let descriptor = FetchDescriptor<ChatSession>(
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatSession>(
             predicate: #Predicate { $0.id == sessionID }
         )
         let fetched = try context.fetch(descriptor)
@@ -428,14 +428,14 @@ final class SchemaMigrationTests: XCTestCase {
 
         let context = ModelContext(container)
         let sessionID = UUID()
-        let message = ChatMessage(role: .assistant, content: "Test", sessionID: sessionID)
+        let message = ManifoldSchemaV9.ChatMessage(role: .assistant, content: "Test", sessionID: sessionID)
         context.insert(message)
         XCTAssertNoThrow(try context.save())
     }
 
     // MARK: - Tool-call message round-trip
 
-    /// Persists a `ChatMessage` whose `contentParts` mix `.text`, `.toolCall`,
+    /// Persists a `ManifoldSchemaV9.ChatMessage` whose `contentParts` mix `.text`, `.toolCall`,
     /// and `.toolResult`, then fetches it back and asserts that every payload
     /// field round-trips through SwiftData via `contentPartsJSON`. Guards
     /// against silent corruption of the tool-calling wire format — a renamed
@@ -461,12 +461,12 @@ final class SchemaMigrationTests: XCTestCase {
             .toolResult(result),
         ]
 
-        let message = ChatMessage(role: .assistant, contentParts: parts, sessionID: sessionID)
+        let message = ManifoldSchemaV9.ChatMessage(role: .assistant, contentParts: parts, sessionID: sessionID)
         context.insert(message)
         try context.save()
 
         let messageID = message.id
-        let fetched = try context.fetch(FetchDescriptor<ChatMessage>(
+        let fetched = try context.fetch(FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.id == messageID }
         ))
         XCTAssertEqual(fetched.count, 1)
