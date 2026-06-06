@@ -79,7 +79,7 @@ Table-stakes capabilities that ship today (verified in source):
 - **Metrics + cost estimation** for observability.
 - **On-device image generation** — `FluxDiffusionBackend` (FLUX.1 Schnell) and `MLXDiffusionBackend` (SDXL Turbo). See [docs/QUICKSTART-IMAGE-GEN.md](docs/QUICKSTART-IMAGE-GEN.md).
 
-**Honest current state:** ManifoldKit is pre-1.0 — breaking changes can land between minor versions. RAG reranking is not yet shipped ([#1637](https://github.com/roryford/ManifoldKit/issues/1637)), and some reliability features (e.g. mid-stream resume) are deliberately deferred and documented in [docs/RELIABILITY.md](docs/RELIABILITY.md).
+**Status:** ManifoldKit is pre-1.0; breaking changes can land between minor versions. RAG reranking is not yet shipped ([#1637](https://github.com/roryford/ManifoldKit/issues/1637)). Deferred reliability features (e.g. mid-stream resume) are tracked in [docs/RELIABILITY.md](docs/RELIABILITY.md).
 
 ## Beyond chat
 
@@ -336,7 +336,7 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model. A qu
 - User content sanitised in prompt templates to prevent injection.
 - Sensitive data uses `privacy: .private` in `os.Logger` calls; error response bodies filtered before logging.
 
-For regulated deployments (healthcare, federal-adjacent, finance), see [docs/FIPS.md](docs/FIPS.md) — the honest answer to "are your cryptographic primitives FIPS 140-3 validated?".
+For regulated deployments (healthcare, federal-adjacent, finance), see [docs/FIPS.md](docs/FIPS.md) for the full answer to "are your cryptographic primitives FIPS 140-3 validated?".
 
 ## Binary Dependencies
 

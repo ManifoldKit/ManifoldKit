@@ -1,6 +1,6 @@
 # ManifoldKit Threat Model
 
-This document is the engineering-honest companion to [SECURITY.md](../SECURITY.md). Where
+This document is the engineering companion to [SECURITY.md](../SECURITY.md). Where
 SECURITY.md is the customer-facing summary ("what ManifoldKit guarantees, who it's for, what to
 do with a vulnerability"), this document is the line-by-line procurement checklist:
 what is enforced, what is **not** enforced, and which CI mechanism or open issue maps
@@ -273,8 +273,7 @@ The procurement view: which mitigation, which mechanism, where it lives.
 
 ## Known non-mitigations
 
-The honest list. Each item is either deferred to a tracked issue or explicitly out of
-scope.
+Each item is either deferred to a tracked issue or explicitly out of scope.
 
 ### Deferred (tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714) Phase 5 unless noted)
 
