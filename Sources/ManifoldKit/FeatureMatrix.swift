@@ -37,6 +37,7 @@ public enum ManifoldCapability: String, CaseIterable, Sendable {
     case imageGeneration
     case modelDownload           // HuggingFace background download
     case embeddings
+    case providerBridge          // additional providers via the AnyLanguageModel bridge
 }
 
 /// A SwiftPM trait declared in `Package.swift` and the capabilities it unlocks.
@@ -83,8 +84,8 @@ public enum FeatureMatrix {
         ),
         ManifoldTrait(
             name: "AnyLanguageModel",
-            description: "Enable the AnyLanguageModel bridge backend target.",
-            unlocks: [.localInference]
+            description: "Reach providers without a native backend (Gemini, xAI, Groq, Mistral, OpenRouter, and others) through the AnyLanguageModel bridge.",
+            unlocks: [.providerBridge]
         ),
         ManifoldTrait(
             name: "Ollama",
