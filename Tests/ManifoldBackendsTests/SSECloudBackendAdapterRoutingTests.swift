@@ -278,14 +278,14 @@ struct SSECloudBackendAdapterRoutingTests {
         for try await event in stream {
             switch event {
             case .thinkingToken(let text): events.append("thinking:\(text)")
-            case .thinkingComplete: events.append("thinkingComplete")
+            case .thinkingCompleted: events.append("thinkingCompleted")
             case .token(let text): events.append("token:\(text)")
             case .usage(let prompt, let completion): events.append("usage:\(prompt)/\(completion)")
             default: break
             }
         }
 
-        #expect(events == ["thinking:rationale", "thinkingComplete", "token:answer", "usage:7/11"])
+        #expect(events == ["thinking:rationale", "thinkingCompleted", "token:answer", "usage:7/11"])
         #expect(usageRecorder.lastPrompt == 7)
         #expect(usageRecorder.lastCompletion == 11)
         #expect(framedTransport.callCount == 1)

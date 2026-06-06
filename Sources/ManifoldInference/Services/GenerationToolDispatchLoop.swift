@@ -81,7 +81,7 @@ struct GenerationToolDispatchLoop {
                 Log.inference.warning(
                     "GenerationQueue: tool-dispatch loop hit maxToolIterations=\(limit, privacy: .public); terminating."
                 )
-                yieldEvent(.toolLoopLimitReached(iterations: limit))
+                yieldEvent(.toolIterationLimitExceeded(iterations: limit))
                 return
             }
 
@@ -194,7 +194,7 @@ struct GenerationToolDispatchLoop {
                     yieldEvent(
                         .toolDispatchCompleted(
                             callId: call.id,
-                            durationMs: dispatchDurationMs,
+                            durationMilliseconds: dispatchDurationMs,
                             errorKind: result.errorKind
                         )
                     )

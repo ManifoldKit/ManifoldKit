@@ -166,7 +166,7 @@ for try await event in stream {
         responseText += chunk
     case .thinkingToken(let chunk):
         thinkingText += chunk
-    case .thinkingComplete:
+    case .thinkingCompleted:
         showThinkingBubble(thinkingText)
     case .toolCall(let call):
         let result = try await myToolRegistry.dispatch(call)

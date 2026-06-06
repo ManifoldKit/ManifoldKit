@@ -12,7 +12,7 @@ private func collectThinking(_ events: [GenerationEvent]) -> String {
 }
 
 private func countCompletions(_ events: [GenerationEvent]) -> Int {
-    events.filter { if case .thinkingComplete = $0 { return true } else { return false } }.count
+    events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }.count
 }
 
 /// Tests for `ThinkingParser` — the chunk-safe reasoning block separator.
@@ -54,10 +54,10 @@ final class ThinkingParserTests: XCTestCase {
         XCTAssertEqual(collectVisible(allEvents), "answer",
             "Content after </think> should be emitted as .token")
         XCTAssertEqual(countCompletions(allEvents), 1,
-            "Exactly one .thinkingComplete event should fire on block close")
+            "Exactly one .thinkingCompleted event should fire on block close")
 
         // Sabotage check: removing the depth transition in ThinkingParser causes
-        // "reason" to also appear in visible output and .thinkingComplete to not fire.
+        // "reason" to also appear in visible output and .thinkingCompleted to not fire.
     }
 
     // MARK: - Split tags
@@ -99,7 +99,7 @@ final class ThinkingParserTests: XCTestCase {
         // A nested <think> tag is treated as literal thinking text, not a depth increment.
         // Input: <think>outer<think>inner</think>still outer</think>text
         //   → depth 0: find <think>, enter thinking
-        //   → depth 1: find </think>, close block at "outer<think>inner", fire .thinkingComplete
+        //   → depth 1: find </think>, close block at "outer<think>inner", fire .thinkingCompleted
         //   → depth 0: "still outer</think>text" — no <think> found → stays in buffer/finalize
         let events = parser.process("<think>outer<think>inner</think>still outer</think>text")
         let finalEvents = parser.finalize()
@@ -118,7 +118,7 @@ final class ThinkingParserTests: XCTestCase {
             "Text after the second </think> is also visible")
 
         XCTAssertEqual(countCompletions(allEvents), 1,
-            "Only one .thinkingComplete fires when depth transitions from 1 to 0")
+            "Only one .thinkingCompleted fires when depth transitions from 1 to 0")
 
         // Sabotage check: if the parser switched to nested-depth mode, "still outer" would
         // become thinking text and this test would fail.
@@ -137,7 +137,7 @@ final class ThinkingParserTests: XCTestCase {
         XCTAssertEqual(collectVisible(allEvents), "betweenend",
             "Text between and after blocks should be visible")
         XCTAssertEqual(countCompletions(allEvents), 2,
-            "Two distinct thinking blocks should each fire .thinkingComplete")
+            "Two distinct thinking blocks should each fire .thinkingCompleted")
 
         // Sabotage check: if the parser reset depth incorrectly between blocks,
         // the second block's content might be emitted as .token instead of .thinkingToken.
@@ -267,7 +267,7 @@ final class ThinkingParserTests: XCTestCase {
         XCTAssertEqual(collectThinking(allEvents), "",
             "No thinking content should be emitted when there is no opening <think> tag")
         XCTAssertEqual(countCompletions(allEvents), 0,
-            "No .thinkingComplete events should fire without a matching open tag")
+            "No .thinkingCompleted events should fire without a matching open tag")
 
         // Sabotage check: if ThinkingParser searched for markers.close when depth == 0,
         // </think> would be consumed and "Visible  text" would be the (wrong) visible output.

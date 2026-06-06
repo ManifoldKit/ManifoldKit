@@ -934,7 +934,7 @@ private final class MockTokenUsageBackend: InferenceBackend,
 }
 
 private final class MockCloudURLModelBackend: InferenceBackend,
-                                              CloudBackendURLModelConfigurable,
+                                              EndpointBackendURLModelConfigurable,
                                               @unchecked Sendable {
     var isModelLoaded: Bool = false
     var isGenerating: Bool = false
@@ -973,7 +973,7 @@ private final class MockCloudURLModelBackend: InferenceBackend,
 }
 
 private final class MockCloudKeychainBackend: InferenceBackend,
-                                               CloudBackendKeychainConfigurable,
+                                               EndpointBackendKeychainConfigurable,
                                                @unchecked Sendable {
     var isModelLoaded: Bool = false
     var isGenerating: Bool = false
@@ -1077,7 +1077,7 @@ private actor ControlledLoadGate {
 }
 
 private final class ControlledLoadBackend: InferenceBackend,
-                                           CloudBackendURLModelConfigurable,
+                                           EndpointBackendURLModelConfigurable,
                                            @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false

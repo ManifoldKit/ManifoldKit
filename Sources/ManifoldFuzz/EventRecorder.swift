@@ -93,11 +93,11 @@ public struct EventRecorder: Sendable {
             for try await event in stream.events {
                 let t = start.duration(to: ContinuousClock.now).seconds
                 switch event {
-                case .prefillProgress(let nPast, let nTotal, let tokensPerSecond):
+                case .prefillProgress(let tokensProcessed, let tokensTotal, let tokensPerSecond):
                     events.append(.init(
                         t: t,
                         kind: "prefillProgress",
-                        v: "\(nPast)/\(nTotal)@\(tokensPerSecond)"
+                        v: "\(tokensProcessed)/\(tokensTotal)@\(tokensPerSecond)"
                     ))
                 case .token(let text):
                     if firstTokenAt == nil { firstTokenAt = ContinuousClock.now }
@@ -108,13 +108,13 @@ public struct EventRecorder: Sendable {
                     thinkingRaw += text
                     thinkingBuffer += text
                     events.append(.init(t: t, kind: "thinkingToken", v: text))
-                case .thinkingComplete:
+                case .thinkingCompleted:
                     thinkingCompleteCount += 1
                     if !thinkingBuffer.isEmpty {
                         thinkingParts.append(thinkingBuffer)
                         thinkingBuffer = ""
                     }
-                    events.append(.init(t: t, kind: "thinkingComplete", v: nil))
+                    events.append(.init(t: t, kind: "thinkingCompleted", v: nil))
                 case .usage(let p, let c):
                     promptTokens = p
                     completionTokens = c
@@ -125,12 +125,12 @@ public struct EventRecorder: Sendable {
                 case .toolResult(let result):
                     toolResults.append(result)
                     events.append(.init(t: t, kind: "toolResult", v: result.callId))
-                case .toolLoopLimitReached(let iterations):
-                    events.append(.init(t: t, kind: "toolLoopLimitReached", v: "\(iterations)"))
+                case .toolIterationLimitExceeded(let iterations):
+                    events.append(.init(t: t, kind: "toolIterationLimitExceeded", v: "\(iterations)"))
                 case .kvCacheReuse(let tokens):
                     events.append(.init(t: t, kind: "kvCacheReuse", v: "\(tokens)"))
-                case .diagnosticThrottle(let reason):
-                    events.append(.init(t: t, kind: "diagnosticThrottle", v: reason))
+                case .throttleDiagnostic(let reason):
+                    events.append(.init(t: t, kind: "throttleDiagnostic", v: reason))
                 case .thinkingSignature(let signature):
                     // Provider-issued opaque token for multi-turn replay
                     // (Anthropic extended thinking). Surface in the trace so
@@ -146,8 +146,8 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolProgress", v: "\(progress.callId):\(progress.message):\(fraction)"))
                 case .toolDispatchStarted(let callId, let name, let attempt):
                     events.append(.init(t: t, kind: "toolDispatchStarted", v: "\(callId):\(name):\(attempt)"))
-                case .toolDispatchCompleted(let callId, let durationMs, let errorKind):
-                    events.append(.init(t: t, kind: "toolDispatchCompleted", v: "\(callId):\(durationMs):\(errorKind?.rawValue ?? "none")"))
+                case .toolDispatchCompleted(let callId, let durationMilliseconds, let errorKind):
+                    events.append(.init(t: t, kind: "toolDispatchCompleted", v: "\(callId):\(durationMilliseconds):\(errorKind?.rawValue ?? "none")"))
                 case .handoffRequested(let handoff):
                     // Multi-agent handoffs only surface through the runtime
                     // executor; deterministic fuzz replays never observe
@@ -166,7 +166,7 @@ public struct EventRecorder: Sendable {
         // trace in `thinkingParts`. Without this, detectors like
         // `unbalanced-thinking-events` and the `looping` thinking-loop sub-check go
         // blind on mid-stream failures. On the success path the buffer is already
-        // drained by the last `.thinkingComplete`, so this is a no-op.
+        // drained by the last `.thinkingCompleted`, so this is a no-op.
         if !thinkingBuffer.isEmpty {
             thinkingParts.append(thinkingBuffer)
             thinkingBuffer = ""

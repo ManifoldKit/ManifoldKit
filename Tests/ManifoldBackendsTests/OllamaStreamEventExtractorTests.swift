@@ -87,12 +87,12 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
     // MARK: - Thinking / qwen-style fixture
     //
     // Two thinking lines → thinkingToken × 2; the third line has no
-    // `thinking` field and a non-empty `content` → thinkingComplete (auto-
+    // `thinking` field and a non-empty `content` → thinkingCompleted (auto-
     // closed on transition) + token. The done line carries usage.
     func test_extractor_thinkingQwenStyle_yieldsThinkingHandoff() throws {
         let events = try driveExtractor(scenario: "thinking/qwen-style", config: GenerationConfig())
 
-        XCTAssertEqual(events.count, 5, "expected thinkingToken × 2, thinkingComplete, token, usage (saw \(events))")
+        XCTAssertEqual(events.count, 5, "expected thinkingToken × 2, thinkingCompleted, token, usage (saw \(events))")
         guard events.count == 5 else { return }
 
         if case .thinkingToken(let t1) = events[0] { XCTAssertEqual(t1, "Let me consider") }
@@ -101,8 +101,8 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         if case .thinkingToken(let t2) = events[1] { XCTAssertEqual(t2, " the question.") }
         else { XCTFail("event[1] expected .thinkingToken, got \(events[1])") }
 
-        if case .thinkingComplete = events[2] { /* ok */ }
-        else { XCTFail("event[2] expected .thinkingComplete, got \(events[2])") }
+        if case .thinkingCompleted = events[2] { /* ok */ }
+        else { XCTFail("event[2] expected .thinkingCompleted, got \(events[2])") }
 
         if case .token(let visible) = events[3] { XCTAssertEqual(visible, "Answer.") }
         else { XCTFail("event[3] expected .token, got \(events[3])") }
@@ -243,20 +243,20 @@ final class OllamaStreamEventExtractorParityTests: XCTestCase {
         switch event {
         case .token(let s): return "token(\(s))"
         case .thinkingToken(let s): return "thinkingToken(\(s))"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature(let s): return "thinkingSignature(\(s))"
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
         case .usage(let p, let c): return "usage(\(p),\(c))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
-        case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
+        case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }

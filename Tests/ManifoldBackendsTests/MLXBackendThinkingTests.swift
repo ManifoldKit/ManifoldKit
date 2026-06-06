@@ -83,12 +83,12 @@ final class MLXBackendThinkingTests: XCTestCase {
         XCTAssertTrue(thinkingTexts.joined().contains("reason"),
             ".thinkingToken events must contain the reasoning content")
 
-        // Verify .thinkingComplete fires
+        // Verify .thinkingCompleted fires
         let completions = allEvents.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         XCTAssertEqual(completions.count, 1,
-            "Exactly one .thinkingComplete must fire when </think> is encountered")
+            "Exactly one .thinkingCompleted must fire when </think> is encountered")
 
         // Verify visible token appears
         let visibleTexts = allEvents.compactMap { event -> String? in
@@ -97,20 +97,20 @@ final class MLXBackendThinkingTests: XCTestCase {
         XCTAssertTrue(visibleTexts.joined().contains("answer"),
             "Content after </think> must be emitted as .token events")
 
-        // Verify ordering: all thinkingToken events before thinkingComplete before token events
+        // Verify ordering: all thinkingToken events before thinkingCompleted before token events
         let firstThinkingIndex = allEvents.firstIndex {
             if case .thinkingToken = $0 { return true } else { return false }
         }
         let completeIndex = allEvents.firstIndex {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         let firstTokenIndex = allEvents.firstIndex {
             if case .token = $0 { return true } else { return false }
         }
 
         if let ti = firstThinkingIndex, let ci = completeIndex, let vi = firstTokenIndex {
-            XCTAssertLessThan(ti, ci, ".thinkingToken events must precede .thinkingComplete")
-            XCTAssertLessThan(ci, vi, ".thinkingComplete must precede .token events")
+            XCTAssertLessThan(ti, ci, ".thinkingToken events must precede .thinkingCompleted")
+            XCTAssertLessThan(ci, vi, ".thinkingCompleted must precede .token events")
         } else {
             XCTFail("Expected all three event types in the stream")
         }
@@ -182,11 +182,11 @@ final class MLXBackendThinkingTests: XCTestCase {
 
         let thinkingEvents = allEvents.filter {
             if case .thinkingToken = $0 { return true }
-            if case .thinkingComplete = $0 { return true }
+            if case .thinkingCompleted = $0 { return true }
             return false
         }
         XCTAssertTrue(thinkingEvents.isEmpty,
-            "When config.thinkingMarkers is nil, no .thinkingToken or .thinkingComplete events must be emitted")
+            "When config.thinkingMarkers is nil, no .thinkingToken or .thinkingCompleted events must be emitted")
 
         let rawTokens = allEvents.compactMap { event -> String? in
             if case .token(let t) = event { return t } else { return nil }
@@ -241,12 +241,12 @@ final class MLXBackendThinkingTests: XCTestCase {
         XCTAssertTrue(thinkingTexts.joined().contains("hmm"),
             "The reasoning body (\"hmm\") must appear inside .thinkingToken events, not raw .token events")
 
-        // Exactly one .thinkingComplete at the close marker.
+        // Exactly one .thinkingCompleted at the close marker.
         let completions = allEvents.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         XCTAssertEqual(completions.count, 1,
-            "Exactly one .thinkingComplete must fire when the custom close marker is encountered")
+            "Exactly one .thinkingCompleted must fire when the custom close marker is encountered")
 
         // Post-close content must emerge as visible .token events.
         let visibleTexts = allEvents.compactMap { event -> String? in
@@ -402,7 +402,7 @@ final class MLXBackendThinkingTests: XCTestCase {
         let events = try await collectAllEvents(from: stream)
         let thinkingEvents = events.filter {
             if case .thinkingToken = $0 { return true }
-            if case .thinkingComplete = $0 { return true }
+            if case .thinkingCompleted = $0 { return true }
             return false
         }
         XCTAssertTrue(thinkingEvents.isEmpty,
@@ -422,7 +422,7 @@ final class MLXBackendThinkingTests: XCTestCase {
     // MARK: - 7. maxThinkingTokens == 0 disables thinking entirely (#597)
 
     /// Verifies that `GenerationConfig.maxThinkingTokens == 0` short-circuits
-    /// the `ThinkingTransform` on MLX so zero `.thinkingToken` / `.thinkingComplete`
+    /// the `ThinkingTransform` on MLX so zero `.thinkingToken` / `.thinkingCompleted`
     /// events are emitted, and visible output still flows.
     ///
     /// Even with `thinkingMarkers = .qwen3` (which would normally activate the
@@ -432,7 +432,7 @@ final class MLXBackendThinkingTests: XCTestCase {
     func test_maxThinkingTokens_zero_disablesThinkingEntirely_regression597() async throws {
         let mock = MockMLXModelContainer()
         // A thinking-capable stream: the mock would normally have these routed
-        // through ThinkingTransform and produce `.thinkingToken` + `.thinkingComplete`.
+        // through ThinkingTransform and produce `.thinkingToken` + `.thinkingCompleted`.
         mock.tokensToYield = ["<think>", "reason", "</think>", "answer"]
 
         let backend = MLXBackend()
@@ -455,7 +455,7 @@ final class MLXBackendThinkingTests: XCTestCase {
             return acc
         }
         let thinkingCompleteCount = events.reduce(0) { acc, ev in
-            if case .thinkingComplete = ev { return acc + 1 }
+            if case .thinkingCompleted = ev { return acc + 1 }
             return acc
         }
         let visibleText = events.compactMap { ev -> String? in
@@ -465,7 +465,7 @@ final class MLXBackendThinkingTests: XCTestCase {
         XCTAssertEqual(thinkingTokenCount, 0,
             "maxThinkingTokens=0 must suppress every .thinkingToken event (#597)")
         XCTAssertEqual(thinkingCompleteCount, 0,
-            "maxThinkingTokens=0 must suppress .thinkingComplete — no thinking phase entered")
+            "maxThinkingTokens=0 must suppress .thinkingCompleted — no thinking phase entered")
         XCTAssertFalse(visibleText.isEmpty,
             "Visible output must still appear when thinking is disabled — \"answer\" should reach .token")
         XCTAssertTrue(visibleText.contains("answer"),

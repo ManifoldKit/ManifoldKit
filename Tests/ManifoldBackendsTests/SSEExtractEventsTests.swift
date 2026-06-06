@@ -144,12 +144,12 @@ struct SSEExtractEventsTests {
                 "Default extractEvents must wrap the legacy extractToken result into [.token(...)]")
     }
 
-    // MARK: - (b) Thinking → token transition injects .thinkingComplete exactly once
+    // MARK: - (b) Thinking → token transition injects .thinkingCompleted exactly once
 
     /// When a handler emits one or more ``GenerationEvent/thinkingToken(_:)``
     /// events followed by a plain ``GenerationEvent/token(_:)``, the base
     /// ``SSECloudBackend/parseResponseStream(bytes:continuation:)`` loop must
-    /// inject a single ``GenerationEvent/thinkingComplete`` at the boundary.
+    /// inject a single ``GenerationEvent/thinkingCompleted`` at the boundary.
     /// The injected event must sit between the final thinking token and the
     /// first plain token, and must not repeat if further plain tokens follow.
     @Test func thinkingToTokenTransition_injectsThinkingCompleteOnce() async throws {
@@ -185,27 +185,27 @@ struct SSEExtractEventsTests {
             events.append(event)
         }
 
-        // Expected exact sequence: two thinking tokens, one thinkingComplete
+        // Expected exact sequence: two thinking tokens, one thinkingCompleted
         // injected by the base loop, then two plain tokens.
         let expected: [GenerationEvent] = [
             .thinkingToken("pondering"),
             .thinkingToken("more"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("answer"),
             .token("continued"),
         ]
         #expect(events == expected,
-                "Base loop must inject exactly one .thinkingComplete at the thinking→token boundary; got \(events)")
+                "Base loop must inject exactly one .thinkingCompleted at the thinking→token boundary; got \(events)")
 
         // Extra pin: no duplicates.
-        let completes = events.filter { if case .thinkingComplete = $0 { return true } else { return false } }
+        let completes = events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }
         #expect(completes.count == 1,
-                ".thinkingComplete must appear exactly once across the whole stream")
+                ".thinkingCompleted must appear exactly once across the whole stream")
     }
 
-    // MARK: - (c) Handler-emitted .thinkingComplete is not double-injected
+    // MARK: - (c) Handler-emitted .thinkingCompleted is not double-injected
 
-    /// A handler that already emits ``GenerationEvent/thinkingComplete``
+    /// A handler that already emits ``GenerationEvent/thinkingCompleted``
     /// itself (e.g. an inline-tag backend using `ThinkingTransform`) must not
     /// get a second duplicate injected by the base loop. The internal
     /// `wasThinking` flag must clear when the handler's explicit event
@@ -218,7 +218,7 @@ struct SSEExtractEventsTests {
             case "THINK:DONE":
                 // Handler emits its own explicit close — e.g. ThinkingTransform
                 // saw the `</think>` closing tag.
-                return [.thinkingComplete]
+                return [.thinkingCompleted]
             case "TOKEN:answer":
                 return [.token("answer")]
             default:
@@ -244,15 +244,15 @@ struct SSEExtractEventsTests {
 
         let expected: [GenerationEvent] = [
             .thinkingToken("pondering"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("answer"),
         ]
         #expect(events == expected,
-                "Handler-emitted .thinkingComplete must not be duplicated by the base loop; got \(events)")
+                "Handler-emitted .thinkingCompleted must not be duplicated by the base loop; got \(events)")
 
-        let completes = events.filter { if case .thinkingComplete = $0 { return true } else { return false } }
+        let completes = events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }
         #expect(completes.count == 1,
-                ".thinkingComplete must appear exactly once when the handler emits it explicitly")
+                ".thinkingCompleted must appear exactly once when the handler emits it explicitly")
     }
 
     // MARK: - (d) Multiple events per payload — one chunk, several events
@@ -283,11 +283,11 @@ struct SSEExtractEventsTests {
         }
 
         // Within the single payload: thinkingToken first, then the base loop
-        // injects .thinkingComplete because the next event is .token, then
+        // injects .thinkingCompleted because the next event is .token, then
         // the .token itself.
         let expected: [GenerationEvent] = [
             .thinkingToken("thought"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("visible"),
         ]
         #expect(events == expected,

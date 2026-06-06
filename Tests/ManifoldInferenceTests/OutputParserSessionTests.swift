@@ -18,7 +18,7 @@ final class OutputParserSessionTests: XCTestCase {
     }
 
     private func completions(_ events: [GenerationEvent]) -> Int {
-        events.filter { if case .thinkingComplete = $0 { return true } else { return false } }.count
+        events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }.count
     }
 
     private func toolCalls(_ events: [GenerationEvent]) -> [ToolCall] {
@@ -123,7 +123,7 @@ final class OutputParserSessionTests: XCTestCase {
     // MARK: - Adversarial byte-boundary splitting
 
     /// Coalesces adjacent same-kind `.token` / `.thinkingToken` events into one,
-    /// leaving every other event (`.thinkingComplete`, `.toolCall`, …) as a
+    /// leaving every other event (`.thinkingCompleted`, `.toolCall`, …) as a
     /// boundary. Two `.token` fragments produced only because a chunk split mid
     /// visible text are semantically identical to one merged `.token` — the
     /// chunk-invariance property is about *content and routing*, not how many

@@ -11,10 +11,10 @@ import ManifoldInference
 ///
 /// - `tokensToYield` — the visible tokens emitted after thinking (if any).
 /// - `thinkingTokensToYield` — reasoning tokens emitted before visible output.
-/// - `emitThinkingComplete` — whether to emit a `.thinkingComplete` event after
+/// - `emitThinkingComplete` — whether to emit a `.thinkingCompleted` event after
 ///   the thinking burst. Scenarios covering disable-thinking flip this off.
 /// - `pauseBeforeThinkingComplete` — optional sleep *before* emitting
-///   `.thinkingComplete`, giving scenarios a cancellation / retry window that
+///   `.thinkingCompleted`, giving scenarios a cancellation / retry window that
 ///   lands mid-thinking rather than after it.
 /// - `cancelAfterFirstThinkingToken` — when true, the backend observes
 ///   `Task.isCancelled` cooperatively and stops the stream once cancellation
@@ -139,7 +139,7 @@ public final class ScenarioTestBackend: InferenceBackend, @unchecked Sendable {
                             try? await Task.sleep(for: pause)
                         }
                         if !Task.isCancelled && emitComplete {
-                            continuation.yield(.thinkingComplete)
+                            continuation.yield(.thinkingCompleted)
                         }
                     }
                 }

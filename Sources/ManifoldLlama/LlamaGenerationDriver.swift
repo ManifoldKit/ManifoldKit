@@ -127,7 +127,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
     ///   - maxTokens: Maximum number of new tokens to generate.
     ///   - config: Sampling parameters (temperature, topP, repeatPenalty).
     ///   - markers: Thinking markers for the active template, or nil to disable ThinkingTransform.
-    ///     When non-nil, `.thinkingToken` / `.thinkingComplete` events are emitted for reasoning
+    ///     When non-nil, `.thinkingToken` / `.thinkingCompleted` events are emitted for reasoning
     ///     content and `config.maxThinkingTokens` is enforced. When nil, every decoded chunk
     ///     surfaces as a plain `.token` event — there is no longer a sniff-mode fallback that
     ///     retroactively engages the parser on raw `<think>` substrings; auto-detection at
@@ -395,7 +395,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
         defer { if let thinkingSampler { llama_sampler_free(thinkingSampler) } }
 
         // Phase gate: starts permissive when gating, flips to strict on the first
-        // `.thinkingComplete`. A no-op (always strict) when not gating.
+        // `.thinkingCompleted`. A no-op (always strict) when not gating.
         var grammarGate = GrammarPhaseGate(gateOnThinking: gateGrammarOnThinking)
 
         // MARK: Chunked prompt decode
@@ -566,7 +566,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
             let logitIndex: Int32 = iteration == 0 ? -1 : 0
             // Phase-aware grammar (issue #1595): sample with the permissive chain
             // while the model is reasoning, and with the strict (grammar) chain once
-            // `.thinkingComplete` has flipped the gate. `thinkingSampler` is non-nil
+            // `.thinkingCompleted` has flipped the gate. `thinkingSampler` is non-nil
             // only when gating is active and grammar is inactive, so the fallback to
             // `outputSampler` covers every other case (no gating, or already strict).
             let sampler = grammarGate.isGrammarActive ? outputSampler : (thinkingSampler ?? outputSampler)
@@ -614,7 +614,7 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
                 let events = session.ingest(text)
 
                 // Advance the grammar phase gate: once the reasoning block closes
-                // (`.thinkingComplete`), the strict chain takes over for the next
+                // (`.thinkingCompleted`), the strict chain takes over for the next
                 // sampled token — the first real output token. No-op when not gating.
                 grammarGate.observe(events)
 

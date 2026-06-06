@@ -58,7 +58,7 @@ public protocol LocalInferenceAdapter: Sendable {
     var toolCallShape: any LocalToolCallShape { get }
 
     /// The strategy this adapter uses to detect and emit thinking-token
-    /// (`.thinkingToken`, `.thinkingComplete`) events.
+    /// (`.thinkingToken`, `.thinkingCompleted`) events.
     var thinkingMarkerStrategy: LocalThinkingMarkerStrategy { get }
 
     /// The static capability payload the owning backend declares. Used by

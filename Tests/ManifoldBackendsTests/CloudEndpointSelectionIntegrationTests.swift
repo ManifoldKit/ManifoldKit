@@ -561,12 +561,12 @@ final class CloudEndpointSelectionIntegrationTests: XCTestCase {
 
 // MARK: - Backend Wrappers
 
-/// Wraps `OpenAIBackend` to conform to both `CloudBackendURLModelConfigurable`
-/// and `CloudBackendKeychainConfigurable`, matching the real app's wiring.
+/// Wraps `OpenAIBackend` to conform to both ``EndpointBackendURLModelConfigurable``
+/// and ``EndpointBackendKeychainConfigurable``, matching the real app's wiring.
 private final class ConfiguringOpenAICloudBackend: InferenceBackend,
                                                    ConversationHistoryReceiver,
-                                                   CloudBackendURLModelConfigurable,
-                                                   CloudBackendKeychainConfigurable,
+                                                   EndpointBackendURLModelConfigurable,
+                                                   EndpointBackendKeychainConfigurable,
                                                    @unchecked Sendable {
     private let backend: OpenAIBackend
     private let probeOnLoad: Bool
@@ -617,10 +617,10 @@ private final class ConfiguringOpenAICloudBackend: InferenceBackend,
     func resetConversation() { backend.resetConversation() }
 }
 
-/// Wraps `ClaudeBackend` with `CloudBackendKeychainConfigurable` conformance.
+/// Wraps `ClaudeBackend` with ``EndpointBackendKeychainConfigurable`` conformance.
 private final class ConfiguringClaudeCloudBackend: InferenceBackend,
                                                    ConversationHistoryReceiver,
-                                                   CloudBackendKeychainConfigurable,
+                                                   EndpointBackendKeychainConfigurable,
                                                    @unchecked Sendable {
     private let backend: ClaudeBackend
 

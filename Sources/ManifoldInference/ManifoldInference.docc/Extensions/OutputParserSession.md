@@ -11,7 +11,7 @@ backend used to maintain independently (`ThinkingParser`, `MLXToolCallParser`,
 chain of transforms**: each chunk is wrapped as `[.token(chunk)]` and piped
 through the stages in declaration order. Every stage re-scans **only the
 `.token` payloads** it receives and passes structured events
-(``GenerationEvent/thinkingToken(_:)``, ``GenerationEvent/thinkingComplete``,
+(``GenerationEvent/thinkingToken(_:)``, ``GenerationEvent/thinkingCompleted``,
 ``GenerationEvent/toolCall(_:)``, …) straight through untouched.
 
 ```swift,no-build
@@ -39,7 +39,7 @@ tagged ``GenerationEvent`` case, exactly as each backend already emitted:
 |-------------|---------------|
 | Text outside any marker block | ``GenerationEvent/token(_:)`` |
 | Text inside a thinking block | ``GenerationEvent/thinkingToken(_:)`` |
-| Thinking block close (depth 1→0) | ``GenerationEvent/thinkingComplete`` |
+| Thinking block close (depth 1→0) | ``GenerationEvent/thinkingCompleted`` |
 | Completed tool-call body | ``GenerationEvent/toolCall(_:)`` |
 
 ### Stage order is chain order

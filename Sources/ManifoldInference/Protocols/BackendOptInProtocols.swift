@@ -143,13 +143,13 @@ public protocol TokenUsageProvider: AnyObject {
     var lastUsage: (promptTokens: Int, completionTokens: Int)? { get }
 }
 
-/// Adopted by cloud backends configured with endpoint URL + model name.
-public protocol CloudBackendURLModelConfigurable: AnyObject {
+/// Adopted by endpoint-based backends configured with endpoint URL + model name.
+public protocol EndpointBackendURLModelConfigurable: AnyObject {
     func configure(baseURL: URL, modelName: String)
 }
 
-/// Adopted by cloud backends that resolve API keys via a Keychain account.
-public protocol CloudBackendKeychainConfigurable: AnyObject {
+/// Adopted by endpoint-based backends that resolve API keys via a Keychain account.
+public protocol EndpointBackendKeychainConfigurable: AnyObject {
     func configure(baseURL: URL, keychainAccount: String, modelName: String)
 }
 

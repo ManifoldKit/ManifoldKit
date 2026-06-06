@@ -21,7 +21,7 @@ import ManifoldCloudCore
 /// let stream = try backend.generate(prompt: "Hello", systemPrompt: nil, config: .init())
 /// for try await event in stream.events { if case .token(let t) = event { print(t, terminator: "") } }
 /// ```
-public final class OllamaBackend: SSECloudBackend, CloudBackendURLModelConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfigurable, ToolCallingHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Ollama)
     //

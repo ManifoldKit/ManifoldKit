@@ -35,7 +35,7 @@ in #490) call it before acting on a decoded record.
 | `rendered` | `String` | User-visible string produced by running `raw` through the same markdown / code-fence transform that `ManifoldUI`'s `AssistantMarkdownView` applies (see `MarkdownRendering.renderToVisibleString`). Diverges from `raw` in realistic ways: closing fences disappear, emphasis markers collapse, link targets are hidden. Records written before #543 had `rendered == raw`. |
 | `thinkingRaw` | `String` | Concatenation of all thinking-channel text. |
 | `thinkingParts` | `[String]` | Thinking deltas as a list, in stream order. |
-| `thinkingCompleteCount` | `Int` | Number of `thinkingComplete` events observed. |
+| `thinkingCompleteCount` | `Int` | Number of `thinkingCompleted` events observed. |
 | `templateMarkers` | `MarkerSnapshot?` | The `{open, close}` reasoning markers the backend/template advertises; `nil` if none. |
 | `memory` | `MemorySnapshot` | `beforeBytes`, `peakBytes`, `afterBytes` — all optional; nil when the backend/platform can't measure. |
 | `timing` | `TimingSnapshot` | `firstTokenMs?`, `totalMs`, `tokensPerSec?`. `totalMs` is always present; TPS is derived only when both token counts and first-token time are known. |

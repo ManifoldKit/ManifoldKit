@@ -333,7 +333,7 @@ final class QuickStartTests: XCTestCase {
     }
 }
 
-private final class QuickStartCloudBackend: InferenceBackend, CloudBackendURLModelConfigurable, @unchecked Sendable {
+private final class QuickStartCloudBackend: InferenceBackend, EndpointBackendURLModelConfigurable, @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false
     let capabilities = BackendCapabilities(

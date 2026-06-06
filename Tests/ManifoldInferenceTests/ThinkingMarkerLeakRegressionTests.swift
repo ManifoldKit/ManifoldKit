@@ -21,7 +21,7 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
     }
 
     private func countCompletions(_ events: [GenerationEvent]) -> Int {
-        events.filter { if case .thinkingComplete = $0 { return true } else { return false } }.count
+        events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }.count
     }
 
     // MARK: - Sniff-Replay Contract
@@ -30,7 +30,7 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
     /// "<think>reasoning</think>visible answer". When the driver buffers that
     /// prefix in sniff mode and replays it through `ThinkingParser(.qwen3)`,
     /// the parser must separate `reasoning` into `.thinkingToken` events,
-    /// emit one `.thinkingComplete`, and yield `visible answer` as `.token`.
+    /// emit one `.thinkingCompleted`, and yield `visible answer` as `.token`.
     ///
     /// Before the fix, the Llama3 template disabled `ThinkingParser` entirely
     /// (`PromptTemplate.llama3.thinkingMarkers == nil`) and the raw `<think>`
@@ -56,7 +56,7 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
         XCTAssertEqual(collectVisible(all), "visible answer",
                        "Content after </think> must be routed to .token — not leaked as raw tags")
         XCTAssertEqual(countCompletions(all), 1,
-                       "Exactly one .thinkingComplete must fire on the 1→0 depth transition")
+                       "Exactly one .thinkingCompleted must fire on the 1→0 depth transition")
         XCTAssertFalse(collectVisible(all).contains("<think>"),
                        "Raw <think> must NEVER appear in visible tokens — that is the leak we are preventing")
         XCTAssertFalse(collectVisible(all).contains("</think>"),
@@ -90,7 +90,7 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
     /// and correctly close when `</think>` arrives in a later chunk.
     ///
     /// Sabotage check: reset the parser between chunks (delete the `var` and
-    /// make it `let` per chunk). `<think>` never closes, `.thinkingComplete`
+    /// make it `let` per chunk). `<think>` never closes, `.thinkingCompleted`
     /// never fires, and the assertion `completions == 1` fails.
     func test_sniffBufferReplay_thenStreamedTail_closesAcrossChunks() {
         var parser = ThinkingParser(markers: .qwen3)
@@ -107,7 +107,7 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
                       "Pre-<think> text must still be visible after streamed tail")
         XCTAssertTrue(collectVisible(events).contains("visible"))
         XCTAssertEqual(countCompletions(events), 1,
-                       "Close tag arriving in a later chunk must still fire .thinkingComplete exactly once")
+                       "Close tag arriving in a later chunk must still fire .thinkingCompleted exactly once")
         XCTAssertFalse(collectVisible(events).contains("<think>"))
         XCTAssertFalse(collectVisible(events).contains("</think>"))
     }
@@ -131,6 +131,6 @@ final class ThinkingMarkerLeakRegressionTests: XCTestCase {
         XCTAssertEqual(collectThinking(all), "",
                        "Non-reasoning text must never produce .thinkingToken events")
         XCTAssertEqual(countCompletions(all), 0,
-                       "No .thinkingComplete without a <think> open tag")
+                       "No .thinkingCompleted without a <think> open tag")
     }
 }

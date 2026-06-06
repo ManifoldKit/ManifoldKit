@@ -41,7 +41,7 @@ leaks in.
   → `content_block_stop` → `content_block_start` (text) →
   `content_block_delta` (text_delta) → `content_block_stop` →
   `message_stop`. Exercises the `.thinkingSignature` emission and the
-  open-thinking → text handoff (`.thinkingComplete`).
+  open-thinking → text handoff (`.thinkingCompleted`).
 - `usage/basic/` — `message_start` (with `input_tokens`) → text deltas
   → `message_delta` (with `output_tokens`) → `message_stop`. Exercises
   the split-usage extraction; both halves must be merged before the

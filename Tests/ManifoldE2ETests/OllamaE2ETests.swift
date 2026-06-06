@@ -123,7 +123,7 @@ final class OllamaE2ETests: XCTestCase {
                 evidence.visibleText += text
             case .thinkingToken:
                 evidence.thinkingTokenCount += 1
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 evidence.sawThinkingComplete = true
             default:
                 continue
@@ -137,7 +137,7 @@ final class OllamaE2ETests: XCTestCase {
     /// A non-empty response must arrive as either visible `.token` content or,
     /// on reasoning models whose visible portion may be trivially short for
     /// this prompt, as thinking-event evidence (`.thinkingToken` +
-    /// `.thinkingComplete`). An empty visible stream *with* no thinking events
+    /// `.thinkingCompleted`). An empty visible stream *with* no thinking events
     /// still fails — this is not a silent-pass.
     func test_realInference_generatesNonEmptyResponse() async throws {
         let evidence = try await collectEvidence(prompt: "Reply with exactly one word.")
@@ -149,7 +149,7 @@ final class OllamaE2ETests: XCTestCase {
             )
             XCTAssertTrue(
                 !evidence.visibleText.isEmpty || (evidence.thinkingTokenCount > 0 && evidence.sawThinkingComplete),
-                "Thinking model '\(modelName!)' must emit either visible text or a complete thinking trace (visible=\(evidence.visibleText.count) chars, thinkingTokens=\(evidence.thinkingTokenCount), thinkingComplete=\(evidence.sawThinkingComplete))"
+                "Thinking model '\(modelName!)' must emit either visible text or a complete thinking trace (visible=\(evidence.visibleText.count) chars, thinkingTokens=\(evidence.thinkingTokenCount), thinkingCompleted=\(evidence.sawThinkingComplete))"
             )
         } else {
             XCTAssertFalse(

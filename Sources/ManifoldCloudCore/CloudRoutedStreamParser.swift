@@ -121,12 +121,12 @@ package struct CloudRoutedStreamParser: Sendable {
             case .thinkingToken:
                 wasThinking = true
                 continuation.yield(event)
-            case .thinkingComplete:
+            case .thinkingCompleted:
                 wasThinking = false
                 continuation.yield(event)
             case .token:
                 if wasThinking {
-                    continuation.yield(.thinkingComplete)
+                    continuation.yield(.thinkingCompleted)
                     wasThinking = false
                 }
                 continuation.yield(event)

@@ -10,7 +10,7 @@ private func collectThinking(_ events: [GenerationEvent]) -> String {
 }
 
 private func countCompletions(_ events: [GenerationEvent]) -> Int {
-    events.filter { if case .thinkingComplete = $0 { return true } else { return false } }.count
+    events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }.count
 }
 
 /// Edge-case tests for `ThinkingParser` covering boundary conditions,
@@ -30,7 +30,7 @@ final class ThinkingParserEdgeCaseTests: XCTestCase {
         XCTAssertTrue(collectThinking(allEvents).contains("partial"),
             "Unclosed block content must be emitted as .thinkingToken by finalize()")
         XCTAssertEqual(countCompletions(allEvents), 0,
-            "An unclosed block must NOT emit .thinkingComplete")
+            "An unclosed block must NOT emit .thinkingCompleted")
 
         // Sabotage check: if finalize() returned [] for non-empty buffers, the
         // partial content would be silently discarded and this test would fail.
@@ -47,15 +47,15 @@ final class ThinkingParserEdgeCaseTests: XCTestCase {
         XCTAssertEqual(collectThinking(allEvents), "",
             "An empty <think></think> block should emit no .thinkingToken events")
         XCTAssertEqual(countCompletions(allEvents), 1,
-            "An empty think block must still fire .thinkingComplete")
+            "An empty think block must still fire .thinkingCompleted")
         XCTAssertEqual(collectVisible(allEvents), "text",
             "Text after the empty block should be visible")
 
-        // Sabotage check: if the parser skipped .thinkingComplete for empty blocks,
+        // Sabotage check: if the parser skipped .thinkingCompleted for empty blocks,
         // the UI would never finalize an in-progress thinking accumulator.
     }
 
-    // MARK: - 3. Multiple blocks — thinkingComplete count
+    // MARK: - 3. Multiple blocks — thinkingCompleted count
 
     func test_multipleThinkBlocks_thinkingCompleteCountEquals2() {
         var parser = ThinkingParser()
@@ -64,11 +64,11 @@ final class ThinkingParserEdgeCaseTests: XCTestCase {
         let allEvents = events + finalEvents
 
         XCTAssertEqual(countCompletions(allEvents), 2,
-            "Two sequential think blocks must each fire .thinkingComplete (total = 2)")
+            "Two sequential think blocks must each fire .thinkingCompleted (total = 2)")
         XCTAssertEqual(collectThinking(allEvents), "ab",
             "Thinking content from both blocks must be collected")
 
-        // Sabotage check: a parser that only fired .thinkingComplete once would
+        // Sabotage check: a parser that only fired .thinkingCompleted once would
         // cause the UI to finalize after the first block, leaving the second orphaned.
     }
 
@@ -110,7 +110,7 @@ final class ThinkingParserEdgeCaseTests: XCTestCase {
         // Input: <think><think>inner</think>outer</think>text
         //   - depth 0: finds <think>, enters thinking mode (depth=1)
         //   - depth 1: finds first </think>; before it: "<think>inner" → .thinkingToken
-        //     depth returns to 0, .thinkingComplete fires
+        //     depth returns to 0, .thinkingCompleted fires
         //   - depth 0: "outer</think>text" — no open tag found, emitted via finalize as visible
         let events = parser.process("<think><think>inner</think>outer</think>text")
         let finalEvents = parser.finalize()
@@ -129,7 +129,7 @@ final class ThinkingParserEdgeCaseTests: XCTestCase {
             "Text at end of stream must be visible")
 
         XCTAssertEqual(countCompletions(allEvents), 1,
-            "Exactly one .thinkingComplete fires on the single 1→0 depth transition")
+            "Exactly one .thinkingCompleted fires on the single 1→0 depth transition")
 
         // Sabotage check: a recursive-depth implementation would require TWO </think> to reach
         // depth 0, yielding no visible text and keeping 2 completions — this test would fail.

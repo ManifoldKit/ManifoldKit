@@ -901,7 +901,7 @@ struct OllamaBackendTests {
     /// Reasoning models (qwen3, qwen3.5:4b, deepseek-r1) emit chain-of-thought in
     /// a separate `thinking` field on the `/api/chat` endpoint. The backend
     /// must surface these as `.thinkingToken` events and close with
-    /// `.thinkingComplete` when thinking transitions back to empty.
+    /// `.thinkingCompleted` when thinking transitions back to empty.
     @Test func streaming_chatEndpoint_thinkingFieldEmitsThinkingEvents() async throws {
         let (backend, chatURL) = makeConfiguredBackend()
         try await loadBackend(backend)
@@ -917,7 +917,7 @@ struct OllamaBackendTests {
         var events: [GenerationEvent] = []
         for try await event in stream.events { events.append(event) }
 
-        // Ordering: .thinkingToken → .thinkingComplete → .token
+        // Ordering: .thinkingToken → .thinkingCompleted → .token
         let thinkingTokens = events.compactMap { event -> String? in
             if case .thinkingToken(let t) = event { return t } else { return nil }
         }
@@ -925,26 +925,26 @@ struct OllamaBackendTests {
             if case .token(let t) = event { return t } else { return nil }
         }
         let completeCount = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }.count
 
         #expect(thinkingTokens == ["Reasoning step 1"])
         #expect(tokens == ["answer"])
         #expect(completeCount == 1)
 
-        // Verify event ordering: thinkingToken precedes thinkingComplete precedes token.
+        // Verify event ordering: thinkingToken precedes thinkingCompleted precedes token.
         var sawThinking = false
         var sawComplete = false
         for event in events {
             switch event {
             case .thinkingToken:
-                #expect(!sawComplete, "thinkingToken must precede thinkingComplete")
+                #expect(!sawComplete, "thinkingToken must precede thinkingCompleted")
                 sawThinking = true
-            case .thinkingComplete:
-                #expect(sawThinking, "thinkingComplete must follow at least one thinkingToken")
+            case .thinkingCompleted:
+                #expect(sawThinking, "thinkingCompleted must follow at least one thinkingToken")
                 sawComplete = true
             case .token:
-                #expect(sawComplete, "visible token must follow thinkingComplete")
+                #expect(sawComplete, "visible token must follow thinkingCompleted")
             default: break
             }
         }
@@ -974,7 +974,7 @@ struct OllamaBackendTests {
             if case .token(let t) = event { return t } else { return nil }
         }
         let completeCount = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }.count
 
         #expect(thinkingTokens == ["Thinking..."])
@@ -1004,7 +1004,7 @@ struct OllamaBackendTests {
             if case .thinkingToken(let t) = event { return t } else { return nil }
         }
         let completeCount = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }.count
 
         #expect(thinkingTokens == ["entire reasoning"])
@@ -1455,13 +1455,13 @@ struct OllamaBackendTests {
         for try await event in stream.events {
             switch event {
             case .token(let t): tokens.append(t)
-            case .thinkingComplete: sawThinkingComplete = true
+            case .thinkingCompleted: sawThinkingComplete = true
             default: break
             }
         }
 
         #expect(tokens == ["a", "b", "c"])
-        #expect(!sawThinkingComplete, "no thinking was emitted so no .thinkingComplete should fire")
+        #expect(!sawThinkingComplete, "no thinking was emitted so no .thinkingCompleted should fire")
     }
 
     /// When an Ollama-compatible server emits a running `eval_count` on
@@ -1521,7 +1521,7 @@ struct OllamaBackendTests {
     /// dedicated thinking field is ever seen on the stream and content
     /// contains `<think>`, the backend must route content through
     /// `ThinkingTransform` so callers still receive the usual thinkingToken /
-    /// thinkingComplete / token event shape instead of raw tags baked into
+    /// thinkingCompleted / token event shape instead of raw tags baked into
     /// visible output.
     @Test func streaming_thinkingInContentFallback_emitsThinkingEvents() async throws {
         let (backend, chatURL) = makeConfiguredBackend()
@@ -1549,12 +1549,12 @@ struct OllamaBackendTests {
             if case .token(let t) = event { return t } else { return nil }
         }.joined()
         let completeCount = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }.count
 
         #expect(thinkingText == "reasoning")
         #expect(visibleText == "answer")
-        #expect(completeCount == 1, "expected exactly one .thinkingComplete (got \(completeCount))")
+        #expect(completeCount == 1, "expected exactly one .thinkingCompleted (got \(completeCount))")
 
         // No raw `<think>` tags may leak into either event type.
         for event in events {

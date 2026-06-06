@@ -208,10 +208,10 @@ final class ToolCallContractTests: XCTestCase {
             case .token(let text): tokens.append(text)
             case .toolCall(let call): toolCalls.append(call)
             case .usage: break
-            case .thinkingToken, .thinkingComplete, .thinkingSignature: break
-            case .toolResult, .toolProgress, .toolLoopLimitReached: break
+            case .thinkingToken, .thinkingCompleted, .thinkingSignature: break
+            case .toolResult, .toolProgress, .toolIterationLimitExceeded: break
             case .kvCacheReuse: break
-            case .diagnosticThrottle: break
+            case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted: break
             case .handoffRequested: break
@@ -282,10 +282,10 @@ final class ToolCallContractTests: XCTestCase {
             case .token(let t): tokens.append(t)
             case .toolCall(let c): toolCalls.append(c)
             case .usage: break
-            case .thinkingToken, .thinkingComplete, .thinkingSignature: break
-            case .toolResult, .toolProgress, .toolLoopLimitReached: break
+            case .thinkingToken, .thinkingCompleted, .thinkingSignature: break
+            case .toolResult, .toolProgress, .toolIterationLimitExceeded: break
             case .kvCacheReuse: break
-            case .diagnosticThrottle: break
+            case .throttleDiagnostic: break
             case .toolCallStart, .toolCallArgumentsDelta: break
             case .toolDispatchStarted, .toolDispatchCompleted: break
             case .handoffRequested: break

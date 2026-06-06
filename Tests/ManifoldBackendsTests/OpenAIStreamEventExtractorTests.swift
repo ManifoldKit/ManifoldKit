@@ -90,11 +90,11 @@ final class OpenAIStreamEventExtractorTests: XCTestCase {
     //
     // Two reasoning deltas (DeepSeek-shape `reasoning_content`), then a
     // visible content delta. Expected sequence: thinkingToken × 2,
-    // thinkingComplete (auto-closed on transition), token.
+    // thinkingCompleted (auto-closed on transition), token.
     func test_extractor_reasoningWithSummary_yieldsThinkingHandoff() throws {
         let events = try driveExtractor(scenario: "reasoning/with-summary")
 
-        XCTAssertEqual(events.count, 4, "expected thinkingToken × 2, thinkingComplete, token (saw \(events))")
+        XCTAssertEqual(events.count, 4, "expected thinkingToken × 2, thinkingCompleted, token (saw \(events))")
         guard events.count == 4 else { return }
 
         if case .thinkingToken(let t1) = events[0] { XCTAssertEqual(t1, "Let me") }
@@ -103,8 +103,8 @@ final class OpenAIStreamEventExtractorTests: XCTestCase {
         if case .thinkingToken(let t2) = events[1] { XCTAssertEqual(t2, " think...") }
         else { XCTFail("event[1] expected .thinkingToken, got \(events[1])") }
 
-        if case .thinkingComplete = events[2] { /* ok */ }
-        else { XCTFail("event[2] expected .thinkingComplete, got \(events[2])") }
+        if case .thinkingCompleted = events[2] { /* ok */ }
+        else { XCTFail("event[2] expected .thinkingCompleted, got \(events[2])") }
 
         if case .token(let visible) = events[3] { XCTAssertEqual(visible, "Answer.") }
         else { XCTFail("event[3] expected .token, got \(events[3])") }
@@ -295,20 +295,20 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         switch event {
         case .token(let s): return "token(\(s))"
         case .thinkingToken(let s): return "thinkingToken(\(s))"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature(let s): return "thinkingSignature(\(s))"
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
         case .usage(let p, let c): return "usage(\(p),\(c))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
-        case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
+        case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }

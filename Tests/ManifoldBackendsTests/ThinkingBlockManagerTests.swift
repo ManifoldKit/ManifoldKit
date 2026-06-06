@@ -4,7 +4,7 @@ import ManifoldInference
 @testable import ManifoldCloudCore
 
 /// Unit tests for `ThinkingBlockManager` — the open/flush primitive that the
-/// SSE backends share to guarantee `.thinkingComplete` is emitted exactly
+/// SSE backends share to guarantee `.thinkingCompleted` is emitted exactly
 /// once on the transition out of a thinking block.
 final class ThinkingBlockManagerTests: XCTestCase {
 
@@ -33,8 +33,8 @@ final class ThinkingBlockManagerTests: XCTestCase {
         }
 
         XCTAssertEqual(events.count, 1, "expected one event, got \(events)")
-        guard case .thinkingComplete = events.first else {
-            return XCTFail("expected .thinkingComplete, got \(String(describing: events.first))")
+        guard case .thinkingCompleted = events.first else {
+            return XCTFail("expected .thinkingCompleted, got \(String(describing: events.first))")
         }
     }
 
@@ -53,7 +53,7 @@ final class ThinkingBlockManagerTests: XCTestCase {
             manager.open()
             manager.open()
             manager.open()
-            // Still expect exactly one .thinkingComplete on flush.
+            // Still expect exactly one .thinkingCompleted on flush.
             manager.flushIfOpen(into: continuation)
         }
 
@@ -69,7 +69,7 @@ final class ThinkingBlockManagerTests: XCTestCase {
             manager.flushIfOpen(into: continuation)
         }
 
-        XCTAssertEqual(events.count, 1, "second flush must not re-emit .thinkingComplete")
+        XCTAssertEqual(events.count, 1, "second flush must not re-emit .thinkingCompleted")
     }
 
     func test_isOpen_reflectsState() {

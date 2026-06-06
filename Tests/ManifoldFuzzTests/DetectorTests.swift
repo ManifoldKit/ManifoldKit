@@ -291,7 +291,7 @@ final class DetectorTests: XCTestCase {
 
     func test_thinkingClassification_unbalancedEvents_skipsWhenMaxTokensTruncation() {
         // 64-token cap routinely truncates mid-`<think>` on reasoning models;
-        // the lack of a `thinkingComplete` event is the cap's fault, not a parser bug.
+        // the lack of a `thinkingCompleted` event is the cap's fault, not a parser bug.
         let r = makeRecord(
             thinkingRaw: "still reasoning…",
             thinkingCompleteCount: 0,

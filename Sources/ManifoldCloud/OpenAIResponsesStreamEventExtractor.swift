@@ -33,7 +33,7 @@ import ManifoldCloudCore
 /// the next tool-use turn), the Responses API exposes reasoning as a
 /// post-hoc *summary* the server generates and discards. Emit it as
 /// ``GenerationEvent/thinkingToken(_:)`` (and a single
-/// ``GenerationEvent/thinkingComplete`` on the transition to visible
+/// ``GenerationEvent/thinkingCompleted`` on the transition to visible
 /// content) — there is no signature to preserve.
 ///
 /// ### Lifecycle
@@ -101,7 +101,7 @@ public final class OpenAIResponsesStreamEventExtractor: CloudStreamEventConsumer
     }
 
     /// Flushes pending state at stream end. Yields a trailing
-    /// `.thinkingComplete` if a thinking block is still open and finalises
+    /// `.thinkingCompleted` if a thinking block is still open and finalises
     /// any buffered tool calls the upstream didn't accompany with a
     /// `response.completed`.
     ///
@@ -194,7 +194,7 @@ public final class OpenAIResponsesStreamEventExtractor: CloudStreamEventConsumer
 
     private func flushThinking(into out: inout [GenerationEvent]) {
         guard thinking.isOpen else { return }
-        out.append(.thinkingComplete)
+        out.append(.thinkingCompleted)
         thinking = ThinkingBlockManager()
     }
 

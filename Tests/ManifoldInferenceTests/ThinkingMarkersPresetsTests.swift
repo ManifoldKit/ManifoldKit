@@ -12,7 +12,7 @@ private func collectThinking(_ events: [GenerationEvent]) -> String {
 }
 
 private func countCompletions(_ events: [GenerationEvent]) -> Int {
-    events.filter { if case .thinkingComplete = $0 { return true } else { return false } }.count
+    events.filter { if case .thinkingCompleted = $0 { return true } else { return false } }.count
 }
 
 /// Runs a single-block reasoning payload through a `ThinkingParser` parameterized
@@ -56,7 +56,7 @@ final class ThinkingMarkersPresetsTests: XCTestCase {
         XCTAssertEqual(r.visible, "answer",
             "Content after </thinking> must be emitted as .token")
         XCTAssertEqual(r.completions, 1,
-            "Exactly one .thinkingComplete event should fire on the 1→0 depth transition")
+            "Exactly one .thinkingCompleted event should fire on the 1→0 depth transition")
 
         // Sabotage check: swapping `.mistralReasoning` for `.qwen3` makes the parser
         // search for the `<think>` / `</think>` pair. Both are substrings of the
@@ -202,7 +202,7 @@ final class ThinkingMarkersPresetsTests: XCTestCase {
         XCTAssertEqual(r.visible, "answer",
             "Content after <|end_of_turn> must be emitted as .token")
         XCTAssertEqual(r.completions, 1,
-            "Exactly one .thinkingComplete must fire on the 1→0 depth transition")
+            "Exactly one .thinkingCompleted must fire on the 1→0 depth transition")
 
         // Sabotage check: using .qwen3 markers instead would search for "<think>" /
         // "</think>", miss the Gemma 4 open tag, and emit everything as visible text
@@ -250,7 +250,7 @@ final class ThinkingMarkersPresetsTests: XCTestCase {
         XCTAssertTrue(collectThinking(all).contains("partial thought"),
             "Unclosed Gemma 4 thinking block must be flushed as .thinkingToken by finalize()")
         XCTAssertEqual(countCompletions(all), 0,
-            "An unclosed block must NOT emit .thinkingComplete")
+            "An unclosed block must NOT emit .thinkingCompleted")
 
         // Sabotage check: if finalize() returned [] for a non-empty thinking buffer,
         // the partial chain-of-thought would be silently dropped.

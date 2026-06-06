@@ -153,10 +153,10 @@ Tests/
 | `.toolCallArgumentsDelta(id, frag)` *(expansion path)* | `choices[0].delta.tool_calls[idx].function.arguments = frag` |
 | `.usage(p, c)` | `usage = {prompt_tokens: p, completion_tokens: c, total_tokens: p+c}` on final chunk if `stream_options.include_usage = true` |
 | `.prefillProgress(nPast, nTotal, tokensPerSecond)` | `event: prefill_progress\ndata: {n_past, n_total, tokens_per_second}\n\n` — emitted only when request has `X-Manifold-Prefill-Progress: true` header (per #804 contract) |
-| `.thinkingToken(_)` / `.thinkingComplete` / `.thinkingSignature(_)` | dropped (v1) |
+| `.thinkingToken(_)` / `.thinkingCompleted` / `.thinkingSignature(_)` | dropped (v1) |
 | `.toolResult(_)` | dropped (server is pass-through; client owns dispatch) |
-| `.kvCacheReuse(_)` / `.diagnosticThrottle(_)` | dropped (internal signals) |
-| `.toolLoopLimitReached(_)` | derive `finish_reason: "length"` |
+| `.kvCacheReuse(_)` / `.throttleDiagnostic(_)` | dropped (internal signals) |
+| `.toolIterationLimitExceeded(_)` | derive `finish_reason: "length"` |
 | stream end clean | derive `finish_reason: "stop"` (or `"tool_calls"` if any tool-call event seen) |
 | stream error | emit `data: {"choices":[{"finish_reason":"stop"}], "error": {…}}\n\n` then close — spec-conformant `finish_reason` plus diagnostic |
 

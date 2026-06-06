@@ -16,7 +16,7 @@ import ManifoldInference
 /// ## Thinking / reasoning support
 ///
 /// ManifoldKit surfaces reasoning tokens from capable models via
-/// ``GenerationEvent/thinkingToken(_:)`` and ``GenerationEvent/thinkingComplete``.
+/// ``GenerationEvent/thinkingToken(_:)`` and ``GenerationEvent/thinkingCompleted``.
 /// The Ollama and Llama backends emit these events today. **FoundationBackend
 /// does not**, because Apple's public FoundationModels SDK (Xcode 26.4,
 /// module version 1.4.34) exposes no reasoning/thinking surface at all:
@@ -41,13 +41,13 @@ import ManifoldInference
 /// In other words: whatever chain-of-thought Apple's on-device model performs
 /// happens opaquely inside the generator. The SDK returns only the final
 /// user-visible answer. There is nothing for this backend to map onto
-/// `.thinkingToken` or `.thinkingComplete`, and synthesising fake thinking
+/// `.thinkingToken` or `.thinkingCompleted`, and synthesising fake thinking
 /// events from the visible content would be misleading.
 ///
 /// When Apple ships a reasoning surface (e.g. a `reasoning` case on
 /// `Transcript.Segment`, a `reasoningContent` field on `ResponseStream.Snapshot`,
 /// or a reasoning-enabled `UseCase`), this backend should be updated to emit
-/// `.thinkingToken` while reasoning is in flight and `.thinkingComplete`
+/// `.thinkingToken` while reasoning is in flight and `.thinkingCompleted`
 /// exactly once at the transition to visible content, matching the pattern
 /// already used by ``OllamaBackend``.
 ///

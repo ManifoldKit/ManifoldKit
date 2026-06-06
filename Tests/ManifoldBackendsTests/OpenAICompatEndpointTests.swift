@@ -210,24 +210,24 @@ struct OpenAICompatEndpointTests {
         }
 
         #expect(events.count == 4)
-        #expect(events[0] == .prefillProgress(nPast: 1024, nTotal: 4096, tokensPerSecond: 280.0))
-        #expect(events[1] == .prefillProgress(nPast: 3072, nTotal: 4096, tokensPerSecond: 300.5))
-        #expect(events[2] == .prefillProgress(nPast: 4096, nTotal: 4096, tokensPerSecond: 295.0))
+        #expect(events[0] == .prefillProgress(tokensProcessed: 1024, tokensTotal: 4096, tokensPerSecond: 280.0))
+        #expect(events[1] == .prefillProgress(tokensProcessed: 3072, tokensTotal: 4096, tokensPerSecond: 300.5))
+        #expect(events[2] == .prefillProgress(tokensProcessed: 4096, tokensTotal: 4096, tokensPerSecond: 295.0))
         #expect(events[3] == .token("Hello"))
 
         // Contract (issue #746): the prefill_progress event immediately preceding
-        // the first content token must satisfy nPast == nTotal. UI observers
+        // the first content token must satisfy tokensProcessed == tokensTotal. UI observers
         // rely on this equality to flip from "evaluating prompt" to "generating".
         let firstTokenIndex = events.firstIndex(where: { if case .token = $0 { true } else { false } })
         let lastPrefillBeforeToken = events
             .prefix(firstTokenIndex ?? events.count)
             .last(where: { if case .prefillProgress = $0 { true } else { false } })
-        guard case let .prefillProgress(nPast: boundaryNPast, nTotal: boundaryNTotal, tokensPerSecond: _) = lastPrefillBeforeToken else {
+        guard case let .prefillProgress(tokensProcessed: boundaryProcessed, tokensTotal: boundaryTotal, tokensPerSecond: _) = lastPrefillBeforeToken else {
             Issue.record("Expected at least one prefill_progress event before the first content token")
             return
         }
-        #expect(boundaryNPast == boundaryNTotal,
-                "Final prefill_progress before generation must report nPast == nTotal")
+        #expect(boundaryProcessed == boundaryTotal,
+                "Final prefill_progress before generation must report tokensProcessed == tokensTotal")
     }
 
     /// Ollama versions before 0.4.0 do not support `stream_options` and silently

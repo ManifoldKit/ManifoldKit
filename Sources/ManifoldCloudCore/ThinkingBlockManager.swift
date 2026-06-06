@@ -1,17 +1,17 @@
 import ManifoldInference
 
 /// Tracks whether a streaming parser is currently inside a thinking block and
-/// guarantees a single `.thinkingComplete` is emitted on the transition out.
+/// guarantees a single `.thinkingCompleted` is emitted on the transition out.
 ///
 /// Three SSE backends (`OpenAIBackend`, `ClaudeBackend`,
 /// `OpenAIResponsesBackend`) all need the same primitive: "remember that we
 /// yielded a `.thinkingToken`; the next non-thinking event — visible token,
 /// upstream `reasoning_done`, stream end, or thrown error — must yield
-/// `.thinkingComplete` exactly once before whatever comes next."
+/// `.thinkingCompleted` exactly once before whatever comes next."
 ///
 /// The state machine is intentionally minimal. Parsers keep their inline
 /// event-extraction logic; this type only owns the open-state and the
-/// `.thinkingComplete` emission so the close-rule is identical across
+/// `.thinkingCompleted` emission so the close-rule is identical across
 /// backends and survives refactors of the surrounding parsing code.
 ///
 /// ```swift
@@ -37,11 +37,11 @@ public struct ThinkingBlockManager {
     }
 
     /// If a thinking block is currently open, yields a single
-    /// `.thinkingComplete` and resets to closed. Otherwise a no-op.
+    /// `.thinkingCompleted` and resets to closed. Otherwise a no-op.
     /// Idempotent — calling twice in a row yields at most one event.
     public mutating func flushIfOpen(into continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation) {
         guard isOpen else { return }
-        continuation.yield(.thinkingComplete)
+        continuation.yield(.thinkingCompleted)
         isOpen = false
     }
 }

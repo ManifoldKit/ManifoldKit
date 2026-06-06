@@ -5,7 +5,7 @@ import ManifoldInference
 /// that:
 ///
 /// 1. Zero `.thinkingToken` events ever fire.
-/// 2. Zero `.thinkingComplete` events fire (since no reasoning was emitted).
+/// 2. Zero `.thinkingCompleted` events fire (since no reasoning was emitted).
 /// 3. Visible output still appears.
 ///
 /// Once P4 wires Ollama's `think: false` through, this scenario replays
@@ -45,7 +45,7 @@ public struct ThinkingBudgetZeroScenario: FuzzScenario {
             return acc
         }
         let thinkingCompleteCount = observed.reduce(0) { acc, e in
-            if case .thinkingComplete = e { return acc + 1 }
+            if case .thinkingCompleted = e { return acc + 1 }
             return acc
         }
         let visibleCount = observed.reduce(0) { acc, e in
@@ -65,7 +65,7 @@ public struct ThinkingBudgetZeroScenario: FuzzScenario {
             return ScenarioOutcome(
                 scenarioId: id,
                 invariantHeld: false,
-                failureReason: "emitted .thinkingComplete despite zero thinking tokens",
+                failureReason: "emitted .thinkingCompleted despite zero thinking tokens",
                 events: observed
             )
         }

@@ -284,7 +284,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
     /// The default implementation forwards to ``payloadHandler``'s
     /// ``SSEPayloadHandler/extractEvents(from:)``. The base
     /// ``parseResponseStream(bytes:continuation:)`` loop iterates the
-    /// returned events and injects ``GenerationEvent/thinkingComplete``
+    /// returned events and injects ``GenerationEvent/thinkingCompleted``
     /// on the first non-thinking-token event after one or more
     /// thinking-token events, so handlers stay stateless.
     open func extractEvents(from payload: String) -> [GenerationEvent] {
@@ -676,7 +676,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
         )
         // Tracks whether the last emitted content event was a
         // `.thinkingToken`. When the next payload produces a `.token` (plain
-        // text), we inject a single `.thinkingComplete` so downstream
+        // text), we inject a single `.thinkingCompleted` so downstream
         // consumers see the reasoning block close exactly once, even for
         // field-based wire formats (Claude `thinking_delta`, OpenAI
         // `reasoning_content`) where the boundary is implicit.
@@ -689,7 +689,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 case .thinkingToken:
                     wasThinking = true
                     continuation.yield(event)
-                case .thinkingComplete:
+                case .thinkingCompleted:
                     // Handler emitted the boundary itself (e.g. an inline-
                     // tag backend using `ThinkingTransform`). Clear the flag
                     // so we don't double-emit on the next `.token`.
@@ -697,7 +697,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                     continuation.yield(event)
                 case .token:
                     if wasThinking {
-                        continuation.yield(.thinkingComplete)
+                        continuation.yield(.thinkingCompleted)
                         wasThinking = false
                     }
                     continuation.yield(event)

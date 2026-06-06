@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc" viewBox="0 0 1600 900">
+  <title id="title">WWDC timing visual for ManifoldKit</title>
+  <desc id="desc">Whatever Apple ships next flows into ManifoldKit as one more backend behind the same GenerationStream protocol, not a rewrite.</desc>
+  <defs>
+    <style>
+      :root {
+        --ink: #172033;
+        --muted: #647184;
+        --paper: #f7f8f5;
+        --panel: #ffffff;
+        --line: #d9e0d7;
+        --blue: #206da8;
+        --teal: #147a73;
+        --amber: #c47125;
+        --red: #b6433d;
+      }
+      .bg { fill: var(--paper); }
+      .headline { fill: var(--ink); font: 800 52px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .subhead { fill: var(--muted); font: 500 24px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .card { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+      .card-title { fill: var(--ink); font: 800 30px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .card-sub { fill: var(--muted); font: 600 20px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .arrow { fill: none; stroke: #aeb9b1; stroke-width: 8; stroke-linecap: round; }
+      .backend-band { fill: #e5f1ed; stroke: #c7dbd3; stroke-width: 2; }
+      .backend-title { fill: #0f4d47; font: 800 28px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .node { fill: white; stroke: var(--teal); stroke-width: 3; }
+      .node-text { fill: var(--ink); font: 800 19px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .new-node { fill: #fff7ed; stroke: var(--amber); stroke-width: 4; }
+      .new-node-text { fill: #884714; font: 800 24px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .ghost { fill: none; stroke: var(--red); stroke-width: 8; stroke-linecap: round; opacity: .28; }
+      .ghost-text { fill: var(--red); opacity: .18; font: 900 86px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .chip { fill: white; stroke: #d8ded7; stroke-width: 2; }
+      .chip-title { fill: var(--ink); font: 800 20px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .chip-sub { fill: var(--muted); font: 600 17px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+      .caption { fill: var(--muted); font: 600 21px ui-rounded, "SF Pro Rounded", "Avenir Next", sans-serif; }
+    </style>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="16" stdDeviation="17" flood-color="#172033" flood-opacity=".13"/>
+    </filter>
+    <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#aeb9b1"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <text class="headline" x="96" y="100">WWDC Becomes a Backend Event.</text>
+  <text class="subhead" x="100" y="142">Whatever Apple ships next is one more node behind the same stream protocol.</text>
+
+  <g filter="url(#shadow)">
+    <rect class="card" x="120" y="260" width="320" height="190" rx="30"/>
+    <text class="card-title" x="166" y="335">WWDC 2026</text>
+    <text class="card-sub" x="166" y="373">whatever Apple</text>
+    <text class="card-sub" x="166" y="401">ships next</text>
+  </g>
+
+  <path class="arrow" marker-end="url(#arrowhead)" d="M 465 355 C 560 355 640 355 720 355"/>
+
+  <g filter="url(#shadow)">
+    <rect class="backend-band" x="720" y="232" width="760" height="300" rx="34"/>
+    <text class="backend-title" x="770" y="292">ManifoldKit backend band</text>
+    <text class="card-sub" x="770" y="325">GenerationStream stays the product surface.</text>
+
+    <rect class="node" x="770" y="370" width="112" height="50" rx="25"/>
+    <text class="node-text" x="804" y="403">MLX</text>
+    <rect class="node" x="900" y="370" width="132" height="50" rx="25"/>
+    <text class="node-text" x="924" y="403">GGUF</text>
+    <rect class="node" x="1050" y="370" width="188" height="50" rx="25"/>
+    <text class="node-text" x="1076" y="403">Foundation</text>
+    <rect class="node" x="770" y="442" width="138" height="50" rx="25"/>
+    <text class="node-text" x="796" y="475">OpenAI</text>
+    <rect class="node" x="926" y="442" width="152" height="50" rx="25"/>
+    <text class="node-text" x="952" y="475">Claude</text>
+    <rect class="node" x="1096" y="442" width="134" height="50" rx="25"/>
+    <text class="node-text" x="1122" y="475">Ollama</text>
+
+    <text class="ghost-text" x="1120" y="418" style="font-size:72px">REWRITE</text>
+    <line class="ghost" x1="1138" y1="350" x2="1450" y2="468"/>
+    <line class="ghost" x1="1450" y1="350" x2="1138" y2="468"/>
+
+    <rect class="new-node" x="1260" y="364" width="210" height="84" rx="42"/>
+    <text class="new-node-text" x="1300" y="398">+1 backend</text>
+    <text class="chip-sub" x="1310" y="426">not a rewrite</text>
+  </g>
+
+  <g>
+    <rect class="chip" x="164" y="625" width="380" height="102" rx="24"/>
+    <text class="chip-title" x="196" y="667">n-1 reach</text>
+    <text class="chip-sub" x="196" y="696">serves iOS 18 / macOS 15</text>
+
+    <rect class="chip" x="604" y="625" width="380" height="102" rx="24"/>
+    <text class="chip-title" x="636" y="667">FoundationOnly build</text>
+    <text class="chip-sub" x="636" y="696">lean App Store binary</text>
+
+    <rect class="chip" x="1044" y="625" width="392" height="102" rx="24"/>
+    <text class="chip-title" x="1076" y="667">Pre-wired stub traits</text>
+    <text class="chip-sub" x="1076" y="696">SystemAIProviderExtension + CoreAI</text>
+  </g>
+
+  <text class="caption" x="100" y="828">When Apple announces a new on-device model, ManifoldKit treats it as one backend behind GenerationStream.</text>
+</svg>

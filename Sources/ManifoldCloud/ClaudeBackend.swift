@@ -9,7 +9,7 @@ import ManifoldCloudCore
 /// Streams completions from the Anthropic Messages API (`/v1/messages`).
 /// Handles Claude-specific SSE event types (`content_block_delta`, etc.)
 /// and authentication via `x-api-key` header.
-public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, CloudBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
+public final class ClaudeBackend: SSECloudBackend, TokenUsageProvider, EndpointBackendKeychainConfigurable, StructuredHistoryReceiver, ToolCallingHistoryReceiver, @unchecked Sendable {
 
     // MARK: - Adapter composition (Phase 3/Claude)
     //

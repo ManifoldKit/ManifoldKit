@@ -377,7 +377,7 @@ private final class ProgressReportingBackend: InferenceBackend,
 /// URL+model configurable protocol so `loadCloudBackend(from:)` accepts it.
 private final class ProgressReportingCloudBackend: InferenceBackend,
                                                    LoadProgressReporting,
-                                                   CloudBackendURLModelConfigurable,
+                                                   EndpointBackendURLModelConfigurable,
                                                    @unchecked Sendable {
     var isModelLoaded = false
     var isGenerating = false

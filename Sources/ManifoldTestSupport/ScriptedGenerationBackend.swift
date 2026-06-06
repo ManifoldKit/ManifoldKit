@@ -54,9 +54,9 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
             return TurnScript(events)
         }
 
-        /// Emits a `diagnosticThrottle` event followed by text tokens.
+        /// Emits a `throttleDiagnostic` event followed by text tokens.
         public static func throttle(reason: String, then tokens: [String]) -> TurnScript {
-            var events: [ScriptedEvent] = [.emit(.diagnosticThrottle(reason: reason))]
+            var events: [ScriptedEvent] = [.emit(.throttleDiagnostic(reason: reason))]
             events += tokens.map { .emit(.token($0)) }
             return TurnScript(events)
         }

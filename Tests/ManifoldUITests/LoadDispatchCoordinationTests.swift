@@ -291,7 +291,7 @@ private actor ControlledLoadGate {
 }
 
 private final class ControlledLoadBackend: InferenceBackend,
-                                           CloudBackendURLModelConfigurable,
+                                           EndpointBackendURLModelConfigurable,
                                            @unchecked Sendable {
     private let stateLock = NSLock()
     private let gate = ControlledLoadGate()

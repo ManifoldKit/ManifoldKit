@@ -3,7 +3,7 @@ import ManifoldInference
 import ManifoldTestSupport
 
 /// Tests verifying that `MockInferenceBackend.thinkingTokensToYield` emits
-/// events in the correct order: `.thinkingToken` × N → `.thinkingComplete` → `.token` × M.
+/// events in the correct order: `.thinkingToken` × N → `.thinkingCompleted` → `.token` × M.
 final class MockInferenceBackendThinkingTests: XCTestCase {
 
     // MARK: - Event ordering
@@ -26,9 +26,9 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
         }
 
         // Expected: .thinkingToken("step1 "), .thinkingToken("step2"),
-        //           .thinkingComplete, .token("answer")
+        //           .thinkingCompleted, .token("answer")
         XCTAssertEqual(events.count, 4,
-            "Should emit 2 thinkingToken + 1 thinkingComplete + 1 token = 4 events")
+            "Should emit 2 thinkingToken + 1 thinkingCompleted + 1 token = 4 events")
 
         guard events.count == 4 else { return }
 
@@ -44,10 +44,10 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
             XCTFail("events[1] must be .thinkingToken(\"step2\"), got \(events[1])")
         }
 
-        if case .thinkingComplete = events[2] {
+        if case .thinkingCompleted = events[2] {
             // expected
         } else {
-            XCTFail("events[2] must be .thinkingComplete, got \(events[2])")
+            XCTFail("events[2] must be .thinkingCompleted, got \(events[2])")
         }
 
         if case .token(let t) = events[3] {
@@ -60,7 +60,7 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
         // index-based assertions at [0] and [3] would both fail.
     }
 
-    // MARK: - No thinkingComplete when thinkingTokens is empty
+    // MARK: - No thinkingCompleted when thinkingTokens is empty
 
     func test_emptyThinkingTokens_noThinkingCompleteEmitted() async throws {
         let mock = MockInferenceBackend()
@@ -80,16 +80,16 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
         }
 
         let completions = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         XCTAssertEqual(completions.count, 0,
-            "No .thinkingComplete must be emitted when thinkingTokensToYield is empty")
+            "No .thinkingCompleted must be emitted when thinkingTokensToYield is empty")
 
-        // Sabotage check: always emitting .thinkingComplete would yield count=1
+        // Sabotage check: always emitting .thinkingCompleted would yield count=1
         // and break this assertion, exposing spurious finalize calls in the UI.
     }
 
-    // MARK: - thinkingComplete fires exactly once regardless of token count
+    // MARK: - thinkingCompleted fires exactly once regardless of token count
 
     func test_thinkingComplete_firesExactlyOnce_forMultipleThinkingTokens() async throws {
         let mock = MockInferenceBackend()
@@ -109,12 +109,12 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
         }
 
         let completions = events.filter {
-            if case .thinkingComplete = $0 { return true } else { return false }
+            if case .thinkingCompleted = $0 { return true } else { return false }
         }
         XCTAssertEqual(completions.count, 1,
-            "Exactly one .thinkingComplete must be emitted regardless of how many thinkingTokensToYield there are")
+            "Exactly one .thinkingCompleted must be emitted regardless of how many thinkingTokensToYield there are")
 
-        // Sabotage check: emitting .thinkingComplete once per thinking token would yield 5
+        // Sabotage check: emitting .thinkingCompleted once per thinking token would yield 5
         // here and cause spurious UI finalizations.
     }
 
@@ -139,7 +139,7 @@ final class MockInferenceBackendThinkingTests: XCTestCase {
 
         let thinkingEvents = allEvents.filter {
             if case .thinkingToken = $0 { return true }
-            if case .thinkingComplete = $0 { return true }
+            if case .thinkingCompleted = $0 { return true }
             return false
         }
         XCTAssertTrue(thinkingEvents.isEmpty,

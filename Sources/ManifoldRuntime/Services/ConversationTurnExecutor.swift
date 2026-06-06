@@ -757,7 +757,7 @@ struct ConversationTurnExecutor: Sendable {
                 maxThinkingTokens: config.maxThinkingTokens,
                 tools: advertisedTools,
                 priority: .userInitiated,
-                sessionID: sessionID
+                requestGroupID: sessionID
             )
         } catch {
             await unregisterSessionToolExecutors(registeredSessionToolNames)
@@ -859,7 +859,7 @@ struct ConversationTurnExecutor: Sendable {
                     assistantMessage.contentParts.append(.toolResult(result))
                     emit(.toolCallCompleted(result.callId, result))
 
-                case .toolLoopLimitReached(let iterations):
+                case .toolIterationLimitExceeded(let iterations):
                     emit(.errorRaised(.inference(
                         InferenceError.inferenceFailure("Tool-call loop stopped after \(iterations) iterations.")
                     )))

@@ -26,14 +26,14 @@ final class GenerationStreamConsumerThinkingTests: XCTestCase {
         XCTAssertEqual(action, .appendThinkingText(""))
     }
 
-    // MARK: - 2. thinkingComplete → finalizeThinking
+    // MARK: - 2. thinkingCompleted → finalizeThinking
 
     func test_thinkingComplete_mapsToFinalizeThinking() {
         var consumer = GenerationStreamConsumer()
-        let action = consumer.handle(.thinkingComplete)
+        let action = consumer.handle(.thinkingCompleted)
 
         XCTAssertEqual(action, .finalizeThinking,
-            ".thinkingComplete must map to .finalizeThinking so the UI commits the accumulator")
+            ".thinkingCompleted must map to .finalizeThinking so the UI commits the accumulator")
 
         // Sabotage check: returning .appendText("") instead of .finalizeThinking would
         // leave the thinking accumulator open indefinitely — this equality check would fail.
@@ -79,7 +79,7 @@ final class GenerationStreamConsumerThinkingTests: XCTestCase {
         let events: [GenerationEvent] = [
             .thinkingToken("reason"),
             .thinkingToken(" more"),
-            .thinkingComplete,
+            .thinkingCompleted,
             .token("answer"),
         ]
         let actions = events.map { consumer.handle($0) }

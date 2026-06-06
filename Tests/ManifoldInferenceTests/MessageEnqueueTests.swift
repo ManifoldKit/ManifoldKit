@@ -119,7 +119,7 @@ final class MessageEnqueueTests: XCTestCase {
     // MARK: - Value-typed config entry point
 
     /// Canonical exercise of the value-typed
-    /// ``InferenceService/enqueue(messages:config:priority:sessionID:)`` entry
+    /// ``InferenceService/enqueue(messages:config:priority:requestGroupID:)`` entry
     /// point introduced when the ~18-parameter sampling list was collapsed onto
     /// ``GenerationConfig``. Pins that a caller-built config reaches the backend
     /// verbatim, with every field preserved.
@@ -141,7 +141,7 @@ final class MessageEnqueueTests: XCTestCase {
             messages: [.user("hello")],
             config: config,
             priority: .normal,
-            sessionID: nil
+            requestGroupID: nil
         )
         for try await _ in stream.events {}
 

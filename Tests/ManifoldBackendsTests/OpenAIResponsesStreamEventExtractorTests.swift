@@ -79,15 +79,15 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
         let events = try driveExtractor(scenario: "reasoning/summarized")
 
         // Expected: thinkingToken("Let me"), thinkingToken(" think..."),
-        // thinkingComplete (from reasoning_summary_text.done), then
+        // thinkingCompleted (from reasoning_summary_text.done), then
         // token("Answer."), then usage. The output_text.delta sees
         // thinking already closed by `.done` so it does NOT re-emit
-        // thinkingComplete.
+        // thinkingCompleted.
         let kinds = events.map { eventKind($0) }
         XCTAssertEqual(kinds, [
             "thinkingToken(Let me)",
             "thinkingToken( think...)",
-            "thinkingComplete",
+            "thinkingCompleted",
             "token(Answer.)",
             "usage(5,3)"
         ])
@@ -190,20 +190,20 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
         switch event {
         case .token(let s): return "token(\(s))"
         case .thinkingToken(let s): return "thinkingToken(\(s))"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature(let s): return "thinkingSignature(\(s))"
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName))"
         case .usage(let p, let c): return "usage(\(p),\(c))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
-        case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
+        case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }
@@ -313,20 +313,20 @@ final class OpenAIResponsesStreamEventExtractorParityTests: XCTestCase {
         switch event {
         case .token(let s): return "token(\(s))"
         case .thinkingToken(let s): return "thinkingToken(\(s))"
-        case .thinkingComplete: return "thinkingComplete"
+        case .thinkingCompleted: return "thinkingCompleted"
         case .thinkingSignature(let s): return "thinkingSignature(\(s))"
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
         case .usage(let p, let c): return "usage(\(p),\(c))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
-        case .toolLoopLimitReached(let n): return "toolLoopLimitReached(\(n))"
+        case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
         case .toolProgress: return "toolProgress"
         case .toolDispatchStarted: return "toolDispatchStarted"
         case .toolDispatchCompleted: return "toolDispatchCompleted"
         case .kvCacheReuse: return "kvCacheReuse"
-        case .diagnosticThrottle: return "diagnosticThrottle"
+        case .throttleDiagnostic: return "throttleDiagnostic"
         case .handoffRequested(let h): return "handoffRequested(\(h.targetAgentID))"
         }
     }

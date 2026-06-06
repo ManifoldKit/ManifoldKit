@@ -142,7 +142,7 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
         XCTAssertFalse(hasError, "kvCacheReuse must not cause errorRaised")
     }
 
-    /// `.diagnosticThrottle` is advisory and must not abort generation.
+    /// `.throttleDiagnostic` is advisory and must not abort generation.
     /// The turn must complete with `streamFinished`, not `errorRaised`.
     func test_diagnosticThrottle_doesNotAbortGeneration() async throws {
         let backend = ScriptedGenerationBackend(turns: [
@@ -176,7 +176,7 @@ final class ScriptedBackendRuntimeTests: XCTestCase {
         ], "throttle is advisory — generation must complete normally")
 
         let hasError = trace.contains { $0.kind == .errorRaised }
-        XCTAssertFalse(hasError, "diagnosticThrottle must not cause errorRaised")
+        XCTAssertFalse(hasError, "throttleDiagnostic must not cause errorRaised")
     }
 
     /// A mid-stream error surfaces as `errorRaised` in the trace. The

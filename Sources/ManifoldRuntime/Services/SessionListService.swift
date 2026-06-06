@@ -385,7 +385,7 @@ package final class SessionListService: Sendable {
             systemPrompt: systemPrompt,
             config: GenerationConfig(temperature: 0.3, topP: 0.9, repeatPenalty: 1.0),
             priority: .background,
-            sessionID: nil
+            requestGroupID: nil
         )
         var result = ""
         for try await event in stream.events {

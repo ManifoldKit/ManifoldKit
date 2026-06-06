@@ -294,9 +294,9 @@ final class ModelLifecycleCoordinator {
 
         switch endpoint.provider {
         case .claude, .openAI, .openAIResponses, .custom:
-            guard let keychainConfigurable = newBackend as? CloudBackendKeychainConfigurable else {
+            guard let keychainConfigurable = newBackend as? EndpointBackendKeychainConfigurable else {
                 throw InferenceError.inferenceFailure(
-                    "Cloud backend \(type(of: newBackend)) must conform to CloudBackendKeychainConfigurable "
+                    "Cloud backend \(type(of: newBackend)) must conform to EndpointBackendKeychainConfigurable "
                     + "for provider \(endpoint.provider.rawValue)."
                 )
             }
@@ -307,9 +307,9 @@ final class ModelLifecycleCoordinator {
             )
 
         case .ollama, .lmStudio:
-            guard let urlModelConfigurable = newBackend as? CloudBackendURLModelConfigurable else {
+            guard let urlModelConfigurable = newBackend as? EndpointBackendURLModelConfigurable else {
                 throw InferenceError.inferenceFailure(
-                    "Cloud backend \(type(of: newBackend)) must conform to CloudBackendURLModelConfigurable "
+                    "Cloud backend \(type(of: newBackend)) must conform to EndpointBackendURLModelConfigurable "
                     + "for provider \(endpoint.provider.rawValue)."
                 )
             }

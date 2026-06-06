@@ -975,7 +975,7 @@ final class LlamaBackendTests: XCTestCase {
     /// With `thinkingMarkers = .qwen3` set on the config *and* `maxThinkingTokens = 0`,
     /// the driver must:
     ///   1. Emit zero `.thinkingToken` events — no reasoning tokens leak into the stream.
-    ///   2. Emit zero `.thinkingComplete` events — the parser never opens a thinking block.
+    ///   2. Emit zero `.thinkingCompleted` events — the parser never opens a thinking block.
     ///   3. Produce visible `.token` events — disabling thinking must not starve output.
     ///
     /// Any `<think>` / `</think>` literal the model emits surfaces as `.token`
@@ -1020,7 +1020,7 @@ final class LlamaBackendTests: XCTestCase {
         for try await event in stream.events {
             switch event {
             case .thinkingToken: thinkingTokenCount += 1
-            case .thinkingComplete: thinkingCompleteCount += 1
+            case .thinkingCompleted: thinkingCompleteCount += 1
             case .token: visibleTokenCount += 1
             default: break
             }
@@ -1030,7 +1030,7 @@ final class LlamaBackendTests: XCTestCase {
             "maxThinkingTokens=0 must suppress every .thinkingToken event (#597) — "
             + "driver must short-circuit ThinkingTransform even when thinkingMarkers is set")
         XCTAssertEqual(thinkingCompleteCount, 0,
-            "maxThinkingTokens=0 must suppress .thinkingComplete — no thinking phase entered")
+            "maxThinkingTokens=0 must suppress .thinkingCompleted — no thinking phase entered")
         XCTAssertGreaterThan(visibleTokenCount, 0,
             "Visible output must still appear when thinking is disabled — the generation loop "
             + "must not starve .token events")

@@ -58,7 +58,7 @@ final class ScriptedGenerationBackendTests: XCTestCase {
         XCTAssertEqual(events[1], .token("hi"))
     }
 
-    /// A `.diagnosticThrottle` event arrives before the token events when using
+    /// A `.throttleDiagnostic` event arrives before the token events when using
     /// the `.throttle(reason:then:)` factory.
     func test_throttle_emittedBeforeTokens() async throws {
         let backend = ScriptedGenerationBackend(turns: [
@@ -70,8 +70,8 @@ final class ScriptedGenerationBackendTests: XCTestCase {
         )
         let events = try await drain(stream)
 
-        XCTAssertEqual(events.count, 2, "expected diagnosticThrottle + token")
-        XCTAssertEqual(events[0], .diagnosticThrottle(reason: "burst-limit"))
+        XCTAssertEqual(events.count, 2, "expected throttleDiagnostic + token")
+        XCTAssertEqual(events[0], .throttleDiagnostic(reason: "burst-limit"))
         XCTAssertEqual(events[1], .token("x"))
     }
 

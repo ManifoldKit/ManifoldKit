@@ -49,7 +49,7 @@ final class RuntimeScenarioRunnerTests: XCTestCase {
         XCTAssertTrue(errorKinds.isEmpty, "Expected no errorRaised events, got \(errorKinds.count)")
     }
 
-    /// A backend that emits a `diagnosticThrottle` advisory before tokens must
+    /// A backend that emits a `throttleDiagnostic` advisory before tokens must
     /// not abort generation — the runtime treats the advisory as informational.
     func test_throttleAdvisory_completesWithoutError() async throws {
         let result = try await RuntimeScenarioRunner.run(.diagnosticThrottleAdvisory)

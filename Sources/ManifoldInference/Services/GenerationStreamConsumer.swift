@@ -31,7 +31,7 @@ public struct GenerationStreamConsumer: Sendable {
         case .thinkingToken(let text):
             return .appendThinkingText(text)
 
-        case .thinkingComplete:
+        case .thinkingCompleted:
             return .finalizeThinking
 
         case .thinkingSignature(let signature):
@@ -40,13 +40,13 @@ public struct GenerationStreamConsumer: Sendable {
         case .toolResult(let result):
             return .appendToolResult(result)
 
-        case .toolLoopLimitReached(let iterations):
-            return .toolLoopLimitReached(iterations: iterations)
+        case .toolIterationLimitExceeded(let iterations):
+            return .toolIterationLimitExceeded(iterations: iterations)
 
         case .kvCacheReuse:
             return .ignore
 
-        case .diagnosticThrottle:
+        case .throttleDiagnostic:
             // Throttle hints are advisory metadata; the consumer has no
             // text/usage state to mutate. UI surfaces that want to render
             // a "paused — device throttling" badge observe the raw event
@@ -112,7 +112,7 @@ public struct GenerationStreamConsumer: Sendable {
         case appendToolResult(ToolResult)
         /// The orchestrator stopped the tool-dispatch loop because the
         /// ``GenerationConfig/maxToolIterations`` budget was exhausted.
-        case toolLoopLimitReached(iterations: Int)
+        case toolIterationLimitExceeded(iterations: Int)
         /// The dispatch loop detected an agent handoff. Runtime owns the
         /// resulting session-state swap; surfacing as an action keeps the
         /// pattern-match exhaustive without forcing the consumer to know

@@ -71,7 +71,7 @@ final class SessionQueueIsolationTests: XCTestCase {
         // Enqueue a request scoped to session A.
         let (_, stream) = try vm.inferenceService.enqueue(
             messages: [.user("hello")],
-            sessionID: sessionA.id
+            requestGroupID: sessionA.id
         )
 
         // Create session B and switch to it.
