@@ -276,6 +276,8 @@ See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capabilit
 
 ### Bring your own UI
 
+> For the standalone walkthrough — package wiring, a SwiftUI view model that streams tokens, and the full `GenerationEvent` surface — see [`QUICKSTART-BRING-YOUR-OWN-UI.md`](QUICKSTART-BRING-YOUR-OWN-UI.md). The summary below is the seed.
+
 If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()` and depend on just `ManifoldInference` plus the backends you want. Construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your transcript:
 
 ```swift
