@@ -157,7 +157,7 @@ public enum ManifoldKit {
                 // No persisted sessions — mint a fresh one so the composer
                 // is enabled on first launch. Subsequent relaunches will go
                 // through the restore branch above.
-                let initialSession = ChatSessionRecord(title: "New Chat")
+                let initialSession = ManifoldInference.ChatSession(title: "New Chat")
                 try await bootstrap.persistence.insertSession(initialSession)
                 await sessionManager.loadSessions()
                 sessionManager.activeSession = initialSession

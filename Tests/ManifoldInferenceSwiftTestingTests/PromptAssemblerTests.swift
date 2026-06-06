@@ -14,8 +14,8 @@ struct PromptAssemblerTests {
 
     private let tok = CharTokenizer()
 
-    private func makeMessage(role: MessageRole, content: String) -> ChatMessageRecord {
-        ChatMessageRecord(role: role, content: content, sessionID: UUID())
+    private func makeMessage(role: MessageRole, content: String) -> ChatMessage {
+        ChatMessage(role: role, content: content, sessionID: UUID())
     }
 
     // MARK: - Basic
@@ -76,7 +76,7 @@ struct PromptAssemblerTests {
         // atDepth(5) is higher in history (5 messages from bottom) than atDepth(1),
         // so it should appear first (lower sort index) in the assembled prompt.
         let messages = (0..<6).map {
-            ChatMessageRecord(role: .user, content: "msg\($0)", sessionID: UUID())
+            ChatMessage(role: .user, content: "msg\($0)", sessionID: UUID())
         }
         let slots = [
             PromptSlot(id: "deep", content: "deep", position: .atDepth(5), label: "Deep"),

@@ -33,7 +33,7 @@ public struct JSONLExportFormat: ConversationExportFormat {
         let timestamp: String
     }
 
-    public func export(session _: ChatSessionRecord, messages: [ChatMessageRecord]) throws -> Data {
+    public func export(session _: ChatSession, messages: [ChatMessage]) throws -> Data {
         let encoder = JSONEncoder()
         // .sortedKeys for deterministic output — round-trip tests and
         // diff-based snapshotting both rely on this.

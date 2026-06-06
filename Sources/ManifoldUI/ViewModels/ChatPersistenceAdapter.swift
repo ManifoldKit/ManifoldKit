@@ -35,7 +35,7 @@ final class ChatPersistenceAdapter {
         set { sessionController.persistence = newValue }
     }
 
-    var activeSession: ChatSessionRecord? {
+    var activeSession: ChatSession? {
         get { sessionController.activeSession }
         set { sessionController.activeSession = newValue }
     }
@@ -44,7 +44,7 @@ final class ChatPersistenceAdapter {
         sessionController.activeSessionID
     }
 
-    var messages: [ChatMessageRecord] {
+    var messages: [ChatMessage] {
         get { sessionController.messages }
         set { sessionController.messages = newValue }
     }
@@ -99,7 +99,7 @@ final class ChatPersistenceAdapter {
     // MARK: - Session operations
 
     @discardableResult
-    func activateSession(_ session: ChatSessionRecord) -> SessionController.SessionSelectionState {
+    func activateSession(_ session: ChatSession) -> SessionController.SessionSelectionState {
         sessionController.activateSession(session)
     }
 
@@ -120,7 +120,7 @@ final class ChatPersistenceAdapter {
     /// Inserts a new session into persistence. Callers in the ingest paths use
     /// this instead of unwrapping `persistenceOrLog` themselves, so the guard
     /// and error type stay in one place.
-    func insertSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws {
         let persistence = try requirePersistence("insertSession")
         try await persistence.insertSession(session)
     }
@@ -136,15 +136,15 @@ final class ChatPersistenceAdapter {
         await sessionController.loadOlderMessages()
     }
 
-    func saveMessage(_ message: ChatMessageRecord) async throws {
+    func saveMessage(_ message: ChatMessage) async throws {
         try await sessionController.saveMessage(message)
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         try await sessionController.updateMessage(message)
     }
 
-    func deleteMessage(_ message: ChatMessageRecord) async throws {
+    func deleteMessage(_ message: ChatMessage) async throws {
         try await sessionController.deleteMessage(message)
     }
 

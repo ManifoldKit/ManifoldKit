@@ -14,8 +14,8 @@ final class TranscriptHealerTests: XCTestCase {
     private func record(
         role: MessageRole,
         parts: [MessagePart]
-    ) -> ChatMessageRecord {
-        ChatMessageRecord(
+    ) -> ChatMessage {
+        ChatMessage(
             role: role,
             contentParts: parts,
             sessionID: sessionID
@@ -33,7 +33,7 @@ final class TranscriptHealerTests: XCTestCase {
     }
 
     func test_heal_textOnlyTranscript_returnsUnchanged() {
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .user, parts: [.text("hi")]),
             record(role: .assistant, parts: [.text("hello")])
         ]
@@ -44,7 +44,7 @@ final class TranscriptHealerTests: XCTestCase {
     func test_heal_pairedToolCallAndResult_returnsUnchanged() {
         let call = toolCall(id: "call-1")
         let result = ToolResult(callId: "call-1", content: "ok")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .user, parts: [.text("look it up")]),
             record(role: .assistant, parts: [.toolCall(call), .toolResult(result), .text("done")])
         ]
@@ -54,7 +54,7 @@ final class TranscriptHealerTests: XCTestCase {
 
     func test_heal_orphanCall_synthesisesCancelledResultRightAfterCall() {
         let orphan = toolCall(id: "orphan-1", name: "writeFile", args: "{\"path\":\"/tmp/x\"}")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .user, parts: [.text("write the file")]),
             record(role: .assistant, parts: [.text("ok"), .toolCall(orphan)])
         ]
@@ -83,7 +83,7 @@ final class TranscriptHealerTests: XCTestCase {
         let a = toolCall(id: "orphan-A", name: "writeFile")
         let b = toolCall(id: "orphan-B", name: "deleteFile")
         let c = toolCall(id: "orphan-C", name: "send")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .user, parts: [.text("do many things")]),
             record(role: .assistant, parts: [.toolCall(a), .toolCall(b)]),
             record(role: .user, parts: [.text("and one more")]),
@@ -106,7 +106,7 @@ final class TranscriptHealerTests: XCTestCase {
     func test_heal_onlySomeCallsAreOrphans_healsOnlyOrphans() {
         let resolved = toolCall(id: "ok-1", name: "search")
         let orphan = toolCall(id: "orphan-1", name: "writeFile")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .assistant, parts: [
                 .toolCall(resolved),
                 .toolResult(ToolResult(callId: "ok-1", content: "found")),
@@ -130,7 +130,7 @@ final class TranscriptHealerTests: XCTestCase {
     func test_heal_resultInLaterMessage_isStillConsideredResolved() {
         let call = toolCall(id: "split-1")
         let result = ToolResult(callId: "split-1", content: "ok")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .assistant, parts: [.toolCall(call)]),
             record(role: .assistant, parts: [.toolResult(result)])
         ]
@@ -142,7 +142,7 @@ final class TranscriptHealerTests: XCTestCase {
     /// transcript as running it once.
     func test_heal_isIdempotent() {
         let orphan = toolCall(id: "orphan-X")
-        let transcript: [ChatMessageRecord] = [
+        let transcript: [ChatMessage] = [
             record(role: .assistant, parts: [.toolCall(orphan)])
         ]
         let once = TranscriptHealer.heal(transcript)

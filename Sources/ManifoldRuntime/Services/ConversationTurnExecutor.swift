@@ -128,7 +128,7 @@ struct ConversationTurnExecutor: Sendable {
         // userMessage is created AFTER this block so its timestamp naturally
         // follows the compression summary records in store sort order.
         if let preTurnPolicy = preTurnCompressionPolicy {
-            let existingHistory: [ChatMessageRecord]
+            let existingHistory: [ChatMessage]
             do {
                 existingHistory = try await persistence.fetchMessages(sessionID: sessionID)
             } catch {
@@ -140,7 +140,7 @@ struct ConversationTurnExecutor: Sendable {
                 lastPromptTokens: lastPromptTokens
             ) {
                 let generate = makeCompressionGenerateClosure()
-                let compressed: [ChatMessageRecord]
+                let compressed: [ChatMessage]
                 do {
                     compressed = try await preTurnPolicy.compressBeforeTurn(
                         history: existingHistory,
@@ -171,7 +171,7 @@ struct ConversationTurnExecutor: Sendable {
             }
         }
 
-        let userMessage = ChatMessageRecord(
+        let userMessage = ChatMessage(
             role: .user,
             contentParts: userContentParts,
             sessionID: sessionID
@@ -239,7 +239,7 @@ struct ConversationTurnExecutor: Sendable {
         // Fetch history synchronously so we can locate and delete the last
         // assistant message before returning the handle. Callers observe
         // ordering: `.messageRemoved` fires before `processTurn` returns.
-        let history: [ChatMessageRecord]
+        let history: [ChatMessage]
         do {
             history = try await persistence.fetchMessages(sessionID: sessionID)
         } catch {
@@ -306,7 +306,7 @@ struct ConversationTurnExecutor: Sendable {
         // ordering: `.messageUpdated` and `.messageRemoved` events fire
         // before `processTurn` returns so adapters can update their view-
         // state before the stream starts.
-        let history: [ChatMessageRecord]
+        let history: [ChatMessage]
         do {
             history = try await persistence.fetchMessages(sessionID: sessionID)
         } catch {
@@ -393,7 +393,7 @@ struct ConversationTurnExecutor: Sendable {
     ) async throws -> ConversationStreamHandle? {
         // Fetch source history synchronously so callers observe ordering:
         // `.sessionBranched` fires before `processTurn` returns.
-        let sourceHistory: [ChatMessageRecord]
+        let sourceHistory: [ChatMessage]
         do {
             sourceHistory = try await persistence.fetchMessages(sessionID: sourceSessionID)
         } catch {
@@ -417,7 +417,7 @@ struct ConversationTurnExecutor: Sendable {
             resolvedTitle = await persistence.sessionTitle(sessionID: sourceSessionID, fallback: "New Chat")
         }
 
-        let newSession = ChatSessionRecord(id: newSessionID, title: resolvedTitle)
+        let newSession = ChatSession(id: newSessionID, title: resolvedTitle)
         do {
             try await persistence.insertSession(newSession)
         } catch {
@@ -427,7 +427,7 @@ struct ConversationTurnExecutor: Sendable {
         // Copy messages into the new session with fresh IDs and updated
         // sessionID.
         for original in slice {
-            let copy = ChatMessageRecord(
+            let copy = ChatMessage(
                 role: original.role,
                 contentParts: original.contentParts,
                 timestamp: original.timestamp,
@@ -596,7 +596,7 @@ struct ConversationTurnExecutor: Sendable {
         // partially update us. `sessionRecord` is `nil` for sessionless
         // flows or hosts without a SessionStore wired in; both paths are
         // identical to the legacy single-agent surface.
-        var sessionRecord: ChatSessionRecord? = await persistence.fetchSession(sessionID: sessionID)
+        var sessionRecord: ChatSession? = await persistence.fetchSession(sessionID: sessionID)
 
         // Snapshot the host-mutable bindings once per turn. A
         // `ConversationRuntime.updateSessionToolSources(_:)` /
@@ -656,7 +656,7 @@ struct ConversationTurnExecutor: Sendable {
         // can render a "Sources" disclosure beneath the assistant bubble.
         // `nil` when RAG didn't run for this turn (no service, no user
         // prompt, or retrieval threw).
-        var assistantMessage = ChatMessageRecord(
+        var assistantMessage = ChatMessage(
             role: .assistant,
             content: "",
             sessionID: sessionID,
@@ -664,7 +664,7 @@ struct ConversationTurnExecutor: Sendable {
             agentID: activeAgent?.id
         )
         let assistantID = assistantMessage.id
-        func writeFinalContent(_ text: String, into message: inout ChatMessageRecord) {
+        func writeFinalContent(_ text: String, into message: inout ChatMessage) {
             message.contentParts.removeAll {
                 if case .text = $0 { return true }
                 return false
@@ -907,7 +907,7 @@ struct ConversationTurnExecutor: Sendable {
         // Tool dispatch is complete once the stream has drained — the dispatch
         // loop runs on the producer side as we consume events. Unregister the
         // session-scoped executors now so the shared registry doesn't carry a
-        // stale ``ChatSessionRecord`` binding into the next turn (#1606). All
+        // stale ``ChatSession`` binding into the next turn (#1606). All
         // remaining exit paths below are post-stream, so this is the single
         // cleanup point alongside the enqueue-failure path above.
         await unregisterSessionToolExecutors(registeredSessionToolNames)
@@ -1143,7 +1143,7 @@ struct ConversationTurnExecutor: Sendable {
             // enqueueAsync. A dedicated model-identifier accessor can be
             // added in a follow-up (#1207 TODO).
             let backendName = await readActiveBackendName()
-            let record = TurnUsageRecord(
+            let record = TurnUsage(
                 sessionID: sessionID,
                 endpointID: nil, // TODO: thread endpoint ID from InferenceService (#1207 follow-up)
                 modelIdentifier: backendName ?? "unknown",
@@ -1187,7 +1187,7 @@ struct ConversationTurnExecutor: Sendable {
             let contextSize = await readContextWindowSize()
             let contextUtilization = contextSize > 0 ? Double(promptTokens) / Double(contextSize) : 0
             if contextSize > 0 && compressionPolicy.shouldCompress(promptTokens: promptTokens, contextSize: contextSize, contextUtilization: contextUtilization) {
-                let history: [ChatMessageRecord]
+                let history: [ChatMessage]
                 do {
                     history = try await persistence.fetchMessages(sessionID: sessionID)
                 } catch {
@@ -1260,7 +1260,7 @@ struct ConversationTurnExecutor: Sendable {
         sessionID: UUID,
         handle: ConversationStreamHandle,
         assistantMessageID: UUID? = nil,
-        assistantMessage: ChatMessageRecord? = nil,
+        assistantMessage: ChatMessage? = nil,
         reason: FinishReason = .stop,
         error: ConversationError? = nil,
         finalText: String = "",
@@ -1314,7 +1314,7 @@ struct ConversationTurnExecutor: Sendable {
         turnKind: TurnKind,
         userPrompt: String?
     ) async throws -> PreparedTurnHistory {
-        let canonicalHistory: [ChatMessageRecord]
+        let canonicalHistory: [ChatMessage]
         do {
             canonicalHistory = try await persistence.fetchMessages(sessionID: sessionID)
         } catch {
@@ -1337,7 +1337,7 @@ struct ConversationTurnExecutor: Sendable {
             throw TurnPreparationFailure.contextAssembly(error)
         }
 
-        let shapedHistory: [ChatMessageRecord]
+        let shapedHistory: [ChatMessage]
         do {
             shapedHistory = try await shapeHistory(
                 canonicalHistory,
@@ -1358,7 +1358,7 @@ struct ConversationTurnExecutor: Sendable {
             appData: appData
         )
 
-        let assembledHistory: [ChatMessageRecord]
+        let assembledHistory: [ChatMessage]
         do {
             assembledHistory = try await historyAssembler.assemble(
                 history: shapedHistory,
@@ -1415,10 +1415,10 @@ struct ConversationTurnExecutor: Sendable {
     }
 
     private func shapeHistory(
-        _ canonicalHistory: [ChatMessageRecord],
+        _ canonicalHistory: [ChatMessage],
         sessionID: UUID,
         request: HistoryShapingRequest
-    ) async throws -> [ChatMessageRecord] {
+    ) async throws -> [ChatMessage] {
         guard let historyShaper else { return canonicalHistory }
 
         let result = try await historyShaper.shape(history: canonicalHistory, request: request)
@@ -1428,8 +1428,8 @@ struct ConversationTurnExecutor: Sendable {
     }
 
     private func validateShapedHistory(
-        _ promptHistory: [ChatMessageRecord],
-        against canonicalHistory: [ChatMessageRecord]
+        _ promptHistory: [ChatMessage],
+        against canonicalHistory: [ChatMessage]
     ) throws {
         let canonicalIDs = canonicalHistory.map(\.id)
         let canonicalIDSet = Set(canonicalIDs)
@@ -1451,7 +1451,7 @@ struct ConversationTurnExecutor: Sendable {
 
     /// Returns a `@Sendable` closure that drives a background inference call
     /// for summarisation. Used by both pre-turn and post-turn compression paths.
-    private func makeCompressionGenerateClosure() -> @Sendable ([ChatMessageRecord]) async throws -> String {
+    private func makeCompressionGenerateClosure() -> @Sendable ([ChatMessage]) async throws -> String {
         let inferenceService = self.inferenceService
         return { messages in
             let structured = messages
@@ -1483,7 +1483,7 @@ struct ConversationTurnExecutor: Sendable {
 
     private func makeTurnContext(
         sessionID: UUID,
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         tokenizer: (any TokenizerProvider)?,
         appData: (any Sendable)?
     ) -> TurnContext {
@@ -1496,7 +1496,7 @@ struct ConversationTurnExecutor: Sendable {
         )
     }
 
-    private func conversationText(for history: [ChatMessageRecord]) -> String? {
+    private func conversationText(for history: [ChatMessage]) -> String? {
         guard !history.isEmpty else { return nil }
         let joined = history
             .compactMap { record -> String? in
@@ -1555,7 +1555,7 @@ struct ConversationTurnExecutor: Sendable {
 
     private func readAdvertisedToolDefinitions(
         sessionToolSources: [any SessionToolSource],
-        sessionRecord: ChatSessionRecord?
+        sessionRecord: ChatSession?
     ) async -> [ToolDefinition] {
         // Base registry definitions — host-installed tools the executor
         // already advertises today. Read from MainActor.
@@ -1626,7 +1626,7 @@ struct ConversationTurnExecutor: Sendable {
     /// Returns the set of tool names this call registered so the caller can
     /// unregister exactly those when the turn ends — leaving a session-scoped
     /// executor in the shared registry would bind later turns to a stale
-    /// ``ChatSessionRecord``.
+    /// ``ChatSession``.
     ///
     /// A tool already present in the registry (a host-installed executor) is
     /// left untouched: the registry executor wins, matching the
@@ -1636,7 +1636,7 @@ struct ConversationTurnExecutor: Sendable {
     /// time; concurrent turns on the same service are last-writer-wins.
     private func registerSessionToolExecutors(
         sources: [any SessionToolSource],
-        sessionRecord: ChatSessionRecord?
+        sessionRecord: ChatSession?
     ) async -> Set<String> {
         guard let sessionRecord, !sources.isEmpty else { return [] }
 

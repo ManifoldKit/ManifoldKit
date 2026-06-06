@@ -63,7 +63,7 @@ actor EventTapDrain {
 /// Each test drives `send` / `regenerate` / `edit` / `cancel` / `branch`
 /// against ``MockInferenceBackend`` + an in-memory SwiftData store, then
 /// snapshots the ``ConversationEvent`` sequence and the final persisted
-/// ``ChatMessageRecord`` list using a UUID-canonicalizing serializer.
+/// ``ManifoldInference.ChatMessage`` list using a UUID-canonicalizing serializer.
 ///
 /// **Purpose.** P2 (engine carve) and P3a (`SingleTurnDriver`) both claim
 /// "behaviour-preserving / byte-identical turns." These goldens are the
@@ -163,7 +163,7 @@ final class TurnLoopCharacterizationTests: XCTestCase {
 
     private func assertGolden(
         events: [ConversationEvent],
-        records: [ChatMessageRecord],
+        records: [ManifoldInference.ChatMessage],
         file: StaticString = #filePath,
         testName: String = #function,
         line: UInt = #line

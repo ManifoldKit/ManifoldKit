@@ -15,7 +15,7 @@ final class ChatViewModelIntentDispatchTests: XCTestCase {
         let handler = MockChatSessionIntentHandler()
         vm.intentHandler = handler
 
-        let session = ChatSessionRecord(title: "Routing")
+        let session = ManifoldInference.ChatSession(title: "Routing")
         vm.activeSession = session
 
         try await vm.dispatch(.continueSession)

@@ -30,11 +30,11 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     // MARK: - searchMessages
 
     func test_searchMessages_returnsCaseInsensitiveMatches() async throws {
-        let session = ChatSessionRecord(title: "Search Test")
+        let session = ManifoldInference.ChatSession(title: "Search Test")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "Tell me about DRAGONS in fantasy", sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .assistant, content: "Dragons are mythical creatures.", sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "What about elves?", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "Tell me about DRAGONS in fantasy", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .assistant, content: "Dragons are mythical creatures.", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "What about elves?", sessionID: session.id))
 
         let hits = try await provider.searchMessages(query: "dragon", limit: 100)
 
@@ -43,21 +43,21 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_multiTermQueryMatchesNonAdjacentTerms() async throws {
-        let session = ChatSessionRecord(title: "Multi Term")
+        let session = ManifoldInference.ChatSession(title: "Multi Term")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(
+        try await provider.insertMessage(ManifoldInference.ChatMessage(
             role: .user,
             content: "dragon lore with maps and treasure",
             timestamp: Date(timeIntervalSince1970: 1_000),
             sessionID: session.id
         ))
-        try await provider.insertMessage(ChatMessageRecord(
+        try await provider.insertMessage(ManifoldInference.ChatMessage(
             role: .assistant,
             content: "dragon migration routes",
             timestamp: Date(timeIntervalSince1970: 2_000),
             sessionID: session.id
         ))
-        try await provider.insertMessage(ChatMessageRecord(
+        try await provider.insertMessage(ManifoldInference.ChatMessage(
             role: .user,
             content: "treasure vault inventory",
             timestamp: Date(timeIntervalSince1970: 3_000),
@@ -71,9 +71,9 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_diacriticInsensitiveQueryBuildsSnippet() async throws {
-        let session = ChatSessionRecord(title: "Diacritics")
+        let session = ManifoldInference.ChatSession(title: "Diacritics")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "Meet at the café after lunch", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "Meet at the café after lunch", sessionID: session.id))
 
         let hits = try await provider.searchMessages(query: "cafe", limit: 100)
 
@@ -83,9 +83,9 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_emptyQueryReturnsNoHits() async throws {
-        let session = ChatSessionRecord(title: "Empty Query")
+        let session = ManifoldInference.ChatSession(title: "Empty Query")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "anything", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "anything", sessionID: session.id))
 
         let emptyHits = try await provider.searchMessages(query: "", limit: 100)
         XCTAssertTrue(emptyHits.isEmpty)
@@ -94,10 +94,10 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_respectsLimit() async throws {
-        let session = ChatSessionRecord(title: "Limit Test")
+        let session = ManifoldInference.ChatSession(title: "Limit Test")
         try await provider.insertSession(session)
         for i in 0..<25 {
-            try await provider.insertMessage(ChatMessageRecord(
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
                 role: .user,
                 content: "needle row \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(1_000 + i)),
@@ -115,10 +115,10 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     // bounded on all branches; this verifies the multi-term path still honours
     // the caller's result limit when many rows match every term.
     func test_searchMessages_multiTermRespectsLimit() async throws {
-        let session = ChatSessionRecord(title: "Multi Term Limit")
+        let session = ManifoldInference.ChatSession(title: "Multi Term Limit")
         try await provider.insertSession(session)
         for i in 0..<25 {
-            try await provider.insertMessage(ChatMessageRecord(
+            try await provider.insertMessage(ManifoldInference.ChatMessage(
                 role: .user,
                 content: "dragon treasure row \(i)",
                 timestamp: Date(timeIntervalSince1970: Double(1_000 + i)),
@@ -134,12 +134,12 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_snippetCentersOnMatchAndElides() async throws {
-        let session = ChatSessionRecord(title: "Snippet")
+        let session = ManifoldInference.ChatSession(title: "Snippet")
         try await provider.insertSession(session)
         let prefix = String(repeating: "alpha ", count: 40)   // ~240 chars before
         let suffix = String(repeating: "omega ", count: 40)   // ~240 chars after
         let body = "\(prefix)NEEDLE\(suffix)"
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: body, sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: body, sessionID: session.id))
 
         let hits = try await provider.searchMessages(query: "needle", limit: 10)
         XCTAssertEqual(hits.count, 1)
@@ -156,13 +156,13 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_sortsMostRecentFirst() async throws {
-        let session = ChatSessionRecord(title: "Sorted")
+        let session = ManifoldInference.ChatSession(title: "Sorted")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "needle one",
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "needle one",
                                                     timestamp: Date(timeIntervalSince1970: 1_000), sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "needle three",
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "needle three",
                                                     timestamp: Date(timeIntervalSince1970: 3_000), sessionID: session.id))
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "needle two",
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "needle two",
                                                     timestamp: Date(timeIntervalSince1970: 2_000), sessionID: session.id))
 
         let hits = try await provider.searchMessages(query: "needle", limit: 100)
@@ -171,9 +171,9 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_searchMessages_returnsNoHitsWhenQueryDoesNotMatch() async throws {
-        let session = ChatSessionRecord(title: "Miss")
+        let session = ManifoldInference.ChatSession(title: "Miss")
         try await provider.insertSession(session)
-        try await provider.insertMessage(ChatMessageRecord(role: .user, content: "hello world", sessionID: session.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "hello world", sessionID: session.id))
 
         let hits = try await provider.searchMessages(query: "absent", limit: 100)
         XCTAssertTrue(hits.isEmpty)
@@ -185,7 +185,7 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
         let base = Date(timeIntervalSince1970: 1_000_000)
         for i in 0..<10 {
             // Higher i = newer, so descending order = 9,8,7,...,0
-            try await provider.insertSession(ChatSessionRecord(
+            try await provider.insertSession(ManifoldInference.ChatSession(
                 title: "S\(i)",
                 updatedAt: base.addingTimeInterval(Double(i))
             ))
@@ -202,7 +202,7 @@ final class SwiftDataPersistenceProviderSearchTests: XCTestCase {
     }
 
     func test_fetchSessionsPage_returnsEmptyBeyondEnd() async throws {
-        try await provider.insertSession(ChatSessionRecord(title: "only"))
+        try await provider.insertSession(ManifoldInference.ChatSession(title: "only"))
         let hits = try await provider.fetchSessions(offset: 50, limit: 50)
         XCTAssertTrue(hits.isEmpty)
     }

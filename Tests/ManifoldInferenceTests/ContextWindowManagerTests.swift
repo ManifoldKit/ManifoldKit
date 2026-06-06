@@ -85,8 +85,8 @@ final class ContextWindowManagerTests: XCTestCase {
 
     // MARK: - Message Trimming
 
-    private func makeMessage(role: MessageRole, content: String) -> ChatMessageRecord {
-        ChatMessageRecord(role: role, content: content, sessionID: UUID())
+    private func makeMessage(role: MessageRole, content: String) -> ChatMessage {
+        ChatMessage(role: role, content: content, sessionID: UUID())
     }
 
     func test_trimMessages_emptyInput() {

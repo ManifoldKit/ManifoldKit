@@ -19,15 +19,15 @@ public protocol SessionToolSourceContract: AnyObject {
     /// Returns a fresh session for each assertion call. Default
     /// implementation produces an empty session — override only if the
     /// source's behaviour depends on session shape.
-    func makeSession() -> ChatSessionRecord
+    func makeSession() -> ChatSession
 
     /// Returns a fresh, fully-configured source for each assertion call.
     func makeSource() -> any SessionToolSource
 }
 
 public extension SessionToolSourceContract {
-    func makeSession() -> ChatSessionRecord {
-        ChatSessionRecord(id: UUID(), title: "Contract fixture")
+    func makeSession() -> ChatSession {
+        ChatSession(id: UUID(), title: "Contract fixture")
     }
 }
 

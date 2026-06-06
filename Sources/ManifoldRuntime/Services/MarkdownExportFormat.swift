@@ -37,7 +37,7 @@ public struct MarkdownExportFormat: ConversationExportFormat {
     // When macOS 27 lands and the floor moves, swap to `.markdown`.
     public var contentType: UTType { .plainText }
 
-    public func export(session: ChatSessionRecord, messages: [ChatMessageRecord]) throws -> Data {
+    public func export(session: ChatSession, messages: [ChatMessage]) throws -> Data {
         // Build a fresh formatter per call — ISO8601DateFormatter isn't Sendable,
         // and the cost is negligible compared to the I/O the result drives.
         let iso = ISO8601DateFormatter()

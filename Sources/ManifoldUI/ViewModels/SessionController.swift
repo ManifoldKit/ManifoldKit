@@ -24,8 +24,8 @@ final class SessionController {
     /// always one object that conforms to both protocols. Hosts that wire
     /// genuinely separate stores can pass a small composed adapter.
     var persistence: (any SessionStore & MessageStore)?
-    var activeSession: ChatSessionRecord?
-    var messages: [ChatMessageRecord] = []
+    var activeSession: ChatSession?
+    var messages: [ChatMessage] = []
     var systemPrompt: String = ""
     var temperature: Float = defaultTemperature
     var topP: Float = defaultTopP
@@ -52,7 +52,7 @@ final class SessionController {
     }
 
     @discardableResult
-    func activateSession(_ session: ChatSessionRecord) -> SessionSelectionState {
+    func activateSession(_ session: ChatSession) -> SessionSelectionState {
         activeSession = session
         systemPrompt = session.systemPrompt
         temperature = session.temperature ?? Self.defaultTemperature
@@ -159,7 +159,7 @@ final class SessionController {
         return anchorID
     }
 
-    func saveMessage(_ message: ChatMessageRecord) async throws {
+    func saveMessage(_ message: ChatMessage) async throws {
         guard let persistence = persistenceOrLog("saveMessage") else { return }
         do {
             try await persistence.updateMessage(message)
@@ -168,12 +168,12 @@ final class SessionController {
         }
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         guard let persistence = persistenceOrLog("updateMessage") else { return }
         try await persistence.updateMessage(message)
     }
 
-    func deleteMessage(_ message: ChatMessageRecord) async throws {
+    func deleteMessage(_ message: ChatMessage) async throws {
         guard let persistence = persistenceOrLog("deleteMessage") else { return }
         try await persistence.deleteMessage(message.id)
     }

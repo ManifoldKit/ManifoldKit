@@ -11,7 +11,7 @@ import ManifoldRuntime
 /// rule documented in `CLAUDE.md`: ManifoldInference owns inference
 /// orchestration (no persistence); ManifoldRuntime owns persistence-agnostic
 /// ports plus the use cases that consume them. The records the ports traffic
-/// in (``ChatMessageRecord``, ``ChatSessionRecord``, ``MessagePart``,
+/// in (``ChatMessage``, ``ChatSession``, ``MessagePart``,
 /// ``MessageRole``) deliberately stayed in ManifoldInference because the
 /// inference services (PromptAssembler, ContextWindowManager, TranscriptHealer)
 /// also traffic in them — the dep DAG points ManifoldRuntime → ManifoldInference.
@@ -53,12 +53,12 @@ final class ProtocolLocationAuditTest: XCTestCase {
     /// invariant fails loudly rather than silently inverting the layering.
     func test_conversationRecords_liveInManifoldInference() {
         XCTAssertTrue(
-            String(reflecting: ChatMessageRecord.self).hasPrefix("ManifoldInference."),
-            "ChatMessageRecord must remain in ManifoldInference — got \(String(reflecting: ChatMessageRecord.self))"
+            String(reflecting: ChatMessage.self).hasPrefix("ManifoldInference."),
+            "ChatMessage must remain in ManifoldInference — got \(String(reflecting: ChatMessage.self))"
         )
         XCTAssertTrue(
-            String(reflecting: ChatSessionRecord.self).hasPrefix("ManifoldInference."),
-            "ChatSessionRecord must remain in ManifoldInference — got \(String(reflecting: ChatSessionRecord.self))"
+            String(reflecting: ChatSession.self).hasPrefix("ManifoldInference."),
+            "ChatSession must remain in ManifoldInference — got \(String(reflecting: ChatSession.self))"
         )
         XCTAssertTrue(
             String(reflecting: MessagePart.self).hasPrefix("ManifoldInference."),

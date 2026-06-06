@@ -20,7 +20,7 @@ public final class ImageGenerationToolSource: SessionToolSource {
     }
 
     nonisolated public func toolDefinitions(
-        for session: ChatSessionRecord
+        for session: ChatSession
     ) async -> [ToolDefinition] {
         [
             ToolDefinition(
@@ -43,7 +43,7 @@ public final class ImageGenerationToolSource: SessionToolSource {
     nonisolated public func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ChatSession
     ) async throws -> ToolResult {
         guard toolName == "generate_image" else {
             return ToolResult(callId: toolName, content: "Unknown tool: \(toolName)", errorKind: .unknownTool)

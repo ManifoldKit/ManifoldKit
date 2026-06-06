@@ -105,7 +105,7 @@ final class RuntimeConfigurationTests: XCTestCase {
         // `.task { }`) must load explicitly during bootstrap.
         await sessionManager.loadSessions()
 
-        let resolvedInitial: ChatSessionRecord?
+        let resolvedInitial: ManifoldInference.ChatSession?
         if let existing = sessionManager.sessions.first {
             resolvedInitial = existing
         } else {
@@ -148,7 +148,7 @@ final class RuntimeConfigurationTests: XCTestCase {
         )
         try await runtime.endpointStore.insertEndpoint(originalEndpoint)
 
-        var session = ChatSessionRecord(title: "Endpoint Session")
+        var session = ManifoldInference.ChatSession(title: "Endpoint Session")
         session.selectedEndpointID = endpointID
         try await runtime.persistence.insertSession(session)
 

@@ -27,17 +27,17 @@ extension ChatViewModel {
     /// saved once from `stopGeneration()` and again at the end of
     /// `generateIntoMessage`). Treat it as an upsert at the view-model boundary so
     /// callers do not need to coordinate insert vs. update ownership.
-    func saveMessage(_ message: ChatMessageRecord) async throws {
+    func saveMessage(_ message: ChatMessage) async throws {
         try await persistenceAdapter.saveMessage(message)
     }
 
     /// Updates an existing message via the persistence provider.
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         try await persistenceAdapter.updateMessage(message)
     }
 
     /// Deletes a message via the persistence provider.
-    func deleteMessage(_ message: ChatMessageRecord) async throws {
+    func deleteMessage(_ message: ChatMessage) async throws {
         try await persistenceAdapter.deleteMessage(message)
     }
 

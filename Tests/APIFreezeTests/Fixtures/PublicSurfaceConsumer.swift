@@ -136,7 +136,7 @@ enum PublicSurfaceConsumer {
     }
 
     private static func consumeChatRecords() {
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "freeze",
             createdAt: Date(),
@@ -152,7 +152,7 @@ enum PublicSurfaceConsumer {
         _ = session.title
         _ = session.pinnedMessageIDs
 
-        let message = ChatMessageRecord(
+        let message = ChatMessage(
             id: UUID(),
             role: .user,
             contentParts: [.text("hi")],

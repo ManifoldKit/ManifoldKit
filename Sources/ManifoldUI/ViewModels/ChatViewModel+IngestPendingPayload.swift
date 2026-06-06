@@ -135,7 +135,7 @@ extension ChatViewModel {
     /// The behaviour for each ``IngestionIntent`` is:
     ///
     /// - ``IngestionIntent/newSession(preset:)``: insert a new
-    ///   ``ChatSessionRecord`` via the configured persistence
+    ///   ``ChatSession`` via the configured persistence
     ///   provider, switch to it, apply the preset (model selection,
     ///   system prompt, sampler params), seed the payload as a user
     ///   message, and run ``sendMessage()`` if a model is loaded.
@@ -190,7 +190,7 @@ extension ChatViewModel {
         // Pre-resolve the system prompt so the new session is inserted
         // with the preset already applied — avoids a second persistence
         // write when the only change is the system prompt.
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             title: "New Chat",
             systemPrompt: preset?.systemPrompt ?? ""
         )

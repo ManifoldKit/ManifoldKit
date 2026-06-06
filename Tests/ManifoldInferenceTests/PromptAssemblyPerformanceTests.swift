@@ -9,10 +9,10 @@ final class PromptAssemblyPerformanceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeMessages(count: Int) -> [ChatMessageRecord] {
+    private func makeMessages(count: Int) -> [ChatMessage] {
         (0..<count).map { i in
             let role: MessageRole = i % 2 == 0 ? .user : .assistant
-            return ChatMessageRecord(role: role, content: Self.messageContent, sessionID: Self.sessionID)
+            return ChatMessage(role: role, content: Self.messageContent, sessionID: Self.sessionID)
         }
     }
 

@@ -46,10 +46,10 @@ final class ChatGenerationCoordinator {
     var currentActiveSessionID: @MainActor () -> UUID? = { nil }
 
     /// Returns `ChatViewModel.activeSession`.
-    var currentActiveSession: @MainActor () -> ChatSessionRecord? = { nil }
+    var currentActiveSession: @MainActor () -> ChatSession? = { nil }
 
     /// Returns `ChatViewModel.messages`.
-    var currentMessages: @MainActor () -> [ChatMessageRecord] = { [] }
+    var currentMessages: @MainActor () -> [ChatMessage] = { [] }
 
     /// Returns `ChatViewModel.postGenerationTasks`.
     var currentPostGenerationTasks: @MainActor () -> [any PostGenerationTask] = { [] }
@@ -57,13 +57,13 @@ final class ChatGenerationCoordinator {
     // MARK: - Message mutation closures
 
     /// Forwards to `ChatViewModel.mutateMessage(id:_:)`.
-    var mutateMessage: @MainActor (UUID, (inout ChatMessageRecord) -> Void) -> Bool = { _, _ in false }
+    var mutateMessage: @MainActor (UUID, (inout ChatMessage) -> Void) -> Bool = { _, _ in false }
 
     /// Appends a message to `ChatViewModel.messages`.
-    var appendMessage: @MainActor (ChatMessageRecord) -> Void = { _ in }
+    var appendMessage: @MainActor (ChatMessage) -> Void = { _ in }
 
     /// Removes messages matching the predicate from `ChatViewModel.messages`.
-    var removeMessages: @MainActor ((ChatMessageRecord) -> Bool) -> Void = { _ in }
+    var removeMessages: @MainActor ((ChatMessage) -> Bool) -> Void = { _ in }
 
     // MARK: - Side-effect closures
 
@@ -247,7 +247,7 @@ final class ChatGenerationCoordinator {
 
     /// Runs `postGenerationTasks` sequentially. Errors are surfaced via
     /// `onSetBackgroundTaskError` and do not cancel subsequent tasks.
-    func runPostGenerationTasks(message: ChatMessageRecord, session: ChatSessionRecord) {
+    func runPostGenerationTasks(message: ChatMessage, session: ChatSession) {
         let tasks = currentPostGenerationTasks()
         guard !tasks.isEmpty else { return }
         onSetBackgroundTaskError(nil)
@@ -269,7 +269,7 @@ final class ChatGenerationCoordinator {
     // MARK: - Content-part Mutation Helpers
 
     /// Appends streamed visible-token text without clobbering sibling parts.
-    static func appendVisibleText(_ batch: String, into msg: inout ChatMessageRecord) {
+    static func appendVisibleText(_ batch: String, into msg: inout ChatMessage) {
         if let lastIdx = msg.contentParts.indices.reversed().first(where: {
             if case .text = msg.contentParts[$0] { return true } else { return false }
         }), case .text(let existing) = msg.contentParts[lastIdx] {
@@ -280,7 +280,7 @@ final class ChatGenerationCoordinator {
     }
 
     /// Writes `partial` into the last in-flight `.thinking` part for live preview.
-    static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessageRecord) {
+    static func writeThinkingPartialText(_ partial: String, into msg: inout ChatMessage) {
         guard let idx = msg.contentParts.lastIndex(where: { $0.thinkingContent != nil }) else {
             let insertAt = msg.contentParts.firstIndex(where: { $0.textContent != nil }) ?? 0
             msg.contentParts.insert(.thinking(partial), at: insertAt)
@@ -332,7 +332,7 @@ final class ChatGenerationCoordinator {
             activeConversationMessageID = messageID
             if let activeSessionID = currentActiveSessionID(),
                !currentMessages().contains(where: { $0.id == messageID }) {
-                let placeholder = ChatMessageRecord(
+                let placeholder = ChatMessage(
                     id: messageID,
                     role: .assistant,
                     content: "",
@@ -587,8 +587,8 @@ final class ChatGenerationCoordinator {
     }
 
     private static func mergeTerminalAssistant(
-        _ terminal: ChatMessageRecord,
-        into current: inout ChatMessageRecord
+        _ terminal: ChatMessage,
+        into current: inout ChatMessage
     ) {
         let liveNonTextParts = current.contentParts.filter { part in
             if case .text = part { return false }

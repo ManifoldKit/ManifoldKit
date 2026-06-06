@@ -23,7 +23,7 @@ public struct SendInput: Sendable {
     public let sessionID: UUID
     public let userText: String
     /// Optional non-text attachments (typically `MessagePart.image` cases) to
-    /// include alongside `userText` on the user `ChatMessageRecord`. When
+    /// include alongside `userText` on the user `ChatMessage`. When
     /// non-empty the runtime builds the user record's `contentParts` as
     /// `[.text(userText), <attachments>...]` so vision-capable backends see
     /// the images and the persisted record preserves them. The runtime does

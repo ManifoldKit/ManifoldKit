@@ -63,11 +63,11 @@ final class ManifoldBootstrapInMemoryTests: XCTestCase {
         )
 
         // Insert a session so the message foreign-key constraint is satisfied.
-        let session = ChatSessionRecord(title: "Incognito Session")
+        let session = ManifoldInference.ChatSession(title: "Incognito Session")
         try await bootstrap.persistence.insertSession(session)
 
         // Insert a message and fetch it back through the same provider.
-        let message = ChatMessageRecord(
+        let message = ManifoldInference.ChatMessage(
             role: .user,
             content: "Hello from in-memory land",
             sessionID: session.id

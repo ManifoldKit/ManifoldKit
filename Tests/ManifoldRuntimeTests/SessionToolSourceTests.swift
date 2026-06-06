@@ -10,14 +10,14 @@ import ManifoldContractTestSupport
 private struct FixtureSessionToolSource: SessionToolSource {
     let definitions: [ToolDefinition]
 
-    func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+    func toolDefinitions(for session: ChatSession) async -> [ToolDefinition] {
         definitions
     }
 
     func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ChatSession
     ) async throws -> ToolResult {
         guard definitions.contains(where: { $0.name == toolName }) else {
             throw FixtureError.unknownTool(toolName)

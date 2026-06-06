@@ -32,7 +32,7 @@ public protocol DialogueSummariser: Sendable {
     /// - Returns: A summary string suitable for storing as a `.memory("summary")`
     ///   record in the session history.
     /// - Throws: Any error from the underlying backend.
-    func summarise(turns: [ChatMessageRecord], using backend: any InferenceBackend) async throws -> String
+    func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String
 }
 
 // MARK: - DefaultDialogueSummariser
@@ -68,7 +68,7 @@ public struct DefaultDialogueSummariser: DialogueSummariser {
         self.maxSummaryTokens = max(64, maxSummaryTokens)
     }
 
-    public func summarise(turns: [ChatMessageRecord], using backend: any InferenceBackend) async throws -> String {
+    public func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String {
         let conversationBlock = turns
             .filter { $0.kind.isUserVisible }
             .map { record -> String in
@@ -119,7 +119,7 @@ public struct DefaultDialogueSummariser: DialogueSummariser {
 public struct NoOpDialogueSummariser: DialogueSummariser {
     public init() {}
 
-    public func summarise(turns: [ChatMessageRecord], using backend: any InferenceBackend) async throws -> String {
+    public func summarise(turns: [ChatMessage], using backend: any InferenceBackend) async throws -> String {
         ""
     }
 }

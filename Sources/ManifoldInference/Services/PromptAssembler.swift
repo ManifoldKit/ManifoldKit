@@ -18,7 +18,7 @@ public enum PromptAssembler {
     /// so callers don't need to thread the value separately.
     public static func assemble(
         slots: [PromptSlot],
-        messages: [ChatMessageRecord],
+        messages: [ChatMessage],
         systemPrompt: String?,
         capabilities: BackendCapabilities,
         responseBuffer: Int = 512,
@@ -50,7 +50,7 @@ public enum PromptAssembler {
     /// - Returns: An ``AssembledPrompt`` containing resolved slots, trimmed messages, and budget info.
     public static func assemble(
         slots: [PromptSlot],
-        messages: [ChatMessageRecord],
+        messages: [ChatMessage],
         systemPrompt: String?,
         contextSize: Int,
         responseBuffer: Int = 512,
@@ -215,10 +215,10 @@ public enum PromptAssembler {
     /// message exists. Returns both the trimmed messages and their total token count,
     /// so the caller does not need a second pass to compute the budget breakdown.
     private static func trimMessagesToFit(
-        _ messages: [ChatMessageRecord],
+        _ messages: [ChatMessage],
         budget: Int,
         tokenizer: TokenizerProvider
-    ) -> (messages: [ChatMessageRecord], totalTokens: Int) {
+    ) -> (messages: [ChatMessage], totalTokens: Int) {
         guard !messages.isEmpty else { return ([], 0) }
 
         if budget <= 0 {
@@ -229,7 +229,7 @@ public enum PromptAssembler {
             return (Array(last), last.reduce(0) { $0 + tokenizer.tokenCount($1.content) })
         }
 
-        var kept: [ChatMessageRecord] = []
+        var kept: [ChatMessage] = []
         var usedTokens = 0
 
         for message in messages.reversed() {
@@ -250,7 +250,7 @@ public enum PromptAssembler {
     /// using the original message count so insertion order does not shift targets.
     private static func insertSlotsIntoHistory(
         slots: [ResolvedSlot],
-        messages: [ChatMessageRecord]
+        messages: [ChatMessage]
     ) -> [(role: String, content: String)] {
         let topSlots = slots.filter { $0.position.isTopSlot }
         let historySlots = slots.filter { !$0.position.isTopSlot }

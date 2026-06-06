@@ -21,7 +21,7 @@ final class SessionListEventTests: XCTestCase {
     }
 
     func test_searchResults_storesAllFields() {
-        let session = ChatSessionRecord(title: "S")
+        let session = ChatSession(title: "S")
         let snippet = "needle in haystack"
         let range = snippet.range(of: "needle")!
         let hit = MessageSearchHit(
@@ -49,7 +49,7 @@ final class SessionListEventTests: XCTestCase {
     /// switch below. Adding a case without updating this switch fails to
     /// compile, surfacing the new case at review time.
     func test_sessionListEvent_switchExhaustiveness() {
-        let session = ChatSessionRecord(title: "S")
+        let session = ChatSession(title: "S")
         let probes: [SessionListEvent] = [
             .sessionsLoaded([session], hasMore: false, offset: 0),
             .sessionRenamed(session.id, title: "renamed"),

@@ -19,7 +19,7 @@ public protocol ConversationHistoryReceiver: AnyObject {
 /// One turn in a structured conversation history — a role plus an ordered
 /// list of ``MessagePart`` values.
 ///
-/// This is the inference-layer companion to ``ChatMessageRecord``: it strips
+/// This is the inference-layer companion to ``ChatMessage``: it strips
 /// persistence-only fields (timestamp, sessionID, token counts) and exposes
 /// just what the generation pipeline needs to format prompts and serialize
 /// provider-specific request bodies. Crucially, ``parts`` retains

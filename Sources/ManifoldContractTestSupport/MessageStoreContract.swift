@@ -38,8 +38,8 @@ extension MessageStoreContract where Self: XCTestCase {
         role: MessageRole = .user,
         content: String = "Hello",
         timestamp: Date = Date()
-    ) -> ChatMessageRecord {
-        ChatMessageRecord(
+    ) -> ChatMessage {
+        ChatMessage(
             role: role,
             contentParts: [.text(content)],
             timestamp: timestamp,

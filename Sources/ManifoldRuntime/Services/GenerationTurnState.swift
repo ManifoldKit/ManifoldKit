@@ -15,7 +15,7 @@ import ManifoldInference
 /// resolved turn context snapshot used by downstream prompt assembly and
 /// post-generation hooks.
 struct PreparedTurnHistory {
-    var history: [ChatMessageRecord]
+    var history: [ChatMessage]
     var turnContext: TurnContext
 }
 
@@ -26,7 +26,7 @@ struct PreparedTurnHistory {
 struct AssembledContext {
     var slots: [PromptSlot]
     var ragCitations: [Citation]
-    var sessionRecord: ChatSessionRecord?
+    var sessionRecord: ChatSession?
     var turnSessionToolSources: [any SessionToolSource]
     var turnHookRegistry: HookRegistry?
 }
@@ -38,7 +38,7 @@ struct GenerationPlan {
     var composedSystemPrompt: String?
     var structuredHistory: [StructuredMessage]
     var advertisedTools: [ToolDefinition]
-    var assistantMessage: ChatMessageRecord
+    var assistantMessage: ChatMessage
     /// Per-request handoff detector for this turn, passed into `enqueueAsync`
     /// rather than mutated onto the shared `InferenceService`. Threading it per
     /// request closes the race where two concurrent turns clobbered the
@@ -69,8 +69,8 @@ struct GenerationTurnState {
     var emptyResponse: Bool = true
     var streamFailed: ConversationError?
     var tokenUsage: (promptTokens: Int, completionTokens: Int)?
-    var assistantMessage: ChatMessageRecord
-    var sessionRecord: ChatSessionRecord?
+    var assistantMessage: ChatMessage
+    var sessionRecord: ChatSession?
 }
 
 /// Output of phase 4 (finalisation), returned only on the happy path. Carries

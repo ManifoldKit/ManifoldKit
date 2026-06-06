@@ -17,10 +17,10 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
     /// `makeSession()` overrides the default no-agents fixture so the
     /// contract's stableAcrossCalls assertion runs against a session that
     /// actually produces a non-empty advertised list.
-    func makeSession() -> ChatSessionRecord {
+    func makeSession() -> ChatSession {
         let researcher = Agent(name: "Researcher", systemPrompt: "P1", description: "D1")
         let writer = Agent(name: "Writer", systemPrompt: "P2", description: "D2")
-        return ChatSessionRecord(
+        return ChatSession(
             id: UUID(),
             title: "Contract fixture",
             agents: [researcher, writer],
@@ -58,7 +58,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
         let researcher = Agent(name: "Researcher", systemPrompt: "", description: "")
         let writer = Agent(name: "Writer", systemPrompt: "", description: "")
         let critic = Agent(name: "Critic", systemPrompt: "", description: "")
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "T",
             agents: [researcher, writer, critic],
@@ -77,7 +77,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
 
     func test_toolDefinitions_emptyWhenSingleAgent() async {
         let solo = Agent(name: "Solo", systemPrompt: "", description: "")
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "Solo",
             agents: [solo],
@@ -103,7 +103,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
             Agent(name: "D", systemPrompt: "", description: ""),
             Agent(name: "E", systemPrompt: "", description: ""),
         ]
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "Big",
             agents: agents,
@@ -121,7 +121,7 @@ final class HandoffToolSourceContractTests: XCTestCase, SessionToolSourceContrac
 
     func test_resolve_handoffName_throwsHandoffMustBeInterceptedUpstream() async {
         let writer = Agent(name: "Writer", systemPrompt: "", description: "")
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "T",
             agents: [writer],

@@ -101,7 +101,7 @@ final class GenerationQueue {
 
     /// Session-aware handoff detector hook. The runtime sets this so the
     /// dispatch loop can intercept synthetic `transfer_to_<agent>` tool
-    /// calls without the queue itself learning about ``ChatSessionRecord``.
+    /// calls without the queue itself learning about ``ChatSession``.
     /// The closure receives the in-flight request's `requestGroupID` (may be
     /// `nil` for sessionless flows) and the model-emitted ``ToolCall``;
     /// returning `.handoff(...)` triggers a ``GenerationEvent/handoffRequested(_:)``

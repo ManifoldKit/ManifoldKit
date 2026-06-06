@@ -10,8 +10,8 @@ final class ConversationEventTraceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private static func message(role: MessageRole = .assistant) -> ChatMessageRecord {
-        ChatMessageRecord(
+    private static func message(role: MessageRole = .assistant) -> ChatMessage {
+        ChatMessage(
             id: UUID(),
             role: role,
             content: "test",

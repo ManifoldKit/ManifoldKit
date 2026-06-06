@@ -40,14 +40,14 @@ public protocol SessionStore: AnyObject, Sendable {
     /// Inserts a new chat session.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func insertSession(_ session: ChatSessionRecord) async throws
+    func insertSession(_ session: ChatSession) async throws
 
     /// Updates an existing chat session.
     ///
     /// - Throws:
     ///   - ``ChatPersistenceError/sessionNotFound(_:)`` when the session does not exist.
     ///   - Storage errors from the underlying store.
-    func updateSession(_ session: ChatSessionRecord) async throws
+    func updateSession(_ session: ChatSession) async throws
 
     /// Updates **only** `updatedAt` on the session, in place.
     ///
@@ -116,7 +116,7 @@ public protocol SessionStore: AnyObject, Sendable {
     /// Fetches all chat sessions sorted by most-recently-updated.
     ///
     /// - Throws: Storage errors from the underlying store.
-    func fetchSessions() async throws -> [ChatSessionRecord]
+    func fetchSessions() async throws -> [ChatSession]
 
     /// Fetches a page of chat sessions sorted by most-recently-updated.
     ///
@@ -128,7 +128,7 @@ public protocol SessionStore: AnyObject, Sendable {
     ///   - offset: Index of the first session to return (0-based).
     ///   - limit: Maximum number of sessions to return.
     /// - Throws: Storage errors from the underlying store.
-    func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord]
+    func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSession]
 
     /// Registers a hook fired after every successful session write.
     ///
@@ -145,7 +145,7 @@ extension SessionStore {
     /// Default: pages over the full list returned by ``fetchSessions()``.
     /// Storage backends that can push pagination into the engine should
     /// override.
-    public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+    public func fetchSessions(offset: Int, limit: Int) async throws -> [ChatSession] {
         let all = try await fetchSessions()
         guard offset < all.count else { return [] }
         let end = min(offset + limit, all.count)
@@ -210,5 +210,5 @@ extension SessionStore {
 /// no internal consumer uses it yet, so the signature may firm up once a
 /// host actually exercises it.
 public protocol SessionStorePostWriteHook: Sendable {
-    func sessionDidWrite(_ record: ChatSessionRecord) async
+    func sessionDidWrite(_ record: ChatSession) async
 }

@@ -47,12 +47,12 @@ import ManifoldInference
 ///     }
 ///
 ///     func compressBeforeTurn(
-///         history: [ChatMessageRecord],
+///         history: [ChatMessage],
 ///         sessionID: UUID,
-///         generate: @Sendable ([ChatMessageRecord]) async throws -> String
-///     ) async throws -> [ChatMessageRecord] {
+///         generate: @Sendable ([ChatMessage]) async throws -> String
+///     ) async throws -> [ChatMessage] {
 ///         let summary = try await generate(history)
-///         return [ChatMessageRecord(
+///         return [ChatMessage(
 ///             role: .system,
 ///             content: summary,
 ///             sessionID: sessionID,
@@ -92,10 +92,10 @@ public protocol PreTurnCompressionPolicy: Sendable {
     ///   - generate: Calls the inference backend; receives messages as a
     ///     mini-conversation and returns the model's accumulated text output.
     func compressBeforeTurn(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         sessionID: UUID,
-        generate: @Sendable ([ChatMessageRecord]) async throws -> String
-    ) async throws -> [ChatMessageRecord]
+        generate: @Sendable ([ChatMessage]) async throws -> String
+    ) async throws -> [ChatMessage]
 
     /// Called after history has been compressed and the replacement records
     /// have been persisted, immediately before the user message is inserted.
@@ -107,9 +107,9 @@ public protocol PreTurnCompressionPolicy: Sendable {
     /// - Parameters:
     ///   - sessionID: The session that was compressed.
     ///   - insertedRecords: The full replacement record set, in insertion order.
-    func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async
+    func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessage]) async
 }
 
 extension PreTurnCompressionPolicy {
-    public func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessageRecord]) async {}
+    public func postCompressBeforeTurn(sessionID: UUID, insertedRecords: [ChatMessage]) async {}
 }

@@ -298,7 +298,7 @@ public struct PromptSlot: Identifiable, Sendable {
     /// Human-readable display name for prompt inspector UI.
     public var label: String
 
-    /// ID of the ``ChatMessageRecord`` this slot was derived from, if any.
+    /// ID of the ``ChatMessage`` this slot was derived from, if any.
     /// `nil` for synthesized or static slots.
     public var sourceRecordID: UUID?
 

@@ -11,12 +11,12 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         try await messageStore.insertMessage(message)
     }
 
     @MainActor
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         try await messageStore.updateMessage(message)
     }
 
@@ -54,12 +54,12 @@ struct ConversationPersistencePort: Sendable {
     }
 
     @MainActor
-    func fetchMessages(sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(sessionID: UUID) async throws -> [ChatMessage] {
         try await messageStore.fetchMessages(for: sessionID)
     }
 
     @MainActor
-    func insertSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws {
         guard let sessionStore else { return }
         try await sessionStore.insertSession(session)
     }
@@ -89,7 +89,7 @@ struct ConversationPersistencePort: Sendable {
     /// system-prompt re-derivation can run without coupling to the
     /// SwiftData adapter.
     @MainActor
-    func fetchSession(sessionID: UUID) async -> ChatSessionRecord? {
+    func fetchSession(sessionID: UUID) async -> ChatSession? {
         guard let sessionStore else { return nil }
         do {
             let sessions = try await sessionStore.fetchSessions()
@@ -105,7 +105,7 @@ struct ConversationPersistencePort: Sendable {
     /// Best-effort session update. Returns `false` and logs on failure so
     /// the caller doesn't have to swallow a thrown error inline.
     @MainActor
-    func updateSession(_ record: ChatSessionRecord) async -> Bool {
+    func updateSession(_ record: ChatSession) async -> Bool {
         guard let sessionStore else { return true }
         do {
             try await sessionStore.updateSession(record)

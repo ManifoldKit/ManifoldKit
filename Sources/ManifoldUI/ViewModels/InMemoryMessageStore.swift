@@ -12,15 +12,15 @@ import ManifoldRuntime
 /// requiring every caller to assemble a ``ConversationRuntime`` themselves.
 @MainActor
 final class InMemoryMessageStore: MessageStore {
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ChatMessage] = [:]
     private var hooks: [any MessageStorePostWriteHook] = []
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
         for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         guard messages[message.id] != nil else {
             throw ChatPersistenceError.messageNotFound(message.id)
         }
@@ -34,7 +34,7 @@ final class InMemoryMessageStore: MessageStore {
         }
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values
             .filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }

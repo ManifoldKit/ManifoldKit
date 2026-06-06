@@ -108,8 +108,8 @@ struct PromptSlotPositionTests {
 
     // MARK: - Assembler placement
 
-    private func makeMessage(role: MessageRole, content: String) -> ChatMessageRecord {
-        ChatMessageRecord(role: role, content: content, sessionID: UUID())
+    private func makeMessage(role: MessageRole, content: String) -> ChatMessage {
+        ChatMessage(role: role, content: content, sessionID: UUID())
     }
 
     private struct CharTokenizer: TokenizerProvider {

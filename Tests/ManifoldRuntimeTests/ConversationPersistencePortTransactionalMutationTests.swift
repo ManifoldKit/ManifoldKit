@@ -7,7 +7,7 @@ final class ConversationPersistencePortTransactionalMutationTests: XCTestCase {
 
     func test_performMessageMutations_usesTransactionalCapabilityAndRollsBackInjectedFailure() async throws {
         let sessionID = UUID()
-        let original = ChatMessageRecord(role: .user, content: "before", sessionID: sessionID)
+        let original = ChatMessage(role: .user, content: "before", sessionID: sessionID)
         let store = TransactionalFakeMessageStore(initialMessages: [original])
         store.injectedFailureAfterApplyingMutationCount = 1
         let port = ConversationPersistencePort(messageStore: store, sessionStore: nil)
@@ -33,8 +33,8 @@ final class ConversationPersistencePortTransactionalMutationTests: XCTestCase {
 
     func test_performMessageMutations_fallsBackToLegacyMessageStoreMethods() async throws {
         let sessionID = UUID()
-        let first = ChatMessageRecord(role: .user, content: "first", sessionID: sessionID)
-        let second = ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID)
+        let first = ChatMessage(role: .user, content: "first", sessionID: sessionID)
+        let second = ChatMessage(role: .assistant, content: "second", sessionID: sessionID)
         var updatedFirst = first
         updatedFirst.content = "updated"
 
@@ -84,15 +84,15 @@ final class ConversationPersistencePortTransactionalMutationTests: XCTestCase {
 private final class RecordingSessionStore: SessionStore {
     private(set) var deletedSessionIDs: [UUID] = []
     var shouldThrowOnDelete = false
-    private var sessions: [UUID: ChatSessionRecord] = [:]
+    private var sessions: [UUID: ChatSession] = [:]
 
     enum StoreError: Error { case deleteFailed }
 
-    func insertSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws {
         sessions[session.id] = session
     }
 
-    func updateSession(_ session: ChatSessionRecord) async throws {
+    func updateSession(_ session: ChatSession) async throws {
         sessions[session.id] = session
     }
 
@@ -102,7 +102,7 @@ private final class RecordingSessionStore: SessionStore {
         sessions.removeValue(forKey: sessionID)
     }
 
-    func fetchSessions() async throws -> [ChatSessionRecord] {
+    func fetchSessions() async throws -> [ChatSession] {
         Array(sessions.values)
     }
 }
@@ -113,12 +113,12 @@ private final class TransactionalFakeMessageStore: TransactionalMessageStore {
         case transactionFailed
     }
 
-    private var messages: [UUID: ChatMessageRecord]
+    private var messages: [UUID: ChatMessage]
     var injectedFailureAfterApplyingMutationCount: Int?
     private(set) var transactionCallCount = 0
     private(set) var individualMutationCallCount = 0
 
-    init(initialMessages: [ChatMessageRecord] = []) {
+    init(initialMessages: [ChatMessage] = []) {
         self.messages = Dictionary(uniqueKeysWithValues: initialMessages.map { ($0.id, $0) })
     }
 
@@ -141,12 +141,12 @@ private final class TransactionalFakeMessageStore: TransactionalMessageStore {
         }
     }
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         individualMutationCallCount += 1
         messages[message.id] = message
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         individualMutationCallCount += 1
         guard messages[message.id] != nil else {
             throw ChatPersistenceError.messageNotFound(message.id)
@@ -161,7 +161,7 @@ private final class TransactionalFakeMessageStore: TransactionalMessageStore {
         }
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values
             .filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }
@@ -193,17 +193,17 @@ private final class TransactionalFakeMessageStore: TransactionalMessageStore {
 
 @MainActor
 private final class LegacyMessageStore: MessageStore {
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ChatMessage] = [:]
     private(set) var insertCallCount = 0
     private(set) var updateCallCount = 0
     private(set) var deleteCallCount = 0
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         insertCallCount += 1
         messages[message.id] = message
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         updateCallCount += 1
         guard messages[message.id] != nil else {
             throw ChatPersistenceError.messageNotFound(message.id)
@@ -218,7 +218,7 @@ private final class LegacyMessageStore: MessageStore {
         }
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values
             .filter { $0.sessionID == sessionID }
             .sorted { $0.timestamp < $1.timestamp }

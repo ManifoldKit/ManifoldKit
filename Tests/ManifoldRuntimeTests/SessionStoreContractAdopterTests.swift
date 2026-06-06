@@ -8,13 +8,13 @@ import ManifoldContractTestSupport
 
 @MainActor
 private final class InMemorySessionStore: SessionStore {
-    private var sessions: [UUID: ChatSessionRecord] = [:]
+    private var sessions: [UUID: ChatSession] = [:]
 
-    func insertSession(_ session: ChatSessionRecord) async throws {
+    func insertSession(_ session: ChatSession) async throws {
         sessions[session.id] = session
     }
 
-    func updateSession(_ session: ChatSessionRecord) async throws {
+    func updateSession(_ session: ChatSession) async throws {
         guard sessions[session.id] != nil else {
             throw ChatPersistenceError.sessionNotFound(session.id)
         }
@@ -27,7 +27,7 @@ private final class InMemorySessionStore: SessionStore {
         }
     }
 
-    func fetchSessions() async throws -> [ChatSessionRecord] {
+    func fetchSessions() async throws -> [ChatSession] {
         sessions.values.sorted { $0.updatedAt > $1.updatedAt }
     }
 }

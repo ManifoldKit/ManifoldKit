@@ -108,7 +108,7 @@ struct TestChatViewModelHarness {
 ///   - ramGB: Physical-memory value the device-capability service reports.
 ///     Defaults to 16 GB — matches what every existing test passed.
 ///   - activateSession: When `true`, sets `vm.activeSession` to a fresh
-///     `ChatSessionRecord(title: "Test Session")`. Tests that call
+///     `ChatSession(title: "Test Session")`. Tests that call
 ///     `sendMessage`/`regenerate`/`edit` need an active session.
 ///   - configurePersistence: When `true`, allocates an in-memory
 ///     `ModelContainer` and calls `vm.configure(persistence:)`. When `false`,
@@ -180,7 +180,7 @@ func makeTestChatViewModel(
     }
 
     if activateSession {
-        vm.activeSession = ChatSessionRecord(title: "Test Session")
+        vm.activeSession = ChatSession(title: "Test Session")
     }
 
     return TestChatViewModelHarness(

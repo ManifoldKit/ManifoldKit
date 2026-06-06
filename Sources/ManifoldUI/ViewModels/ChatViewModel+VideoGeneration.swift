@@ -21,7 +21,7 @@ import ManifoldInference
 /// ``ChatViewModel/generateVideo(prompt:config:)``.
 public struct VideoGenerationProgress: Sendable, Equatable {
 
-    /// The placeholder ``ChatMessageRecord/ID`` the generation is writing to.
+    /// The placeholder ``ChatMessage/ID`` the generation is writing to.
     public let messageID: UUID
 
     /// User-supplied prompt the generation was started with.
@@ -121,7 +121,7 @@ extension ChatViewModel {
 
     /// Begin a video generation in the active conversation.
     ///
-    /// Inserts a placeholder ``ChatMessageRecord`` immediately (via the
+    /// Inserts a placeholder ``ChatMessage`` immediately (via the
     /// runtime's `MessageStore` port) and dispatches a consumer task that
     /// updates ``videoGenerationProgress`` from runtime events. Returns the
     /// placeholder message ID synchronously so the caller can pair UI state
@@ -130,7 +130,7 @@ extension ChatViewModel {
     /// - Parameters:
     ///   - prompt: User-supplied prompt.
     ///   - config: Video generation parameters.
-    /// - Returns: The placeholder ``ChatMessageRecord/ID``.
+    /// - Returns: The placeholder ``ChatMessage/ID``.
     /// - Throws: ``ChatViewModelVideoError/notConfigured`` if no runtime is
     ///   installed, ``ChatViewModelVideoError/noActiveConversation`` if
     ///   there is no active session, or any persistence / backend error from
@@ -180,7 +180,7 @@ extension ChatViewModel {
                 error: nil
             )
             if let sessionID = activeSessionID {
-                let placeholder = ChatMessageRecord(
+                let placeholder = ChatMessage(
                     id: messageID,
                     role: .assistant,
                     contentParts: [],

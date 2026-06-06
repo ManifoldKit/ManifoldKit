@@ -24,13 +24,13 @@ final class TurnInputCollapseTests: XCTestCase {
 
     @MainActor
     final class MemoryStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -43,7 +43,7 @@ final class TurnInputCollapseTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -58,13 +58,13 @@ final class TurnInputCollapseTests: XCTestCase {
 
     @MainActor
     final class MemorySessionStore: SessionStore {
-        private(set) var sessions: [UUID: ChatSessionRecord] = [:]
+        private(set) var sessions: [UUID: ChatSession] = [:]
 
-        func insertSession(_ session: ChatSessionRecord) async throws {
+        func insertSession(_ session: ChatSession) async throws {
             sessions[session.id] = session
         }
 
-        func updateSession(_ session: ChatSessionRecord) async throws {
+        func updateSession(_ session: ChatSession) async throws {
             guard sessions[session.id] != nil else {
                 throw ChatPersistenceError.sessionNotFound(session.id)
             }
@@ -75,7 +75,7 @@ final class TurnInputCollapseTests: XCTestCase {
             sessions.removeValue(forKey: sessionID)
         }
 
-        func fetchSessions() async throws -> [ChatSessionRecord] {
+        func fetchSessions() async throws -> [ChatSession] {
             sessions.values.sorted { $0.updatedAt > $1.updatedAt }
         }
     }
@@ -282,7 +282,7 @@ final class TurnInputCollapseTests: XCTestCase {
         let sessionsA = MemorySessionStore()
         let (runtimeA, storeA, _) = makeRuntime(sessionStore: sessionsA)
         let sourceA = UUID()
-        try await sessionsA.insertSession(ChatSessionRecord(id: sourceA, title: "A"))
+        try await sessionsA.insertSession(ChatSession(id: sourceA, title: "A"))
         _ = try await runtimeA.processTurn(TurnInput(sessionID: sourceA, kind: .send(text: "hello")))
         _ = try await drainUntilAfterGeneration(runtimeA)
         let userA = try XCTUnwrap(storeA.messages.values.first { $0.role == .user })
@@ -299,7 +299,7 @@ final class TurnInputCollapseTests: XCTestCase {
         let sessionsB = MemorySessionStore()
         let (runtimeB, storeB, _) = makeRuntime(sessionStore: sessionsB)
         let sourceB = UUID()
-        try await sessionsB.insertSession(ChatSessionRecord(id: sourceB, title: "B"))
+        try await sessionsB.insertSession(ChatSession(id: sourceB, title: "B"))
         _ = try await runtimeB.send(legacySendInput(sessionID: sourceB, text: "hello"))
         _ = try await drainUntilAfterGeneration(runtimeB)
         let userB = try XCTUnwrap(storeB.messages.values.first { $0.role == .user })

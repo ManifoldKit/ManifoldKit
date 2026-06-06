@@ -31,14 +31,14 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
 
     /// Minimal in-memory MessageStore used by the runtime in these tests.
     final class RuntimeMessageStore: MessageStore, @unchecked Sendable {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ManifoldInference.ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ManifoldInference.ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ManifoldInference.ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -50,7 +50,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
                 throw ChatPersistenceError.messageNotFound(messageID)
             }
         }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ManifoldInference.ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -98,7 +98,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
             userDefaults: testDefaults,
             conversationRuntime: runtime
         )
-        vm.activeSession = ChatSessionRecord(title: "Adapter Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Adapter Test")
         // Track teardown via a lightweight harness wrapper.
         harnesses.append(TestChatViewModelHarness(
             vm: vm,
@@ -170,7 +170,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
             XCTFail("activeSession must be set")
             return
         }
-        let record = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+        let record = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID)
 
         await vm.handle(runtimeEvent: .messageInserted(record))
 
@@ -184,7 +184,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
             XCTFail("activeSession must be set")
             return
         }
-        let record = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+        let record = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID)
         await vm.handle(runtimeEvent: .messageInserted(record))
 
         await vm.handle(runtimeEvent: .errorRaised(.inference(MessageStatusTestError())))
@@ -222,7 +222,7 @@ final class ChatViewModelRuntimeAdapterTests: XCTestCase {
             userDefaults: testDefaults,
             conversationRuntime: runtime
         )
-        vm.activeSession = ChatSessionRecord(title: "Cancel Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Cancel Test")
 
         vm.inputText = "Tell me something slow"
         let sendTask = Task { @MainActor in

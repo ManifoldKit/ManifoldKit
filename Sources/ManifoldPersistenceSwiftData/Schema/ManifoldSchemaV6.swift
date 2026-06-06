@@ -5,7 +5,7 @@ import ManifoldRuntime
 
 /// ManifoldKit SwiftData schema version 6.
 ///
-/// Adds ``TurnUsageRecordModel`` for per-turn token accounting. All V5 model
+/// Adds ``TurnUsageModel`` for per-turn token accounting. All V5 model
 /// types (including ``ManifoldSchemaV5/RagDocument``) are carried forward
 /// unchanged via a lightweight migration stage.
 public enum ManifoldSchemaV6: VersionedSchema {
@@ -19,20 +19,20 @@ public enum ManifoldSchemaV6: VersionedSchema {
             ManifoldSchemaV4.APIEndpoint.self,
             ManifoldSchemaV4.ModelBenchmarkCache.self,
             ManifoldSchemaV5.RagDocument.self,
-            TurnUsageRecordModel.self,
+            TurnUsageModel.self,
         ]
     }
 
-    // MARK: - TurnUsageRecordModel
+    // MARK: - TurnUsageModel
 
-    /// Persists one ``TurnUsageRecord`` value type from `ManifoldRuntime`.
+    /// Persists one ``TurnUsage`` value type from `ManifoldRuntime`.
     ///
     /// SwiftData `@Model` types must be classes, so this is the mutable class
-    /// backing for the immutable ``TurnUsageRecord`` value. Callers always read
+    /// backing for the immutable ``TurnUsage`` value. Callers always read
     /// and write via the port layer (``SwiftDataUsageStore``) rather than
     /// touching this model directly.
     @Model
-    public final class TurnUsageRecordModel {
+    public final class TurnUsageModel {
         public var id: UUID
         public var sessionID: UUID
         /// Nullable so on-device backends (MLX, Llama, Foundation) that have no
@@ -72,8 +72,8 @@ public enum ManifoldSchemaV6: VersionedSchema {
         }
 
         /// Converts this SwiftData model into the port's value type.
-        func toRecord() -> TurnUsageRecord {
-            TurnUsageRecord(
+        func toRecord() -> TurnUsage {
+            TurnUsage(
                 id: id,
                 sessionID: sessionID,
                 endpointID: endpointID,
@@ -88,6 +88,6 @@ public enum ManifoldSchemaV6: VersionedSchema {
     }
 }
 
-/// Public typealias so callers can refer to `TurnUsageRecordModel` without
+/// Public typealias so callers can refer to `TurnUsageModel` without
 /// qualifying the schema version namespace.
-public typealias TurnUsageRecordModel = ManifoldSchemaV6.TurnUsageRecordModel
+public typealias TurnUsageModel = ManifoldSchemaV6.TurnUsageModel

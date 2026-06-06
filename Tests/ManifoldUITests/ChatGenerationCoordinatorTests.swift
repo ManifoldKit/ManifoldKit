@@ -105,9 +105,9 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.currentActiveSessionID = { sessionID }
 
         // Build a message with visible content so the completion branch fires.
-        var msg = ChatMessageRecord(id: msgID, role: .assistant, content: "Hello", sessionID: sessionID)
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "Hello", sessionID: sessionID)
         msg.contentParts = [.text("Hello")]
-        let session = ChatSessionRecord(id: sessionID, title: "Test")
+        let session = ChatSession(id: sessionID, title: "Test")
 
         coord.currentMessages = { [msg] }
         coord.currentActiveSession = { session }
@@ -135,9 +135,9 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.onTransitionPhase = { _ in true }
         coord.currentActiveSessionID = { sessionID }
         coord.currentMessages = {
-            [ChatMessageRecord(id: msgID, role: .assistant, content: "", sessionID: sessionID)]
+            [ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)]
         }
-        coord.currentActiveSession = { ChatSessionRecord(id: sessionID, title: "Test") }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
 
         coord.activeConversationMessageID = msgID
         coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
@@ -170,7 +170,7 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         let sessionID = UUID()
 
         // Use a real message so we can observe the mutation.
-        var msg = ChatMessageRecord(id: msgID, role: .assistant, content: "", sessionID: sessionID)
+        var msg = ChatMessage(id: msgID, role: .assistant, content: "", sessionID: sessionID)
         coord.mutateMessage = { id, body in
             guard id == msgID else { return false }
             body(&msg)
@@ -220,8 +220,8 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.currentPostGenerationTasks = { tasks }
         coord.onSetBackgroundTaskError = { _ in }
 
-        let msg = ChatMessageRecord(role: .assistant, content: "hi", sessionID: UUID())
-        let session = ChatSessionRecord(title: "Test")
+        let msg = ChatMessage(role: .assistant, content: "hi", sessionID: UUID())
+        let session = ChatSession(title: "Test")
 
         coord.runPostGenerationTasks(message: msg, session: session)
         await coord.backgroundTask?.value
@@ -240,8 +240,8 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
         coord.currentPostGenerationTasks = { [slowTask] }
         coord.onSetBackgroundTaskError = { _ in }
 
-        let msg = ChatMessageRecord(role: .assistant, content: "hi", sessionID: UUID())
-        let session = ChatSessionRecord(title: "Test")
+        let msg = ChatMessage(role: .assistant, content: "hi", sessionID: UUID())
+        let session = ChatSession(title: "Test")
 
         coord.runPostGenerationTasks(message: msg, session: session)
         let inflight = coord.backgroundTask
@@ -316,7 +316,7 @@ private final class IndexCapturingTask: PostGenerationTask, Sendable {
     let index: Int
     let box: ActorBox<[Int]>
     init(index: Int, box: ActorBox<[Int]>) { self.index = index; self.box = box }
-    func run(message: ChatMessageRecord, session: ChatSessionRecord) async throws {
+    func run(message: ChatMessage, session: ChatSession) async throws {
         await box.append(index)
     }
 }
@@ -325,7 +325,7 @@ private final class SlowPostTask: PostGenerationTask, Sendable {
     let delay: Duration
     let reached: ActorBox<Bool>
     init(delay: Duration, reached: ActorBox<Bool>) { self.delay = delay; self.reached = reached }
-    func run(message: ChatMessageRecord, session: ChatSessionRecord) async throws {
+    func run(message: ChatMessage, session: ChatSession) async throws {
         try await Task.sleep(for: delay)
         await reached.set(true)
     }
@@ -333,19 +333,19 @@ private final class SlowPostTask: PostGenerationTask, Sendable {
 
 /// Minimal in-memory store used to construct runtimes in these tests.
 private final class InMemoryMessageStoreForTests: MessageStore, @unchecked Sendable {
-    private var messages: [UUID: ChatMessageRecord] = [:]
+    private var messages: [UUID: ChatMessage] = [:]
     private var hooks: [any MessageStorePostWriteHook] = []
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
         for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
     }
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
         for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
     }
     func deleteMessage(_ messageID: UUID) async throws { messages.removeValue(forKey: messageID) }
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         messages.values.filter { $0.sessionID == sessionID }.sorted { $0.timestamp < $1.timestamp }
     }
     func deleteMessages(for sessionID: UUID) async throws {

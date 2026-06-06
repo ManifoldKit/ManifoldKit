@@ -98,16 +98,16 @@ final class MessagePartTests: XCTestCase {
         XCTAssertEqual(part.audioContent?.waveform, [0.1, 0.8])
     }
 
-    // MARK: - ChatMessageRecord backward compatibility
+    // MARK: - ManifoldInference.ChatMessage backward compatibility
 
     func test_chatMessageRecord_contentStringInit_createsTextPart() {
-        let record = ChatMessageRecord(role: .user, content: "Hello", sessionID: UUID())
+        let record = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: UUID())
         XCTAssertEqual(record.contentParts, [.text("Hello")])
         XCTAssertEqual(record.content, "Hello")
     }
 
     func test_chatMessageRecord_contentParts_concatenatesTextParts() {
-        let record = ChatMessageRecord(
+        let record = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [
                 .text("Part 1"),
@@ -121,7 +121,7 @@ final class MessagePartTests: XCTestCase {
     }
 
     func test_chatMessageRecord_settingContent_replacesAllParts() {
-        var record = ChatMessageRecord(
+        var record = ManifoldInference.ChatMessage(
             role: .user,
             contentParts: [.text("old"), .image(data: Data(), mimeType: "image/png")],
             sessionID: UUID()

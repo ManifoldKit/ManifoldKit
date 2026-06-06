@@ -4,7 +4,7 @@ import ManifoldInference
 /// A completed generation turn, passed to ``GenerationHook`` implementations.
 public struct CompletedTurn: Sendable {
     public let sessionID: UUID
-    public let assistantMessage: ChatMessageRecord
+    public let assistantMessage: ChatMessage
     public let promptTokens: Int?
     public let completionTokens: Int?
     /// Opaque host-app payload sourced from ``ConversationRuntime/turnContextProvider``.
@@ -15,7 +15,7 @@ public struct CompletedTurn: Sendable {
 
     public init(
         sessionID: UUID,
-        assistantMessage: ChatMessageRecord,
+        assistantMessage: ChatMessage,
         promptTokens: Int?,
         completionTokens: Int?,
         appData: (any Sendable)? = nil

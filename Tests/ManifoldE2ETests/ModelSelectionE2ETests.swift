@@ -62,7 +62,7 @@ final class ModelSelectionE2ETests {
 
     // MARK: - Helpers
 
-    private func makeSession(title: String = "Test") async throws -> ChatSessionRecord {
+    private func makeSession(title: String = "Test") async throws -> ManifoldInference.ChatSession {
         let session = try await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
@@ -294,7 +294,7 @@ final class ModelSelectionE2ETests {
         try await vm.saveSettingsToSession()
 
         // Reload sessions from persistence so we have fresh records with the
-        // saved selectedModelIDs (ChatSessionRecord is a value type).
+        // saved selectedModelIDs (ManifoldInference.ChatSession is a value type).
         await sessionManager.loadSessions()
         let freshA = try #require(sessionManager.sessions.first { $0.title == "Session A" })
 

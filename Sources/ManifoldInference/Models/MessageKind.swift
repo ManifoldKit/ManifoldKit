@@ -1,6 +1,6 @@
 import Foundation
 
-/// The semantic kind of a ``ChatMessageRecord``.
+/// The semantic kind of a ``ChatMessage``.
 ///
 /// Kind is orthogonal to ``MessageRole`` — backends see role; the persistence,
 /// export, and UI layers switch on kind.

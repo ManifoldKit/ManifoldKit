@@ -131,7 +131,7 @@ final class ContextEstimateCostTests: XCTestCase {
         let service = InferenceService(backend: backend, name: "PerfAuditCharTokenizer")
         let vm = ChatViewModel(inferenceService: service)
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
-        let session = ChatSessionRecord(title: "ContextEstimateCost")
+        let session = ManifoldInference.ChatSession(title: "ContextEstimateCost")
         vm.activeSession = session
         return vm
     }
@@ -146,12 +146,12 @@ final class ContextEstimateCostTests: XCTestCase {
             return
         }
         let base = Date(timeIntervalSince1970: 1_000_000)
-        var seeded: [ChatMessageRecord] = []
+        var seeded: [ManifoldInference.ChatMessage] = []
         seeded.reserveCapacity(count)
         for i in 0..<count {
             let role: MessageRole = i.isMultiple(of: 2) ? .user : .assistant
             let body = "Backlog message \(i): the quick brown fox jumps over the lazy dog every time."
-            let record = ChatMessageRecord(
+            let record = ManifoldInference.ChatMessage(
                 role: role,
                 content: body,
                 timestamp: base.addingTimeInterval(Double(i)),

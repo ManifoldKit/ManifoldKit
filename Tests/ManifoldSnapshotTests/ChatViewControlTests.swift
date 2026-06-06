@@ -44,7 +44,7 @@ final class ChatViewControlTests: XCTestCase {
                     .appendingPathComponent(UUID().uuidString)
             )
         )
-        vm.activeSession = ChatSessionRecord(title: "Test Session")
+        vm.activeSession = ChatSession(title: "Test Session")
         return vm
     }
 

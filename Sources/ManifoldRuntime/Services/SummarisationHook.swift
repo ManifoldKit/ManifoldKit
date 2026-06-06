@@ -176,7 +176,7 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
     private func performSummarisation(sessionID: UUID) async {
         // Fetch current history — if this fails, log and bail. Preserving
         // existing history is always the right fallback.
-        let history: [ChatMessageRecord]
+        let history: [ChatMessage]
         do {
             history = try await messageStore.fetchMessages(for: sessionID)
         } catch {
@@ -236,7 +236,7 @@ public final class SummarisationHook: GenerationHook, @unchecked Sendable {
         // Anchor the summary at the timestamp of the first folded turn so it
         // sorts naturally before the turns that were preserved verbatim.
         let summaryTimestamp = toFold[0].timestamp
-        let summaryRecord = ChatMessageRecord(
+        let summaryRecord = ChatMessage(
             role: .system,
             content: summaryText,
             timestamp: summaryTimestamp,

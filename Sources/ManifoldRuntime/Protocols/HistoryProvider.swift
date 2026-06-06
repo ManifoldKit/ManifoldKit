@@ -3,10 +3,10 @@ import ManifoldInference
 
 /// A contribution returned by a ``HistoryProvider``.
 public struct HistoryContribution: Sendable {
-    public let record: ChatMessageRecord
+    public let record: ChatMessage
     public let position: HistoryInsertionPosition
 
-    public init(record: ChatMessageRecord, position: HistoryInsertionPosition) {
+    public init(record: ChatMessage, position: HistoryInsertionPosition) {
         self.record = record
         self.position = position
     }
@@ -29,7 +29,7 @@ public enum HistoryInsertionPosition: Sendable {
     case tail
 }
 
-/// Contributes additional ``ChatMessageRecord``s to be injected into the
+/// Contributes additional ``ChatMessage``s to be injected into the
 /// prompt-visible history array before generation.
 ///
 /// Providers are applied in registration order after any registered
@@ -47,7 +47,7 @@ public enum HistoryInsertionPosition: Sendable {
 /// ``ConversationRuntime/init(messageStore:sessionStore:inferenceService:pipeline:budgetPlanner:ragService:auxiliaryInferenceService:usageStore:generationHooks:compressionPolicy:historyShaper:historyProviders:hostTurnContextProvider:turnContextProvider:sessionToolSources:hookRegistry:)``.
 public protocol HistoryProvider: Sendable {
     func contribute(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         context: TurnContext
     ) async throws -> [HistoryContribution]
 }
@@ -57,7 +57,7 @@ public protocol HistoryProvider: Sendable {
 public struct IdentityHistoryProvider: HistoryProvider {
     public init() {}
     public func contribute(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         context: TurnContext
     ) async throws -> [HistoryContribution] { [] }
 }

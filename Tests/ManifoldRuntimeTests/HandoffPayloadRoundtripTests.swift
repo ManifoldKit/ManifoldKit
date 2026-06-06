@@ -44,7 +44,7 @@ final class HandoffPayloadRoundtripTests: XCTestCase {
 
     func test_payload_extractedFromArguments() {
         let writer = Agent(name: "Writer", systemPrompt: "", description: "")
-        let session = ChatSessionRecord(
+        let session = ChatSession(
             id: UUID(),
             title: "T",
             agents: [writer],

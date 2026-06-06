@@ -14,14 +14,14 @@ final class VideoGenerationRuntimeTests: XCTestCase {
 
     @MainActor
     final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         var updateError: (any Error)?
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             if let error = updateError {
                 updateError = nil
                 throw error
@@ -38,7 +38,7 @@ final class VideoGenerationRuntimeTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -469,9 +469,9 @@ final class VideoGenerationRuntimeTests: XCTestCase {
     // a video-side leak would silently add unreachable switch arms.
     func test_conversationEvent_caseCount_unchangedByVideoRuntime() {
         let samples: [ConversationEvent] = [
-            .messageInserted(ChatMessageRecord(role: .user, content: "", sessionID: UUID())),
+            .messageInserted(ChatMessage(role: .user, content: "", sessionID: UUID())),
             .messageRemoved(messageID: UUID()),
-            .messageUpdated(ChatMessageRecord(role: .user, content: "", sessionID: UUID())),
+            .messageUpdated(ChatMessage(role: .user, content: "", sessionID: UUID())),
             .sessionBranched(newSessionID: UUID(), copiedCount: 0),
             .streamStarted(messageID: UUID()),
             .tokenEmitted(messageID: UUID(), delta: ""),

@@ -57,7 +57,7 @@ final class SessionOverrideTests: XCTestCase {
         temperature: Float? = nil,
         topP: Float? = nil,
         repeatPenalty: Float? = nil
-    ) async throws -> ChatSessionRecord {
+    ) async throws -> ManifoldInference.ChatSession {
         var session = try await sessionManager.createSession(title: title)
         session.temperature = temperature
         session.topP = topP

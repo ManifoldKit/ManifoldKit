@@ -7,10 +7,10 @@ final class PromptAssemblerUtilizationTests: XCTestCase {
 
     private static let sessionID = UUID()
 
-    private func makeMessages(_ texts: [String], roles: [MessageRole]? = nil) -> [ChatMessageRecord] {
+    private func makeMessages(_ texts: [String], roles: [MessageRole]? = nil) -> [ChatMessage] {
         texts.enumerated().map { i, text in
             let role = roles?[i] ?? (i % 2 == 0 ? .user : .assistant)
-            return ChatMessageRecord(role: role, content: text, sessionID: Self.sessionID)
+            return ChatMessage(role: role, content: text, sessionID: Self.sessionID)
         }
     }
 

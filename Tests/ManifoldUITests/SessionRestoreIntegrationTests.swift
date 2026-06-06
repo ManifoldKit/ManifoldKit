@@ -51,12 +51,12 @@ final class SessionRestoreIntegrationTests: XCTestCase {
         title: String = "Persisted",
         updatedAt: Date = Date(),
         messageBodies: [String] = []
-    ) async throws -> ChatSessionRecord {
+    ) async throws -> ManifoldInference.ChatSession {
         let provider = SwiftDataPersistenceProvider(modelContext: container.mainContext)
-        let record = ChatSessionRecord(id: id, title: title, updatedAt: updatedAt)
+        let record = ManifoldInference.ChatSession(id: id, title: title, updatedAt: updatedAt)
         try await provider.insertSession(record)
         for body in messageBodies {
-            let msg = ChatMessageRecord(
+            let msg = ManifoldInference.ChatMessage(
                 role: .user,
                 content: body,
                 sessionID: record.id

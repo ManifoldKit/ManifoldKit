@@ -9,11 +9,11 @@ import ManifoldRuntime
 /// list is empty).
 final class AllowedToolsEnforcementTests: XCTestCase {
 
-    private func makeSource(skill: Skill) async -> (SkillToolSource, ChatSessionRecord) {
+    private func makeSource(skill: Skill) async -> (SkillToolSource, ChatSession) {
         let registry = SkillRegistry()
         await registry.load([skill])
         let source = SkillToolSource(registry: registry)
-        let session = ChatSessionRecord(id: UUID(), title: "fixture")
+        let session = ChatSession(id: UUID(), title: "fixture")
         await source.markActive(skillName: skill.name, for: session.id)
         return (source, session)
     }
@@ -81,7 +81,7 @@ final class AllowedToolsEnforcementTests: XCTestCase {
         let registry = SkillRegistry()
         await registry.load([skill])
         let source = SkillToolSource(registry: registry)
-        let session = ChatSessionRecord(id: UUID(), title: "no-active-skill")
+        let session = ChatSession(id: UUID(), title: "no-active-skill")
         // Deliberately skip markActive — no skill is active for this session.
         let allowed = await source.allowedToolNames(for: session)
         XCTAssertNil(allowed)

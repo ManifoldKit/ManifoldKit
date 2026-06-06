@@ -11,7 +11,7 @@ import ManifoldInference
 // `VideoRuntimeEvent` is distinct from the backend-level
 // `VideoGenerationEvent` (`.queued`, `.generating(fractionComplete:)`,
 // `.completed(URL)`): the runtime translates between layers, keying every
-// event to a `ChatMessageRecord.ID` so adapters can pair UI state to the
+// event to a `ChatMessage.ID` so adapters can pair UI state to the
 // right placeholder slot.
 
 /// Events emitted by ``VideoGenerationRuntime``.
@@ -20,7 +20,7 @@ import ManifoldInference
 /// parallel enum so exhaustive switches in image and text consumers stay
 /// closed. The runtime translates the backend-level ``VideoGenerationEvent``
 /// (raw fraction + URL) into these runtime-level events keyed to a
-/// placeholder ``ChatMessageRecord/ID``.
+/// placeholder ``ChatMessage/ID``.
 public enum VideoRuntimeEvent: Sendable, Equatable {
 
     /// Generation started for the placeholder message at `messageID`. The
@@ -28,19 +28,19 @@ public enum VideoRuntimeEvent: Sendable, Equatable {
     /// `contentParts` — adapters render a "generating" affordance until the
     /// terminal ``completed(messageID:payload:)`` event updates the message
     /// in place.
-    case started(messageID: ChatMessageRecord.ID, prompt: String)
+    case started(messageID: ChatMessage.ID, prompt: String)
 
     /// Generation progress. `fractionComplete` is a backend-estimated value
     /// in 0.0–1.0. Intermediate state is **not** persisted — adapters
     /// subscribe to events for progressive UI; persistence stays minimal
     /// until completion.
-    case progress(messageID: ChatMessageRecord.ID, fractionComplete: Double)
+    case progress(messageID: ChatMessage.ID, fractionComplete: Double)
 
     /// Generation completed; the persisted message at `messageID` now
     /// carries a single ``MessagePart/generatedVideo(_:)`` part with
     /// `payload`. Adapters refresh their view-state for `messageID` from
     /// the store (the runtime has already written through ``MessageStore``).
-    case completed(messageID: ChatMessageRecord.ID, payload: VideoMessagePayload)
+    case completed(messageID: ChatMessage.ID, payload: VideoMessagePayload)
 
     /// Generation failed. Carries the underlying error so adapters can
     /// surface user-facing error UI; the placeholder message at `messageID`
@@ -48,12 +48,12 @@ public enum VideoRuntimeEvent: Sendable, Equatable {
     /// adapters can either render an inline failure indicator or call
     /// ``MessageStore/deleteMessage(_:)`` to drop the slot — the runtime
     /// emits the event, the host decides UX.
-    case failed(messageID: ChatMessageRecord.ID, error: any Error)
+    case failed(messageID: ChatMessage.ID, error: any Error)
 
     /// User cancelled before completion. The placeholder message at
     /// `messageID` remains in the store with empty `contentParts`; same
     /// host-decides-UX policy as ``failed(messageID:error:)``.
-    case cancelled(messageID: ChatMessageRecord.ID)
+    case cancelled(messageID: ChatMessage.ID)
 
     // MARK: - Equatable
 

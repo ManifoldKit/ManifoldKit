@@ -40,8 +40,8 @@ final class PaginationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func makeSession() async -> ChatSessionRecord {
-        let session = ChatSessionRecord(title: "Pagination Test")
+    private func makeSession() async -> ManifoldInference.ChatSession {
+        let session = ManifoldInference.ChatSession(title: "Pagination Test")
         try! await persistence.insertSession(session)
         await vm.switchToSession(session)
         return session
@@ -53,10 +53,10 @@ final class PaginationTests: XCTestCase {
         count: Int,
         sessionID: UUID,
         baseTime: Date = Date(timeIntervalSince1970: 1000)
-    ) async -> [ChatMessageRecord] {
-        var records: [ChatMessageRecord] = []
+    ) async -> [ManifoldInference.ChatMessage] {
+        var records: [ManifoldInference.ChatMessage] = []
         for i in 0..<count {
-            let msg = ChatMessageRecord(
+            let msg = ManifoldInference.ChatMessage(
                 role: i % 2 == 0 ? .user : .assistant,
                 content: "Message \(i)",
                 timestamp: baseTime.addingTimeInterval(Double(i)),
@@ -107,7 +107,7 @@ final class PaginationTests: XCTestCase {
 
     func test_loadMessages_withNoSession_clearsState() async {
         vm.activeSession = nil
-        vm.messages = [ChatMessageRecord(role: .user, content: "stale", sessionID: UUID())]
+        vm.messages = [ManifoldInference.ChatMessage(role: .user, content: "stale", sessionID: UUID())]
         vm.hasOlderMessages = true
 
         await vm.loadMessages()

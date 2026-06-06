@@ -46,11 +46,11 @@ public struct HistoryShapingRequest: Sendable {
 
 /// Result returned by a ``HistoryShaper``.
 public struct HistoryShapingResult: Sendable {
-    public let promptHistory: [ChatMessageRecord]
+    public let promptHistory: [ChatMessage]
     public let diagnostics: [HistoryShapingDiagnostic]
 
     public init(
-        promptHistory: [ChatMessageRecord],
+        promptHistory: [ChatMessage],
         diagnostics: [HistoryShapingDiagnostic] = []
     ) {
         self.promptHistory = promptHistory
@@ -67,7 +67,7 @@ public struct HistoryShapingResult: Sendable {
 /// record that remains visible.
 public protocol HistoryShaper: Sendable {
     func shape(
-        history: [ChatMessageRecord],
+        history: [ChatMessage],
         request: HistoryShapingRequest
     ) async throws -> HistoryShapingResult
 }

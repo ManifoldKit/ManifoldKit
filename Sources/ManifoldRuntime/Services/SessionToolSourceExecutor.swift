@@ -38,12 +38,12 @@ struct SessionToolSourceExecutor: ToolExecutor {
     var requiresApproval: Bool { false }
 
     private let source: any SessionToolSource
-    private let session: ChatSessionRecord
+    private let session: ChatSession
 
     init(
         definition: ToolDefinition,
         source: any SessionToolSource,
-        session: ChatSessionRecord
+        session: ChatSession
     ) {
         self.definition = definition
         self.source = source

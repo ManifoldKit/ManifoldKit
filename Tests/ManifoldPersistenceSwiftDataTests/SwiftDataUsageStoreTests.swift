@@ -54,7 +54,7 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         let sessionID = UUID()
         let endpointID = UUID()
         let timestamp = Date(timeIntervalSince1970: 1_000_000)
-        let record = TurnUsageRecord(
+        let record = TurnUsage(
             id: UUID(),
             sessionID: sessionID,
             endpointID: endpointID,
@@ -161,13 +161,13 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         let endpointA = UUID()
         let endpointB = UUID()
 
-        try await sut.record(TurnUsageRecord(
+        try await sut.record(TurnUsage(
             sessionID: UUID(), endpointID: endpointA, modelIdentifier: "gpt-4o",
             promptTokens: 100, completionTokens: 50))
-        try await sut.record(TurnUsageRecord(
+        try await sut.record(TurnUsage(
             sessionID: UUID(), endpointID: endpointB, modelIdentifier: "claude-3-5-sonnet",
             promptTokens: 200, completionTokens: 80))
-        try await sut.record(TurnUsageRecord(
+        try await sut.record(TurnUsage(
             sessionID: UUID(), endpointID: endpointA, modelIdentifier: "gpt-4o",
             promptTokens: 50, completionTokens: 25))
 
@@ -189,7 +189,7 @@ final class SwiftDataUsageStoreTests: XCTestCase {
 
     /// Verifies that a container created against the current schema can still
     /// read V5 model types (sessions, messages) alongside the new V6
-    /// TurnUsageRecordModel. This guards against additive migration regressions
+    /// TurnUsageModel. This guards against additive migration regressions
     /// where older model rows become unreadable after a schema bump.
     func test_schemaV6_existingSessionDataRemainsReadable() async throws {
         // Insert a V5-era ChatSession and ChatMessage into the current schema
@@ -201,7 +201,7 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         context.insert(message)
         try context.save()
 
-        // Now also insert a V6-only TurnUsageRecordModel.
+        // Now also insert a V6-only TurnUsageModel.
         let usageRecord = makeTurnRecord(promptTokens: 42, completionTokens: 21)
         try await sut.record(usageRecord)
 
@@ -213,7 +213,7 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         let messages = try context.fetch(FetchDescriptor<ChatMessage>())
         XCTAssertEqual(messages.count, 1)
 
-        let usageRows = try context.fetch(FetchDescriptor<TurnUsageRecordModel>())
+        let usageRows = try context.fetch(FetchDescriptor<TurnUsageModel>())
         XCTAssertEqual(usageRows.count, 1)
         XCTAssertEqual(usageRows[0].promptTokens, 42)
     }
@@ -226,8 +226,8 @@ final class SwiftDataUsageStoreTests: XCTestCase {
         completionTokens: Int = 5,
         cachedInputTokens: Int? = nil,
         cacheWriteTokens: Int? = nil
-    ) -> TurnUsageRecord {
-        TurnUsageRecord(
+    ) -> TurnUsage {
+        TurnUsage(
             sessionID: UUID(),
             endpointID: nil,
             modelIdentifier: "test-model",

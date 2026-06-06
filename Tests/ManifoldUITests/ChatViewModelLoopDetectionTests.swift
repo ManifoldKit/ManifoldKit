@@ -19,7 +19,7 @@ final class ChatViewModelLoopDetectionTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ChatSession(title: "Test")
         return vm
     }
 

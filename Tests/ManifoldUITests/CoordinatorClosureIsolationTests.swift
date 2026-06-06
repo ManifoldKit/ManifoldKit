@@ -94,11 +94,11 @@ private func acceptsMainActorOptionalUUIDReader(_ closure: @MainActor () -> UUID
     _ = closure
 }
 
-private func acceptsMainActorOptionalSessionReader(_ closure: @MainActor () -> ChatSessionRecord?) {
+private func acceptsMainActorOptionalSessionReader(_ closure: @MainActor () -> ChatSession?) {
     _ = closure
 }
 
-private func acceptsMainActorMessagesReader(_ closure: @MainActor () -> [ChatMessageRecord]) {
+private func acceptsMainActorMessagesReader(_ closure: @MainActor () -> [ChatMessage]) {
     _ = closure
 }
 
@@ -107,16 +107,16 @@ private func acceptsMainActorPostTasksReader(_ closure: @MainActor () -> [any Po
 }
 
 private func acceptsMainActorMessageMutator(
-    _ closure: @MainActor (UUID, (inout ChatMessageRecord) -> Void) -> Bool
+    _ closure: @MainActor (UUID, (inout ChatMessage) -> Void) -> Bool
 ) {
     _ = closure
 }
 
-private func acceptsMainActorMessageAppender(_ closure: @MainActor (ChatMessageRecord) -> Void) {
+private func acceptsMainActorMessageAppender(_ closure: @MainActor (ChatMessage) -> Void) {
     _ = closure
 }
 
-private func acceptsMainActorMessageRemover(_ closure: @MainActor ((ChatMessageRecord) -> Bool) -> Void) {
+private func acceptsMainActorMessageRemover(_ closure: @MainActor ((ChatMessage) -> Bool) -> Void) {
     _ = closure
 }
 

@@ -18,7 +18,7 @@ public struct ConversationTurnOutcome: Sendable {
 
     /// Persisted assistant message, or `nil` when the turn produced no visible
     /// assistant record (for example empty or cancelled responses).
-    public let assistantMessage: ChatMessageRecord?
+    public let assistantMessage: ChatMessage?
 
     /// High-level reason the generation stream finished.
     public let reason: FinishReason
@@ -39,7 +39,7 @@ public struct ConversationTurnOutcome: Sendable {
         sessionID: UUID,
         streamHandle: ConversationStreamHandle,
         assistantMessageID: UUID?,
-        assistantMessage: ChatMessageRecord?,
+        assistantMessage: ChatMessage?,
         reason: FinishReason,
         error: ConversationError?,
         finalText: String,

@@ -75,8 +75,8 @@ final class SessionManagerViewModelTests: XCTestCase {
         let session = try await vm.createSession()
 
         // Insert messages for this session
-        let msg1 = ChatMessage(role: .user, content: "Hello", sessionID: session.id)
-        let msg2 = ChatMessage(role: .assistant, content: "Hi", sessionID: session.id)
+        let msg1 = ManifoldSchemaV9.ChatMessage(role: .user, content: "Hello", sessionID: session.id)
+        let msg2 = ManifoldSchemaV9.ChatMessage(role: .assistant, content: "Hi", sessionID: session.id)
         context.insert(msg1)
         context.insert(msg2)
         try context.save()
@@ -85,7 +85,7 @@ final class SessionManagerViewModelTests: XCTestCase {
 
         // Verify messages are also deleted
         let sessionID = session.id
-        let descriptor = FetchDescriptor<ChatMessage>(
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID }
         )
         let remaining = try? context.fetch(descriptor)
@@ -182,7 +182,7 @@ final class SessionManagerViewModelTests: XCTestCase {
 
     @MainActor
     func test_deleteSession_throwsOnMissingSession() async {
-        let ghost = ChatSessionRecord(title: "Ghost")
+        let ghost = ManifoldInference.ChatSession(title: "Ghost")
         do {
             try await vm.deleteSession(ghost)
             XCTFail("Expected deleteSession to throw")
@@ -197,7 +197,7 @@ final class SessionManagerViewModelTests: XCTestCase {
 
     @MainActor
     func test_renameSession_throwsOnMissingSession() async {
-        let ghost = ChatSessionRecord(title: "Ghost")
+        let ghost = ManifoldInference.ChatSession(title: "Ghost")
         do {
             try await vm.renameSession(ghost, title: "New Name")
             XCTFail("Expected renameSession to throw")
@@ -213,7 +213,7 @@ final class SessionManagerViewModelTests: XCTestCase {
     @MainActor
     func test_deleteSession_throwDoesNotCorruptSessionList() async throws {
         let session = try await vm.createSession(title: "Real")
-        let ghost = ChatSessionRecord(title: "Ghost")
+        let ghost = ManifoldInference.ChatSession(title: "Ghost")
         XCTAssertEqual(vm.sessions.count, 1)
 
         do {
@@ -256,7 +256,7 @@ final class SessionManagerViewModelTests: XCTestCase {
 
         // Seed a session directly through the provider so a load *would*
         // populate `sessions` if it ran.
-        try await provider.insertSession(ChatSessionRecord(title: "Seeded"))
+        try await provider.insertSession(ManifoldInference.ChatSession(title: "Seeded"))
 
         let freshVM = SessionManagerViewModel()
         freshVM.configure(persistence: provider, autoLoad: false)
@@ -276,7 +276,7 @@ final class SessionManagerViewModelTests: XCTestCase {
         let freshContainer = try makeInMemoryContainer()
         let freshContext = freshContainer.mainContext
         let provider = SwiftDataPersistenceProvider(modelContext: freshContext)
-        try await provider.insertSession(ChatSessionRecord(title: "AutoLoaded"))
+        try await provider.insertSession(ManifoldInference.ChatSession(title: "AutoLoaded"))
 
         let freshVM = SessionManagerViewModel()
         freshVM.configure(persistence: provider, autoLoad: true)

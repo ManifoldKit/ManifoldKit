@@ -34,7 +34,7 @@ import ManifoldInference
 /// ## Persistence
 ///
 /// On ``generate(prompt:config:in:)`` the runtime inserts a placeholder
-/// ``ChatMessageRecord`` (role `.assistant`, empty `contentParts`) into the
+/// ``ChatMessage`` (role `.assistant`, empty `contentParts`) into the
 /// message store. Backend progress events are forwarded as
 /// ``ImageRuntimeEvent/progress(messageID:step:totalSteps:)`` *without*
 /// touching the store — UI subscribes to events for the in-flight indicator;
@@ -82,7 +82,7 @@ public final class ImageGenerationRuntime {
     // mutation happens from main-actor methods and the runtime itself is
     // `@MainActor`.
 
-    private var inFlight: [ChatMessageRecord.ID: Task<Void, Never>] = [:]
+    private var inFlight: [ChatMessage.ID: Task<Void, Never>] = [:]
 
     // MARK: Init
 
@@ -125,7 +125,7 @@ public final class ImageGenerationRuntime {
 
     /// Begins an image generation in the supplied session.
     ///
-    /// Persists a placeholder ``ChatMessageRecord`` (role `.assistant`,
+    /// Persists a placeholder ``ChatMessage`` (role `.assistant`,
     /// empty `contentParts`) before returning, then starts a detached task
     /// that forwards backend events through ``events``. The returned
     /// message ID is stable for the lifetime of the generation — pass it
@@ -141,7 +141,7 @@ public final class ImageGenerationRuntime {
     ///   - prompt: User-supplied prompt.
     ///   - config: Sampling and diffusion parameters.
     ///   - sessionID: The session the placeholder message belongs to.
-    /// - Returns: The placeholder ``ChatMessageRecord/ID`` so the host can
+    /// - Returns: The placeholder ``ChatMessage/ID`` so the host can
     ///   pair UI state with the in-flight generation.
     /// - Throws: Persistence errors from the placeholder insert.
     @discardableResult
@@ -149,12 +149,12 @@ public final class ImageGenerationRuntime {
         prompt: String,
         config: ImageGenerationConfig,
         in sessionID: UUID
-    ) async throws -> ChatMessageRecord.ID {
+    ) async throws -> ChatMessage.ID {
         // Insert placeholder synchronously so the caller observes the
         // message ID before any event fires. Empty `contentParts` because
         // we don't have a `.generatedImage` payload yet — the placeholder
         // is finalised via `updateMessage` when the backend completes.
-        let placeholder = ChatMessageRecord(
+        let placeholder = ChatMessage(
             role: .assistant,
             contentParts: [],
             sessionID: sessionID
@@ -197,7 +197,7 @@ public final class ImageGenerationRuntime {
     /// Idempotent — cancelling an unknown or already-finished message is a
     /// no-op. The terminal ``ImageRuntimeEvent/cancelled(messageID:)`` event
     /// fires once the underlying stream observes the cancellation.
-    public func cancel(messageID: ChatMessageRecord.ID) async {
+    public func cancel(messageID: ChatMessage.ID) async {
         guard let task = inFlight[messageID] else { return }
         task.cancel()
         // Don't await `task.value` — the consumer task itself emits the
@@ -210,9 +210,9 @@ public final class ImageGenerationRuntime {
 
     private func consume(
         stream: AsyncThrowingStream<ImageGenerationEvent, Error>,
-        messageID: ChatMessageRecord.ID,
+        messageID: ChatMessage.ID,
         prompt: String,
-        placeholder: ChatMessageRecord,
+        placeholder: ChatMessage,
         snapshot: ImageGenerationConfigSnapshot,
         totalSteps: Int
     ) async {

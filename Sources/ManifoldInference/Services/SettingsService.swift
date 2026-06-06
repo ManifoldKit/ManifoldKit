@@ -63,15 +63,15 @@ public final class SettingsService: @unchecked Sendable {
     // MARK: - Resolution Helpers
 
     /// Returns the effective temperature, using session override if available.
-    public func effectiveTemperature(session: ChatSessionRecord?) -> Float {
+    public func effectiveTemperature(session: ChatSession?) -> Float {
         session?.temperature ?? globalTemperature ?? 0.7
     }
 
-    public func effectiveTopP(session: ChatSessionRecord?) -> Float {
+    public func effectiveTopP(session: ChatSession?) -> Float {
         session?.topP ?? globalTopP ?? 0.9
     }
 
-    public func effectiveRepeatPenalty(session: ChatSessionRecord?) -> Float {
+    public func effectiveRepeatPenalty(session: ChatSession?) -> Float {
         session?.repeatPenalty ?? globalRepeatPenalty ?? 1.1
     }
 }

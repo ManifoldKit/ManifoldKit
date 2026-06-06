@@ -55,7 +55,7 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
 
     // MARK: SessionToolSource
 
-    public func toolDefinitions(for session: ChatSessionRecord) async -> [ToolDefinition] {
+    public func toolDefinitions(for session: ChatSession) async -> [ToolDefinition] {
         let allSkills = await registry.all()
         guard !allSkills.isEmpty else { return [] }
 
@@ -115,7 +115,7 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
         ]
     }
 
-    public func allowedToolNames(for session: ChatSessionRecord) async -> Set<String>? {
+    public func allowedToolNames(for session: ChatSession) async -> Set<String>? {
         guard let activeName = await storage.activeSkill(for: session.id),
               let skill = await registry.skill(named: activeName)
         else {
@@ -132,7 +132,7 @@ public final class SkillToolSource: SessionToolSource, @unchecked Sendable {
     public func resolve(
         toolName: String,
         arguments: String,
-        session: ChatSessionRecord
+        session: ChatSession
     ) async throws -> ToolResult {
         guard toolName == Self.invokeSkillToolName else {
             throw SkillDispatchError.unknownTool(toolName)
@@ -207,7 +207,7 @@ public enum SkillDispatchError: Error, Equatable, Sendable {
 /// Actor-isolated per-session active-skill table.
 ///
 /// Stays a private implementation detail so the eventual V9 wire-in can move
-/// this state to `ChatSessionRecord.activeSkillName` without source-breaking
+/// this state to `ChatSession.activeSkillName` without source-breaking
 /// the public `SkillToolSource` shape.
 private actor SkillToolSourceStorage {
     private var activeBySessionID: [UUID: String] = [:]

@@ -17,8 +17,8 @@ struct ChatHistoryView: View {
 
     let customEmptyPlaceholder: AnyView?
     let linkPreviewProvider: LinkPreviewProvider?
-    let contextMenuItemsBuilder: ((ChatMessageRecord) -> AnyView)?
-    let customKindRenderer: ((ChatMessageRecord) -> AnyView)?
+    let contextMenuItemsBuilder: ((ChatMessage) -> AnyView)?
+    let customKindRenderer: ((ChatMessage) -> AnyView)?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -85,7 +85,7 @@ struct ChatHistoryView: View {
     }
 
     @ViewBuilder
-    private func messageRow(at index: Int, message: ChatMessageRecord) -> some View {
+    private func messageRow(at index: Int, message: ChatMessage) -> some View {
         if let chip = ChatHistoryHandoffResolver.chip(
             at: index,
             messages: viewModel.messages,
@@ -121,7 +121,7 @@ struct ChatHistoryView: View {
         }
     }
 
-    private func isMessageStreaming(_ message: ChatMessageRecord) -> Bool {
+    private func isMessageStreaming(_ message: ChatMessage) -> Bool {
         viewModel.isGenerating
         && message.role == .assistant
         && message.id == viewModel.messages.last?.id
@@ -154,8 +154,8 @@ enum ChatHistoryHandoffResolver {
     @MainActor
     static func chip(
         at index: Int,
-        messages: [ChatMessageRecord],
-        session: ChatSessionRecord?
+        messages: [ChatMessage],
+        session: ChatSession?
     ) -> HandoffChipView? {
         guard index > 0,
               let session,
@@ -208,7 +208,7 @@ enum ChatHistoryScrollBehavior {
 
     static func canConsumeScrollToMessageRequest(
         _ request: ChatScrollToMessageRequest,
-        in messages: [ChatMessageRecord]
+        in messages: [ChatMessage]
     ) -> Bool {
         messages.contains(where: { $0.id == request.messageID })
     }

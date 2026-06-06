@@ -18,7 +18,7 @@ extension ChatViewModel {
     /// Looks up a message by ID and applies a mutation in a single step,
     /// ensuring the index is never stale. Returns `true` if the message was found.
     @discardableResult
-    func mutateMessage(id: UUID, _ body: (inout ChatMessageRecord) -> Void) -> Bool {
+    func mutateMessage(id: UUID, _ body: (inout ChatMessage) -> Void) -> Bool {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return false }
         body(&messages[idx])
         return true

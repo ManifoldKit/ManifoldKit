@@ -55,24 +55,24 @@ final class EditUserMessageIntegrationTests: XCTestCase {
     // MARK: - Helpers
 
     @discardableResult
-    private func createAndActivateSession(title: String = "Test Chat") async -> ChatSessionRecord {
+    private func createAndActivateSession(title: String = "Test Chat") async -> ManifoldInference.ChatSession {
         let session = try! await sessionManager.createSession(title: title)
         sessionManager.activeSession = session
         await vm.switchToSession(session)
         return session
     }
 
-    private func fetchMessages(for sessionID: UUID) -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    private func fetchMessages(for sessionID: UUID) -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             predicate: #Predicate { $0.sessionID == sessionID },
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    /// Fetches ALL ChatMessage records across all sessions.
-    private func fetchAllMessages() -> [ChatMessage] {
-        let descriptor = FetchDescriptor<ChatMessage>(
+    /// Fetches ALL ManifoldSchemaV9.ChatMessage records across all sessions.
+    private func fetchAllMessages() -> [ManifoldSchemaV9.ChatMessage] {
+        let descriptor = FetchDescriptor<ManifoldSchemaV9.ChatMessage>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
         return (try? context.fetch(descriptor)) ?? []

@@ -3,7 +3,7 @@ import ManifoldInference
 
 /// Tests for #482 / #604: ``MessagePart/thinking(_:signature:)`` Codable
 /// round-trip with the new optional signature payload, multi-block
-/// ``ChatMessageRecord`` round-trip, and backward compatibility with the
+/// ``ChatMessage`` round-trip, and backward compatibility with the
 /// pre-#604 bare-string wire format.
 final class MessagePartThinkingSignatureTests: XCTestCase {
 
@@ -81,7 +81,7 @@ final class MessagePartThinkingSignatureTests: XCTestCase {
         // stranding every pre-#604 thinking row.
     }
 
-    // MARK: - 4. ChatMessageRecord with multiple thinking parts
+    // MARK: - 4. ChatMessage with multiple thinking parts
 
     func test_chatMessageRecord_multipleThinkingParts_encodeDecode() throws {
         // Two distinct reasoning rounds within one assistant turn —
@@ -92,7 +92,7 @@ final class MessagePartThinkingSignatureTests: XCTestCase {
             .thinking("second round, different signature", signature: "sig_2"),
             .text("Final visible answer."),
         ]
-        let record = ChatMessageRecord(role: .assistant, contentParts: parts, sessionID: UUID())
+        let record = ChatMessage(role: .assistant, contentParts: parts, sessionID: UUID())
 
         // Round-trip via JSON to mirror what ManifoldSchemaV4.ChatMessage does.
         let data = try JSONEncoder().encode(record.contentParts)

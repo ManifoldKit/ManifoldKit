@@ -26,7 +26,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
         private var payloads: [Payload?] = []
 
         func contribute(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             context: TurnContext
         ) async throws -> [HistoryContribution] {
             payloads.append(context.appData as? Payload)
@@ -94,7 +94,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
         let blockedMessageID: UUID
 
         func shape(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             request: HistoryShapingRequest
         ) async throws -> HistoryShapingResult {
             let shaped = history.filter { $0.id != blockedMessageID }
@@ -254,20 +254,20 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
 
         let sessionID = UUID()
         let base = Date()
-        let keep = ChatMessageRecord(role: .user, content: "keep", timestamp: base, sessionID: sessionID)
-        let blocked = ChatMessageRecord(
+        let keep = ChatMessage(role: .user, content: "keep", timestamp: base, sessionID: sessionID)
+        let blocked = ChatMessage(
             role: .assistant,
             content: "blocked",
             timestamp: base.addingTimeInterval(1),
             sessionID: sessionID
         )
-        let question = ChatMessageRecord(
+        let question = ChatMessage(
             role: .user,
             content: "question",
             timestamp: base.addingTimeInterval(2),
             sessionID: sessionID
         )
-        let oldAnswer = ChatMessageRecord(
+        let oldAnswer = ChatMessage(
             role: .assistant,
             content: "old answer",
             timestamp: base.addingTimeInterval(3),
@@ -340,7 +340,7 @@ final class ConversationRuntimeTurnPreparationTests: XCTestCase {
         struct CapturingShaper: HistoryShaper {
             let capture: ShaperPayloadCapture
             func shape(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 request: HistoryShapingRequest
             ) async throws -> HistoryShapingResult {
                 await capture.record(request.appData)

@@ -118,22 +118,22 @@ final class ConsumerRuntimeHarness {
     }
 
     @discardableResult
-    func createAndActivateSession(title: String = "New Chat") async throws -> ChatSessionRecord {
+    func createAndActivateSession(title: String = "New Chat") async throws -> ManifoldInference.ChatSession {
         let session = try await sessionManager.createSession(title: title)
         await switchToSession(session)
         return session
     }
 
-    func switchToSession(_ session: ChatSessionRecord) async {
+    func switchToSession(_ session: ManifoldInference.ChatSession) async {
         sessionManager.activeSession = session
         await chatViewModel.switchToSession(session)
     }
 
-    func persistedMessages(for session: ChatSessionRecord) async throws -> [ChatMessageRecord] {
+    func persistedMessages(for session: ManifoldInference.ChatSession) async throws -> [ManifoldInference.ChatMessage] {
         try await runtime.persistence.fetchMessages(for: session.id)
     }
 
-    func persistedSessions() async throws -> [ChatSessionRecord] {
+    func persistedSessions() async throws -> [ManifoldInference.ChatSession] {
         try await runtime.persistence.fetchSessions()
     }
 }

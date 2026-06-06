@@ -119,7 +119,7 @@ final class TouchSessionScalePerformanceTests: XCTestCase {
         Task { @MainActor in
             do {
                 for i in 0..<count {
-                    let record = ChatSessionRecord(
+                    let record = ChatSession(
                         title: "Perf Session \(i)",
                         createdAt: base.addingTimeInterval(Double(i)),
                         updatedAt: base.addingTimeInterval(Double(i)),

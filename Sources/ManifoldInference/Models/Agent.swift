@@ -5,7 +5,7 @@ import Foundation
 ///
 /// `Agent` is intentionally a value type in `ManifoldInference`: it carries no
 /// persistence machinery and can flow through any layer that already imports
-/// the inference module. Agents are aggregated on a `ChatSessionRecord` (added
+/// the inference module. Agents are aggregated on a `ChatSession` (added
 /// in V9 schema migration, Wave 1B) and the active one drives system-prompt
 /// re-derivation per turn in `ConversationTurnExecutor`.
 public struct Agent: Sendable, Identifiable, Equatable, Hashable, Codable {
@@ -34,7 +34,7 @@ public struct Agent: Sendable, Identifiable, Equatable, Hashable, Codable {
 
 /// Describes a pending hand-off from the current agent to another agent in
 /// the same session. Emitted by handoff detection and consumed by the turn
-/// executor to swap `ChatSessionRecord.activeAgentID` and inject a boundary
+/// executor to swap `ChatSession.activeAgentID` and inject a boundary
 /// message into the next turn's structured history.
 public struct AgentHandoff: Sendable, Equatable {
     public let targetAgentID: UUID

@@ -17,7 +17,7 @@ public enum ManifoldMigrationPlan: SchemaMigrationPlan {
         [
             .lightweight(fromVersion: ManifoldSchemaV3.self, toVersion: ManifoldSchemaV4.self),
             .lightweight(fromVersion: ManifoldSchemaV4.self, toVersion: ManifoldSchemaV5.self),
-            // V6 adds TurnUsageRecordModel — purely additive, no existing column changes.
+            // V6 adds TurnUsageModel — purely additive, no existing column changes.
             .lightweight(fromVersion: ManifoldSchemaV5.self, toVersion: ManifoldSchemaV6.self),
             // V7 adds kindRaw (default "chat") and citationsJSON (default nil) to ChatMessage.
             .lightweight(fromVersion: ManifoldSchemaV6.self, toVersion: ManifoldSchemaV7.self),

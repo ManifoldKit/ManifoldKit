@@ -14,14 +14,14 @@ final class ConversationExportFormatContractTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    private func makeSession() -> ChatSessionRecord {
-        ChatSessionRecord(id: sessionID, title: "Contract Session")
+    private func makeSession() -> ChatSession {
+        ChatSession(id: sessionID, title: "Contract Session")
     }
 
-    private func makeMessages() -> [ChatMessageRecord] {
+    private func makeMessages() -> [ChatMessage] {
         [
-            ChatMessageRecord(role: .user, content: "ping", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "pong", sessionID: sessionID),
+            ChatMessage(role: .user, content: "ping", sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "pong", sessionID: sessionID),
         ]
     }
 
@@ -72,9 +72,9 @@ final class ConversationExportFormatContractTests: XCTestCase {
         let format = MarkdownExportFormat()
         let session = makeSession()
         let messages = [
-            ChatMessageRecord(role: .user, content: "first", sessionID: sessionID),
-            ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID),
-            ChatMessageRecord(role: .user, content: "third", sessionID: sessionID),
+            ChatMessage(role: .user, content: "first", sessionID: sessionID),
+            ChatMessage(role: .assistant, content: "second", sessionID: sessionID),
+            ChatMessage(role: .user, content: "third", sessionID: sessionID),
         ]
 
         let data = try format.export(session: session, messages: messages)

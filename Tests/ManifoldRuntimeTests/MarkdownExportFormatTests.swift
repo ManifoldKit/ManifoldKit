@@ -7,12 +7,12 @@ final class MarkdownExportFormatTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    private func makeRecord(title: String = "Round Trip") -> ChatSessionRecord {
-        ChatSessionRecord(id: sessionID, title: title)
+    private func makeRecord(title: String = "Round Trip") -> ChatSession {
+        ChatSession(id: sessionID, title: title)
     }
 
-    private func makeMessage(role: MessageRole, content: String, offset: TimeInterval = 0) -> ChatMessageRecord {
-        ChatMessageRecord(
+    private func makeMessage(role: MessageRole, content: String, offset: TimeInterval = 0) -> ChatMessage {
+        ChatMessage(
             role: role,
             content: content,
             timestamp: Date(timeIntervalSinceReferenceDate: 0).addingTimeInterval(offset),
@@ -129,7 +129,7 @@ final class MarkdownExportFormatTests: XCTestCase {
         // though they're not "empty" semantically. The Markdown export must
         // not emit a hollow `**Assistant:**` block for them.
         let format = MarkdownExportFormat()
-        let thinkingOnly = ChatMessageRecord(
+        let thinkingOnly = ChatMessage(
             role: .assistant,
             contentParts: [.thinking("internal monologue")],
             timestamp: Date(timeIntervalSinceReferenceDate: 0),

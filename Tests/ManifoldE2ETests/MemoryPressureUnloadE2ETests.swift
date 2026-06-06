@@ -36,7 +36,7 @@ struct MemoryPressureUnloadE2ETests {
             modelStorage: ModelStorageService(),
             memoryPressure: handler
         )
-        vm.activeSession = ChatSessionRecord(title: "E2E Pressure Test")
+        vm.activeSession = ChatSession(title: "E2E Pressure Test")
         return (vm, mock, handler)
     }
 
@@ -140,7 +140,7 @@ struct MemoryPressureUnloadE2ETests {
             modelStorage: ModelStorageService(),
             memoryPressure: handler
         )
-        vm.activeSession = ChatSessionRecord(title: "Pressure During Gen")
+        vm.activeSession = ChatSession(title: "Pressure During Gen")
 
         // Start a slow generation.
         vm.inputText = "Tell me something long"

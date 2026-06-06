@@ -3,14 +3,14 @@ import Foundation
 /// A typed conversation message used by ``InferenceService/enqueue(messages:...)``
 /// (the typed overload) and ``InferenceService/generate(messages:...)``.
 ///
-/// **Not the same as `ChatMessage` / `ChatMessageRecord`.** Those types live
+/// **Not the same as `ChatMessage` / `ChatMessage`.** Those types live
 /// further down the stack:
 ///
 /// - `ChatMessage` (a SwiftData `@Model` in `ManifoldPersistenceSwiftData`)
 ///   is the persisted record with a UUID, timestamp, attachments, token-
 ///   usage counters, and SwiftData identity. It exists to back the on-disk
 ///   session/transcript model.
-/// - `ChatMessageRecord` (in `ManifoldInference`) is the persistence-agnostic
+/// - `ChatMessage` (in `ManifoldInference`) is the persistence-agnostic
 ///   value type adapters convert ChatMessage to. It carries `contentParts`,
 ///   role enums, and structured attachment metadata.
 /// - ``Message`` (this type) is the **wire-shaped** input the inference

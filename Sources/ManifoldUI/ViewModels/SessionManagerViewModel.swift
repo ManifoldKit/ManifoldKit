@@ -35,9 +35,9 @@ public final class SessionManagerViewModel {
 
     // MARK: - Published state
 
-    public private(set) var sessions: [ChatSessionRecord] = []
+    public private(set) var sessions: [ChatSession] = []
     public private(set) var hasMoreSessions: Bool = false
-    public var activeSession: ChatSessionRecord? {
+    public var activeSession: ChatSession? {
         didSet {
             // #1464: persist the active-session ID across relaunches so the
             // documented `BuildingAChatUI` bootstrap can restore the previously
@@ -53,8 +53,8 @@ public final class SessionManagerViewModel {
     public var searchQuery: String = ""
 
     public private(set) var messageHitsBySession: [UUID: [MessageSearchHit]] = [:]
-    public private(set) var titleMatches: [ChatSessionRecord] = []
-    public private(set) var messageMatchSessions: [ChatSessionRecord] = []
+    public private(set) var titleMatches: [ChatSession] = []
+    public private(set) var messageMatchSessions: [ChatSession] = []
 
     /// Optional diagnostics sink for non-fatal operational failures.
     public private(set) var diagnostics: DiagnosticsService?
@@ -235,7 +235,7 @@ public final class SessionManagerViewModel {
 
     /// Creates a new session, activates it, and returns it.
     @discardableResult
-    public func createSession(title: String = "New Chat") async throws -> ChatSessionRecord {
+    public func createSession(title: String = "New Chat") async throws -> ChatSession {
         let service = try requireService("createSession")
         let record = try await service.createSession(title: title)
         activeSession = record
@@ -243,7 +243,7 @@ public final class SessionManagerViewModel {
     }
 
     /// Deletes a session and all its messages.
-    public func deleteSession(_ session: ChatSessionRecord) async throws {
+    public func deleteSession(_ session: ChatSession) async throws {
         let service = try requireService("deleteSession")
         try await service.deleteSession(session.id)
     }
@@ -275,7 +275,7 @@ public final class SessionManagerViewModel {
     }
 
     /// Renames a session.
-    public func renameSession(_ session: ChatSessionRecord, title: String) async throws {
+    public func renameSession(_ session: ChatSession, title: String) async throws {
         let service = try requireService("renameSession")
         try await service.renameSession(session, title: title)
     }
@@ -287,13 +287,13 @@ public final class SessionManagerViewModel {
     /// record and survives reload, app-group reads, and any future
     /// export/sync. Idempotent: pinning an already-pinned session is a
     /// no-op (no `pinnedAt` reshuffle, no event).
-    public func pinSession(_ session: ChatSessionRecord) async throws {
+    public func pinSession(_ session: ChatSession) async throws {
         let service = try requireService("pinSession")
         try await service.pinSession(session)
     }
 
     /// Unpins a session. Idempotent — no-op when the session is not pinned.
-    public func unpinSession(_ session: ChatSessionRecord) async throws {
+    public func unpinSession(_ session: ChatSession) async throws {
         let service = try requireService("unpinSession")
         try await service.unpinSession(session)
     }
@@ -308,7 +308,7 @@ public final class SessionManagerViewModel {
     /// pinned-first sort order applied by the persistence layer, page one
     /// is guaranteed to surface every pin in any realistic configuration
     /// (page size 50; pinning >50 sessions is not a real workflow).
-    public var pinnedSessions: [ChatSessionRecord] {
+    public var pinnedSessions: [ChatSession] {
         sessions
             .filter(\.isPinned)
             .sorted { lhs, rhs in
@@ -337,7 +337,7 @@ public final class SessionManagerViewModel {
 
     /// Generates an AI title for the session and saves it.
     public func autoRenameSession(
-        _ session: ChatSessionRecord,
+        _ session: ChatSession,
         firstMessage: String,
         inferenceService: InferenceService
     ) async {
@@ -346,7 +346,7 @@ public final class SessionManagerViewModel {
     }
 
     /// Auto-generates a session title from the first user message.
-    public func autoGenerateTitle(for session: ChatSessionRecord, firstMessage: String) async {
+    public func autoGenerateTitle(for session: ChatSession, firstMessage: String) async {
         guard let service else { return }
         await service.autoGenerateTitle(for: session, firstMessage: firstMessage)
     }
@@ -361,7 +361,7 @@ public final class SessionManagerViewModel {
 
     /// Fetches a page of sessions from the persistence provider without
     /// mutating VM state. Tests assert on raw page contents.
-    public func fetchSessionsPage(offset: Int, limit: Int) async throws -> [ChatSessionRecord] {
+    public func fetchSessionsPage(offset: Int, limit: Int) async throws -> [ChatSession] {
         let service = try requireService("fetchSessionsPage")
         return try await service.fetchPage(offset: offset, limit: limit)
     }
@@ -376,7 +376,7 @@ public final class SessionManagerViewModel {
     // MARK: - Search
 
     /// Computes the visible session list given the current scope and query.
-    public var displayedSessions: [ChatSessionRecord] {
+    public var displayedSessions: [ChatSession] {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return sessions }
         switch searchScope {
@@ -450,7 +450,7 @@ public final class SessionManagerViewModel {
     /// next relaunch will prefer the same row.
     ///
     /// - Returns: The session to restore, or `nil` when there are no sessions.
-    public func selectInitialSession() async -> ChatSessionRecord? {
+    public func selectInitialSession() async -> ChatSession? {
         guard !sessions.isEmpty else { return nil }
 
         // 1. Previously active session, if it still exists.

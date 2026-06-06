@@ -158,7 +158,7 @@ public final class ConversationRuntime: Sendable {
     ///     its registered providers. Use this when different context sources
     ///     (lore, retrieval, world state) should compete for tokens by weight
     ///     rather than receiving the full budget each.
-    ///   - usageStore: Optional. When provided, a ``TurnUsageRecord`` is
+    ///   - usageStore: Optional. When provided, a ``TurnUsage`` is
     ///     persisted after each successful generation turn. Recording is
     ///     best-effort — a store failure logs a warning and never aborts
     ///     the turn loop.

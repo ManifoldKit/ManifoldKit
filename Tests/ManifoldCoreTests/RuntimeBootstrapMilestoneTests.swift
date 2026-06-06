@@ -145,7 +145,7 @@ final class RuntimeBootstrapMilestoneTests: XCTestCase {
         for await _ in progress {}
         let runtime = try await task.value
 
-        let session = ChatSessionRecord(title: "Milestone Build Session")
+        let session = ManifoldInference.ChatSession(title: "Milestone Build Session")
         try await runtime.persistence.insertSession(session)
 
         let fetched = try await runtime.persistence.fetchSessions()

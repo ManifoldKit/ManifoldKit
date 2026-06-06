@@ -16,10 +16,10 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     private let sessionID = UUID()
 
-    // MARK: - ChatMessageRecord construction
+    // MARK: - ManifoldInference.ChatMessage construction
 
     func test_messageRecord_userRole_hasCorrectContent() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Hello, world!",
             sessionID: sessionID
@@ -30,7 +30,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_assistantRole_hasCorrectContent() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "Once upon a time...",
             sessionID: sessionID
@@ -40,7 +40,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_systemRole_hasCorrectContent() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .system,
             content: "You are a helpful assistant.",
             sessionID: sessionID
@@ -52,7 +52,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     // MARK: - Content parts
 
     func test_messageRecord_contentViaPartsAccessor() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Test content",
             sessionID: sessionID
@@ -66,7 +66,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_settingContentReplacesAllParts() {
-        var msg = ChatMessageRecord(
+        var msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Original",
             sessionID: sessionID
@@ -77,7 +77,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_multiplePartsJoinForContent() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             contentParts: [
                 .text("Hello"),
@@ -90,7 +90,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_audioOnlyHasNoVisibleTextButHasContentPart() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             contentParts: [.audio(url: URL(fileURLWithPath: "/Users/example/audio.m4a"), duration: 2, waveform: [1])],
             sessionID: sessionID
@@ -103,7 +103,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     // MARK: - Empty content edge cases
 
     func test_messageRecord_emptyContent() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "",
             sessionID: sessionID
@@ -115,7 +115,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     func test_messageRecord_veryLongContent() {
         let longContent = String(repeating: "A", count: 100_000)
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: longContent,
             sessionID: sessionID
@@ -125,7 +125,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     func test_messageRecord_specialCharacters() {
         let specialContent = "Hello <world> & \"friends\" — it's a 'test' with émojis 🎉 and CJK 你好"
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: specialContent,
             sessionID: sessionID
@@ -135,7 +135,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     func test_messageRecord_multilineContent() {
         let multiline = "Line 1\nLine 2\n\nLine 4"
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: multiline,
             sessionID: sessionID
@@ -146,7 +146,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     // MARK: - Token counts
 
     func test_messageRecord_completionTokens() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "Response text",
             sessionID: sessionID,
@@ -156,7 +156,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_promptTokens() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Prompt text",
             sessionID: sessionID,
@@ -166,7 +166,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageRecord_nilTokenCounts() {
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "No tokens tracked",
             sessionID: sessionID
@@ -178,15 +178,15 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     // MARK: - Message status
 
     func test_messageRecord_statusDefaultsToNil() {
-        let msg = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID)
 
         XCTAssertNil(msg.status, "Status is opt-in so existing records keep their current rendering")
     }
 
     func test_messageBubbleStatusText_rendersUserDeliveryStates() {
-        let sent = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .sent)
-        let failed = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .failed)
-        let sending = ChatMessageRecord(role: .user, content: "Hello", sessionID: sessionID, status: .sending)
+        let sent = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID, status: .sent)
+        let failed = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID, status: .failed)
+        let sending = ManifoldInference.ChatMessage(role: .user, content: "Hello", sessionID: sessionID, status: .sending)
 
         XCTAssertEqual(MessageBubbleView.statusText(for: sent), "Sent")
         XCTAssertEqual(MessageBubbleView.statusAccessibilityLabel(for: sent), "Message sent")
@@ -197,7 +197,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     }
 
     func test_messageBubbleStatusText_ignoresAssistantStatus() {
-        let assistant = ChatMessageRecord(role: .assistant, content: "Reply", sessionID: sessionID, status: .sent)
+        let assistant = ManifoldInference.ChatMessage(role: .assistant, content: "Reply", sessionID: sessionID, status: .sent)
 
         XCTAssertNil(MessageBubbleView.statusText(for: assistant))
         XCTAssertNil(MessageBubbleView.statusAccessibilityLabel(for: assistant))
@@ -215,7 +215,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     /// Empty content produces empty contentParts — the view uses this to decide
     /// whether to show a typing indicator vs partial content.
     func test_emptyContent_hasEmptyParts() {
-        let msg = ChatMessageRecord(role: .assistant, content: "", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .assistant, content: "", sessionID: sessionID)
         XCTAssertTrue(msg.content.isEmpty)
         XCTAssertTrue(msg.contentParts.isEmpty || msg.contentParts.allSatisfy {
             if case .text(let t) = $0 { return t.isEmpty } else { return false }
@@ -225,23 +225,23 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     /// Non-empty content produces non-empty contentParts — the view uses this
     /// to show content + streaming cursor.
     func test_nonEmptyContent_hasNonEmptyParts() {
-        let msg = ChatMessageRecord(role: .assistant, content: "Partial response...", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .assistant, content: "Partial response...", sessionID: sessionID)
         XCTAssertFalse(msg.contentParts.isEmpty, "Non-empty content should produce non-empty parts")
     }
 
     // MARK: - Identifiable conformance
 
     func test_messageRecord_identifiable_uniqueIDs() {
-        let msg1 = ChatMessageRecord(role: .user, content: "First", sessionID: sessionID)
-        let msg2 = ChatMessageRecord(role: .user, content: "Second", sessionID: sessionID)
+        let msg1 = ManifoldInference.ChatMessage(role: .user, content: "First", sessionID: sessionID)
+        let msg2 = ManifoldInference.ChatMessage(role: .user, content: "Second", sessionID: sessionID)
         XCTAssertNotEqual(msg1.id, msg2.id, "Each message should have a unique ID")
     }
 
     func test_messageRecord_hashable_sameIDsEqual() {
         let sharedID = UUID()
         let sharedTimestamp = Date(timeIntervalSince1970: 1000)
-        let msg1 = ChatMessageRecord(id: sharedID, role: .user, content: "Content", timestamp: sharedTimestamp, sessionID: sessionID)
-        let msg2 = ChatMessageRecord(id: sharedID, role: .user, content: "Content", timestamp: sharedTimestamp, sessionID: sessionID)
+        let msg1 = ManifoldInference.ChatMessage(id: sharedID, role: .user, content: "Content", timestamp: sharedTimestamp, sessionID: sessionID)
+        let msg2 = ManifoldInference.ChatMessage(id: sharedID, role: .user, content: "Content", timestamp: sharedTimestamp, sessionID: sessionID)
         XCTAssertEqual(msg1, msg2, "Messages with the same ID and content should be equal")
     }
 
@@ -249,7 +249,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     func test_messageRecord_timestampDefaultsToNow() {
         let before = Date()
-        let msg = ChatMessageRecord(role: .user, content: "Test", sessionID: sessionID)
+        let msg = ManifoldInference.ChatMessage(role: .user, content: "Test", sessionID: sessionID)
         let after = Date()
         XCTAssertGreaterThanOrEqual(msg.timestamp, before, "Timestamp should be >= creation start time")
         XCTAssertLessThanOrEqual(msg.timestamp, after, "Timestamp should be <= creation end time")
@@ -257,7 +257,7 @@ final class MessageBubbleViewLogicTests: XCTestCase {
 
     func test_messageRecord_customTimestamp() {
         let customDate = Date(timeIntervalSince1970: 1000)
-        let msg = ChatMessageRecord(
+        let msg = ManifoldInference.ChatMessage(
             role: .user,
             content: "Test",
             timestamp: customDate,
@@ -278,8 +278,8 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: clear `session.agents` → lookup fails → no badge.
     func test_bubble_withResolvedAgentID_rendersAgentBadge() throws {
         let agent = ManifoldInference.Agent(name: "Researcher", systemPrompt: "do research", description: "researcher")
-        let session = ChatSessionRecord(id: sessionID, agents: [agent], activeAgentID: agent.id)
-        let msg = ChatMessageRecord(
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [agent], activeAgentID: agent.id)
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "Findings ready.",
             sessionID: sessionID,
@@ -303,8 +303,8 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     func test_bubble_withUnresolvedAgentID_fallsBackToRoleRender() throws {
         let realAgent = ManifoldInference.Agent(name: "Researcher", systemPrompt: "", description: "")
         let danglingID = UUID()
-        let session = ChatSessionRecord(id: sessionID, agents: [realAgent])
-        let msg = ChatMessageRecord(
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [realAgent])
+        let msg = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "Hello",
             sessionID: sessionID,
@@ -335,8 +335,8 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M2: render a placeholder badge when agentID is nil → finder hits.
     ///   M3: change accessibility label for nil agentID → string changes.
     func test_bubble_withNilAgentID_unchanged() throws {
-        let session = ChatSessionRecord(id: sessionID, agents: [])
-        let msg = ChatMessageRecord(role: .assistant, content: "Plain", sessionID: sessionID)
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [])
+        let msg = ManifoldInference.ChatMessage(role: .assistant, content: "Plain", sessionID: sessionID)
         XCTAssertNil(msg.agentID)
         let view = MessageBubbleView(message: msg, isStreaming: false, session: session)
         XCTAssertNil(view.resolvedAgent, "nil agentID must produce nil resolvedAgent — preserves pre-W3A render.")
@@ -430,9 +430,9 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: swap `from` and `to` → target assertion fails.
     func test_handoffResolver_returnsChipAtAgentTransition() throws {
         let (from, to) = agentPair()
-        let session = ChatSessionRecord(id: sessionID, agents: [from, to])
-        let msgA = ChatMessageRecord(role: .assistant, content: "first", sessionID: sessionID, agentID: from.id)
-        let msgB = ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID, agentID: to.id)
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [from, to])
+        let msgA = ManifoldInference.ChatMessage(role: .assistant, content: "first", sessionID: sessionID, agentID: from.id)
+        let msgB = ManifoldInference.ChatMessage(role: .assistant, content: "second", sessionID: sessionID, agentID: to.id)
 
         let chip = try XCTUnwrap(ChatHistoryHandoffResolver.chip(
             at: 1,
@@ -454,9 +454,9 @@ final class MessageBubbleViewLogicTests: XCTestCase {
     ///   M3: swap `!=` for `==` in the check → flips polarity.
     func test_handoffChip_doesNotAppearWithinSameAgent() {
         let (a, _) = agentPair()
-        let session = ChatSessionRecord(id: sessionID, agents: [a])
-        let msgA1 = ChatMessageRecord(role: .assistant, content: "first", sessionID: sessionID, agentID: a.id)
-        let msgA2 = ChatMessageRecord(role: .assistant, content: "second", sessionID: sessionID, agentID: a.id)
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [a])
+        let msgA1 = ManifoldInference.ChatMessage(role: .assistant, content: "first", sessionID: sessionID, agentID: a.id)
+        let msgA2 = ManifoldInference.ChatMessage(role: .assistant, content: "second", sessionID: sessionID, agentID: a.id)
 
         XCTAssertNil(
             ChatHistoryHandoffResolver.chip(at: 1, messages: [msgA1, msgA2], session: session),

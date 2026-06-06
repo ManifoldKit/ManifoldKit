@@ -16,21 +16,21 @@ final class PreCompactWiringTests: XCTestCase {
 
     @MainActor
     private final class RuntimeMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks { await hook.messageDidWrite(message, in: message.sessionID) }
         }
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else { throw ChatPersistenceError.messageNotFound(message.id) }
             messages[message.id] = message
         }
         func deleteMessage(_ messageID: UUID) async throws {
             guard messages.removeValue(forKey: messageID) != nil else { throw ChatPersistenceError.messageNotFound(messageID) }
         }
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values.filter { $0.sessionID == sessionID }.sorted { $0.timestamp < $1.timestamp }
         }
         func deleteMessages(for sessionID: UUID) async throws {
@@ -93,12 +93,12 @@ final class PreCompactWiringTests: XCTestCase {
             contextSize > 0
         }
         func compress(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             sessionID: UUID,
-            generate: @Sendable ([ChatMessageRecord]) async throws -> String
-        ) async throws -> [ChatMessageRecord] {
+            generate: @Sendable ([ChatMessage]) async throws -> String
+        ) async throws -> [ChatMessage] {
             await recorder.record("compress")
-            return [ChatMessageRecord(role: .assistant, content: summary, sessionID: sessionID)]
+            return [ChatMessage(role: .assistant, content: summary, sessionID: sessionID)]
         }
     }
 

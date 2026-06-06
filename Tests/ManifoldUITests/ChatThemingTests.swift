@@ -108,8 +108,8 @@ final class ChatThemingTests: XCTestCase {
     /// shows the custom view, the fallback path shows the built-in bubble (which
     /// still carries the accessibility contract label).
     func test_renderer_fallsThroughToDefaultMessageView() throws {
-        let userMessage = ChatMessageRecord(role: .user, content: "Plain user line.", sessionID: sessionID)
-        let assistantMessage = ChatMessageRecord(role: .assistant, content: "tool output", sessionID: sessionID)
+        let userMessage = ChatMessage(role: .user, content: "Plain user line.", sessionID: sessionID)
+        let assistantMessage = ChatMessage(role: .assistant, content: "tool output", sessionID: sessionID)
 
         // Consumer override: take over assistant messages, defer user messages.
         let renderer: ChatMessageRenderer = { params in
@@ -159,7 +159,7 @@ final class ChatThemingTests: XCTestCase {
     /// `defaultMessageView()` returns the framework bubble for the supplied
     /// message regardless of role.
     func test_defaultMessageView_buildsBuiltInBubble() throws {
-        let message = ChatMessageRecord(role: .user, content: "Hi there.", sessionID: sessionID)
+        let message = ChatMessage(role: .user, content: "Hi there.", sessionID: sessionID)
         let params = ChatMessageRenderParameters(
             message: message,
             isStreaming: false,
@@ -180,7 +180,7 @@ final class ChatThemingTests: XCTestCase {
     /// After the Layer-1/2 refactor, the user bubble must still expose the
     /// '<Role> said: <content>' label even under a non-standard theme.
     func test_themedBubble_preservesAccessibilityLabel() throws {
-        let message = ChatMessageRecord(role: .user, content: "Themed and accessible.", sessionID: sessionID)
+        let message = ChatMessage(role: .user, content: "Themed and accessible.", sessionID: sessionID)
         let view = MessageBubbleView(message: message, isStreaming: false)
             .chatTheme(ChatTheme(cornerRadius: 2, bubblePadding: 30))
             .messageBubbleStyle(.card)

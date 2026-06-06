@@ -17,8 +17,8 @@ final class HistoryAssemblerTests: XCTestCase {
         content: String = "hello",
         timestamp: Date = Date(),
         kind: MessageKind = .chat
-    ) -> ChatMessageRecord {
-        ChatMessageRecord(
+    ) -> ChatMessage {
+        ChatMessage(
             role: role,
             content: content,
             timestamp: timestamp,
@@ -27,7 +27,7 @@ final class HistoryAssemblerTests: XCTestCase {
         )
     }
 
-    private func makeTurnContext(history: [ChatMessageRecord] = []) -> TurnContext {
+    private func makeTurnContext(history: [ChatMessage] = []) -> TurnContext {
         TurnContext(sessionID: sessionID, messageCount: history.count)
     }
 
@@ -36,7 +36,7 @@ final class HistoryAssemblerTests: XCTestCase {
     struct SingleContributionProvider: HistoryProvider {
         let contribution: HistoryContribution
         func contribute(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             context: TurnContext
         ) async throws -> [HistoryContribution] {
             [contribution]
@@ -46,7 +46,7 @@ final class HistoryAssemblerTests: XCTestCase {
     struct ThrowingProvider: HistoryProvider {
         struct TestError: Error {}
         func contribute(
-            history: [ChatMessageRecord],
+            history: [ChatMessage],
             context: TurnContext
         ) async throws -> [HistoryContribution] {
             throw TestError()
@@ -74,7 +74,7 @@ final class HistoryAssemblerTests: XCTestCase {
             makeRecord(role: .user, content: "C", timestamp: base.addingTimeInterval(2))
         ]
         // atDepth(2) from tail on 3 items = index 1 (between A and B)
-        let injected = ChatMessageRecord(
+        let injected = ChatMessage(
             role: .system,
             content: "memory-injected",
             sessionID: sessionID,
@@ -198,9 +198,9 @@ final class HistoryAssemblerTests: XCTestCase {
         let p2Record = makeRecord(role: .system, content: "from-p2", kind: .memory("p2"))
 
         struct P2Provider: HistoryProvider {
-            let record: ChatMessageRecord
+            let record: ChatMessage
             func contribute(
-                history: [ChatMessageRecord],
+                history: [ChatMessage],
                 context: TurnContext
             ) async throws -> [HistoryContribution] {
                 // Verifies that history includes prior provider's output
@@ -260,7 +260,7 @@ final class HistoryAssemblerTests: XCTestCase {
 
         // A .memory record with an old timestamp inserted at head — should NOT
         // trip the .chat invariant.
-        let oldMemory = ChatMessageRecord(
+        let oldMemory = ChatMessage(
             role: .system,
             content: "ancient-memory",
             timestamp: base.addingTimeInterval(-100),

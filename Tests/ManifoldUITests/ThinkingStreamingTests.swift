@@ -26,7 +26,7 @@ final class ThinkingStreamingTests: XCTestCase {
             modelStorage: ModelStorageService(),
             memoryPressure: MemoryPressureHandler()
         )
-        vm.activeSession = ChatSessionRecord(title: "Test")
+        vm.activeSession = ManifoldInference.ChatSession(title: "Test")
         // Force per-token flushes for both batchers so every thinking fragment
         // and visible token causes its own observable mutation, making the
         // intermediate states visible to the test recorder.
@@ -63,7 +63,7 @@ final class ThinkingStreamingTests: XCTestCase {
     // to wholesale replacement.
 
     func test_appendVisibleText_preservesLeadingThinkingPart() {
-        var msg = ChatMessageRecord(role: .assistant, content: "", sessionID: UUID())
+        var msg = ManifoldInference.ChatMessage(role: .assistant, content: "", sessionID: UUID())
         msg.contentParts = [.thinking("reasoning"), .text("Hello")]
 
         ChatViewModel.appendVisibleText(", world", into: &msg)
@@ -80,7 +80,7 @@ final class ThinkingStreamingTests: XCTestCase {
     }
 
     func test_appendVisibleText_appendsNewTextPart_whenNoneExists() {
-        var msg = ChatMessageRecord(role: .assistant, content: "", sessionID: UUID())
+        var msg = ManifoldInference.ChatMessage(role: .assistant, content: "", sessionID: UUID())
         msg.contentParts = [.thinking("only reasoning so far")]
 
         ChatViewModel.appendVisibleText("first visible", into: &msg)
@@ -98,7 +98,7 @@ final class ThinkingStreamingTests: XCTestCase {
     // MARK: - Partial thinking writes mutate the placeholder in place
 
     func test_writeThinkingPartialText_replacesExistingPlaceholder() {
-        var msg = ChatMessageRecord(role: .assistant, content: "", sessionID: UUID())
+        var msg = ManifoldInference.ChatMessage(role: .assistant, content: "", sessionID: UUID())
         msg.contentParts = [.thinking(""), .text("visible")]
 
         ChatViewModel.writeThinkingPartialText("Let me", into: &msg)

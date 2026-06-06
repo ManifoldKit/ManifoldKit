@@ -36,10 +36,10 @@ final class ConversationExporterTests: XCTestCase {
     // MARK: - Pure path
 
     func test_export_writesFileWithExpectedExtension() throws {
-        let session = ChatSessionRecord(title: "Hello")
+        let session = ManifoldInference.ChatSession(title: "Hello")
         let file = try ConversationExporter.export(
             session: session,
-            messages: [ChatMessageRecord(role: .user, content: "hi", sessionID: session.id)],
+            messages: [ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)],
             format: MarkdownExportFormat(),
             directory: tempDir
         )
@@ -50,10 +50,10 @@ final class ConversationExporterTests: XCTestCase {
 
     func test_export_fileContentsMatchFormatOutput() throws {
         let format = MarkdownExportFormat()
-        let session = ChatSessionRecord(title: "RoundTrip")
+        let session = ManifoldInference.ChatSession(title: "RoundTrip")
         let messages = [
-            ChatMessageRecord(role: .user, content: "Q?", sessionID: session.id),
-            ChatMessageRecord(role: .assistant, content: "A!", sessionID: session.id)
+            ManifoldInference.ChatMessage(role: .user, content: "Q?", sessionID: session.id),
+            ManifoldInference.ChatMessage(role: .assistant, content: "A!", sessionID: session.id)
         ]
 
         let file = try ConversationExporter.export(
@@ -69,7 +69,7 @@ final class ConversationExporterTests: XCTestCase {
     }
 
     func test_export_returnsContentTypeFromFormat() throws {
-        let session = ChatSessionRecord(title: "ct")
+        let session = ManifoldInference.ChatSession(title: "ct")
         let file = try ConversationExporter.export(
             session: session,
             messages: [],
@@ -124,14 +124,14 @@ final class ConversationExporterTests: XCTestCase {
     }
 
     func test_sanitisedFilename_doesNotEscapeDirectory() {
-        let session = ChatSessionRecord(title: "demo")
+        let session = ManifoldInference.ChatSession(title: "demo")
         let name = ConversationExporter.sanitisedFilename(for: session, fileExtension: "../evil")
         XCTAssertFalse(name.contains("/"))
         XCTAssertFalse(name.contains(".."))
     }
 
     func test_sanitisedFilename_appendsExtension() {
-        let session = ChatSessionRecord(title: "demo")
+        let session = ManifoldInference.ChatSession(title: "demo")
         let name = ConversationExporter.sanitisedFilename(for: session, fileExtension: "jsonl")
         XCTAssertEqual(name, "demo.jsonl")
     }
@@ -139,19 +139,19 @@ final class ConversationExporterTests: XCTestCase {
     // MARK: - SwiftData convenience overload
 
     func test_export_viaPersistenceProvider_fetchesMessagesInOrder() async throws {
-        let session = ChatSession(title: "Provider Path")
+        let session = ManifoldSchemaV9.ChatSession(title: "Provider Path")
         stack.context.insert(session)
         try stack.context.save()
 
         // Insert messages out of order to verify the exporter relies on
         // the provider's chronological sort, not raw fetch order.
-        let later = ChatMessageRecord(
+        let later = ManifoldInference.ChatMessage(
             role: .assistant,
             content: "second",
             timestamp: Date(timeIntervalSinceReferenceDate: 100),
             sessionID: session.id
         )
-        let earlier = ChatMessageRecord(
+        let earlier = ManifoldInference.ChatMessage(
             role: .user,
             content: "first",
             timestamp: Date(timeIntervalSinceReferenceDate: 0),
@@ -175,10 +175,10 @@ final class ConversationExporterTests: XCTestCase {
 
     func test_export_useDefaultDirectory_writesToTemp() throws {
         // Exercise the nil-directory path so the temp-dir branch is covered.
-        let session = ChatSessionRecord(title: "tempy")
+        let session = ManifoldInference.ChatSession(title: "tempy")
         let file = try ConversationExporter.export(
             session: session,
-            messages: [ChatMessageRecord(role: .user, content: "hi", sessionID: session.id)],
+            messages: [ManifoldInference.ChatMessage(role: .user, content: "hi", sessionID: session.id)],
             format: MarkdownExportFormat(),
             directory: nil
         )

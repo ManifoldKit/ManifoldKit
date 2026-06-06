@@ -18,5 +18,5 @@ public protocol PostGenerationTask: Sendable {
     /// - Parameters:
     ///   - message: The completed assistant message.
     ///   - session: The active chat session at the time of completion.
-    func run(message: ChatMessageRecord, session: ChatSessionRecord) async throws
+    func run(message: ChatMessage, session: ChatSession) async throws
 }

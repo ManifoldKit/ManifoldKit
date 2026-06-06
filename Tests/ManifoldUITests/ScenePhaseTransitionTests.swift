@@ -38,7 +38,7 @@ final class ScenePhaseTransitionTests: XCTestCase {
         vm = ChatViewModel(inferenceService: service)
         vm.configure(persistence: SwiftDataPersistenceProvider(modelContext: context))
 
-        let session = ChatSessionRecord(title: "Scene Phase Test")
+        let session = ManifoldInference.ChatSession(title: "Scene Phase Test")
         vm.activeSession = session
     }
 

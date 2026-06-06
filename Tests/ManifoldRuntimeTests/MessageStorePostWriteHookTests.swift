@@ -23,17 +23,17 @@ final class MessageStorePostWriteHookTests: XCTestCase {
 
     @MainActor
     final class InMemoryMessageStore: MessageStore {
-        private(set) var messages: [UUID: ChatMessageRecord] = [:]
+        private(set) var messages: [UUID: ChatMessage] = [:]
         private var hooks: [any MessageStorePostWriteHook] = []
 
-        func insertMessage(_ message: ChatMessageRecord) async throws {
+        func insertMessage(_ message: ChatMessage) async throws {
             messages[message.id] = message
             for hook in hooks {
                 await hook.messageDidWrite(message, in: message.sessionID)
             }
         }
 
-        func updateMessage(_ message: ChatMessageRecord) async throws {
+        func updateMessage(_ message: ChatMessage) async throws {
             guard messages[message.id] != nil else {
                 throw ChatPersistenceError.messageNotFound(message.id)
             }
@@ -49,7 +49,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
             }
         }
 
-        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+        func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
             messages.values
                 .filter { $0.sessionID == sessionID }
                 .sorted { $0.timestamp < $1.timestamp }
@@ -73,7 +73,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
             self.label = label
         }
 
-        func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+        func messageDidWrite(_ record: ChatMessage, in sessionID: ChatSession.ID) async {
             queue.sync {
                 _records.append((record.id, sessionID, label))
             }
@@ -92,7 +92,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         store.addPostWriteHook(hook)
 
         let sessionID = UUID()
-        let record = ChatMessageRecord(role: .user, content: "hi", sessionID: sessionID)
+        let record = ChatMessage(role: .user, content: "hi", sessionID: sessionID)
         try await store.insertMessage(record)
 
         XCTAssertEqual(hook.records.count, 1)
@@ -106,7 +106,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         store.addPostWriteHook(hook)
 
         let sessionID = UUID()
-        var record = ChatMessageRecord(role: .user, content: "hi", sessionID: sessionID)
+        var record = ChatMessage(role: .user, content: "hi", sessionID: sessionID)
         try await store.insertMessage(record)
         record.contentParts = [.text("updated")]
         try await store.updateMessage(record)
@@ -130,7 +130,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         store.addPostWriteHook(OrderingHook(label: "third-shared", order: order))
 
         let sessionID = UUID()
-        let record = ChatMessageRecord(role: .user, content: "hi", sessionID: sessionID)
+        let record = ChatMessage(role: .user, content: "hi", sessionID: sessionID)
         try await store.insertMessage(record)
 
         XCTAssertEqual(first.records.count, 1)
@@ -155,7 +155,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         let observation = HookObservation()
         store.addPostWriteHook(QueryingHook(store: store, observation: observation))
 
-        let record = ChatMessageRecord(role: .user, content: "hi", sessionID: sessionID)
+        let record = ChatMessage(role: .user, content: "hi", sessionID: sessionID)
         try await store.insertMessage(record)
 
         XCTAssertEqual(observation.observedCount, 1,
@@ -165,14 +165,14 @@ final class MessageStorePostWriteHookTests: XCTestCase {
     func test_hookRegisteredAfterWrite_doesNotReplay() async throws {
         let store = InMemoryMessageStore()
         let sessionID = UUID()
-        try await store.insertMessage(ChatMessageRecord(role: .user, content: "early", sessionID: sessionID))
+        try await store.insertMessage(ChatMessage(role: .user, content: "early", sessionID: sessionID))
 
         // Hook registered after the first write — the contract is no replay.
         let hook = RecordingHook()
         store.addPostWriteHook(hook)
         XCTAssertEqual(hook.records.count, 0, "No replay of writes that happened before registration")
 
-        try await store.insertMessage(ChatMessageRecord(role: .user, content: "later", sessionID: sessionID))
+        try await store.insertMessage(ChatMessage(role: .user, content: "later", sessionID: sessionID))
         XCTAssertEqual(hook.records.count, 1, "Subsequent writes still fire")
     }
 
@@ -185,7 +185,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         // ever becomes `async throws`, this `try?`-free line stops compiling.
         let _: (any MessageStorePostWriteHook) -> Void = { hook in
             Task {
-                let dummy = ChatMessageRecord(role: .user, content: "x", sessionID: UUID())
+                let dummy = ChatMessage(role: .user, content: "x", sessionID: UUID())
                 await hook.messageDidWrite(dummy, in: dummy.sessionID)
             }
         }
@@ -201,7 +201,7 @@ final class MessageStorePostWriteHookTests: XCTestCase {
         let hook = RecordingHook()
         store.addPostWriteHook(hook)
 
-        try await store.insertMessage(ChatMessageRecord(role: .user, content: "hi", sessionID: UUID()))
+        try await store.insertMessage(ChatMessage(role: .user, content: "hi", sessionID: UUID()))
         XCTAssertEqual(hook.records.count, 0, "Default no-op must not invoke the hook")
     }
 }
@@ -225,7 +225,7 @@ private struct OrderingHook: MessageStorePostWriteHook {
     let label: String
     let order: OrderRecorder
 
-    func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+    func messageDidWrite(_ record: ChatMessage, in sessionID: ChatSession.ID) async {
         order.append(label)
     }
 }
@@ -248,7 +248,7 @@ private struct QueryingHook: MessageStorePostWriteHook {
     let observation: HookObservation
 
     @MainActor
-    func messageDidWrite(_ record: ChatMessageRecord, in sessionID: ChatSessionRecord.ID) async {
+    func messageDidWrite(_ record: ChatMessage, in sessionID: ChatSession.ID) async {
         // Query the store from inside the hook — the write must already be
         // visible.
         let messages = (try? await store.fetchMessages(for: sessionID)) ?? []
@@ -260,13 +260,13 @@ private struct QueryingHook: MessageStorePostWriteHook {
 /// the protocol-extension no-op. Verifies the default doesn't trap.
 @MainActor
 private final class MinimalMessageStore: MessageStore {
-    private(set) var messages: [UUID: ChatMessageRecord] = [:]
+    private(set) var messages: [UUID: ChatMessage] = [:]
 
-    func insertMessage(_ message: ChatMessageRecord) async throws {
+    func insertMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
 
-    func updateMessage(_ message: ChatMessageRecord) async throws {
+    func updateMessage(_ message: ChatMessage) async throws {
         messages[message.id] = message
     }
 
@@ -274,7 +274,7 @@ private final class MinimalMessageStore: MessageStore {
         messages.removeValue(forKey: messageID)
     }
 
-    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessageRecord] {
+    func fetchMessages(for sessionID: UUID) async throws -> [ChatMessage] {
         Array(messages.values)
     }
 
