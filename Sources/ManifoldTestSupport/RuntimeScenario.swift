@@ -21,6 +21,62 @@ import ManifoldRuntime
 ///   data from the scripted backend.
 public struct RuntimeScenario: Sendable {
 
+    // MARK: - ScenarioTurn
+
+    /// One user-driven action in a scenario's turn loop.
+    ///
+    /// A scenario's ``turns`` describe *what the user does* (send a message,
+    /// regenerate the last reply, cancel mid-stream). The backend's event
+    /// scripts live separately in ``scriptedTurns`` — one entry per backend
+    /// `generate` call. The two counts are equal for plain send/regenerate
+    /// turns but diverge for a tool round trip, where a single `.send` action
+    /// drives two backend rounds (the tool call, then the follow-up answer).
+    public struct ScenarioTurn: Sendable {
+
+        /// The user action this turn performs.
+        public enum Action: Sendable {
+            /// Send a new user message.
+            case send(text: String)
+            /// Regenerate the last assistant reply (no new user text).
+            case regenerate
+        }
+
+        public let action: Action
+
+        /// When non-nil, the runner cancels this turn's stream the moment it has
+        /// observed this many ``ConversationEvent/tokenEmitted`` events. Requires
+        /// scripted mode (the runner drives the scripted backend's emission gate
+        /// to make the cancel point deterministic). Author the matching
+        /// ``ScriptedGenerationBackend/TurnScript`` with at least this many
+        /// tokens.
+        public let cancelAfterTokens: Int?
+
+        /// Optional per-turn override of ``TurnConfig/streamingBatchCharacterLimit``.
+        /// Cancellation turns set this to `1` so each token flushes as its own
+        /// `.tokenEmitted` event, making "cancel after N tokens" exact.
+        public let streamingBatchCharacterLimit: Int?
+
+        public init(
+            action: Action,
+            cancelAfterTokens: Int? = nil,
+            streamingBatchCharacterLimit: Int? = nil
+        ) {
+            self.action = action
+            self.cancelAfterTokens = cancelAfterTokens
+            self.streamingBatchCharacterLimit = streamingBatchCharacterLimit
+        }
+
+        /// A plain `.send` turn with no cancellation.
+        public static func send(_ text: String) -> ScenarioTurn {
+            ScenarioTurn(action: .send(text: text))
+        }
+
+        /// A `.regenerate` turn.
+        public static var regenerate: ScenarioTurn {
+            ScenarioTurn(action: .regenerate)
+        }
+    }
+
     /// Stable identifier — used as the test name and demo card key.
     public let id: String
 
@@ -30,12 +86,32 @@ public struct RuntimeScenario: Sendable {
     /// One-paragraph description of what this scenario exercises.
     public let scenarioDescription: String
 
-    /// The user message(s) sent in order. One entry per turn.
-    public let userMessages: [String]
+    /// The user-driven actions in order — one per turn. Plain send-only
+    /// scenarios are built from the ``userMessages`` convenience initializer;
+    /// scenarios exercising regenerate, cancellation, or tool round trips use
+    /// the designated ``turns`` initializer.
+    public let turns: [ScenarioTurn]
 
-    /// Per-turn event scripts for ``RuntimeScenarioRunner/RunMode/scripted`` runs.
-    /// Must have the same count as ``userMessages``.
+    /// The text of each `.send` action, in order. Derived from ``turns`` for
+    /// backward compatibility with the demo picker and send-only consumers.
+    public var userMessages: [String] {
+        turns.compactMap { turn in
+            if case let .send(text) = turn.action { return text }
+            return nil
+        }
+    }
+
+    /// Per-turn event scripts for ``RuntimeScenarioRunner/RunMode/scripted`` runs —
+    /// one entry per backend `generate` call. Equal in count to ``turns`` for
+    /// plain send/regenerate scenarios; longer when a tool round trip drives
+    /// multiple backend rounds from a single user action.
     public let scriptedTurns: [ScriptedGenerationBackend.TurnScript]
+
+    /// Tool executors registered in the runner's ``ToolRegistry`` before the
+    /// turn loop runs. Non-empty only for tool round-trip scenarios; when empty
+    /// the runner builds an ``InferenceService`` with no registry (the legacy
+    /// behaviour every send-only scenario relies on).
+    public let toolExecutors: [any ToolExecutor]
 
     /// The ``ConversationEventKind`` subsequence that must appear in the
     /// recorded trace for the scenario to pass — in both scripted and live mode.
@@ -52,6 +128,9 @@ public struct RuntimeScenario: Sendable {
     /// ``ConversationEvent/contextAssembled`` event for the same turn.
     public let preTurnCompressionPolicy: (any PreTurnCompressionPolicy)?
 
+    /// Convenience initializer for send-only scenarios: each user message is a
+    /// `.send` turn driving exactly one backend script. The two arrays must be
+    /// equal in count.
     public init(
         id: String,
         displayName: String,
@@ -68,9 +147,36 @@ public struct RuntimeScenario: Sendable {
         self.id = id
         self.displayName = displayName
         self.scenarioDescription = scenarioDescription
-        self.userMessages = userMessages
+        self.turns = userMessages.map { .send($0) }
         self.scriptedTurns = scriptedTurns
         self.expectedSubsequence = expectedSubsequence
+        self.toolExecutors = []
+        self.preTurnCompressionPolicy = preTurnCompressionPolicy
+    }
+
+    /// Designated initializer for scenarios that mix turn kinds (send /
+    /// regenerate), request mid-stream cancellation, or drive tool round trips.
+    ///
+    /// Unlike the convenience initializer there is no count equality check:
+    /// ``scriptedTurns`` tracks backend `generate` calls, which can exceed
+    /// ``turns`` when a single user action triggers a multi-round tool loop.
+    public init(
+        id: String,
+        displayName: String,
+        scenarioDescription: String,
+        turns: [ScenarioTurn],
+        scriptedTurns: [ScriptedGenerationBackend.TurnScript],
+        expectedSubsequence: [ConversationEventKind],
+        toolExecutors: [any ToolExecutor] = [],
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.scenarioDescription = scenarioDescription
+        self.turns = turns
+        self.scriptedTurns = scriptedTurns
+        self.expectedSubsequence = expectedSubsequence
+        self.toolExecutors = toolExecutors
         self.preTurnCompressionPolicy = preTurnCompressionPolicy
     }
 }

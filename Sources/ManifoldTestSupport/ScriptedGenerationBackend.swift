@@ -75,6 +75,20 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
             return TurnScript(events)
         }
 
+        /// Emits a single model-requested tool call and finishes — no visible
+        /// text. The runtime's tool-dispatch loop executes the call through the
+        /// registered ``ToolRegistry`` and re-prompts the backend, which then
+        /// pops the *next* ``TurnScript`` in the queue for the follow-up round.
+        ///
+        /// A complete tool round trip is therefore two scripts:
+        /// ```swift
+        /// [.toolCall(ToolCall(id: "t1", toolName: "echo", arguments: "{}")),
+        ///  .tokens(["Done"])]
+        /// ```
+        public static func toolCall(_ call: ToolCall) -> TurnScript {
+            TurnScript([.emit(.toolCall(call))])
+        }
+
         /// Empty turn — stream finishes with no events. The runtime treats
         /// this as a no-content response.
         public static var empty: TurnScript { TurnScript([]) }
@@ -95,6 +109,18 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
     public var isModelLoaded: Bool = true
     public var isGenerating: Bool = false
     public var capabilities: BackendCapabilities
+
+    /// Optional per-token emission gate. When non-nil, the backend awaits
+    /// ``TokenEmissionGate/waitForAdvance()`` BEFORE yielding each
+    /// `.token(_:)` event. The driver releases tokens one at a time so a
+    /// scenario can deterministically cancel a turn after observing exactly N
+    /// `.tokenEmitted` events — without racing the unbounded stream buffer that
+    /// would otherwise let the terminal `streamFinished(.stop)` overtake the
+    /// cancel call. Mirrors ``MockInferenceBackend/tokenEmissionGate``.
+    ///
+    /// Captured into a local at `generate` entry, so clearing it after a turn
+    /// does not disturb an in-flight turn.
+    public var tokenEmissionGate: TokenEmissionGate?
 
     /// The number of `generate` calls made so far.
     public private(set) var generateCallCount: Int = 0
@@ -126,11 +152,20 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
         let script = nextTurn()
         isGenerating = true
 
+        // Snapshot the gate at entry so a later turn clearing the property does
+        // not retroactively un-gate this in-flight turn.
+        let emissionGate = tokenEmissionGate
+
         let (raw, continuation) = AsyncThrowingStream<GenerationEvent, Error>.makeStream()
         Task { [weak self] in
             for event in script.events {
                 switch event {
                 case .emit(let generationEvent):
+                    // Gate visible-token emission so a cancellation driver can
+                    // release exactly N tokens before issuing cancel.
+                    if case .token = generationEvent, let gate = emissionGate {
+                        await gate.waitForAdvance()
+                    }
                     continuation.yield(generationEvent)
                 case .throwError(let error):
                     self?.isGenerating = false

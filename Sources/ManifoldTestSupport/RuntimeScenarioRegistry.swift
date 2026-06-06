@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import ManifoldInference
 import ManifoldRuntime
 
 /// The shared scenario registry — the single source of truth for both the
@@ -22,6 +23,10 @@ public enum RuntimeScenarioRegistry {
         .researcherWriterHandoff,
         // P4a: flagship scenario:
         .researchSession,
+        // Glass Box turn-kind coverage (tool / cancel / regenerate):
+        .toolRoundTrip,
+        .cancelMidStream,
+        .regenerateTurn,
     ]
 }
 
@@ -232,6 +237,101 @@ extension RuntimeScenario {
             .contextAssembled, .streamStarted, .tokenEmitted, .streamFinished,  // turn 4
         ],
         preTurnCompressionPolicy: FixedCountPreTurnCompressionPolicy(compressAfterMessages: 4)
+    )
+
+    // MARK: - Glass Box turn-kind scenarios
+
+    /// A single user turn whose model emits a tool call instead of a direct
+    /// answer. The runner registers a ``ScriptedResponseTool`` so the dispatch
+    /// loop routes the call, auto-approves it (the tool needs no approval), runs
+    /// it, then re-prompts the backend for the visible answer.
+    ///
+    /// Verifies the full runtime tool trio in order:
+    /// `toolCallRequested ≺ toolCallApproved ≺ toolCallCompleted`, bracketed by
+    /// one stream lifecycle that spans both backend rounds. `.toolCallApproved`
+    /// is the case wired by the Glass Box event-wiring slice (#1207).
+    public static let toolRoundTrip = RuntimeScenario(
+        id: "tool-roundtrip",
+        displayName: "Tool Round Trip",
+        scenarioDescription: "One user turn where the model requests a tool, the runtime auto-approves and executes it via the registry, then re-prompts for the final answer. Verifies toolCallRequested → toolCallApproved → toolCallCompleted ordering within a single stream lifecycle.",
+        turns: [
+            .send("Use the echo tool.")
+        ],
+        scriptedTurns: [
+            // Round 1: model requests the tool (no visible text).
+            .toolCall(ToolCall(id: "echo-1", toolName: "echo", arguments: "{}")),
+            // Round 2: final answer after the tool result is fed back.
+            .tokens(["Echoed", " result", "."]),
+        ],
+        expectedSubsequence: [
+            .streamStarted,
+            .toolCallRequested,
+            .toolCallApproved,
+            .toolCallCompleted,
+            .tokenEmitted,
+            .streamFinished,
+        ],
+        toolExecutors: [
+            ScriptedResponseTool(toolName: "echo", response: "Echo: hello")
+        ]
+    )
+
+    /// A single turn cancelled mid-stream after the first token. The runner
+    /// drives the scripted backend's emission gate so the cancel lands before
+    /// the stream's natural completion, producing a terminal
+    /// `streamFinished(reason: .cancelled)`.
+    ///
+    /// The structural subsequence ends at `.streamFinished`; the
+    /// `.cancelled` reason is asserted directly against the trace in the
+    /// dedicated per-scenario test (the kind-level subsequence cannot encode the
+    /// finish reason).
+    public static let cancelMidStream = RuntimeScenario(
+        id: "cancel-midstream",
+        displayName: "Cancel Mid-Stream",
+        scenarioDescription: "A single turn cancelled after the first streamed token. Verifies the runtime terminates the turn with streamFinished(.cancelled) rather than running to natural completion.",
+        turns: [
+            RuntimeScenario.ScenarioTurn(
+                action: .send(text: "Cancel me partway through."),
+                cancelAfterTokens: 1,
+                // One char per flush so the first token is its own .tokenEmitted.
+                streamingBatchCharacterLimit: 1
+            )
+        ],
+        scriptedTurns: [
+            // More tokens than we release: the gate parks the rest until cancel.
+            .tokens(["Hello", " world", " this", " keeps", " going"])
+        ],
+        expectedSubsequence: [
+            .streamStarted,
+            .tokenEmitted,
+            .streamFinished,
+        ]
+    )
+
+    /// A send turn followed by a regenerate turn. Regenerate deletes the prior
+    /// assistant message (emitting `.messageRemoved`) before driving a fresh
+    /// generation, so the trace shows the regenerate signature:
+    /// `messageRemoved ≺ streamStarted ≺ streamFinished` after the first turn's
+    /// own lifecycle.
+    public static let regenerateTurn = RuntimeScenario(
+        id: "regenerate-turn",
+        displayName: "Regenerate Turn",
+        scenarioDescription: "A send turn then a regenerate turn. Verifies regenerate removes the prior assistant message (messageRemoved) and drives a fresh streamStarted → streamFinished lifecycle.",
+        turns: [
+            .send("What is the capital of France?"),
+            .regenerate,
+        ],
+        scriptedTurns: [
+            .tokens(["Paris", "."]),
+            .tokens(["It", " is", " Paris", "."]),
+        ],
+        expectedSubsequence: [
+            // Turn 1: send
+            .streamStarted, .tokenEmitted, .streamFinished,
+            // Turn 2: regenerate removes the prior assistant reply, then a fresh
+            // lifecycle.
+            .messageRemoved, .streamStarted, .tokenEmitted, .streamFinished,
+        ]
     )
 }
 #endif
