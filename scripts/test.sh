@@ -220,6 +220,7 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldNetworkingTests
     ManifoldSecretsTests
     ManifoldHardwareTests
+    ManifoldModelCatalogTests
     ManifoldTestSupportTests
     ManifoldAppIntentsTests
     ManifoldServerTests

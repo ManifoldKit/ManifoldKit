@@ -1,6 +1,6 @@
 import XCTest
 import ManifoldTestSupport
-@testable import ManifoldInference
+@testable import ManifoldModelCatalog
 
 /// Coverage for the typed ``ModelDiscoveryError`` surface added by #1468.
 ///

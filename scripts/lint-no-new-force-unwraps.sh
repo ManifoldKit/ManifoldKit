@@ -58,7 +58,8 @@ ALLOWLIST_PATHS=(
     # These are static catalog/fixture identifiers; a future pass can replace
     # with a StaticUUID helper (#608).
     "ManifoldMCP/MCPCatalog.swift"
-    "ManifoldInference/Models/ModelInfo.swift"
+    "ManifoldInference/Models/ModelInfo.swift"  # legacy path — file moved to ManifoldModelCatalog in P1d (#1611)
+    "ManifoldModelCatalog/ModelInfo.swift"
     "ManifoldUI/Views/Chat/MessageActionMenu.swift"
     "ManifoldUI/Views/Sidebar/SessionRowView.swift"
 

@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 
 /// Plain-data snapshot of a configured cloud API endpoint, decoupled from any
 /// specific storage backend.

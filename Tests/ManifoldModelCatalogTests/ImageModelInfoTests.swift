@@ -1,5 +1,6 @@
 import XCTest
-@testable import ManifoldInference
+import ManifoldInference
+@testable import ManifoldModelCatalog
 
 final class ImageModelInfoTests: XCTestCase {
 

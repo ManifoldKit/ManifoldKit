@@ -1,6 +1,6 @@
 import XCTest
 import ManifoldTestSupport
-@testable import ManifoldInference
+@testable import ManifoldModelCatalog
 
 /// Coverage for the `~/Documents/Models` fallback discovery path + the
 /// error-reporting variant of ``ModelStorageService/discoverModels(reportingErrors:)``
