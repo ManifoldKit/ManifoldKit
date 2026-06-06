@@ -127,7 +127,7 @@ ALLOWLIST_PATHS=(
     # as! SecKey — SecKey is a CF opaque type returned from the Keychain API
     # as `AnyObject`; the cast is guaranteed by the kSecReturnRef contract.
     # The swiftlint:disable:this force_cast annotation documents the review.
-    "ManifoldInference/Security/SecureEnclaveKeyManager.swift"
+    "ManifoldSecrets/SecureEnclaveKeyManager.swift"
 
     # URL(string: "https://openrouter.ai/api/v1/")! — compile-time constant
     # fallback URL for OpenRouter in AnyLanguageModelCapabilities.

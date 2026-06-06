@@ -1,6 +1,6 @@
 import XCTest
 import Foundation
-@testable import ManifoldInference
+@testable import ManifoldSecrets
 
 // Tests for KeychainService.retrieveSecure(account:).
 // These tests write a real Keychain item and verify that retrieveSecure returns

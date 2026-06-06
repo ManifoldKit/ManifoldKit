@@ -1,6 +1,6 @@
 import XCTest
 import Foundation
-@testable import ManifoldInference
+@testable import ManifoldSecrets
 import ManifoldTestSupport
 
 // Tests for SecureEnclaveKeyManager and SecureEnclaveKeyStoreProtocol.

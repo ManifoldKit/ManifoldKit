@@ -1,5 +1,6 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldSecrets
+import ManifoldInference
 
 /// Integration tests for KeychainService using the REAL system Keychain.
 ///

@@ -12,12 +12,18 @@
       "path": "Sources/ManifoldNetworking",
       "deps": []
     },
+    "ManifoldSecrets": {
+      "type": "regular",
+      "path": "Sources/ManifoldSecrets",
+      "deps": []
+    },
     "ManifoldInference": {
       "type": "regular",
       "path": "Sources/ManifoldInference",
       "deps": [
         "ManifoldMacrosPlugin",
-        "ManifoldNetworking"
+        "ManifoldNetworking",
+        "ManifoldSecrets"
       ]
     },
     "ManifoldMCP": {
@@ -256,6 +262,15 @@
         "ManifoldTestSupport"
       ]
     },
+    "ManifoldSecretsTests": {
+      "type": "test",
+      "path": "Tests/ManifoldSecretsTests",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldSecrets",
+        "ManifoldTestSupport"
+      ]
+    },
     "ManifoldMCPTests": {
       "type": "test",
       "path": "Tests/ManifoldMCPTests",
@@ -289,6 +304,7 @@
         "ManifoldMLX",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
+        "ManifoldSecrets",
         "ManifoldTestSupport",
         "ManifoldUI"
       ]

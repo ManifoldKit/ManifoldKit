@@ -1,5 +1,6 @@
 import XCTest
-@testable import ManifoldInference
+@testable import ManifoldSecrets
+import ManifoldInference
 
 /// Tests for the boot-time Keychain reaper (`allAccounts` and `sweep`).
 ///

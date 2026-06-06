@@ -1,5 +1,6 @@
 import Foundation
 import ManifoldNetworking
+import ManifoldSecrets
 import os
 
 /// Global configuration for ManifoldKit. Set this once at app startup before
@@ -24,7 +25,16 @@ public struct ManifoldConfiguration: Sendable {
 
     public static var shared: ManifoldConfiguration {
         get { storage.withLock { $0 } }
-        set { storage.withLock { $0 = newValue } }
+        set {
+            storage.withLock { $0 = newValue }
+            // Keep the ManifoldSecrets leaf module's Keychain service name
+            // in sync whenever the configuration changes. ManifoldSecrets is
+            // zero-dependency so it cannot import ManifoldConfiguration
+            // directly; this setter is the reliable wiring point.
+            KeychainService.serviceNameProvider = {
+                ManifoldConfiguration.shared.keychainServiceName
+            }
+        }
     }
 
     /// Display name used in export headers, empty states, etc.

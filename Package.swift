@@ -38,6 +38,10 @@ let package = Package(
         // in P1a (#1608): NetworkActivity observability funnel + PrivateIP
         // classifier. Pure Foundation, zero upward dependencies.
         .library(name: "ManifoldNetworking", targets: ["ManifoldNetworking"]),
+        // Leaf security primitives evicted from the ManifoldInference kernel
+        // in P1b (#1609): KeychainService, SecureEnclaveKeyManager, SecureBytes.
+        // Pure Security framework, zero upward dependencies.
+        .library(name: "ManifoldSecrets", targets: ["ManifoldSecrets"]),
         .library(name: "ManifoldMCP", targets: ["ManifoldMCP"]),
         .library(name: "ManifoldMCPHost", targets: ["ManifoldMCPHost"]),
         .library(name: "ManifoldRuntime", targets: ["ManifoldRuntime"]),
@@ -192,10 +196,20 @@ let package = Package(
             dependencies: [],
             path: "Sources/ManifoldNetworking"
         ),
+        // ManifoldSecrets: leaf security primitives (KeychainService,
+        // SecureEnclaveKeyManager, SecureBytes) extracted from the
+        // ManifoldInference kernel in P1b (#1609). Zero dependencies — pure
+        // Security framework — so it can never leak ML/SwiftData/UI symbols.
+        .target(
+            name: "ManifoldSecrets",
+            dependencies: [],
+            path: "Sources/ManifoldSecrets"
+        ),
         .target(
             name: "ManifoldInference",
             dependencies: [
                 "ManifoldNetworking",
+                "ManifoldSecrets",
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
             ],
             path: "Sources/ManifoldInference",
@@ -669,6 +683,15 @@ let package = Package(
             name: "ManifoldNetworkingTests",
             dependencies: ["ManifoldNetworking", "ManifoldInference", "ManifoldTestSupport"]
         ),
+        // Re-homed from ManifoldInferenceTests in P1b (#1609) alongside the
+        // KeychainService, SecureEnclaveKeyManager, and SecureBytes source.
+        // Depends on ManifoldInference too because KeychainServiceTests and
+        // KeychainServiceSweepTests exercise ManifoldConfiguration wiring, and
+        // on ManifoldTestSupport for MockSecureEnclaveKeyStore.
+        .testTarget(
+            name: "ManifoldSecretsTests",
+            dependencies: ["ManifoldSecrets", "ManifoldInference", "ManifoldTestSupport"]
+        ),
         .testTarget(
             name: "ManifoldMCPTests",
             dependencies: [
@@ -707,6 +730,7 @@ let package = Package(
                 "ManifoldBackends",
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
+                "ManifoldSecrets",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
