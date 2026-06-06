@@ -2,7 +2,7 @@
 # scripts/fuzz.sh — Run the ManifoldFuzz harness with a friendly preflight.
 #
 # Default behaviour (no args): runs `swift run --traits Fuzz,MLX,Llama,Ollama
-# fuzz-chat --minutes 5` against Ollama. Discovers which backends are usable and
+# fuzz-chat --minutes 5` against llama.cpp. Discovers which backends are usable and
 # prints a one-line summary before kicking off the harness.
 #
 # Local extensions:
@@ -25,7 +25,7 @@ for arg in "$@"; do
         --with-mlx) WITH_MLX=1 ;;
         -h|--help)
             cd "$PACKAGE_DIR"
-            echo "scripts/fuzz.sh — wrapper around \`swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat\`"
+            echo "scripts/fuzz.sh — wrapper around \`swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat\` (default backend: llama)"
             echo ""
             echo "Local flags:"
             echo "  --with-mlx   Also run the MLX XCTest fuzz suite via xcodebuild"

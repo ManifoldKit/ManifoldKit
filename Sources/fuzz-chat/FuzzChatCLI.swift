@@ -21,7 +21,7 @@ struct FuzzChatCLI {
             return
         }
 
-        var backend: BackendChoice = .ollama
+        var backend: BackendChoice = .llama
         var minutes: Int?
         var iterations: Int?
         var seed: UInt64 = UInt64.random(in: 0...UInt64.max)
@@ -522,7 +522,7 @@ struct FuzzChatCLI {
             "Usage: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat [options]",
             "",
             "Options:",
-            "  --backend ollama|mock|chaos|llama|foundation|mlx|all   default: ollama",
+            "  --backend ollama|mock|chaos|llama|foundation|mlx|all   default: llama",
             "                      mock  = MockInferenceBackend (hardware-free, used by PR-tier CI)",
             "                      chaos = ChaosBackend (hardware-free; injects stream failures)",
             "  --minutes N         time budget (default 5 if neither flag set)",
