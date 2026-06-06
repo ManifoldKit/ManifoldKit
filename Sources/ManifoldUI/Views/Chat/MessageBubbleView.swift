@@ -32,6 +32,21 @@ public struct MessageBubbleView: View {
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    /// Semantic styling tokens (per-role background, padding, radius, spacing,
+    /// fonts). Defaults to ``ChatTheme/standard``, which reproduces the
+    /// historical look, so reading the theme is non-breaking.
+    @Environment(\.chatTheme) private var theme
+
+    /// The bubble chrome style. The default ``PlainMessageBubbleStyle`` reads
+    /// ``ChatTheme``, so tokens (Layer 1) and styles (Layer 2) compose.
+    @Environment(\.messageBubbleStyle) private var bubbleStyle
+
+    /// Dynamic Type multiplier (1 at the default content size category) applied
+    /// to themed spacing at this consumption site. Bubble padding and corner
+    /// radius are scaled inside the style body; the inner spacings are scaled
+    /// here where they are consumed.
+    @ScaledMetric(relativeTo: .body) private var typeScale: CGFloat = 1
+
     public init(
         message: ChatMessageRecord,
         isStreaming: Bool,
@@ -78,7 +93,7 @@ public struct MessageBubbleView: View {
         HStack {
             if message.role == .user { Spacer(minLength: spacerMinLength) }
 
-            VStack(alignment: stackAlignment, spacing: 6) {
+            VStack(alignment: stackAlignment, spacing: theme.bubbleStackSpacing * typeScale) {
                 bubbleContent
                     .frame(maxWidth: 700, alignment: alignment)
                     .accessibilityElement(children: .combine)
@@ -113,30 +128,43 @@ public struct MessageBubbleView: View {
     }
 
     private var userBubble: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            MessagePartsView(parts: message.contentParts, role: .user)
+        // The bubble chrome (padding/background/shape) is delegated to the
+        // resolved `MessageBubbleStyle`; the inner layout stays here so a custom
+        // style never has to re-implement the content.
+        styledBubble(role: .user) {
+            VStack(alignment: .trailing, spacing: theme.contentSpacing * typeScale) {
+                MessagePartsView(parts: message.contentParts, role: .user)
 
-            HStack(spacing: 6) {
-                if let statusText = Self.statusText(for: message) {
-                    Text(statusText)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.75))
-                        .accessibilityLabel(Self.statusAccessibilityLabel(for: message) ?? statusText)
+                HStack(spacing: 6) {
+                    if let statusText = Self.statusText(for: message) {
+                        Text(statusText)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.75))
+                            .accessibilityLabel(Self.statusAccessibilityLabel(for: message) ?? statusText)
+                    }
+
+                    timestampLabel
+                        .foregroundStyle(.white.opacity(0.7))
                 }
-
-                timestampLabel
-                    .foregroundStyle(.white.opacity(0.7))
             }
         }
-        .padding(12)
-        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16))
         .overlay(alignment: .topTrailing) {
             pinIndicator
         }
     }
 
     private var assistantBubble: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        styledBubble(role: .assistant) {
+            assistantBubbleContent
+        }
+        .overlay(alignment: .topTrailing) {
+            pinIndicator
+        }
+    }
+
+    @ViewBuilder
+    private var assistantBubbleContent: some View {
+        VStack(alignment: .leading, spacing: theme.contentSpacing * typeScale) {
             // Per-agent badge when the message attribution resolves to a real
             // agent in the session registry. When `agentID` is nil OR refers
             // to a deleted agent, this falls through to the standard role
@@ -185,17 +213,33 @@ public struct MessageBubbleView: View {
                 }
             }
         }
-        .padding(12)
-        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(alignment: .topTrailing) {
-            pinIndicator
-        }
+    }
+
+    /// Wraps inner bubble content in the resolved ``MessageBubbleStyle``. The
+    /// default style draws today's padding/background/shape from ``ChatTheme``;
+    /// `.iMessage`/`.card` (or a custom style) restructure it.
+    @ViewBuilder
+    private func styledBubble(role: MessageRole, @ViewBuilder content: () -> some View) -> some View {
+        ResolvedMessageBubble(
+            style: bubbleStyle,
+            configuration: MessageBubbleConfiguration(
+                content: AnyView(content()),
+                role: role,
+                isStreaming: isStreaming
+            )
+        )
     }
 
     private var systemBubble: some View {
-        VStack(spacing: 4) {
+        // System notices are centered text rather than a left/right bubble, so
+        // they honor the Layer-1 ``ChatTheme`` tokens (font, padding, and the
+        // per-role `systemBubbleBackground`) directly instead of routing through
+        // the ``MessageBubbleStyle`` layer. The default `systemBubbleBackground`
+        // is clear, so this reproduces the historical chrome-free look exactly.
+        let chrome = theme.chrome(for: .system, scale: typeScale)
+        return VStack(spacing: theme.contentSpacing * typeScale) {
             Text(message.content)
-                .font(.body)
+                .font(theme.bubbleFont)
                 .italic()
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -203,7 +247,8 @@ public struct MessageBubbleView: View {
             timestampLabel
                 .foregroundStyle(.tertiary)
         }
-        .padding(12)
+        .padding(chrome.padding)
+        .background(chrome.background, in: RoundedRectangle(cornerRadius: chrome.cornerRadius))
         .frame(maxWidth: .infinity)
     }
 
@@ -272,7 +317,7 @@ public struct MessageBubbleView: View {
 
     private var timestampLabel: some View {
         Text(message.timestamp, style: .time)
-            .font(.caption)
+            .font(theme.metadataFont)
     }
 
     // MARK: - Layout Helpers

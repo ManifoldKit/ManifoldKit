@@ -22,6 +22,10 @@ struct DemoContentView: View {
     @State private var isToolPolicyPresented = false
     @State private var isConnectedServicesPresented = false
     @State private var isDocumentLibraryPresented = false
+    // Worked example of the ManifoldUI theming seams. Defaults to `.standard`
+    // so the demo's stock appearance is unchanged until the user switches via
+    // the "Appearance" menu — which doubles as a runtime theme-switching demo.
+    @State private var demoTheme: DemoChatTheme = .standard
     // ManifoldVoice's AppleSpeechTranscriber drives AVAudioEngine, which raises
     // on iOS Simulator launch (no audio input device). Mount the controller
     // and the composer accessory only on real hardware.
@@ -93,6 +97,23 @@ struct DemoContentView: View {
                 },
                 apiConfiguration: { APIConfigurationView() }
             )
+                // Theming, all three layers composed: Layer 1 tokens via
+                // `.chatTheme(_:)`, Layer 2 bubble chrome via
+                // `.messageBubbleStyle(_:)`, Layer 3 per-message override via
+                // `.chatMessageRenderer(_:)`. Each is read from the single
+                // `demoTheme` selection so flipping the Appearance menu restyles
+                // the live transcript without rebuilding the view.
+                .chatTheme(demoTheme.theme)
+                .modifier(DemoBubbleStyleModifier(theme: demoTheme))
+                .chatMessageRenderer { params in
+                    // Override only system notices with a compact pill; defer
+                    // every other message to the built-in, fully-themed bubble.
+                    if params.message.role == .system {
+                        AnyView(DemoSystemNotice(text: params.message.content))
+                    } else {
+                        params.defaultMessageView()
+                    }
+                }
                 .toolbar {
                     // .topBarLeading is iOS-only; macOS NavigationSplitView manages
                     // sidebar visibility via its own controls so this button is not
@@ -110,6 +131,18 @@ struct DemoContentView: View {
                         }
                     }
                     #endif
+                    ToolbarItem(placement: .automatic) {
+                        Menu {
+                            Picker("Appearance", selection: $demoTheme) {
+                                ForEach(DemoChatTheme.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+                        } label: {
+                            Label("Appearance", systemImage: "paintpalette")
+                        }
+                        .accessibilityIdentifier("demo-appearance-menu")
+                    }
                 }
         }
         .sheet(isPresented: $isModelManagementPresented) {
@@ -477,5 +510,88 @@ struct DemoContentView: View {
         case .askOncePerSession: return "Once / session"
         case .autoApprove: return "Auto"
         }
+    }
+}
+
+// MARK: - Theming demo
+
+/// The Appearance options surfaced in the demo's detail toolbar. Each case maps
+/// to a ``ChatTheme`` (Layer 1) and a ``MessageBubbleStyle`` (Layer 2). This is
+/// the worked example for issue #1640 — a host wiring the in-framework theming
+/// seams instead of forking the chat view.
+enum DemoChatTheme: String, CaseIterable, Identifiable {
+    case standard
+    case brand
+    case iMessage
+    case card
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard: "Standard"
+        case .brand: "Brand"
+        case .iMessage: "iMessage"
+        case .card: "Card"
+        }
+    }
+
+    /// Layer 1 tokens. `.standard` returns the framework default so the demo's
+    /// stock look is byte-for-byte unchanged; `.brand` overrides colors and
+    /// metrics while leaving fonts as Dynamic-Type-safe text styles.
+    var theme: ChatTheme {
+        switch self {
+        case .standard, .iMessage, .card:
+            ChatTheme.standard
+        case .brand:
+            ChatTheme(
+                userBubbleBackground: AnyShapeStyle(Color.indigo.gradient),
+                assistantBubbleBackground: AnyShapeStyle(.fill.quaternary),
+                cornerRadius: 22,
+                bubblePadding: 14
+            )
+        }
+    }
+}
+
+/// Applies the Layer-2 bubble style for the selected ``DemoChatTheme``.
+///
+/// A `ViewModifier` (rather than an inline `.messageBubbleStyle(_:)`) because the
+/// modifier is generic over a concrete style type — switching among the built-ins
+/// needs a `@ViewBuilder` branch so each concrete style is applied on its own
+/// path.
+struct DemoBubbleStyleModifier: ViewModifier {
+    let theme: DemoChatTheme
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch theme {
+        case .standard, .brand:
+            content.messageBubbleStyle(.plain)
+        case .iMessage:
+            content.messageBubbleStyle(.iMessage)
+        case .card:
+            content.messageBubbleStyle(.card)
+        }
+    }
+}
+
+/// Layer-3 override: a compact pill for system notices, demonstrating that a
+/// `.chatMessageRenderer` can take over *some* messages and defer the rest.
+struct DemoSystemNotice: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.fill.quaternary, in: Capsule())
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            // The built-in bubble supplies its own VoiceOver label; a full Layer-3
+            // replacement must restore the accessibility contract itself.
+            .accessibilityLabel("System said: \(text)")
     }
 }
