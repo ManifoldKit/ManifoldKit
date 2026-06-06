@@ -39,7 +39,6 @@ The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, `Mani
 import SwiftUI
 import SwiftData
 import ManifoldKit
-import ManifoldUI
 
 @main
 struct MyChatApp: App {
@@ -118,7 +117,6 @@ Add this to the `Hello World` example so the moment `result` is non-nil, you als
 import SwiftUI
 import SwiftData
 import ManifoldKit
-import ManifoldUI
 #if canImport(ManifoldFoundation)
 import ManifoldFoundation
 #endif
@@ -163,7 +161,6 @@ For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Ant
 ```swift,no-build
 import SwiftUI
 import ManifoldKit
-import ManifoldUI
 import ManifoldInference
 
 @main
@@ -217,7 +214,6 @@ The canonical surface is `ModelManagementSheet` from the **`ManifoldUIModelManag
 ```swift,no-build
 import SwiftUI
 import ManifoldKit
-import ManifoldUI
 import ManifoldUIModelManagement
 
 @main
