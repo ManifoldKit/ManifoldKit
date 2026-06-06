@@ -13,11 +13,6 @@ final class OllamaBackendConformanceTests: XCTestCase {
 
     private let backendName = "OllamaBackend"
 
-    override class func setUp() {
-        super.setUp()
-        BackendContractChecks.resetCapabilityClaims(forBackend: "OllamaBackend")
-    }
-
     // MARK: - Universal invariants
 
     // Sabotage-evidence: assertAllInvariants trips on invariant 1 if init() sets isModelLoaded=true
@@ -55,32 +50,31 @@ final class OllamaBackendConformanceTests: XCTestCase {
         )
     }
 
-    // MARK: - Per-capability claims (bootstrap)
+    // MARK: - Per-capability claims + meta-contract
 
-    func test_contract_supportsToolCalling_claim() {
+    /// All bootstrap claims and the meta-contract assertion are collapsed into
+    /// one method so the registry is built and verified within a single process.
+    /// Under `swift test --parallel` each test method runs in an isolated worker
+    /// process; splitting claim recording across several methods meant the
+    /// meta-contract reader saw an empty registry in its worker. (#1601)
+    func test_contract_allCapabilityClaims() {
+        // Reset first so a prior run of this method in the same process doesn't
+        // leave stale claims that could mask a newly-removed flag.
+        BackendContractChecks.resetCapabilityClaims(forBackend: backendName)
+
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: backendName,
             flag: "supportsToolCalling"
         )
-    }
-
-    func test_contract_supportsNativeJSONMode_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: backendName,
             flag: "supportsNativeJSONMode"
         )
-    }
-
-    func test_contract_supportsParallelToolCalls_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: backendName,
             flag: "supportsParallelToolCalls"
         )
-    }
 
-    // MARK: - Meta-contract (MUST be last)
-
-    func test_z_contract_metaContract() {
         BackendContractChecks.assertCapabilityMetaContract(
             backendName: backendName,
             capabilities: OllamaBackend().capabilities

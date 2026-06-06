@@ -41,11 +41,6 @@ final class FoundationBackendContractTests: XCTestCase,
         FoundationBackend()
     }
 
-    override class func setUp() {
-        super.setUp()
-        BackendContractChecks.resetCapabilityClaims(forBackend: "FoundationBackend")
-    }
-
     // XCTest bypasses Swift @available on test classes (ObjC runtime discovery).
     // Throw XCTSkip here so no FoundationModels API is touched on macOS 15 CI.
     override func setUp() async throws {
@@ -65,33 +60,31 @@ final class FoundationBackendContractTests: XCTestCase,
         assertUniversalBackendContract()
     }
 
-    // MARK: - Per-capability claims
+    // MARK: - Per-capability claims + meta-contract
 
-    /// FoundationBackend declares `supportsToolCalling = true`. Full
-    /// behavioural proof requires Apple Intelligence (a live session with the
-    /// on-device model) and lives in the E2E tier. This claim records the
-    /// obligation in the meta-contract registry until the parameterised fixture
-    /// suite covers it under `RUN_SLOW_TESTS=1`.
-    func test_contract_supportsToolCalling_claim() {
+    /// All bootstrap claims and the meta-contract assertion are collapsed into
+    /// one method so the registry is built and verified within a single process.
+    /// Under `swift test --parallel` each test method runs in an isolated worker
+    /// process; splitting claim recording across several methods meant the
+    /// meta-contract reader saw an empty registry in its worker. (#1601)
+    ///
+    /// Full behavioural proofs for each flag:
+    /// - `supportsToolCalling`: requires Apple Intelligence (live session); lives in the E2E tier.
+    /// - `supportsGuidedStructuredOutput`: requires a live session (GuidedGeneration round-trip).
+    func test_contract_allCapabilityClaims() {
+        // Reset first so a prior run of this method in the same process doesn't
+        // leave stale claims that could mask a newly-removed flag.
+        BackendContractChecks.resetCapabilityClaims(forBackend: contractBackendName)
+
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsToolCalling"
         )
-    }
-
-    /// FoundationBackend declares `supportsGuidedStructuredOutput = true`.
-    /// Behavioural proof (GuidedGeneration round-trip) requires a live session;
-    /// this claim records the meta-contract obligation.
-    func test_contract_supportsGuidedStructuredOutput_claim() {
         BackendContractChecks.claimWithoutBehaviouralAssertion(
             backendName: contractBackendName,
             flag: "supportsGuidedStructuredOutput"
         )
-    }
 
-    // MARK: - Meta-contract (MUST be last)
-
-    func test_z_contract_metaContract() {
         BackendContractChecks.assertCapabilityMetaContract(
             backendName: contractBackendName,
             capabilities: FoundationBackend().capabilities
