@@ -477,7 +477,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
                 },
                 generationStream: generationStream,
                 continuation: continuation,
-                onPrefillEstimate: { measured in
+                onPrefillEstimate: { [self] measured in
                     self.withStateLock { self._lastMeasuredBytesPerToken = measured }
                 }
             )

@@ -192,9 +192,12 @@ public struct ModelLoadPlan: Sendable {
         // the static `kvBytesPerToken` otherwise. When no measurement exists this
         // resolves to `kvBytesPerToken`, keeping the static path byte-for-byte
         // identical to the pre-adaptive behaviour.
-        let effectiveBytesPerToken: UInt64 = (inputs.measuredBytesPerToken ?? 0) > 0
-            ? inputs.measuredBytesPerToken!
-            : inputs.kvBytesPerToken
+        let effectiveBytesPerToken: UInt64
+        if let measured = inputs.measuredBytesPerToken, measured > 0 {
+            effectiveBytesPerToken = measured
+        } else {
+            effectiveBytesPerToken = inputs.kvBytesPerToken
+        }
 
         // Memory-derived token ceiling. Guarding against div-by-zero when the caller
         // passed kvBytesPerToken == 0 (shouldn't happen in practice, but cheap to be safe).
