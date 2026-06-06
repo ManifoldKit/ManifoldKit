@@ -168,12 +168,13 @@ final class LlamaGrammarSamplerTests: XCTestCase {
     /// model's GGUF `general.architecture` is in the Gemma family (gemma / gemma2 /
     /// gemma3, case-insensitive), and stays `true` for a non-Gemma architecture.
     ///
-    /// Gemma's GGUF grammar path yields an empty stream under llama.cpp — the
-    /// generation stream is empty, causing the FiresideMemory extraction pipeline to
-    /// heuristic-fallback with 0 entities on every turn. Disabling grammar for Gemma
-    /// models forces callers to use JSON-mode-only parsing, which works correctly for
-    /// them. Detecting by declared architecture (rather than the GGUF filename) is
-    /// robust to renamed files.
+    /// Gemma emits malformed/truncated output under structured (JSON-object) GBNF
+    /// grammars — it opens the object then stalls on whitespace until EOG, so the
+    /// FiresideMemory extraction pipeline heuristic-fallbacks with 0 entities.
+    /// Trivial grammars work and the same grammar produces valid JSON on Llama, so
+    /// the failure is Gemma-specific; disabling grammar wholesale for the family
+    /// routes callers to JSON-mode-only parsing, which works. Detecting by declared
+    /// architecture (rather than the GGUF filename) is robust to renamed files.
     ///
     /// Sabotage check: remove `.lowercased().hasPrefix("gemma")` from the detection
     /// logic in `LlamaBackend.capabilities`. A loaded Gemma model would incorrectly
@@ -185,7 +186,7 @@ final class LlamaGrammarSamplerTests: XCTestCase {
         gemmaBackend.injectArchitectureForTesting("gemma3")
         XCTAssertFalse(gemmaBackend.capabilities.supportsGrammarConstrainedSampling,
                        "LlamaBackend must report supportsGrammarConstrainedSampling = false "
-                     + "for Gemma-family architectures — incompatible with GBNF in llama.cpp")
+                     + "for Gemma-family architectures — they truncate under structured GBNF grammars")
 
         // A non-Gemma architecture keeps grammar enabled.
         let llamaBackend = LlamaBackend()

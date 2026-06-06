@@ -79,11 +79,18 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
         let architecture = withStateLock { _architecture }
-        // Gemma's GGUF grammar path yields an empty stream under llama.cpp,
-        // breaking grammar-constrained extraction. Detect by declared GGUF
-        // architecture (gemma / gemma2 / gemma3); JSON-mode-only parsing handles
-        // these models correctly. Unloaded backend (architecture == nil) keeps
-        // grammar enabled — the pre-load default for non-Gemma callers.
+        // Gemma emits malformed/truncated output under structured (JSON-object)
+        // GBNF grammars: it opens the object then gets trapped emitting
+        // whitespace until EOG, never completing the structure — so extraction
+        // yields nothing and the FiresideMemory pipeline heuristic-fallbacks with
+        // 0 entities. Trivial grammars (e.g. `[0-9]+`) are unaffected, and the
+        // identical grammar produces valid JSON on Llama; the failure is
+        // Gemma-specific. Targeting only complex grammars isn't worth the
+        // complexity, so disable grammar wholesale for the Gemma family and fall
+        // through to JSON-mode-only parsing, which works correctly. Detect by
+        // declared GGUF architecture (gemma / gemma2 / gemma3); an unloaded
+        // backend (architecture == nil) keeps grammar enabled — the pre-load
+        // default for non-Gemma callers.
         let supportsGrammar = !(architecture?.lowercased().hasPrefix("gemma") ?? false)
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
