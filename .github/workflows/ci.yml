@@ -21,6 +21,11 @@ on:
       # logging — otherwise a change to the gate would bypass the gate.
       - "scripts/affected-suites.sh"
       - "scripts/affected-suites-graph.json"
+      # Tier 2 selective CI (issue #1590). Listed so edits to the selective
+      # runner or the xcscheme files re-trigger CI — otherwise a change to
+      # the gate would bypass it (per CI path-filter self-validation rule).
+      - "scripts/ci-selective-test.sh"
+      - ".swiftpm/xcode/xcshareddata/xcschemes/**"
   pull_request:
     branches: [main]
     paths:
@@ -41,6 +46,9 @@ on:
       # logging — otherwise a change to the gate would bypass the gate.
       - "scripts/affected-suites.sh"
       - "scripts/affected-suites-graph.json"
+      # Tier 2 selective CI (issue #1590). See push section above.
+      - "scripts/ci-selective-test.sh"
+      - ".swiftpm/xcode/xcshareddata/xcschemes/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -156,11 +164,12 @@ jobs:
               echo "Would run **${n}** affected test-job suite(s): \`${affected}\`"
             fi
             echo ""
-            echo "_Execution is unchanged — the \`test\` job still runs its full hard-coded \`--filter\` list. Tier 0 addresses the ~136s execution half only; compile (~127s) is Tier 2._"
+            echo "_Tier 0 (execution routing) + Tier 2 (compile pruning, issue #1590) are now wired. When mode=selective the \`test\` job runs only the affected suites via xcodebuild per-target instead of the full swift-test bundle._"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Tier 0 dry-run: affected=${affected}"
 
   test:
+    needs: [changes]
     runs-on: macos-15  # Apple Silicon (arm64) standard runner to reduce spend
 
     steps:
@@ -405,6 +414,54 @@ jobs:
       # The XCTest batch below compiles the test bundle on first invocation,
       # so a separate `swift build --build-tests` step would be duplicate work.
 
+      # ── Tier 2 selective path (issue #1590) ─────────────────────────────────
+      # When Tier 0 returns a bounded affected-suite list (pull_request only),
+      # route each suite to the fastest correct test path via ci-selective-test.sh:
+      #   - Suite has an xcscheme AND is not trait-gated → xcodebuild (subgraph compile)
+      #   - ManifoldMCPTests → swift test --traits MCP (no xcodebuild trait activation)
+      #   - ManifoldBackendsTests → serial swift test (hardware dep in subgraph)
+      # Saves ~127s full-bundle compile by compiling only the affected subgraph(s).
+      # When Tier 0 returns FULL (hub-module change, push to main) or NONE (no
+      # test-job suites affected), fall through to the existing full swift-test batch.
+      - name: Compute test mode (Tier 2 selective or full)
+        id: test-mode
+        run: |
+          set -euo pipefail
+          affected="${{ needs.changes.outputs.affected }}"
+          # Helper: emit "full" with a reason and exit
+          emit_full() { echo "mode=full" >> "$GITHUB_OUTPUT"; echo "Test mode: full ($1)"; exit 0; }
+          [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
+            && emit_full "affected=${affected:-unset}"
+          # Count suites that require a full swift-test bundle compile (can't use xcodebuild):
+          # ManifoldMCPTests (MCP trait not in defaults) and ManifoldBackendsTests
+          # (ManifoldMLX/ManifoldLlama in subgraph → Metal shaders with xcodebuild defaults).
+          # Running 2+ such suites separately compiles the full bundle twice, which is always
+          # slower than one full run. Also fall back if total suite count is large (≥8)
+          # to avoid excessive sequential xcodebuild overhead outweighing the compile savings.
+          swift_test_count=0
+          for s in $affected; do
+            case "$s" in ManifoldMCPTests|ManifoldBackendsTests) ((swift_test_count++)) ;; esac
+          done
+          total_count=$(printf '%s\n' $affected | wc -w | tr -d ' ')
+          [[ $swift_test_count -ge 2 ]] \
+            && emit_full "2+ swift-test suites (${affected}) would compile full bundle twice"
+          [[ $total_count -ge 8 ]] \
+            && emit_full "${total_count} suites — xcodebuild overhead exceeds full-run savings"
+          echo "mode=selective" >> "$GITHUB_OUTPUT"
+          echo "suites=$affected" >> "$GITHUB_OUTPUT"
+          echo "Test mode: selective — ${total_count} suite(s): $affected"
+
+      # ── SELECTIVE PATH (Tier 2) ──────────────────────────────────────────────
+      - name: Test — Selective (Tier 2 compile-pruned xcodebuild)
+        id: test-selective
+        if: steps.test-mode.outputs.mode == 'selective'
+        timeout-minutes: 30
+        env:
+          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-selective.log
+          STALL_SECONDS: "240"
+        run: scripts/ci-selective-test.sh ${{ steps.test-mode.outputs.suites }}
+
+      # ── FULL PATH — existing swift-test batch (unchanged) ────────────────────
       # Run the full XCTest batch with --parallel. Every test that read or wrote
       # `UserDefaults.standard` has been migrated to a per-suite
       # `UserDefaults(suiteName:)` instance — see
@@ -436,8 +493,9 @@ jobs:
       # neither) — traits only ADD compiled code, so no suite's behavior changes.
       # Keep all three in sync; diverging the traits silently reintroduces the
       # redundant rebuilds.
-      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference + TurnLoopCharacterization, parallel)
+      - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Inference + Networking + TurnLoopCharacterization, parallel) [full]
         id: test-xctest-suites
+        if: steps.test-mode.outputs.mode == 'full'
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
@@ -452,21 +510,24 @@ jobs:
       # check fails (see CLAUDE.md "BackendContractChecks" note). Running this suite
       # alone in a separate serial invocation guarantees every backend class loads and
       # registers before any meta-contract assertion executes.
-      - name: Test — ManifoldBackendsTests (serial, claims-registry safe)
+      # In selective mode this suite runs via ci-selective-test.sh when it appears in
+      # the affected set; the full-mode step below is therefore scoped to full runs.
+      - name: Test — ManifoldBackendsTests (serial, claims-registry safe) [full]
         id: test-backends
-        if: always()
+        if: ${{ steps.test-mode.outputs.mode == 'full' && (success() || failure()) }}
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
           STALL_SECONDS: "240"
         run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --traits MCP,CloudSaaS --skip-update
 
-      # `if: always()` so a failing XCTest step still surfaces Swift Testing
-      # failures in the same run — otherwise breakage in both harnesses costs
-      # two re-push cycles to triage. The job still fails because step 1 failed.
-      - name: Test — Inference (Swift Testing, isolated process)
+      # `if: (success() || failure())` so a failing XCTest step still surfaces
+      # Swift Testing failures in the same run — otherwise breakage in both
+      # harnesses costs two re-push cycles to triage. In selective mode this
+      # suite runs via ci-selective-test.sh when it appears in the affected set.
+      - name: Test — Inference (Swift Testing, isolated process) [full]
         id: test-inference-swift-testing
-        if: always()
+        if: ${{ steps.test-mode.outputs.mode == 'full' && (success() || failure()) }}
         timeout-minutes: 30
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
@@ -503,6 +564,7 @@ jobs:
         # overwrite a previous failing step's diagnostics.
         if: failure()
         env:
+          SELECTIVE_FAILED: ${{ steps.test-selective.outcome == 'failure' }}
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
           BACKENDS_FAILED: ${{ steps.test-backends.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
@@ -513,6 +575,7 @@ jobs:
             echo "run-id=${{ github.run_id }}"
             echo "run-attempt=${{ github.run_attempt }}"
             echo "job=test"
+            echo "selective-failed=${SELECTIVE_FAILED}"
             echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
             echo "backends-failed=${BACKENDS_FAILED}"
             echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"

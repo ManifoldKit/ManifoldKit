@@ -65,6 +65,7 @@ TEST_JOB_SUITES=(
   ManifoldTestSupportTests
   ManifoldAppIntentsTests
   ManifoldInferenceTests
+  ManifoldNetworkingTests
   ManifoldTurnLoopCharacterizationTests
   ManifoldBackendsTests
   ManifoldInferenceSwiftTestingTests
@@ -152,6 +153,7 @@ FORCE_FULL_EXACT=(
   "scripts/affected-suites-graph.json"
   "scripts/test.sh"
   "scripts/ci-test-with-watchdog.sh"
+  "scripts/ci-selective-test.sh"
 )
 for p in "${CHANGED[@]}"; do
   case "$p" in
