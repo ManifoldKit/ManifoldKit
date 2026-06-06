@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.43.0](https://github.com/roryford/ManifoldKit/compare/v0.42.0...v0.43.0) (2026-06-06)
+
+The P1 kernel-thinning pass completes its first three modules — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` — each now a zero-dependency leaf product. The release also ships a configurable idle timeout for cloud/LAN backends and closes four resource-correctness bugs.
+
+### Highlights
+
+**P1 kernel thinning — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` extracted** — Three clusters of types that had no dependency on the inference kernel are now standalone zero-dependency SwiftPM products. `ManifoldSecrets` holds the Keychain service and Secure Enclave key manager ([#1609](https://github.com/roryford/ManifoldKit/issues/1609)); `ManifoldHardware` holds device-capability probes, GGUF readers, memory-pressure broadcast, and `ModelLoadPlan` ([#1610](https://github.com/roryford/ManifoldKit/issues/1610)); `ManifoldNetworking` holds all URLSession/SSE infrastructure ([#1608](https://github.com/roryford/ManifoldKit/issues/1608)). Existing `import ManifoldInference` consumers keep compiling without changes — the kernel shims each module via `@_exported import`.
+
+**Configurable idle timeout for cloud and LAN backends** — `GenerationConfig` now accepts an `idleTimeout: Duration?` that fires when no SSE bytes arrive within the window, surfacing a `GenerationError.streamTimeout` instead of leaving the UI stalled on a slow or saturated model. The default is `nil`, preserving existing behaviour. ([#1633](https://github.com/roryford/ManifoldKit/issues/1633))
+
+```swift
+var config = GenerationConfig()
+config.idleTimeout = .seconds(30)   // fires if prefill stalls for 30 s
+try await runtime.send("Hello", config: config)
+```
+
+### Features
+
+* **Device-aware model recommendation UI** — The model browser surfaces a ranked recommendation tailored to the current device's memory and compute profile, built on the `ModelFitScorer` layer introduced in v0.42.0.
+
+### Bug Fixes
+
+* **`SessionToolSource` tool dispatch** — Tools advertised via `SessionToolSource` were registered in `ToolRegistry` but never dispatched at call sites; the routing gap is closed. ([#1620](https://github.com/roryford/ManifoldKit/issues/1620))
+* **Grammar constraints corrupting thinking blocks** — Applying a grammar constraint (JSON mode or BNF grammar) to a request with `enableThinking: true` injected the grammar sampler into the thinking-block phase, producing malformed `<think>` output. Grammar constraints are now suppressed during thinking-token emission. ([#1624](https://github.com/roryford/ManifoldKit/issues/1624))
+* **Resource-correctness fixes (MLX, RAG, search, MCP)** — Four separate bugs: the MLX backend `deinit` dropped its strong reference before async cleanup finished; RAG document deletion left orphaned chunk records and crashed under concurrent access; embedding search exhausted memory on large corpora; MCP tool calls leaked the per-call timeout handle. ([#1627](https://github.com/roryford/ManifoldKit/issues/1627))
+* **SSE error message sanitization on all cloud paths** — In-stream SSE error payloads were forwarded to the UI unsanitized on partial-stream paths. `CloudErrorSanitizer` is now applied consistently across every cloud backend error surface. ([#1628](https://github.com/roryford/ManifoldKit/issues/1628))
+
 ## [0.42.0](https://github.com/roryford/ManifoldKit/compare/v0.41.0...v0.42.0) (2026-06-03)
 
 Model-fit scoring and use-case-aware model ranking is the headline addition, alongside URLSession security hardening and a round of CI stability fixes.
