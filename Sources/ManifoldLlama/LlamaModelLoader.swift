@@ -33,6 +33,10 @@ final class LlamaModelLoader: @unchecked Sendable {
         /// `tokenizer.chat_template` GGUF metadata. `nil` when the metadata
         /// is absent or no known marker pair appears in the template.
         let autoDetectedThinkingMarkers: ThinkingMarkers?
+        /// `general.architecture` declared by the GGUF (e.g. `llama`, `qwen2`,
+        /// `gemma3`). `nil` when the key is absent. Consumers use this for
+        /// architecture-family capability gating without re-reading metadata.
+        let architecture: String?
         var vocab: OpaquePointer? { context.vocabPtr }
     }
 
@@ -149,8 +153,8 @@ final class LlamaModelLoader: @unchecked Sendable {
         // produce garbage) because they do not expose a causal-LM decode path.
         // Throwing here gives callers a typed error instead of a mid-stream crash.
         // modelHandle owns `rawModel`; throwing lets its deinit call `llama_model_free`.
-        if let architecture = Self.readArchitectureMetadata(model: rawModel),
-           Self.isUnsupportedArchitecture(architecture) {
+        let architecture = Self.readArchitectureMetadata(model: rawModel)
+        if let architecture, Self.isUnsupportedArchitecture(architecture) {
             throw InferenceError.unsupportedModelArchitecture(architecture)
         }
 
@@ -229,7 +233,8 @@ final class LlamaModelLoader: @unchecked Sendable {
             model: modelHandle,
             context: contextHandle,
             effectiveContextSize: effectiveContextSize,
-            autoDetectedThinkingMarkers: autoMarkers
+            autoDetectedThinkingMarkers: autoMarkers,
+            architecture: architecture
         )
     }
 
