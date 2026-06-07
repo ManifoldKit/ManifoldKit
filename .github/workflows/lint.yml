@@ -163,7 +163,7 @@ jobs:
       # ── commitlint (PR title) ─────────────────────────────────────────────
       - name: commitlint — validate PR title
         if: always() && github.event_name == 'pull_request'
-        uses: amannn/action-semantic-pull-request@v6
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -260,7 +260,7 @@ jobs:
       # ── secret-scan (trufflehog) ──────────────────────────────────────────
       - name: secret-scan — scan changed commits for leaked secrets
         if: always()
-        uses: trufflesecurity/trufflehog@v3.95.5
+        uses: trufflesecurity/trufflehog@d411fff7b8879a62509f3fa98c07f247ac089a51 # v3.95.5
         with:
           # The composite action pulls `ghcr.io/trufflesecurity/trufflehog:${version}`.
           # Tag `v3.95.2` is missing from GHCR (manifest unknown), so the explicit
@@ -274,11 +274,11 @@ jobs:
       - name: dependency-review — fail on newly introduced vulnerable deps
         # Dependency Review compares base/head and is most useful on PRs.
         if: always() && github.event_name == 'pull_request'
-        # continue-on-error: the action exits non-zero when the repo's dependency
-        # graph isn't enabled yet (requires one-time opt-in in repo Settings >
-        # Advanced Security > Dependency graph). Once enabled this should be
-        # switched to fail-closed by removing continue-on-error.
-        continue-on-error: true
+        # Fail-closed: a newly introduced vulnerable dependency now blocks merge.
+        # REQUIRES the repo Dependency graph to be enabled (Settings > Advanced
+        # Security > Dependency graph). Without it the action exits non-zero and
+        # this step hard-fails — that is intentional supply-chain pressure, not
+        # a misconfiguration to paper over with continue-on-error.
         uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
