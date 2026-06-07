@@ -1,0 +1,71 @@
+# Muter mutation-testing config — SPIKE / bounded baseline (issue #1695)
+#
+# Scope: the turn loop (ConversationRuntime) only, run against a TIGHT,
+# deterministic, trait-disabled XCTest subset so each mutant costs ~5s
+# rather than the ~6.5 min a full scoped suite takes.
+#
+# Why this exact shape (see docs/MUTATION-BASELINE-2026-06.md for the full
+# rationale and the constraints that forbid a naive whole-suite run):
+#   * `--disable-default-traits` keeps MLX / Llama / Metal out of the build,
+#     so no metallib and no process-global `llama_backend_init`.
+#   * The `--filter` targets ONLY XCTest suites. ManifoldRuntimeTests and
+#     ManifoldInferenceTests are pure XCTest; the Swift Testing suite
+#     (ManifoldInferenceSwiftTestingTests) is filtered out so its @Test
+#     functions never execute — mitigating the #681 XCTest+Swift-Testing
+#     libmalloc SIGABRT race (the Swift Testing runtime still *initialises*
+#     in-process, so the race is reduced, not eliminated — see the doc).
+#   * Narrow filter -> the per-mutant test command runs ~68 tests in ~5s.
+#
+# Pair this with: `muter run --files-to-mutate Sources/ManifoldRuntime/Services/ConversationRuntime.swift`
+# to bound mutation to a single file.
+executable: /usr/bin/swift
+arguments:
+  - test
+  - --disable-default-traits
+  # Comprehensive-but-fast turn-loop XCTest cluster. Chosen to fairly exercise
+  # the mutated files (ConversationRuntime + ConversationTurnExecutor) so a
+  # surviving mutant means a genuine assertion gap, not "wrong suite picked".
+  - --filter
+  - "ManifoldRuntimeTests.ConversationRuntimeTests"
+  - --filter
+  - "ManifoldRuntimeTests.ConversationRuntimeScenarioTests"
+  - --filter
+  - "ManifoldRuntimeTests.ConversationRuntimeTurnPreparationTests"
+  - --filter
+  - "ManifoldRuntimeTests.ConversationRuntimeRebindTests"
+  - --filter
+  - "ManifoldRuntimeTests.ConversationRuntimeAppDataTests"
+  - --filter
+  - "ManifoldRuntimeTests.TurnInputCollapseTests"
+  - --filter
+  - "ManifoldRuntimeTests.TurnContextTests"
+  - --filter
+  - "ManifoldRuntimeTests.ScriptedBackendRuntimeTests"
+  - --filter
+  - "ManifoldRuntimeTests.GenerationHookTests"
+  - --filter
+  - "ManifoldRuntimeTests.GenerationHookWillBeginTurnTests"
+  - --filter
+  - "ManifoldRuntimeTests.HandoffScenarioTests"
+  - --filter
+  - "ManifoldRuntimeTests.PreTurnCompressionPolicyTests"
+  - --filter
+  - "ManifoldRuntimeTests.CompressionEventInsertedRecordsTests"
+
+# Never let a single hung mutant (e.g. an infinite-loop mutation in the turn
+# loop) stall the whole run. Tight subset baseline is ~5s, so 120s is generous.
+mutationTestTimeout: 120
+
+# coverageThreshold 0: this is a baseline-measurement spike, not a gate. We are
+# recording the score, not failing CI on it. (Muter is intentionally NOT wired
+# into CI — see issue #1695 / the doc.)
+coverageThreshold: 0
+
+# Exclude everything that is not in scope for this spike. Muter's default is to
+# mutate every .swift under the working dir; we want only the turn loop.
+exclude:
+  - Tests
+  - .build
+  - scripts
+  - docs
+  - Example

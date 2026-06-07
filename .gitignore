@@ -40,3 +40,7 @@ scripts/dx-walkthrough/runs/**/RUN-CONFIG.md
 # vulnerability maps with file paths and line numbers.
 SECURITY_REMEDIATION_PLAN*.md
 SECURITY_AUDIT*.md
+
+# Muter mutation-testing artifacts (see docs/MUTATION-BASELINE-2026-06.md)
+muter_logs/
+*_mutated/
