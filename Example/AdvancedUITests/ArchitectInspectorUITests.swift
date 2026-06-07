@@ -30,12 +30,22 @@ final class ArchitectInspectorUITests: XCTestCase {
     // MARK: - Open / Dismiss
 
     func test_architectToolbarButton_opensInspector() throws {
-        try openArchitectInspector()
+        // This is the headline regression test for the inspector's entry point,
+        // so it hard-asserts the DEBUG toolbar button rather than routing through
+        // the layout-tolerant `openArchitectInspector()` helper — if the button
+        // disappeared, this test must FAIL, not skip.
+        let button = app.buttons["architect-toolbar-button"]
+        XCTAssertTrue(
+            button.waitForExistence(timeout: 5),
+            "DEBUG Architect toolbar button should be present in the chat detail"
+        )
+        XCTAssertTrue(button.isHittable, "Architect toolbar button should be hittable")
+        button.tap()
 
         XCTAssertTrue(
             app.staticTexts["Architect"].waitForExistence(timeout: 3)
                 || app.navigationBars["Architect"].waitForExistence(timeout: 1),
-            "Architect inspector sheet should present with its navigation title"
+            "Tapping the Architect button should present the inspector sheet"
         )
 
         captureScreenshot(name: "architect-opened")
@@ -101,11 +111,12 @@ final class ArchitectInspectorUITests: XCTestCase {
         let record = app.buttons["architect-record-button"]
         XCTAssertTrue(record.waitForExistence(timeout: 3), "Record/Pause button should be present")
 
-        // Recording auto-starts on appear, so the button reads "Pause" first.
+        // `ArchitectView.onAppear` calls `startRecording()`, so the control
+        // deterministically reads "Pause" (recording) when the sheet opens.
         let initialLabel = record.label
-        XCTAssertTrue(
-            initialLabel == "Pause" || initialLabel == "Record",
-            "Record button should read 'Pause' or 'Record', got '\(initialLabel)'"
+        XCTAssertEqual(
+            initialLabel, "Pause",
+            "Recording auto-starts on appear, so the control should read 'Pause' initially"
         )
 
         guard record.isHittable else {
@@ -153,6 +164,11 @@ final class ArchitectInspectorUITests: XCTestCase {
     /// Opens the Architect inspector from the chat toolbar, falling back through
     /// the accessibility label and the toolbar overflow ("More") menu for
     /// compact layouts that collapse trailing toolbar items.
+    ///
+    /// This is the layout-tolerant path used by the *secondary* tests (tabs,
+    /// record, clear, dismiss) and may `XCTSkip` when the entry point is
+    /// unreachable. The entry point itself is hard-asserted (no skip) in
+    /// `test_architectToolbarButton_opensInspector`.
     private func openArchitectInspector() throws {
         let directCandidates = [
             app.buttons["architect-toolbar-button"],
@@ -211,6 +227,11 @@ final class ArchitectInspectorUITests: XCTestCase {
 
     /// A tab is considered visible if its content-root identifier resolves, or —
     /// as a hierarchy-flattening fallback — the tab's empty-state text is shown.
+    ///
+    /// The empty-state fallback holds only because `--uitesting` loads no model,
+    /// so every tab renders its "No …" placeholder. If a populated tab is ever
+    /// exercised (real model loaded), assert on populated content instead — the
+    /// empty-state text would no longer be present.
     private func tabContentVisible(_ identifier: String, emptyStateText: String) -> Bool {
         let root = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         if root.waitForExistence(timeout: 3) {
