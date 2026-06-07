@@ -35,6 +35,12 @@ struct FuzzChatCLI {
         var corpusSubset: Corpus.Subset = .full
         var tools = false
         var workers = 1
+        // How many consecutive iterations stay on the same model before the
+        // `--model all` rotation advances. Default 16 keeps a model resident
+        // across a block of iterations so a multi-model campaign doesn't pay a
+        // model load on nearly every iteration. Ignored when a single model is
+        // pinned. See RotatingFuzzFactory for the block-rotation rationale.
+        var rotateEvery = 16
         var outputDir = URL(fileURLWithPath: "tmp/fuzz", isDirectory: true)
 
         var i = argv.startIndex
@@ -63,6 +69,10 @@ struct FuzzChatCLI {
                 i = argv.index(after: i)
                 guard i < argv.endIndex, let n = Int(argv[i]), n > 0 else { fail("--workers requires a positive integer") }
                 workers = n
+            case "--rotate-every":
+                i = argv.index(after: i)
+                guard i < argv.endIndex, let n = Int(argv[i]), n >= 1 else { fail("--rotate-every requires an integer >= 1") }
+                rotateEvery = n
             case "--output-dir":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--output-dir requires a path") }
@@ -145,6 +155,7 @@ struct FuzzChatCLI {
                         sessionScripts: sessionScripts,
                         corpusSubset: corpusSubset,
                         tools: tools,
+                        rotateEvery: rotateEvery,
                         outputDir: outputDir
                     ),
                     slices: slices
@@ -164,7 +175,7 @@ struct FuzzChatCLI {
         case .ollama:
             #if Fuzz && Ollama
             do {
-                factory = try OllamaFuzzFactory.makeCampaignFactory(modelHint: modelHint)
+                factory = try OllamaFuzzFactory.makeCampaignFactory(modelHint: modelHint, blockSize: rotateEvery)
             } catch {
                 fail(String(describing: error))
             }
@@ -269,6 +280,7 @@ struct FuzzChatCLI {
         var sessionScripts: Bool
         var corpusSubset: Corpus.Subset
         var tools: Bool
+        var rotateEvery: Int
         var outputDir: URL
     }
 
@@ -386,6 +398,9 @@ struct FuzzChatCLI {
         if options.tools {
             args.append("--tools")
         }
+        // Forward the rotation block size so each worker's RotatingFuzzFactory
+        // keeps the same amortisation behaviour as the parent invocation.
+        args += ["--rotate-every", "\(options.rotateEvery)"]
         return args
     }
 
@@ -530,6 +545,9 @@ struct FuzzChatCLI {
             "  --seed N            RNG seed (default random)",
             "  --workers N         process-level workers for campaign mode (default 1).",
             "                      Iterations are split; time budgets apply per worker.",
+            "  --rotate-every N    iterations to stay on each model before rotating",
+            "                      (default 16). Only affects `--model all`; keeps a",
+            "                      model resident across a block to amortise load cost.",
             "  --output-dir PATH   findings directory (default tmp/fuzz)",
             "  --model <substr>    Ollama: pin to first installed model containing <substr>.",
             "                      Pass `all` (or omit) to rotate through every installed",
