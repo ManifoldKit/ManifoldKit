@@ -35,7 +35,9 @@ import ManifoldTestSupport
 /// behavior under test is the registry's classification logic, not the
 /// backend's wire-format parsing.
 ///
-/// Foundation row is present but skipped (blocked on #713).
+/// Foundation row is included (tool calling shipped in #713). Because the
+/// matrix is mock-driven, the Foundation row needs no hardware or availability
+/// gate.
 @MainActor
 final class ToolErrorClassificationParityTests: XCTestCase {
 
@@ -128,9 +130,10 @@ final class ToolErrorClassificationParityTests: XCTestCase {
     /// permanent) break simultaneously.
     private static let matrix: [MatrixRow] = {
         // Build the rows for every kind × every applicable backend.
-        // Backends: openai-chat, openai-responses, ollama, anthropic, mlx
-        // (Foundation is skipped — blocked on #713).
-        let backends = ["openai-chat", "openai-responses", "ollama", "anthropic", "mlx"]
+        // Backends: openai-chat, openai-responses, ollama, anthropic, mlx,
+        // foundation (tool calling shipped in #713; matrix is mock-driven so no
+        // hardware/availability gate is needed).
+        let backends = ["openai-chat", "openai-responses", "ollama", "anthropic", "mlx", "foundation"]
 
         var rows: [MatrixRow] = []
 
@@ -217,8 +220,8 @@ final class ToolErrorClassificationParityTests: XCTestCase {
     /// hardware gating. The behavior under test is the registry's
     /// classification seam, not real backend code.
     ///
-    /// Foundation row: skipped — blocked on #713. When #713 lands, add
-    /// "foundation" to `backends` above and remove this skip comment.
+    /// The Foundation row is included here — tool calling shipped in #713 and
+    /// the mock-driven matrix needs no hardware/availability gate.
     func test_parityMatrix_allErrorKinds_allBackends() async {
         for row in Self.matrix {
             let registry = ToolRegistry()
@@ -250,17 +253,6 @@ final class ToolErrorClassificationParityTests: XCTestCase {
                 "[\(row.backend)/\(row.fault)] callId must be stamped from the incoming ToolCall"
             )
         }
-    }
-
-    // MARK: - Foundation row (blocked)
-
-    /// Foundation backend row — skipped pending fix for #713.
-    ///
-    /// When #713 is resolved, remove this test and add "foundation" to the
-    /// `backends` array in `matrix` above.
-    func test_foundationBackend_allErrorKinds_skipped() throws {
-        // FIXME: https://github.com/roryford/ManifoldKit/issues/713
-        try XCTSkipIf(true, "Foundation backend tool-calling is blocked on #713 — skipping all Foundation rows")
     }
 }
 

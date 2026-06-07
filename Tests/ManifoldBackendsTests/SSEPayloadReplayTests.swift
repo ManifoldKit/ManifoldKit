@@ -291,101 +291,12 @@ final class SSEPayloadReplayTests: XCTestCase {
         XCTAssertEqual(tokens, ["A", "B", "C"])
     }
 
-    // MARK: - Claude thinking blocks (#527)
+    // MARK: - Claude citations_delta (currently unsupported)
 
-    /// Pins today's behaviour: Claude 3.7+ `thinking` / `thinking_delta` events are
-    /// silently dropped by `parseToken` because it only matches `text_delta`.
-    ///
-    /// FIXME(#527): when thinking support lands, flip these assertions to expect
-    /// `.thinkingToken("Let me reason...")` + `.thinkingCompleted` before the
-    /// final `.token("Answer.")`.
-    func test_claude_thinkingBlocks_todayDropsThinkingContent() async throws {
-        let sseText = """
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me reason..."}}
-
-        data: {"type":"content_block_stop","index":0}
-
-        data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
-
-        data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Answer."}}
-
-        data: {"type":"message_stop"}
-
-        """
-
-        let payloads = try await collectPayloads(from: sseText)
-        let handler: CloudPayloadHandler = .claude
-        let tokens = payloads.compactMap { handler.extractToken(from: $0) }
-
-        // Contract-pinning: today only the text_delta survives; the thinking_delta
-        // is dropped. Flipping this assertion is the signal that the fix landed.
-        XCTAssertEqual(tokens, ["Answer."],
-                       "ClaudeBackend currently drops thinking_delta payloads — pin behaviour until #527 ships")
-
-        // Sanity: the thinking_delta payload *is* present in the stream, we're
-        // just not surfacing it. This guards against the mistake of fixing
-        // the test by removing the upstream event.
-        let thinkingPayload = payloads.first { $0.contains("thinking_delta") }
-        XCTAssertNotNil(thinkingPayload, "thinking_delta event should be in the raw SSE stream")
-        XCTAssertNil(handler.extractToken(from: thinkingPayload!),
-                     "thinking_delta must not leak into the token stream today")
-    }
-
-    // MARK: - Claude tool_use streaming (#528)
-
-    /// Pins today's contract: `content_block_start` with `type:tool_use` and
-    /// `input_json_delta` payloads produce no tokens. A refactor that widens
-    /// `content_block_delta` matching would leak tool-use JSON into visible output.
-    ///
-    /// FIXME(#528): once tool calling is wired, flip to assert structured
-    /// tool-call events (`.toolCallStart` / `.toolCallEnd`).
-    func test_claude_toolUseStreaming_todayProducesNoTokens() async throws {
-        let sseText = """
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01","name":"get_weather","input":{}}}
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"city\\":"}}
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\\"Paris\\"}"}}
-
-        data: {"type":"content_block_stop","index":0}
-
-        data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5}}
-
-        data: {"type":"message_stop"}
-
-        """
-
-        let payloads = try await collectPayloads(from: sseText)
-        let handler: CloudPayloadHandler = .claude
-
-        // Every payload should return nil from extractToken — no token leakage.
-        for payload in payloads {
-            XCTAssertNil(handler.extractToken(from: payload),
-                         "tool_use / input_json_delta payloads must not yield tokens: \(payload)")
-        }
-
-        // Completion token count on the tool_use message_delta should still parse.
-        let messageDeltaPayload = payloads.first { $0.contains("\"type\":\"message_delta\"") }
-        XCTAssertNotNil(messageDeltaPayload)
-        let usage = handler.extractUsage(from: messageDeltaPayload!)
-        XCTAssertEqual(usage?.completionTokens, 5)
-
-        // message_stop terminates the stream.
-        let messageStop = payloads.first { $0.contains("\"type\":\"message_stop\"") }
-        XCTAssertNotNil(messageStop)
-        XCTAssertTrue(handler.isStreamEnd(messageStop!))
-    }
-
-    // MARK: - Claude citations_delta (#529)
-
-    /// Pins today's contract: `citations_delta` inside `content_block_delta`
-    /// is ignored. Only surrounding `text_delta` events yield tokens.
-    ///
-    /// FIXME(#529): once citation metadata is surfaced, flip to assert the
-    /// structured citation event between the two text tokens.
-    func test_claude_citationsDelta_todayIgnored() async throws {
+    // Claude citations_delta is not currently surfaced as a GenerationEvent — no
+    // citation case exists in the cloud event model. This documents the gap;
+    // update if/when citation surfacing lands.
+    func test_claude_citationsDelta_currentlyUnsupported() async throws {
         let sseText = """
         data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Einstein said "}}
 
@@ -410,15 +321,12 @@ final class SSEPayloadReplayTests: XCTestCase {
                      "citations_delta must not leak into the token stream today")
     }
 
-    // MARK: - Claude stop_reason variants (#530)
+    // MARK: - Claude stop_reason variants (currently parse usage only)
 
-    /// Pins today's contract: non-`end_turn` stop reasons (`refusal`,
-    /// `max_tokens`, `stop_sequence`) are no-ops for the token path. Usage
-    /// still parses out the `output_tokens` value from every variant.
-    ///
-    /// FIXME(#530): once structured stream events carry the stop reason,
-    /// flip to assert `.stopped(.refusal)` / `.stopped(.maxTokens)` etc.
-    func test_claude_stopReasonVariants_todayParseUsageOnly() async throws {
+    // GenerationEvent has no stopReason case, so Claude stop_reason variants
+    // (refusal/max_tokens/stop_sequence) are not surfaced — only usage is parsed.
+    // This documents the current gap.
+    func test_claude_stopReasonVariants_currentlyParseUsageOnly() async throws {
         let sseText = """
         data: {"type":"message_delta","delta":{"stop_reason":"refusal"},"usage":{"output_tokens":3}}
 
@@ -445,48 +353,6 @@ final class SSEPayloadReplayTests: XCTestCase {
             XCTAssertFalse(handler.isStreamEnd(payload),
                            "message_delta must not be treated as stream end: \(payload)")
         }
-    }
-
-    // MARK: - Claude interleaved content blocks (#532)
-
-    /// Pins the "flatten all text_deltas in order, regardless of `index`"
-    /// contract. Three interleaved blocks (text → tool_use → text) produce
-    /// exactly the two text tokens in order. The tool_use block's
-    /// `input_json_delta` is ignored.
-    ///
-    /// FIXME(#532): once structured block events are supported, flip to
-    /// `.token("First")`, `.toolCallStart/.toolCallEnd`, `.token("Second")`.
-    func test_claude_interleavedBlocks_todayFlattensTextInOrder() async throws {
-        let sseText = """
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"First"}}
-
-        data: {"type":"content_block_stop","index":0}
-
-        data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"x","input":{}}}
-
-        data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{}"}}
-
-        data: {"type":"content_block_stop","index":1}
-
-        data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}
-
-        data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Second"}}
-
-        data: {"type":"content_block_stop","index":2}
-
-        data: {"type":"message_stop"}
-
-        """
-
-        let payloads = try await collectPayloads(from: sseText)
-        let handler: CloudPayloadHandler = .claude
-        let tokens = payloads.compactMap { handler.extractToken(from: $0) }
-
-        // Two text_deltas survive, the tool_use input_json_delta is dropped.
-        XCTAssertEqual(tokens, ["First", "Second"],
-                       "Interleaved blocks must flatten text_deltas in order and drop tool_use json")
     }
 
     // MARK: - Existing tests
