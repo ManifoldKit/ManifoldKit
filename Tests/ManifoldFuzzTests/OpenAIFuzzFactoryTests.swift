@@ -3,6 +3,7 @@
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
+import ManifoldBackends // SSECloudBackend / OpenAIBackend (re-exported)
 @testable import ManifoldFuzzBackends
 
 /// Unit tests for ``OpenAIFuzzFactory`` — the OpenAI-Chat-Completions-compatible
@@ -23,6 +24,37 @@ final class OpenAIFuzzFactoryTests: XCTestCase {
             apiKey: "sk-test-never-sent-no-network",
             modelName: model
         )
+    }
+
+    /// The factory must thread `requestTimeout` onto the backend's per-request
+    /// HTTP idle override (``SSECloudBackend/requestIdleTimeout``) so a hung
+    /// cloud iteration abandons at the bounded value instead of the 300s shared
+    /// session default. Network-free: only `configure` + the no-op cloud
+    /// `loadModel` run before we read the override back.
+    func test_makeHandle_propagatesRequestTimeoutToBackend() async throws {
+        let factory = OpenAIFuzzFactory(
+            baseURL: URL(string: "https://openrouter.ai/api")!,
+            apiKey: "sk-test-never-sent-no-network",
+            modelName: "gpt-4o-mini",
+            requestTimeout: 42
+        )
+        let handle = try await factory.makeHandle()
+        let backend = try XCTUnwrap(
+            handle.backend as? SSECloudBackend,
+            "OpenAI fuzz backend must be an SSECloudBackend so the per-request timeout override applies."
+        )
+        XCTAssertEqual(
+            backend.requestIdleTimeout, 42,
+            "Factory must propagate requestTimeout to the backend's per-request idle override."
+        )
+    }
+
+    /// The default keeps the bound well below the 300s session default while
+    /// staying above the detectors' 60s flag threshold.
+    func test_defaultRequestTimeout_is90Seconds() async throws {
+        let handle = try await makeFactory().makeHandle()
+        let backend = try XCTUnwrap(handle.backend as? SSECloudBackend)
+        XCTAssertEqual(backend.requestIdleTimeout, 90)
     }
 
     /// Cloud generation cannot be bit-reproduced — providers don't honour a seed

@@ -24,21 +24,40 @@ public struct OpenAIFuzzFactory: FuzzBackendFactory {
     public let apiKey: String
     public let modelName: String
 
+    /// Per-request HTTP idle timeout (seconds) applied to every generation
+    /// request via ``SSECloudBackend/requestIdleTimeout``.
+    ///
+    /// The shared cloud `URLSessionProvider` idle timeout is 300s — appropriate
+    /// for production chat where a long generation may legitimately need
+    /// minutes, but ruinous for fuzz throughput: a slow/throttled free
+    /// OpenRouter model can hang ~300s per request before the session times
+    /// out. The fuzz detectors already flag anything over 60s (race-stall
+    /// first-token and total-timeout both trip at 60_000ms), so bounding the
+    /// transport lower loses no signal while reclaiming throughput.
+    public let requestTimeout: TimeInterval
+
     /// Cloud generation is non-deterministic — providers do not honour a seed
     /// reproducibly across requests, and `:free` slugs route to shifting
     /// backends. `Replayer` short-circuits with `.nonDeterministicBackend`
     /// when this is `false` rather than run a guaranteed-noisy replay.
     public var supportsDeterministicReplay: Bool { false }
 
-    public init(baseURL: URL, apiKey: String, modelName: String) {
+    /// - Parameter requestTimeout: per-request HTTP idle timeout in seconds.
+    ///   Defaults to 90s — well above the detectors' 60s flag threshold, well
+    ///   below the 300s session default that otherwise strands a hung request.
+    public init(baseURL: URL, apiKey: String, modelName: String, requestTimeout: TimeInterval = 90) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.modelName = modelName
+        self.requestTimeout = requestTimeout
     }
 
     public func makeHandle() async throws -> FuzzRunner.BackendHandle {
         let backend = OpenAIBackend()
         backend.configure(baseURL: baseURL, apiKey: apiKey, modelName: modelName)
+        // Bound the per-request HTTP idle window for the fuzz path only. The
+        // production session default (300s, URLSessionProvider) is untouched.
+        backend.requestIdleTimeout = requestTimeout
         // Cloud `loadModel` is a no-op that only validates the base URL and
         // flips `isModelLoaded` — no network round-trip happens here, so the
         // factory stays cheap and the first request fires only on `generate`.

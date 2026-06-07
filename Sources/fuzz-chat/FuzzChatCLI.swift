@@ -48,6 +48,14 @@ struct FuzzChatCLI {
         // explicit opt-out.
         var baseURLString: String?
         var apiKeyArg: String?
+        // Per-request HTTP idle timeout (seconds) for the `--backend openai`
+        // path only. Default 90s bounds a hung iteration well below the 300s
+        // shared session default while staying above the detectors' 60s flag
+        // threshold, so slow-but-real cases are still captured. `Explicit`
+        // tracks whether the user passed the flag so we can warn when it's
+        // paired with a backend that ignores it.
+        var requestTimeout: TimeInterval = 90
+        var requestTimeoutExplicit = false
 
         var i = argv.startIndex
         while i < argv.endIndex {
@@ -95,6 +103,13 @@ struct FuzzChatCLI {
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--api-key requires a value") }
                 apiKeyArg = argv[i]
+            case "--request-timeout":
+                i = argv.index(after: i)
+                guard i < argv.endIndex, let seconds = TimeInterval(argv[i]), seconds > 0 else {
+                    fail("--request-timeout requires a positive number of seconds")
+                }
+                requestTimeout = seconds
+                requestTimeoutExplicit = true
             case "--detector":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--detector requires a value") }
@@ -140,6 +155,15 @@ struct FuzzChatCLI {
 
         if backend == .mlx {
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh or xcodebuild.")
+        }
+
+        // `--request-timeout` only bounds the cloud HTTP transport. Local
+        // backends (Llama/MLX/Foundation) have no per-request HTTP idle window,
+        // so flag it as a no-op rather than silently dropping it.
+        if requestTimeoutExplicit && backend != .openai {
+            FileHandle.standardError.write(Data(
+                "fuzz-chat: note — --request-timeout only applies to --backend openai; ignored for \(backend.rawValue)\n".utf8
+            ))
         }
 
         // Default termination if neither flag passed: 5 minutes.
@@ -221,7 +245,8 @@ struct FuzzChatCLI {
             factory = makeOpenAIFactory(
                 baseURLString: baseURLString,
                 apiKeyArg: apiKeyArg,
-                modelHint: modelHint
+                modelHint: modelHint,
+                requestTimeout: requestTimeout
             )
             #else
             fail("openai backend requires the Fuzz and CloudSaaS build traits. Run via: swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
@@ -555,6 +580,7 @@ struct FuzzChatCLI {
         baseURLString: String?,
         apiKeyArg: String?,
         modelHint: String?,
+        requestTimeout: TimeInterval = 90,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> OpenAIFuzzFactory {
         guard let baseURLString, !baseURLString.isEmpty else {
@@ -573,7 +599,7 @@ struct FuzzChatCLI {
               !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             fail("--backend openai requires --model <slug> (e.g. --model deepseek/deepseek-r1:free).")
         }
-        return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model)
+        return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model, requestTimeout: requestTimeout)
     }
     #endif
 
@@ -621,6 +647,11 @@ struct FuzzChatCLI {
             "                      base = https://openrouter.ai/api",
             "  --api-key <key>     openai backend: API key (discouraged — leaks into ps/history).",
             "                      Prefer the OPENROUTER_API_KEY (or OPENAI_API_KEY) env var.",
+            "  --request-timeout S openai backend: per-request HTTP idle timeout in seconds",
+            "                      (default 90). Slow/throttled free OpenRouter models can",
+            "                      otherwise hang ~300s (the shared session default) per",
+            "                      request; detectors already flag >60s, so 90s loses no",
+            "                      signal. Ignored for non-openai backends.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",
             "  --quiet             suppress live output (still prints findings)",
