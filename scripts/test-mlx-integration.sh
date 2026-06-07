@@ -31,6 +31,14 @@
 #   scripts/test-mlx-integration.sh                # discover any valid MLX dir
 #   scripts/test-mlx-integration.sh <name>         # prefer dir whose name contains <name>
 #   scripts/test-mlx-integration.sh <name> --rebuild  # force rebuild
+#   scripts/test-mlx-integration.sh --only <Class>    # run just one test class
+#
+# `--only <Class>` narrows the run to a single test class
+# (`-only-testing ManifoldMLXIntegrationTests/<Class>`). It is applied only at
+# the `test-without-building` step, so the cached test bundle under
+# `.build/mlx-integration-test-derived` stays reusable across different `--only`
+# runs without a rebuild. Combine with a model hint, e.g.
+# `scripts/test-mlx-integration.sh gemma-4-26B --only MLXBackendResourceReleaseIntegrationTest`.
 #
 # Models are searched in $HOME/Documents/Models/ (and one nested level) per
 # `HardwareRequirements.modelSearchDirectories()`. A dir is valid if it has:
@@ -43,11 +51,49 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-MODEL_HINT="${1:-}"
+MODEL_HINT=""
 REBUILD=0
-for arg in "$@"; do
-    [[ "$arg" == "--rebuild" ]] && REBUILD=1
+ONLY_CLASS=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --rebuild)
+            REBUILD=1
+            shift
+            ;;
+        --only)
+            ONLY_CLASS="${2:-}"
+            if [[ -z "$ONLY_CLASS" ]]; then
+                echo "ERROR: --only requires a test class name (e.g. --only MLXBackendResourceReleaseIntegrationTest)" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        --only=*)
+            ONLY_CLASS="${1#--only=}"
+            shift
+            ;;
+        -*)
+            echo "ERROR: unknown flag: $1" >&2
+            exit 1
+            ;;
+        *)
+            if [[ -z "$MODEL_HINT" ]]; then
+                MODEL_HINT="$1"
+            else
+                echo "ERROR: unexpected argument: $1 (model hint already set to '$MODEL_HINT')" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
 done
+
+# Narrow the run to a single class when --only is given. Applied only at the
+# test-without-building step (below) so the cached build bundle stays reusable.
+ONLY_TESTING_RUN="ManifoldMLXIntegrationTests"
+if [[ -n "$ONLY_CLASS" ]]; then
+    ONLY_TESTING_RUN="ManifoldMLXIntegrationTests/$ONLY_CLASS"
+fi
 
 DERIVED="$REPO_ROOT/.build/mlx-integration-test-derived"
 
@@ -107,8 +153,8 @@ if [[ -n "${MLX_VLM_TEST_MODEL:-}" ]]; then
     echo "==> Forwarding MLX_VLM_TEST_MODEL=$MLX_VLM_TEST_MODEL to the VLM gate experiment"
 fi
 
-echo "==> Running tests (xcodebuild test-without-building)…"
+echo "==> Running tests (xcodebuild test-without-building): -only-testing $ONLY_TESTING_RUN"
 xcodebuild test-without-building \
     -xctestrun "$RUNFILE" \
-    -only-testing ManifoldMLXIntegrationTests \
+    -only-testing "$ONLY_TESTING_RUN" \
     -destination 'platform=macOS'
