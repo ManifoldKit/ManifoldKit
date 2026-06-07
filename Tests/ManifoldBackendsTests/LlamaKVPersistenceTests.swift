@@ -363,8 +363,8 @@ final class LlamaKVPersistenceTests: XCTestCase {
             "Turn 2 must emit .kvCacheReuse — without it this determinism check is vacuous"
         )
 
-        // FIXME: https://github.com/roryford/ManifoldKit/issues — file a tracking issue for
-        // "enforce same batch shape on KV-reuse re-decode to guarantee greedy determinism".
+        // FIXME: https://github.com/roryford/ManifoldKit/issues/1677 — enforce same batch shape
+        // on KV-reuse re-decode to guarantee greedy determinism.
         // Metal attention kernels use different parallel-reduction strategies for batches of
         // different sizes. When KV prefix reuse re-decodes only the last 2 prompt tokens (a
         // 2-token batch), the FP accumulation order differs from Turn 1's full-prompt batch,
