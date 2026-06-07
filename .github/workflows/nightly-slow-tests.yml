@@ -140,6 +140,29 @@ jobs:
             --skip-update
           scripts/check-coverage.sh
 
+      - name: Public API source-compatibility check (full — all five modules)
+        # Full unconditional check across all five trait-free public targets.
+        # The per-PR gate in ci.yml only runs on modules that changed in the PR
+        # and skips entirely on doc/test/script-only changes — this step
+        # catches any API break that slipped through, within 24 h.
+        #
+        # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
+        # `llama` C module ("missing required module 'llama'").
+        #
+        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed: it
+        # `@_exported`-re-exports `ManifoldBackends`, which transitively pulls in
+        # the llama-dependent family targets, producing "baseline for ManifoldKit
+        # contains no symbols". The five targets below cover everything
+        # `import ManifoldKit` consumers touch except the backend families,
+        # which are pinned indirectly via the backend contract suite.
+        id: api-check
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          swift package diagnose-api-breaking-changes origin/main \
+            --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
+            --targets ManifoldPersistenceSwiftData --targets ManifoldUI
+
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so
         # diagnostics from earlier failures are preserved.
@@ -152,6 +175,7 @@ jobs:
           MCP_E2E_SMOKE_FAILED: ${{ steps.test-mcp-e2e-smoke.outcome == 'failure' }}
           OPERATIONAL_FAILED: ${{ steps.test-operational.outcome == 'failure' }}
           COVERAGE_THRESHOLDS_FAILED: ${{ steps.test-coverage-thresholds.outcome == 'failure' }}
+          API_CHECK_FAILED: ${{ steps.api-check.outcome == 'failure' }}
         run: |
           mkdir -p test-diagnostics
           {
@@ -165,6 +189,7 @@ jobs:
             echo "mcp-e2e-smoke-failed=${MCP_E2E_SMOKE_FAILED}"
             echo "operational-failed=${OPERATIONAL_FAILED}"
             echo "coverage-thresholds-failed=${COVERAGE_THRESHOLDS_FAILED}"
+            echo "api-check-failed=${API_CHECK_FAILED}"
           } > test-diagnostics/failed-steps.txt
 
       - name: Upload test diagnostics on failure
