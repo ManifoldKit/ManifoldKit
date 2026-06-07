@@ -313,6 +313,67 @@ final class InferenceBackendContractTests: XCTestCase {
         }
     }
 
+    // MARK: - Error sanitization (footgun audit class A — #1623)
+
+    /// A poison probe used only to prove the *negative* path: backends that
+    /// declare no in-stream error fixture must return `nil` from
+    /// `extractStreamError` for any input, confirming the skip below can't
+    /// mask a newly-introduced (and unsanitized) handler error path.
+    private static let poisonProbe =
+        #"{"type":"error","error":{"message":"boom https://evil.example eyJabc"}}"#
+
+    /// Every cloud backend that surfaces an upstream error *inside* a 200-OK
+    /// stream must route that text through `CloudErrorSanitizer` before it can
+    /// reach the UI. The footgun audit (2026-06-05) found the sanitize
+    /// invariant wired into only the non-2xx HTTP branch (class A — "two paths,
+    /// one guard"); #1630 added the `sanitized*` construction chokepoint. This
+    /// scenario is the per-family conformance proof that the chokepoint is
+    /// actually on every backend's in-stream error path.
+    ///
+    /// Only Claude and the OpenAI Responses adapter expose an in-stream handler
+    /// error path (`extractStreamError`); OpenAI Chat Completions and Ollama
+    /// surface server errors at the HTTP-status boundary in `SSECloudBackend`
+    /// (covered by `CloudBackendErrorSanitizedFactoryTests`). Participants
+    /// without an `error/in-stream` fixture are asserted to genuinely lack the
+    /// path rather than silently skipped.
+    ///
+    /// The fixture payloads carry a JWT, a URL, and >256 chars of padding. The
+    /// redaction audit (`FixtureRedactionAuditTest`) has no JWT/URL pattern, so
+    /// the poison is safe to commit while still exercising the sanitizer's JWT
+    /// redaction, URL redaction, and length cap.
+    func test_inStreamServerError_isSanitizedAtHandler() throws {
+        for p in Self.participants {
+            let url = try fixtureURL(for: p, scenario: "error/in-stream", file: "event.json")
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                XCTAssertNil(
+                    p.handler.extractStreamError(from: Self.poisonProbe),
+                    "[\(p.label)] declares no in-stream error fixture, but extractStreamError returned a non-nil error — a new handler error path was added without a sanitization conformance fixture"
+                )
+                continue
+            }
+            let payload = try String(contentsOf: url, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let surfaced = p.handler.extractStreamError(from: payload) else {
+                XCTFail("[\(p.label)] in-stream error fixture did not surface an error through extractStreamError")
+                continue
+            }
+            let text = (surfaced as? CloudBackendError)?.errorDescription
+                ?? String(describing: surfaced)
+            XCTAssertFalse(text.contains("eyJ"), "[\(p.label)] surfaced error leaked a JWT")
+            XCTAssertFalse(text.contains("://"), "[\(p.label)] surfaced error leaked a URL scheme")
+            XCTAssertFalse(
+                text.lowercased().contains("evil.example"),
+                "[\(p.label)] surfaced error leaked a URL host"
+            )
+            // Sanitizer caps the upstream text at 256 chars + ellipsis; the
+            // error-description wrapper adds a short fixed prefix.
+            XCTAssertLessThan(
+                text.count, 400,
+                "[\(p.label)] surfaced error was not length-bounded — sanitizer cap not applied"
+            )
+        }
+    }
+
     // MARK: - Fixture loading
 
     /// Reads `response.sse` from the participant's scenario directory and
