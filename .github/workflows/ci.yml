@@ -73,6 +73,13 @@ jobs:
       # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
       # test --filter; nothing consumes it to change execution yet.
       affected: ${{ steps.affected.outputs.affected }}
+      # Per-module API surface flags — consumed by the per-PR API-break gate to
+      # limit diagnose-api-breaking-changes to only the modules that changed.
+      api-inference: ${{ steps.filter.outputs.api-inference }}
+      api-runtime: ${{ steps.filter.outputs.api-runtime }}
+      api-cloudcore: ${{ steps.filter.outputs.api-cloudcore }}
+      api-persistence: ${{ steps.filter.outputs.api-persistence }}
+      api-ui: ${{ steps.filter.outputs.api-ui }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -129,6 +136,21 @@ jobs:
               - 'Sources/ManifoldFoundation/**'
               - 'scripts/check-foundation-only-bundle.sh'
               - '.github/workflows/ci.yml'
+            # Per-module API surface filters — used to gate and narrow the
+            # per-PR diagnose-api-breaking-changes check to only the targets
+            # that actually changed. Intentionally omit Package.swift /
+            # Package.resolved: a dep-graph change can't introduce an API
+            # break in the Swift source; the nightly full-run will catch it.
+            api-inference:
+              - 'Sources/ManifoldInference/**'
+            api-runtime:
+              - 'Sources/ManifoldRuntime/**'
+            api-cloudcore:
+              - 'Sources/ManifoldCloudCore/**'
+            api-persistence:
+              - 'Sources/ManifoldPersistenceSwiftData/**'
+            api-ui:
+              - 'Sources/ManifoldUI/**'
 
       # Tier 0 selective testing — DRY-RUN ONLY (issue #1588).
       #
@@ -388,35 +410,42 @@ jobs:
           }
           echo "Tier 0 affected-suites graph snapshot OK."
 
-      - name: Public API source-compatibility check
+      - name: Public API source-compatibility check (changed modules only)
         # Guards `import ManifoldKit` source-compat for downstream consumers
         # (TavernPad / localclaw): a public symbol removed by accident from the
-        # umbrella's core targets would break those builds. `diagnose-api-
-        # breaking-changes` exits non-zero on a real break, so this is a plain
-        # failing step — no env-var/baseline-file plumbing.
+        # umbrella's core targets would break those builds.
+        #
+        # Only runs when at least one of the five checked modules changed
+        # (path-gated via the `changes` job) and only checks those modules —
+        # avoiding the ~12 min compile cost on PRs that only touch tests,
+        # docs, or unrelated modules. The nightly full run (nightly-slow-tests.yml)
+        # always checks all five targets so Sources-only regressions in modules
+        # not touched by a PR are still caught within 24 h.
         #
         # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
         # `llama` C module — swift-api-digester reports "missing required module
         # 'llama'" when checking out the baseline source.
         #
-        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed: it
-        # `@_exported`-re-exports `ManifoldBackends`, which transitively pulls in
-        # the llama-dependent family targets, so digesting its public interface
-        # hits the same "missing required module 'llama'" failure
-        # (`baseline for ManifoldKit contains no symbols`). Instead we name the
-        # umbrella's trait-free re-exported faces directly — `ManifoldUI` (the
-        # chat-consumer surface) and `ManifoldPersistenceSwiftData` (which owns
-        # the public `ManifoldBootstrap` entry point) — alongside the inference
-        # core. Together these cover everything `import ManifoldKit` consumers
-        # (TavernPad / localclaw) actually touch except the backend families,
-        # which are pinned indirectly via the backend contract suite. All five
-        # targets digest cleanly against the baseline (verified locally).
+        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed — see the
+        # comment above the full-run equivalent step in nightly-slow-tests.yml.
+        if: |
+          needs.changes.outputs.api-inference == 'true' ||
+          needs.changes.outputs.api-runtime == 'true' ||
+          needs.changes.outputs.api-cloudcore == 'true' ||
+          needs.changes.outputs.api-persistence == 'true' ||
+          needs.changes.outputs.api-ui == 'true'
         run: |
           set -euo pipefail
-          git fetch origin main
-          swift package diagnose-api-breaking-changes origin/main \
-            --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
-            --targets ManifoldPersistenceSwiftData --targets ManifoldUI
+          TARGETS=""
+          [[ "${{ needs.changes.outputs.api-inference }}" == "true" ]]   && TARGETS="$TARGETS --targets ManifoldInference"
+          [[ "${{ needs.changes.outputs.api-runtime }}" == "true" ]]     && TARGETS="$TARGETS --targets ManifoldRuntime"
+          [[ "${{ needs.changes.outputs.api-cloudcore }}" == "true" ]]   && TARGETS="$TARGETS --targets ManifoldCloudCore"
+          [[ "${{ needs.changes.outputs.api-persistence }}" == "true" ]] && TARGETS="$TARGETS --targets ManifoldPersistenceSwiftData"
+          [[ "${{ needs.changes.outputs.api-ui }}" == "true" ]]          && TARGETS="$TARGETS --targets ManifoldUI"
+          echo "Checking API surface for:${TARGETS}"
+          git fetch --depth=1 origin main
+          # shellcheck disable=SC2086
+          swift package diagnose-api-breaking-changes origin/main $TARGETS
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests
