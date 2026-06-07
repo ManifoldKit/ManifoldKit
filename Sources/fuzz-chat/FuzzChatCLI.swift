@@ -42,6 +42,12 @@ struct FuzzChatCLI {
         // pinned. See RotatingFuzzFactory for the block-rotation rationale.
         var rotateEvery = 16
         var outputDir = URL(fileURLWithPath: "tmp/fuzz", isDirectory: true)
+        // Cloud (OpenAI-compatible) backend wiring. `--base-url` is required for
+        // `--backend openai`; the key is read from the environment by default
+        // (keys on argv leak into `ps`/shell history), with `--api-key` as an
+        // explicit opt-out.
+        var baseURLString: String?
+        var apiKeyArg: String?
 
         var i = argv.startIndex
         while i < argv.endIndex {
@@ -81,6 +87,14 @@ struct FuzzChatCLI {
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--model requires a value") }
                 modelHint = argv[i]
+            case "--base-url":
+                i = argv.index(after: i)
+                guard i < argv.endIndex else { fail("--base-url requires a URL") }
+                baseURLString = argv[i]
+            case "--api-key":
+                i = argv.index(after: i)
+                guard i < argv.endIndex else { fail("--api-key requires a value") }
+                apiKeyArg = argv[i]
             case "--detector":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--detector requires a value") }
@@ -201,6 +215,16 @@ struct FuzzChatCLI {
             }
             #else
             fail("Foundation backend requires macOS 26+ with FoundationModels and the Fuzz build trait. Run via: scripts/fuzz.sh")
+            #endif
+        case .openai:
+            #if CloudSaaS && Fuzz
+            factory = makeOpenAIFactory(
+                baseURLString: baseURLString,
+                apiKeyArg: apiKeyArg,
+                modelHint: modelHint
+            )
+            #else
+            fail("openai backend requires the Fuzz and CloudSaaS build traits. Run via: swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
             #endif
         case .mlx:
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh --with-mlx or --backend mlx.")
@@ -521,6 +545,38 @@ struct FuzzChatCLI {
         }
     }
 
+    #if CloudSaaS && Fuzz
+    /// Builds the OpenAI-compatible cloud factory, validating the base URL and
+    /// resolving the API key. The key is read from `--api-key` when present,
+    /// otherwise from the environment (`OPENROUTER_API_KEY` preferred, then
+    /// `OPENAI_API_KEY`) — keys on argv leak into `ps`/shell history. Fails
+    /// with an actionable message naming the exact remedy for any missing input.
+    static func makeOpenAIFactory(
+        baseURLString: String?,
+        apiKeyArg: String?,
+        modelHint: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> OpenAIFuzzFactory {
+        guard let baseURLString, !baseURLString.isEmpty else {
+            fail("--backend openai requires --base-url <url> (e.g. https://openrouter.ai/api — note: NO /v1 suffix; OpenAIBackend appends v1/chat/completions itself).")
+        }
+        guard let url = URL(string: baseURLString),
+              let scheme = url.scheme, scheme == "http" || scheme == "https",
+              url.host != nil else {
+            fail("--base-url must be an absolute http(s) URL with a host (got: \(baseURLString))")
+        }
+        let resolvedKey = apiKeyArg ?? environment["OPENROUTER_API_KEY"] ?? environment["OPENAI_API_KEY"]
+        guard let apiKey = resolvedKey, !apiKey.isEmpty else {
+            fail("--backend openai requires an API key. Set OPENROUTER_API_KEY (preferred) or OPENAI_API_KEY in the environment, or pass --api-key (keys on argv leak into ps/shell history).")
+        }
+        guard let model = modelHint,
+              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            fail("--backend openai requires --model <slug> (e.g. --model deepseek/deepseek-r1:free).")
+        }
+        return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model)
+    }
+    #endif
+
     /// Validates `--replay` argument shape: 12–40 lowercase hex chars. Finding
     /// hashes produced by `Finding.computeHash` are exactly 12 chars today;
     /// allowing up to 40 lets us roundtrip full SHA-256 prefixes if the finding
@@ -537,9 +593,14 @@ struct FuzzChatCLI {
             "Usage: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat [options]",
             "",
             "Options:",
-            "  --backend ollama|mock|chaos|llama|foundation|mlx|all   default: llama",
-            "                      mock  = MockInferenceBackend (hardware-free, used by PR-tier CI)",
-            "                      chaos = ChaosBackend (hardware-free; injects stream failures)",
+            "  --backend ollama|mock|chaos|llama|foundation|mlx|openai|all   default: llama",
+            "                      mock   = MockInferenceBackend (hardware-free, used by PR-tier CI)",
+            "                      chaos  = ChaosBackend (hardware-free; injects stream failures)",
+            "                      openai = OpenAI-compatible cloud endpoint (OpenRouter, OpenAI, …)",
+            "                               via OpenAIBackend. Needs the CloudSaaS trait:",
+            "                               swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat",
+            "                               --backend openai --base-url <url> --model <slug>",
+            "                               Replay/shrink are unavailable (cloud is non-deterministic).",
             "  --minutes N         time budget (default 5 if neither flag set)",
             "  --iterations N      iteration budget",
             "  --seed N            RNG seed (default random)",
@@ -553,7 +614,13 @@ struct FuzzChatCLI {
             "                      Pass `all` (or omit) to rotate through every installed",
             "                      Ollama model, one per iteration. Llama: pin to the",
             "                      first GGUF whose filename contains <substr>; `all` is",
-            "                      ignored because llama.cpp stays single-model.",
+            "                      ignored because llama.cpp stays single-model. openai:",
+            "                      the exact model slug to request (e.g. deepseek/deepseek-r1:free).",
+            "  --base-url <url>    openai backend: base URL of the OpenAI-compatible endpoint.",
+            "                      MUST omit the /v1 suffix (OpenAIBackend appends it). OpenRouter",
+            "                      base = https://openrouter.ai/api",
+            "  --api-key <key>     openai backend: API key (discouraged — leaks into ps/history).",
+            "                      Prefer the OPENROUTER_API_KEY (or OPENAI_API_KEY) env var.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",
             "  --quiet             suppress live output (still prints findings)",

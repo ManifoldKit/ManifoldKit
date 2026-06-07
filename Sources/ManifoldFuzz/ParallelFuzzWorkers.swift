@@ -26,6 +26,10 @@ public enum ParallelFuzzWorkerPlanner {
             return 4
         case .llama, .foundation, .mlx, .all:
             return 1
+        // Cloud endpoints are rate-limited (HTTP 429); fanning out workers only
+        // amplifies throttling and burns quota. Pin to a single worker.
+        case .openai:
+            return 1
         }
     }
 

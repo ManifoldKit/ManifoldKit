@@ -32,6 +32,14 @@ for arg in "$@"; do
             echo "  --workers N  Run N process-level fuzz-chat workers (SwiftPM path only)"
             echo "  -h, --help   Show this help and forward to fuzz-chat -h"
             echo ""
+            echo "Cloud (OpenAI-compatible, e.g. OpenRouter):"
+            echo "  export OPENROUTER_API_KEY=sk-or-...   # preferred; or OPENAI_API_KEY"
+            echo "  scripts/fuzz.sh --backend openai --base-url https://openrouter.ai/api \\"
+            echo "                  --model deepseek/deepseek-r1:free --minutes 5"
+            echo "  Adds the CloudSaaS trait automatically. Caveats: replay/shrink unavailable"
+            echo "  (non-deterministic); free models are rate-limited (429) and ':free' slugs may"
+            echo "  404 on data-policy gating; --base-url must omit /v1 (backend appends it)."
+            echo ""
             echo "Forwarding to: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h"
             echo "─────────────────────────────────────────────────────────────"
             swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h || true
@@ -49,14 +57,17 @@ for ((i = 0; i < ${#FORWARDED_ARGS[@]}; i++)); do
         --backend)
             if (( i + 1 < ${#FORWARDED_ARGS[@]} )); then
                 REQUESTED_BACKEND="${FORWARDED_ARGS[$((i + 1))]}"
-                ((i++))
+                # `i=$((i+1))` not `((i++))`: post-increment returns the old
+                # value, so when i=0 the `((i++))` exit status is 1 and `set -e`
+                # would abort the script (bites `--backend` as the first arg).
+                i=$((i + 1))
             fi
             ;;
         --backend=*) REQUESTED_BACKEND="${arg#*=}" ;;
         --workers)
             if (( i + 1 < ${#FORWARDED_ARGS[@]} )); then
                 REQUESTED_WORKERS="${FORWARDED_ARGS[$((i + 1))]}"
-                ((i++))
+                i=$((i + 1))
             fi
             ;;
         --workers=*) REQUESTED_WORKERS="${arg#*=}" ;;
@@ -66,6 +77,16 @@ done
 if ! [[ "$REQUESTED_WORKERS" =~ ^[0-9]+$ ]] || (( REQUESTED_WORKERS < 1 )); then
     echo "scripts/fuzz.sh: --workers requires a positive integer" >&2
     exit 2
+fi
+
+# Trait set forwarded to `swift run`. The openai (OpenAI-compatible cloud)
+# backend additionally needs the CloudSaaS trait so ManifoldCloud's
+# OpenAIBackend links into fuzz-chat.
+TRAITS="Fuzz,MLX,Llama,Ollama"
+CLOUD_BACKEND=0
+if [[ "$REQUESTED_BACKEND" == "openai" ]]; then
+    TRAITS="Fuzz,CloudSaaS,MLX,Llama,Ollama"
+    CLOUD_BACKEND=1
 fi
 
 RUN_SWIFT=1
@@ -86,50 +107,76 @@ if [[ "$REQUESTED_BACKEND" == "mlx" ]]; then
     done
 fi
 
-LLAMA_HIT="miss"
-MLX_HIT="miss"
-OLLAMA_HIT="miss"
-FOUNDATION_HIT="miss"
-
-MODELS_DIR="$HOME/Documents/Models"
-if [[ -d "$MODELS_DIR" ]]; then
-    if find "$MODELS_DIR" -maxdepth 2 -type f -name "*.gguf" -print -quit 2>/dev/null | grep -q .; then
-        LLAMA_HIT="hit"
+if [[ $CLOUD_BACKEND -eq 1 ]]; then
+    # Cloud (OpenAI-compatible) backend: no local model discovery. Require an
+    # API key in the environment (keys on argv leak into ps/shell history) and
+    # surface the free-tier caveats up front.
+    CLOUD_KEY="${OPENROUTER_API_KEY:-${OPENAI_API_KEY:-}}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ManifoldFuzz preflight (cloud / OpenAI-compatible)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [[ -z "$CLOUD_KEY" ]]; then
+        echo "scripts/fuzz.sh: --backend openai needs an API key in the environment." >&2
+        echo "  export OPENROUTER_API_KEY=sk-or-...   (preferred; or OPENAI_API_KEY)" >&2
+        echo "  Do NOT pass keys on the command line — they leak into ps/shell history." >&2
+        exit 2
     fi
-    if find "$MODELS_DIR" -maxdepth 3 -type f -name "*.safetensors" -print -quit 2>/dev/null | grep -q .; then
-        MLX_HIT="hit"
+    echo "  API key: present (env)"
+    echo "  Caveats:"
+    echo "    • Replay/shrink are unavailable — cloud generation is non-deterministic."
+    echo "    • Free OpenRouter models are rate-limited (HTTP 429) and ':free' slugs"
+    echo "      can 404 on data-policy gating. Transient HTTP errors are recorded as"
+    echo "      failed runs, NOT fuzz findings, so a throttled campaign stays honest."
+    echo "    • --base-url must omit the /v1 suffix (OpenRouter base = https://openrouter.ai/api)."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+else
+    LLAMA_HIT="miss"
+    MLX_HIT="miss"
+    OLLAMA_HIT="miss"
+    FOUNDATION_HIT="miss"
+
+    MODELS_DIR="$HOME/Documents/Models"
+    if [[ -d "$MODELS_DIR" ]]; then
+        if find "$MODELS_DIR" -maxdepth 2 -type f -name "*.gguf" -print -quit 2>/dev/null | grep -q .; then
+            LLAMA_HIT="hit"
+        fi
+        if find "$MODELS_DIR" -maxdepth 3 -type f -name "*.safetensors" -print -quit 2>/dev/null | grep -q .; then
+            MLX_HIT="hit"
+        fi
     fi
-fi
 
-if [[ $WITH_MLX -eq 1 && "$REQUESTED_BACKEND" != "mlx" && $REQUESTED_WORKERS -gt 1 ]]; then
-    echo "scripts/fuzz.sh: --workers > 1 cannot be combined with --with-mlx; run the SwiftPM and MLX campaigns separately." >&2
-    exit 2
-fi
+    if [[ $WITH_MLX -eq 1 && "$REQUESTED_BACKEND" != "mlx" && $REQUESTED_WORKERS -gt 1 ]]; then
+        echo "scripts/fuzz.sh: --workers > 1 cannot be combined with --with-mlx; run the SwiftPM and MLX campaigns separately." >&2
+        exit 2
+    fi
 
-if curl -s -m 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
-    OLLAMA_HIT="hit"
-fi
+    if curl -s -m 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
+        OLLAMA_HIT="hit"
+    fi
 
-PRODUCT_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 0)"
-PRODUCT_MAJOR="${PRODUCT_VERSION%%.*}"
-if [[ "$PRODUCT_MAJOR" =~ ^[0-9]+$ ]] && (( PRODUCT_MAJOR >= 26 )); then
-    FOUNDATION_HIT="hit"
-fi
+    PRODUCT_VERSION="$(sw_vers -productVersion 2>/dev/null || echo 0)"
+    PRODUCT_MAJOR="${PRODUCT_VERSION%%.*}"
+    if [[ "$PRODUCT_MAJOR" =~ ^[0-9]+$ ]] && (( PRODUCT_MAJOR >= 26 )); then
+        FOUNDATION_HIT="hit"
+    fi
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ManifoldFuzz preflight"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-printf "  Discovered: Llama=%s, MLX=%s, Ollama=%s, Foundation=%s\n" \
-    "$LLAMA_HIT" "$MLX_HIT" "$OLLAMA_HIT" "$FOUNDATION_HIT"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ManifoldFuzz preflight"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    printf "  Discovered: Llama=%s, MLX=%s, Ollama=%s, Foundation=%s\n" \
+        "$LLAMA_HIT" "$MLX_HIT" "$OLLAMA_HIT" "$FOUNDATION_HIT"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-if [[ "$LLAMA_HIT" == "miss" && "$MLX_HIT" == "miss" && "$OLLAMA_HIT" == "miss" && "$FOUNDATION_HIT" == "miss" ]]; then
-    echo "No usable backends detected. Install hints:" >&2
-    echo "  Ollama:     brew install ollama && ollama serve   (then: ollama pull qwen3.5:4b)" >&2
-    echo "  Llama:      drop a *.gguf into ~/Documents/Models/ or ~/Documents/Models/<name>/" >&2
-    echo "  MLX:        drop an MLX snapshot into ~/Documents/Models/<name>/ (config.json + *.safetensors + tokenizer)" >&2
-    echo "  Foundation: requires macOS 26+" >&2
-    exit 2
+    if [[ "$LLAMA_HIT" == "miss" && "$MLX_HIT" == "miss" && "$OLLAMA_HIT" == "miss" && "$FOUNDATION_HIT" == "miss" ]]; then
+        echo "No usable backends detected. Install hints:" >&2
+        echo "  Ollama:     brew install ollama && ollama serve   (then: ollama pull qwen3.5:4b)" >&2
+        echo "  Llama:      drop a *.gguf into ~/Documents/Models/ or ~/Documents/Models/<name>/" >&2
+        echo "  MLX:        drop an MLX snapshot into ~/Documents/Models/<name>/ (config.json + *.safetensors + tokenizer)" >&2
+        echo "  Foundation: requires macOS 26+" >&2
+        echo "  OpenAI:     --backend openai --base-url https://openrouter.ai/api --model <slug>" >&2
+        echo "              (set OPENROUTER_API_KEY; no local model needed)" >&2
+        exit 2
+    fi
 fi
 
 HAS_BUDGET=0
@@ -196,11 +243,11 @@ cd "$PACKAGE_DIR"
 SWIFT_EXIT=0
 if [[ $RUN_SWIFT -eq 1 ]]; then
     echo ""
-    echo "Running: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat ${FORWARDED_ARGS[*]+"${FORWARDED_ARGS[*]}"}"
+    echo "Running: swift run --traits $TRAITS fuzz-chat ${FORWARDED_ARGS[*]+"${FORWARDED_ARGS[*]}"}"
     echo ""
 
     set +e
-    swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}"
+    swift run --traits "$TRAITS" fuzz-chat "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}"
     SWIFT_EXIT=$?
     set -e
 else
