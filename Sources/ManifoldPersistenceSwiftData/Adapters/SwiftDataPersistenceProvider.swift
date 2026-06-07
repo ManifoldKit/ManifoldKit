@@ -163,7 +163,20 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         guard let session = try fetchSwiftDataSession(id: sessionID) else {
             throw ChatPersistenceError.sessionNotFound(sessionID)
         }
-        try await deleteMessages(for: sessionID)
+        // Stage the message purge and the session delete against the context,
+        // then commit both with a single `save()` so they land atomically.
+        // The previous shape called the public `deleteMessages(for:)` (which
+        // saves on its own) and then saved the session delete separately — two
+        // commits, so a failure on the second left the messages already
+        // committed-gone while the session row survived. Staging both before
+        // one save closes that window: if the save throws, neither delete
+        // reaches the store.
+        let messages = try modelContext.fetch(
+            FetchDescriptor<ChatMessage>(predicate: #Predicate { $0.sessionID == sessionID })
+        )
+        for message in messages {
+            modelContext.delete(message)
+        }
         modelContext.delete(session)
         try modelContext.save()
     }
@@ -383,6 +396,17 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     public func performMessageMutations(_ mutations: [MessageStoreMutation]) async throws {
         guard !mutations.isEmpty else { return }
 
+        // Stage every mutation against the context, then commit with one
+        // `save()`. On any failure we MUST explicitly `rollback()` the staged
+        // changes.
+        //
+        // Do NOT "simplify" this into `modelContext.transaction { ... }`:
+        // `transaction(block:)` groups the changes into a single atomic save,
+        // but it does NOT discard staged in-memory changes when the block
+        // throws — a staged `.update` survives the throw and leaks on the next
+        // save (proven by SwiftDataTransactionalMutationTests'
+        // rollback cases, which fail under a transaction-based rewrite). The
+        // manual rollback is what gives the batch its all-or-nothing semantics.
         var writtenRecords: [ManifoldInference.ChatMessage] = []
         do {
             for mutation in mutations {
