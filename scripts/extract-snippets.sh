@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # extract-snippets.sh — Extract fenced Swift code blocks from README.md,
-# docs/QUICKSTART*.md, and DocC catalogs into standalone .swift files for
-# downstream compilation.
+# docs/QUICKSTART*.md, docs/WHY-MANIFOLDKIT.md, and DocC catalogs into
+# standalone .swift files for downstream compilation.
 #
 # Wave D-C1 of the DX overhaul: the README's Hello World snippet is the
 # single most important piece of copy-paste correctness in the repo. This
@@ -89,14 +89,21 @@ INPUTS=(
     "README.md"
     "docs/QUICKSTART.md"
     "docs/QUICKSTART-CLI.md"
+    "docs/QUICKSTART-RAG.md"
+    "docs/WHY-MANIFOLDKIT.md"
 )
 
 mkdir -p "$OUT_DIR"
 # Clean any prior run so a deleted snippet doesn't linger as a stale file.
-# Includes docc-* prefixes added in the 2026-05-23 DocC extension.
+# Includes docc-* prefixes added in the 2026-05-23 DocC extension and the
+# why-* / quickstart-rag-* prefixes added in the 0.45 front-door pass.
+# (quickstart-rag-* is also caught by the quickstart-* glob, but list it
+# explicitly so intent survives a future glob change.)
 rm -f "$OUT_DIR"/readme-*.swift "$OUT_DIR"/quickstart-*.swift "$OUT_DIR"/quickstart-cli-*.swift \
+      "$OUT_DIR"/quickstart-rag-*.swift "$OUT_DIR"/why-*.swift \
       "$OUT_DIR"/docc-*.swift \
       "$OUT_DIR"/readme-*.skip "$OUT_DIR"/quickstart-*.skip "$OUT_DIR"/quickstart-cli-*.skip \
+      "$OUT_DIR"/quickstart-rag-*.skip "$OUT_DIR"/why-*.skip \
       "$OUT_DIR"/docc-*.skip 2>/dev/null || true
 
 total=0
@@ -250,6 +257,8 @@ extract_one() {
 extract_one "README.md" "readme"
 extract_one "docs/QUICKSTART.md" "quickstart"
 extract_one "docs/QUICKSTART-CLI.md" "quickstart-cli"
+extract_one "docs/QUICKSTART-RAG.md" "quickstart-rag"
+extract_one "docs/WHY-MANIFOLDKIT.md" "why"
 
 # DocC catalogs. Walk every Markdown file inside any Sources/*/Documentation.docc/
 # directory (including nested Articles/, Extensions/, etc.). Slug pattern is
