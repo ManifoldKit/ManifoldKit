@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.45.0](https://github.com/roryford/ManifoldKit/compare/v0.44.0...v0.45.0) (2026-06-07)
+
+Glass Box observability wiring completes across the full turn loop and media timelines, the framework ships a unified DocC documentation site, and the fuzz harness gains cloud targeting and block-rotation for broader coverage.
+
+### Highlights
+
+**Glass Box event wiring complete** ([#1672](https://github.com/roryford/ManifoldKit/issues/1672)) — All previously dangling emits across the turn loop, image generation, and video timeline are now wired into the Glass Box observability layer. Turn-loop scenarios, per-chunk image-gen progress checkpoints, and video-timeline markers are all instrumented and available to the inspector. XCUITest smoke coverage for the Glass Box inspector panel ships alongside. ([#1689](https://github.com/roryford/ManifoldKit/issues/1689))
+
+**Unified ManifoldKit DocC site** ([#1687](https://github.com/roryford/ManifoldKit/issues/1687)) — ManifoldKit now ships a unified DocC documentation site with an umbrella root, cross-catalog curation, and hosting on GitHub Pages. The full public API surface — inference, runtime, persistence, cloud, UI, and all specialty modules — is browsable from one root, with curated article groups that map the module graph into a reader-friendly hierarchy.
+
+**Fuzz harness reaches cloud endpoints** ([#1690](https://github.com/roryford/ManifoldKit/issues/1690), [#1676](https://github.com/roryford/ManifoldKit/issues/1676), [#1700](https://github.com/roryford/ManifoldKit/issues/1700)) — `fuzz-chat` can now target any OpenAI-compatible cloud endpoint (including OpenRouter) via `--endpoint`, broadening coverage beyond local Ollama. Block-rotation cycles through a pool of fuzz models each campaign to amortize per-model load cost. `--request-timeout` bounds per-request hangs so a stalled cloud provider doesn't lock the harness.
+
+```bash
+scripts/fuzz.sh --endpoint https://openrouter.ai/api/v1 \
+                --api-key "$OPENROUTER_KEY" \
+                --request-timeout 30
+```
+
+### Features
+
+* **Fuzz block-rotate models** — amortize model-load cost across campaigns ([#1676](https://github.com/roryford/ManifoldKit/issues/1676))
+* **Fuzz `--request-timeout`** — bound cloud fuzz request hangs ([#1700](https://github.com/roryford/ManifoldKit/issues/1700))
+* **Fuzz OpenAI-compatible cloud endpoints** — target OpenRouter and compatible providers in fuzz-chat ([#1690](https://github.com/roryford/ManifoldKit/issues/1690))
+
+### Bug Fixes
+
+* **`deleteSession` atomicity** — message purge and session delete now commit in a single transaction ([#1686](https://github.com/roryford/ManifoldKit/issues/1686))
+* **First-run onboarding hardened** — robust BYO default selection, clearer model-gating error messages, and gated BYO snippets ([#1680](https://github.com/roryford/ManifoldKit/issues/1680))
+* **HuggingFace download reliability** — background `URLSession` and per-chunk progress in `HuggingFaceDownloadService` ([#1692](https://github.com/roryford/ManifoldKit/issues/1692))
+* **`StreamAction` switch exhaustiveness and doc drift** — corrects accumulated doc drift and adds a path-existence audit to prevent future drift ([#1697](https://github.com/roryford/ManifoldKit/issues/1697))
+
 ## [0.44.0](https://github.com/roryford/ManifoldKit/compare/v0.43.0...v0.44.0) (2026-06-07)
 
 ManifoldUI gains a full theming and customization system, and the framework's provider reach widens through a graduated AnyLanguageModel bridge and a cross-encoder rerank stage for RAG. Under the hood, the P1 kernel-thinning continues with `ManifoldModelCatalog`, and a pre-v1 naming pass tightens the public API surface ahead of 1.0.
