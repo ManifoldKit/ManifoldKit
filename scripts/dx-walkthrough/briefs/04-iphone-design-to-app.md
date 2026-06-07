@@ -72,7 +72,8 @@ Create this at the start of your run. **Do not commit it.** The agent reads it f
 
 DEVICE_NAME: <e.g. "Rory's iPhone">
 DEVICE_UDID: <from `xcrun devicectl list devices`>
-TEAM_ID: <10-char team ID from Xcode > Settings > Accounts, or "PERSONAL" for free-tier>
+TEAM_ID: <10-char provisioning team ID — NOT the cert team ID from `security find-identity`. Get it with:
+         defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier | grep -o '"[A-Z0-9]\{10\}"' | head -1>
 BUNDLE_ID: <e.g. com.example.localimage — must be unique to your team>
 HAS_LIBIMOBILEDEVICE: <true|false>
 ```
@@ -112,9 +113,10 @@ After install, launch via:
 ```bash
 xcrun devicectl device process launch \
   --device "$DEVICE_UDID" \
-  --start-stopped \
   <bundle-id>
 ```
+
+If the launch fails with "has an invalid code signature ... has not been explicitly trusted by the user", complete the cert trust dance on-device: **Settings > General > VPN & Device Management > [Apple Development: your@email.com] > Trust**. Then re-run the launch command. (`--start-stopped` is for debugger attachment only — it does not affect trust resolution.)
 
 If `xcodebuild install` fails on signing, fall back to opening the project in Xcode and hitting Run — log every signing-related friction step.
 
@@ -131,12 +133,9 @@ If `xcodebuild install` fails on signing, fall back to opening the project in Xc
 
 ## Screenshot capture
 
-If `HAS_LIBIMOBILEDEVICE` is true:
-```bash
-idevicescreenshot -u "$DEVICE_UDID" screenshots/<state>.png
-```
+`idevicescreenshot` (libimobiledevice) is **broken on Xcode 16+** — the `screenshotr` service was deprecated and `xcrun devicectl` has no screenshot subcommand.
 
-Otherwise the developer captures via the device (side button + volume up) and AirDrops to the run directory. Note in the friction log how awkward this was — that's the kind of papercut the periodic run is designed to surface.
+Capture screenshots manually: **side button + volume up** on the device, then AirDrop to the run directory. Set `HAS_LIBIMOBILEDEVICE: false` in RUN-CONFIG.md regardless of whether the tool is installed.
 
 ## Deliverables
 
