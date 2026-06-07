@@ -164,7 +164,7 @@ For each named threat: what it is, what mitigates it (with link), and gaps.
 - **Threat:** A SaaS-cloud backend, a misconfigured HTTP client, or a future code
   change quietly exfiltrates conversation content to an unintended host.
 - **Mitigations:** All HTTP traffic must route through `URLSessionProvider`
-  ([`Sources/ManifoldBackends/URLSessionProvider.swift`](../Sources/ManifoldBackends/URLSessionProvider.swift)).
+  ([`Sources/ManifoldCloudCore/URLSessionProvider.swift`](../Sources/ManifoldCloudCore/URLSessionProvider.swift)).
   The audit's hostname-literal rule (Rule 3) keeps endpoint URLs out of UI/Inference
   source files. The runtime `DenyAllURLProtocol`
   ([`Sources/ManifoldTestSupport/DenyAllURLProtocol.swift`](../Sources/ManifoldTestSupport/DenyAllURLProtocol.swift))

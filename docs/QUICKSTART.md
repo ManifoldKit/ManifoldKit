@@ -33,7 +33,7 @@ The umbrella re-exports `ManifoldRuntime`, `ManifoldPersistenceSwiftData`, `Mani
 
 ## Hello World
 
-`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldInference/ManifoldKitError.swift).
+`ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one async call — a wired runtime in one call, then one more step (model selection) for a live chat. Errors normalise to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```swift
 import SwiftUI
@@ -302,7 +302,7 @@ If you need a custom `ModelContainer` (e.g. for testing, or to attach a second s
 
 ## Error handling
 
-Every public throws from the bootstrap path normalises to [`ManifoldKitError`](../Sources/ManifoldInference/ManifoldKitError.swift). Catch it once at the call site and read `errorDescription` for a user-facing string:
+Every public throws from the bootstrap path normalises to [`ManifoldKitError`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift). Catch it once at the call site and read `errorDescription` for a user-facing string:
 
 ```swift,no-build
 do {
