@@ -73,6 +73,7 @@ public struct ArchitectView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("architect-tab-picker")
                 .padding(.horizontal)
                 .padding(.vertical, 8)
 
@@ -85,6 +86,7 @@ public struct ArchitectView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("architect-done-button")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(viewModel.isRecording ? "Pause" : "Record") {
@@ -95,10 +97,12 @@ public struct ArchitectView: View {
                         }
                     }
                     .foregroundStyle(viewModel.isRecording ? .orange : .accentColor)
+                    .accessibilityIdentifier("architect-record-button")
                 }
                 ToolbarItem(placement: .destructiveAction) {
                     Button("Clear") { viewModel.clearLog() }
                         .disabled(viewModel.eventLog.isEmpty)
+                        .accessibilityIdentifier("architect-clear-button")
                 }
             }
             .onAppear { viewModel.startRecording() }

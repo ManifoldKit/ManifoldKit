@@ -21,6 +21,7 @@ struct ContextSlotInspectorView: View {
                 noContextView
             }
         }
+        .accessibilityIdentifier("architect-context-tab")
     }
 
     // MARK: - No Data

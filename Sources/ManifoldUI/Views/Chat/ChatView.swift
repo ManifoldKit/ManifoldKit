@@ -414,6 +414,7 @@ public struct ChatView<APIConfig: View>: View {
                     Label("Architect", systemImage: "magnifyingglass.circle")
                 }
                 .accessibilityLabel("Open Architect developer inspector")
+                .accessibilityIdentifier("architect-toolbar-button")
             }
             #endif
         }
