@@ -43,7 +43,7 @@ ManifoldKit uses [SwiftPM package traits](https://github.com/apple/swift-evoluti
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.44.0", // x-release-please-version
+        from: "0.45.0", // x-release-please-version
         traits: [
             .trait(name: "Ollama"),     // local Ollama server
             .trait(name: "CloudSaaS"),  // OpenAI / Anthropic
@@ -77,7 +77,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
-            from: "0.44.0" // x-release-please-version
+            from: "0.45.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -154,7 +154,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
-            from: "0.44.0" // x-release-please-version
+            from: "0.45.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -386,7 +386,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
-            from: "0.44.0", // x-release-please-version
+            from: "0.45.0", // x-release-please-version
             traits: [
                 .trait(name: "Ollama"),     // for localhost:11434
                 .trait(name: "CloudSaaS"),  // for OpenAI / Anthropic
