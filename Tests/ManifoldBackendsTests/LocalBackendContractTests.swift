@@ -401,6 +401,33 @@ final class LocalBackendContractTests: XCTestCase {
         )
     }
 
+    /// Capability-gate conformance (footgun audit class A — #1623).
+    ///
+    /// `requiredCapabilities` enforcement previously lived only in
+    /// `RouterBackend`; #1630 moved it into `generateEnforcingCapabilities` so a
+    /// host running against a single concrete backend gets the same fail-fast.
+    /// This proves every local backend honors it. `.minContextTokens(Int.max)`
+    /// is a requirement no backend can satisfy, so the gate fires uniformly
+    /// without per-backend reasoning — and because enforcement throws *before*
+    /// `generate()`, it runs in the fast lane for the hardware-gated
+    /// participants too (no model, no Metal, no RUN_SLOW_TESTS).
+    func test_capabilityGate_disclaimedRequirementThrows() async throws {
+        var config = GenerationConfig()
+        config.requiredCapabilities = [.minContextTokens(Int.max)]
+        for p in Self.participants {
+            let backend = await p.makeBackend()
+            XCTAssertThrowsError(
+                try backend.generateEnforcingCapabilities(prompt: "hi", systemPrompt: nil, config: config),
+                "[\(p.label)] must reject a requirement it cannot satisfy"
+            ) { error in
+                guard case InferenceError.noBackendSatisfiesRequirements = error else {
+                    XCTFail("[\(p.label)] threw \(error); expected noBackendSatisfiesRequirements")
+                    return
+                }
+            }
+        }
+    }
+
     // MARK: - Hardware helpers
 
     /// Returns `true` when running inside the iOS/macOS Simulator, where Metal

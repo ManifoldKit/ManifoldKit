@@ -1,0 +1,1 @@
+{"__event":"response.error","__data":"{\"error\":{\"message\":\"upstream rejected: leaked token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.AAAAAAAA and callback url https://evil.example/cb?x=1 padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding\"}}"}
