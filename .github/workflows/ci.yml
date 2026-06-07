@@ -108,6 +108,12 @@ jobs:
               - 'scripts/cold-start-conformance.sh'
               - 'scripts/cold-start-tier2-bootstrap.sh'
               - 'scripts/cold-start-tier3-chatview.sh'
+              - 'scripts/cold-start-specialised-mcp.sh'
+              - 'scripts/cold-start-specialised-voice.sh'
+              - 'scripts/cold-start-specialised-uimodelmanagement.sh'
+              - 'Sources/ManifoldMCP/**'
+              - 'Sources/ManifoldVoice/**'
+              - 'Sources/ManifoldUIModelManagement/**'
               - '.github/workflows/ci.yml'
             persistence:
               - 'Sources/ManifoldPersistenceSwiftData/**'
@@ -1032,3 +1038,142 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # Specialised-module cold-start import gate — ManifoldMCP.
+  #
+  # Scaffolds a fresh SwiftPM consumer, links ManifoldMCP as a standalone
+  # product dependency (not the full umbrella), and verifies that
+  # `MCPServerDescriptor`, `MCPTransportKind`, and `MCPToolSource` are
+  # reachable from outside the package. Catches broken product → target wiring
+  # in Package.swift and accidental removal of public types.
+  #
+  # ManifoldMCP compiles without any trait — the MCP trait only gates the
+  # ManifoldMCPTests → ManifoldMCP dependency edge. The gate therefore runs
+  # with --disable-default-traits to keep the dep graph minimal (no MLX/Llama).
+  #
+  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
+  # or any file under Sources/ManifoldMCP/** changes. Same per-PR logic as the
+  # sibling cold-start jobs; nightly runs it unconditionally.
+  cold-start-specialised-mcp:
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start import gate (ManifoldMCP)
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-mcp.sh
+
+  # Specialised-module cold-start import gate — ManifoldVoice.
+  #
+  # Scaffolds a fresh SwiftPM consumer, links ManifoldVoice as a standalone
+  # product dependency, and verifies that `VoiceError`, `VoiceCaptureState`,
+  # and the `SpeechTranscribing` / `SpeechSynthesizing` protocol pair are
+  # reachable from outside the package. Catches broken product → target wiring
+  # and accidental removal of public types.
+  #
+  # ManifoldVoice compiles without any trait — the Voice trait only adds a
+  # conditional-compilation define used by the ManifoldKit umbrella re-export.
+  #
+  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
+  # or any file under Sources/ManifoldVoice/** changes.
+  cold-start-specialised-voice:
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start import gate (ManifoldVoice)
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-voice.sh
+
+  # Specialised-module cold-start import gate — ManifoldUIModelManagement.
+  #
+  # Scaffolds a fresh SwiftPM consumer, links ManifoldUIModelManagement as a
+  # standalone product dependency, and verifies that `ModelManagementViewModel`,
+  # `ModelImportError`, and `DocumentLibraryViewModel` are reachable from outside
+  # the package. Catches broken product → target wiring and accidental removal
+  # of public types.
+  #
+  # ManifoldUIModelManagement compiles without any trait — HuggingFace / Ollama /
+  # CloudSaaS traits only add conditional-compilation defines that expand the
+  # model-source and API-key editor surface. The gate runs with the baseline
+  # trait set (no optional traits) so it exercises the always-present slice.
+  #
+  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
+  # or any file under Sources/ManifoldUIModelManagement/** changes.
+  cold-start-specialised-uimodelmanagement:
+    needs: [changes]
+    if: needs.changes.outputs.cold-start == 'true'
+    runs-on: macos-15  # match the `test` job runner so cache keys collide
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+            ${{ runner.os }}-${{ runner.arch }}-spm-
+
+      - name: Run cold-start import gate (ManifoldUIModelManagement)
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-uimodelmanagement.sh
