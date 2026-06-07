@@ -164,6 +164,13 @@ let package = Package(
         // logging façade; no runtime overhead beyond the backend you install.
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        // DocC build/host plugin: drives `swift package generate-documentation` for the
+        // unified ManifoldKit.docc front door and the GitHub Pages publish workflow.
+        // Build-time only (a command plugin); never linked into any product, so it adds
+        // no runtime weight and is safe under any trait combination. `from: "1.4.0"`
+        // resolves to the latest 1.x (currently 1.5.0); the plugin's own
+        // swift-tools-version sits below this package's 6.1 ceiling.
+        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.4.0"),
     ],
     targets: [
         // Macro compiler plugin: implements @ToolSchema. Runs at build time in
