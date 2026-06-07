@@ -63,12 +63,15 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
     ///
     /// - When `modelHint` is `nil`, empty, or `"all"`: enumerates every installed
     ///   Ollama model, sorts by UTF-8 byte order, and wraps them in a
-    ///   `RotatingFuzzFactory` so the runner round-robins one model per
-    ///   iteration.
+    ///   `RotatingFuzzFactory` so the runner serves each model for `blockSize`
+    ///   consecutive iterations before advancing — keeping a model resident long
+    ///   enough to amortise its multi-second load.
     /// - When `modelHint` names a specific model: returns a single pinned factory
-    ///   so callers preserve the pre-rotation behaviour.
+    ///   so callers preserve the pre-rotation behaviour. `blockSize` is ignored
+    ///   because there is nothing to rotate through.
     public static func makeCampaignFactory(
         modelHint: String? = nil,
+        blockSize: Int = 1,
         baseURL: URL = URL(string: "http://localhost:11434")!,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> any FuzzBackendFactory {
@@ -86,7 +89,7 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
             let children: [any FuzzBackendFactory] = models.sorted().map {
                 OllamaFuzzFactory(modelHint: $0, baseURL: baseURL, environment: environment)
             }
-            return RotatingFuzzFactory(children: children)
+            return RotatingFuzzFactory(children: children, blockSize: blockSize)
         }
 
         return OllamaFuzzFactory(modelHint: normalizedHint, baseURL: baseURL, environment: environment)

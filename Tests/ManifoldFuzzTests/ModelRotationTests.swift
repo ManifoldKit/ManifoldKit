@@ -91,6 +91,65 @@ final class ModelRotationTests: XCTestCase {
         }
     }
 
+    // MARK: - Block rotation
+
+    /// `blockSize: 1` (the default) must reproduce the historical step-1
+    /// round-robin: the model changes on every call. This is the backward-compat
+    /// floor — anything else would silently alter existing campaigns.
+    func test_blockSize1_matchesStep1RoundRobin() async throws {
+        let explicit = RotatingFuzzFactory(children: [
+            TagFactory(tag: "A"),
+            TagFactory(tag: "B"),
+        ], blockSize: 1)
+
+        var observed: [String] = []
+        for _ in 0..<6 {
+            observed.append(try await explicit.makeHandle().modelId)
+        }
+
+        XCTAssertEqual(observed, ["A", "B", "A", "B", "A", "B"],
+                       "blockSize 1 must behave identically to the original per-call rotation")
+    }
+
+    /// `blockSize: 3` with two children must serve each model for three
+    /// consecutive calls before advancing, then wrap: A,A,A,B,B,B,A,...
+    /// This is the amortisation contract — a model stays resident across a block
+    /// of iterations instead of reloading every iteration.
+    func test_blockSize3_holdsModelForThreeCalls() async throws {
+        let factory = RotatingFuzzFactory(children: [
+            TagFactory(tag: "model0"),
+            TagFactory(tag: "model1"),
+        ], blockSize: 3)
+
+        var observed: [String] = []
+        for _ in 0..<7 {
+            observed.append(try await factory.makeHandle().modelId)
+        }
+
+        XCTAssertEqual(observed,
+                       ["model0", "model0", "model0", "model1", "model1", "model1", "model0"],
+                       "blockSize 3 must keep each model for 3 consecutive calls before advancing")
+    }
+
+    /// A valid even `blockSize` constructs and rotates correctly across a wrap
+    /// boundary: blockSize 2 over three children yields a,a,b,b,c,c,a,a,...
+    func test_blockSize2_constructsAndRotatesAcrossWrap() async throws {
+        let factory = RotatingFuzzFactory(children: [
+            TagFactory(tag: "a"),
+            TagFactory(tag: "b"),
+            TagFactory(tag: "c"),
+        ], blockSize: 2)
+        XCTAssertEqual(factory.blockSize, 2)
+
+        var observed: [String] = []
+        for _ in 0..<8 {
+            observed.append(try await factory.makeHandle().modelId)
+        }
+
+        XCTAssertEqual(observed, ["a", "a", "b", "b", "c", "c", "a", "a"],
+                       "blockSize 2 must serve each child twice and wrap after the last child")
+    }
+
     /// Two fresh `RotatingFuzzFactory` instances with the same ordered child
     /// list must produce the same rotation sequence. This is the contract
     /// `--replay` (#490) relies on: the UTF-8-sorted model list in the CLI
