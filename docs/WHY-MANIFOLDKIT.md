@@ -97,31 +97,15 @@ teardown. The trait stubs for the next framework are already in `Package.swift`.
 
 ## What you actually get
 
-Because the foundation holds, the product on top is small to adopt:
+Because the foundation holds, the product on top is small to adopt. The whole
+app is a single `try await ManifoldKit.quickStart()` call that builds the
+SwiftData container, registers the compiled-in backends, and returns a wired
+chat view model. The copy-paste-ready, compile-tested Hello World lives in one
+canonical place — [`docs/QUICKSTART.md` → Hello World](QUICKSTART.md#hello-world)
+(mirrored in the [README](../README.md#hello-world)) — so there is exactly one
+form to keep correct. From there:
 
-```swift
-import SwiftUI
-import ManifoldKit
-
-@main
-struct MyChatApp: App {
-    @State private var result: QuickStartResult?
-    var body: some Scene {
-        WindowGroup {
-            if let result {
-                ChatView(showModelManagement: .constant(false))
-                    .environment(result.viewModel)
-                    .modelContainer(result.bootstrap.modelContainer)
-            } else {
-                ProgressView().task { result = try? await ManifoldKit.quickStart() }
-            }
-        }
-    }
-}
-```
-
-`quickStart()` builds the SwiftData container, registers the compiled-in backends,
-and returns a wired chat view model — one call. From there:
+![One GenerationStream protocol fans out to MLX, llama.cpp, Apple Foundation Models, OpenAI, Anthropic, Ollama, LAN, and the AnyLanguageModel bridge](images/product/generationstream-backends-fan.svg)
 
 - **One protocol, every backend.** MLX, llama.cpp/GGUF, Apple Foundation Models,
   OpenAI, Anthropic, Ollama, LAN — plus Gemini / xAI / Groq / Mistral through the
