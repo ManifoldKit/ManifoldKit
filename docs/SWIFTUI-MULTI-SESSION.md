@@ -1,14 +1,20 @@
 # Building a Multi-Session SwiftUI Chat App
 
 The canonical guide for SwiftUI hosts that want a sidebar of chats, a chat
-detail view, persisted history, and turnkey relaunch restore. This document
-supersedes the per-doc fragments adopters previously had to stitch together
-(`docs/QUICKSTART.md`, `BuildingAChatUI.md`, `Example/Examples/MinimalExample/`,
-the README quickstart) for SwiftUI multi-session use.
+detail view, persisted history, and turnkey relaunch restore. For **multi-session
+SwiftUI use** this is the single source of truth: it consolidates the
+session-management guidance that adopters previously had to stitch together from
+fragments across [`docs/QUICKSTART.md`](QUICKSTART.md),
+[`BuildingAChatUI.md`](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md),
+[`Example/Examples/MinimalExample/`](../Example/Examples/MinimalExample), and the
+README quickstart. Those remain the canonical sources for what they each cover
+(the README/QUICKSTART Hello World is still the one-call starting point);
+`QUICKSTART.md` defers here for the session sidebar / restore recipe rather than
+duplicating it.
 
 If you only need a single-session chat surface, stop here and read
-`docs/QUICKSTART.md` — it covers the one-call `ManifoldKit.quickStart()` path
-and the simplest `ChatView` placement.
+[`docs/QUICKSTART.md`](QUICKSTART.md) — it covers the one-call
+`ManifoldKit.quickStart()` path and the simplest `ChatView` placement.
 
 ## 1. Pick the recommended path
 
@@ -267,7 +273,7 @@ Tagged release:
 // Package.swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.37.0",
+    from: "0.44.0", // x-release-please-version
     traits: [
         .trait(name: "Ollama"),     // opt-in: localhost:11434
         .trait(name: "CloudSaaS"), // opt-in: OpenAI, Anthropic, LM Studio
