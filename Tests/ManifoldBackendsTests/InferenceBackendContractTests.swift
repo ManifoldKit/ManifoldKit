@@ -374,6 +374,23 @@ final class InferenceBackendContractTests: XCTestCase {
         }
     }
 
+    /// Bounded-fetch conformance (footgun audit class D — #1623).
+    ///
+    /// Every cloud backend resolves its SSE/NDJSON stream caps through
+    /// `SSECloudBackend.effectiveSSEStreamLimits`, which falls back to this
+    /// shared default. A cap of 0 or `Int.max` would disable the defense
+    /// against a hostile upstream that streams without end. Assert the
+    /// inherited default is finite and positive on every field.
+    func test_sseStreamLimits_areBounded() {
+        let limits = SSEStreamLimits.default
+        XCTAssertGreaterThan(limits.maxEventBytes, 0)
+        XCTAssertLessThan(limits.maxEventBytes, Int.max)
+        XCTAssertGreaterThan(limits.maxTotalBytes, 0)
+        XCTAssertLessThan(limits.maxTotalBytes, Int.max)
+        XCTAssertGreaterThan(limits.maxEventsPerSecond, 0)
+        XCTAssertLessThan(limits.maxEventsPerSecond, Int.max)
+    }
+
     // MARK: - Fixture loading
 
     /// Reads `response.sse` from the participant's scenario directory and
