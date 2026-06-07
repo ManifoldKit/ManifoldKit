@@ -4,7 +4,11 @@ import SwiftData
 import ManifoldInference
 
 /// Cross-version migration test: proves that a V3 store seeded in-process
-/// opens and reads correctly under the current V4 migration plan.
+/// opens and reads correctly through the V3→V4 stage of the migration plan.
+///
+/// This deliberately pins just the V3→V4 stage in isolation. The live plan now
+/// runs the full V3→V9 chain (`ManifoldMigrationPlan`); end-to-end coverage of
+/// the whole chain lives in `SchemaMigrationTests`.
 ///
 /// The fixture is generated at test time (not a committed binary SQLite blob)
 /// because binary fixtures are fragile against WAL-mode changes, VACUUM layout
@@ -75,7 +79,7 @@ final class SchemaV3MigrationTests: XCTestCase {
             // Container goes out of scope here, releasing the WAL lock.
         }
 
-        // --- Step 2: Open with V4 migration plan ---
+        // --- Step 2: Re-open targeting V4 through the migration plan (V3→V4 stage) ---
         let v4Config = ModelConfiguration(url: storeURL)
         let v4Container = try ModelContainer(
             for: Schema(versionedSchema: ManifoldSchemaV4.self),

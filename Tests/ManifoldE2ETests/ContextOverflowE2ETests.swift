@@ -255,8 +255,10 @@ struct ContextOverflowE2ETests {
                 "Must keep at least 1 history message for \(messageCount) input messages"
             )
 
-            // Total tokens should never be negative.
-            #expect(result.totalTokens >= 0)
+            // A token sum after overflow trimming must be positive (system slot
+            // + at least one history message) and must fit inside the window.
+            #expect(result.totalTokens > 0)
+            #expect(result.totalTokens <= contextSize)
         }
     }
 

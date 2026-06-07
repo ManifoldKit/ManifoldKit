@@ -633,15 +633,31 @@ final class HuggingFaceDownloadURLTests: XCTestCase {
 
     // MARK: - Error Mapping
 
-    func test_searchModels_networkError_throwsSearchFailed() async {
-        let mock = MockHuggingFaceService()
-        // Wrap a generic network-style error as a searchFailed, matching the real
-        // service's catch block in searchModels(query:).
+    func test_searchModels_networkError_throwsSearchFailed() async throws {
+        // Drive the REAL service: stub the list endpoint to fail at the transport
+        // layer, then assert the production catch block maps it to searchFailed.
         struct FakeNetworkError: Error {}
-        mock.searchError = HuggingFaceError.searchFailed(underlying: FakeNetworkError())
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+
+        let uniqueHost = "\(UUID().uuidString.lowercased()).huggingface.test"
+        let hostURL = URL(string: "https://\(uniqueHost)")!
+        let listURL = URL(string: "https://\(uniqueHost)/api/models")!
+        MockURLProtocol.stub(url: listURL, response: .error(FakeNetworkError()))
+        defer { MockURLProtocol.unstub(url: listURL) }
+
+        let hubClient = HubClient(
+            session: session,
+            host: hostURL,
+            userAgent: "ManifoldKitTests/1.0",
+            cache: nil
+        )
+        let realService = HuggingFaceService(hubClient: hubClient)
 
         do {
-            _ = try await mock.searchModels(query: "llama")
+            _ = try await realService.searchModels(query: "llama")
             XCTFail("Expected searchModels to throw, but it succeeded")
         } catch {
             guard case HuggingFaceError.searchFailed = error else {
@@ -649,19 +665,39 @@ final class HuggingFaceDownloadURLTests: XCTestCase {
                 return
             }
         }
-        XCTAssertEqual(mock.searchCallCount, 1, "searchCallCount should increment even when throwing")
     }
 
     func test_searchModels_emptyQuery_returnsResults() async throws {
-        let mock = MockHuggingFaceService()
-        // No error configured — empty query should not throw.
-        mock.searchResults = []
+        // Drive the REAL service against an empty list payload — an empty query
+        // must not throw and yields no downloadable results.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
 
-        let results = try await mock.searchModels(query: "")
+        let uniqueHost = "\(UUID().uuidString.lowercased()).huggingface.test"
+        let hostURL = URL(string: "https://\(uniqueHost)")!
+        let listURL = URL(string: "https://\(uniqueHost)/api/models")!
+        MockURLProtocol.stub(
+            url: listURL,
+            response: .immediate(
+                data: Data("[]".utf8),
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"]
+            )
+        )
+        defer { MockURLProtocol.unstub(url: listURL) }
 
-        // Contract: empty query does not throw; result may be empty.
-        XCTAssertNotNil(results, "searchModels should return a non-nil array for an empty query")
-        XCTAssertEqual(mock.searchCallCount, 1)
+        let hubClient = HubClient(
+            session: session,
+            host: hostURL,
+            userAgent: "ManifoldKitTests/1.0",
+            cache: nil
+        )
+        let realService = HuggingFaceService(hubClient: hubClient)
+
+        let results = try await realService.searchModels(query: "")
+
+        XCTAssertTrue(results.isEmpty, "An empty query against an empty list must return no models")
     }
 }
 #endif

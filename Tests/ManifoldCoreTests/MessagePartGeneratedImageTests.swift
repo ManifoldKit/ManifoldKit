@@ -13,7 +13,7 @@ final class MessagePartGeneratedImageTests: XCTestCase {
 
     private func makePayload(
         prompt: String = "a watercolor of a fox",
-        imageURL: URL = URL(fileURLWithPath: "/tmp/baseChatKitTest/img.png"),
+        imageURL: URL = URL(fileURLWithPath: "/tmp/manifoldKitTest/img.png"),
         modelIdentifier: String = "fake-model-v1"
     ) -> ImageMessagePayload {
         ImageMessagePayload(

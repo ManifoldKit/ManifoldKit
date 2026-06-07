@@ -560,7 +560,7 @@ final class MLXBackendGenerationTests: XCTestCase {
     /// ("all terminations look identical today") is written once. When structured
     /// stop reasons land (GenerationEvent.stopReason(.endOfStream / .maxTokens)), flip
     /// the per-branch assertions to the target shape — see FIXMEs inline.
-    func test_stopReason_today_collapsesToDone_forBothNaturalAndMaxTokens() async throws {
+    func test_stopReason_currentlyCollapsesToDone_forBothNaturalAndMaxTokens() async throws {
         // MARK: Natural EOS — mock finishes its finite token list
         do {
             let mock = MockMLXModelContainer()
@@ -582,9 +582,7 @@ final class MLXBackendGenerationTests: XCTestCase {
             XCTAssertEqual(tokens, ["Hi", "."],
                 "Natural EOS must surface every injected token before termination")
 
-            // FIXME: when GenerationEvent gains `.stopReason(.endOfStream)`
-            // (tracked in https://github.com/roryford/ManifoldKit/issues/515),
-            // replace the .done phase check with an assertion on the final event.
+            // GenerationEvent has no stopReason case — Claude/MLX stop reasons are not surfaced. Documents the current gap.
             let phase = await MainActor.run { stream.phase }
             if case .done = phase {
                 // Expected today.
@@ -617,10 +615,7 @@ final class MLXBackendGenerationTests: XCTestCase {
             XCTAssertEqual(tokens.count, 3,
                 "maxOutputTokens must cap visible tokens — this is the truncation the UI cares about")
 
-            // FIXME: when GenerationEvent gains `.stopReason(.maxTokens)`
-            // (tracked in https://github.com/roryford/ManifoldKit/issues/515),
-            // flip this to XCTAssertEqual(stopReasons.last, .maxTokens) so the UI
-            // can distinguish a truncated response from a natural stop.
+            // GenerationEvent has no stopReason case — Claude/MLX stop reasons are not surfaced. Documents the current gap.
             let phase = await MainActor.run { stream.phase }
             if case .done = phase {
                 // Expected today — the conflation this fixture exists to flag.
@@ -634,49 +629,58 @@ final class MLXBackendGenerationTests: XCTestCase {
         // second branch's maxOutputTokens to 100 breaks the tokens.count == 3 check.
     }
 
-    // MARK: - Tool call deltas (deferred — #517)
+    // MARK: - Tool call extraction (#517 — shipped)
 
-    /// Documents today's tool-call leak: when a qwen3-style `<tool_call>…</tool_call>`
-    /// block appears in the raw MLX stream, `MLXBackend` passes it through as plain
-    /// `.token` events because `capabilities.supportsToolCalling = false` and no
-    /// tool-call extraction logic exists yet.
+    /// MLX now extracts tool calls from the stream (#517). Extraction is
+    /// whole-call by design: `MLXBackend` wires `ToolCallTransform` with
+    /// `MLXToolMarkers.markers()` into the driver pipeline and emits a single
+    /// `.toolCall` event per `<tool_call>…</tool_call>` block — there is no
+    /// per-token delta event. The transform stage only activates when the call
+    /// passes tools AND the model speaks a known dialect, so this drives the
+    /// full `generate` → `MLXGenerationDriver` path (not just the transform unit,
+    /// which `MLXToolMarkersParityTests` covers separately).
     ///
-    /// This failing-contract fixture asserts the target event shape (`.toolCallStart`,
-    /// `.toolCall`-delta, `.toolCallEnd`) so the first implementation has a concrete
-    /// target. Skipped today because the target `GenerationEvent` cases do not exist.
-    func test_toolCallDeltas_extractedFromStream() async throws {
-        // FIXME: unskip when GenerationEvent gains `.toolCallStart` / `.toolCallDelta` /
-        // `.toolCallEnd` cases (tracked in https://github.com/roryford/ManifoldKit/issues/517).
-        //
-        // Target assertions, enabled once the backend extracts tool-call deltas:
-        //
-        //   let mock = MockMLXModelContainer()
-        //   mock.tokensToYield = [
-        //       "<tool_call>",
-        //       "{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Paris\"}}",
-        //       "</tool_call>"
-        //   ]
-        //   let backend = MLXBackend()
-        //   backend._inject(mock)
-        //   let stream = try backend.generate(prompt: "weather?", systemPrompt: nil,
-        //                                     config: GenerationConfig())
-        //   let events = try await collectAllEvents(from: stream)
-        //   let visibleTokens = events.compactMap { ev -> String? in
-        //       if case .token(let t) = ev { return t } else { return nil }
-        //   }
-        //   XCTAssertFalse(visibleTokens.joined().contains("<tool_call>"),
-        //       "tool_call tags must not leak into visible .token output")
-        //   XCTAssertTrue(events.contains(where: {
-        //       if case .toolCall(let call) = $0, call.name == "get_weather" { return true }
-        //       return false
-        //   }), "A .toolCall event naming get_weather must surface")
-        //
-        // Sabotage check once unskipped: delete the extractor code path so the raw
-        // `<tool_call>` bytes leak back into .token events, failing both assertions.
-        throw XCTSkip(
-            "MLXBackend does not yet extract tool-call deltas; see issue #517 for the feature work. " +
-            "Fixture lands today so the first tool-calling implementation has a concrete target shape."
+    /// Runs on the injected mock container — no Metal, consistent with the other
+    /// tests in this suite.
+    func test_toolCall_extractedFromStream_wholeCall() async throws {
+        let mock = MockMLXModelContainer()
+        mock.tokensToYield = [
+            "<tool_call>",
+            "{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Paris\"}}",
+            "</tool_call>",
+        ]
+
+        let backend = MLXBackend()
+        // A known dialect is required for the tool stage to activate.
+        backend._inject(mock, dialect: .qwen25)
+
+        var config = GenerationConfig()
+        config.tools = [
+            ToolDefinition(name: "get_weather", description: "weather", parameters: .object([:]))
+        ]
+
+        let stream = try backend.generate(
+            prompt: "weather?",
+            systemPrompt: nil,
+            config: config
         )
+
+        let events = try await collectAllEvents(from: stream)
+
+        let visibleTokens = events.compactMap { ev -> String? in
+            if case .token(let t) = ev { return t } else { return nil }
+        }
+        XCTAssertFalse(visibleTokens.joined().contains("<tool_call>"),
+            "tool_call tags must not leak into visible .token output")
+
+        let extractedNames = events.compactMap { ev -> String? in
+            if case .toolCall(let call) = ev { return call.toolName } else { return nil }
+        }
+        XCTAssertEqual(extractedNames, ["get_weather"],
+            "A single whole-call .toolCall event naming get_weather must surface")
+
+        // Sabotage check: removing the tool stage in MLXGenerationDriver makes the
+        // raw `<tool_call>` bytes leak back into .token events, failing both asserts.
     }
 
     // MARK: - Chat-template detection (#516)

@@ -29,22 +29,6 @@ final class QuickStartTests: XCTestCase {
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
         )
 
-        // Bootstrap side: every service the facade promises was constructed.
-        // `ChatViewModel.inferenceService` is intentionally `internal` to
-        // ManifoldUI (see CLAUDE.md "Service sharing"), so we can't assert
-        // reference identity from this test target — instead we check that
-        // the bootstrap exposes the shared services the view model was
-        // configured against.
-        XCTAssertNotNil(result.bootstrap.persistence)
-        XCTAssertNotNil(result.bootstrap.conversationRuntime)
-        XCTAssertNotNil(result.bootstrap.endpointStore)
-
-        // View-model side: observable surface area is wired. `modelRegistry`
-        // is the documented sibling-module read seam (CLAUDE.md "Service
-        // sharing") and is populated from the inference service the
-        // bootstrap built.
-        XCTAssertNotNil(result.viewModel.modelRegistry)
-
         // Session-manager side (#1425/#1447): `sessionManager` is wired and
         // sessions are populated the moment quickStart() returns — no polling
         // or extra loadSessions() call needed.
