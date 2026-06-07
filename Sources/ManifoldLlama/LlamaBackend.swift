@@ -50,6 +50,22 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var manifest: ModelManifest? { withStateLock { _manifest } }
 
+    /// `general.architecture` declared by the most recently loaded GGUF (e.g.
+    /// `llama`, `qwen2`, `gemma3`), or `nil` before any load. Drives
+    /// architecture-family capability gating (see ``capabilities``).
+    /// Guarded by `stateLock`.
+    private var _architecture: String?
+
+    /// Injects a GGUF `general.architecture` string for unit tests that need to
+    /// assert on capability flags gated by model architecture (e.g. Gemma
+    /// grammar detection) without performing a real GGUF load.
+    ///
+    /// Accessible via `@testable import ManifoldLlama`. Never call this in
+    /// production code — it bypasses the normal `loadModel` lifecycle.
+    func injectArchitectureForTesting(_ architecture: String) {
+        withStateLock { _architecture = architecture }
+    }
+
     /// Per-token resident cost (bytes) learned from the most recent prefill via
     /// ``PrefillFootprintEstimator`` (issue #1592), or `nil` if no prefill has
     /// produced a stable sample yet. Callers that rebuild a ``ModelLoadPlan`` for
@@ -62,6 +78,20 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     public var capabilities: BackendCapabilities {
         let ctxSize = withStateLock { _effectiveContextSize }
+        let architecture = withStateLock { _architecture }
+        // Gemma emits malformed/truncated output under structured (JSON-object)
+        // GBNF grammars: it opens the object then gets trapped emitting
+        // whitespace until EOG, never completing the structure — so extraction
+        // yields nothing and the FiresideMemory pipeline heuristic-fallbacks with
+        // 0 entities. Trivial grammars (e.g. `[0-9]+`) are unaffected, and the
+        // identical grammar produces valid JSON on Llama; the failure is
+        // Gemma-specific. Targeting only complex grammars isn't worth the
+        // complexity, so disable grammar wholesale for the Gemma family and fall
+        // through to JSON-mode-only parsing, which works correctly. Detect by
+        // declared GGUF architecture (gemma / gemma2 / gemma3); an unloaded
+        // backend (architecture == nil) keeps grammar enabled — the pre-load
+        // default for non-Gemma callers.
+        let supportsGrammar = !(architecture?.lowercased().hasPrefix("gemma") ?? false)
         // MLX: KV cache reuse deferred — MLX manages its own context lifecycle via
         // MLXModelContainer and does not expose a KV-trim API.
         return BackendCapabilities(
@@ -83,7 +113,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             supportsStreaming: true,
             isRemote: false,
             supportsKVCachePersistence: true,
-            supportsGrammarConstrainedSampling: true,
+            supportsGrammarConstrainedSampling: supportsGrammar,
             supportsThinking: true,
             supportsVision: BackendVisionCapability.llamaSupportsImageInput
         )
@@ -265,6 +295,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
             self.isModelLoaded = true
             self._effectiveContextSize = loadedResources.effectiveContextSize
             self._autoDetectedThinkingMarkers = loadedResources.autoDetectedThinkingMarkers
+            self._architecture = loadedResources.architecture
             self._manifest = ModelManifest(
                 contextWindow: Int(loadedResources.effectiveContextSize),
                 supportsTools: true,

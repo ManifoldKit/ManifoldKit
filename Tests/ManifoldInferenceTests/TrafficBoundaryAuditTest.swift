@@ -249,7 +249,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // user-facing error strings.
         "ManifoldRuntime/Models/APIEndpointValidationReason.swift",
         // Provider enum exposes default base URLs as static data.
-        "ManifoldInference/Models/APIProvider.swift",
+        // Moved to ManifoldHardware by the kernel extraction (#1610).
+        "ManifoldHardware/APIProvider.swift",
         // HuggingFace reachability probe (#1296) — embeds the canonical
         // `https://huggingface.co/api/models?limit=1` probe URL as a static
         // `defaultURL`. No other hostnames; never composed at runtime.

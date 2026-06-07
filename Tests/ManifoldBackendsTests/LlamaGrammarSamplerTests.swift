@@ -147,20 +147,52 @@ final class LlamaGrammarSamplerTests: XCTestCase {
     // MARK: - 3. Capability flag is true without requiring a loaded model
 
     /// Verifies that `LlamaBackend().capabilities.supportsGrammarConstrainedSampling`
-    /// is `true` even before any model is loaded.
+    /// is `true` even before any model is loaded (no GGUF → architecture is `nil`,
+    /// which does not start with "gemma", so grammar is enabled).
     ///
-    /// The flag is a static property of the backend type — it describes what the backend
-    /// *can* do with a loaded model, not the current model's state. Callers read this
-    /// flag before constructing `GenerationConfig.grammar` so they need a reliable
-    /// pre-load answer.
+    /// Callers read this flag before constructing `GenerationConfig.grammar` so they
+    /// need a reliable pre-load answer for non-Gemma models.
     ///
-    /// Sabotage check: change `supportsGrammarConstrainedSampling: true` to `false`
-    /// in `LlamaBackend.capabilities`. This assertion fails immediately.
+    /// Sabotage check: change `supportsGrammar = !(architecture?.lowercased().hasPrefix("gemma") ?? false)`
+    /// to `supportsGrammar = false` in `LlamaBackend.capabilities`. This assertion fails.
     func test_grammar_capabilityFlagIsTrue() {
         let backend = LlamaBackend()
         XCTAssertTrue(backend.capabilities.supportsGrammarConstrainedSampling,
-                      "LlamaBackend must report supportsGrammarConstrainedSampling = true — "
-                    + "callers gate grammar-constrained generation on this flag")
+                      "LlamaBackend must report supportsGrammarConstrainedSampling = true when no "
+                    + "model is loaded — an unloaded backend has architecture == nil which is not Gemma")
+    }
+
+    // MARK: - 4. Grammar capability is disabled for Gemma models
+
+    /// Verifies that `supportsGrammarConstrainedSampling` is `false` when the loaded
+    /// model's GGUF `general.architecture` is in the Gemma family (gemma / gemma2 /
+    /// gemma3, case-insensitive), and stays `true` for a non-Gemma architecture.
+    ///
+    /// Gemma emits malformed/truncated output under structured (JSON-object) GBNF
+    /// grammars — it opens the object then stalls on whitespace until EOG, so the
+    /// FiresideMemory extraction pipeline heuristic-fallbacks with 0 entities.
+    /// Trivial grammars work and the same grammar produces valid JSON on Llama, so
+    /// the failure is Gemma-specific; disabling grammar wholesale for the family
+    /// routes callers to JSON-mode-only parsing, which works. Detecting by declared
+    /// architecture (rather than the GGUF filename) is robust to renamed files.
+    ///
+    /// Sabotage check: remove `.lowercased().hasPrefix("gemma")` from the detection
+    /// logic in `LlamaBackend.capabilities`. A loaded Gemma model would incorrectly
+    /// advertise grammar support and this assertion would fail.
+    func test_grammar_capabilityFlagIsFalse_forGemmaModel() {
+        // Simulate a loaded Gemma model by injecting its declared GGUF
+        // architecture via the internal test hook — no real load required.
+        let gemmaBackend = LlamaBackend()
+        gemmaBackend.injectArchitectureForTesting("gemma3")
+        XCTAssertFalse(gemmaBackend.capabilities.supportsGrammarConstrainedSampling,
+                       "LlamaBackend must report supportsGrammarConstrainedSampling = false "
+                     + "for Gemma-family architectures — they truncate under structured GBNF grammars")
+
+        // A non-Gemma architecture keeps grammar enabled.
+        let llamaBackend = LlamaBackend()
+        llamaBackend.injectArchitectureForTesting("llama")
+        XCTAssertTrue(llamaBackend.capabilities.supportsGrammarConstrainedSampling,
+                      "Non-Gemma architectures must keep grammar-constrained sampling enabled")
     }
 }
 #endif
