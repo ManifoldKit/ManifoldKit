@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.44.0](https://github.com/roryford/ManifoldKit/compare/v0.43.0...v0.44.0) (2026-06-07)
+
+
+### Features
+
+* add theming & UI customization system to ManifoldUI ([#1642](https://github.com/roryford/ManifoldKit/issues/1642)) ([b8be749](https://github.com/roryford/ManifoldKit/commit/b8be74912a63872eb20897ba2fceb650a3c6d8a1))
+* **arch:** extract ManifoldModelCatalog from ManifoldInference kernel [P1d [#1611](https://github.com/roryford/ManifoldKit/issues/1611)] ([b07c38d](https://github.com/roryford/ManifoldKit/commit/b07c38dc0d64370aa989328d8e70f41c57a2a57f))
+* graduate the AnyLanguageModel bridge to a documented provider-breadth path ([#1659](https://github.com/roryford/ManifoldKit/issues/1659)) ([a9ade2d](https://github.com/roryford/ManifoldKit/commit/a9ade2db47bb4e1dd4a5b09a3180a8bffad94d3d)), closes [#1638](https://github.com/roryford/ManifoldKit/issues/1638)
+* **inference:** adaptive prefill memory headroom from measured per-model footprint ([#1665](https://github.com/roryford/ManifoldKit/issues/1665)) ([a16cac5](https://github.com/roryford/ManifoldKit/commit/a16cac5be04cd3df2a6318f576dcf0ce3fbd311f))
+* **inference:** drop 'Record' suffix from inference-layer DTOs ([#1650](https://github.com/roryford/ManifoldKit/issues/1650)) ([10fe2dd](https://github.com/roryford/ManifoldKit/commit/10fe2dd3fcb23228894c05754d45b191a109a9e8))
+* **mlx:** per-layer type-aware prompt-cache reuse for hybrid architectures ([#1663](https://github.com/roryford/ManifoldKit/issues/1663)) ([3195a2a](https://github.com/roryford/ManifoldKit/commit/3195a2a40555a840a7acdc116e875eb3900d7c9e)), closes [#1597](https://github.com/roryford/ManifoldKit/issues/1597)
+* quickStart() applies backend-selection policy on first launch ([#1648](https://github.com/roryford/ManifoldKit/issues/1648)) ([08c017c](https://github.com/roryford/ManifoldKit/commit/08c017c963e45199ded4d5bceb87c656d77b9866)), closes [#1612](https://github.com/roryford/ManifoldKit/issues/1612)
+* rerank stage in RAG retrieval ([#1661](https://github.com/roryford/ManifoldKit/issues/1661)) ([7cfc5e2](https://github.com/roryford/ManifoldKit/commit/7cfc5e2e6fad4990e1f0a91e01abcdaf7137d56b)), closes [#1637](https://github.com/roryford/ManifoldKit/issues/1637)
+
+
+### Bug Fixes
+
+* **api:** pre-v1 naming pass — EndpointBackend protocols, GenerationEvent normalization, requestGroupID, AsyncSequence conformances ([2818305](https://github.com/roryford/ManifoldKit/commit/28183058fb0d7e2c5a475a533aaf0efaf905393c))
+* **backends:** make OllamaBackend registrar init package-visible for cross-module call ([#1660](https://github.com/roryford/ManifoldKit/issues/1660)) ([1587451](https://github.com/roryford/ManifoldKit/commit/1587451e8bcb7ce94784981fc85d76c54959215b))
+* **docs:** import ManifoldKit is sufficient — remove redundant ManifoldUI import ([#1654](https://github.com/roryford/ManifoldKit/issues/1654)) ([89f275e](https://github.com/roryford/ManifoldKit/commit/89f275eb50d73c92796def199a540e1abeed6e0c)), closes [#1613](https://github.com/roryford/ManifoldKit/issues/1613)
+* **dx:** OllamaBackend registrar warning, EndpointBackend rename, GenerationStream AsyncSequence, thinking-token sample fix ([#1649](https://github.com/roryford/ManifoldKit/issues/1649)) ([dec9bf8](https://github.com/roryford/ManifoldKit/commit/dec9bf8623fd3215e98168f824b5d9ba0d201902))
+* **inference:** address [#1665](https://github.com/roryford/ManifoldKit/issues/1665) review — if-let in ModelLoadPlan, XCTSkip on net-reclaim, explicit self capture ([#1667](https://github.com/roryford/ManifoldKit/issues/1667)) ([d0d71fc](https://github.com/roryford/ManifoldKit/commit/d0d71fc588a2b77f1d30b63e6948c417dfa8c5dd))
+* **llama:** disable GBNF grammar for Gemma models ([#1670](https://github.com/roryford/ManifoldKit/issues/1670)) ([fee7788](https://github.com/roryford/ManifoldKit/commit/fee778825f248a2000370d769f82b14f99b5aa7b))
+* **ollama:** Gemma 4 thinking-flag backfill + fuzz marker accuracy ([#1664](https://github.com/roryford/ManifoldKit/issues/1664)) ([#1668](https://github.com/roryford/ManifoldKit/issues/1668)) ([5faaaf5](https://github.com/roryford/ManifoldKit/commit/5faaaf5377ae478497d5c9118a23346b16b1d0cb))
+* **tests:** collapse backend conformance claim methods to be parallel-safe ([#1647](https://github.com/roryford/ManifoldKit/issues/1647)) ([a63a60a](https://github.com/roryford/ManifoldKit/commit/a63a60a59e7c8a552899c0cc4f6ed12fcba8be89)), closes [#1601](https://github.com/roryford/ManifoldKit/issues/1601)
+* **ui:** remove deprecated configure* shims — configure(bootstrap:) is the canonical entry ([#1655](https://github.com/roryford/ManifoldKit/issues/1655)) ([bc3e153](https://github.com/roryford/ManifoldKit/commit/bc3e15337115b0629e3cc08153929fc1cfd91f82)), closes [#1614](https://github.com/roryford/ManifoldKit/issues/1614)
+
+
+### Documentation
+
+* add BYO-UI, tool-calling, and AppIntents developer-journey quickstarts ([#1658](https://github.com/roryford/ManifoldKit/issues/1658)) ([73ec6cb](https://github.com/roryford/ManifoldKit/commit/73ec6cb95ea6dcf3bf0ba9cef72a7969ae9fcd5e))
+* remove editorial phrasing + retire TODO.md ([#1646](https://github.com/roryford/ManifoldKit/issues/1646)) ([5409244](https://github.com/roryford/ManifoldKit/commit/540924451582afe403c89362f5179c3a0aad46d0))
+* remove editorial phrasing + retire TODO.md ([#1657](https://github.com/roryford/ManifoldKit/issues/1657)) ([f2d9460](https://github.com/roryford/ManifoldKit/commit/f2d9460ebaeae9450832f824fd78a73e813d6ffc))
+
+
+### Tests
+
+* **backends:** combined-trait KV cache reuse race regression guard ([#1382](https://github.com/roryford/ManifoldKit/issues/1382) shape) ([#1662](https://github.com/roryford/ManifoldKit/issues/1662)) ([1da22df](https://github.com/roryford/ManifoldKit/commit/1da22df868521c895909cd7df2aecab1b2627096))
+
 ## [0.43.0](https://github.com/roryford/ManifoldKit/compare/v0.42.0...v0.43.0) (2026-06-06)
 
 The P1 kernel-thinning pass completes its first three modules — `ManifoldSecrets`, `ManifoldHardware`, and `ManifoldNetworking` — each now a zero-dependency leaf product. The release also ships a configurable idle timeout for cloud/LAN backends and closes four resource-correctness bugs.
