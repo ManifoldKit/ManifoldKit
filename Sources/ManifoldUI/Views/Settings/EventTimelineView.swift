@@ -24,6 +24,7 @@ struct EventTimelineView: View {
                 eventList
             }
         }
+        .accessibilityIdentifier("architect-timeline-tab")
     }
 
     // MARK: - Empty State

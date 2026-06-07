@@ -26,6 +26,7 @@ struct BackendCapabilityView: View {
                 noBackendView
             }
         }
+        .accessibilityIdentifier("architect-backend-tab")
     }
 
     // MARK: - No Backend
