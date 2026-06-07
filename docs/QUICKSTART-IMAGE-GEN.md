@@ -1,14 +1,20 @@
 # ManifoldKit Image-Gen Quickstart
 
 A one-page tutorial for adding on-device image generation to any Swift app. No
-`ChatView`, no `ChatViewModel` — `FluxDiffusionBackend` is a sibling backend
-that conforms to `ImageGenerationBackend` and streams progress + the final
-file URL through an `AsyncThrowingStream`.
+`ChatView`, no `ChatViewModel` — both `FluxDiffusionBackend` and
+`MLXDiffusionBackend` conform to `ImageGenerationBackend` and stream progress
++ the final file URL through an `AsyncThrowingStream`.
 
-> **Platform.** Apple Silicon Mac (FLUX.1 Schnell needs ~7 GB of unified
-> memory headroom). Bring-your-own URL — the backend takes a local directory
-> URL and does not download. See [§4](#4-picking-a-model) for which HuggingFace
-> repo layouts the bundled `HuggingFaceService` downloader accepts.
+> **Platform requirements by backend.**
+>
+> | Backend | Platforms | Memory |
+> |---|---|---|
+> | `FluxDiffusionBackend` | macOS 15+ only | ~7 GB unified memory headroom |
+> | `MLXDiffusionBackend` | iOS 18+ / macOS 15+ | Checked at load time; throws `MLXDiffusionError.insufficientMemory` if denied |
+>
+> Bring-your-own URL — the backends take a local directory URL and do not
+> download. See [§4](#4-picking-a-model) for which HuggingFace repo layouts the
+> bundled `HuggingFaceService` downloader accepts.
 
 ---
 
@@ -44,7 +50,9 @@ targets: [
 
 ---
 
-## 2. End-to-end snippet
+## 2. End-to-end snippets
+
+### FluxDiffusionBackend (macOS only)
 
 `loadModel(from:)` is mandatory before the first `generate(prompt:config:)`
 call — calling `generate` on a fresh backend throws
@@ -108,6 +116,68 @@ struct ImageGen {
 }
 ```
 
+### MLXDiffusionBackend (Mac path — iOS waits for #1691)
+
+`MLXDiffusionBackend` runs `ImageModelLoadPlan` during `loadModel(from:)` and
+throws `MLXDiffusionError.insufficientMemory` if the device doesn't have
+enough RAM — the caller doesn't need a separate guard. The URL must be the Hub
+leaf directory (`<root>/models/<org>/<name>`);
+`HuggingFaceService.downloadDiffusionModel` writes this layout automatically.
+
+> **Note:** The iPhone path (iOS 18 device) is not yet documented — it depends
+> on issue #1691 (iPhone model + diffusionkit layout support). The Mac path
+> works today.
+
+> **Storage and RAM for `stabilityai/sdxl-turbo`**
+>
+> - Storage: ~10 GB (9.6 GB unet weights)
+> - RAM: cannot load on iPhone (4–5 GB usable). Use
+>   `stabilityai/stable-diffusion-2-1-base` (~3 GB) for iPhone once #1691
+>   lands.
+> - `loadModel` throws `MLXDiffusionError.insufficientMemory` rather than
+>   OOM-crashing — but the model still won't fit on most iPhones.
+
+```swift,no-build
+import Foundation
+import ManifoldInference
+import ManifoldMLX
+
+@main
+struct ImageGen {
+    static func main() async throws {
+        let backend = MLXDiffusionBackend()
+
+        // Supported layouts (auto-detected): stabilityai/sdxl-turbo (1024×1024)
+        // or stabilityai/stable-diffusion-2-1-base (512×512).
+        // The URL must be the Hub leaf directory: <root>/models/<org>/<name>
+        // (HuggingFaceService.downloadDiffusionModel writes this layout automatically).
+        let modelDirectory = URL(fileURLWithPath: "/path/to/sdxl-turbo")
+        try await backend.loadModel(from: modelDirectory)
+
+        // SDXL Turbo is distilled to 1–4 steps.
+        let config = ImageGenerationConfig(
+            steps: 4,
+            width: 1024,
+            height: 1024,
+            seed: 42,
+            outputDirectory: FileManager.default.temporaryDirectory
+        )
+
+        let stream = try backend.generate(prompt: "a red fox in a snowy forest", config: config)
+        for try await event in stream {
+            switch event {
+            case .progress(let step, let total):
+                print("step \(step)/\(total)")
+            case .completed(let url):
+                print("wrote \(url.path)")
+            }
+        }
+
+        backend.unloadModel()
+    }
+}
+```
+
 ### Cancelling mid-run
 
 The stream's `onTermination` hook drives `stopGeneration()` for you when the
@@ -131,6 +201,7 @@ import ManifoldMLX
 func makeService() -> ImageGenerationService {
     let service = ImageGenerationService()
     service.registerFluxDiffusionBackend()   // wires `.fluxSchnell` format
+    service.registerMLXDiffusionBackend()    // wires `.sdxlTurbo` / `.sdXL21Base` formats
     return service
 }
 ```
@@ -175,5 +246,9 @@ not a file.
 | `FluxDiffusionError.notLoaded` thrown from `generate` | You called `generate` before `loadModel(from:)` completed. Await the load before the first generate. |
 | `HTTP 404 for model_index.json` from `downloadDiffusionModel` | Repo uses diffusionkit layout; the bundled validator requires diffusers layout. See [§4](#4-picking-a-model). |
 | `FluxDiffusionError.noLatentsProduced` | The denoising loop yielded zero latents — typically a cancellation that fired before step 1. Increase `steps` or remove the early stop. |
-| Process OOM during decode | FLUX Schnell needs ~7 GB headroom; close other GPU-using apps or `unloadModel()` after each generation. |
+| Process OOM during decode on FluxDiffusionBackend | FLUX Schnell needs ~7 GB headroom; close other GPU-using apps or `unloadModel()` after each generation. |
 | Stream finishes without `.completed` and without throwing | The generation was cancelled via `stopGeneration()` or task cancellation. This is the contract — `onTermination` runs `stopGeneration` for you when the iterator drops. |
+| `MLXDiffusionError.notLoaded` thrown from `generate` | Called `generate` before `loadModel(from:)` completed. |
+| `MLXDiffusionError.unsupportedModelLayout` | Directory is not `stabilityai/sdxl-turbo` or `stabilityai/stable-diffusion-2-1-base` layout. Verify the Hub leaf path (`<root>/models/<org>/<name>`). |
+| `MLXDiffusionError.insufficientMemory` on `loadModel` | Device RAM too low for the chosen model. Try `stable-diffusion-2-1-base` (~3 GB); or free GPU memory with `unloadModel()` on other backends first. |
+| Process OOM during decode on MLXDiffusionBackend | Both UNet and VAE activations competed for memory. Call `unloadModel()` after each generation to release the GPU cache. |
