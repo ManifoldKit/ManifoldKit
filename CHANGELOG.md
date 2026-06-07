@@ -2,42 +2,56 @@
 
 ## [0.44.0](https://github.com/roryford/ManifoldKit/compare/v0.43.0...v0.44.0) (2026-06-07)
 
+ManifoldUI gains a full theming and customization system, and the framework's provider reach widens through a graduated AnyLanguageModel bridge and a cross-encoder rerank stage for RAG. Under the hood, the P1 kernel-thinning continues with `ManifoldModelCatalog`, and a pre-v1 naming pass tightens the public API surface ahead of 1.0.
+
+### Highlights
+
+**Theming and UI customization for ManifoldUI** — Consumers can now restyle the chat UI without forking `ChatView` or dropping to full BYO-UI, through a three-layer environment-driven stack. Layer 1 is a `ChatTheme` token struct (per-role bubble fills, corner radius, padding, spacing, fonts) applied with `.chatTheme(_:)`. Layer 2 is a `MessageBubbleStyle` protocol with `.plain` (the themed default), `.iMessage`, and `.card` recipes applied with `.messageBubbleStyle(_:)`. Layer 3 is a per-message renderer slot, `.chatMessageRenderer(_:)`. Every layer is a thin shell over SwiftUI's native resolution, so Dark Mode, Dynamic Type, and Increase Contrast keep working. ([#1640](https://github.com/roryford/ManifoldKit/issues/1640))
+
+```swift
+ChatView(…)
+    .chatTheme(ChatTheme(userBubbleBackground: AnyShapeStyle(.blue), cornerRadius: 20))
+    .messageBubbleStyle(.iMessage)   // or .card, or .plain (the default, which reads ChatTheme)
+```
+
+**AnyLanguageModel provider-breadth bridge** — The bridge graduates from a hidden trait into a documented, contract-tested path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint. It advertises a conservative capability floor (`isRemote` on; tools, structured output, native JSON mode, thinking, and grammar all off) and fail-closes on unsupported requests rather than silently dropping them, so the capability router never routes those requests here. Ships `docs/PROVIDER-BRIDGE.md` and an env-gated conformance suite that needs no API key to compile or pass. ([#1638](https://github.com/roryford/ManifoldKit/issues/1638))
+
+```swift
+import ManifoldBackends   // behind the `AnyLanguageModel` trait
+
+let backend = AnyLanguageModelBackend()
+let url = URL(string: "gemini://gemini-2.0-flash?apiKey=\(key)")!
+try await backend.loadModel(from: url, plan: plan)
+```
+
+**Cross-encoder rerank stage in RAG** — `RAGService` gains an optional rerank stage between retrieval and prompt injection — the single biggest RAG-quality lever still open. When a reranker is configured and ready, retrieval widens the first-stage pool to 3× and reranks down to `limit`; with no reranker it is a byte-for-byte passthrough, keyword fallback included. The `Reranker` port lives in `ManifoldInference` alongside `EmbeddingBackend`; `LlamaReranker` scores `[query, document]` pairs through a RANK-pooling cross-encoder GGUF (e.g. `bge-reranker`). ([#1637](https://github.com/roryford/ManifoldKit/issues/1637))
+
+```swift
+let rag = RAGService(
+    documentStore: documents,
+    vectorStore: vectors,
+    embeddingBackend: embedder,
+    reranker: reranker   // any Reranker (e.g. LlamaReranker); omit for prior behaviour
+)
+```
+
+**Pre-v1 API surface — naming pass and `ManifoldModelCatalog` extraction** — Two threads of pre-1.0 surface work. The P1 kernel-thinning continues: `ManifoldModelCatalog` (model descriptors, catalog, logging) is extracted from `ManifoldInference` into a standalone zero-dependency product, following the `ManifoldSecrets`/`ManifoldHardware`/`ManifoldNetworking` split from v0.43.0 ([#1611](https://github.com/roryford/ManifoldKit/issues/1611)) — transparent to consumers via `@_exported import`. Separately, a naming pass tightens the public API ahead of v1: the `Record` suffix is dropped from inference-layer DTOs ([#1650](https://github.com/roryford/ManifoldKit/issues/1650)), `EndpointBackend` protocols are renamed, `GenerationStream` gains `AsyncSequence` conformance, and the deprecated `configure*` shims are removed in favour of `configure(bootstrap:)` ([#1614](https://github.com/roryford/ManifoldKit/issues/1614)). The renames and the shim removal are breaking — update affected call sites.
 
 ### Features
 
-* add theming & UI customization system to ManifoldUI ([#1642](https://github.com/roryford/ManifoldKit/issues/1642)) ([b8be749](https://github.com/roryford/ManifoldKit/commit/b8be74912a63872eb20897ba2fceb650a3c6d8a1))
-* **arch:** extract ManifoldModelCatalog from ManifoldInference kernel [P1d [#1611](https://github.com/roryford/ManifoldKit/issues/1611)] ([b07c38d](https://github.com/roryford/ManifoldKit/commit/b07c38dc0d64370aa989328d8e70f41c57a2a57f))
-* graduate the AnyLanguageModel bridge to a documented provider-breadth path ([#1659](https://github.com/roryford/ManifoldKit/issues/1659)) ([a9ade2d](https://github.com/roryford/ManifoldKit/commit/a9ade2db47bb4e1dd4a5b09a3180a8bffad94d3d)), closes [#1638](https://github.com/roryford/ManifoldKit/issues/1638)
-* **inference:** adaptive prefill memory headroom from measured per-model footprint ([#1665](https://github.com/roryford/ManifoldKit/issues/1665)) ([a16cac5](https://github.com/roryford/ManifoldKit/commit/a16cac5be04cd3df2a6318f576dcf0ce3fbd311f))
-* **inference:** drop 'Record' suffix from inference-layer DTOs ([#1650](https://github.com/roryford/ManifoldKit/issues/1650)) ([10fe2dd](https://github.com/roryford/ManifoldKit/commit/10fe2dd3fcb23228894c05754d45b191a109a9e8))
-* **mlx:** per-layer type-aware prompt-cache reuse for hybrid architectures ([#1663](https://github.com/roryford/ManifoldKit/issues/1663)) ([3195a2a](https://github.com/roryford/ManifoldKit/commit/3195a2a40555a840a7acdc116e875eb3900d7c9e)), closes [#1597](https://github.com/roryford/ManifoldKit/issues/1597)
-* quickStart() applies backend-selection policy on first launch ([#1648](https://github.com/roryford/ManifoldKit/issues/1648)) ([08c017c](https://github.com/roryford/ManifoldKit/commit/08c017c963e45199ded4d5bceb87c656d77b9866)), closes [#1612](https://github.com/roryford/ManifoldKit/issues/1612)
-* rerank stage in RAG retrieval ([#1661](https://github.com/roryford/ManifoldKit/issues/1661)) ([7cfc5e2](https://github.com/roryford/ManifoldKit/commit/7cfc5e2e6fad4990e1f0a91e01abcdaf7137d56b)), closes [#1637](https://github.com/roryford/ManifoldKit/issues/1637)
-
+* **Adaptive prefill memory headroom** — `PrefillFootprintEstimator` adapts the memory budget at prefill time using a measured per-model resident-byte-per-token EWMA, aborting before a prefill exceeds headroom instead of relying solely on the static 40% heuristic. Dormant (behaviour unchanged) until the first accepted sample. ([#1592](https://github.com/roryford/ManifoldKit/issues/1592))
+* **Per-layer MLX prompt-cache reuse for hybrid architectures** — Prompt-cache reuse is now decided per layer instead of being disqualified wholesale by a single non-`KVCacheSimple` layer, so mixed and recurrent-hybrid models reuse KV where they previously re-prefilled every turn. Falls back to a full prefill whenever a layer cannot be reduced byte-exactly. ([#1597](https://github.com/roryford/ManifoldKit/issues/1597))
+* **`quickStart()` backend-selection policy** — First-launch `quickStart()` now applies a Foundation-first → first-local → labeled-empty-state selection policy, wiring the built-in Foundation model into the candidate list before the policy runs. ([#1612](https://github.com/roryford/ManifoldKit/issues/1612))
+* **Developer-journey quickstarts** — New BYO-UI, tool-calling, and AppIntents quickstart guides. ([#1658](https://github.com/roryford/ManifoldKit/issues/1658))
 
 ### Bug Fixes
 
-* **api:** pre-v1 naming pass — EndpointBackend protocols, GenerationEvent normalization, requestGroupID, AsyncSequence conformances ([2818305](https://github.com/roryford/ManifoldKit/commit/28183058fb0d7e2c5a475a533aaf0efaf905393c))
-* **backends:** make OllamaBackend registrar init package-visible for cross-module call ([#1660](https://github.com/roryford/ManifoldKit/issues/1660)) ([1587451](https://github.com/roryford/ManifoldKit/commit/1587451e8bcb7ce94784981fc85d76c54959215b))
-* **docs:** import ManifoldKit is sufficient — remove redundant ManifoldUI import ([#1654](https://github.com/roryford/ManifoldKit/issues/1654)) ([89f275e](https://github.com/roryford/ManifoldKit/commit/89f275eb50d73c92796def199a540e1abeed6e0c)), closes [#1613](https://github.com/roryford/ManifoldKit/issues/1613)
-* **dx:** OllamaBackend registrar warning, EndpointBackend rename, GenerationStream AsyncSequence, thinking-token sample fix ([#1649](https://github.com/roryford/ManifoldKit/issues/1649)) ([dec9bf8](https://github.com/roryford/ManifoldKit/commit/dec9bf8623fd3215e98168f824b5d9ba0d201902))
-* **inference:** address [#1665](https://github.com/roryford/ManifoldKit/issues/1665) review — if-let in ModelLoadPlan, XCTSkip on net-reclaim, explicit self capture ([#1667](https://github.com/roryford/ManifoldKit/issues/1667)) ([d0d71fc](https://github.com/roryford/ManifoldKit/commit/d0d71fc588a2b77f1d30b63e6948c417dfa8c5dd))
-* **llama:** disable GBNF grammar for Gemma models ([#1670](https://github.com/roryford/ManifoldKit/issues/1670)) ([fee7788](https://github.com/roryford/ManifoldKit/commit/fee778825f248a2000370d769f82b14f99b5aa7b))
-* **ollama:** Gemma 4 thinking-flag backfill + fuzz marker accuracy ([#1664](https://github.com/roryford/ManifoldKit/issues/1664)) ([#1668](https://github.com/roryford/ManifoldKit/issues/1668)) ([5faaaf5](https://github.com/roryford/ManifoldKit/commit/5faaaf5377ae478497d5c9118a23346b16b1d0cb))
-* **tests:** collapse backend conformance claim methods to be parallel-safe ([#1647](https://github.com/roryford/ManifoldKit/issues/1647)) ([a63a60a](https://github.com/roryford/ManifoldKit/commit/a63a60a59e7c8a552899c0cc4f6ed12fcba8be89)), closes [#1601](https://github.com/roryford/ManifoldKit/issues/1601)
-* **ui:** remove deprecated configure* shims — configure(bootstrap:) is the canonical entry ([#1655](https://github.com/roryford/ManifoldKit/issues/1655)) ([bc3e153](https://github.com/roryford/ManifoldKit/commit/bc3e15337115b0629e3cc08153929fc1cfd91f82)), closes [#1614](https://github.com/roryford/ManifoldKit/issues/1614)
-
-
-### Documentation
-
-* add BYO-UI, tool-calling, and AppIntents developer-journey quickstarts ([#1658](https://github.com/roryford/ManifoldKit/issues/1658)) ([73ec6cb](https://github.com/roryford/ManifoldKit/commit/73ec6cb95ea6dcf3bf0ba9cef72a7969ae9fcd5e))
-* remove editorial phrasing + retire TODO.md ([#1646](https://github.com/roryford/ManifoldKit/issues/1646)) ([5409244](https://github.com/roryford/ManifoldKit/commit/540924451582afe403c89362f5179c3a0aad46d0))
-* remove editorial phrasing + retire TODO.md ([#1657](https://github.com/roryford/ManifoldKit/issues/1657)) ([f2d9460](https://github.com/roryford/ManifoldKit/commit/f2d9460ebaeae9450832f824fd78a73e813d6ffc))
-
-
-### Tests
-
-* **backends:** combined-trait KV cache reuse race regression guard ([#1382](https://github.com/roryford/ManifoldKit/issues/1382) shape) ([#1662](https://github.com/roryford/ManifoldKit/issues/1662)) ([1da22df](https://github.com/roryford/ManifoldKit/commit/1da22df868521c895909cd7df2aecab1b2627096))
+* **Gemma GBNF grammar disabled** — Gemma models truncate structured (JSON-object) grammars under llama.cpp — they open the object, stall on whitespace, and never complete — so grammar-constrained sampling is now disabled for the Gemma family (detected by GGUF architecture), routing them to JSON-mode parsing. ([#1670](https://github.com/roryford/ManifoldKit/issues/1670))
+* **Ollama Gemma 4 thinking-flag backfill and fuzz marker accuracy** ([#1664](https://github.com/roryford/ManifoldKit/issues/1664))
+* **`OllamaBackend` registrar init made package-visible** — fixes a cross-module registration call under the Ollama trait. ([#1660](https://github.com/roryford/ManifoldKit/issues/1660))
+* **`ModelLoadPlan` review fixes** — if-let unwrap in `ModelLoadPlan`, `XCTSkip` on network reclaim, and an explicit `self` capture. ([#1667](https://github.com/roryford/ManifoldKit/issues/1667))
+* **Backend conformance claim methods made parallel-safe** ([#1601](https://github.com/roryford/ManifoldKit/issues/1601))
+* **DX cleanups** — `OllamaBackend` registrar warning, `GenerationStream` `AsyncSequence` conformance, and a thinking-token sample fix. ([#1649](https://github.com/roryford/ManifoldKit/issues/1649))
 
 ## [0.43.0](https://github.com/roryford/ManifoldKit/compare/v0.42.0...v0.43.0) (2026-06-06)
 
