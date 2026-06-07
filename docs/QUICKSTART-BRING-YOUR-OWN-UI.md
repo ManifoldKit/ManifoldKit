@@ -19,7 +19,9 @@ This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph 
 
 ## Minimal headless example
 
-Construct an `InferenceService`, register the compiled-in backends, load a model, and stream `GenerationEvent.token` values:
+Construct an `InferenceService`, register the compiled-in backends, load a model, and stream `GenerationEvent.token` values.
+
+> **Prerequisite for this snippet:** `.builtInFoundation` is the only backend that needs no model file and no server, so it makes the shortest first-token demo — but it exists only on macOS 26 / iOS 26 **with Apple Intelligence enabled**. On older OSes (or a Mac without Apple Intelligence) it is not registered and the load throws. The snippet guards the OS at compile/runtime; if it logs the fallback message on your machine, load a local GGUF (`loadModel(from:plan:)` with a file URL) or a cloud endpoint (`loadEndpointBackend(from:)`, shown below) instead.
 
 ```swift
 import ManifoldInference
@@ -30,6 +32,19 @@ struct BYOExample {
     static func main() async throws {
         let inference = InferenceService()
         DefaultBackends.register(with: inference)
+
+        // `.builtInFoundation` is the zero-file, zero-server choice, but Apple
+        // Intelligence only exists on macOS 26 / iOS 26. Guard availability so
+        // the demo degrades with a clear message instead of an opaque throw.
+        guard #available(macOS 26, iOS 26, *) else {
+            print("""
+            Apple Intelligence (.builtInFoundation) needs macOS 26 / iOS 26 with \
+            Apple Intelligence enabled. Load a local GGUF via loadModel(from:plan:) \
+            with a file URL, or a cloud endpoint via loadEndpointBackend(from:) — \
+            see "Cloud and local endpoints" below.
+            """)
+            return
+        }
 
         try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
 
