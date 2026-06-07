@@ -54,7 +54,7 @@ or the standard diffusers layout with `safetensors`). How you obtain that
 directory is your choice — `HuggingFaceService.downloadDiffusionModel` is one
 option (see [§4](#4-picking-a-model)).
 
-```swift
+```swift,no-build
 import Foundation
 import ManifoldInference
 import ManifoldMLX
@@ -123,7 +123,7 @@ flag, throws `CancellationError`, and finishes the stream.
 If you're managing multiple image models or want backend lifecycle parity
 with `InferenceService`, wire `ImageGenerationService`:
 
-```swift
+```swift,no-build
 import ManifoldInference
 import ManifoldMLX
 

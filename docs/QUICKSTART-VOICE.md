@@ -56,7 +56,7 @@ targets: [
 your app uses — an image-gen prompt, a search bar, a notes field. The
 controller does not know or care that ManifoldKit ships a chat UI.
 
-```swift
+```swift,no-build
 import SwiftUI
 import ManifoldVoice
 
@@ -114,7 +114,7 @@ That's the whole standalone STT integration. No `ChatViewModel`, no
 The same controller speaks arbitrary strings — useful for read-aloud features
 in any app:
 
-```swift
+```swift,no-build
 let voice = VoiceConversationController()
 voice.togglePlayback(for: "Generation complete. Tap to view the result.")
 
@@ -133,7 +133,7 @@ The Apple-backed transcriber is the default, but ``SpeechTranscribing`` is
 just a protocol — wire in a local Whisper, an HTTP STT endpoint, or a
 deterministic test fake:
 
-```swift
+```swift,no-build
 final class FakeTranscriber: SpeechTranscribing {
     @MainActor func requestAuthorization() async -> VoiceAuthorizationStatus { .authorized }
     @MainActor func startTranscribing(
@@ -157,7 +157,7 @@ Same shape for ``SpeechSynthesizing`` (TTS) and ``WakeWordDetector``.
 `ManifoldVoice` ships ``AppleWakeWordDetector`` for on-device phrase matching
 against the live transcript stream:
 
-```swift
+```swift,no-build
 let detector = AppleWakeWordDetector(wakeWords: ["hey assistant", "ok manifold"])
 let voice = VoiceConversationController(wakeWordDetector: detector)
 
