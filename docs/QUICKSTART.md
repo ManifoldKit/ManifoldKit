@@ -68,6 +68,9 @@ struct MyChatApp: App {
 
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
+> [!IMPORTANT]
+> **The trait cliff: no backend trait → a *runtime* throw, not a compile error.** If your build compiles in **zero** inference backends for the active trait / OS combination, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) when you call it — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause ("no backend traits enabled") at the assembly boundary instead of a confusing "No model loaded" on the first turn. The defaults (`MLX`, `Llama`, `HuggingFace`) always include at least one backend, so you only hit this if you pass a custom `traits:` array that selects no inference backend, or build with `--disable-default-traits`. Pick at least one of `MLX`, `Llama`, `CloudSaaS`, `Ollama`, or `FoundationOnly` — see [Customizing backends](#customizing-backends) for the per-profile trait sets.
+
 > **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
 ```swift
@@ -276,31 +279,9 @@ See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capabilit
 
 ### Bring your own UI
 
-> For the standalone walkthrough — package wiring, a SwiftUI view model that streams tokens, and the full `GenerationEvent` surface — see [`QUICKSTART-BRING-YOUR-OWN-UI.md`](QUICKSTART-BRING-YOUR-OWN-UI.md). The summary below is the seed.
+If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()`, depend on just `ManifoldInference` plus the backends you want, construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your own transcript. This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph entirely.
 
-If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()` and depend on just `ManifoldInference` plus the backends you want. Construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your transcript:
-
-```swift
-import ManifoldInference
-import ManifoldBackends
-
-@main
-struct BYOExample {
-    static func main() async throws {
-        let inference = InferenceService()
-        DefaultBackends.register(with: inference)
-
-        try await inference.loadModel(from: .builtInFoundation, plan: .cloud())
-
-        let stream = try inference.generate(messages: [("user", "Hello")])
-        for try await event in stream.events {
-            if case .token(let text) = event { print(text, terminator: "") }
-        }
-    }
-}
-```
-
-This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph entirely.
+The full walkthrough — package wiring, the minimal headless example, a SwiftUI view model that streams tokens, and the complete `GenerationEvent` surface — is the canonical, single-source guide at **[`QUICKSTART-BRING-YOUR-OWN-UI.md`](QUICKSTART-BRING-YOUR-OWN-UI.md)**.
 
 > **Lighter-weight than full BYO-UI:** if you only need to restyle bubbles, change brand colors, or override how *some* messages render, you don't have to rebuild the message list. Keep `ChatView` and reach for the in-framework theming seams instead — `.chatTheme(_:)` for tokens, `.messageBubbleStyle(_:)` for bubble chrome, and `.chatMessageRenderer(_:)` (with a `params.defaultMessageView()` fallback) for per-message overrides. See the **Theming the Chat UI** DocC article. Drop to full BYO-UI only when you need to replace the transcript, scroll-anchoring, and composer wholesale.
 

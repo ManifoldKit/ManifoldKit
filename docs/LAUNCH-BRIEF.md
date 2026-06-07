@@ -3,7 +3,7 @@
 > Launch preparation for distribution after WWDC 2026 — distribution-readiness
 > audit, imagery briefs, draft announcement, and post-WWDC sequencing.
 > Positioning language is canonical in [POSITIONING.md](POSITIONING.md); the
-> audit below reflects the repo at v0.42.0 (pre-1.0).
+> audit below reflects the repo at v0.44.0 (pre-1.0).
 
 ---
 
@@ -26,7 +26,7 @@ Status legend: ✅ ready · ⚠️ present but weak/incomplete · ❌ missing.
 | **CODE_OF_CONDUCT.md** | ⚠️ | Present but short (~43 lines) — verify it names an enforcement contact; consider full Contributor Covenant. |
 | **SECURITY.md** | ✅ | Present, backed by `docs/THREAT_MODEL.md`, `docs/FIPS.md`, fuzz harness. Security-as-product story is real and documented. |
 | **CHANGELOG.md** | ✅ | Present, Release-Please-managed, Prisma-style highlights. |
-| **Tagged releases** | ✅ | 130+ tags, latest **v0.42.0**. Healthy cadence. ⚠️ All **0.x — pre-1.0**, breaking changes between minors (honest state). |
+| **Tagged releases** | ✅ | 130+ tags, latest **v0.44.0**. Healthy cadence. ⚠️ All **0.x — pre-1.0**, breaking changes between minors (honest state). |
 | **Demo / Example app** | ✅ | `Example/` has `MinimalExample` (canonical Hello World), `Advanced` reference app, `AdvancedUITests`, and its own README. Strong. |
 | **Install snippet** | ✅ | Clear SPM `.package(url:from:)` + per-target `.product` snippet, release-please-pinned version. |
 | **Threat model / reliability docs** | ✅ | `docs/THREAT_MODEL.md`, `docs/RELIABILITY.md` (source-backed contract) — differentiators most kits lack. |
@@ -36,7 +36,7 @@ Status legend: ✅ ready · ⚠️ present but weak/incomplete · ❌ missing.
 **P0 — do before the post goes live (cheap, high-leverage):**
 1. **Add GitHub topics** — `swift`, `swiftui`, `llm`, `mlx`, `llama-cpp`, `on-device-ai`, `foundation-models`, `openai`, `anthropic`, `ollama`, `mcp`, `rag`, `chat-ui`, `ios`, `macos`. (2 minutes, pure discoverability.)
 2. **Create a 1280×640 social preview** (imagery brief §2) and upload via repo Settings → Social preview.
-3. **Add a README badge row** — CI status, MIT license, SPM-compatible, latest release (v0.42.0), platforms (iOS 18+ / macOS 15+), Swift 6.1+.
+3. **Add a README badge row** — CI status, MIT license, SPM-compatible, latest release (v0.44.0), platforms (iOS 18+ / macOS 15+), Swift 6.1+.
 4. **Add the layer-cake hero image** above the fold (imagery §2.1). (The one-liner intro itself landed in this PR.)
 5. **Set `homepageUrl`** (DocC site or docs index).
 
@@ -220,29 +220,11 @@ persistence + multi-backend inference into one drop-in chat product.**
 
 ### Drop it in
 
-```swift
-import SwiftUI
-import ManifoldKit
-
-@main
-struct MyChatApp: App {
-    @State private var result: QuickStartResult?
-    var body: some Scene {
-        WindowGroup {
-            if let result {
-                ChatView(showModelManagement: .constant(false))
-                    .environment(result.viewModel)
-                    .modelContainer(result.bootstrap.modelContainer)
-            } else {
-                ProgressView().task { result = try? await ManifoldKit.quickStart() }
-            }
-        }
-    }
-}
-```
-
 `quickStart()` builds the SwiftData container, registers the compiled-in
-backends, and wires a `ChatViewModel` — one call.
+backends, and wires a `ChatViewModel` — one call. The canonical, compile-tested
+Hello World lives in [`docs/QUICKSTART.md` → Hello World](QUICKSTART.md#hello-world)
+(mirrored in the [README](../README.md#hello-world)); link to that single source
+in launch copy rather than pasting a divergent variant here.
 
 ### The WWDC hook
 
@@ -253,7 +235,7 @@ treats it as **one more backend behind the same protocol, not a rewrite** — th
 
 ### Honest state
 
-ManifoldKit is **v0.42.0, pre-1.0.** Streaming, multi-provider abstraction, tool
+ManifoldKit is **pre-1.0.** Streaming, multi-provider abstraction, tool
 calling, structured output, MCP (client + server), thinking tokens, RAG +
 citations, metrics + cost, and on-device image generation (FLUX / SDXL) all ship
 today. Expect breaking changes between minors until 1.0. RAG reranking

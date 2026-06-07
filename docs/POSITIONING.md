@@ -13,7 +13,9 @@
 persistence + multi-backend inference into one drop-in chat product.**
 
 **Category:** a full-stack, multi-backend, on-device + cloud AI chat framework
-for Apple platforms (iOS 18+ / macOS 15+). Current release: **v0.42.0, pre-1.0.**
+for Apple platforms (iOS 18+ / macOS 15+). **Pre-1.0** — see the
+[latest release](https://github.com/roryford/ManifoldKit/releases/latest) for the
+current version.
 
 Most "AI for Swift" libraries hand you one layer and leave the integration to
 you. ManifoldKit hands you the assembled product — a working chat app you call
@@ -84,6 +86,8 @@ management, with no backend code written by the consumer. The turn loop
 `ConversationRuntime`; there is no alternative path to keep consistent.
 
 ### Pillar 2 — Backend portability behind one protocol
+
+![One GenerationStream protocol fans out to MLX, llama.cpp, Apple Foundation Models, OpenAI, Anthropic, Ollama, LAN, and the AnyLanguageModel bridge](images/product/generationstream-backends-fan.svg)
 
 MLX, llama.cpp / GGUF, Apple Foundation Models, and cloud (OpenAI Chat
 Completions, OpenAI Responses, Anthropic, Ollama, LAN) all implement the same
@@ -285,7 +289,7 @@ graduates the bridge to a documented provider-breadth path.)
 
 ## 10. Honest current state
 
-Credibility comes from candor. ManifoldKit is **pre-1.0 (v0.42.0)** and is not
+Credibility comes from candor. ManifoldKit is **pre-1.0** and is not
 pretending otherwise:
 
 - **Breaking changes between minor versions are expected** while the public
