@@ -6,6 +6,9 @@ public enum BackendChoice: String, Sendable, CaseIterable {
     case foundation
     case mlx
     case all
+    /// OpenAI-Chat-Completions-compatible cloud endpoint (OpenRouter, OpenAI,
+    /// Together, …) driven via `OpenAIBackend`. Gated on the `CloudSaaS` trait.
+    case openai
     /// Hardware-free `MockInferenceBackend` path. Used by PR-tier CI.
     case mock
     /// Hardware-free `ChaosBackend` path for exercising failure-mode plumbing.
