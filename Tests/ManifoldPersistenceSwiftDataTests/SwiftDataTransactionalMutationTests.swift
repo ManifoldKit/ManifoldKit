@@ -21,13 +21,25 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
 
     private var provider: SwiftDataPersistenceProvider { stack.provider }
 
+    /// Deterministic, strictly-increasing timestamp for ordered inserts.
+    ///
+    /// `ChatMessage` defaults `timestamp` to `Date()`, so two messages built in
+    /// quick succession can land on the same clock tick. `fetchMessages` sorts
+    /// by timestamp, so equal stamps order arbitrarily — an ordering flake that
+    /// surfaced only under the parallel all-traits run. Tests that assert a
+    /// multi-element order stamp each message via `at(_:)` instead of relying on
+    /// wall-clock spacing.
+    private func at(_ offset: Int) -> Date {
+        Date(timeIntervalSince1970: 1_000_000 + Double(offset))
+    }
+
     func test_performMessageMutations_commitsBatchAndFiresHooksAfterCommit() async throws {
         let session = ManifoldInference.ChatSession(title: "Transactional")
         try await provider.insertSession(session)
 
-        var existing = ManifoldInference.ChatMessage(role: .user, content: "before", sessionID: session.id)
+        var existing = ManifoldInference.ChatMessage(role: .user, content: "before", timestamp: at(0), sessionID: session.id)
         try await provider.insertMessage(existing)
-        let inserted = ManifoldInference.ChatMessage(role: .assistant, content: "new", sessionID: session.id)
+        let inserted = ManifoldInference.ChatMessage(role: .assistant, content: "new", timestamp: at(1), sessionID: session.id)
 
         let hook = RecordingMessageHook()
         provider.addPostWriteHook(hook)
@@ -47,8 +59,8 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
         let session = ManifoldInference.ChatSession(title: "Rollback")
         try await provider.insertSession(session)
 
-        var first = ManifoldInference.ChatMessage(role: .user, content: "before", sessionID: session.id)
-        let second = ManifoldInference.ChatMessage(role: .assistant, content: "keep", sessionID: session.id)
+        var first = ManifoldInference.ChatMessage(role: .user, content: "before", timestamp: at(0), sessionID: session.id)
+        let second = ManifoldInference.ChatMessage(role: .assistant, content: "keep", timestamp: at(1), sessionID: session.id)
         try await provider.insertMessage(first)
         try await provider.insertMessage(second)
 
@@ -107,8 +119,8 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
         let session = ManifoldInference.ChatSession(title: "Compression Rollback")
         try await provider.insertSession(session)
 
-        let original1 = ManifoldInference.ChatMessage(role: .user, content: "q1", sessionID: session.id)
-        let original2 = ManifoldInference.ChatMessage(role: .assistant, content: "a1", sessionID: session.id)
+        let original1 = ManifoldInference.ChatMessage(role: .user, content: "q1", timestamp: at(0), sessionID: session.id)
+        let original2 = ManifoldInference.ChatMessage(role: .assistant, content: "a1", timestamp: at(1), sessionID: session.id)
         try await provider.insertMessage(original1)
         try await provider.insertMessage(original2)
 
@@ -156,8 +168,8 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
         let session = ManifoldInference.ChatSession(title: "Edit Rollback")
         try await provider.insertSession(session)
 
-        var edited = ManifoldInference.ChatMessage(role: .user, content: "original", sessionID: session.id)
-        let trailing = ManifoldInference.ChatMessage(role: .assistant, content: "reply", sessionID: session.id)
+        var edited = ManifoldInference.ChatMessage(role: .user, content: "original", timestamp: at(0), sessionID: session.id)
+        let trailing = ManifoldInference.ChatMessage(role: .assistant, content: "reply", timestamp: at(1), sessionID: session.id)
         try await provider.insertMessage(edited)
         try await provider.insertMessage(trailing)
 
@@ -241,8 +253,8 @@ final class SwiftDataTransactionalMutationTests: XCTestCase {
         try await provider.insertSession(target)
 
         try await provider.performMessageMutations([
-            .insert(ManifoldInference.ChatMessage(role: .user, content: "c1", sessionID: target.id)),
-            .insert(ManifoldInference.ChatMessage(role: .assistant, content: "c2", sessionID: target.id)),
+            .insert(ManifoldInference.ChatMessage(role: .user, content: "c1", timestamp: at(0), sessionID: target.id)),
+            .insert(ManifoldInference.ChatMessage(role: .assistant, content: "c2", timestamp: at(1), sessionID: target.id)),
         ])
 
         let messages = try await provider.fetchMessages(for: target.id)
