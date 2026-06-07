@@ -1,0 +1,69 @@
+name: QA & Cost Telemetry
+
+# Self-instrumentation for CI cost / QA health. Closes the self-instrumentation
+# gap (QA evaluation action A1, issue #1695): the repo optimises hard for
+# "fewer, larger CI runs" (CLAUDE.md "Issue & PR hygiene") but never measured
+# the levers it
+# tunes. Once a week this queries the GitHub Actions API for the trailing
+# 14-day window of CI runs and computes total run count, the re-run tax
+# (attempt > 1), and average time-to-green per commit.
+#
+# Runs on ubuntu-latest (1× billing) — this is bookkeeping, not a build, so it
+# must not consume the macOS 10× lane. The computed row is appended to
+# docs/ci-metrics.jsonl for longitudinal tracking and surfaced in the run's
+# step summary. The commit-back step is best-effort: direct pushes to main are
+# normally blocked by branch protection, so a failed push degrades to the
+# uploaded artifact + step summary rather than failing the job.
+
+on:
+  schedule:
+    # Mondays 08:17 UTC — off the top of the hour to avoid the scheduler rush.
+    - cron: "17 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # append + commit docs/ci-metrics.jsonl
+  actions: read     # gh run list
+
+concurrency:
+  group: qa-telemetry
+  cancel-in-progress: false
+
+jobs:
+  telemetry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute CI / QA telemetry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: "14"
+          WORKFLOW_FILE: ci.yml
+        run: scripts/qa-telemetry.sh
+
+      - name: Commit appended metrics row (best-effort)
+        # main blocks direct pushes for PRs; if the Actions token is likewise
+        # restricted the push fails and we fall through to the artifact upload.
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/ci-metrics.jsonl; then
+            echo "No metrics delta to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ci-metrics.jsonl
+          git commit -m "chore(ci): append QA/cost telemetry row [skip ci]"
+          git push || echo "::warning::push to main blocked (branch protection?) — row preserved in artifact + summary"
+
+      - name: Upload metrics artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-metrics-${{ github.run_id }}
+          path: docs/ci-metrics.jsonl
+          if-no-files-found: ignore
