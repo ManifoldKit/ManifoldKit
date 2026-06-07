@@ -79,6 +79,11 @@ final class APIConfigurationLogicTests: XCTestCase {
 
     // MARK: - Save validation logic
 
+    // Mirrors APIEndpointEditorView's save-gate predicate; documentation guard.
+    // The live predicate lives in the Save button's `.disabled(...)` modifier
+    // (APIEndpointEditorView.swift:110) and cannot be extracted without
+    // refactoring the View body, which is out of scope here.
+
     /// APIEndpointEditorView disables save when name is empty after trimming.
     /// This mirrors the view's .disabled() condition on the Save button.
     func test_saveValidation_emptyNameBlocksSave() {
@@ -188,6 +193,10 @@ final class APIConfigurationLogicTests: XCTestCase {
             XCTAssertFalse(modelName.isEmpty, "\(provider.rawValue) should have a non-empty default model name")
         }
     }
+
+    // Mirrors APIEndpointEditorView's name auto-fill predicate; documentation guard.
+    // The live predicate lives in `.onChange(of: provider)` (APIEndpointEditorView.swift:121)
+    // and cannot be extracted without refactoring the View body.
 
     /// The editor auto-fills the name with the provider's rawValue when name is empty
     /// or matches another provider's rawValue.

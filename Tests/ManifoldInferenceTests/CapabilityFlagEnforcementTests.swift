@@ -145,7 +145,7 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
 
     /// Passing tools to a backend that DOES support tool calling must not
     /// throw — the guard must only block the incapable-backend path.
-    func test_tools_allowedOnToolCapableBackend() throws {
+    func test_tools_allowedOnToolCapableBackend() async throws {
         let caps = BackendCapabilities(
             supportedParameters: [.temperature],
             maxContextTokens: 4096,
@@ -160,10 +160,19 @@ final class CapabilityFlagEnforcementTests: XCTestCase {
 
         let tool = makeNoopTool()
 
-        // Must not throw; a valid stream token is returned.
-        let (_, _) = try coordinator.enqueue(
+        // Must not throw, and the returned stream must yield real tokens — the
+        // guard only blocks the incapable-backend path.
+        let (_, stream) = try coordinator.enqueue(
             messages: [("user", "call the tool")],
             tools: [tool]
         )
+
+        var tokens: [String] = []
+        for try await event in stream.events {
+            if case .token(let t) = event { tokens.append(t) }
+        }
+
+        XCTAssertFalse(tokens.isEmpty,
+                       "Tool-capable backend should produce a valid token stream when tools are passed")
     }
 }

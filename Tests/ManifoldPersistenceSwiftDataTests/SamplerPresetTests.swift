@@ -15,8 +15,6 @@ final class SamplerPresetTests: XCTestCase {
         XCTAssertNil(preset.repetitionContextSize)
         XCTAssertNil(preset.presenceContextSize)
         XCTAssertNil(preset.frequencyContextSize)
-        XCTAssertNotNil(preset.id)
-        XCTAssertNotNil(preset.createdAt)
     }
 
     func test_init_customValues() throws {

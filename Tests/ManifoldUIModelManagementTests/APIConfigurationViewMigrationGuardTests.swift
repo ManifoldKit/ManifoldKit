@@ -40,7 +40,8 @@ final class APIConfigurationViewMigrationGuardTests: XCTestCase {
         // The cast to `AnyView` exercises both the public initializer and
         // the `View` conformance, which is what host-app code relies on.
         let view: AnyView = AnyView(APIConfigurationView())
-        XCTAssertNotNil(view)
+        _ = view
+        // Compilation is the assertion (API-surface guard).
     }
 
     func test_apiConfigurationView_typeIsPublic() {

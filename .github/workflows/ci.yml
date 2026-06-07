@@ -382,6 +382,25 @@ jobs:
           }
           echo "Tier 0 affected-suites graph snapshot OK."
 
+      - name: Public API source-compatibility check
+        # Guards `import ManifoldKit` source-compat for downstream consumers
+        # (TavernPad / localclaw): a public symbol removed by accident from the
+        # umbrella's core targets would break those builds. `diagnose-api-
+        # breaking-changes` exits non-zero on a real break, so this is a plain
+        # failing step — no env-var/baseline-file plumbing.
+        #
+        # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
+        # `llama` C module — swift-api-digester reports "missing required module
+        # 'llama'" when checking out the baseline source. The three targets named
+        # here are the trait-free core whose public surface matters most for
+        # source-compat; family targets (Cloud/MLX/Foundation) are pinned
+        # indirectly via the backend contract suite.
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          swift package diagnose-api-breaking-changes origin/main \
+            --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore
+
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests
       #   + ManifoldInferenceTests + ManifoldInferenceSwiftTestingTests

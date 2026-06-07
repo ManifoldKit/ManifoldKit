@@ -276,8 +276,7 @@ extension ClaudeBackendTests {
     /// `CloudBackendError.rateLimited(retryAfter: 45)` from the `Retry-After`
     /// header alone.
     ///
-    /// FIXME(#531): once `anthropic-ratelimit-tokens-reset` is plumbed through,
-    /// flip to assert the structured reset time and the parsed error body message.
+    // anthropic-ratelimit-tokens-reset is not plumbed through; only Retry-After is surfaced. Documents the current gap.
     func test_rateLimit_anthropicErrorBody_surfacesRetryAfterOnly() async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]

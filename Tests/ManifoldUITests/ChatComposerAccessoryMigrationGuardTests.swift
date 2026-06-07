@@ -16,8 +16,8 @@ final class ChatComposerAccessoryMigrationGuardTests: XCTestCase {
         let view: AnyView = AnyView(
             ChatView(showModelManagement: .constant(false))
         )
-
-        XCTAssertNotNil(view)
+        _ = view
+        // Compilation is the assertion (API-surface guard).
     }
 
     @MainActor
@@ -28,7 +28,7 @@ final class ChatComposerAccessoryMigrationGuardTests: XCTestCase {
                 composerAccessory: { Text("Voice spike") }
             )
         )
-
-        XCTAssertNotNil(view)
+        _ = view
+        // Compilation is the assertion (API-surface guard).
     }
 }

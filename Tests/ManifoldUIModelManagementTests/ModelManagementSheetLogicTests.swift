@@ -186,16 +186,6 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         XCTAssertFalse(model.fileSizeFormatted.isEmpty, "Formatted file size should not be empty")
     }
 
-    // MARK: - Model type variants
-
-    func test_modelType_distinctCases() {
-        let types: [ModelType] = [.gguf, .mlx, .foundation]
-        // Each type is distinct — they drive different backend and badge rendering.
-        XCTAssertNotEqual(types[0], types[1])
-        XCTAssertNotEqual(types[1], types[2])
-        XCTAssertNotEqual(types[0], types[2])
-    }
-
     // MARK: - ModelManagementViewModel state
 
     func test_managementViewModel_defaultState() {

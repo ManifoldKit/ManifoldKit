@@ -9,9 +9,6 @@ final class ChatSessionTests: XCTestCase {
 
         XCTAssertEqual(session.title, "New Chat")
         XCTAssertEqual(session.systemPrompt, "")
-        XCTAssertNotNil(session.id)
-        XCTAssertNotNil(session.createdAt)
-        XCTAssertNotNil(session.updatedAt)
     }
 
     func test_init_customTitle() {

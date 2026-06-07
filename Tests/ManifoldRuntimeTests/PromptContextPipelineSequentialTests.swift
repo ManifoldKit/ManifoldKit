@@ -53,6 +53,7 @@ final class PromptContextPipelineSequentialTests: XCTestCase {
         // Sequential execution: three 50 ms sleeps = ~150 ms.
         // Concurrent fan-out would land in ~50 ms.
         // The 140 ms floor distinguishes the two and tolerates scheduling jitter.
+        // Tracked by https://github.com/roryford/ManifoldKit/issues/1684
         XCTAssertGreaterThanOrEqual(
             elapsed,
             .milliseconds(140),

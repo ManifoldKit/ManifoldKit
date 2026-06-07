@@ -93,7 +93,8 @@ final class LinkPreviewTests: XCTestCase {
             }
         )
 
-        XCTAssertNotNil(AnyView(view))
+        _ = view
+        // Compilation is the assertion (API-surface guard).
     }
 }
 
