@@ -1,12 +1,13 @@
 name: Lint
 
-# Consolidates seven previously-separate ubuntu-latest lint jobs into one
+# Consolidates previously-separate ubuntu-latest lint jobs into one
 # sequenced runner. Each former job is now a step inside this workflow:
 #
 #   - actionlint                    (was actionlint.yml)
 #   - changelog-lint                (was changelog-lint.yml)
 #   - commitlint                    (was commitlint.yml — Lint PR Title)
 #   - known-issue-lint              (was known-issue-lint.yml)
+#   - availability-audit            (scripts/audit-availability.sh — n-1 floor)
 #   - secret-scan                   (was security-scans.yml: secret-scan)
 #   - dependency-review             (was security-scans.yml: dependency-review)
 #   - dep-budget                    (was ci.yml: dep-budget)
@@ -39,6 +40,7 @@ on:
       #   actionlint          → .github/workflows/**
       #   known-issue-lint    → Sources/**, Tests/**
       #   readme-lint         → README.md, version.txt, scripts/check-readme.sh
+      #   availability-audit  → Sources/**, scripts/audit-availability.sh
       #   secret-scan         → Sources/**, Tests/**, .github/workflows/**
       #
       # Package.resolved, Package.swift, docs/**, and unrelated scripts/ changes
@@ -49,6 +51,7 @@ on:
       - "README.md"
       - "version.txt"
       - "scripts/check-readme.sh"
+      - "scripts/audit-availability.sh"
 
 concurrency:
   # Mirror the per-event/per-ref pattern the originals used so a force-push
@@ -243,6 +246,16 @@ jobs:
           fi
 
           echo "✓ All ${#hits[@]} withKnownIssue usage(s) have a tracking // FIXME link."
+
+      # ── availability-audit ────────────────────────────────────────────────
+      # Flags @available / #available annotations that exceed the Package.swift
+      # platform floors (macOS 15 / iOS 18). Enforces the n-1 platform policy
+      # as compiler-truth: any annotation gating on macOS 16+ or iOS 19+
+      # outside the ManifoldFoundation* targets is a violation.
+      # See scripts/audit-availability.sh for the full exemption logic.
+      - name: availability-audit — verify n-1 platform floor annotations
+        if: always()
+        run: bash scripts/audit-availability.sh
 
       # ── readme-lint ───────────────────────────────────────────────────────
       # Tripwire for stale README API references. Ensures the install pin
