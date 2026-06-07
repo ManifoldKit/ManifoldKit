@@ -18,7 +18,7 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add the package, then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` in one call. Errors surface as [`ManifoldKitError`](Sources/ManifoldInference/ManifoldKitError.swift).
+Add the package, then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` — one call to a wired runtime, then one more step (model selection) for a live chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
 
 ```swift
 import SwiftUI
