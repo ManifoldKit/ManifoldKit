@@ -1,0 +1,134 @@
+name: Docs (DocC → GitHub Pages)
+
+# Builds the unified ManifoldKit DocC site (umbrella `ManifoldKit.docc` root plus
+# every module catalog reachable from the `ManifoldKit` scheme) and publishes it
+# to GitHub Pages.
+#
+# Why `xcodebuild docbuild` and not `swift package generate-documentation`:
+# ManifoldKit's umbrella target `@_exported import`s the backends, which pull in
+# the binary `llama` xcframework (a `.framework`-style slice on macOS). The
+# SwiftPM Swift-DocC plugin invokes `swift-symbolgraph-extract` with `-I`
+# (header search) instead of `-F` (framework search) for that binary slice, so
+# symbol-graph extraction fails with `missing required module 'llama'`.
+# `xcodebuild docbuild` passes framework search paths correctly, builds the whole
+# scheme's catalog set in one pass (so cross-target `<doc:>` links resolve), and
+# emits a single `.doccarchive` we transform for static hosting.
+#
+# SELF-VALIDATION: the `paths:` filter below MUST list this workflow's own path
+# plus every DocC catalog and `Package.swift`, otherwise edits to a catalog or to
+# the gate itself would not re-trigger the publish (see CLAUDE.md memory:
+# "Script-driven CI gates need their script path in paths: filter").
+
+on:
+  # Publish on every merge to main that can change the rendered docs.
+  push:
+    branches: [main]
+    paths:
+      - "Sources/**/*.docc/**"
+      - "Sources/**/*.swift"
+      - "Package.swift"
+      - "Package.resolved"
+      - "README.md"
+      - ".github/workflows/docs.yml"
+  # Manual re-publish without a code change.
+  workflow_dispatch:
+
+# Allow one concurrent deployment; let an in-flight run finish (don't cancel a
+# publish midway and leave Pages half-written).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: macos-15  # Apple Silicon arm64 — matches ci.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # Same pin as ci.yml / readme-snippets.yml — single toolchain truth.
+          xcode-version: "26.3"
+
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .build/artifacts
+            .build/checkouts
+            .build/repositories
+          key: ${{ runner.os }}-docs-spm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-docs-spm-
+
+      - name: Build DocC archive
+        # docbuild emits a .doccarchive into DerivedData. The ManifoldKit scheme
+        # builds the umbrella catalog plus every dependency catalog, so the
+        # re-exported public surface renders under one root.
+        #
+        # Note: this is a best-effort *publish*, not a link-correctness gate — it
+        # deliberately does NOT pass `--warnings-as-errors`. The scheme also
+        # compiles dependency catalogs that carry pre-existing DocC warnings
+        # (e.g. stale symbol references in ManifoldInference.docc) which are out
+        # of scope here; failing the publish on them would block the site for
+        # unrelated debt. Snippet drift is already gated by readme-snippets.yml.
+        run: |
+          set -euo pipefail
+          xcodebuild docbuild \
+            -scheme ManifoldKit \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/docc-dd" \
+            -skipPackagePluginValidation
+
+      - name: Transform for static hosting
+        # Pick the umbrella archive (named ManifoldKit.doccarchive) as the site
+        # root, then rewrite asset/reference paths for a project Pages site served
+        # from https://<user>.github.io/ManifoldKit/.
+        run: |
+          set -euo pipefail
+          ARCHIVE=$(find "$RUNNER_TEMP/docc-dd" -type d -name 'ManifoldKit.doccarchive' | head -n 1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::ManifoldKit.doccarchive not found under DerivedData"
+            find "$RUNNER_TEMP/docc-dd" -type d -name '*.doccarchive' || true
+            exit 1
+          fi
+          echo "Using archive: $ARCHIVE"
+          rm -rf ./docs-site
+          $(xcrun --find docc) process-archive transform-for-static-hosting \
+            "$ARCHIVE" \
+            --output-path ./docs-site \
+            --hosting-base-path ManifoldKit
+          # Redirect the site root to the umbrella landing page so visiting
+          # https://<user>.github.io/ManifoldKit/ lands on ManifoldKit, not a 404.
+          cat > ./docs-site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>ManifoldKit Documentation</title>
+          <meta http-equiv="refresh" content="0; url=documentation/manifoldkit/">
+          <link rel="canonical" href="documentation/manifoldkit/">
+          <p>Redirecting to <a href="documentation/manifoldkit/">the ManifoldKit documentation</a>…</p>
+          HTML
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
