@@ -190,6 +190,27 @@ final class SwiftDataPersistenceProviderTests: XCTestCase {
         XCTAssertEqual(messages.count, 0)
     }
 
+    func test_deleteSession_purgesOnlyTargetSessionMessages() async throws {
+        // deleteSession stages the message purge and the session delete and
+        // commits them with a single save. Verify the commit is scoped to the
+        // target session: a sibling session and its messages survive untouched.
+        let target = ManifoldInference.ChatSession(title: "Target")
+        let sibling = ManifoldInference.ChatSession(title: "Sibling")
+        try await provider.insertSession(target)
+        try await provider.insertSession(sibling)
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "t1", sessionID: target.id))
+        try await provider.insertMessage(ManifoldInference.ChatMessage(role: .user, content: "s1", sessionID: sibling.id))
+
+        try await provider.deleteSession(target.id)
+
+        let sessions = try await provider.fetchSessions()
+        XCTAssertEqual(sessions.map(\.id), [sibling.id])
+        let targetMessages = try await provider.fetchMessages(for: target.id)
+        XCTAssertEqual(targetMessages.count, 0)
+        let siblingMessages = try await provider.fetchMessages(for: sibling.id)
+        XCTAssertEqual(siblingMessages.map(\.content), ["s1"])
+    }
+
     func test_deleteSession_throwsWhenSessionMissing() async throws {
         let ghost = UUID()
         do {
