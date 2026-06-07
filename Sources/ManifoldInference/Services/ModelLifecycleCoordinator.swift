@@ -139,7 +139,13 @@ final class ModelLifecycleCoordinator {
         guard let newBackend = createBackend(for: modelInfo.modelType) else {
             throw InferenceError.inferenceFailure(
                 "No registered backend can handle model type \(modelInfo.modelType). "
-                + "Register a BackendFactory before loading models."
+                + "This usually means the matching backend is unavailable on this OS or "
+                + "build rather than unregistered: environment-gated types only resolve "
+                + "when their prerequisites are met (e.g. .foundation requires macOS 26 / "
+                + "iOS 26 with Apple Intelligence enabled; MLX and GGUF require their "
+                + "SwiftPM traits to be on). If you genuinely have not registered a backend "
+                + "for this type, register a BackendFactory (or call DefaultBackends.register) "
+                + "before loading models."
             )
         }
 
@@ -172,7 +178,13 @@ final class ModelLifecycleCoordinator {
         guard let newBackend = createBackend(for: modelInfo.modelType) else {
             throw InferenceError.inferenceFailure(
                 "No registered backend can handle model type \(modelInfo.modelType). "
-                + "Register a BackendFactory before loading models."
+                + "This usually means the matching backend is unavailable on this OS or "
+                + "build rather than unregistered: environment-gated types only resolve "
+                + "when their prerequisites are met (e.g. .foundation requires macOS 26 / "
+                + "iOS 26 with Apple Intelligence enabled; MLX and GGUF require their "
+                + "SwiftPM traits to be on). If you genuinely have not registered a backend "
+                + "for this type, register a BackendFactory (or call DefaultBackends.register) "
+                + "before loading models."
             )
         }
 
