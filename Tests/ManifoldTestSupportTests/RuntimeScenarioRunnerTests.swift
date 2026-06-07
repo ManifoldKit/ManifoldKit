@@ -1,5 +1,6 @@
 @preconcurrency import XCTest
 import Foundation
+import ManifoldInference
 import ManifoldRuntime
 import ManifoldTestSupport
 import ManifoldContractTestSupport
@@ -106,6 +107,89 @@ final class RuntimeScenarioRunnerTests: XCTestCase {
                 thirdContextAssembledIndex,
                 "historyCompressed must precede the third contextAssembled — got historyCompressed at \(ci), third contextAssembled at \(thirdContextAssembledIndex)"
             )
+        }
+    }
+
+    // MARK: - Glass Box turn-kind scenarios
+
+    /// The tool round trip must surface the full runtime tool trio in order —
+    /// `toolCallRequested` → `toolCallApproved` → `toolCallCompleted` — inside a
+    /// single stream lifecycle, with the follow-up answer's token afterwards.
+    func test_toolRoundTrip_emitsApprovalTrioInOrder() async throws {
+        let result = try await RuntimeScenarioRunner.run(.toolRoundTrip)
+
+        XCTAssertTrue(result.subsequencePassed, result.subsequenceFailureReason ?? "subsequence failed")
+
+        // Exactly one of each tool lifecycle event for the single scripted call.
+        let kinds = result.trace.kinds
+        XCTAssertEqual(kinds.filter { $0 == .toolCallRequested }.count, 1, "Expected one toolCallRequested")
+        XCTAssertEqual(kinds.filter { $0 == .toolCallApproved }.count, 1, "Expected one toolCallApproved")
+        XCTAssertEqual(kinds.filter { $0 == .toolCallCompleted }.count, 1, "Expected one toolCallCompleted")
+
+        // Strict ordering: requested ≺ approved ≺ completed.
+        let requested = kinds.firstIndex(of: .toolCallRequested)
+        let approved = kinds.firstIndex(of: .toolCallApproved)
+        let completed = kinds.firstIndex(of: .toolCallCompleted)
+        XCTAssertNotNil(requested)
+        XCTAssertNotNil(approved)
+        XCTAssertNotNil(completed)
+        if let r = requested, let a = approved, let c = completed {
+            XCTAssertLessThan(r, a, "toolCallRequested must precede toolCallApproved")
+            XCTAssertLessThan(a, c, "toolCallApproved must precede toolCallCompleted")
+        }
+
+        // No error on the happy tool path.
+        XCTAssertTrue(kinds.filter { $0 == .errorRaised }.isEmpty, "Expected no errorRaised events")
+    }
+
+    /// The cancel-mid-stream scenario must terminate with
+    /// `streamFinished(reason: .cancelled)` — not a natural `.stop`.
+    func test_cancelMidStream_finishesWithCancelledReason() async throws {
+        let result = try await RuntimeScenarioRunner.run(.cancelMidStream)
+
+        XCTAssertTrue(result.subsequencePassed, result.subsequenceFailureReason ?? "subsequence failed")
+
+        // The terminal streamFinished must carry the .cancelled reason.
+        let cancelledFinishes = result.trace.events.filter { event in
+            if case .streamFinished(_, .cancelled) = event { return true }
+            return false
+        }
+        XCTAssertEqual(
+            cancelledFinishes.count, 1,
+            "Expected exactly one streamFinished(.cancelled); trace: \(result.trace.kinds.map(\.rawValue))"
+        )
+
+        // And no natural-completion finish should appear for this single turn.
+        let stopFinishes = result.trace.events.filter { event in
+            if case .streamFinished(_, .stop) = event { return true }
+            return false
+        }
+        XCTAssertTrue(stopFinishes.isEmpty, "Expected no streamFinished(.stop) on a cancelled turn")
+    }
+
+    /// The regenerate scenario must show two full stream lifecycles with a
+    /// `messageRemoved` event between them — the regenerate signature.
+    func test_regenerateTurn_removesPriorAssistantThenRegenerates() async throws {
+        let result = try await RuntimeScenarioRunner.run(.regenerateTurn)
+
+        XCTAssertTrue(result.subsequencePassed, result.subsequenceFailureReason ?? "subsequence failed")
+
+        let kinds = result.trace.kinds
+        XCTAssertEqual(kinds.filter { $0 == .streamStarted }.count, 2, "Expected two streamStarted (send + regenerate)")
+        XCTAssertEqual(kinds.filter { $0 == .streamFinished }.count, 2, "Expected two streamFinished")
+
+        // messageRemoved must appear, and after the first turn's streamFinished
+        // (it belongs to the regenerate turn) and before the second streamStarted.
+        let removedIndex = kinds.firstIndex(of: .messageRemoved)
+        XCTAssertNotNil(removedIndex, "Expected a messageRemoved event from regenerate")
+
+        let streamStartedIndices = kinds.enumerated().filter { $0.element == .streamStarted }.map(\.offset)
+        let streamFinishedIndices = kinds.enumerated().filter { $0.element == .streamFinished }.map(\.offset)
+        if let removed = removedIndex,
+           streamStartedIndices.count >= 2,
+           streamFinishedIndices.count >= 1 {
+            XCTAssertGreaterThan(removed, streamFinishedIndices[0], "messageRemoved must follow the first turn's streamFinished")
+            XCTAssertLessThan(removed, streamStartedIndices[1], "messageRemoved must precede the regenerate streamStarted")
         }
     }
 

@@ -3,8 +3,9 @@
 2  contextAssembled  slots:0
 3  streamStarted  id:<uuid:3>
 4  toolCallRequested  callId:tool-1 tool:echo
-5  toolCallCompleted  callId:tool-1 status:ok
-6  tokenEmitted  id:<uuid:3> delta:"Done"
-7  messageInserted  id:<uuid:3> role:assistant content:"Done"
-8  streamFinished  id:<uuid:3> reason:stop
-9  afterGeneration  id:<uuid:3> finalText:"Done"
+5  toolCallApproved  callId:tool-1
+6  toolCallCompleted  callId:tool-1 status:ok
+7  tokenEmitted  id:<uuid:3> delta:"Done"
+8  messageInserted  id:<uuid:3> role:assistant content:"Done"
+9  streamFinished  id:<uuid:3> reason:stop
+10  afterGeneration  id:<uuid:3> finalText:"Done"

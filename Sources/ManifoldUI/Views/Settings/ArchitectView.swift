@@ -50,9 +50,15 @@ public struct ArchitectView: View {
 
     public init(
         runtime: ConversationRuntime,
-        capabilities: BackendCapabilities? = nil
+        capabilities: BackendCapabilities? = nil,
+        imageRuntime: ImageGenerationRuntime? = nil,
+        videoRuntime: VideoGenerationRuntime? = nil
     ) {
-        _viewModel = State(initialValue: ArchitectViewModel(runtime: runtime))
+        _viewModel = State(initialValue: ArchitectViewModel(
+            runtime: runtime,
+            imageRuntime: imageRuntime,
+            videoRuntime: videoRuntime
+        ))
         self.capabilities = capabilities
     }
 

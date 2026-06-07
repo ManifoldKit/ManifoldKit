@@ -157,6 +157,21 @@ public enum GenerationEvent: Sendable, Equatable {
     /// reserved for future retry semantics).
     case toolDispatchStarted(callId: String, name: String, attempt: Int)
 
+    /// Emitted by the orchestrator at the moment a model-emitted tool call
+    /// clears the approval gate and is about to be executed.
+    ///
+    /// Fires after ``toolDispatchStarted(callId:name:attempt:)`` and before the
+    /// matching ``toolResult(_:)``, but ONLY on paths where the call is
+    /// genuinely approved: auto-approval (the tool does not require approval)
+    /// or an explicit `.approved` verdict from the ``ToolApprovalGate``. It is
+    /// deliberately NOT emitted for non-approval outcomes —
+    /// approval-gate denial, pre-tool-use-hook block, identical-call
+    /// short-circuiting, or byte-budget exhaustion — so consumers can treat
+    /// this as the authoritative "approved, executing" signal rather than
+    /// scraping it out of `.toolDispatchStarted` (which also covers denied
+    /// calls). `callId` matches ``ToolCall/id``.
+    case toolCallApproved(callId: String)
+
     /// Emitted by the orchestrator after tool-call handling settles,
     /// regardless of outcome.
     ///

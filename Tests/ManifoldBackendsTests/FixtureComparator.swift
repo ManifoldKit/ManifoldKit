@@ -139,7 +139,7 @@ public struct FixtureComparator {
             case .toolIterationLimitExceeded(let n):
                 return .init(event: "toolIterationLimitExceeded", fields: ["iterations": String(n)])
             case .toolResult, .toolProgress, .toolDispatchStarted, .toolDispatchCompleted,
-                 .kvCacheReuse, .throttleDiagnostic, .prefillProgress:
+                 .toolCallApproved, .kvCacheReuse, .throttleDiagnostic, .prefillProgress:
                 // Queue-emitted lifecycle events and progress signals are
                 // not part of the wire contract — drop from projection.
                 return nil

@@ -68,13 +68,13 @@ private struct EventRowView: View {
         HStack(alignment: .center, spacing: 8) {
             // Category colour dot
             Circle()
-                .fill(categoryColor(for: entry.kind))
+                .fill(categoryColor(for: entry.category))
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(entry.kind.rawValue)
+                    Text(entry.label)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.primary)
 
@@ -113,37 +113,32 @@ private struct EventRowView: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(entry.kind.rawValue)\(entry.summary.isEmpty ? "" : ": \(entry.summary)"), event \(entry.index)")
+        .accessibilityLabel("\(entry.label)\(entry.summary.isEmpty ? "" : ": \(entry.summary)"), event \(entry.index)")
     }
 
     // MARK: - Category colour mapping
 
-    private func categoryColor(for kind: ConversationEventKind) -> Color {
-        switch kind {
-        case .streamStarted, .streamFinished, .tokenEmitted:
+    private func categoryColor(for category: ArchitectEventCategory) -> Color {
+        switch category {
+        case .streaming:
             return .green
-
-        case .contextAssembled, .beforeContextAssembly, .historyShaped:
+        case .context:
             return .blue
-
-        case .compressionTriggered, .historyCompressed:
+        case .compression:
             return .orange
-
-        case .errorRaised:
+        case .error:
             return .red
-
-        case .toolCallRequested, .toolCallApproved, .toolCallCompleted:
+        case .tool:
             return .purple
-
-        case .agentHandoff, .skillInvoked, .hookFired:
+        case .agent:
             return .indigo
-
-        case .thinkingStarted, .thinkingUpdated, .thinkingFinalized:
+        case .thinking:
             return .cyan
-
-        case .messageInserted, .messageRemoved, .messageUpdated,
-             .sessionBranched, .tokenUsageRecorded, .loopDetected,
-             .sessionTouchFailed, .afterGeneration:
+        case .imageGeneration:
+            return .pink
+        case .videoGeneration:
+            return .teal
+        case .message:
             return .secondary
         }
     }

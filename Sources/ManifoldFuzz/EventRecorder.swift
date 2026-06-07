@@ -146,6 +146,8 @@ public struct EventRecorder: Sendable {
                     events.append(.init(t: t, kind: "toolProgress", v: "\(progress.callId):\(progress.message):\(fraction)"))
                 case .toolDispatchStarted(let callId, let name, let attempt):
                     events.append(.init(t: t, kind: "toolDispatchStarted", v: "\(callId):\(name):\(attempt)"))
+                case .toolCallApproved(let callId):
+                    events.append(.init(t: t, kind: "toolCallApproved", v: callId))
                 case .toolDispatchCompleted(let callId, let durationMilliseconds, let errorKind):
                     events.append(.init(t: t, kind: "toolDispatchCompleted", v: "\(callId):\(durationMilliseconds):\(errorKind?.rawValue ?? "none")"))
                 case .handoffRequested(let handoff):

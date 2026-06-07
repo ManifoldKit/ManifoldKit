@@ -107,7 +107,7 @@ public final class ConversationRuntime: Sendable {
     /// ``addEventTap(bufferingPolicy:)``. Separate from the primary
     /// ``continuation`` so the primary stream's `.bufferingOldest(500)` policy
     /// does not affect tap consumers, and a slow tap cannot stall the turn loop.
-    private let eventTaps = EventTapRegistry()
+    private let eventTaps = EventTapRegistry<ConversationEvent>()
 
     // MARK: In-flight state
 

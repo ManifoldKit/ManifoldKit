@@ -435,7 +435,9 @@ public struct ChatView<APIConfig: View>: View {
         .sheet(isPresented: $showArchitectView) {
             ArchitectView(
                 runtime: viewModel.runtime,
-                capabilities: viewModel.backendCapabilities
+                capabilities: viewModel.backendCapabilities,
+                imageRuntime: viewModel.imageRuntime,
+                videoRuntime: viewModel.videoRuntime
             )
         }
         #endif

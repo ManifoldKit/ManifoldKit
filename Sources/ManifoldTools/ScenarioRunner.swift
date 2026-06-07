@@ -103,7 +103,7 @@ public final class ScenarioRunner {
                     // Streaming tool-call deltas are observational; the
                     // authoritative call lands on `.toolCall(_:)`.
                     continue
-                case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted:
+                case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved:
                     // Dispatch lifecycle markers are observational; tool
                     // accounting flows through `.toolCall` / `.toolResult`.
                     continue

@@ -205,7 +205,7 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     // backends that opt into `streamsToolCallArguments`;
                     // the live Ollama replay parses whole calls.
                     break
-                case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted:
+                case .toolProgress, .toolDispatchStarted, .toolDispatchCompleted, .toolCallApproved:
                     // Orchestrator-level dispatch lifecycle events; raw
                     // backend replay never emits them.
                     break

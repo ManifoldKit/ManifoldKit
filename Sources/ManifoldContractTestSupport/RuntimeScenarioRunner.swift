@@ -54,6 +54,7 @@ public enum RuntimeScenarioRunner {
         mode: RunMode = .scripted
     ) async throws -> Result {
         let backend: any InferenceBackend
+        let scriptedBackend: ScriptedGenerationBackend?
         let modeKind: Result.RunModeKind
 
         switch mode {
@@ -63,14 +64,34 @@ public enum RuntimeScenarioRunner {
             // extra step is needed; mark it explicit for clarity.
             scripted.isModelLoaded = true
             backend = scripted
+            scriptedBackend = scripted
             modeKind = .scripted
         case .live(let liveBackend):
             backend = liveBackend
+            scriptedBackend = nil
             modeKind = .live
         }
 
+        // Tool round-trip scenarios register executors so the dispatch loop has
+        // a registry to route the model-emitted tool call through. Send-only
+        // scenarios pass nil, matching the legacy no-tool path.
+        let toolRegistry: ToolRegistry?
+        if scenario.toolExecutors.isEmpty {
+            toolRegistry = nil
+        } else {
+            let registry = ToolRegistry()
+            for tool in scenario.toolExecutors {
+                registry.register(tool)
+            }
+            toolRegistry = registry
+        }
+
         let store = ScenarioMessageStore()
-        let inferenceService = InferenceService(backend: backend, name: "ScenarioRunner-\(scenario.id)")
+        let inferenceService = InferenceService(
+            backend: backend,
+            name: "ScenarioRunner-\(scenario.id)",
+            toolRegistry: toolRegistry
+        )
         let runtime = ConversationRuntime(
             messageStore: store,
             sessionStore: nil,
@@ -82,10 +103,13 @@ public enum RuntimeScenarioRunner {
         let drainTask = await recorder.start(on: runtime)
 
         let sessionID = UUID()
-        for message in scenario.userMessages {
-            let input = TurnInput(sessionID: sessionID, kind: .send(text: message))
-            let handle = try await runtime.processTurnWithOutcome(input)
-            _ = await handle?.outcome
+        for turn in scenario.turns {
+            try await runTurn(
+                turn,
+                runtime: runtime,
+                scriptedBackend: scriptedBackend,
+                sessionID: sessionID
+            )
         }
 
         drainTask.cancel()
@@ -101,6 +125,118 @@ public enum RuntimeScenarioRunner {
             subsequencePassed: passed,
             subsequenceFailureReason: reason
         )
+    }
+
+    // MARK: - Per-turn drive
+
+    /// Number of permits flooded into the emission gate after a cancel lands,
+    /// so the scripted backend's producer task drains its remaining tokens
+    /// instead of parking forever on the gate. Comfortably larger than any
+    /// scripted cancel turn's token count.
+    private static let gateDrainPermits = 64
+
+    /// Drives a single ``RuntimeScenario/ScenarioTurn`` to terminal completion.
+    private static func runTurn(
+        _ turn: RuntimeScenario.ScenarioTurn,
+        runtime: ConversationRuntime,
+        scriptedBackend: ScriptedGenerationBackend?,
+        sessionID: UUID
+    ) async throws {
+        let config: TurnConfig
+        if let limit = turn.streamingBatchCharacterLimit {
+            config = TurnConfig(streamingBatchCharacterLimit: limit)
+        } else {
+            config = TurnConfig()
+        }
+
+        let kind: TurnKind
+        switch turn.action {
+        case let .send(text): kind = .send(text: text)
+        case .regenerate:     kind = .regenerate
+        }
+        let input = TurnInput(sessionID: sessionID, kind: kind, config: config)
+
+        // Plain turn: launch and await the reliable per-turn outcome.
+        guard let cancelAfter = turn.cancelAfterTokens else {
+            let handle = try await runtime.processTurnWithOutcome(input)
+            _ = await handle?.outcome
+            return
+        }
+
+        // Cancellation turn. The scripted backend's emission gate makes the
+        // cancel point deterministic: tokens are released one at a time, and we
+        // issue cancel the moment we have observed `cancelAfter` of them — before
+        // the terminal stream event can be produced.
+        guard let scriptedBackend else {
+            // Live mode has no emission gate; fall back to a best-effort drive
+            // that still issues cancel after observing the Nth token. Live
+            // cancellation is inherently racy and not part of the CI gate.
+            try await driveCancelWithoutGate(
+                input,
+                cancelAfter: cancelAfter,
+                runtime: runtime
+            )
+            return
+        }
+
+        let gate = TokenEmissionGate()
+        scriptedBackend.tokenEmissionGate = gate
+        defer { scriptedBackend.tokenEmissionGate = nil }
+
+        let tap = runtime.addEventTap()
+        let handle = try await runtime.processTurnWithOutcome(input)
+        guard let handle else { return }
+
+        let driver = Task { @MainActor in
+            var seen = 0
+            for await event in tap {
+                if case .tokenEmitted = event {
+                    seen += 1
+                    if seen == cancelAfter {
+                        await runtime.cancel(handle.streamHandle)
+                        // Flood permits so the gated producer task can drain and
+                        // finish rather than parking on a never-advanced gate.
+                        for _ in 0..<gateDrainPermits { await gate.advance() }
+                    }
+                }
+                if case .streamFinished = event { break }
+                if case .errorRaised = event { break }
+            }
+        }
+
+        // Release exactly `cancelAfter` tokens so the driver observes them and
+        // triggers the cancel. The producer parks on the next token until the
+        // driver floods the gate post-cancel.
+        for _ in 0..<cancelAfter { await gate.advance() }
+        _ = await handle.outcome
+        await driver.value
+    }
+
+    /// Best-effort cancellation for live mode (no emission gate). Not used by
+    /// the scripted CI gate.
+    private static func driveCancelWithoutGate(
+        _ input: TurnInput,
+        cancelAfter: Int,
+        runtime: ConversationRuntime
+    ) async throws {
+        let tap = runtime.addEventTap()
+        let handle = try await runtime.processTurnWithOutcome(input)
+        guard let handle else { return }
+        let driver = Task { @MainActor in
+            var seen = 0
+            for await event in tap {
+                if case .tokenEmitted = event {
+                    seen += 1
+                    if seen == cancelAfter {
+                        await runtime.cancel(handle.streamHandle)
+                    }
+                }
+                if case .streamFinished = event { break }
+                if case .errorRaised = event { break }
+            }
+        }
+        _ = await handle.outcome
+        await driver.value
     }
 
     /// Calls `XCTFail` if `result.subsequencePassed` is `false`.

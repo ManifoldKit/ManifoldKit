@@ -37,6 +37,9 @@ public struct GenerationStreamConsumer: Sendable {
         case .thinkingSignature(let signature):
             return .recordThinkingSignature(signature)
 
+        case .toolCallApproved(let callId):
+            return .recordToolApproval(callId: callId)
+
         case .toolResult(let result):
             return .appendToolResult(result)
 
@@ -98,6 +101,10 @@ public struct GenerationStreamConsumer: Sendable {
         case recordUsage(prompt: Int, completion: Int)
         /// Execute the requested tool call and feed a ``ToolResult`` back into the conversation.
         case dispatchToolCall(ToolCall)
+        /// A previously dispatched tool call cleared the approval gate and is
+        /// about to execute. Surfaced so the runtime can emit its typed
+        /// approval event without re-inspecting raw generation events.
+        case recordToolApproval(callId: String)
         /// Append the text to the current thinking accumulation buffer.
         case appendThinkingText(String)
         /// Reasoning block complete — finalize and store the accumulated thinking content.

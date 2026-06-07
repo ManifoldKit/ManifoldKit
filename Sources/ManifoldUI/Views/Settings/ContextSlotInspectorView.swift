@@ -37,7 +37,7 @@ struct ContextSlotInspectorView: View {
 
     private func contextContent(_ entry: ArchitectEventEntry) -> some View {
         Form {
-            if case .contextAssembled(let slots) = entry.event {
+            if case .contextAssembled(let slots)? = entry.event {
                 Section("Token Budget") {
                     SlotBudgetBar(slots: slots)
                         .padding(.vertical, 4)
@@ -73,7 +73,7 @@ struct ContextSlotInspectorView: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.kind.rawValue)
+                        Text(entry.label)
                             .font(.system(.caption, design: .monospaced))
                         if !entry.summary.isEmpty {
                             Text(entry.summary)
@@ -90,7 +90,7 @@ struct ContextSlotInspectorView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(entry.kind.rawValue)\(entry.summary.isEmpty ? "" : ": \(entry.summary)"), event \(entry.index)")
+                .accessibilityLabel("\(entry.label)\(entry.summary.isEmpty ? "" : ": \(entry.summary)"), event \(entry.index)")
             }
         }
     }
