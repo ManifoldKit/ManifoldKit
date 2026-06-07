@@ -9,6 +9,10 @@
 
 The only open-source Swift package that bundles UI, turn-loop runtime, persistence, and multi-backend inference into one drop-in chat product for Apple platforms.
 
+![ManifoldKit assembled full-stack hero — one import gives you the SwiftUI ChatView, the ConversationRuntime turn loop, SwiftData persistence, model-management UI, and every backend; competitors own a single band](docs/images/product/layer-cake-hero.svg)
+
+**New here?** Start with **[Why ManifoldKit — and how it's built to last](docs/WHY-MANIFOLDKIT.md)** for the honest "what it solves and why trust it" narrative, or jump to the [docs index](docs/README.md) for the full guided path from install to first token.
+
 ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS 15+. Import one umbrella package and you get a SwiftUI `ChatView`, the `ConversationRuntime` turn loop (send / regenerate / edit / cancel / branch), SwiftData persistence, model download and management UI, and inference backends spanning on-device (MLX, llama.cpp, Apple Foundation Models) and cloud (OpenAI, Anthropic, Ollama, LAN) — all behind one `InferenceBackend` protocol. Competitors ship a single layer; ManifoldKit ships the assembled product and the wiring between layers. It survives real failures — streaming retries, latest-wins model handoff, memory admission, certificate pinning, and a mock backend for app-level testing. See [docs/RELIABILITY.md](docs/RELIABILITY.md) for the source-backed contract, or [docs/POSITIONING.md](docs/POSITIONING.md) for the full "why ManifoldKit vs. the field" rationale.
 
 ## Hello World
