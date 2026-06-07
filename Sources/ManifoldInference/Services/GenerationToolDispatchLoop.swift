@@ -218,7 +218,21 @@ struct GenerationToolDispatchLoop {
                         return
                     }
 
-                default:
+                // Passthrough actions: the dispatch loop owns only tool-call
+                // dispatch; every other action maps back to its raw event,
+                // forwarded verbatim for upstream consumers to handle. Listed
+                // explicitly (no `default:`) so a new StreamAction case forces
+                // a compile error here instead of silently falling through.
+                case .appendText,
+                     .recordUsage,
+                     .recordToolApproval,
+                     .appendThinkingText,
+                     .finalizeThinking,
+                     .recordThinkingSignature,
+                     .appendToolResult,
+                     .toolIterationLimitExceeded,
+                     .recordHandoff,
+                     .ignore:
                     yieldEvent(event)
                 }
             }

@@ -71,12 +71,12 @@ public extension HuggingFaceService {
     ///   - displayName: Human-readable name for the resulting `ImageModelInfo`.
     ///     Defaults to the last path component of `repoID`.
     ///   - urlSession: URL session used for the file downloads. Tests inject a
-    ///     `URLSession` configured with `MockURLProtocol`. When `nil`, a fresh
-    ///     ephemeral session is created for this call (the underlying
-    ///     `HubClient`'s session is **not** reused — manifest fetching shares
-    ///     `HubClient`, but file streaming runs through this dedicated session
-    ///     so per-call cancellation is straightforward). Pass an explicit
-    ///     session if you need shared auth headers or a custom user-agent.
+    ///     `URLSession` configured with `MockURLProtocol`. When `nil`, a background
+    ///     session is created via ``URLSessionFactory/background(identifier:additionalDownloadDelegate:)``
+    ///     so downloads survive app suspension on iOS — the underlying
+    ///     `HubClient`'s session is **not** reused. Pass an explicit session if
+    ///     you need shared auth headers, a custom user-agent, or deterministic
+    ///     test interception via `MockURLProtocol`.
     ///   - progress: Called with cumulative progress as bytes arrive.
     /// - Returns: An `ImageModelInfo` whose `format == .mlxDiffusion` and whose
     ///   `huggingFaceRepoID == repoID`.
@@ -91,13 +91,27 @@ public extension HuggingFaceService {
         urlSession: URLSession? = nil,
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
-        // Route through the centralised factory so the redirect guard is
-        // installed on every fallback session. HuggingFace ↔ CDN redirects
-        // are common and benign; an attacker-controlled redirect into IMDS
-        // or a LAN IP would otherwise be followed silently.
-        // Diffusion models can be several GB; the default 10-minute resource
-        // timeout is too short on slower connections.
-        let session = urlSession ?? URLSessionFactory.ephemeral(resourceTimeout: 7200)
+        // When no session is provided (production path) use a background
+        // URLSession so downloads survive app suspension on iOS.
+        // Background sessions require a delegate — completion-handler tasks
+        // are silently ignored by the OS on background configurations.
+        //
+        // When the caller injects a session (tests, custom auth headers) the
+        // existing completion-handler path is kept intact so MockURLProtocol
+        // continues to work without a wired-up session delegate.
+        let delegate: DiffusionDownloadDelegate?
+        let session: URLSession
+        if let urlSession {
+            delegate = nil
+            session = urlSession
+        } else {
+            let d = DiffusionDownloadDelegate()
+            delegate = d
+            session = URLSessionFactory.background(
+                identifier: ManifoldConfiguration.shared.downloadSessionIdentifier + ".diffusion",
+                additionalDownloadDelegate: d
+            )
+        }
         let resolvedDisplayName = displayName ?? repoID.split(separator: "/").last.map(String.init) ?? repoID
 
         let parentDirectory = destinationDirectory.deletingLastPathComponent()
@@ -116,6 +130,7 @@ public extension HuggingFaceService {
                 displayName: resolvedDisplayName,
                 preferFP16: preferFP16,
                 using: session,
+                delegate: delegate,
                 progress: progress
             )
         } catch {
@@ -135,6 +150,7 @@ public extension HuggingFaceService {
         displayName resolvedDisplayName: String,
         preferFP16: Bool,
         using session: URLSession,
+        delegate: DiffusionDownloadDelegate?,
         progress: @escaping @Sendable (DiffusionDownloadProgress) -> Void
     ) async throws -> ImageModelInfo {
 
@@ -152,7 +168,8 @@ public extension HuggingFaceService {
         try await downloadFile(
             from: manifestRemoteURL,
             to: manifestLocalURL,
-            using: session
+            using: session,
+            delegate: delegate
         )
         try DownloadFileValidator.validate(manifestLocalURL, diffusionRole: .manifest, expectedSize: nil)
 
@@ -209,6 +226,7 @@ public extension HuggingFaceService {
                 from: remote,
                 to: item.localURL,
                 using: session,
+                delegate: delegate,
                 onChunk: { received, expected in
                     let cumulative = baseline + received
                     // When `Content-Length` is unknown (often `-1`), keep
@@ -612,25 +630,120 @@ public extension HuggingFaceService {
 
     // MARK: - File download
 
-    // Uses downloadTask(with:completionHandler:) so the OS networking stack writes
-    // to a temp file directly — no per-byte Swift async loop.
+    // Two download paths depending on whether a DiffusionDownloadDelegate is provided:
     //
-    // We deliberately avoid the async download(from:delegate:) API because
-    // CompositeURLSessionDelegate conforms to URLSessionDownloadDelegate and
-    // implements didFinishDownloadingTo at the session level. The async API
-    // intercepts that same callback to resolve its continuation; the two mechanisms
-    // conflict on a session whose delegate already handles it, causing a hang.
+    // Delegate path (production — background URLSession):
+    //   Uses downloadTask(with:) (no completion handler) and registers the
+    //   continuation with the delegate. Background sessions REQUIRE this path —
+    //   the completion-handler variant is silently ignored by the OS when a
+    //   background configuration is active. Per-chunk progress fires via
+    //   URLSessionDownloadDelegate.urlSession(_:downloadTask:didWriteData:...).
     //
-    // downloadTask(with:completionHandler:) is documented to NOT call the session
-    // delegate's didFinishDownloadingTo, so CompositeURLSessionDelegate is
-    // unaffected. The redirect guard fires via willPerformHTTPRedirection, which
-    // is a separate task-delegate callback unaffected by the completion-handler
-    // variant. Progress is reported via KVO on task.progress.completedUnitCount.
+    // Completion-handler path (injected sessions — tests, custom auth):
+    //   Uses downloadTask(with:completionHandler:) exactly as before. This path
+    //   keeps MockURLProtocol-backed test sessions working without a wired-up
+    //   session delegate. Progress is reported via KVO on countOfBytesReceived
+    //   (the original strategy).
     private func downloadFile(
         from remote: URL,
         to local: URL,
         using session: URLSession,
+        delegate: DiffusionDownloadDelegate?,
         onChunk: (@Sendable (_ received: Int64, _ expected: Int64) -> Void)? = nil
+    ) async throws {
+        if let delegate {
+            try await downloadFileViaDelegate(
+                from: remote, to: local, using: session, delegate: delegate, onChunk: onChunk
+            )
+        } else {
+            try await downloadFileViaCompletionHandler(
+                from: remote, to: local, using: session, onChunk: onChunk
+            )
+        }
+    }
+
+    /// Delegate-based download path used with background URLSessions.
+    ///
+    /// Registers a ``CheckedContinuation`` with the ``DiffusionDownloadDelegate``
+    /// before resuming the task. The delegate fires ``onChunk`` on every
+    /// ``urlSession(_:downloadTask:didWriteData:...)`` callback and resumes the
+    /// continuation when ``urlSession(_:downloadTask:didFinishDownloadingTo:)``
+    /// fires (with the stable temp URL) or on error.
+    private func downloadFileViaDelegate(
+        from remote: URL,
+        to local: URL,
+        using session: URLSession,
+        delegate: DiffusionDownloadDelegate,
+        onChunk: (@Sendable (_ received: Int64, _ expected: Int64) -> Void)?
+    ) async throws {
+        final class CancelBox: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _task: URLSessionDownloadTask?
+
+            func store(_ task: URLSessionDownloadTask) {
+                lock.lock(); defer { lock.unlock() }
+                _task = task
+            }
+            func cancel() {
+                lock.lock(); let t = _task; lock.unlock()
+                t?.cancel()
+            }
+        }
+        let box = CancelBox()
+        let filename = remote.lastPathComponent
+
+        let tempURL: URL = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+                let task = session.downloadTask(with: remote)
+                delegate.register(taskID: task.taskIdentifier, continuation: continuation, onChunk: onChunk)
+                box.store(task)
+                task.resume()
+            }
+        } onCancel: {
+            box.cancel()
+        }
+
+        // Move the stable temp file (copied synchronously in the delegate) to
+        // its final destination. Check HTTP status via task response if available.
+        Log.download.info("downloadTask complete for \(filename, privacy: .public), moving to destination")
+        do {
+            try FileManager.default.createDirectory(
+                at: local.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if FileManager.default.fileExists(atPath: local.path) {
+                try FileManager.default.removeItem(at: local)
+            }
+            try FileManager.default.moveItem(at: tempURL, to: local)
+            Log.download.info("Move complete for \(filename, privacy: .public)")
+        } catch {
+            Log.download.error("Move failed for \(filename, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            // Best-effort cleanup of the stable temp copy. The file may already
+            // be absent if a prior guard branch deleted it — ignore "not found".
+            do {
+                try FileManager.default.removeItem(at: tempURL)
+            } catch let cleanupError {
+                Log.download.warning("Failed to remove temp file after move failure: \(cleanupError.localizedDescription, privacy: .public)")
+            }
+            throw error
+        }
+    }
+
+    /// Completion-handler download path for injected (non-background) sessions.
+    ///
+    /// Kept intact so test sessions configured with `MockURLProtocol` continue
+    /// to work without a wired-up session delegate. Progress is reported via
+    /// KVO on `countOfBytesReceived`.
+    ///
+    /// Background sessions silently ignore the completion handler — always use
+    /// ``downloadFileViaDelegate(from:to:using:delegate:onChunk:)`` with a
+    /// ``URLSessionFactory/background(identifier:additionalDownloadDelegate:)``
+    /// session instead.
+    private func downloadFileViaCompletionHandler(
+        from remote: URL,
+        to local: URL,
+        using session: URLSession,
+        onChunk: (@Sendable (_ received: Int64, _ expected: Int64) -> Void)?
     ) async throws {
         final class State: @unchecked Sendable {
             private let lock = NSLock()
