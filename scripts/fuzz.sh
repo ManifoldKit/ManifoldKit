@@ -39,6 +39,10 @@ for arg in "$@"; do
             echo "  Adds the CloudSaaS trait automatically. Caveats: replay/shrink unavailable"
             echo "  (non-deterministic); free models are rate-limited (429) and ':free' slugs may"
             echo "  404 on data-policy gating; --base-url must omit /v1 (backend appends it)."
+            echo "  --request-timeout N   per-request HTTP idle timeout in seconds (default 90)."
+            echo "                        Slow/free models otherwise hang the 300s session default"
+            echo "                        per request; detectors flag >60s, so 90s loses no signal"
+            echo "                        while protecting throughput. openai path only."
             echo ""
             echo "Forwarding to: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h"
             echo "─────────────────────────────────────────────────────────────"
@@ -128,6 +132,10 @@ if [[ $CLOUD_BACKEND -eq 1 ]]; then
     echo "      can 404 on data-policy gating. Transient HTTP errors are recorded as"
     echo "      failed runs, NOT fuzz findings, so a throttled campaign stays honest."
     echo "    • --base-url must omit the /v1 suffix (OpenRouter base = https://openrouter.ai/api)."
+    echo "    • Per-request idle timeout defaults to 90s (--request-timeout N to override)."
+    echo "      Slow/free models otherwise hang the full 300s session default per request;"
+    echo "      detectors already flag >60s, so 90s captures the slow-but-real cases without"
+    echo "      destroying throughput."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
     LLAMA_HIT="miss"
@@ -189,6 +197,23 @@ done
 
 if [[ $HAS_BUDGET -eq 0 ]]; then
     FORWARDED_ARGS=("--minutes" "5" "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}")
+fi
+
+# Cloud path: make the per-request idle bound explicit in the echoed command so
+# the throughput protection is visible. fuzz-chat already defaults to 90s; we
+# only inject when the caller didn't pass --request-timeout so an explicit value
+# always wins. Slow/free OpenRouter models otherwise hang the 300s session
+# default per request, and the detectors already flag anything over 60s.
+if [[ $CLOUD_BACKEND -eq 1 ]]; then
+    HAS_REQUEST_TIMEOUT=0
+    for arg in "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}"; do
+        case "$arg" in
+            --request-timeout|--request-timeout=*) HAS_REQUEST_TIMEOUT=1 ;;
+        esac
+    done
+    if [[ $HAS_REQUEST_TIMEOUT -eq 0 ]]; then
+        FORWARDED_ARGS=("--request-timeout" "90" "${FORWARDED_ARGS[@]+"${FORWARDED_ARGS[@]}"}")
+    fi
 fi
 
 build_mlx_env() {

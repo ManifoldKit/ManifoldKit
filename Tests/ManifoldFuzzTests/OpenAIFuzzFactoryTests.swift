@@ -3,6 +3,7 @@
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
+import ManifoldBackends
 @testable import ManifoldFuzzBackends
 
 /// Unit tests for ``OpenAIFuzzFactory`` — the OpenAI-Chat-Completions-compatible
@@ -15,13 +16,17 @@ import ManifoldInference
 /// no `MockURLProtocol` stubs.
 final class OpenAIFuzzFactoryTests: XCTestCase {
 
-    private func makeFactory(model: String = "gpt-4o-mini") -> OpenAIFuzzFactory {
+    private func makeFactory(
+        model: String = "gpt-4o-mini",
+        requestTimeout: TimeInterval = 90
+    ) -> OpenAIFuzzFactory {
         OpenAIFuzzFactory(
             // No /v1 suffix — OpenAIBackend.buildRequest appends it. (No request
             // is built here regardless; this documents the contract.)
             baseURL: URL(string: "https://openrouter.ai/api")!,
             apiKey: "sk-test-never-sent-no-network",
-            modelName: model
+            modelName: model,
+            requestTimeout: requestTimeout
         )
     }
 
@@ -51,6 +56,23 @@ final class OpenAIFuzzFactoryTests: XCTestCase {
                        "modelURL must namespace the slug under the openai: scheme.")
         XCTAssertNotNil(handle.templateMarkers,
                         "Factory always sets a marker snapshot (manifest markers or the Qwen3 fallback).")
+    }
+
+    /// The factory's `requestTimeout` must propagate to the backend's per-request
+    /// HTTP idle override (`SSECloudBackend.requestIdleTimeout`). Without this the
+    /// fuzz path inherits the 300s session default and a hung free-model iteration
+    /// stalls ~300s before abandoning — even though the detectors flag >60s.
+    func test_makeHandle_propagatesRequestTimeoutToBackend() async throws {
+        let handle = try await makeFactory(requestTimeout: 42).makeHandle()
+
+        let backend = try XCTUnwrap(
+            handle.backend as? OpenAIBackend,
+            "openai fuzz handle must wrap an OpenAIBackend so the timeout override is observable."
+        )
+        XCTAssertEqual(
+            backend.requestIdleTimeout, 42,
+            "Factory must apply requestTimeout as the backend's per-request idle override."
+        )
     }
 }
 #endif
