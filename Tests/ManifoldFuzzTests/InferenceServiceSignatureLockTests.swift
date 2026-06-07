@@ -15,7 +15,7 @@ import ManifoldTestSupport
 @MainActor
 final class InferenceServiceSignatureLockTests: XCTestCase {
 
-    /// Pins the full `enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:priority:sessionID:)` signature.
+    /// Pins the full `enqueue(messages:systemPrompt:temperature:topP:repeatPenalty:maxOutputTokens:priority:requestGroupID:)` signature.
     ///
     /// Any change to parameter labels, types, default values, or throws-ness
     /// fails this test at compile time.
@@ -37,7 +37,7 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
             InferenceService.GenerationPriority,
             UUID?
         ) throws -> (token: InferenceService.GenerationRequestToken, stream: GenerationStream) = {
-            (msgs, sys, temp, topP, rep, maxTok, prio, sid) in
+            (msgs, sys, temp, topP, rep, maxTok, prio, groupID) in
             try service.enqueue(
                 messages: msgs,
                 systemPrompt: sys,
@@ -46,7 +46,7 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
                 repeatPenalty: rep,
                 maxOutputTokens: maxTok,
                 priority: prio,
-                sessionID: sid
+                requestGroupID: groupID
             )
         }
 
