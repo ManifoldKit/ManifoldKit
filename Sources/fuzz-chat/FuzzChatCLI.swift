@@ -48,6 +48,13 @@ struct FuzzChatCLI {
         // explicit opt-out.
         var baseURLString: String?
         var apiKeyArg: String?
+        // Per-request HTTP idle timeout (seconds) for the cloud (`--backend
+        // openai`) path only. Default 90: slow/throttled free OpenRouter models
+        // otherwise hang the full 300s session default per request, and the
+        // detectors already flag anything over 60s — so 90s loses no signal
+        // while protecting throughput. Ignored for local backends.
+        var requestTimeout: TimeInterval = 90
+        var requestTimeoutProvided = false
 
         var i = argv.startIndex
         while i < argv.endIndex {
@@ -95,6 +102,13 @@ struct FuzzChatCLI {
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--api-key requires a value") }
                 apiKeyArg = argv[i]
+            case "--request-timeout":
+                i = argv.index(after: i)
+                guard i < argv.endIndex, let seconds = Double(argv[i]), seconds > 0 else {
+                    fail("--request-timeout requires a positive number of seconds")
+                }
+                requestTimeout = seconds
+                requestTimeoutProvided = true
             case "--detector":
                 i = argv.index(after: i)
                 guard i < argv.endIndex else { fail("--detector requires a value") }
@@ -142,6 +156,12 @@ struct FuzzChatCLI {
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh or xcodebuild.")
         }
 
+        // `--request-timeout` only bounds the cloud HTTP transport; local
+        // backends generate in-process with no per-request socket timeout.
+        if requestTimeoutProvided && backend != .openai {
+            FileHandle.standardError.write(Data("fuzz-chat: note — --request-timeout only applies to --backend openai; ignoring for \(backend.rawValue).\n".utf8))
+        }
+
         // Default termination if neither flag passed: 5 minutes.
         if minutes == nil && iterations == nil && replayHash == nil && shrinkHash == nil { minutes = 5 }
 
@@ -170,7 +190,8 @@ struct FuzzChatCLI {
                         corpusSubset: corpusSubset,
                         tools: tools,
                         rotateEvery: rotateEvery,
-                        outputDir: outputDir
+                        outputDir: outputDir,
+                        requestTimeout: requestTimeout
                     ),
                     slices: slices
                 )
@@ -221,7 +242,8 @@ struct FuzzChatCLI {
             factory = makeOpenAIFactory(
                 baseURLString: baseURLString,
                 apiKeyArg: apiKeyArg,
-                modelHint: modelHint
+                modelHint: modelHint,
+                requestTimeout: requestTimeout
             )
             #else
             fail("openai backend requires the Fuzz and CloudSaaS build traits. Run via: swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
@@ -306,6 +328,7 @@ struct FuzzChatCLI {
         var tools: Bool
         var rotateEvery: Int
         var outputDir: URL
+        var requestTimeout: TimeInterval
     }
 
     struct WorkerProcess {
@@ -425,6 +448,12 @@ struct FuzzChatCLI {
         // Forward the rotation block size so each worker's RotatingFuzzFactory
         // keeps the same amortisation behaviour as the parent invocation.
         args += ["--rotate-every", "\(options.rotateEvery)"]
+        // Forward the cloud per-request timeout so each openai worker inherits
+        // the same bound. Only for the openai backend — local backends ignore it
+        // (and would otherwise log a spurious "ignoring" note per worker).
+        if options.backend == .openai {
+            args += ["--request-timeout", "\(options.requestTimeout)"]
+        }
         return args
     }
 
@@ -555,6 +584,7 @@ struct FuzzChatCLI {
         baseURLString: String?,
         apiKeyArg: String?,
         modelHint: String?,
+        requestTimeout: TimeInterval,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> OpenAIFuzzFactory {
         guard let baseURLString, !baseURLString.isEmpty else {
@@ -573,7 +603,7 @@ struct FuzzChatCLI {
               !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             fail("--backend openai requires --model <slug> (e.g. --model deepseek/deepseek-r1:free).")
         }
-        return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model)
+        return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model, requestTimeout: requestTimeout)
     }
     #endif
 
@@ -621,6 +651,11 @@ struct FuzzChatCLI {
             "                      base = https://openrouter.ai/api",
             "  --api-key <key>     openai backend: API key (discouraged — leaks into ps/history).",
             "                      Prefer the OPENROUTER_API_KEY (or OPENAI_API_KEY) env var.",
+            "  --request-timeout N openai backend: per-request HTTP idle timeout in seconds",
+            "                      (default 90). Bounds how long a hung iteration waits before",
+            "                      abandoning. Slow/free OpenRouter models otherwise hang the",
+            "                      full 300s session default per request; detectors already",
+            "                      flag >60s, so 90s loses no signal. Ignored for local backends.",
             "  --detector ids      comma-separated detector ids to run",
             "  --single            shorthand for --iterations 1",
             "  --quiet             suppress live output (still prints findings)",

@@ -24,21 +24,37 @@ public struct OpenAIFuzzFactory: FuzzBackendFactory {
     public let apiKey: String
     public let modelName: String
 
+    /// Per-request HTTP idle timeout (seconds) applied to every generation
+    /// request via ``SSECloudBackend/requestIdleTimeout``. Bounds how long a
+    /// hung iteration waits before abandoning, overriding the 300s session
+    /// default from `URLSessionProvider` for the fuzz path only. Slow/throttled
+    /// free OpenRouter models otherwise hang the full 300s per request even
+    /// though the detectors already flag anything over 60s, so a tighter bound
+    /// loses no signal while protecting throughput.
+    public let requestTimeout: TimeInterval
+
     /// Cloud generation is non-deterministic — providers do not honour a seed
     /// reproducibly across requests, and `:free` slugs route to shifting
     /// backends. `Replayer` short-circuits with `.nonDeterministicBackend`
     /// when this is `false` rather than run a guaranteed-noisy replay.
     public var supportsDeterministicReplay: Bool { false }
 
-    public init(baseURL: URL, apiKey: String, modelName: String) {
+    public init(baseURL: URL, apiKey: String, modelName: String, requestTimeout: TimeInterval) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.modelName = modelName
+        self.requestTimeout = requestTimeout
     }
 
     public func makeHandle() async throws -> FuzzRunner.BackendHandle {
         let backend = OpenAIBackend()
         backend.configure(baseURL: baseURL, apiKey: apiKey, modelName: modelName)
+        // Bound the per-request HTTP idle window for the fuzz path. The shared
+        // session default (`URLSessionProvider`, 300s) is production-tuned for
+        // long generations; here a hung iteration should abandon promptly since
+        // the detectors already flag >60s. This is the per-iteration time bound —
+        // there is no separate runner deadline; the transport timeout is it.
+        backend.requestIdleTimeout = requestTimeout
         // Cloud `loadModel` is a no-op that only validates the base URL and
         // flips `isModelLoaded` — no network round-trip happens here, so the
         // factory stays cheap and the first request fires only on `generate`.
