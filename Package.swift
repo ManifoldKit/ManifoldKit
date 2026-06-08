@@ -148,7 +148,7 @@ let package = Package(
         // just-pushed revision — breaking every CI run repo-wide regardless of the lockfile. Exact
         // pinning keeps resolution deterministic. Bump intentionally (and re-verify the C API
         // contract) per docs/LLAMA_CONTRACT.md's upgrade procedure.
-        .package(url: "https://github.com/mattt/llama.swift", exact: "2.9505.0"),
+        .package(url: "https://github.com/mattt/llama.swift", exact: "2.9553.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.

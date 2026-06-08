@@ -1,5 +1,5 @@
 {
-  "originHash" : "cd63de45ffdec6a4f20996a58f7212cce4af57fffeac00c6644aa4a2985f7a50",
+  "originHash" : "239949b1a24a03452836d2aab7958f545d1f798c7ec0c7875117e9a5871e7182",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/llama.swift",
       "state" : {
-        "revision" : "11efdff6cfadc8ed2f998dc6f50d68d3e35237f9",
-        "version" : "2.9505.0"
+        "revision" : "b369d80eb8135060a9d0d87692af001bfc2bc2fa",
+        "version" : "2.9553.0"
       }
     },
     {
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser.git",
       "state" : {
-        "revision" : "ca37474853a4b5f59a22c74bfdd449b1f6bc4cc2",
-        "version" : "1.8.1"
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
       }
     },
     {
