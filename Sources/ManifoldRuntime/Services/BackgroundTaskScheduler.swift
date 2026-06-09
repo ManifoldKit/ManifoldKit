@@ -57,6 +57,10 @@ public enum ManifoldBackgroundTaskIdentifiers {
     public static let indexing = "com.manifoldkit.background.indexing"
     /// Identifier for chat archive and export work.
     public static let archive = "com.manifoldkit.background.archive"
+    /// Task identifier for continuing an in-progress generation turn after the app backgrounds.
+    ///
+    /// Register this in your app's `Info.plist` under `BGTaskSchedulerPermittedIdentifiers`.
+    public static let continueGeneration = "com.manifoldkit.runtime.continueGeneration"
 }
 
 // MARK: - Scheduler Protocol
