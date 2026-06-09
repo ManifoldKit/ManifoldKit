@@ -1,6 +1,5 @@
 #if Server
 import Foundation
-import HTTPTypes
 import Hummingbird
 
 /// A request inspected by `RequestAuthMiddleware`.

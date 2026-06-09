@@ -310,8 +310,8 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .automatic) {
-            if let backend = viewModel.activeBackendName,
-               Self.isCloudBackend(backend) {
+            if viewModel.backendCapabilities?.isRemote == true,
+               let backend = viewModel.activeBackendName {
                 Label("Cloud", systemImage: "cloud.fill")
                     .font(.caption2)
                     .foregroundStyle(.blue)
@@ -347,15 +347,6 @@ struct ChatToolbarContent<APIConfig: View>: ToolbarContent {
         ToolbarItem(placement: .automatic) {
             clearChatButton
         }
-    }
-
-    private static func isCloudBackend(_ backend: String) -> Bool {
-        [
-            BackendName.openAI.rawValue,
-            BackendName.claude.rawValue,
-            BackendName.ollama.rawValue,
-            APIProvider.lmStudio.rawValue,
-        ].contains(backend)
     }
 
     private var exportButton: some View {
