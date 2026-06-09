@@ -155,7 +155,7 @@ jobs:
             api-ui:
               - 'Sources/ManifoldUI/**'
 
-      # Tier 0 selective testing — DRY-RUN ONLY (issue #1588).
+      # Tier 0 selective testing (issue #1588).
       #
       # Maps the diff to the subset of per-PR `test`-job suites it could affect,
       # using the committed SwiftPM target-graph snapshot
@@ -165,13 +165,15 @@ jobs:
       # derived purely from Package.swift and its freshness is guarded in the
       # `test` job.
       #
-      # This step changes NOTHING about what executes: the `test` job below still
-      # runs its full hard-coded --filter list. It only logs what a selective run
-      # WOULD do and publishes the result as the `affected` job output, so a later
-      # PR can wire it to --filter once a week of this data confirms the projected
-      # ~15–20% reduction. On push to main (and nightly) the resolver returns FULL
+      # The `affected` output is consumed by "Compute test mode" in the `test` job
+      # (Tier 2, issue #1590) to route each run to either the selective xcodebuild
+      # path or the full swift-test batch. On push to main the resolver returns FULL
       # — selective applies to pull_request only.
-      - name: Tier 0 — affected-suite resolver (dry-run, informational)
+      #
+      # NONE means the changed files do not map to any test-job suite (e.g. a
+      # docs-only or script-only change). The `test` job maps NONE → mode=full as a
+      # conservative fallback — see "Compute test mode" for the rationale.
+      - name: Tier 0 — affected-suite resolver
         id: affected
         env:
           ALL_FILES: ${{ steps.filter.outputs.all_files }}
@@ -184,20 +186,20 @@ jobs:
           [ -z "$affected" ] && affected=FULL
           echo "affected=$affected" >> "$GITHUB_OUTPUT"
           {
-            echo "### Tier 0 selective-testing — dry-run (issue #1588)"
+            echo "### Tier 0 selective-testing (issue #1588)"
             echo ""
             if [ "$affected" = "FULL" ]; then
-              echo "Would run the **full** test-job suite list (no narrowing)."
+              echo "Running the **full** test-job suite list (no narrowing)."
             elif [ "$affected" = "NONE" ]; then
-              echo "Would run **no** test-job suites (change covered by sibling jobs or non-code paths)."
+              echo "No test-job suites matched the changed files — falling back to a **full run** as a conservative measure (NONE → full)."
             else
               n=$(printf '%s\n' "$affected" | wc -w | tr -d ' ')
-              echo "Would run **${n}** affected test-job suite(s): \`${affected}\`"
+              echo "Running **${n}** affected test-job suite(s) via selective path: \`${affected}\`"
             fi
             echo ""
             echo "_Tier 0 (execution routing) + Tier 2 (compile pruning, issue #1590) are now wired. When mode=selective the \`test\` job runs only the affected suites via xcodebuild per-target instead of the full swift-test bundle._"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Tier 0 dry-run: affected=${affected}"
+          echo "Tier 0: affected=${affected}"
 
   test:
     needs: [changes]
@@ -431,12 +433,19 @@ jobs:
         #
         # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed — see the
         # comment above the full-run equivalent step in nightly-slow-tests.yml.
+        # Skipped on push to main: on a push event origin/main IS the commit
+        # being tested, so the diff would be HEAD against HEAD — a guaranteed
+        # no-op (measured 526s in run 27209277711). PRs already ran this check
+        # before merge; nightly-slow-tests.yml runs it unconditionally as the
+        # 24h backstop for Sources-only regressions not touched by a PR.
         if: |
-          needs.changes.outputs.api-inference == 'true' ||
-          needs.changes.outputs.api-runtime == 'true' ||
-          needs.changes.outputs.api-cloudcore == 'true' ||
-          needs.changes.outputs.api-persistence == 'true' ||
-          needs.changes.outputs.api-ui == 'true'
+          github.event_name == 'pull_request' && (
+            needs.changes.outputs.api-inference == 'true' ||
+            needs.changes.outputs.api-runtime == 'true' ||
+            needs.changes.outputs.api-cloudcore == 'true' ||
+            needs.changes.outputs.api-persistence == 'true' ||
+            needs.changes.outputs.api-ui == 'true'
+          )
         run: |
           set -euo pipefail
           TARGETS=""
@@ -517,8 +526,13 @@ jobs:
           affected="${{ needs.changes.outputs.affected }}"
           # Helper: emit "full" with a reason and exit
           emit_full() { echo "mode=full" >> "$GITHUB_OUTPUT"; echo "Test mode: full ($1)"; exit 0; }
+          # NONE means no test-job suite maps to the changed files. We fall back
+          # to full rather than skipping all tests: the resolver is conservative
+          # (it can over-approximate but never under-approximate), and a NONE on
+          # a non-docs PR is almost certainly a graph-snapshot gap, not proof that
+          # nothing needs testing. Nightly is the backstop; we never skip here.
           [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
-            && emit_full "affected=${affected:-unset}"
+            && emit_full "affected=${affected:-unset} (NONE falls back to full as conservative measure)"
           # Count suites that require a full swift-test bundle compile (can't use xcodebuild):
           # ManifoldMCPTests (MCP trait not in defaults) and ManifoldBackendsTests
           # (ManifoldMLX/ManifoldLlama in subgraph → Metal shaders with xcodebuild defaults).
@@ -626,40 +640,18 @@ jobs:
       # macOS-min) per push.  scripts/check-coverage.sh thresholds sit 10pp
       # below the 2026-05-15 baseline, so a ≤24h detection delay is acceptable.
 
-      # PinnedSessionDelegateTests was previously in the standalone security-gates.yml
-      # workflow (a separate macos-15 runner). Folded in here to save ~90 billed
-      # macOS-minutes per push. MCPHardeningTests are already covered by the
-      # ManifoldMCPTests filter above; only this test requires the CloudSaaS trait.
-      #
-      # Build warm-up: the watchdog monitors for "Testing" progress lines, not
-      # "Compiling" lines. In selective mode the three full-path swift-test steps
-      # above are all skipped (they gate on mode==full), so the `.build` directory
-      # may be completely cold when this step runs — the selective step uses
-      # xcodebuild (DerivedData), not swift test (`.build`). A cold swift test
-      # build takes ~4 min on CI, exceeding the 240s stall window before the
-      # first test-progress line appears (confirmed in CI run 27199026002: build
-      # ran 10:12:00→10:16:04, watchdog fired at exactly 240s with 0 tests run).
-      #
-      # Fix: run `swift build --build-tests` outside the watchdog first. Build
-      # output is visible in the live step log (useful on build failures) but is
-      # not counted as stall time. The subsequent watchdog-monitored invocation
-      # then runs against a warm `.build` and produces a Testing progress line
-      # within seconds, well inside the 240s window. The pre-build step has its
-      # own 15-min timeout so a genuine build hang still fails fast.
-      - name: Pre-build tests for PinnedSessionDelegate (warm .build for watchdog)
-        if: always()
-        timeout-minutes: 15
-        run: swift build --build-tests --disable-default-traits --traits MCP,CloudSaaS
-
-      - name: Test — PinnedSessionDelegate (CloudSaaS)
-        if: always()
-        id: test-pinned-session-delegate
-        timeout-minutes: 10
-        env:
-          MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-pinned-session-delegate.log
-          STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter PinnedSessionDelegateTests --disable-default-traits --traits MCP,CloudSaaS --skip-update --min-passed 1
-
+      # PinnedSessionDelegateTests lives in Tests/ManifoldBackendsTests/ and is
+      # an XCTestCase subclass. The "ManifoldBackendsTests (serial)" step above
+      # already covers it in full mode (same target, same trait set). In selective
+      # mode, ManifoldBackendsTests is in the Tier 0 dependency graph under
+      # ManifoldCloudCore, so ci-selective-test.sh picks it up whenever
+      # ManifoldCloudCore (or any ancestor) changes. The two separate steps
+      # (pre-build warm-up + PinnedSessionDelegate test) were removed: the
+      # pre-build was a workaround for the watchdog firing on a cold .build
+      # directory that only arose when the three full-path steps were skipped
+      # in selective mode — a path that no longer exists now that ManifoldBackends-
+      # Tests is the canonical home for these tests. Measured cost of the removed
+      # steps: ~182s per run for <1s of actual test execution.
       - name: Stage test diagnostics
         # Each test step writes to a unique workspace log path via
         # MANIFOLD_TEST_OUTPUT_FILE so `if: always()` follow-up steps cannot
@@ -670,7 +662,8 @@ jobs:
           XCTEST_SUITES_FAILED: ${{ steps.test-xctest-suites.outcome == 'failure' }}
           BACKENDS_FAILED: ${{ steps.test-backends.outcome == 'failure' }}
           INFERENCE_SWIFT_TESTING_FAILED: ${{ steps.test-inference-swift-testing.outcome == 'failure' }}
-          PINNED_SESSION_FAILED: ${{ steps.test-pinned-session-delegate.outcome == 'failure' }}
+          # Note: PINNED_SESSION step removed — PinnedSessionDelegateTests is now
+          # covered by the ManifoldBackendsTests serial step (same target).
         run: |
           mkdir -p test-diagnostics
           {
@@ -681,7 +674,6 @@ jobs:
             echo "xctest-suites-failed=${XCTEST_SUITES_FAILED}"
             echo "backends-failed=${BACKENDS_FAILED}"
             echo "inference-swift-testing-failed=${INFERENCE_SWIFT_TESTING_FAILED}"
-            echo "pinned-session-failed=${PINNED_SESSION_FAILED}"
           } > test-diagnostics/failed-steps.txt
           # Best-effort: copy any xcresult bundles a future xcodebuild step
           # might have produced under DerivedData.
@@ -1143,7 +1135,7 @@ jobs:
           fetch-depth: 2
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: "26.3"
 
@@ -1188,7 +1180,7 @@ jobs:
           fetch-depth: 2
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: "26.3"
 
@@ -1235,7 +1227,7 @@ jobs:
           fetch-depth: 2
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: "26.3"
 
