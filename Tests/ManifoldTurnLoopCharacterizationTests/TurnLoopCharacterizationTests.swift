@@ -78,6 +78,16 @@ actor EventTapDrain {
 /// to a different value and re-running any test that snapshots token events
 /// will produce a diff, confirming the harness catches turn-loop behaviour
 /// changes. (Verified during development for `test_send_plainTurn`.)
+///
+/// **Out of scope (deliberately).** Compression / pre-turn compression /
+/// preCompact wiring / summarisation / RAG behaviours are NOT goldened here —
+/// they stay covered by their named unit suites (`CompressionPolicyTests`,
+/// `PreTurnCompressionPolicyTests`, `PreCompactWiringTests`,
+/// `SummarisationHookTests`, `RAGServiceTests`). Those paths fire on internal
+/// thresholds, not on the turn-loop skeleton this harness pins, so a golden
+/// would be a brittle restatement of unit-level policy. The records
+/// canonicalizer DOES surface `promptTokens`/`completionTokens` so the
+/// token-pinning those policies depend on is non-regression-tested here.
 @MainActor
 final class TurnLoopCharacterizationTests: XCTestCase {
 
@@ -427,5 +437,200 @@ final class TurnLoopCharacterizationTests: XCTestCase {
 
         let records = try await persistenceStack.provider.fetchMessages(for: sessionID)
         assertGolden(events: events, records: records)
+    }
+
+    // MARK: - Handoff: agent swap mid-stream
+
+    /// Multi-turn handoff golden.
+    ///
+    /// Turn 1: the active agent (Researcher) emits a `transfer_to_Writer`
+    /// tool call. The executor swaps `activeAgentID`, emits `.agentHandoff`,
+    /// and persists the assistant message tagged with the *new* agent's id.
+    /// Turn 2: a plain send re-derives the system prompt from the now-active
+    /// Writer, proving the mid-stream `updateSession` is reflected in the
+    /// next turn's prompt.
+    ///
+    /// Goldens this pins (that the happy-path skeleton drops):
+    /// - `agentHandoff` event ordering (after the tool call, before finish).
+    /// - persisted `agentID` attribution on the assistant message.
+    /// - Writer's prompt active on turn N+1 (asserted directly via the mock's
+    ///   captured `lastSystemPrompt`, since the system prompt is not snapshotted).
+    func test_handoff_midStream() async throws {
+        // Tool-calling backend so HandoffToolSource's synthesised
+        // `transfer_to_<name>` definitions reach the request.
+        let handoffBackend = MockInferenceBackend(capabilities: BackendCapabilities(
+            supportedParameters: [.temperature, .topP, .repeatPenalty],
+            maxContextTokens: 4096,
+            requiresPromptTemplate: false,
+            supportsSystemPrompt: true,
+            supportsToolCalling: true,
+            supportsStructuredOutput: false,
+            cancellationStyle: .cooperative,
+            supportsTokenCounting: false
+        ))
+        handoffBackend.isModelLoaded = true
+
+        let service = InferenceService(backend: handoffBackend, name: "CharacterizationMock")
+        let handoffRuntime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service
+        )
+        let handoffDrain = EventTapDrain()
+        let handoffDrainTask = await handoffDrain.start(consuming: handoffRuntime.addEventTap())
+        defer { handoffDrainTask.cancel() }
+
+        // Pre-create a two-agent session with Researcher active. Fixed UUIDs
+        // are fine — the canonicalizer relabels them positionally.
+        let researcher = Agent(name: "Researcher", systemPrompt: "You are a Researcher.", description: "Gathers facts.")
+        let writer = Agent(name: "Writer", systemPrompt: "You are a Writer.", description: "Drafts copy.")
+        let handoffSessionID = UUID()
+        try await persistenceStack.provider.insertSession(ChatSession(
+            id: handoffSessionID,
+            title: "Handoff characterization",
+            agents: [researcher, writer],
+            activeAgentID: researcher.id
+        ))
+
+        // A single drain pass to the terminal (afterGeneration / cancelled).
+        func drainTurn(on drain: EventTapDrain) async -> [ConversationEvent] {
+            var events: [ConversationEvent] = []
+            let end = ContinuousClock.now.advanced(by: .seconds(10))
+            while let event = await drain.next() {
+                events.append(event)
+                if case .afterGeneration = event { break }
+                if case .errorRaised = event { break }
+                if case .streamFinished(_, let r) = event, r == .cancelled { break }
+                if ContinuousClock.now > end { break }
+            }
+            return events
+        }
+
+        // Turn 1: Researcher emits transfer_to_Writer (no visible text). The
+        // executor swaps `activeAgentID` to Writer and emits `.agentHandoff`.
+        // The transfer ends the turn (the swap is not a re-promptable tool).
+        handoffBackend.scriptedToolCalls = [
+            ToolCall(id: "tc-1", toolName: "transfer_to_Writer", arguments: "{}")
+        ]
+        handoffBackend.tokensToYield = []
+
+        let h1 = try await handoffRuntime.processTurnWithOutcome(
+            TurnInput(sessionID: handoffSessionID, kind: .send(text: "find facts then hand off"))
+        )
+        var events = await drainTurn(on: handoffDrain)
+        await h1?.outcome
+
+        // The swap must have landed on turn 1.
+        let agentSwapped = events.contains { if case .agentHandoff = $0 { return true }; return false }
+        XCTAssertTrue(agentSwapped, "expected an .agentHandoff event on the transfer turn")
+
+        // Turn 2 (N+1): a plain send. The executor re-derives the system prompt
+        // from the now-active Writer and tags the assistant message with the
+        // Writer's id. Clear the scripted transfer so this turn is plain text.
+        handoffBackend.scriptedToolCalls = []
+        handoffBackend.tokensToYield = ["Drafting"]
+
+        let h2 = try await handoffRuntime.processTurnWithOutcome(
+            TurnInput(sessionID: handoffSessionID, kind: .send(text: "now write the draft"))
+        )
+        events += await drainTurn(on: handoffDrain)
+        await h2?.outcome
+
+        // Turn N+1's prompt must reflect the mid-stream updateSession: the
+        // last system prompt the backend saw is Writer's, not Researcher's.
+        let lastSystem = handoffBackend.lastSystemPrompt ?? ""
+        XCTAssertTrue(lastSystem.contains("You are a Writer."),
+                      "turn N+1 system prompt should be re-derived from the post-handoff active agent; got: \(lastSystem)")
+        XCTAssertFalse(lastSystem.contains("You are a Researcher."),
+                       "Researcher's prompt must not leak into turn N+1; got: \(lastSystem)")
+
+        let records = try await persistenceStack.provider.fetchMessages(for: handoffSessionID)
+
+        // The assistant message must be attributed to the Writer (the active
+        // agent after the swap). Pin it directly so a regeneration that drops
+        // attribution can't mask itself behind a re-recorded golden.
+        let assistant = try XCTUnwrap(records.first(where: { $0.role == .assistant }),
+                                      "expected a persisted assistant message")
+        XCTAssertEqual(assistant.agentID, writer.id,
+                       "assistant message should carry the post-handoff Writer agentID")
+
+        var c = EventTraceCanonicalizer()
+        assertSnapshot(
+            of: c.serialize(events: events),
+            as: .lines, named: "events", record: .missing
+        )
+        assertSnapshot(
+            of: c.serialize(records: records),
+            as: .lines, named: "records", record: .missing
+        )
+    }
+
+    // MARK: - Token usage recorded
+
+    /// Token-usage golden.
+    ///
+    /// The backend yields a `.usage(prompt:completion:)` event before its
+    /// tokens; the executor records it on the assistant message and emits
+    /// `.tokenUsageRecorded`. This pins the token-count fields the happy-path
+    /// skeleton drops — a lost token-pinning in the engine de-tangle now diffs.
+    ///
+    /// Uses ``ScriptedGenerationBackend`` (which has a `.withUsage` factory)
+    /// rather than ``MockInferenceBackend`` (no usage scripting hook).
+    func test_tokenUsage() async throws {
+        let usageBackend = ScriptedGenerationBackend(turns: [
+            .withUsage(prompt: 42, completion: 7, tokens: ["Hello", " world"])
+        ])
+        let service = InferenceService(backend: usageBackend, name: "CharacterizationMock")
+        let usageRuntime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service
+        )
+        let usageDrain = EventTapDrain()
+        let usageDrainTask = await usageDrain.start(consuming: usageRuntime.addEventTap())
+        defer { usageDrainTask.cancel() }
+
+        let usageSessionID = UUID()
+        let handle = try await usageRuntime.processTurnWithOutcome(
+            TurnInput(sessionID: usageSessionID, kind: .send(text: "Count my tokens"))
+        )
+
+        var events: [ConversationEvent] = []
+        let end = ContinuousClock.now.advanced(by: .seconds(10))
+        while let event = await usageDrain.next() {
+            events.append(event)
+            if case .afterGeneration = event { break }
+            if case .errorRaised = event { break }
+            if ContinuousClock.now > end { break }
+        }
+        await handle?.outcome
+
+        // The usage event must have surfaced with the scripted counts.
+        let usageEvent = events.compactMap { event -> (Int, Int)? in
+            if case let .tokenUsageRecorded(_, prompt, completion) = event { return (prompt, completion) }
+            return nil
+        }.first
+        let usage = try XCTUnwrap(usageEvent, "expected a .tokenUsageRecorded event")
+        XCTAssertEqual(usage.0, 42, "promptTokens should be the scripted value")
+        XCTAssertEqual(usage.1, 7, "completionTokens should be the scripted value")
+
+        let records = try await persistenceStack.provider.fetchMessages(for: usageSessionID)
+
+        // Pin the counts on the persisted assistant record directly so a
+        // re-record can't silently absorb a dropped token-pinning.
+        let assistant = try XCTUnwrap(records.first(where: { $0.role == .assistant }),
+                                      "expected a persisted assistant message")
+        XCTAssertEqual(assistant.promptTokens, 42, "persisted assistant record should carry promptTokens")
+        XCTAssertEqual(assistant.completionTokens, 7, "persisted assistant record should carry completionTokens")
+
+        var c = EventTraceCanonicalizer()
+        assertSnapshot(
+            of: c.serialize(events: events),
+            as: .lines, named: "events", record: .missing
+        )
+        assertSnapshot(
+            of: c.serialize(records: records),
+            as: .lines, named: "records", record: .missing
+        )
     }
 }
