@@ -365,9 +365,9 @@ If you're not sure whether your GGUF is a reasoning model, the simplest test is 
 
 ---
 
-## 3. Cloud / Ollama via `loadCloudBackend(from:)`
+## 3. Cloud / Ollama via `loadEndpointBackend(from:)`
 
-For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropic, LM Studio, or a custom OpenAI-compatible endpoint — the entry point is `InferenceService.loadCloudBackend(from:)` with an `APIEndpointRecord` describing the endpoint.
+For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropic, LM Studio, or a custom OpenAI-compatible endpoint — the entry point is `InferenceService.loadEndpointBackend(from:)` with an `APIEndpointRecord` describing the endpoint.
 
 > **Trait requirement.** Cloud backends are trait-gated. Add `Ollama` to your `traits:` for `localhost:11434`, or `CloudSaaS` for OpenAI / Claude. The default trait set (`MLX`, `Llama`, `HuggingFace`) does **not** include either. See [docs/FeatureMatrix.md](FeatureMatrix.md).
 
@@ -431,7 +431,7 @@ struct ChatCLICloud {
             modelName: "llama3.2" // swap for an entry from `ollama list`
         )
 
-        try await inference.loadCloudBackend(from: endpoint)
+        try await inference.loadEndpointBackend(from: endpoint)
 
         let stream = try inference.generate(messages: [("user", "Say hello in five words.")])
 

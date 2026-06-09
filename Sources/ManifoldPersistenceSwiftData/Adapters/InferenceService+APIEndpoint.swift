@@ -42,11 +42,4 @@ extension InferenceService {
         try endpoint.validate().get()
         try await loadEndpointBackend(from: endpoint.record)
     }
-
-    /// Loads a cloud API backend from a SwiftData `APIEndpoint`.
-    @available(*, deprecated, renamed: "loadEndpointBackend(from:)")
-    @MainActor
-    public func loadCloudBackend(from endpoint: APIEndpoint) async throws {
-        try await loadEndpointBackend(from: endpoint)
-    }
 }

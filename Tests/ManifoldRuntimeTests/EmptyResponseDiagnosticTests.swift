@@ -72,7 +72,7 @@ final class EmptyResponseDiagnosticTests: XCTestCase {
         }
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "hello"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "hello")))
 
         // Wait until the observer fires (or fail).
         let deadline = ContinuousClock.now + .seconds(3)
@@ -113,7 +113,7 @@ final class EmptyResponseDiagnosticTests: XCTestCase {
         }
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "hello"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "hello")))
 
         // Wait until assistant is persisted (happy path), then verify observer
         // never fired.
@@ -154,7 +154,7 @@ final class EmptyResponseDiagnosticTests: XCTestCase {
         }
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "fail empty"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "fail empty")))
         try await wait(for: drain)
 
         XCTAssertTrue(box.snapshot.isEmpty,

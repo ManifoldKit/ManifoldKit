@@ -596,8 +596,8 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        let input = SendInput(sessionID: sessionID, userText: "hi")
-        _ = try await runtime.send(input)
+        let input = TurnInput(sessionID: sessionID, kind: .send(text: "hi"))
+        _ = try await runtime.processTurn(input)
 
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
@@ -750,7 +750,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.tokensToYield = ["done"]
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "go"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "go")))
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
             return false
@@ -780,7 +780,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.tokensToYield = []
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "empty"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "empty")))
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
             return false
@@ -825,11 +825,12 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
         let drain = drainUntilStreamFinished(from: runtime)
 
-        let handle = try await runtime.send(SendInput(
+        let handleOptional = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "cancel",
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "cancel"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
+        let handle = try XCTUnwrap(handleOptional)
         await runtime.cancel(handle)
 
         let events = try await waitForEvents(from: drain)
@@ -876,11 +877,12 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.tokenEmissionGate = gate
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        let handle = try await runtime.send(SendInput(
+        let handleOptional = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "cancel partial",
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "cancel partial"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
+        let handle = try XCTUnwrap(handleOptional)
         let drain = Task { @MainActor [runtime] in
             var events: [ConversationEvent] = []
             var didCancel = false
@@ -917,7 +919,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.shouldThrowInsideStream = InferenceError.inferenceFailure("no partial")
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "fail")))
         let events = try await collectUntilStreamFinished(from: runtime)
 
         XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
@@ -972,7 +974,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.shouldThrowInsideStream = InferenceError.inferenceFailure("partial")
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail partial"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "fail partial")))
         let events = try await collectUntilStreamFinished(from: runtime)
 
         XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
@@ -1008,7 +1010,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.tokensToYield = []
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "think only"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "think only")))
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
             return false
@@ -1034,7 +1036,7 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.shouldThrowInsideStream = InferenceError.inferenceFailure("thinking failed")
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "think fail"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "think fail")))
         let events = try await collectUntilStreamFinished(from: runtime)
 
         XCTAssertEqual(streamFinishedReasons(in: events), [.stop],
@@ -1065,10 +1067,10 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let drain = drainUntilStreamFinished(from: runtime)
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "persist fail",
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "persist fail"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
         store.insertError = ChatPersistenceError.providerNotConfigured
         await gate.advance()
@@ -1115,7 +1117,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "fail"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "fail")))
         let events = try await collectEvents(from: runtime) { event in
             if case .streamFinished = event { return true }
             return false
@@ -1150,7 +1152,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "partial"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "partial")))
         let events = try await collectEvents(from: runtime) { event in
             if case .streamFinished = event { return true }
             return false
@@ -1196,8 +1198,8 @@ final class ConversationRuntimeTests: XCTestCase {
         }
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "first"))
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "second"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "first")))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "second")))
 
         let events = try await waitForEvents(from: drain)
         let usageEvents = events.compactMap { event -> (messageID: UUID, prompt: Int, completion: Int)? in
@@ -1238,7 +1240,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let store = RuntimeMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "fail with usage"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "fail with usage")))
         let events = try await collectUntilStreamFinished(from: runtime)
 
         XCTAssertTrue(events.contains {
@@ -1266,11 +1268,12 @@ final class ConversationRuntimeTests: XCTestCase {
         let sessionID = UUID()
         // Use a tiny batch limit so tokens flush immediately and the cancel
         // has a chance to fire before the stream drains completely.
-        let handle = try await runtime.send(SendInput(
+        let handleOptional = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "long",
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "long"),
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
+        let handle = try XCTUnwrap(handleOptional)
 
         // Drain events on a background task; cancel as soon as we see the
         // first `.tokenEmitted` to make the timing deterministic without
@@ -1358,7 +1361,7 @@ final class ConversationRuntimeTests: XCTestCase {
         var runtime: ConversationRuntime? = ConversationRuntime(messageStore: store, inferenceService: inference)
         weak var weakRuntime = runtime
 
-        _ = try await runtime?.send(SendInput(sessionID: UUID(), userText: "hang"))
+        _ = try await runtime?.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "hang")))
         try await waitForBackendStart(backend)
         XCTAssertEqual(runtime?.activeTurnTaskCount, 1)
 
@@ -1392,10 +1395,10 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, _, backend, _) = makeRuntime(mock: mock, pipeline: pipeline)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "hi",
-            systemPrompt: "base prompt"
+            kind: .send(text: "hi"),
+            config: TurnConfig(systemPrompt: "base prompt")
         ))
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
@@ -1457,7 +1460,7 @@ final class ConversationRuntimeTests: XCTestCase {
 
         let (runtime, store, _, _) = makeRuntime(mock: mock, sessionStore: sessions)
 
-        _ = try await runtime.send(SendInput(sessionID: original.id, userText: "hi"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: original.id, kind: .send(text: "hi")))
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
             return false
@@ -1536,8 +1539,8 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
-        let input = RegenerateInput(sessionID: sessionID)
-        _ = try await runtime.regenerate(input)
+        let input = TurnInput(sessionID: sessionID, kind: .regenerate)
+        _ = try await runtime.processTurn(input)
 
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
@@ -1596,7 +1599,7 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(userMsg)
 
         do {
-            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .regenerate))
             XCTFail("Expected ConversationError.noAssistantMessageToRegenerate to be thrown")
         } catch let error as ConversationError {
             if case .noAssistantMessageToRegenerate = error {
@@ -1619,7 +1622,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let sessionID = UUID()
 
         do {
-            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .regenerate))
             XCTFail("Expected ConversationError.noAssistantMessageToRegenerate to be thrown")
         } catch let error as ConversationError {
             if case .noAssistantMessageToRegenerate = error {
@@ -1652,7 +1655,7 @@ final class ConversationRuntimeTests: XCTestCase {
         store.deleteError = ChatPersistenceError.messageNotFound(assistantMsg.id)
 
         do {
-            _ = try await runtime.regenerate(RegenerateInput(sessionID: sessionID))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .regenerate))
             XCTFail("Expected ConversationError.persistence to be thrown")
         } catch let error as ConversationError {
             if case .persistence = error {
@@ -1712,8 +1715,8 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(assistantMsg1)
         try await store.insertMessage(assistantMsg2)
 
-        let input = EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited question")
-        let handle = try await runtime.edit(input)
+        let input = TurnInput(sessionID: sessionID, kind: .edit(messageID: userMsg.id, text: "edited question"))
+        let handle = try await runtime.processTurn(input)
 
         XCTAssertNotNil(handle, "edit of a user message returns a stream handle")
 
@@ -1786,8 +1789,8 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(userMsg)
         try await store.insertMessage(assistantMsg)
 
-        let input = EditInput(sessionID: sessionID, messageID: assistantMsg.id, newContent: "corrected answer")
-        let handle = try await runtime.edit(input)
+        let input = TurnInput(sessionID: sessionID, kind: .edit(messageID: assistantMsg.id, text: "corrected answer"))
+        let handle = try await runtime.processTurn(input)
 
         XCTAssertNil(handle, "Editing an assistant message returns nil handle (no generation)")
 
@@ -1824,10 +1827,10 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(userMsg)
 
         let bogusID = UUID()
-        let input = EditInput(sessionID: sessionID, messageID: bogusID, newContent: "replacement")
+        let input = TurnInput(sessionID: sessionID, kind: .edit(messageID: bogusID, text: "replacement"))
 
         do {
-            _ = try await runtime.edit(input)
+            _ = try await runtime.processTurn(input)
             XCTFail("Expected ConversationError.messageNotFound to be thrown")
         } catch let error as ConversationError {
             if case .messageNotFound(let id) = error {
@@ -1862,7 +1865,7 @@ final class ConversationRuntimeTests: XCTestCase {
         store.updateError = ChatPersistenceError.messageNotFound(userMsg.id)
 
         do {
-            _ = try await runtime.edit(EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited"))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .edit(messageID: userMsg.id, text: "edited")))
             XCTFail("Expected ConversationError.persistence to be thrown")
         } catch let error as ConversationError {
             if case .persistence = error {
@@ -1921,7 +1924,7 @@ final class ConversationRuntimeTests: XCTestCase {
         store.deleteError = ChatPersistenceError.messageNotFound(trailing1.id)
 
         do {
-            _ = try await runtime.edit(EditInput(sessionID: sessionID, messageID: userMsg.id, newContent: "edited"))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .edit(messageID: userMsg.id, text: "edited")))
             XCTFail("Expected ConversationError.persistence to be thrown")
         } catch let error as ConversationError {
             if case .persistence = error {
@@ -1971,13 +1974,16 @@ final class ConversationRuntimeTests: XCTestCase {
         let sourceSession = ChatSession(id: sessionID, title: "Source Chat")
         try await sessions!.insertSession(sourceSession)
 
-        let input = BranchInput(
-            sourceSessionID: sessionID,
-            branchMessageID: msg1.id,   // branch at the assistant (index 1, inclusive)
-            newSessionID: newSessionID,
-            generateAfterBranch: false
+        let input = TurnInput(
+            sessionID: sessionID,
+            kind: .branch(
+                messageID: msg1.id,   // branch at the assistant (index 1, inclusive)
+                newSessionID: newSessionID,
+                newSessionTitle: nil,
+                generateAfter: false
+            )
         )
-        let handle = try await runtime.branch(input)
+        let handle = try await runtime.processTurn(input)
 
         XCTAssertNil(handle, "branch returns nil when generateAfterBranch is false")
 
@@ -2080,13 +2086,16 @@ final class ConversationRuntimeTests: XCTestCase {
         let sourceSession = ChatSession(id: sessionID, title: "Source")
         try await sessions!.insertSession(sourceSession)
 
-        let input = BranchInput(
-            sourceSessionID: sessionID,
-            branchMessageID: msg1.id,   // last copied is assistant
-            newSessionID: newSessionID,
-            generateAfterBranch: true   // requested, but should be suppressed
+        let input = TurnInput(
+            sessionID: sessionID,
+            kind: .branch(
+                messageID: msg1.id,   // last copied is assistant
+                newSessionID: newSessionID,
+                newSessionTitle: nil,
+                generateAfter: true   // requested, but should be suppressed
+            )
         )
-        let handle = try await runtime.branch(input)
+        let handle = try await runtime.processTurn(input)
 
         XCTAssertNil(handle, "nil handle when last copied message is assistant, even with generateAfterBranch: true")
 
@@ -2108,14 +2117,18 @@ final class ConversationRuntimeTests: XCTestCase {
         try await store.insertMessage(msg0)
 
         let bogusID = UUID()
-        let input = BranchInput(
-            sourceSessionID: sessionID,
-            branchMessageID: bogusID,
-            newSessionID: UUID()
+        let input = TurnInput(
+            sessionID: sessionID,
+            kind: .branch(
+                messageID: bogusID,
+                newSessionID: UUID(),
+                newSessionTitle: nil,
+                generateAfter: false
+            )
         )
 
         do {
-            _ = try await runtime.branch(input)
+            _ = try await runtime.processTurn(input)
             XCTFail("Expected ConversationError.messageNotFound to be thrown")
         } catch let error as ConversationError {
             if case .messageNotFound(let id) = error {
@@ -2143,11 +2156,13 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, _, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "go",
-            streamingUpdateInterval: .seconds(3600),   // never flush on time
-            streamingBatchCharacterLimit: 128           // never flush on char count (10 < 128)
+            kind: .send(text: "go"),
+            config: TurnConfig(
+                streamingUpdateInterval: .seconds(3600),   // never flush on time
+                streamingBatchCharacterLimit: 128           // never flush on char count (10 < 128)
+            )
         ))
 
         let events = try await collectEvents(from: runtime) { event in
@@ -2181,11 +2196,13 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, _, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "think",
-            thinkingStreamingUpdateInterval: .seconds(3600),   // force single end-flush
-            thinkingStreamingBatchCharacterLimit: 128
+            kind: .send(text: "think"),
+            config: TurnConfig(
+                thinkingStreamingUpdateInterval: .seconds(3600),   // force single end-flush
+                thinkingStreamingBatchCharacterLimit: 128
+            )
         ))
 
         let events = try await collectEvents(from: runtime) { event in
@@ -2242,12 +2259,14 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, _, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "loop",
-            streamingUpdateInterval: .zero,     // flush immediately on every token
-            streamingBatchCharacterLimit: 1,    // also flush immediately
-            loopDetectionEnabled: true
+            kind: .send(text: "loop"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,     // flush immediately on every token
+                streamingBatchCharacterLimit: 1,    // also flush immediately
+                loopDetectionEnabled: true
+            )
         ))
 
         // Wait until streamFinished so we capture all events including loopDetected
@@ -2282,7 +2301,7 @@ final class ConversationRuntimeTests: XCTestCase {
         let (runtime, _, _, _) = makeRuntime(mock: mock)
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "search"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "search")))
 
         let events = try await collectEvents(from: runtime) { event in
             if case .afterGeneration = event { return true }
@@ -2330,10 +2349,11 @@ final class ConversationRuntimeTests: XCTestCase {
         mock.toolDeltaEmissionGate = gate
         let (runtime, store, _, _) = makeRuntime(mock: mock)
 
-        let handle = try await runtime.send(SendInput(
+        let handleOptional = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "tool-only cancel test"
+            kind: .send(text: "tool-only cancel test")
         ))
+        let handle = try XCTUnwrap(handleOptional)
 
         // Drain events on a background task; cancel as soon as we see
         // toolCallRequested (first call emitted), then release the gate
@@ -2468,10 +2488,14 @@ final class ConversationRuntimeTests: XCTestCase {
         sessionStore.insertError = ChatPersistenceError.providerNotConfigured
 
         do {
-            _ = try await runtime.branch(BranchInput(
-                sourceSessionID: sessionID,
-                branchMessageID: msg0.id,
-                newSessionID: newSessionID
+            _ = try await runtime.processTurn(TurnInput(
+                sessionID: sessionID,
+                kind: .branch(
+                    messageID: msg0.id,
+                    newSessionID: newSessionID,
+                    newSessionTitle: nil,
+                    generateAfter: false
+                )
             ))
             XCTFail("Expected ConversationError.persistence to be thrown")
         } catch let error as ConversationError {
@@ -2524,10 +2548,12 @@ final class ConversationRuntimeTests: XCTestCase {
 
         // Use a tiny batch limit so each token flushes immediately, allowing
         // the cancel to fire before the stream drains completely.
-        let handle = try await runtime.regenerate(RegenerateInput(
+        let handleOptional = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            streamingBatchCharacterLimit: 1
+            kind: .regenerate,
+            config: TurnConfig(streamingBatchCharacterLimit: 1)
         ))
+        let handle = try XCTUnwrap(handleOptional)
 
         // Single-consumer drain. We trigger cancel inline the moment we
         // observe the first `.tokenEmitted`, then continue draining until

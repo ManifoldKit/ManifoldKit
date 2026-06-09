@@ -179,13 +179,14 @@ final class BranchAttachmentCopyCostTests: XCTestCase {
         let fixture = try await makeVisionFixture(messageCount: 3, imageBytes: 1_000)
 
         let newSessionID = UUID()
-        let input = BranchInput(
-            sourceSessionID: fixture.sourceSessionID,
-            branchMessageID: fixture.branchPointMessageID,
-            newSessionID: newSessionID,
-            generateAfterBranch: false
+        let input = TurnInput(
+            sessionID: fixture.sourceSessionID,
+            kind: .branch(
+                messageID: fixture.branchPointMessageID,
+                newSessionID: newSessionID
+            )
         )
-        _ = try await fixture.runtime.branch(input)
+        _ = try await fixture.runtime.processTurn(input)
 
         let sourceBefore = try await fixture.messageStore.fetchMessages(for: fixture.sourceSessionID)
         let branchBefore = try await fixture.messageStore.fetchMessages(for: newSessionID)

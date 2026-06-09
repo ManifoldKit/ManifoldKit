@@ -68,7 +68,7 @@ final class SoakRunnerTests: XCTestCase {
 
         // Warm up: one send before the baseline to exclude lazy-init allocations
         // (dispatch queues, first-insert overhead, etc.) from the measurement.
-        _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "warmup"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "warmup")))
         try await drainUntilStreamFinished(runtime: runtime)
 
         let baselineRSS = Self.currentRSSBytes()
@@ -76,7 +76,7 @@ final class SoakRunnerTests: XCTestCase {
         for i in 0..<200 {
             // Vary the token text slightly to defeat any intern/cache path.
             backend.tokensToYield = ["tok\(i % 10)"]
-            _ = try await runtime.send(SendInput(sessionID: sessionID, userText: "msg \(i)"))
+            _ = try await runtime.processTurn(TurnInput(sessionID: sessionID, kind: .send(text: "msg \(i)")))
             try await drainUntilStreamFinished(runtime: runtime)
         }
 

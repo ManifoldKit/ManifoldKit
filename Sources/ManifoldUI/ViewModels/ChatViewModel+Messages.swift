@@ -59,14 +59,6 @@ struct ChatErrorBridge: LocalizedError, Sendable {
     var errorDescription: String? { chatError.message }
 }
 
-// MARK: - NoResponseError (deprecated alias)
-
-/// Deprecated alias retained for one minor while consumers migrate to
-/// ``SendMessageError``. New code should pattern-match on
-/// ``SendMessageError`` directly.
-@available(*, deprecated, renamed: "SendMessageError", message: "Switch on SendMessageError to distinguish noActiveSession / noModelLoaded / empty / runtime(Error). NoResponseError will be removed in a future release.")
-public typealias NoResponseError = SendMessageError
-
 // MARK: - ChatViewModel + Messages
 
 extension ChatViewModel {
