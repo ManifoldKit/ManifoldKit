@@ -143,6 +143,9 @@ jobs:
             # break in the Swift source; the nightly full-run will catch it.
             api-inference:
               - 'Sources/ManifoldInference/**'
+              # ManifoldContract is @_exported from ManifoldInference, so its
+              # public surface is part of ManifoldInference's API contract.
+              - 'Sources/ManifoldContract/**'
             api-runtime:
               - 'Sources/ManifoldRuntime/**'
             api-cloudcore:
@@ -443,9 +446,28 @@ jobs:
           [[ "${{ needs.changes.outputs.api-persistence }}" == "true" ]] && TARGETS="$TARGETS --targets ManifoldPersistenceSwiftData"
           [[ "${{ needs.changes.outputs.api-ui }}" == "true" ]]          && TARGETS="$TARGETS --targets ManifoldUI"
           echo "Checking API surface for:${TARGETS}"
-          git fetch --depth=1 origin main
+          # diagnose-api-breaking-changes checks out the baseline tree object
+          # from origin/main. A shallow clone (actions/checkout default) omits
+          # those objects and causes "unable to read tree" (#1723). --unshallow
+          # converts the shallow clone to a full one; fall back to a plain fetch
+          # if the repo is already full-depth (e.g. local runs).
+          git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # The allowlist (.github/api-breakage-allowlist.txt) carries the
+          # false-positive "X has been removed" entries produced when public
+          # types are relocated DOWNWARD into a leaf module that ManifoldInference
+          # re-exports via `@_exported import` (P2a Contract extraction, #1719).
+          # swift-api-digester analyses each target's own emitted interface and
+          # does NOT follow `@_exported` re-exports, so a relocated-but-still-
+          # source-reachable symbol reads as "removed" against the pre-merge
+          # baseline. The all-traits build proves source-compat is intact. Each
+          # entry self-expires: once the relocation lands on main the baseline
+          # no longer sees the symbol in ManifoldInference, the digester stops
+          # emitting that message, and the unmatched allowlist line becomes an
+          # inert no-op (a genuine future removal of a DIFFERENT symbol still
+          # trips the gate). See #1723.
           # shellcheck disable=SC2086
-          swift package diagnose-api-breaking-changes origin/main $TARGETS
+          swift package diagnose-api-breaking-changes origin/main $TARGETS \
+            --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests

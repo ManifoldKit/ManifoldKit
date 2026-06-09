@@ -1,5 +1,6 @@
 import XCTest
 @testable import ManifoldInference
+@testable import ManifoldContract  // #1719: streaming/tokenizer seams moved to Contract
 
 /// Tests for ``GrammarPhaseGate`` — the phase-aware grammar decision introduced in
 /// issue #1595 so a grammar / structured-output constraint stops corrupting a

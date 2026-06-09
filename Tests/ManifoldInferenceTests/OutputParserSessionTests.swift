@@ -1,5 +1,6 @@
 import XCTest
 @testable import ManifoldInference
+@testable import ManifoldContract  // #1719: streaming/tokenizer seams moved to Contract
 
 /// Tests for ``OutputParserSession`` and the two ``StreamTransform`` stages it
 /// composes (`ThinkingTransform`, `ToolCallTransform`). Covers combined

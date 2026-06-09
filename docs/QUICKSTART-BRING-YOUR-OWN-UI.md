@@ -146,7 +146,7 @@ struct CustomChatView: View {
 | `.toolCall(ToolCall)` | The model asked to invoke a tool. See [QUICKSTART-TOOLS.md](QUICKSTART-TOOLS.md). |
 | `.usage(prompt:completion:)` | Token accounting for the turn. |
 
-The full case list lives in [`Sources/ManifoldInference/Models/GenerationEvent.swift`](../Sources/ManifoldInference/Models/GenerationEvent.swift). The enum is non-frozen, so an exhaustive `switch` should keep a `default` branch.
+The full case list lives in [`Sources/ManifoldContract/GenerationEvent.swift`](../Sources/ManifoldContract/GenerationEvent.swift). The enum is non-frozen, so an exhaustive `switch` should keep a `default` branch.
 
 ## Cloud and local endpoints
 
