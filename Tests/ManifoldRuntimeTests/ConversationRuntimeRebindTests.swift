@@ -214,7 +214,7 @@ final class ConversationRuntimeRebindTests: XCTestCase {
         //   → turn2 advertised list stays empty; XCTAssertTrue trips.
         // Sabotage-evidence: M2 read bindings ONCE at init in the executor
         //   (revert to `let sessionToolSources`) → same trip.
-        // Sabotage-evidence: M3 return [] from `readAdvertisedToolDefinitions`'s
+        // Sabotage-evidence: M3 return [] from `SessionToolDispatchBinder.advertisedToolDefinitions`'s
         //   source branch → same trip.
     }
 
