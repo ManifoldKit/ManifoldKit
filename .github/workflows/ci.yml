@@ -608,12 +608,27 @@ jobs:
       # workflow (a separate macos-15 runner). Folded in here to save ~90 billed
       # macOS-minutes per push. MCPHardeningTests are already covered by the
       # ManifoldMCPTests filter above; only this test requires the CloudSaaS trait.
-      # STALL_SECONDS is 240 (not 120) for headroom: even with the same trait set
-      # as step 1, build-cache reuse is not guaranteed on every CI runner (cache
-      # restore may vary), so a legitimately cold build can take ~2min before the
-      # first test-progress line appears. 240s matches the other two steps and still
-      # catches a genuine runtime hang (the PinnedSession tests themselves run in <1s
-      # once built). At 120s the watchdog SIGABRT'd a cold build intermittently.
+      #
+      # Build warm-up: the watchdog monitors for "Testing" progress lines, not
+      # "Compiling" lines. In selective mode the three full-path swift-test steps
+      # above are all skipped (they gate on mode==full), so the `.build` directory
+      # may be completely cold when this step runs — the selective step uses
+      # xcodebuild (DerivedData), not swift test (`.build`). A cold swift test
+      # build takes ~4 min on CI, exceeding the 240s stall window before the
+      # first test-progress line appears (confirmed in CI run 27199026002: build
+      # ran 10:12:00→10:16:04, watchdog fired at exactly 240s with 0 tests run).
+      #
+      # Fix: run `swift build --build-tests` outside the watchdog first. Build
+      # output is visible in the live step log (useful on build failures) but is
+      # not counted as stall time. The subsequent watchdog-monitored invocation
+      # then runs against a warm `.build` and produces a Testing progress line
+      # within seconds, well inside the 240s window. The pre-build step has its
+      # own 15-min timeout so a genuine build hang still fails fast.
+      - name: Pre-build tests for PinnedSessionDelegate (warm .build for watchdog)
+        if: always()
+        timeout-minutes: 15
+        run: swift build --build-tests --disable-default-traits --traits MCP,CloudSaaS
+
       - name: Test — PinnedSessionDelegate (CloudSaaS)
         if: always()
         id: test-pinned-session-delegate
