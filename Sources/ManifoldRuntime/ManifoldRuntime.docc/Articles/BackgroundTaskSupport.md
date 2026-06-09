@@ -26,7 +26,7 @@ Or use `ManifoldBackgroundTaskIdentifiers.continueGeneration` as the string.
 
 ### 2. Submit the task
 
-```swift
+```swift,no-build
 import BackgroundTasks
 import ManifoldRuntime
 
@@ -42,7 +42,7 @@ func applicationDidEnterBackground() {
 
 Background GPU access is iPad-only. Check availability before relying on ``MLXBackend``:
 
-```swift
+```swift,no-build
 if #available(iOS 26, *), ConversationRuntimeBackgroundBridge.backgroundGPUAvailable {
     // GPU available — MLXBackend will run at full speed
 } else {
