@@ -188,6 +188,10 @@ enum MLXModelProbe {
     /// position-embedding hint. The conservative default (8k) keeps prompts
     /// shorter than necessary on misconfigured snapshots, which is safer than
     /// over-trimming or over-feeding the model.
+    ///
+    /// On M5 hardware with macOS 26.2 or later, MLX activates Neural Accelerator
+    /// dispatch automatically (~3–4× TTFT speedup). Check
+    /// ``NeuralAcceleratorProbe/availability`` in ManifoldHardware for informational UI.
     static func produceManifest(
         at url: URL,
         detectedThinkingMarkers: ThinkingMarkers?,
