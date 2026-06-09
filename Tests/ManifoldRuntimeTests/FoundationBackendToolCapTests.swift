@@ -103,7 +103,7 @@ final class FoundationBackendToolCapTests: XCTestCase {
         XCTAssertEqual(config.tools.count, cap,
             "backend should receive exactly \(cap) tools when more are registered")
 
-        // Sabotage check: removing the cap enforcement in readAdvertisedToolDefinitions
+        // Sabotage check: removing the cap enforcement in SessionToolDispatchBinder.advertisedToolDefinitions
         // would cause config.tools.count == 20, failing the assertion above.
         _ = handle
     }
