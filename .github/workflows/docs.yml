@@ -43,6 +43,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  issues: write
 
 jobs:
   build:
@@ -86,7 +87,8 @@ jobs:
             -scheme ManifoldKit \
             -destination 'generic/platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/docc-dd" \
-            -skipPackagePluginValidation
+            -skipPackagePluginValidation \
+            -skipMacroValidation
 
       - name: Transform for static hosting
         # Pick the umbrella archive (named ManifoldKit.doccarchive) as the site
@@ -121,6 +123,36 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./docs-site
+
+      - name: Open GitHub issue on failure
+        # Creates a tracking issue so a DocC build failure is visible without
+        # relying on GitHub's email digest. De-duplication: if an open issue
+        # with the same title prefix already exists, appends a comment instead
+        # of opening a second issue — avoids spam during multi-run failure streaks.
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          title="DocC publish failed"
+          existing=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --state open \
+            --search "${title} in:title" \
+            --json number \
+            --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Open issue #${existing} already exists — adding comment."
+            gh issue comment "$existing" \
+              --repo "${{ github.repository }}" \
+              --body "Also failed on [run ${{ github.run_id }}](${run_url})."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "${title}" \
+              --body "$(printf '## DocC publish failed\n\n**Run:** [%s](%s)\n\nThe DocC → GitHub Pages workflow failed. Check the run logs for the root cause and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
+          fi
 
   deploy:
     needs: build
