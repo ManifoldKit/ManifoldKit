@@ -1003,7 +1003,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
 
         // Negative: Swift enum case constructor `case system(...)` must
         // not match — the C-interop tripwire targets free `system()` calls,
-        // not enum cases. (See `ManifoldInference.Message.system(_:)`.)
+        // not enum cases. (See `ManifoldContract.Message.system(_:)`.)
         let enumCase = "    case system(String)"
         XCTAssertFalse(Self.matches(Self.cInteropPattern, in: enumCase),
                        "Rule 2 must not match Swift enum case `case system(...)` constructors")

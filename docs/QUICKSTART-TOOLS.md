@@ -91,7 +91,7 @@ If you drive generation directly (BYO-UI), the events you switch on are:
 | `.toolProgress(ToolProgressEvent)` | Interim progress from a streaming executor. |
 | `.toolIterationLimitExceeded(iterations:)` | The `maxToolIterations` cap was hit. |
 
-The complete list is in [`Sources/ManifoldInference/Models/GenerationEvent.swift`](../Sources/ManifoldInference/Models/GenerationEvent.swift).
+The complete list is in [`Sources/ManifoldContract/GenerationEvent.swift`](../Sources/ManifoldContract/GenerationEvent.swift).
 
 ## Streaming tool results
 
