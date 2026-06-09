@@ -277,6 +277,31 @@ Common profiles:
 
 See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capability table.
 
+### M5 Neural Accelerator (macOS 26.2+)
+
+MLX inference on M5 or later hardware with macOS 26.2 or later delivers a 3.3–4× TTFT
+speedup via Neural Accelerator dedicated matrix-multiplication hardware. The acceleration
+is **automatic** — no configuration needed. All M5 variants (including MacBook Air) are
+supported.
+
+Use `NeuralAcceleratorProbe.availability` from `ManifoldHardware` to surface this in
+your app UI.
+
+```swift
+import ManifoldHardware
+
+#if os(macOS)
+if case .available = NeuralAcceleratorProbe.availability {
+    // Surface "Running on M5 with Neural Accelerator — ~4× faster first-token" in your UI.
+}
+#endif
+```
+
+> **macOS 26.2 status:** macOS 26.2 was in beta as of June 2026. Check Apple's release
+> notes for the stable availability date.
+
+*Source: [Apple ML Research, June 2026](https://machinelearning.apple.com/research/exploring-llms-mlx-m5)*
+
 ### Bring your own UI
 
 If you don't want `ChatView` and prefer your own SwiftUI surface, skip `quickStart()`, depend on just `ManifoldInference` plus the backends you want, construct an `InferenceService` directly, register the compiled backends, and stream `GenerationEvent.token` into your own transcript. This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph entirely.

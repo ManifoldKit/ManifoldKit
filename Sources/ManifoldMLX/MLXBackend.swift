@@ -66,6 +66,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             // historical conservative 8k default rather than a manifest the
             // probe never produced.
             let ctxTokens = Int32(_manifest?.contextWindow ?? 8192)
+            // M5 + macOS 26.2: MLX activates Neural Accelerator dispatch automatically (~3-4x TTFT).
+            // Query NeuralAcceleratorProbe.availability in ManifoldHardware for informational UI only.
             return BackendCapabilities(
                 supportedParameters: [
                     .temperature, .topP, .topK, .repeatPenalty,
