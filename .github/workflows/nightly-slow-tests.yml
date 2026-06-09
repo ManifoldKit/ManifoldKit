@@ -230,16 +230,15 @@ jobs:
               --body "$(printf '## Nightly slow tests failed\n\n**Run:** [%s](%s)\n\nCheck the run logs for which steps failed and close this issue once resolved.' "${{ github.run_id }}" "${run_url}")"
           fi
 
-  # Cold-start conformance gates (tier 1/2/3) and the FoundationOnly bundle
-  # audit. These were per-PR gates in ci.yml until they were carved out here:
+  # Cold-start conformance gates (tier 1/2/3 + specialised MCP/Voice/
+  # UIModelManagement), consolidated onto a single runner — same approach as
+  # ci.yml. These were per-PR gates in ci.yml until they were carved out here:
   # they very rarely fail (they exercise stable package-graph + public-surface
   # shape) and added ~9 min of 10×-billed macOS wall-clock to every PR. ci.yml
   # still runs them on PRs that actually touch Package.swift / Package.resolved
   # / the gate scripts / Sources/ManifoldFoundation; this nightly job re-runs
   # them unconditionally so we still catch Sources-only regressions that wiggle
-  # a public symbol downstream-visible.
-  # Cold-start conformance gates (tier 1/2/3 + specialised MCP/Voice/UIModelManagement),
-  # consolidated onto a single runner — same approach as ci.yml. Steps 2–6 use
+  # a public symbol downstream-visible. Steps 2–6 use
   # `if: success() || failure()` so one failure doesn't mask the others.
   cold-start:
     runs-on: macos-15

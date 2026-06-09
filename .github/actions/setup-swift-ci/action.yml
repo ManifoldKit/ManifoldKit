@@ -45,6 +45,9 @@ runs:
           .build/checkouts
           .build/repositories
         key: ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm${{ inputs.cache-key-suffix }}-${{ hashFiles('Package.resolved') }}
+        # With an empty cache-key-suffix the first two restore-keys render
+        # identically; the duplicate lookup is a harmless no-op. Kept so the
+        # suffixed variant (-foundation-only) falls back to the standard key.
         restore-keys: |
           ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm${{ inputs.cache-key-suffix }}-
           ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm-
