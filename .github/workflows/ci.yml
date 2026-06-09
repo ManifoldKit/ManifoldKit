@@ -452,8 +452,22 @@ jobs:
           # converts the shallow clone to a full one; fall back to a plain fetch
           # if the repo is already full-depth (e.g. local runs).
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # The allowlist (.github/api-breakage-allowlist.txt) carries the
+          # false-positive "X has been removed" entries produced when public
+          # types are relocated DOWNWARD into a leaf module that ManifoldInference
+          # re-exports via `@_exported import` (P2a Contract extraction, #1719).
+          # swift-api-digester analyses each target's own emitted interface and
+          # does NOT follow `@_exported` re-exports, so a relocated-but-still-
+          # source-reachable symbol reads as "removed" against the pre-merge
+          # baseline. The all-traits build proves source-compat is intact. Each
+          # entry self-expires: once the relocation lands on main the baseline
+          # no longer sees the symbol in ManifoldInference, the digester stops
+          # emitting that message, and the unmatched allowlist line becomes an
+          # inert no-op (a genuine future removal of a DIFFERENT symbol still
+          # trips the gate). See #1723.
           # shellcheck disable=SC2086
-          swift package diagnose-api-breaking-changes origin/main $TARGETS
+          swift package diagnose-api-breaking-changes origin/main $TARGETS \
+            --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
       # CI smoke profile (GitHub macOS Apple Silicon runners):
       # - Runs ManifoldCoreTests + ManifoldRuntimeTests + ManifoldPersistenceSwiftDataTests

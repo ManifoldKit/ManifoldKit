@@ -167,9 +167,14 @@ jobs:
           # converts the shallow clone to a full one; fall back to a plain fetch
           # if the repo is already full-depth (e.g. local runs).
           git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+          # See ci.yml for why the allowlist exists: it absorbs the false-positive
+          # "removed" reports from downward type relocations behind `@_exported`
+          # re-export shims (P2a Contract extraction, #1719/#1723). Entries
+          # self-expire once the relocation lands on main.
           swift package diagnose-api-breaking-changes origin/main \
             --targets ManifoldInference --targets ManifoldRuntime --targets ManifoldCloudCore \
-            --targets ManifoldPersistenceSwiftData --targets ManifoldUI
+            --targets ManifoldPersistenceSwiftData --targets ManifoldUI \
+            --breakage-allowlist-path .github/api-breakage-allowlist.txt
 
       - name: Stage test diagnostics
         # Mirrors ci.yml: each step writes to a unique workspace log path so
