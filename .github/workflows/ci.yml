@@ -26,6 +26,9 @@ on:
       # the gate would bypass it (per CI path-filter self-validation rule).
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      # Per CI path-filter self-validation rule: edits to the composite action
+      # must re-trigger CI so the action change is validated under the gate.
+      - ".github/actions/setup-swift-ci/**"
   pull_request:
     branches: [main]
     paths:
@@ -49,6 +52,9 @@ on:
       # Tier 2 selective CI (issue #1590). See push section above.
       - "scripts/ci-selective-test.sh"
       - ".swiftpm/xcode/xcshareddata/xcschemes/**"
+      # Per CI path-filter self-validation rule: edits to the composite action
+      # must re-trigger CI so the action change is validated under the gate.
+      - ".github/actions/setup-swift-ci/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -222,28 +228,10 @@ jobs:
               - 'Package.swift'
               - 'Package.resolved'
 
-      - name: Select Xcode
-        id: setup-xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
         with:
-          # Pin to a specific version for reproducible builds and to skip the
-          # version-discovery API call that `latest-stable` requires.
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM dependencies
-        uses: actions/cache@v5
-        with:
-          # Keep dependency material in the broad Package.resolved cache: .build/artifacts
-          # holds the prebuilt llama.cpp xcframework (~100 MB, the real win), and
-          # .build/checkouts + .build/repositories save the per-dep clone phase.
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
+          verify-toolchain: "true"
 
       # .build/debug is intentionally NOT cached. Tried twice (#961, #1045), reverted
       # twice (#1036, this PR) — measured median 13% worse than no cache because SwiftPM
@@ -260,33 +248,6 @@ jobs:
       # Measured cold vs deps-restored: 40-44s both, within noise, before counting
       # the ~67 MB cache I/O. The real floor is local-module + test compile and test
       # execution, neither cacheable. Don't re-spike the deps cache.
-
-      - name: Verify Swift toolchain matches Package.swift tools-version
-        # The runner's Xcode (pinned above) ships a specific Swift version. If
-        # `swift-tools-version` in Package.swift exceeds that, `swift package
-        # resolve` and every subsequent build will fail with a confusing error.
-        # Catch the mismatch here with a clear message naming both versions.
-        run: |
-          set -euo pipefail
-          tools_line=$(head -n 1 Package.swift)
-          tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
-            exit 1
-          fi
-          swift_version_full=$(xcrun swift -version | head -n 1)
-          swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse Swift major.minor from: $swift_version_full"
-            exit 1
-          fi
-          tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
-          swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
-          if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
-            echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
-            exit 1
-          fi
-          echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
 
       - name: Lint — ManifoldUI does not import ManifoldUIModelManagement
         # The two modules form a one-way edge: ManifoldUIModelManagement depends
@@ -712,48 +673,12 @@ jobs:
           # `pull_request` works with the default shallow clone.
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      # Same path/key shape as the `test` job — both jobs share the SwiftPM dep
+      # tarball cache so we don't re-download the graph twice per workflow run.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
         with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          # Same path/key shape as the `test` job — both jobs share the same
-          # SwiftPM dep tarball cache so we don't re-download the graph twice
-          # per workflow run.
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Verify Swift toolchain matches Package.swift tools-version
-        run: |
-          set -euo pipefail
-          tools_line=$(head -n 1 Package.swift)
-          tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
-            exit 1
-          fi
-          swift_version_full=$(xcrun swift -version | head -n 1)
-          swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse Swift major.minor from: $swift_version_full"
-            exit 1
-          fi
-          tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
-          swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
-          if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
-            echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
-            exit 1
-          fi
-          echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
+          verify-toolchain: "true"
 
       - name: Test — Server suite (Server trait)
         id: test-server
@@ -800,48 +725,12 @@ jobs:
           # `pull_request` works with the default shallow clone.
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      # Same path/key shape as the `test` job — both jobs share the SwiftPM dep
+      # tarball cache so we don't re-download the graph twice per workflow run.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
         with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          # Same path/key shape as the `test` job — both jobs share the same
-          # SwiftPM dep tarball cache so we don't re-download the graph twice
-          # per workflow run.
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Verify Swift toolchain matches Package.swift tools-version
-        run: |
-          set -euo pipefail
-          tools_line=$(head -n 1 Package.swift)
-          tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
-            exit 1
-          fi
-          swift_version_full=$(xcrun swift -version | head -n 1)
-          swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
-          if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
-            echo "Could not parse Swift major.minor from: $swift_version_full"
-            exit 1
-          fi
-          tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
-          swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
-          if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
-            echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
-            exit 1
-          fi
-          echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"
+          verify-toolchain: "true"
 
       - name: Test — @ToolSchema macro suite (Macros trait)
         id: test-macros
@@ -870,19 +759,22 @@ jobs:
           retention-days: 7
           path: test-diagnostics/
 
-  # Cold-start conformance — scaffolds a fresh SwiftPM consumer in a tmpdir,
-  # links ManifoldKit by local path, and runs one chat turn through a tiny inline fake
-  # backend. Catches breaks in the public consumer surface that ManifoldKit's own
-  # in-tree tests miss (Package.swift link shape, public registration / load /
-  # generate APIs, GenerationStream consumption pattern, swift-tools-version
-  # floor). See scripts/cold-start-conformance.sh for the full rationale.
+  # Cold-start conformance — all six gate scripts on a single runner.
   #
-  # Runs on PRs only when the public consumer surface could have shifted —
-  # `Package.swift`, `Package.resolved`, or the gate script itself. The full
-  # nightly-slow-tests workflow runs it unconditionally every day so we still
-  # catch silent breaks introduced via Sources-only edits that wiggle a public
-  # symbol downstream-visible. Per `[[feedback_ci_path_filter_self_validation]]`
-  # the script's own path is in the filter so script-only PRs still trigger.
+  # Previously six separate jobs (cold-start, cold-start-tier2, cold-start-tier3,
+  # cold-start-specialised-mcp, cold-start-specialised-voice,
+  # cold-start-specialised-uimodelmanagement), each on its own macos-15 runner.
+  # Combined sequential runtime (~1,277s) is below the `test` job they run
+  # alongside (~1,347s), so one runner running all six scripts sequentially costs
+  # zero added wall-clock while saving 5 runner spin-ups + 5 cache restores per
+  # triggering PR. Steps 2–6 use `if: success() || failure()` so a single script
+  # failure does not mask the remaining checks — every tier always reports,
+  # matching the `test` job's pattern. The job fails automatically if any step
+  # fails (GitHub marks the job failed whenever any non-always step exits non-zero).
+  #
+  # Per-PR gating: fires when cold-start filter matches (Package.swift,
+  # Package.resolved, any cold-start*.sh script, or the specialised module
+  # sources). Nightly runs all six unconditionally every day.
   cold-start:
     needs: [changes]
     if: needs.changes.outputs.cold-start == 'true'
@@ -894,111 +786,65 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
 
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start conformance
+      # Tier 1 — scaffolds a fresh SwiftPM consumer in a tmpdir, links ManifoldKit
+      # by local path, and runs one chat turn through a tiny inline fake backend.
+      # Catches breaks in the public consumer surface (Package.swift link shape,
+      # public registration / load / generate APIs, GenerationStream consumption
+      # pattern, swift-tools-version floor).
+      # See scripts/cold-start-conformance.sh for the full rationale.
+      - name: Cold-start tier 1 — public consumer surface
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
-  # Cold-start conformance (tier 2) — extends the tier-1 pattern to the
-  # high-level orchestration surface real chat apps use: ManifoldBootstrap →
-  # ChatViewModel → vm.sendMessage(). Catches breaks in ManifoldBootstrap link
-  # shape (Inference + Runtime + PersistenceSwiftData + UI products), the
-  # configure(runtime:) ergonomics, and the ambient inputText / sendMessage
-  # pattern. See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
-  # Tier-3 (ChatView composition) runs in its own job below.
-  #
-  # Same per-PR gating as `cold-start` above: only fires on Package.swift /
-  # Package.resolved / script edits; nightly runs it unconditionally.
-  cold-start-tier2:
-    needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start tier-2 conformance
+      # Tier 2 — extends the tier-1 pattern to the high-level orchestration surface
+      # real chat apps use: ManifoldBootstrap → ChatViewModel → vm.sendMessage().
+      # Catches breaks in ManifoldBootstrap link shape (Inference + Runtime +
+      # PersistenceSwiftData + UI products), the configure(runtime:) ergonomics,
+      # and the ambient inputText / sendMessage pattern.
+      # See scripts/cold-start-tier2-bootstrap.sh for the full rationale.
+      - name: Cold-start tier 2 — ManifoldBootstrap → ChatViewModel
+        if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
-  # Cold-start conformance (tier 3) — scaffolds a fresh SwiftPM consumer that
-  # composes a downstream SwiftUI RootView around ChatView, proving @Observable
-  # view models are passed via `.environment(_:)` (not ObservableObject/
-  # @EnvironmentObject) and that the `@ViewBuilder apiConfiguration:` closure
-  # shape still compiles. Runs against ManifoldUI + ManifoldKit (FoundationOnly
-  # trait — no MLX/Llama). Catches the two UI cold-start mistakes the lower
-  # tiers miss: treating view models as Combine ObservableObjects and forgetting
-  # the ChatView API-configuration builder. See scripts/cold-start-tier3-chatview.sh
-  # for the full rationale.
-  #
-  # Same per-PR gating as the other cold-start jobs; nightly runs it daily.
-  cold-start-tier3:
-    needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start tier-3 ChatView conformance
+      # Tier 3 — scaffolds a fresh SwiftPM consumer that composes a downstream
+      # SwiftUI RootView around ChatView, proving @Observable view models are passed
+      # via .environment(_:) (not ObservableObject/@EnvironmentObject) and that the
+      # @ViewBuilder apiConfiguration: closure shape still compiles.
+      # See scripts/cold-start-tier3-chatview.sh for the full rationale.
+      - name: Cold-start tier 3 — ChatView composition
+        if: success() || failure()
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
+
+      # Specialised: ManifoldMCP — links ManifoldMCP as a standalone product
+      # dependency and verifies that MCPServerDescriptor, MCPTransportKind, and
+      # MCPToolSource are reachable from outside the package. MCP trait is not
+      # required (trait only gates the ManifoldMCPTests dependency edge).
+      - name: Cold-start specialised — ManifoldMCP
+        if: success() || failure()
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-mcp.sh
+
+      # Specialised: ManifoldVoice — links ManifoldVoice as a standalone product
+      # dependency and verifies VoiceError, VoiceCaptureState, and the
+      # SpeechTranscribing / SpeechSynthesizing protocol pair are reachable.
+      - name: Cold-start specialised — ManifoldVoice
+        if: success() || failure()
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-voice.sh
+
+      # Specialised: ManifoldUIModelManagement — links ManifoldUIModelManagement as
+      # a standalone product dependency and verifies ModelManagementViewModel,
+      # ModelImportError, and DocumentLibraryViewModel are reachable. Runs with the
+      # baseline trait set (no optional traits) so it exercises the always-present slice.
+      - name: Cold-start specialised — ManifoldUIModelManagement
+        if: success() || failure()
+        timeout-minutes: 10
+        run: scripts/cold-start-specialised-uimodelmanagement.sh
 
   # FoundationOnly bundle audit — proves the App Store-lean trait set keeps
   # ManifoldKit overhead under 5 MB and never leaks MLX/Llama framework symbols. One
@@ -1021,26 +867,14 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      # FoundationOnly resolves a much smaller dep graph than the default set
+      # (no MLX, no llama.swift, no swift-huggingface), but it shares the same
+      # cache key family so a tier-1 / tier-2 / default cache hit can warm-restore
+      # the package metadata.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
         with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          # FoundationOnly resolves a much smaller dep graph than the default
-          # set (no MLX, no llama.swift, no swift-huggingface), but it shares
-          # the same cache key family so a tier-1 / tier-2 / default cache
-          # hit can warm-restore the package metadata.
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+          cache-key-suffix: "-foundation-only"
 
       - name: Run FoundationOnly bundle audit
         timeout-minutes: 10
@@ -1064,22 +898,8 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
 
       - name: Test — ModelContainerFileProtectionTests (iOS Simulator)
         id: test-ios-file-protection
@@ -1107,142 +927,3 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
-
-  # Specialised-module cold-start import gate — ManifoldMCP.
-  #
-  # Scaffolds a fresh SwiftPM consumer, links ManifoldMCP as a standalone
-  # product dependency (not the full umbrella), and verifies that
-  # `MCPServerDescriptor`, `MCPTransportKind`, and `MCPToolSource` are
-  # reachable from outside the package. Catches broken product → target wiring
-  # in Package.swift and accidental removal of public types.
-  #
-  # ManifoldMCP compiles without any trait — the MCP trait only gates the
-  # ManifoldMCPTests → ManifoldMCP dependency edge. The gate therefore runs
-  # with --disable-default-traits to keep the dep graph minimal (no MLX/Llama).
-  #
-  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
-  # or any file under Sources/ManifoldMCP/** changes. Same per-PR logic as the
-  # sibling cold-start jobs; nightly runs it unconditionally.
-  cold-start-specialised-mcp:
-    needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldMCP)
-        timeout-minutes: 10
-        run: scripts/cold-start-specialised-mcp.sh
-
-  # Specialised-module cold-start import gate — ManifoldVoice.
-  #
-  # Scaffolds a fresh SwiftPM consumer, links ManifoldVoice as a standalone
-  # product dependency, and verifies that `VoiceError`, `VoiceCaptureState`,
-  # and the `SpeechTranscribing` / `SpeechSynthesizing` protocol pair are
-  # reachable from outside the package. Catches broken product → target wiring
-  # and accidental removal of public types.
-  #
-  # ManifoldVoice compiles without any trait — the Voice trait only adds a
-  # conditional-compilation define used by the ManifoldKit umbrella re-export.
-  #
-  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
-  # or any file under Sources/ManifoldVoice/** changes.
-  cold-start-specialised-voice:
-    needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldVoice)
-        timeout-minutes: 10
-        run: scripts/cold-start-specialised-voice.sh
-
-  # Specialised-module cold-start import gate — ManifoldUIModelManagement.
-  #
-  # Scaffolds a fresh SwiftPM consumer, links ManifoldUIModelManagement as a
-  # standalone product dependency, and verifies that `ModelManagementViewModel`,
-  # `ModelImportError`, and `DocumentLibraryViewModel` are reachable from outside
-  # the package. Catches broken product → target wiring and accidental removal
-  # of public types.
-  #
-  # ManifoldUIModelManagement compiles without any trait — HuggingFace / Ollama /
-  # CloudSaaS traits only add conditional-compilation defines that expand the
-  # model-source and API-key editor surface. The gate runs with the baseline
-  # trait set (no optional traits) so it exercises the always-present slice.
-  #
-  # Per-PR gating: fires when Package.swift / Package.resolved, the gate script,
-  # or any file under Sources/ManifoldUIModelManagement/** changes.
-  cold-start-specialised-uimodelmanagement:
-    needs: [changes]
-    if: needs.changes.outputs.cold-start == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 2
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldUIModelManagement)
-        timeout-minutes: 10
-        run: scripts/cold-start-specialised-uimodelmanagement.sh

@@ -43,22 +43,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
 
       - name: Test — LargeSessionListPerformanceTests
         id: test-large-session-list
@@ -252,177 +238,46 @@ jobs:
   # / the gate scripts / Sources/ManifoldFoundation; this nightly job re-runs
   # them unconditionally so we still catch Sources-only regressions that wiggle
   # a public symbol downstream-visible.
+  # Cold-start conformance gates (tier 1/2/3 + specialised MCP/Voice/UIModelManagement),
+  # consolidated onto a single runner — same approach as ci.yml. Steps 2–6 use
+  # `if: success() || failure()` so one failure doesn't mask the others.
   cold-start:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
 
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start conformance
+      - name: Cold-start tier 1 — public consumer surface
         timeout-minutes: 10
         run: scripts/cold-start-conformance.sh
 
-  cold-start-tier2:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start tier-2 conformance
+      - name: Cold-start tier 2 — ManifoldBootstrap → ChatViewModel
+        if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-tier2-bootstrap.sh
 
-  cold-start-tier3:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start tier-3 ChatView conformance
+      - name: Cold-start tier 3 — ChatView composition
+        if: success() || failure()
         timeout-minutes: 10
         run: bash scripts/cold-start-tier3-chatview.sh
 
-  cold-start-specialised-mcp:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldMCP)
+      - name: Cold-start specialised — ManifoldMCP
+        if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-mcp.sh
 
-  cold-start-specialised-voice:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldVoice)
+      - name: Cold-start specialised — ManifoldVoice
+        if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-voice.sh
 
-  cold-start-specialised-uimodelmanagement:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
-
-      - name: Run cold-start import gate (ManifoldUIModelManagement)
+      - name: Cold-start specialised — ManifoldUIModelManagement
+        if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
 
@@ -434,22 +289,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
         with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-foundation-only-
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
+          cache-key-suffix: "-foundation-only"
 
       - name: Run FoundationOnly bundle audit
         timeout-minutes: 10
