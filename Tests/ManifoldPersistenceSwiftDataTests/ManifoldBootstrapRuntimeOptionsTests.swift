@@ -188,4 +188,52 @@ final class ManifoldBootstrapRuntimeOptionsTests: XCTestCase {
         let conversationRuntime: ConversationRuntime = bootstrap.conversationRuntime
         _ = conversationRuntime
     }
+
+    // MARK: - Wiring parity between sync init and async build()
+    //
+    // Regression gate for the class of bug where a new ConversationRuntimeOptions
+    // field is wired in the public `init` but silently omitted from the `build()`
+    // path (or vice versa). The historical incident: `build()` shipped with RAG
+    // wiring missing; `makeRAGService` fixed that. `makeConversationRuntime`
+    // closes the equivalent gap for all ConversationRuntime arguments.
+    //
+    // We use `auxiliaryInferenceService` as the probe because it is the most
+    // directly observable runtime property that flows through runtimeOptions.
+    // If both paths call the same factory, both will thread the option through.
+    // If either path regresses to a hand-rolled construction, the assertion fails.
+
+    func test_initAndBuild_wireAuxiliaryInferenceServiceIdentically() async throws {
+        let original = ManifoldConfiguration.shared
+        defer { ManifoldConfiguration.shared = original }
+
+        let auxiliaryBackend = MockInferenceBackend()
+        let auxiliaryService = InferenceService(backend: auxiliaryBackend, name: "AuxService")
+
+        var options = ConversationRuntimeOptions()
+        options.auxiliaryInferenceService = auxiliaryService
+
+        // Sync init path
+        let syncBootstrap = try ManifoldBootstrap(
+            configuration: makeConfig(tag: "aux-wiring-sync"),
+            runtimeOptions: options,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        XCTAssertTrue(
+            syncBootstrap.conversationRuntime.auxiliaryInferenceService === auxiliaryService,
+            "sync init: auxiliaryInferenceService must be threaded through to ConversationRuntime"
+        )
+
+        // Async build() path — delegates to the same internal init and makeConversationRuntime
+        let (progress, task) = ManifoldBootstrap.build(
+            configuration: makeConfig(tag: "aux-wiring-build"),
+            runtimeOptions: options,
+            makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() }
+        )
+        for await _ in progress {}
+        let buildBootstrap = try await task.value
+        XCTAssertTrue(
+            buildBootstrap.conversationRuntime.auxiliaryInferenceService === auxiliaryService,
+            "build() path: auxiliaryInferenceService must be threaded through to ConversationRuntime"
+        )
+    }
 }

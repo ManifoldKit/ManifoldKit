@@ -10,6 +10,12 @@ import ManifoldRuntime
 /// ``ChatViewModel/configure(runtime:)`` so chat history outlives the process.
 /// This in-memory store keeps tests and ad-hoc surfaces functional without
 /// requiring every caller to assemble a ``ConversationRuntime`` themselves.
+///
+/// This type lives in `ManifoldUI` rather than `ManifoldRuntime` because
+/// `ManifoldRuntimeTests` already declares its own test-local `InMemoryMessageStore`
+/// (with a different shape) in `InMemoryMessageStore+TestHelpers.swift`. Moving
+/// this type would require renaming one of the two, which constitutes a
+/// behaviour-visible change — deferred to a follow-up.
 @MainActor
 final class InMemoryMessageStore: MessageStore {
     private var messages: [UUID: ChatMessage] = [:]
