@@ -15,6 +15,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.manifoldkit.runtime.continueGeneration</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Manifold Demo uses the microphone for on-device voice input.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

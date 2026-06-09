@@ -424,6 +424,24 @@ public final class ConversationRuntime: Sendable {
         }
     }
 
+    // MARK: Bulk cancellation
+
+    /// Cancels all in-flight generation turns and waits for them to drain.
+    ///
+    /// Call this from a `BGContinuedProcessingTask.expirationHandler` (via
+    /// ``ConversationRuntimeBackgroundBridge``) or any other context where the
+    /// caller needs a clean shutdown without a retained ``ConversationStreamHandle``.
+    ///
+    /// Mirrors the `deinit` teardown path so the two stay in sync. Idempotent —
+    /// safe to call when no turns are in flight.
+    public func cancelAllTurns() async {
+        turnTasks.cancelAll()
+        let tokens = await registry.markAllCancelled()
+        for token in tokens {
+            await inferenceService.cancelAsync(token)
+        }
+    }
+
     // MARK: Cancel
 
     /// Cancels an in-flight stream identified by `handle`.
