@@ -1,0 +1,11 @@
+0  messageInserted  id:<uuid:1> role:user content:"Compress me"
+1  beforeContextAssembly  session:<uuid:2> prompt:"Compress me" msgCount:1
+2  contextAssembled  slots:0
+3  streamStarted  id:<uuid:3>
+4  tokenEmitted  id:<uuid:3> delta:"OK"
+5  tokenUsageRecorded  id:<uuid:3> prompt:50 completion:5
+6  messageInserted  id:<uuid:3> role:assistant content:"OK"
+7  streamFinished  id:<uuid:3> reason:stop
+8  afterGeneration  id:<uuid:3> finalText:"OK"
+9  compressionTriggered  removed:2 reason:contextWindowExceeded
+10  historyCompressed  session:<uuid:2> inserted:1

@@ -1,0 +1,12 @@
+0  messageInserted  id:<uuid:1> role:user content:"Hook test turn"
+1  beforeContextAssembly  session:<uuid:2> prompt:"Hook test turn" msgCount:1
+2  contextAssembled  slots:0
+3  streamStarted  id:<uuid:3>
+4  tokenEmitted  id:<uuid:3> delta:"Done"
+5  tokenUsageRecorded  id:<uuid:3> prompt:60 completion:6
+6  messageInserted  id:<uuid:3> role:assistant content:"Done"
+7  streamFinished  id:<uuid:3> reason:stop
+8  afterGeneration  id:<uuid:3> finalText:"Done"
+9  hookFired  event:preCompact
+10  compressionTriggered  removed:2 reason:contextWindowExceeded
+11  historyCompressed  session:<uuid:2> inserted:1
