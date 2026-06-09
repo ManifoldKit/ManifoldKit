@@ -1,2 +1,2 @@
-0  id:<uuid:1> role:user content:"Use the echo tool"
-1  id:<uuid:3> role:assistant content:"Done" parts:3
+0  id:<uuid:1> role:user content:"Use the echo tool" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil
+1  id:<uuid:3> role:assistant content:"Done" parts:3 agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil

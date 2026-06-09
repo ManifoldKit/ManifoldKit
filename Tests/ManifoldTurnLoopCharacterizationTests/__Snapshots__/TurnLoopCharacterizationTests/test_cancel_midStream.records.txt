@@ -1,2 +1,2 @@
-0  id:<uuid:1> role:user content:"Cancel me"
-1  id:<uuid:3> role:assistant content:"Hello"
+0  id:<uuid:1> role:user content:"Cancel me" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil
+1  id:<uuid:3> role:assistant content:"Hello" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil

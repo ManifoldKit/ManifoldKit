@@ -1,2 +1,2 @@
-0  id:<uuid:1> role:user content:"Forward a tool call"
-1  id:<uuid:3> role:assistant content:(empty)
+0  id:<uuid:1> role:user content:"Forward a tool call" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil
+1  id:<uuid:3> role:assistant content:(empty) agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil

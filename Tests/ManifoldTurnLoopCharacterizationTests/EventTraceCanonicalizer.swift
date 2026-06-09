@@ -33,7 +33,18 @@ struct EventTraceCanonicalizer {
             let text = r.content
             let c = text.isEmpty ? "(empty)" : "\"\(text.prefix(80))\""
             let extra = r.contentParts.count > 1 ? " parts:\(r.contentParts.count)" : ""
+            // Canonicalize agentID/sessionID through the SAME `<uuid:N>`
+            // first-appearance labeling the events use so attribution
+            // (handoff sets agentID; branch mints a fresh sessionID) is
+            // pinned deterministically. Token counts are surfaced verbatim
+            // (`nil` when the turn yielded no usage) so a lost token-pinning
+            // in the engine de-tangle diffs instead of passing clean.
+            let agent = r.agentID.map { label($0) } ?? "nil"
+            let session = label(r.sessionID)
+            let prompt = r.promptTokens.map(String.init) ?? "nil"
+            let completion = r.completionTokens.map(String.init) ?? "nil"
             return "\(i)  id:\(label(r.id)) role:\(r.role.rawValue) content:\(c)\(extra)"
+                + " agentID:\(agent) sessionID:\(session) promptTokens:\(prompt) completionTokens:\(completion)"
         }.joined(separator: "\n")
     }
 

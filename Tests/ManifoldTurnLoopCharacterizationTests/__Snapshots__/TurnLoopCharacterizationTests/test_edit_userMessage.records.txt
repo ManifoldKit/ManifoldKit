@@ -1,2 +1,2 @@
-0  id:<uuid:1> role:user content:"Edited text"
-1  id:<uuid:4> role:assistant content:"Edited reply"
+0  id:<uuid:1> role:user content:"Edited text" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil
+1  id:<uuid:4> role:assistant content:"Edited reply" agentID:nil sessionID:<uuid:2> promptTokens:nil completionTokens:nil
