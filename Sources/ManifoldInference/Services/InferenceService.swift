@@ -9,11 +9,6 @@ public typealias BackendFactory = @MainActor (ModelType) -> (any InferenceBacken
 /// Return `nil` if this factory does not handle the given provider.
 public typealias EndpointBackendFactory = @MainActor (APIProvider) -> (any InferenceBackend)?
 
-/// A factory closure that creates a cloud inference backend for the given API provider.
-/// Return `nil` if this factory does not handle the given provider.
-@available(*, deprecated, renamed: "EndpointBackendFactory")
-public typealias CloudBackendFactory = EndpointBackendFactory
-
 /// Readiness state for the primary model managed by ``InferenceService``.
 public enum ModelLoadReadinessState: Equatable, Sendable {
     /// No model is loaded and no load operation is currently in flight.
@@ -129,10 +124,6 @@ public final class InferenceService {
     /// without going through the static Keychain path.
     public var currentEndpointBackend: (any InferenceBackend)? { lifecycle.backend }
 
-    /// The currently-loaded cloud backend, if any.
-    @available(*, deprecated, renamed: "currentEndpointBackend")
-    public var currentCloudBackend: (any InferenceBackend)? { currentEndpointBackend }
-
     // MARK: - Deny Policy
 
     /// Policy applied when a ``ModelLoadPlan`` returns a ``ModelLoadPlan/Verdict/deny``
@@ -172,11 +163,6 @@ public final class InferenceService {
         lifecycle.registerEndpointBackendFactory(factory)
     }
 
-    @available(*, deprecated, renamed: "registerEndpointBackendFactory(_:)")
-    public func registerCloudBackendFactory(_ factory: @escaping CloudBackendFactory) {
-        registerEndpointBackendFactory(factory)
-    }
-
     public func declareSupport(for modelType: ModelType) {
         lifecycle.declareSupport(for: modelType)
     }
@@ -212,14 +198,6 @@ public final class InferenceService {
         ensureProviderWired()
         generation.stopGeneration()
         try await lifecycle.loadEndpointBackend(from: endpoint)
-    }
-
-    /// Loads a cloud API backend from an `APIEndpointRecord` configuration.
-    ///
-    /// Follows the same latest-wins/stale-suppression semantics as `loadModel`.
-    @available(*, deprecated, renamed: "loadEndpointBackend(from:)")
-    public func loadCloudBackend(from endpoint: APIEndpointRecord) async throws {
-        try await loadEndpointBackend(from: endpoint)
     }
 
     /// Unloads the current model and frees all associated memory.

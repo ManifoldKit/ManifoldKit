@@ -391,11 +391,13 @@ final class GlassBoxEventWiringTests: XCTestCase {
         let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
 
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "use the tool",
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "use the tool"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
         let events = await drain(from: runtime, until: isStreamFinished)
 
@@ -430,11 +432,13 @@ final class GlassBoxEventWiringTests: XCTestCase {
         let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
 
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "use the gated tool",
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "use the gated tool"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
         let events = await drain(from: runtime, until: isStreamFinished)
 
@@ -464,11 +468,13 @@ final class GlassBoxEventWiringTests: XCTestCase {
         let store = InMemoryMessageStore()
         let runtime = ConversationRuntime(messageStore: store, inferenceService: inference)
 
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "use the gated tool",
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "use the gated tool"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
         let events = await drain(from: runtime, until: isStreamFinished)
 
@@ -514,11 +520,13 @@ final class GlassBoxEventWiringTests: XCTestCase {
             hookRegistry: hooks
         )
 
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "use the tool",
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "use the tool"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
         let events = await drain(from: runtime, until: isStreamFinished)
 
@@ -551,11 +559,13 @@ final class GlassBoxEventWiringTests: XCTestCase {
             usageStore: usageStore
         )
 
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: UUID(),
-            userText: "hi",
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            kind: .send(text: "hi"),
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
         _ = await drain(from: runtime, until: isStreamFinished)
         await awaitUsageRecord(in: usageStore)
@@ -579,7 +589,7 @@ final class GlassBoxEventWiringTests: XCTestCase {
             usageStore: usageStore
         )
 
-        _ = try await runtime.send(SendInput(sessionID: UUID(), userText: "hi"))
+        _ = try await runtime.processTurn(TurnInput(sessionID: UUID(), kind: .send(text: "hi")))
         _ = await drain(from: runtime, until: isStreamFinished)
         await awaitUsageRecord(in: usageStore)
 

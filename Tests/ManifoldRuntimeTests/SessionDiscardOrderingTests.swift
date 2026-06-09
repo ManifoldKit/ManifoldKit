@@ -80,8 +80,8 @@ final class SessionDiscardOrderingTests: XCTestCase {
         }
 
         // Send on A.
-        let aInput = SendInput(sessionID: sessionA, userText: "ask A \(cycle)")
-        _ = try await runtime.send(aInput)
+        let aInput = TurnInput(sessionID: sessionA, kind: .send(text: "ask A \(cycle)"))
+        _ = try await runtime.processTurn(aInput)
 
         // Wait until A's turn is in-flight (queue reports active or queued).
         let preDeadline = ContinuousClock.now + .milliseconds(500)
@@ -105,8 +105,8 @@ final class SessionDiscardOrderingTests: XCTestCase {
         backend.delayPerToken = .milliseconds(2)
 
         // Send on B and consume its event stream until completion.
-        let bInput = SendInput(sessionID: sessionB, userText: "ask B \(cycle)")
-        _ = try await runtime.send(bInput)
+        let bInput = TurnInput(sessionID: sessionB, kind: .send(text: "ask B \(cycle)"))
+        _ = try await runtime.processTurn(bInput)
 
         // Poll until B's assistant message is persisted (or fail with diag).
         let bDeadline = ContinuousClock.now + .seconds(3)

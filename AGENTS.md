@@ -201,7 +201,7 @@ case .idle, .generating:     /* unexpected */
 }
 ```
 
-`sendMessage(_:)` throws `NoResponseError` when a turn ends without producing a
+`sendMessage(_:)` throws `SendMessageError` when a turn ends without producing a
 message. Make sure a session is selected and a model is loaded first; the
 method enforces both preconditions.
 

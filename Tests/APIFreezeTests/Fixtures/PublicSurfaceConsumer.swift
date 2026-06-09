@@ -194,9 +194,9 @@ enum PublicSurfaceConsumer {
     // MARK: - ManifoldRuntime
 
     private static func consumeRuntimeInputs() {
-        // Legacy input structs are pinned in DeprecatedSurfaceConsumer.swift
-        // (inside an @available(*, deprecated) type) to avoid deprecation
-        // warnings propagating here. Non-deprecated symbols pin here:
+        // The canonical turn-input surface (TurnInput / TurnConfig / TurnKind)
+        // is exercised throughout the runtime tests; pin the outcome/handle
+        // value types here:
         let streamHandle = ConversationStreamHandle()
         let outcome = ConversationTurnOutcome(
             sessionID: UUID(),

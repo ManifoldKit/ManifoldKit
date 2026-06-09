@@ -16,8 +16,8 @@ final class ThinkingStreamingTests: XCTestCase {
     private func makeVM(backend: MockInferenceBackend) async -> ChatViewModel {
         backend.isModelLoaded = true
         let service = InferenceService(backend: backend, name: "Mock")
-        // The runtime applies the streaming intervals from `SendInput` it
-        // receives at `runtime.send(...)` time. ChatViewModel forwards the
+        // The runtime applies the streaming intervals from `TurnConfig` it
+        // receives at `processTurn(...)` time. ChatViewModel forwards the
         // view-model-level overrides into the input, so setting them on the
         // VM still flows through.
         let vm = ChatViewModel(

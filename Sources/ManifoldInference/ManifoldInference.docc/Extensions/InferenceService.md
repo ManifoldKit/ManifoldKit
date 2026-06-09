@@ -15,7 +15,7 @@
 ### Loading Models
 
 - ``loadModel(from:plan:)``
-- ``loadCloudBackend(from:)``
+- ``loadEndpointBackend(from:)``
 - ``unloadModel()``
 - ``resetConversation()``
 - ``denyPolicy``
@@ -28,9 +28,9 @@
 ### Backend Registration
 
 - ``registerBackendFactory(_:)``
-- ``registerCloudBackendFactory(_:)``
+- ``registerEndpointBackendFactory(_:)``
 - ``BackendFactory``
-- ``CloudBackendFactory``
+- ``EndpointBackendFactory``
 
 ### Compatibility
 

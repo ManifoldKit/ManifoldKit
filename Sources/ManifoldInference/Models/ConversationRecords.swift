@@ -210,6 +210,11 @@ public struct ChatMessage: Identifiable, Hashable, Sendable {
 
 // MARK: - Deprecation Aliases
 
+// NOTE: These aliases are retained (not removed with the rest of the
+// deprecated surface) because `ManifoldPersistenceSwiftData` also vends a
+// public `ChatSession`/`ChatMessage` (the SwiftData `@Model` typealiases),
+// so bare `ChatSession`/`ChatMessage` is ambiguous under `import ManifoldKit`.
+// The `…Record` spelling stays unambiguous until the @Model types are renamed.
 @available(*, deprecated, renamed: "ChatSession")
 public typealias ChatSessionRecord = ChatSession
 

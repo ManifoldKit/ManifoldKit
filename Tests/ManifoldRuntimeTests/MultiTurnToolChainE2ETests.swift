@@ -194,14 +194,16 @@ final class MultiTurnToolChainE2ETests: XCTestCase {
         )
 
         let sessionID = UUID()
-        _ = try await runtime.send(SendInput(
+        _ = try await runtime.processTurn(TurnInput(
             sessionID: sessionID,
-            userText: "run the tool chain",
+            kind: .send(text: "run the tool chain"),
             // Zero-interval streaming so all token batches flush immediately
             // — avoids a race where the final content token is still batched
             // when we read the store.
-            streamingUpdateInterval: .zero,
-            streamingBatchCharacterLimit: 1
+            config: TurnConfig(
+                streamingUpdateInterval: .zero,
+                streamingBatchCharacterLimit: 1
+            )
         ))
 
         await drainUntilFinished(runtime: runtime)
