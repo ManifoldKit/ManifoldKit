@@ -208,7 +208,9 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // DiffusionDownload.swift above. Sibling to
         // BackgroundDownloadManager+URLSessionDelegate.swift.
         "ManifoldHuggingFace/DiffusionDownloadDelegate.swift",
-        "ManifoldInference/Services/SSEStreamParser.swift",
+        // SSEStreamParser moved down into the ManifoldContract leaf in P2a
+        // (#1719); the byte-stream parser is backend-facing Contract surface.
+        "ManifoldContract/SSEStreamParser.swift",
         "ManifoldUI/ViewModels/ModelManagementViewModel.swift",
 
         // Reference tools — manifold-tools CLI tool harness, intentional HTTP fetcher.

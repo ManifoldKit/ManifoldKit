@@ -1,7 +1,8 @@
 #if canImport(FoundationModels)
 import Foundation
 import FoundationModels
-import ManifoldInference
+// P2a (#1719): Contract-leaf surface only — see FoundationBackend.swift.
+import ManifoldContract
 
 /// Builds an Apple `GenerationSchema` that constrains the model's output to
 /// either a plain text reply or a tool invocation chosen from the registered

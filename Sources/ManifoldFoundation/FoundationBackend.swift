@@ -2,7 +2,10 @@
 import Foundation
 import FoundationModels
 import os
-import ManifoldInference
+// P2a (#1719): the Foundation Models bridge compiles against the Contract leaf
+// surface only (InferenceBackend, GenerationConfig, GenerationEvent, …) — no
+// engine state. ManifoldContract re-exports the P1 leaf types it needs.
+import ManifoldContract
 
 /// Apple FoundationModels inference backend for on-device Apple Intelligence models.
 ///

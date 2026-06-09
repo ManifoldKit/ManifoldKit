@@ -31,10 +31,19 @@
         "ManifoldSecrets"
       ]
     },
+    "ManifoldContract": {
+      "type": "regular",
+      "path": "Sources/ManifoldContract",
+      "deps": [
+        "ManifoldHardware",
+        "ManifoldModelCatalog"
+      ]
+    },
     "ManifoldInference": {
       "type": "regular",
       "path": "Sources/ManifoldInference",
       "deps": [
+        "ManifoldContract",
         "ManifoldHardware",
         "ManifoldMacrosPlugin",
         "ManifoldModelCatalog",
@@ -117,7 +126,7 @@
       "type": "regular",
       "path": "Sources/ManifoldFoundation",
       "deps": [
-        "ManifoldInference"
+        "ManifoldContract"
       ]
     },
     "ManifoldCloud": {
@@ -125,7 +134,7 @@
       "path": "Sources/ManifoldCloud",
       "deps": [
         "ManifoldCloudCore",
-        "ManifoldInference",
+        "ManifoldContract",
         "ManifoldRuntime"
       ]
     },
@@ -257,6 +266,7 @@
       "type": "test",
       "path": "Tests/ManifoldInferenceTests",
       "deps": [
+        "ManifoldContract",
         "ManifoldInference",
         "ManifoldMacrosPlugin",
         "ManifoldTestSupport"

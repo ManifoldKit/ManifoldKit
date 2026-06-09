@@ -1,6 +1,7 @@
 import XCTest
 import ManifoldTestSupport
 @testable import ManifoldInference
+@testable import ManifoldContract  // #1719: streaming/tokenizer seams moved to Contract
 
 final class HotPathPerformanceTests: XCTestCase {
 

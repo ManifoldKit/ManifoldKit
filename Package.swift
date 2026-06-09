@@ -34,6 +34,17 @@ let package = Package(
         // explicit imports because not every host wants them in the build graph.
         .library(name: "ManifoldKit", targets: ["ManifoldKit"]),
         .library(name: "ManifoldInference", targets: ["ManifoldInference"]),
+        // ManifoldContract: the thin "Contract kernel" reached by extracting
+        // the backend-facing surface *downward* out of ManifoldInference in
+        // P2a (#1719). Holds the protocols + value/stream types every family
+        // backend compiles against (InferenceBackend, GenerationConfig,
+        // GenerationEvent, Message, the streaming transforms, …). Depends only
+        // on the P1 leaf modules (ManifoldHardware, ManifoldModelCatalog) — no
+        // engine state (InferenceService/GenerationQueue/ToolRegistry stay in
+        // ManifoldInference). `@_exported import ManifoldContract` in
+        // ManifoldInference preserves source compatibility for all existing
+        // `import ManifoldInference` consumers.
+        .library(name: "ManifoldContract", targets: ["ManifoldContract"]),
         // Leaf networking primitives evicted from the ManifoldInference kernel
         // in P1a (#1608): NetworkActivity observability funnel + PrivateIP
         // classifier. Pure Foundation, zero upward dependencies.
@@ -253,9 +264,29 @@ let package = Package(
             ],
             path: "Sources/ManifoldModelCatalog"
         ),
+        // ManifoldContract: the thin Contract kernel. Backend protocols +
+        // value/stream types extracted downward from ManifoldInference in P2a
+        // (#1719) so the family backends (and any future engine) compile
+        // against a leaf surface that carries no engine state. Depends only on
+        // the P1 leaf modules — ManifoldHardware (tool/JSON-schema value types,
+        // BackendCapabilities, ModelLoadPlan, InferenceError) and
+        // ManifoldModelCatalog (ModelManifest, CloudBackendError, image/video
+        // payloads, SSE stream limits), which it `@_exported import`s so its
+        // own sources and its consumers resolve those leaf types unchanged.
+        // It MUST NOT depend on ManifoldInference — `ManifoldContractNoEngineDependencyTests`
+        // is the tripwire.
+        .target(
+            name: "ManifoldContract",
+            dependencies: [
+                "ManifoldHardware",
+                "ManifoldModelCatalog",
+            ],
+            path: "Sources/ManifoldContract"
+        ),
         .target(
             name: "ManifoldInference",
             dependencies: [
+                "ManifoldContract",
                 "ManifoldNetworking",
                 "ManifoldSecrets",
                 "ManifoldHardware",
@@ -461,9 +492,14 @@ let package = Package(
         // ManifoldFoundation: Apple Foundation Models bridge. No trait —
         // gated by OS availability via `#if canImport(FoundationModels)` and
         // `@available(iOS 26, macOS 26, *)`.
+        // Repointed to ManifoldContract in P2a (#1719): the Foundation Models
+        // bridge compiles against the Contract surface only (InferenceBackend,
+        // GenerationConfig, GenerationEvent, …) — its single GenerationQueue
+        // mention is a docstring, no engine state. Thinning this edge keeps a
+        // FoundationOnly build off the engine's transitive graph where possible.
         .target(
             name: "ManifoldFoundation",
-            dependencies: ["ManifoldInference"],
+            dependencies: ["ManifoldContract"],
             path: "Sources/ManifoldFoundation"
         ),
 
@@ -473,7 +509,14 @@ let package = Package(
         .target(
             name: "ManifoldCloud",
             dependencies: [
-                "ManifoldInference",
+                // Repointed from ManifoldInference to ManifoldContract in P2a
+                // (#1719): the SaaS/LAN backend bodies compile against the
+                // Contract surface only — every InferenceService/ToolRegistry/
+                // ContextWindowManager/GenerationQueue mention in this target is
+                // a docstring, not code. (ManifoldCloudCore + ManifoldRuntime
+                // still transitively link ManifoldInference, so the engine
+                // surface remains resolvable where docs reference it.)
+                "ManifoldContract",
                 "ManifoldCloudCore",
                 // DefaultWebSearchRuntime conforms to the WebSearchRuntime port
                 // declared in ManifoldRuntime. This is a library→library edge
@@ -704,6 +747,10 @@ let package = Package(
             name: "ManifoldInferenceTests",
             dependencies: [
                 "ManifoldInference",
+                // P2a (#1719): direct edge so SSEStreamParser/streaming-transform
+                // suites can `@testable import ManifoldContract` for the
+                // package-level test seams that moved down out of the engine.
+                "ManifoldContract",
                 "ManifoldTestSupport",
                 .target(name: "ManifoldMacrosPlugin", condition: .when(traits: ["Macros"])),
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax", condition: .when(traits: ["Macros"])),

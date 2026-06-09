@@ -1,5 +1,9 @@
 import XCTest
 @testable import ManifoldInference
+// SSEStreamParser (and its `package` NamedEvent test seam) moved down into
+// ManifoldContract in P2a (#1719); the @testable import exposes the package-
+// level initializer now that the type no longer lives in ManifoldInference.
+@testable import ManifoldContract
 
 /// Tests for SSEStreamParser byte-stream parsing.
 final class SSEStreamParserTests: XCTestCase {
