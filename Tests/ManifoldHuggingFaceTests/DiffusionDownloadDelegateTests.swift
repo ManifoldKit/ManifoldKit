@@ -39,7 +39,7 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
 
     /// `totalBytesExpectedToWrite == -1` (NSURLSessionTransferSizeUnknown) must
     /// be surfaced as `0` so callers treat progress as indeterminate.
-    func test_didWriteData_normalisesUnknownExpectedBytesToZero() {
+    func test_didWriteData_normalisesUnknownExpectedBytesToZero() async {
         // Create a real download task just to obtain a stable taskIdentifier.
         let fakeTask = URLSession.shared.downloadTask(with: URL(string: "https://example.com/normalise")!)
 
@@ -71,6 +71,11 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
             }
         }
 
+        // Let the registration Task reach `register(...)` before firing the
+        // callback — otherwise `didWriteData` finds no entry and `onChunk`
+        // never fires (mirrors the error-path tests below).
+        await Task.yield()
+
         // Fire the delegate callback with NSURLSessionTransferSizeUnknown (-1).
         delegate.urlSession(
             URLSession.shared,
@@ -80,12 +85,12 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
             totalBytesExpectedToWrite: -1
         )
 
-        waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 2.0)
         XCTAssertEqual(captured.get(), 0, "totalBytesExpected == -1 must be normalised to 0")
     }
 
     /// Positive `totalBytesExpectedToWrite` must pass through unchanged.
-    func test_didWriteData_passesPositiveExpectedBytesThrough() {
+    func test_didWriteData_passesPositiveExpectedBytesThrough() async {
         let fakeTask = URLSession.shared.downloadTask(with: URL(string: "https://example.com/positive")!)
 
         final class Box<T>: @unchecked Sendable {
@@ -111,6 +116,10 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
             }
         }
 
+        // Let the registration Task reach `register(...)` before firing the
+        // callback (see the normalisation test above).
+        await Task.yield()
+
         delegate.urlSession(
             URLSession.shared,
             downloadTask: fakeTask,
@@ -119,7 +128,7 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
             totalBytesExpectedToWrite: 1_000
         )
 
-        waitForExpectations(timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 2.0)
         XCTAssertEqual(captured.get(), 1_000, "Positive totalBytesExpected should pass through unchanged")
     }
 
