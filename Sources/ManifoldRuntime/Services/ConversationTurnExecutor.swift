@@ -10,7 +10,9 @@ struct ConversationTurnExecutor: Sendable {
     /// Best-effort usage persistence. `nil` when the host did not wire a store.
     private let usageStore: (any UsageStore)?
     private let registry: InFlightStreamRegistry
-    private let eventSink: @Sendable (ConversationEvent) -> Void
+    /// Typed per-turn event seam. Wraps the host's `@Sendable` sink; the private
+    /// `emit` helper forwards through it. See ``TurnEventEmitter``.
+    private let events: TurnEventEmitter
     private let emptyResponseObserver: (@Sendable (ConversationRuntime.EmptyResponseDiagnostic) -> Void)?
     private let generationHooks: [any GenerationHook]
     private let compressionPolicy: (any CompressionPolicy)?
@@ -61,7 +63,7 @@ struct ConversationTurnExecutor: Sendable {
         self.ragService = ragService
         self.usageStore = usageStore
         self.registry = registry
-        self.eventSink = emit
+        self.events = TurnEventEmitter(emit)
         self.emptyResponseObserver = emptyResponseObserver
         self.generationHooks = generationHooks
         self.compressionPolicy = compressionPolicy
@@ -651,10 +653,13 @@ struct ConversationTurnExecutor: Sendable {
         // accepts. The adapter enforces the sanitize-only invariant and
         // emits `.hookFired(event: "preToolUse", ...)` on every call.
         if let turnHookRegistry {
-            let emit = self.eventSink
+            // Pass the bare `@Sendable` sink (not a main-actor-capturing
+            // wrapper) so the adapter closure stays free of `@MainActor` state
+            // — invariant 5.
+            let sink = events.sink
             let adapter = PreToolUseHookAdapter.make(
                 registry: turnHookRegistry,
-                eventEmitter: { event in emit(event) }
+                eventEmitter: { event in sink(event) }
             )
             await inferenceService.setPreToolUseHook(adapter)
         } else {
@@ -1279,7 +1284,7 @@ struct ConversationTurnExecutor: Sendable {
     // MARK: Helpers
 
     private func emit(_ event: ConversationEvent) {
-        eventSink(event)
+        events.emit(event)
     }
 
     private func completeOutcome(
