@@ -3,7 +3,8 @@ import XCTest
 
 /// Tests for ``BackendName`` raw-value migration from 0.18.x display strings
 /// (`"Apple"`, `"Ollama"`, `"llama.cpp"`) to the 0.19+ canonical lowercase
-/// identifiers (`"foundation"`, `"ollama"`, `"llama"`).
+/// identifiers (`"foundation"`, `"ollama"`, `"llama"`), and for the
+/// struct-based extensible identifier introduced in v1.0.
 ///
 /// These cover both fresh decoding through `BackendName(rawValue:)` and the
 /// migration helper ``BackendName/parse(_:)`` that absorbs both shapes so
@@ -51,7 +52,7 @@ final class BackendNameMigrationTests: XCTestCase {
     func test_parse_canonicalAllSixCases_roundTrip() {
         for backend in BackendName.allCases {
             XCTAssertEqual(BackendName.parse(backend.rawValue), backend,
-                           "parse(\"\(backend.rawValue)\") should round-trip to .\(backend)")
+                           "parse(\"\(backend.rawValue)\") should round-trip to \(backend)")
         }
     }
 
@@ -102,15 +103,73 @@ final class BackendNameMigrationTests: XCTestCase {
                      "parse() must not lowercase-fold; only the exact legacy spellings migrate.")
     }
 
-    // MARK: - allCases tripwire
+    // MARK: - wellKnown / allCases tripwire
 
-    /// The number of ``BackendName`` cases is load-bearing for switch
-    /// exhaustiveness. Bumping the count means every `switch` over the type
-    /// elsewhere in the codebase needs a new branch — this assertion is the
-    /// tripwire that forces a code review when a new backend lands.
-    func test_allCases_countIsSix() {
-        XCTAssertEqual(BackendName.allCases.count, 6,
-                       "BackendName ships six first-class cases (foundation, ollama, claude, openAI, mlx, llama). "
-                       + "Adding one means updating switch statements that branch on the type.")
+    /// The number of well-known ``BackendName`` constants is load-bearing for
+    /// completeness. Bumping the count means every site that iterates
+    /// `BackendName.wellKnown` (or the `allCases` alias) needs a code review
+    /// — this assertion is the tripwire that forces that review when a new
+    /// backend lands.
+    ///
+    /// Note: with the struct-based open identifier, switch statements over
+    /// `BackendName` values no longer need to be exhaustive — they should
+    /// carry a `default:` arm for unrecognised values.
+    func test_wellKnown_countIsSix() {
+        XCTAssertEqual(BackendName.wellKnown.count, 6,
+                       "BackendName ships six well-known identifiers (foundation, ollama, claude, openAI, mlx, llama). "
+                       + "Adding one requires updating sites that iterate wellKnown/allCases.")
+    }
+
+    /// allCases is a source-compat alias for wellKnown — both must return identical ordered lists.
+    func test_allCases_aliasMatchesWellKnown() {
+        XCTAssertEqual(BackendName.allCases, BackendName.wellKnown,
+                       "allCases must be identical to wellKnown (it is just a source-compat alias).")
+    }
+
+    // MARK: - Codable wire compatibility
+
+    /// JSON encoding must produce a bare string (single-value container), not
+    /// `{"rawValue":"foundation"}`, so persisted and wire payloads are
+    /// byte-identical to those produced by the former `enum BackendName: String`.
+    func test_jsonEncoding_producesBareSingleValueString() throws {
+        let encoded = try JSONEncoder().encode(BackendName.foundation)
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertEqual(json, "\"foundation\"",
+                       "BackendName must encode as a bare JSON string, not a keyed object.")
+    }
+
+    func test_jsonDecoding_fromBareSingleValueString() throws {
+        let json = Data("\"ollama\"".utf8)
+        let decoded = try JSONDecoder().decode(BackendName.self, from: json)
+        XCTAssertEqual(decoded, .ollama)
+    }
+
+    func test_jsonRoundTrip_allWellKnown() throws {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        for name in BackendName.wellKnown {
+            let data = try encoder.encode(name)
+            let decoded = try decoder.decode(BackendName.self, from: data)
+            XCTAssertEqual(decoded, name,
+                           "JSON round-trip must produce an identical BackendName for \(name).")
+        }
+    }
+
+    // MARK: - Forward-compat (unrecognised names decode successfully)
+
+    /// An unrecognised backend name from a future ManifoldKit release must
+    /// decode without throwing — the struct-based design explicitly supports
+    /// this forward-compat case, unlike the closed enum.
+    func test_decoding_unrecognisedNameSucceeds() throws {
+        let json = Data("\"futureBackend\"".utf8)
+        let decoded = try JSONDecoder().decode(BackendName.self, from: json)
+        XCTAssertEqual(decoded.rawValue, "futureBackend",
+                       "An unrecognised BackendName should decode and preserve its raw string.")
+    }
+
+    func test_init_unrecognisedName_isDistinctFromWellKnown() {
+        let unknown = BackendName(rawValue: "unknownBackend")
+        XCTAssertFalse(BackendName.wellKnown.contains(unknown),
+                       "An unrecognised name must not accidentally equal a well-known constant.")
     }
 }
