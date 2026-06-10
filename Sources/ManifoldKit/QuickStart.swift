@@ -17,6 +17,46 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldBackends
 import ManifoldUI
+#if HuggingFace
+import ManifoldHuggingFace
+#endif
+
+// MARK: - Compile-time backend diagnostics (Deliverable B)
+//
+// Goal: emit a warning at compile time when no inference backend will be
+// available so `quickStart()` never silently throws `noBackendsRegistered`
+// at launch.
+//
+// Why a full "no backends" warning is NOT safe to emit here
+// ──────────────────────────────────────────────────────────
+// `ManifoldFoundation` / `FoundationBackend` is *unconditionally* linked into
+// the `ManifoldBackends` umbrella — it is NOT behind a SwiftPM trait.
+// Whether the backend fires at runtime depends only on the OS version
+// (`#available(iOS 26, macOS 26, *)`). A consumer building with *zero* traits
+// on a macOS 26 machine still gets a working Foundation backend; emitting
+// `#warning("no backends")` in that case would be a false alarm.
+//
+// We therefore limit the warning to the one subset we CAN detect at compile
+// time without risk of false alarms: builds that explicitly suppress the
+// FoundationOnly trait AND compile in none of the other four backend traits.
+// Under `FoundationOnly` the MLX/Llama/HuggingFace defaults are intentionally
+// absent; the Foundation backend is expected. Under zero traits
+// (`--disable-default-traits`) any of the four non-Foundation backends could
+// be present or absent — we can only fire a *partial* hint here.
+//
+// The authoritative runtime diagnostic is `ManifoldKitError.noBackendsRegistered`,
+// whose `errorDescription` already names the exact fix:
+//   "quickStart() needs at least one backend trait enabled
+//    (MLX, Llama, CloudSaaS, Ollama, or Foundation on iOS 26 / macOS 26+)."
+#if !MLX && !Llama && !CloudSaaS && !Ollama && !canImport(FoundationModels)
+// No locally-resolvable backend traits are compiled in AND FoundationModels is
+// not importable on this toolchain. quickStart() will throw
+// ManifoldKitError.noBackendsRegistered at launch unless the host device is
+// running iOS 26 / macOS 26+ (where FoundationBackend activates dynamically).
+// Add at least one of: MLX, Llama, CloudSaaS, Ollama to your traits array, or
+// target iOS 26+ / macOS 26+ to rely on the built-in Foundation Models backend.
+#warning("ManifoldKit: no backend traits compiled in and FoundationModels not importable. quickStart() will throw noBackendsRegistered unless the device runs iOS 26 / macOS 26+. Enable MLX, Llama, CloudSaaS, or Ollama, or target iOS 26+ / macOS 26+.")
+#endif
 
 /// The umbrella namespace for ManifoldKit's high-level entry points.
 ///
@@ -64,20 +104,83 @@ public enum ManifoldKit {
         )
     }
 
+    /// Bootstraps a working chat runtime and seeds a curated small model on
+    /// first launch when no model is available.
+    ///
+    /// This overload extends ``quickStart(configuration:)`` with an opt-in
+    /// first-launch download so developers can reach a *live, generating* chat
+    /// in one call — no model management UI required.
+    ///
+    /// ### What changes versus `quickStart(configuration:)`
+    ///
+    /// When `seed` is non-nil and no model is already selectable (no Foundation
+    /// model and no on-disk GGUF / MLX), `quickStart` downloads the curated
+    /// model **before** the backend-selection policy runs. After a successful
+    /// download the model registry is refreshed and the selection policy picks
+    /// the new model automatically — the chat is live.
+    ///
+    /// The download is **skipped silently** when any of the following is true:
+    /// - A model is already available (Foundation or local disk).
+    /// - The `HuggingFace` SwiftPM trait is absent.
+    /// - No local backend (`Llama`, `MLX`) is compiled in.
+    /// - A network error occurs (the app launches with the empty state instead).
+    ///
+    /// ### Trait requirements
+    ///
+    /// Seeding requires the `HuggingFace` trait (default-on). Without it the
+    /// `seed` parameter is ignored and this behaves identically to
+    /// ``quickStart(configuration:)``. See ``QuickStartSeed`` for details.
+    ///
+    /// ### Example
+    ///
+    /// ```swift
+    /// let kit = try await ManifoldKit.quickStart(
+    ///     seed: .recommendedSmallModel { progress in
+    ///         print("Downloading: \(Int(progress * 100))%")
+    ///     }
+    /// )
+    /// // kit.viewModel is live — generating chat ready on first launch
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - configuration: Framework configuration. Defaults to
+    ///     ``ManifoldInference/ManifoldConfiguration/default``.
+    ///   - seed: Opt-in seed configuration. Use
+    ///     ``QuickStartSeed/recommendedSmallModel(onProgress:)`` for the
+    ///     curated default. Pass `nil` for the original behavior.
+    /// - Returns: A ``QuickStartResult`` as in ``quickStart(configuration:)``.
+    public static func quickStart(
+        configuration: ManifoldConfiguration = .default,
+        seed: QuickStartSeed?
+    ) async throws -> QuickStartResult {
+        try await _quickStart(
+            configuration: configuration,
+            seed: seed,
+            makeModelContainer: { try ModelContainerFactory.makeContainer() }
+        )
+    }
+
     /// Internal seam used by tests to inject a custom (or throwing) model
     /// container factory and an optional selection policy. Production callers
-    /// go through ``quickStart(configuration:)``.
+    /// go through ``quickStart(configuration:)`` or ``quickStart(configuration:seed:)``.
     ///
     /// - Parameters:
     ///   - configuration: The framework configuration.
+    ///   - seed: Optional seed configuration. When non-nil and no model is
+    ///     available, a curated small model is downloaded before the selection
+    ///     policy runs. Nil skips seeding entirely.
     ///   - makeModelContainer: Factory closure that produces the SwiftData container.
+    ///   - downloadManagerOverride: Injectable download manager for tests. When
+    ///     nil and `#if HuggingFace`, a `BackgroundDownloadManager` is created.
     ///   - selectionPolicy: An optional closure that receives the populated
     ///     `ModelRegistry` and returns the `ModelInfo` to select, or `nil` to
     ///     leave no model selected. When `nil` (the default), the built-in
     ///     Foundation-first → first-local → labeled-empty-state policy runs.
     static func _quickStart(
         configuration: ManifoldConfiguration,
+        seed: QuickStartSeed? = nil,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer,
+        downloadManagerOverride: (any BackgroundDownloadManaging)? = nil,
         selectionPolicy: (@MainActor (ModelRegistry) async -> ModelInfo?)? = nil
     ) async throws -> QuickStartResult {
         do {
@@ -162,6 +265,55 @@ public enum ManifoldKit {
                 await sessionManager.loadSessions()
                 sessionManager.activeSession = initialSession
                 await viewModel.switchToSession(initialSession)
+            }
+
+            // Opt-in seed download: when the caller supplied a `QuickStartSeed`
+            // and no model is already selectable, download the curated model
+            // before the selection policy runs. This ensures first-launch chat
+            // is live without any additional host code.
+            //
+            // `_performSeedDownload` skips the download and returns `false` when
+            // HuggingFace is absent, no local backend is available, or the
+            // device already has a model on disk. Letting `refresh()` run
+            // unconditionally after this block is safe — if no download occurred
+            // the registry reflects the unchanged on-disk state.
+            if let seed {
+                // Foundation check: if the Foundation backend is already
+                // available there is a zero-cost model — skip the download so
+                // we never fetch ~400 MB unnecessarily.
+                var foundationAvailable = false
+                #if canImport(FoundationModels)
+                if #available(iOS 26, macOS 26, *) {
+                    foundationAvailable = FoundationBackend.isAvailable
+                }
+                #endif
+
+                if !foundationAvailable {
+                    #if HuggingFace
+                    let dm: any BackgroundDownloadManaging = downloadManagerOverride
+                        ?? BackgroundDownloadManager()
+                    let storageService = ModelStorageService()
+                    _ = await _performSeedDownload(
+                        seed: seed,
+                        storageService: storageService,
+                        downloadManager: dm
+                    )
+                    #else
+                    // HuggingFace trait absent: no download machinery — skip.
+                    // If a downloadManagerOverride was supplied (test injection),
+                    // still honour it so tests work without the real HF trait.
+                    if let dm = downloadManagerOverride {
+                        let storageService = ModelStorageService()
+                        _ = await _performSeedDownload(
+                            seed: seed,
+                            storageService: storageService,
+                            downloadManager: dm
+                        )
+                    } else {
+                        Log.quickStart.info("quickStart(seed:): HuggingFace trait not compiled in — seed skipped")
+                    }
+                    #endif
+                }
             }
 
             // Apply the backend-selection policy (#1612). Running after session

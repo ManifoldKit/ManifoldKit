@@ -641,10 +641,17 @@ let package = Package(
                 "ManifoldBackends",
                 "ManifoldUI",
                 .target(name: "ManifoldSkills", condition: .when(traits: ["Skills"])),
+                // Seed-model path: `quickStart(seed:)` drives a background download on
+                // first launch when no model is available. The concrete
+                // BackgroundDownloadManager + HuggingFaceService live in ManifoldHuggingFace
+                // (trait-gated behind `HuggingFace`). Consumers without the HuggingFace
+                // trait still compile — `#if HuggingFace` guards all concrete references.
+                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
             path: "Sources/ManifoldKit",
             swiftSettings: [
                 .define("Skills", .when(traits: ["Skills"])),
+                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
@@ -1243,6 +1250,9 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
+                // MockDownloadManager lives in ManifoldTestSupport so seed tests
+                // can drive the download path without real network activity.
+                "ManifoldTestSupport",
             ]
         ),
         // Nightly sabotage suite: verifies every file-walking audit test
