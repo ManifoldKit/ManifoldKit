@@ -72,6 +72,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | Doc | Covers |
 |-----|--------|
 | [FeatureMatrix.md](FeatureMatrix.md) | The full trait → backend → capability table (generated from source). |
+| [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact, build-time cost, and dependency weight (generated from measured data). Explains why the checkout is large regardless of trait set. |
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |
