@@ -273,7 +273,7 @@ Tagged release:
 // Package.swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.45.0", // x-release-please-version
+    from: "0.46.0", // x-release-please-version
     traits: [
         .trait(name: "Ollama"),     // opt-in: localhost:11434
         .trait(name: "CloudSaaS"), // opt-in: OpenAI, Anthropic, LM Studio
