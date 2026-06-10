@@ -972,7 +972,7 @@ jobs:
   all-traits-build:
     needs: [changes]
     if: needs.changes.outputs.all-traits == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -983,14 +983,22 @@ jobs:
       - name: Setup Swift CI environment
         uses: ./.github/actions/setup-swift-ci
         with:
+          # Own cache namespace: this job's dependency slice (llama.cpp
+          # xcframework, mlx-swift checkouts) never appears in the standard
+          # --disable-default-traits cache, so sharing the key would re-download
+          # the heavy artifacts every run AND restore stale bare repos.
+          # restore-keys still falls back to the standard key for the rest.
+          cache-key-suffix: "-all-traits"
           verify-toolchain: "true"
 
       # Build-only — no swift test.  Metal/metallib is only a test-run-time
       # hazard; the compiler produces valid objects on these runners.
-      # `--skip-update` avoids ~10-15s of remote contact per invocation.
+      # No --skip-update: a fallback-restored cache can hold bare repos that
+      # predate a pinned tag (first red run: llama.swift 2.9553.0 unresolvable
+      # from the stale shared cache), and --skip-update suppresses the fetch
+      # that would repair it. The ~10-15s of remote contact is correctness here.
       - name: Build — all-traits sweep (trait-combo exhaustiveness)
         timeout-minutes: 25
         run: |
           swift build --build-tests \
-            --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz \
-            --skip-update
+            --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz
