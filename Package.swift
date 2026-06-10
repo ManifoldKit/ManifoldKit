@@ -1228,10 +1228,10 @@ let package = Package(
             ]
         ),
         // ManifoldKitTests: tests against the umbrella module's own public
-        // surface. Currently hosts FeatureMatrixTests, which audits the
-        // trait→capability matrix in Sources/ManifoldKit/FeatureMatrix.swift
-        // against the trait list in Package.swift. Trait-free so it runs
-        // under --disable-default-traits.
+        // surface. Hosts FeatureMatrixTests (trait→capability matrix audit),
+        // QuickStartTests (quickStart() facade), and TraitCostsDriftTest
+        // (asserts docs/TRAIT-COSTS.md generated regions match trait-costs.json).
+        // Trait-free so it runs under --disable-default-traits.
         .testTarget(
             name: "ManifoldKitTests",
             dependencies: [

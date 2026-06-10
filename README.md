@@ -123,6 +123,8 @@ Pick traits to scope which backends and capabilities ship with your build. The f
 
 Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `MCP`, `Voice`, `Tools`, `AppIntents`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
 
+For a quantified breakdown of what each trait costs in binary size, build time, and dependency weight — and why the checkout is large regardless of trait set — see [docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md).
+
 ## ManifoldKit vs. the field
 
 Most Swift AI projects are excellent at one layer. ManifoldKit's claim is narrow and checkable: it's the only open-source *package* that fills every column.
