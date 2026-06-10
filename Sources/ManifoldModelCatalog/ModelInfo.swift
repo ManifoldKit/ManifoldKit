@@ -71,11 +71,8 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
 
     /// Short label for the backend type.
     public var backendLabel: String {
-        switch modelType {
-        case .gguf: "GGUF"
-        case .mlx: "MLX"
-        case .foundation: "Apple"
-        }
+        BackendDescriptorRegistry.shared.descriptor(for: modelType)?.backendLabel
+            ?? String(describing: modelType)
     }
 
     // MARK: - Built-in Foundation Model
