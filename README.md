@@ -51,7 +51,22 @@ struct MyChatApp: App {
 }
 ```
 
-> **The chat is inert until you select a model.** `quickStart()` registers the compiled-in backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or seed a model at launch. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
+> **Want a live chat on first launch with zero extra setup?** Pass `seed: .recommendedSmallModel()` — ManifoldKit downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk).
+>
+> ```swift,no-build
+> ProgressView().task {
+>     do { result = try await ManifoldKit.quickStart(
+>             seed: .recommendedSmallModel { progress in
+>                 // update a progress indicator if desired
+>             }
+>         )
+>     }
+>     catch let e as ManifoldKitError { error = e }
+>     catch { self.error = .from(error) }
+> }
+> ```
+>
+> **The chat is inert until you select a model** (without `seed:`). `quickStart()` registers the compiled-in backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or use `seed:` above. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection, traits, and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
