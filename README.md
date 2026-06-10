@@ -56,6 +56,7 @@ struct MyChatApp: App {
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection, traits, and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
 Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
+Running ManifoldKit as a standalone OpenAI-compatible server (for Cursor, Continue, or any OpenAI SDK)? Install via `brew tap roryford/manifoldkit https://github.com/roryford/ManifoldKit.git && brew install manifold-server` and see [docs/QUICKSTART-SERVER.md](docs/QUICKSTART-SERVER.md).
 Want the inference layer with a fully custom SwiftUI UI (no `ChatView`)? See [docs/QUICKSTART-BRING-YOUR-OWN-UI.md](docs/QUICKSTART-BRING-YOUR-OWN-UI.md).
 Registering tools the model can call? See [docs/QUICKSTART-TOOLS.md](docs/QUICKSTART-TOOLS.md) — `ToolRegistry`, the local-model tool ceiling, approval gates, and streaming results.
 Exposing an `AppIntent` to the model? See [docs/QUICKSTART-APPINTENTS.md](docs/QUICKSTART-APPINTENTS.md).

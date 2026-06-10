@@ -1120,7 +1120,7 @@ Several `basechat`/`com.basechat.*` identifiers are kept for backward compatibil
 - **OAuth callback scheme `basechat://`** — registered with GitHub / Linear / Notion as the redirect URL for MCP server OAuth flows. Flipping it would break every existing user's MCP authorization.
 - **Keychain account `com.basechat.resumedata.hmac`** — HMAC key for HuggingFace background-download resume blobs. Renaming orphans every existing resumable download.
 - **Prometheus metric prefix `basechat_*`** — exported by `ManifoldServer`. Metric-name change would break customer dashboards / alerting rules.
-- **CLI command name `basechat-server`** — user-facing binary invocation in `ManifoldServer`. Stays for muscle memory.
+- **CLI command name** — renamed from `basechat-server` to `manifold-server` in v0.46.0; pre-1.0 so the rename is safe. See `Formula/manifold-server.rb` for the Homebrew formula.
 - **OAuth dynamic-client-registration softwareID `basechat-client`** — identifier sent to upstream IdPs during DCR.
 - **SQLite migration filename prefix `basechat-v3-…`** — referenced in test fixtures that exercise V3-era persisted file shapes; renaming buys nothing.
 

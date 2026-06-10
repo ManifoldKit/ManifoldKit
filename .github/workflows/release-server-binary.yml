@@ -1,0 +1,93 @@
+name: Release Server Binary
+
+# Builds a release arm64 manifold-server binary and uploads it as a release
+# asset whenever a GitHub release is published. This workflow is intentionally
+# minimal — it mirrors the style of release-provenance.yml.
+#
+# Gatekeeper caveat: the binary is unsigned and unnotarized. Users who
+# download it directly (rather than installing via the Homebrew formula, which
+# builds from source) will need to clear quarantine:
+#
+#   xattr -dr com.apple.quarantine manifold-server
+#
+# Signing / notarization is deferred until a code-signing identity is
+# established for this project.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v0.46.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # upload assets to the GitHub release
+
+jobs:
+  build-server-binary:
+    name: Build manifold-server (arm64 macOS)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Resolve packages
+        # Resolve with only the Server trait to skip unnecessary dependency
+        # resolution for MLX/Llama/etc. that aren't needed for the server binary.
+        # --disable-sandbox is required for the network-bound resolve step.
+        run: swift package --traits Server resolve
+
+      - name: Build release binary
+        run: |
+          swift build \
+            --configuration release \
+            --product ManifoldServer \
+            --traits Server \
+            --arch arm64
+
+      - name: Package binary
+        run: |
+          mkdir -p artifacts
+          cp .build/release/ManifoldServer artifacts/manifold-server
+          cd artifacts
+          tar -czf manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz manifold-server
+          shasum -a 256 manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz \
+            > manifold-server-${{ steps.tag.outputs.name }}-macos-arm64.tar.gz.sha256
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          gh release upload "$TAG" \
+            artifacts/manifold-server-${TAG}-macos-arm64.tar.gz \
+            artifacts/manifold-server-${TAG}-macos-arm64.tar.gz.sha256 \
+            --clobber
+
+      - name: Persist artifacts on the workflow run
+        uses: actions/upload-artifact@v7
+        with:
+          name: manifold-server-binary-${{ steps.tag.outputs.name }}
+          path: artifacts/
+          retention-days: 90
