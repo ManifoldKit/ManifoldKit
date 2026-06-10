@@ -54,6 +54,15 @@ actor EventTapDrain {
         for waiter in waiters { waiter.resume(returning: nil) }
         waiters.removeAll()
     }
+
+    /// Resumes all pending `next()` waiters with `nil` without marking the
+    /// drain as done. Use from a timeout handler to unblock a suspended
+    /// `next()` call so an outer `withThrowingTaskGroup` can observe
+    /// cancellation instead of hanging indefinitely.
+    func drainRemaining() {
+        for waiter in waiters { waiter.resume(returning: nil) }
+        waiters.removeAll()
+    }
 }
 
 // MARK: - TurnLoopCharacterizationTests

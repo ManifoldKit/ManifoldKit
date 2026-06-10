@@ -152,9 +152,11 @@ final class SessionToolSourceDispatchTest: XCTestCase {
 
         let registry = ToolRegistry()
         let service = InferenceService(backend: backend, name: "DispatchMock", toolRegistry: registry)
+        // sessionStore: nil so touchSession() is a no-op — this test only cares
+        // about the tool registry and must not race SwiftData against stack deallocation.
         let runtime = ConversationRuntime(
             messageStore: stack.provider,
-            sessionStore: stack.provider,
+            sessionStore: nil,
             inferenceService: service
         )
         await runtime.updateSessionToolSources([StubGenerateImageToolSource()])
