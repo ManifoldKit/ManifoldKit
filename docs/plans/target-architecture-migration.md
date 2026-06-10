@@ -1,5 +1,37 @@
 # Plan — Target Architecture Migration
 
+> **Superseded (2026-06) — P2 executed differently than written here. Read before using
+> phase labels.**
+>
+> The P2 engine carve took a different path after the persona review. Details in
+> `docs/plans/p2-engine-carve-split.md`; PRs #1722/#1723/#1724. Key deltas:
+>
+> 1. **`ManifoldEngine` was not created.** The "P2a — Create `ManifoldEngine`" step was dropped.
+>    Instead a new `ManifoldContract` leaf was extracted *downward* from `ManifoldInference`
+>    (see p2-engine-carve-split.md for the direction decision). `ManifoldInference` keeps its
+>    name.
+>
+> 2. **P2 was split into three sub-phases (not two).** What this doc called P2a and P2b became:
+>    - **P2a** (#1719/#1723): Extract `ManifoldContract` leaf; repoint `ManifoldFoundation` and
+>      `ManifoldCloud` to Contract-only.
+>    - **P2b** (#1720/#1722): Grow the P0c characterization harness (new goldens for `agentID`,
+>      `sessionID`, token usage, `test_handoff_midStream`). Inserted as a prereq for P2c.
+>    - **P2c** (#1721/#1724): De-tangle `ConversationTurnExecutor` (this doc's original "P2b").
+>
+> 3. **"P2a … move orchestration in (`PromptAssembler`, `ContextWindowManager`,
+>    `GenerationQueue`, …)"** is stale. None of those types moved. They stay in
+>    `ManifoldInference`.
+>
+> 4. **"New test targets: `ManifoldNetworkingTests`, `ManifoldSecretsTests` (P1);
+>    `ManifoldEngineTests` (P2)"** — `ManifoldNetworkingTests` and `ManifoldSecretsTests` are
+>    live (P1 complete). `ManifoldEngineTests` was never created (no `ManifoldEngine` module).
+>
+> 5. **P1c: "Device-capability + GGUF readers → adapter-side (MLX/Llama only)"** is stale.
+>    These landed in the shared `ManifoldHardware` leaf (not adapter-side).
+>
+> The overall sequencing rationale, phase gates, per-phase adopter impact table, and P3–P7
+> plans remain accurate. Phase references from P3 onward use the original numbering.
+
 Sequenced path from today's structure to the end state in
 [`target-architecture.md`](./target-architecture.md). This is a **planning artifact** —
 decisions, sequencing, and test/CI prerequisites before code, so reviewers argue with the
