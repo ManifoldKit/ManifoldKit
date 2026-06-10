@@ -241,22 +241,12 @@ public final class ManifoldBootstrap {
             // that run on iOS 26+ / macOS 26+ can wire their own auxiliary service
             // via `runtimeOptions.auxiliaryInferenceService`.
             // See ManifoldFoundation.FoundationBackend for the recommended setup.
-            self.conversationRuntime = ConversationRuntime(
-                messageStore: resolvedPersistence,
-                sessionStore: resolvedPersistence,
+            self.conversationRuntime = Self.makeConversationRuntime(
+                persistence: resolvedPersistence,
                 inferenceService: resolvedInferenceService,
-                pipeline: runtimeOptions.pipeline,
-                budgetPlanner: runtimeOptions.budgetPlanner,
                 ragService: resolvedRAGService,
-                auxiliaryInferenceService: runtimeOptions.auxiliaryInferenceService,
                 usageStore: resolvedUsageStore,
-                generationHooks: runtimeOptions.generationHooks,
-                compressionPolicy: runtimeOptions.compressionPolicy,
-                preTurnCompressionPolicy: runtimeOptions.preTurnCompressionPolicy,
-                historyShaper: runtimeOptions.historyShaper,
-                historyProviders: runtimeOptions.historyProviders,
-                hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
-                turnContextProvider: runtimeOptions.turnContextProvider,
+                runtimeOptions: runtimeOptions,
                 sessionToolSources: sessionToolSources,
                 hookRegistry: hookRegistry
             )
@@ -309,22 +299,12 @@ public final class ManifoldBootstrap {
         self.usageStore = usageStore
         self.ragService = ragService
         self._isInMemory = isInMemory
-        self.conversationRuntime = ConversationRuntime(
-            messageStore: persistence,
-            sessionStore: persistence,
+        self.conversationRuntime = Self.makeConversationRuntime(
+            persistence: persistence,
             inferenceService: inferenceService,
-            pipeline: runtimeOptions.pipeline,
-            budgetPlanner: runtimeOptions.budgetPlanner,
             ragService: ragService,
-            auxiliaryInferenceService: runtimeOptions.auxiliaryInferenceService,
             usageStore: usageStore,
-            generationHooks: runtimeOptions.generationHooks,
-            compressionPolicy: runtimeOptions.compressionPolicy,
-            preTurnCompressionPolicy: runtimeOptions.preTurnCompressionPolicy,
-            historyShaper: runtimeOptions.historyShaper,
-            historyProviders: runtimeOptions.historyProviders,
-            hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
-            turnContextProvider: runtimeOptions.turnContextProvider,
+            runtimeOptions: runtimeOptions,
             sessionToolSources: sessionToolSources,
             hookRegistry: hookRegistry
         )
@@ -347,6 +327,47 @@ public final class ManifoldBootstrap {
             self.videoRuntime = nil
         }
         self.webSearchRuntime = webSearchRuntime
+    }
+
+    /// Constructs the ``ConversationRuntime`` from fully-resolved, path-specific
+    /// inputs.
+    ///
+    /// Shared by the public synchronous `init` and the internal `init` (which
+    /// the async ``build()`` factory delegates to) so all construction paths
+    /// wire the runtime identically. A forgotten argument can only be forgotten
+    /// in one place — before this was factored out, the public `init` and the
+    /// internal `init` duplicated the 17-argument construction block verbatim,
+    /// which historically caused `build()` to ship with RAG silently missing
+    /// (the ``makeRAGService(_:_:)`` refactor fixed the equivalent RAG bug;
+    /// this factory closes the runtime-wiring gap).
+    private static func makeConversationRuntime(
+        persistence: SwiftDataPersistenceProvider,
+        inferenceService: InferenceService,
+        ragService: RAGService?,
+        usageStore: SwiftDataUsageStore,
+        runtimeOptions: ConversationRuntimeOptions,
+        sessionToolSources: [any SessionToolSource],
+        hookRegistry: HookRegistry?
+    ) -> ConversationRuntime {
+        ConversationRuntime(
+            messageStore: persistence,
+            sessionStore: persistence,
+            inferenceService: inferenceService,
+            pipeline: runtimeOptions.pipeline,
+            budgetPlanner: runtimeOptions.budgetPlanner,
+            ragService: ragService,
+            auxiliaryInferenceService: runtimeOptions.auxiliaryInferenceService,
+            usageStore: usageStore,
+            generationHooks: runtimeOptions.generationHooks,
+            compressionPolicy: runtimeOptions.compressionPolicy,
+            preTurnCompressionPolicy: runtimeOptions.preTurnCompressionPolicy,
+            historyShaper: runtimeOptions.historyShaper,
+            historyProviders: runtimeOptions.historyProviders,
+            hostTurnContextProvider: runtimeOptions.hostTurnContextProvider,
+            turnContextProvider: runtimeOptions.turnContextProvider,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry
+        )
     }
 
     /// Constructs the ``RAGService`` for the given configuration, or returns
