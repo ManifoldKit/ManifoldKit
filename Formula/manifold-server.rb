@@ -16,8 +16,8 @@
 class ManifoldServer < Formula
   desc "OpenAI-compatible local inference server powered by ManifoldKit"
   homepage "https://github.com/roryford/ManifoldKit"
-  url "https://github.com/roryford/ManifoldKit/archive/refs/tags/v0.45.0.tar.gz"
-  sha256 "35793ca6b5b1a1838b0c245e91419660ebca0662b4a4442fd74c7e46c365ab24"
+  url "https://github.com/roryford/ManifoldKit/archive/refs/tags/v0.46.0.tar.gz"
+  sha256 "ea3d4d1100bf14e2c901a7a734e4c8e59208f006e3bc16991e2478b20dd94999"
   license "MIT"
   head "https://github.com/roryford/ManifoldKit.git", branch: "main"
 

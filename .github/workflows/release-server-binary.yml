@@ -55,7 +55,6 @@ jobs:
       - name: Resolve packages
         # Resolve with only the Server trait to skip unnecessary dependency
         # resolution for MLX/Llama/etc. that aren't needed for the server binary.
-        # --disable-sandbox is required for the network-bound resolve step.
         run: swift package --traits Server resolve
 
       - name: Build release binary
@@ -81,8 +80,8 @@ jobs:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
           gh release upload "$TAG" \
-            artifacts/manifold-server-${TAG}-macos-arm64.tar.gz \
-            artifacts/manifold-server-${TAG}-macos-arm64.tar.gz.sha256 \
+            "artifacts/manifold-server-${TAG}-macos-arm64.tar.gz" \
+            "artifacts/manifold-server-${TAG}-macos-arm64.tar.gz.sha256" \
             --clobber
 
       - name: Persist artifacts on the workflow run

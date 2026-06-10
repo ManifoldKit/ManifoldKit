@@ -35,6 +35,9 @@ Branch points:
 - [QUICKSTART-CLI.md](QUICKSTART-CLI.md) — building a CLI, server, or other
   non-SwiftUI consumer. Compile-tested `Package.swift` + `main.swift` for
   Foundation Models, local GGUF, and Ollama / OpenAI-compatible endpoints.
+- [QUICKSTART-SERVER.md](QUICKSTART-SERVER.md) — running ManifoldKit as a
+  standalone OpenAI-compatible HTTP server (`manifold-server`). Install via
+  Homebrew, run, and point Cursor / Continue / any OpenAI SDK at `127.0.0.1:8080/v1`.
 - [QUICKSTART-BRING-YOUR-OWN-UI.md](QUICKSTART-BRING-YOUR-OWN-UI.md) — the
   inference layer with your own SwiftUI surface (no `ChatView`). The canonical,
   single-source BYO-UI walkthrough.

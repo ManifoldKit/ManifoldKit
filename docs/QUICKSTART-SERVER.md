@@ -17,7 +17,7 @@ The formula builds from source. ManifoldKit pins a ~563 MB llama.cpp xcframework
 
 ### Alternative: download a pre-built binary
 
-Each GitHub release includes a signed tar for Apple Silicon:
+Each GitHub release includes a pre-built tar for Apple Silicon:
 
 ```bash
 # Replace TAG with the latest release tag, e.g. v0.46.0
