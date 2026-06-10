@@ -119,6 +119,7 @@
       "type": "regular",
       "path": "Sources/ManifoldLlama",
       "deps": [
+        "ManifoldHardware",
         "ManifoldInference"
       ]
     },
@@ -181,7 +182,6 @@
       "deps": [
         "ManifoldBackends",
         "ManifoldInference",
-        "ManifoldModelCatalog",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSkills",
@@ -259,6 +259,7 @@
       "deps": [
         "ManifoldContractTestSupport",
         "ManifoldInference",
+        "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
     },
@@ -344,6 +345,7 @@
         "ManifoldCloud",
         "ManifoldCloudCore",
         "ManifoldFoundation",
+        "ManifoldHardware",
         "ManifoldInference",
         "ManifoldLlama",
         "ManifoldMLX",
@@ -415,12 +417,8 @@
       "path": "Tests/ManifoldE2ETests",
       "deps": [
         "ManifoldBackends",
-        "ManifoldCloud",
-        "ManifoldCloudCore",
-        "ManifoldFoundation",
         "ManifoldHuggingFace",
         "ManifoldInference",
-        "ManifoldLlama",
         "ManifoldMLX",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
@@ -554,7 +552,10 @@
       "type": "test",
       "path": "Tests/ManifoldKitTests",
       "deps": [
-        "ManifoldKit"
+        "ManifoldInference",
+        "ManifoldKit",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime"
       ]
     },
     "ManifoldAuditSabotageSuiteTests": {

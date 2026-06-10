@@ -171,6 +171,11 @@ let package = Package(
         // Swift 6.1+. Do not bump beyond what the installed toolchain supports.
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"601.0.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
+        // swift-http-types: HTTPFields, HTTPField, HTTPResponse.Status types used directly
+        // in ManifoldServer (ServerApp.swift). Hummingbird 2.x depends on it transitively
+        // but does not @_exported import it, so an explicit edge is required.
+        // Only linked when the `Server` trait is enabled.
+        .package(url: "https://github.com/apple/swift-http-types.git", from: "1.0.0"),
         // swift-log: pulled in by vendored FluxSwift source. Lightweight structured
         // logging façade; no runtime overhead beyond the backend you install.
         .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
@@ -463,9 +468,12 @@ let package = Package(
                 .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXNN", package: "mlx-swift", condition: .when(traits: ["MLX"])),
                 .product(name: "MLXFast", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXOptimizers", package: "mlx-swift", condition: .when(traits: ["MLX"])),
+                // MLXOptimizers removed: grep of Sources/FluxSwift shows zero references.
                 .product(name: "MLXRandom", package: "mlx-swift", condition: .when(traits: ["MLX"])),
                 .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
+                // Hub is imported directly in FluxModelCore.swift, FluxConfiguration.swift,
+                // FLUX.swift, and Quantization/Quantization.swift for repository snapshot downloads.
+                .product(name: "Hub", package: "swift-transformers", condition: .when(traits: ["MLX"])),
                 .product(name: "Logging", package: "swift-log", condition: .when(traits: ["MLX"])),
             ],
             path: "Sources/FluxSwift",
@@ -481,6 +489,9 @@ let package = Package(
             name: "ManifoldLlama",
             dependencies: [
                 "ManifoldInference",
+                // ManifoldHardware provides BackendCapabilities, GGUFParser, and
+                // device-capability types consumed by LlamaGenerationDriver.
+                "ManifoldHardware",
                 .product(name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
             ],
             path: "Sources/ManifoldLlama",
@@ -621,7 +632,10 @@ let package = Package(
             name: "ManifoldKit",
             dependencies: [
                 "ManifoldInference",
-                "ManifoldModelCatalog",
+                // ManifoldModelCatalog edge removed: no source file in Sources/ManifoldKit/
+                // imports it directly. ManifoldInference already @_exported imports
+                // ManifoldModelCatalog (see ManifoldModelCatalogExport.swift), so umbrella
+                // consumers reach ModelInfo, ModelRegistry, etc. transitively.
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldBackends",
@@ -741,6 +755,9 @@ let package = Package(
                 "ManifoldTestSupport",
                 "ManifoldInference",
                 "ManifoldContractTestSupport",
+                // ManifoldRuntime: ConversationEventSubsequenceTests.swift and
+                // RuntimeScenarioRunnerTests.swift import it directly.
+                "ManifoldRuntime",
             ]
         ),
         .testTarget(
@@ -852,6 +869,9 @@ let package = Package(
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
                 "ManifoldSecrets",
+                // ManifoldHardware: LlamaPrefillFootprintIntegrationTests.swift does
+                // `@testable import ManifoldHardware`; @testable requires a direct dep.
+                "ManifoldHardware",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
@@ -944,6 +964,9 @@ let package = Package(
                 .target(name: "ManifoldBackends", condition: .when(traits: ["Server"])),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "Hummingbird", package: "hummingbird", condition: .when(traits: ["Server"])),
+                // HTTPTypes is used directly in ServerApp.swift (HTTPFields, HTTPField.Name,
+                // HTTPResponse.Status). Hummingbird does not @_exported import it.
+                .product(name: "HTTPTypes", package: "swift-http-types", condition: .when(traits: ["Server"])),
             ],
             path: "Sources/ManifoldServer",
             swiftSettings: [
@@ -962,6 +985,9 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 .product(name: "HummingbirdTesting", package: "hummingbird", condition: .when(traits: ["Server"])),
+                // HTTPTypes is imported directly in EmbeddingsEndpointTests, ManifoldServerSmokeTests,
+                // and SSECancellationTests — must be a direct dep for @testable import to resolve.
+                .product(name: "HTTPTypes", package: "swift-http-types", condition: .when(traits: ["Server"])),
             ],
             swiftSettings: [
                 .define("Server", .when(traits: ["Server"])),
@@ -970,12 +996,15 @@ let package = Package(
         .testTarget(
             name: "ManifoldE2ETests",
             dependencies: [
+                // ManifoldBackends umbrella re-exports ManifoldMLX/Lama/Foundation/Cloud
+                // so tests reach all family symbols via this single dep.
                 "ManifoldBackends",
-                "ManifoldCloudCore",
-                "ManifoldFoundation",
+                // ManifoldMLX kept as a direct dep: VisionE2ETests.swift does
+                // `@testable import ManifoldMLX` to reach the internal MLXModelProbe.
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                // ManifoldCloudCore, ManifoldFoundation, ManifoldLlama, ManifoldCloud
+                // removed: no E2E test file imports them directly — accessed via the
+                // ManifoldBackends umbrella.
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
@@ -1207,6 +1236,13 @@ let package = Package(
             name: "ManifoldKitTests",
             dependencies: [
                 "ManifoldKit",
+                // Direct edges for imports used in QuickStartTests.swift.
+                // ManifoldInference, ManifoldRuntime, and ManifoldPersistenceSwiftData
+                // are re-exported by ManifoldKit transitively but @testable / explicit
+                // imports still require a direct declared edge.
+                "ManifoldInference",
+                "ManifoldRuntime",
+                "ManifoldPersistenceSwiftData",
             ]
         ),
         // Nightly sabotage suite: verifies every file-walking audit test
