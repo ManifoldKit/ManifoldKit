@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.46.0](https://github.com/roryford/ManifoldKit/compare/v0.45.0...v0.46.0) (2026-06-10)
+
+Deprecated turn-input and cloud-backend APIs are removed, the turn loop is decomposed into per-turn seams behind a thin `ManifoldContract` leaf, and background generation lands a `BGContinuedProcessingTask` bridge for iOS.
+
+### Highlights
+
+**Remove deprecated turn-input and cloud-backend API surface** ([#1717](https://github.com/roryford/ManifoldKit/issues/1717)) — The `SendInput`/`RegenerateInput`/`EditInput`/`BranchInput` structs and their `ConversationRuntime` overloads are removed; use `processTurn(TurnInput(...))`. `InferenceService`'s `currentCloudBackend`/`registerCloudBackendFactory`/`loadCloudBackend(from:)` and `CloudBackendFactory` are removed; use the `…EndpointBackend…` equivalents. `NoResponseError` is renamed `SendMessageError`.
+
+```swift
+// Before (removed)
+try await runtime.send(SendInput(text: "hello"))
+
+// After
+try await runtime.processTurn(TurnInput(text: "hello"))
+```
+
+**`ManifoldContract` extracted as a thin leaf module** ([#1723](https://github.com/roryford/ManifoldKit/issues/1723)) — The core turn-loop contract (`TurnInput`, `TurnOutput`, `TurnDriver`) now lives in a dependency-free `ManifoldContract` target that sits below `ManifoldRuntime`. This lets local backends, MCP, and voice components depend on the contract without pulling in SwiftData or persistence ports.
+
+**Background generation bridge for iOS** ([#1715](https://github.com/roryford/ManifoldKit/issues/1715)) — `BGContinuedProcessingTask` is wired into `ConversationRuntime` so long-running inference requests can survive an app moving to the background on iOS 26. The bridge requests background processing time via `BGContinuedProcessingTask` when a turn starts and cancels it cleanly on completion or cancellation.
+
+### Features
+
+* **ManifoldHardware:** expose M5 Neural Accelerator availability probe ([#1714](https://github.com/roryford/ManifoldKit/issues/1714))
+* **ManifoldHardware:** registry-driven backend descriptor routing — `BackendDescriptorRegistry` replaces per-site `switch` statements on `ModelType`/`APIProvider` for display and routing metadata ([#1733](https://github.com/roryford/ManifoldKit/issues/1733))
+
+### Fixes
+
+* Declare missing target dependencies, drop dead edges, capability-based cloud detection ([#1727](https://github.com/roryford/ManifoldKit/issues/1727))
+
 ## [0.45.0](https://github.com/roryford/ManifoldKit/compare/v0.44.0...v0.45.0) (2026-06-07)
 
 Glass Box observability wiring completes across the full turn loop and media timelines, the framework ships a unified DocC documentation site, and the fuzz harness gains cloud targeting and block-rotation for broader coverage.
