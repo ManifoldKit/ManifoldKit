@@ -172,4 +172,19 @@ final class BackendNameMigrationTests: XCTestCase {
         XCTAssertFalse(BackendName.wellKnown.contains(unknown),
                        "An unrecognised name must not accidentally equal a well-known constant.")
     }
+
+    /// Sabotage guard: if the custom Codable were accidentally removed and synthesis
+    /// restored, the encoded form would be `{"rawValue":"foundation"}`. Decoding
+    /// *that* keyed representation into `BackendName` must fail with a type error,
+    /// confirming the single-value container path is active.
+    ///
+    /// If this test starts *passing* when it should throw, the custom Codable has
+    /// been removed — restore `init(from:)` / `encode(to:)` in BackendName.swift.
+    func test_jsonDecoding_keyedContainerFails() {
+        let keyedJSON = Data(#"{"rawValue":"foundation"}"#.utf8)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(BackendName.self, from: keyedJSON),
+            "Decoding from a keyed JSON object must fail: BackendName uses a single-value container."
+        )
+    }
 }

@@ -42,6 +42,17 @@
 /// (also accessible as `BackendName.allCases` for source compatibility with
 /// existing call sites).
 ///
+/// ## Why `ExpressibleByStringLiteral` is NOT conformed to
+///
+/// Unlike `Notification.Name` (AppKit-era), `BackendName` is a **persisted
+/// dispatch discriminator**: a typo'd string literal silently mints a new,
+/// unrecognised name that routes to no backend and is impossible to distinguish
+/// from a legitimate unknown name at runtime. `Notification.Name` accepts the
+/// typo risk because misrouted notifications fail silently and visibly; a
+/// silently minted `BackendName` would cause hard-to-diagnose inference failures.
+/// Use `BackendName(rawValue:)` or one of the `public static let` constants
+/// instead — the compiler will catch the extra keystroke.
+///
 /// ## Migration from 0.18.x
 ///
 /// In 0.18 and earlier, `BackendName` was a no-instances container of `static
@@ -50,7 +61,7 @@
 /// converted it to an `enum: String` with canonical lowercase identifiers.
 /// Use ``parse(_:)`` at trust boundaries that may still hold 0.18.x strings.
 public struct BackendName: RawRepresentable, Sendable, Codable, Hashable,
-                           ExpressibleByStringLiteral, CustomStringConvertible {
+                           CustomStringConvertible {
     /// The canonical lowercase identifier for this backend.
     ///
     /// This value is stable across ManifoldKit releases; you may persist or
@@ -64,12 +75,6 @@ public struct BackendName: RawRepresentable, Sendable, Codable, Hashable,
     /// forward-compat when a new backend is introduced.
     public init(rawValue: String) {
         self.rawValue = rawValue
-    }
-
-    // MARK: ExpressibleByStringLiteral
-
-    public init(stringLiteral value: StringLiteralType) {
-        self.rawValue = value
     }
 
     // MARK: CustomStringConvertible
