@@ -56,6 +56,24 @@ final class ToolResultStructuredContentTests: XCTestCase {
         XCTAssertEqual(obj["type"] as? String, "video")
     }
 
+    func test_unknownPart_reencodeIsLossy_extraFieldsDropped() throws {
+        // When a future payload has extra fields beyond "type", those fields are
+        // not preserved — .unknown only retains the type discriminator.
+        // This test pins the documented intentional lossy behaviour so any
+        // accidental preservation or unexpected key leakage is caught.
+        let futurePayload = #"{"type":"image","url":"https://example.com/img.png","width":800}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ToolResultPart.self, from: futurePayload)
+        let reencoded = try JSONEncoder().encode(decoded)
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+
+        // Type is preserved.
+        XCTAssertEqual(obj["type"] as? String, "image")
+        // Extra fields are intentionally dropped on re-encode.
+        XCTAssertNil(obj["url"], "Extra payload fields must not survive re-encode of .unknown")
+        XCTAssertNil(obj["width"], "Extra payload fields must not survive re-encode of .unknown")
+        XCTAssertEqual(obj.count, 1, "Re-encoded .unknown must contain only the type key")
+    }
+
     // MARK: - ToolResult round-trips with structuredContent populated
 
     func test_toolResult_roundTrips_withStructuredContent() throws {
@@ -121,6 +139,37 @@ final class ToolResultStructuredContentTests: XCTestCase {
         // Confirm other fields are still present
         XCTAssertNotNil(obj["callId"])
         XCTAssertNotNil(obj["content"])
+    }
+
+    // MARK: - Empty array vs nil are distinct
+
+    func test_emptyStructuredContent_encodesKeyPresent() throws {
+        // structuredContent: [] is semantically distinct from nil.
+        // encodeIfPresent encodes non-nil optionals, including empty arrays, so
+        // the key MUST appear in the JSON when the caller explicitly passes [].
+        // Sabotage check: if encodeIfPresent were replaced with encode-when-non-empty
+        // logic, this test would fail because the key would be absent.
+        let result = ToolResult(callId: "c", content: "ok", structuredContent: [])
+        let encoded = try JSONEncoder().encode(result)
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+
+        let arr = try XCTUnwrap(obj["structuredContent"] as? [Any],
+                                 "empty [] must encode the key, not omit it")
+        XCTAssertTrue(arr.isEmpty)
+    }
+
+    func test_emptyStructuredContent_roundTripsDistinctlyFromNil() throws {
+        // Encode [] then decode: must give [] not nil.
+        let result = ToolResult(callId: "c", content: "ok", structuredContent: [])
+        let encoded = try JSONEncoder().encode(result)
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: encoded)
+
+        // Sabotage check: if the decoder coerced [] to nil this would assert.
+        XCTAssertNotNil(decoded.structuredContent)
+        XCTAssertEqual(decoded.structuredContent?.count, 0)
+        // Distinct from a nil-sidecar result with the same other fields.
+        let nilResult = ToolResult(callId: "c", content: "ok")
+        XCTAssertNotEqual(decoded, nilResult)
     }
 
     // MARK: - All existing call sites compile unchanged (default nil)
