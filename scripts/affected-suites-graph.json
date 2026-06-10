@@ -181,6 +181,7 @@
       "path": "Sources/ManifoldKit",
       "deps": [
         "ManifoldBackends",
+        "ManifoldHuggingFace",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
@@ -555,7 +556,8 @@
         "ManifoldInference",
         "ManifoldKit",
         "ManifoldPersistenceSwiftData",
-        "ManifoldRuntime"
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
       ]
     },
     "ManifoldAuditSabotageSuiteTests": {
