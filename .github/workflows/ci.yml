@@ -86,6 +86,9 @@ jobs:
       api-cloudcore: ${{ steps.filter.outputs.api-cloudcore }}
       api-persistence: ${{ steps.filter.outputs.api-persistence }}
       api-ui: ${{ steps.filter.outputs.api-ui }}
+      # Consumed by `all-traits-build`: true when Sources, Package.swift, or this
+      # workflow file changes — the same set that triggers the main `test` job.
+      all-traits: ${{ steps.filter.outputs.all-traits }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -160,6 +163,15 @@ jobs:
               - 'Sources/ManifoldPersistenceSwiftData/**'
             api-ui:
               - 'Sources/ManifoldUI/**'
+            # Used by the `all-traits-build` job below. Matches any Swift source,
+            # Package.swift, and ci.yml itself so the job self-validates on edits
+            # (per CI path-filter self-validation rule: a gate that doesn't track
+            # its own workflow file bypasses the gate when the file is changed).
+            all-traits:
+              - 'Sources/**'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - '.github/workflows/ci.yml'
 
       # Tier 0 selective testing (issue #1588).
       #
@@ -927,3 +939,66 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
+
+  # All-traits build gate (trait-combo exhaustiveness check).
+  #
+  # WHY: The main `test` job and `--profile ci` both run with
+  # `--disable-default-traits`, which compiles only the default-traits-off
+  # subset of the package.  Trait-gated `switch` exhaustiveness and other
+  # trait-combo breakage is therefore invisible to per-PR CI.  Two canonical
+  # failure shapes have already burned CI time:
+  #   - #1382: a KV-cache reuse race that only manifests under `--traits MLX,Llama`
+  #   - #1660: a BackendRegistrar break that only manifests under `--traits Ollama`
+  # Both merged green on the `--disable-default-traits` lane and were caught by
+  # the nightly all-traits build — *after* landing on main.
+  #
+  # This job adds a *per-PR* build-only gate: `swift build --build-tests` with the
+  # full trait sweep.  Build only — no `swift test`.  Metal/metallib is only a
+  # test-*run* hazard (the compiler emits valid dylib; the crash happens on load);
+  # build-modes.yml's nightly `full` leg already proves all-traits builds work on
+  # these runners.  The compile step catches switch exhaustiveness gaps,
+  # conditional-compilation errors, and missing conformances before merge.
+  #
+  # `Macros` and `Server` are deliberately excluded: swift-syntax (~647 files)
+  # and Hummingbird have their own path-filtered jobs (`macros-tests`,
+  # `server-tests`) and their build time would dominate the step budget.
+  # The documented trait-combo sweep in CLAUDE.md also omits them.
+  #
+  # Path-gated via the `all-traits` filter, which matches `Sources/**`,
+  # `Package.swift`, `Package.resolved`, and `.github/workflows/ci.yml` — the
+  # same set as the main `test` job.  Including `.github/workflows/ci.yml` is
+  # required per the CI path-filter self-validation rule: a gate that does not
+  # track its own workflow file would bypass itself when this file changes.
+  all-traits-build:
+    needs: [changes]
+    if: needs.changes.outputs.all-traits == 'true'
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
+        with:
+          # Own cache namespace: this job's dependency slice (llama.cpp
+          # xcframework, mlx-swift checkouts) never appears in the standard
+          # --disable-default-traits cache, so sharing the key would re-download
+          # the heavy artifacts every run AND restore stale bare repos.
+          # restore-keys still falls back to the standard key for the rest.
+          cache-key-suffix: "-all-traits"
+          verify-toolchain: "true"
+
+      # Build-only — no swift test.  Metal/metallib is only a test-run-time
+      # hazard; the compiler produces valid objects on these runners.
+      # No --skip-update: a fallback-restored cache can hold bare repos that
+      # predate a pinned tag (first red run: llama.swift 2.9553.0 unresolvable
+      # from the stale shared cache), and --skip-update suppresses the fetch
+      # that would repair it. The ~10-15s of remote contact is correctness here.
+      - name: Build — all-traits sweep (trait-combo exhaustiveness)
+        timeout-minutes: 25
+        run: |
+          swift build --build-tests \
+            --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz

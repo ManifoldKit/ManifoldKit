@@ -40,6 +40,7 @@
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. | None |
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. | None |
 | `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Default-on (the `Skills` trait is in the default trait set). Depends on `ManifoldInference` + `ManifoldRuntime`. | None |
+| `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. | None |
 
 ### UI modules
 
@@ -56,7 +57,9 @@
 | `ManifoldHuggingFace` | HuggingFace Hub search, browse, and download integration. Depends on `ManifoldInference`. | None |
 | `ManifoldServer` | OpenAI-compatible HTTP server executable (Hummingbird). Trait-gated behind `Server`. | None |
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. | None |
-| `ManifoldFuzzBackends` | Real-backend factories for fuzz campaigns (shared by CLI + Xcode-hosted MLX fuzz). | MLX, LlamaSwift |
+| `ManifoldFuzzBackends` | Real-backend factory shim shared by `fuzz-chat` CLI and Xcode-hosted MLX fuzz tests. Depends on `ManifoldFuzz` + `ManifoldBackends`. | MLX, LlamaSwift |
+| `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / Llama / Foundation. Gated on `Fuzz` trait. Run via `scripts/fuzz.sh`. | None |
+| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Gated on `Tools` trait. | None |
 
 ### Vendored sources (not standalone products)
 
