@@ -69,8 +69,8 @@ plan, not the diff. It does not contain implementation.
         ▼                              ┊              (P2.5 small; can run in parallel with P3)
  P6 usability ── pull forward (WWDC-independent, high adopter value) ──┐
                                                                        │
-        │                              ┊                              └─► multi-agent/plan-exec
-        ▼                              ┊                                  = DEFERRED (seam only)
+                                       ┊                              └─► multi-agent/plan-exec
+                                       ┊                                  = DEFERRED (seam only)
  P4 modality generify ── parallelizable; re-confirm post-WWDC ─────────│
  P5 trait→product ── after products are independent ───────────────────┘
  P7 retire shims ── final breaking release, after deprecation window
