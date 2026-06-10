@@ -260,6 +260,9 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // Provider enum exposes default base URLs as static data.
         // Moved to ManifoldHardware by the kernel extraction (#1610).
         "ManifoldHardware/APIProvider.swift",
+        // Backend descriptor registry mirrors the same static URL data
+        // from APIProvider, co-locating it with display/routing metadata.
+        "ManifoldHardware/BackendDescriptor.swift",
         // HuggingFace reachability probe (#1296) — embeds the canonical
         // `https://huggingface.co/api/models?limit=1` probe URL as a static
         // `defaultURL`. No other hostnames; never composed at runtime.

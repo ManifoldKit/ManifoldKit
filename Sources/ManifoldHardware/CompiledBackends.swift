@@ -81,16 +81,14 @@ public struct CompiledBackends: Sendable, Equatable {
     public var shouldPresentCloudAPIManagement: Bool { !cloudProviders.isEmpty }
 
     /// Providers in the UI / registration order documented by ManifoldKit.
+    /// Order is driven by `CloudProviderDescriptor.sortOrder` in
+    /// `BackendDescriptorRegistry`, so third-party providers registered with a
+    /// `sortOrder` beyond 5 appear after the built-ins.
     public var orderedCloudProviders: [APIProvider] {
-        [
-            .claude,
-            .openAI,
-            .openAIResponses,
-            .lmStudio,
-            .custom,
-            .ollama,
-        ]
-        .filter(cloudProviders.contains)
+        BackendDescriptorRegistry.shared
+            .allCloudProviders
+            .compactMap { d in APIProvider(rawValue: d.providerID) }
+            .filter { cloudProviders.contains($0) }
     }
 
     /// Returns whether the given local model type is compiled into this build.

@@ -1,4 +1,5 @@
 import Foundation
+import ManifoldHardware
 import Observation
 
 /// Owns backend registration, model loading/unloading, the `LoadRequestToken`
@@ -445,25 +446,18 @@ final class ModelLifecycleCoordinator {
     }
 
     private func backendDisplayName(for modelType: ModelType) -> String {
-        switch modelType {
-        case .mlx: BackendName.mlx.rawValue
-        case .gguf: BackendName.llama.rawValue
-        case .foundation: BackendName.foundation.rawValue
-        }
+        BackendDescriptorRegistry.shared.descriptor(for: modelType)?.engineLabel
+            ?? String(describing: modelType)
     }
 
     /// Maps an `APIProvider` to a canonical backend-name string so cloud
     /// loads emit the same `BackendName.<case>.rawValue` shape as local
-    /// loads where possible. Falls back to the raw display name for
-    /// providers that do not have a `BackendName` case (e.g. `lmStudio`,
-    /// `custom`, `openAIResponses`).
+    /// loads where possible. Falls back to the raw provider ID for providers
+    /// that don't have a registered descriptor (e.g. third-party providers
+    /// registered at runtime before a descriptor is added).
     private func backendDisplayName(for provider: APIProvider) -> String {
-        switch provider {
-        case .openAI: BackendName.openAI.rawValue
-        case .claude: BackendName.claude.rawValue
-        case .ollama: BackendName.ollama.rawValue
-        case .openAIResponses, .lmStudio, .custom: provider.rawValue
-        }
+        BackendDescriptorRegistry.shared.descriptor(for: provider)?.engineLabel
+            ?? provider.rawValue
     }
 
     // MARK: - Load Token Lifecycle (Private)
@@ -561,11 +555,8 @@ final class ModelLifecycleCoordinator {
     }
 
     private func modelTypeLogLabel(_ modelType: ModelType) -> String {
-        switch modelType {
-        case .mlx: "mlx"
-        case .gguf: "gguf"
-        case .foundation: "foundation"
-        }
+        BackendDescriptorRegistry.shared.descriptor(for: modelType)?.engineLabel
+            ?? String(describing: modelType)
     }
 
     private func logLoadEvent(

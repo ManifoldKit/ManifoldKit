@@ -1,4 +1,5 @@
 import SwiftUI
+import ManifoldHardware
 import ManifoldRuntime
 import ManifoldInference
 import ManifoldUI
@@ -135,11 +136,7 @@ struct ModelSelectionTabView: View {
     }
 
     private static func typeSortRank(for type: ModelType) -> Int {
-        switch type {
-        case .foundation: return 0
-        case .gguf: return 1
-        case .mlx: return 2
-        }
+        BackendDescriptorRegistry.shared.descriptor(for: type)?.sortOrder ?? Int.max
     }
 }
 
