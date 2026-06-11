@@ -51,7 +51,7 @@ in the source tree.
 
 ### 1. Certificate pinning (`PinnedSessionDelegate`)
 
-- **File:** `Sources/ManifoldBackends/PinnedSessionDelegate.swift`
+- **File:** `Sources/ManifoldCloudCore/PinnedSessionDelegate.swift`
 - **Primitive:** `CC_SHA256` (CommonCrypto) over the server leaf certificate's
   SPKI (Subject Public Key Info).
 - **Purpose:** TLS pinning. Each new connection's leaf-cert SPKI is hashed and
@@ -65,7 +65,7 @@ in the source tree.
 
 ### 2. Keychain (`KeychainService`)
 
-- **File:** `Sources/ManifoldInference/Services/KeychainService.swift`
+- **File:** `Sources/ManifoldSecrets/KeychainService.swift`
 - **Primitive:** `SecItemAdd`, `SecItemUpdate`, `SecItemCopyMatching`,
   `SecItemDelete` (Security.framework) with class
   `kSecClassGenericPassword` and accessibility
@@ -78,7 +78,7 @@ in the source tree.
 
 ### 3. UUID v5 generation (`UUID+v5`)
 
-- **File:** `Sources/ManifoldInference/Utilities/UUID+v5.swift`
+- **File:** `Sources/ManifoldModelCatalog/UUID+v5.swift`
 - **Primitive:** `Insecure.SHA1` (CryptoKit).
 - **Purpose:** Deterministic name-based UUIDs per RFC 4122 §4.3 (used to derive
   stable identifiers from string names — for fixtures, deduplication, etc.).
@@ -292,9 +292,9 @@ Use this when responding to a procurement security review:
   <https://support.apple.com/guide/security/welcome/web>
 - RFC 7636 (PKCE): <https://datatracker.ietf.org/doc/html/rfc7636>
 - RFC 4122 §4.3 (UUID v5): <https://datatracker.ietf.org/doc/html/rfc4122#section-4.3>
-- ManifoldKit Security Model DocC article: see [`SecurityModel.md`][secmodel]
+- ManifoldKit Threat Model: [`docs/THREAT_MODEL.md`](THREAT_MODEL.md)
 - ManifoldKit Security Policy: [`.github/SECURITY.md`](../.github/SECURITY.md)
-- ManifoldKit Threat Model (when published): `THREAT_MODEL.md` — tracked under #736.
+- ManifoldKit Threat Model: [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
 ---
 
@@ -304,4 +304,4 @@ release that touches `Sources/**/*.swift` files importing `CryptoKit`,
 `CommonCrypto`, or `Security`.*
 
 [cmvp]: https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search
-[secmodel]: ../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md
+[secmodel]: THREAT_MODEL.md

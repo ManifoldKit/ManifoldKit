@@ -19,8 +19,10 @@ layers:
 - `ManifoldRuntime` adds persistence-agnostic ports and use cases.
 - `ManifoldPersistenceSwiftData` adds the shipped SwiftData schema and
   ``ManifoldBootstrap`` entry point.
-- `ManifoldBackends` adds the concrete MLX, llama.cpp, Foundation, and cloud
-  backends, depending on `ManifoldInference` directly so it stays free of
+- `ManifoldBackends` re-exports the concrete MLX, llama.cpp, Foundation, and
+  cloud backends. The MLX and llama.cpp families depend on `ManifoldInference`
+  directly; the Foundation and cloud families were repointed to `ManifoldContract`
+  (the thin protocol kernel) in v0.40+ so they stay free of engine internals and
   SwiftData.
 
 Apps that bring their own persistence and UI can depend on this target alone

@@ -122,7 +122,7 @@ different binary footprints — a manifest choice, not a fork.
 The things that go wrong between the demo and App Store review are first-class:
 TLS certificate pinning (fail-closed on known cloud APIs), SSRF and DNS-rebind
 guards, a throwing Keychain surface, a published `THREAT_MODEL.md`, a fuzz
-harness, and **5,700+ tests**. Capability-routed structured output,
+harness, and **6,500+ tests**. Capability-routed structured output,
 human-in-the-loop tool approval, and cost/metrics observability are built in,
 not bolted on.
 

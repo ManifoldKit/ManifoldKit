@@ -79,10 +79,11 @@ suite fails CI if any of them is violated.
    in transitively.
 
 4. **`ConversationRuntime` is the single turn loop.** Every user-facing chat
-   action — `send`, `regenerate`, `edit`, `cancel`, `branch` — routes through
-   `ConversationRuntime`. There is no alternative path. New features that
-   touch turn flow extend `ConversationRuntime`; they must not call
-   `InferenceService` directly from the UI layer.
+   action — send, regenerate, edit, cancel, branch — routes through
+   `ConversationRuntime` via `processTurn(TurnInput(...))`. There is no
+   alternative path. New features that touch turn flow extend
+   `ConversationRuntime`; they must not call `InferenceService` directly from
+   the UI layer.
 
 If a PR genuinely needs to cross one of these boundaries, the fix is almost
 always to promote a protocol downward (into `ManifoldInference`) or extract a

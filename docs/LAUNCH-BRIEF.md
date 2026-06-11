@@ -70,7 +70,7 @@ corners, like a layer cake viewed from the side. Top to bottom:
 
 - **Band 1 — UI** (top): label `SwiftUI` · chips: `ChatView` · `SessionListView` · `ModelManagementSheet` · `thinking-block UI` · `RAG citations`.
 - **Band 2 — Runtime**: label `ConversationRuntime` · chips: `turn loop (send / regenerate / edit / cancel / branch)` · `tool-approval gating` · `metrics + cost`.
-- **Band 3 — Persistence**: label `SwiftData` · chips: `MessageStore` · `SessionStore` · `EndpointStore` · `migrations V3→V5`.
+- **Band 3 — Persistence**: label `SwiftData` · chips: `MessageStore` · `SessionStore` · `EndpointStore` · `versioned schema migrations`.
 - **Band 4 — Backends** (bottom): label `Inference` · chips: `MLX` · `llama.cpp` · `Foundation Models` · `OpenAI` · `Anthropic` · `Ollama` · `AnyLanguageModel bridge`.
 
 **The "owned" treatment:** all four bands are saturated/filled in ManifoldKit's
@@ -215,7 +215,7 @@ persistence + multi-backend inference into one drop-in chat product.**
    can't reach, wraps FM as just one backend, and ships either a ~5 MB
    `FoundationOnly` build or the whole stack.
 4. **Reliability & security as a product.** TLS pinning, SSRF/DNS guards,
-   throwing Keychain, a published threat model, a fuzz harness, 5,700+ tests,
+   throwing Keychain, a published threat model, a fuzz harness, 6,500+ tests,
    capability-routed structured output, and tool-approval gating.
 
 ### Drop it in
@@ -265,7 +265,7 @@ Anthropic, Ollama — one `GenerationStream` protocol, identical features.
 **3/**
 WWDC 2026 next week? Whatever on-device model Apple ships = one more backend,
 not a rewrite (the stub traits are already in Package.swift). Plus it serves iOS
-18 / macOS 15 that Foundation Models can't. Pre-1.0, MIT, 5,700+ tests.
+18 / macOS 15 that Foundation Models can't. Pre-1.0, MIT, 6,500+ tests.
 → github.com/roryford/ManifoldKit
 
 ---

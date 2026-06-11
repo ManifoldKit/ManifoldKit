@@ -50,7 +50,7 @@ the `Llama` trait (the on-device `LlamaEmbeddingBackend` lives in
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.44.0" // x-release-please-version
+        from: "0.46.0" // x-release-please-version
     ),
 ],
 targets: [
