@@ -20,7 +20,7 @@ In your consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.46.0", // x-release-please-version
+        from: "0.47.0", // x-release-please-version
         traits: [
             .trait(name: "Voice"),
             // Drop the defaults if you only want voice and not the

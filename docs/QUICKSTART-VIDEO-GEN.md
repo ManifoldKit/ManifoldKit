@@ -23,7 +23,7 @@ default dependency graph.
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.46.0" // x-release-please-version
+        from: "0.47.0" // x-release-please-version
     ),
 ],
 targets: [
