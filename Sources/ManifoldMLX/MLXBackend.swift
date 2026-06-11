@@ -9,8 +9,7 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 import MLXVLM
-import MLXHuggingFace
-import Tokenizers // required by the #huggingFaceTokenizerLoader macro expansion
+import Tokenizers
 import os
 import ManifoldInference
 
@@ -307,20 +306,21 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
             // stay on the LLM factory unless the model also declares
             // `vision_config` or `text_config.enable_moe_block`.
             //
-            // `#huggingFaceTokenizerLoader()` (from MLXHuggingFace) adapts
-            // swift-transformers' `AutoTokenizer` to the `TokenizerLoader`
-            // protocol both factories accept.
+            // `TransformersTokenizerLoader` (hand-expanded from MLXHuggingFace's
+            // `#huggingFaceTokenizerLoader()` macro) adapts swift-transformers'
+            // `AutoTokenizer` to the `TokenizerLoader` protocol both factories
+            // accept — inlined to keep swift-syntax out of default builds.
             let container: ModelContainer
             if routeThroughVLMFactory {
                 Self.logger.info("MLX routing via VLMModelFactory (MoE / VLM-only architecture)")
                 container = try await VLMModelFactory.shared.loadContainer(
                     from: url,
-                    using: #huggingFaceTokenizerLoader()
+                    using: TransformersTokenizerLoader()
                 )
             } else {
                 container = try await LLMModelFactory.shared.loadContainer(
                     from: url,
-                    using: #huggingFaceTokenizerLoader()
+                    using: TransformersTokenizerLoader()
                 )
             }
             let detectedDialect = MLXToolDialect.detect(at: url)

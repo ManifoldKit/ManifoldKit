@@ -150,7 +150,8 @@ let package = Package(
         .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.9.0"),
         .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
         // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
-        // The MLXHuggingFace macro generates `AutoTokenizer.from(modelFolder:)` which lives here.
+        // TransformersTokenizerLoader (hand-expanded MLXHuggingFace macro) calls
+        // `AutoTokenizer.from(modelFolder:)` which lives here.
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.2.0"),
         // Pinned EXACT to 2.9505.0 (Package.resolved rev 11efdff6cfadc8ed2f998dc6f50d68d3e35237f9).
         // Wraps llama.cpp as a pre-built xcframework binary. mattt/llama.swift auto-tags a new
@@ -439,7 +440,9 @@ let package = Package(
                 // mlx-community/gemma-4-26b-a4b-it-4bit) to VLMModelFactory.shared.loadContainer.
                 // See issue #752.
                 .product(name: "MLXVLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXHuggingFace", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
+                // No MLXHuggingFace product here: its macro plugin pulls swift-syntax into
+                // every default-trait build. The one macro we used is hand-expanded in
+                // Sources/ManifoldMLX/TransformersTokenizerLoader.swift on top of Tokenizers.
                 .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
                 // Hub is consumed directly by the FLUX diffusion backend (merged from
                 // the former ManifoldFlux target) for repository snapshot downloads.
