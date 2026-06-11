@@ -166,11 +166,11 @@ internal enum MCPSSRFPolicy {
     }
 }
 
-// MARK: - IP pinning follow-up
-// `MCPRedirectCapDelegate` lives in OAuthSecurity.swift with the other OAuth
-// redirect/security helpers.
-// TODO: IP pinning — see PinnedSessionDelegate.swift for the certificate-pinning
-// pattern.  Full IP pinning (Gap C) requires capturing the resolved address at
-// connect time via URLSessionDelegate.connection(_:didConnect:) and comparing it
-// against a pre-resolution result from getaddrinfo.  Retrofit is deferred until
-// a larger URLSession refactor lands.
+// MARK: - IP pinning (Gap C — closed)
+// The pre-resolution checks above (`validateResolvedHostNotBlocked`) close the
+// "guard saw a private IP" half of the DNS-rebinding window. The other half —
+// the guard's getaddrinfo query returning a public IP while URLSession's separate
+// connect-time query returns a private one — is closed by connect-time IP pinning
+// in `MCPRedirectCapDelegate` (OAuthSecurity.swift): it inspects the address
+// URLSession actually connected to via `URLSessionTaskTransactionMetrics.remoteAddress`
+// and blocks/cancels if it classifies as private/reserved per `PrivateIPClassifier`.

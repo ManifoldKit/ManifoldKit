@@ -87,15 +87,24 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
+        let connectionGuard = MCPRedirectCapDelegate(
+            maxRedirects: 3,
+            validator: MCPSSRFPolicy.validateTransportRedirectURL
+        )
         let (bytes, response) = try await configuration.session().bytes(
             for: request,
-            delegate: MCPRedirectCapDelegate(
-                maxRedirects: 3,
-                validator: MCPSSRFPolicy.validateTransportRedirectURL
-            )
+            delegate: connectionGuard
         )
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
+        }
+        // Gap C — DNS-rebinding TOCTOU. If the connection's metrics already report a
+        // private/reserved remote address by the time headers arrive, block before
+        // consuming any stream bytes. The guard also cancels the task on violation,
+        // so a poisoned long-lived SSE connection detected mid-stream is torn down
+        // and surfaces as a stream error below.
+        if let blocked = connectionGuard.blockedConnectedURL {
+            throw MCPError.ssrfBlocked(blocked)
         }
 
         if http.statusCode == 401 || http.statusCode == 403 {
@@ -128,7 +137,12 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
                 }
                 continuation.finish()
             } catch {
-                if error is CancellationError || Task.isCancelled {
+                // A connection that rebinds to a private address mid-stream is
+                // cancelled by the guard's metrics hook; surface it as ssrfBlocked
+                // rather than a silent finish.
+                if let blocked = connectionGuard.blockedConnectedURL {
+                    continuation.finish(throwing: MCPError.ssrfBlocked(blocked))
+                } else if error is CancellationError || Task.isCancelled {
                     continuation.finish()
                 } else {
                     continuation.finish(throwing: error)
@@ -159,13 +173,22 @@ internal actor MCPStreamableHTTPTransport: MCPTransport {
             request.setValue(header, forHTTPHeaderField: "Authorization")
         }
 
+        let connectionGuard = MCPRedirectCapDelegate(
+            maxRedirects: 3,
+            validator: MCPSSRFPolicy.validateTransportRedirectURL
+        )
         let (data, response) = try await configuration.session().data(
             for: request,
-            delegate: MCPRedirectCapDelegate(
-                maxRedirects: 3,
-                validator: MCPSSRFPolicy.validateTransportRedirectURL
-            )
+            delegate: connectionGuard
         )
+        // Gap C — DNS-rebinding TOCTOU. `data(for:)` returns after the task
+        // completes, by which point the connection's metrics report the address
+        // URLSession actually connected to. If it was private/reserved, the
+        // pre-flight check was bypassed by DNS rebinding — block before yielding
+        // any response body.
+        if let blocked = connectionGuard.blockedConnectedURL {
+            throw MCPError.ssrfBlocked(blocked)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw MCPError.transportFailure("Missing HTTP response")
         }

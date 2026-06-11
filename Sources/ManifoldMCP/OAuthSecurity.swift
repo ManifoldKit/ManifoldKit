@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import Security
 import CryptoKit
+import ManifoldInference
 
 // MARK: - PKCE Verifier (D7)
 
@@ -34,11 +35,52 @@ struct PKCEVerifier {
 
 // MARK: - Redirect-cap delegate (D6 — Gap B)
 
-/// Limits redirect chains to at most one hop to prevent SSRF-via-redirect attacks.
+/// Limits redirect chains to at most one hop to prevent SSRF-via-redirect attacks,
+/// and closes the DNS-rebinding TOCTOU (Gap C) by pinning the address URLSession
+/// actually connected to.
+///
+/// ## Gap C — DNS-rebinding TOCTOU
+///
+/// `MCPSSRFPolicy.validateResolvedHostNotBlocked` resolves the hostname with its
+/// own `getaddrinfo` query at check time, but `URLSession.bytes(for:)` /
+/// `data(for:)` re-resolve the hostname at connect time with a *separate* query.
+/// An attacker controlling DNS can return a public IP to the guard's query, then
+/// serve a private IP (loopback, RFC1918, `169.254.169.254`, etc.) to URLSession's
+/// query — reaching internal services despite the pre-flight check passing.
+///
+/// This delegate closes the window by inspecting the address URLSession *actually*
+/// connected to (`URLSessionTaskTransactionMetrics.remoteAddress`) and cancelling
+/// the task if any connected address classifies as private/reserved per
+/// ``PrivateIPClassifier``. The caller reads ``blockedConnectedURL`` after the
+/// request returns (or after the stream errors) and surfaces ``MCPError/ssrfBlocked``.
+///
+/// Localhost literals (`localhost`, `127.0.0.1`, `::1`) bypass the connected-address
+/// check — they are explicitly configured local servers, mirroring the bypass in
+/// ``MCPSSRFPolicy``.
+///
+/// - Note: This mirrors the connect-time pinning shape that `ManifoldCloudCore`'s
+///   `DNSRebindingGuard` *omits* — the cloud side currently relies on pre-resolution
+///   fail-closed only. ManifoldMCP depends on `ManifoldInference`, not
+///   `ManifoldCloudCore` (see CLAUDE.md dependency rules), so this guard is
+///   MCP-local rather than a shared type. `PrivateIPClassifier` (the IP-classification
+///   logic) *is* reused across both.
 final class MCPRedirectCapDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let maxRedirects: Int?
     private let validator: @Sendable (URL) throws -> Void
     private var redirectCount = 0
+
+    /// Lock guarding `_blockedConnectedURL`. URLSession delivers
+    /// `didFinishCollecting` on an arbitrary background queue, so the violation
+    /// flag must be written under a lock and read back on the caller's actor.
+    private let connectedLock = NSLock()
+    private var _blockedConnectedURL: URL?
+
+    /// The URL whose connection resolved to a blocked (private/reserved) address,
+    /// or `nil` if every connected address was acceptable. Read by the transport
+    /// after the request completes to decide whether to throw ``MCPError/ssrfBlocked``.
+    var blockedConnectedURL: URL? {
+        connectedLock.withLock { _blockedConnectedURL }
+    }
 
     init(
         maxRedirects: Int? = 1,
@@ -69,6 +111,43 @@ final class MCPRedirectCapDelegate: NSObject, URLSessionTaskDelegate, @unchecked
         } else {
             completionHandler(request)
         }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didFinishCollecting metrics: URLSessionTaskMetrics
+    ) {
+        // Inspect every transaction (the original request plus any redirect hops):
+        // each carries the address URLSession actually connected to. If any one is
+        // private/reserved, the connection touched an internal host — block it.
+        for transaction in metrics.transactionMetrics {
+            guard let requestURL = transaction.request.url,
+                  let remote = transaction.remoteAddress,
+                  let category = Self.classifyConnectedAddress(remote, for: requestURL) else {
+                continue
+            }
+            Log.network.error(
+                "MCP transport: blocked connection — \(requestURL.host ?? "?", privacy: .public) connected to \(remote, privacy: .public) (\(category.description, privacy: .public)). DNS rebinding TOCTOU.")
+            connectedLock.withLock {
+                if _blockedConnectedURL == nil { _blockedConnectedURL = requestURL }
+            }
+            // Cancel so no further bytes flow over the offending connection.
+            task.cancel()
+            return
+        }
+    }
+
+    /// Classifies the address URLSession connected to, returning the blocked
+    /// category or `nil` when the address is public (or the request targets an
+    /// explicitly configured localhost server, which always bypasses).
+    ///
+    /// `remoteAddress` from `URLSessionTaskTransactionMetrics` is a bare numeric
+    /// host (no port), but may carry an IPv6 zone identifier (`fe80::1%en0`);
+    /// ``PrivateIPClassifier`` strips the zone, so we pass it through unchanged.
+    static func classifyConnectedAddress(_ remoteAddress: String, for url: URL) -> BlockedAddressCategory? {
+        if PrivateIPClassifier.isLocalhostURL(url) { return nil }
+        return PrivateIPClassifier.classifyIPLiteral(remoteAddress)
     }
 }
 
