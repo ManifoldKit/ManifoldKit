@@ -32,6 +32,40 @@ public struct DocumentLibraryView: View {
     }
 
     public var body: some View {
+        // Split into separately type-checked subtrees — the monolithic `body`
+        // expression previously took >200ms to type-check (see
+        // -warn-long-function-bodies).
+        baseContent
+        .alert(
+            "Delete Document",
+            isPresented: isDeleteAlertPresented,
+            presenting: pendingDelete
+        ) { document in
+            deleteAlertActions(for: document)
+        } message: { document in
+            Text("Remove \"\(document.title)\" from the knowledge base? Its chunks will be deleted from the vector index.")
+        }
+        .alert(
+            "Document Library",
+            isPresented: isErrorAlertPresented
+        ) {
+            Button("OK", role: .cancel) {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+        .task {
+            await viewModel.refresh()
+        }
+        #if os(macOS)
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers: providers)
+        }
+        #endif
+    }
+
+    private var baseContent: some View {
         Group {
             if viewModel.ragService == nil {
                 disabledStateView
@@ -61,45 +95,33 @@ public struct DocumentLibraryView: View {
         ) { result in
             handleImport(result)
         }
-        .alert(
-            "Delete Document",
-            isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
-            ),
-            presenting: pendingDelete
-        ) { document in
-            Button("Delete", role: .destructive) {
-                Task { await viewModel.delete(document) }
-                pendingDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingDelete = nil
-            }
-        } message: { document in
-            Text("Remove \"\(document.title)\" from the knowledge base? Its chunks will be deleted from the vector index.")
+    }
+
+    @ViewBuilder
+    private func deleteAlertActions(for document: DocumentRecord) -> some View {
+        Button("Delete", role: .destructive) {
+            Task { await viewModel.delete(document) }
+            pendingDelete = nil
         }
-        .alert(
-            "Document Library",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                viewModel.errorMessage = nil
-            }
-        } message: {
-            Text(viewModel.errorMessage ?? "")
+        Button("Cancel", role: .cancel) {
+            pendingDelete = nil
         }
-        .task {
-            await viewModel.refresh()
-        }
-        #if os(macOS)
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers: providers)
-        }
-        #endif
+    }
+
+    // MARK: - Alert bindings
+
+    private var isDeleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDelete != nil },
+            set: { if !$0 { pendingDelete = nil } }
+        )
+    }
+
+    private var isErrorAlertPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )
     }
 
     // MARK: - Content
