@@ -369,7 +369,7 @@ internal actor MCPStdioTransport: MCPTransport {
         var parser = MCPStdioFrameCodec.Parser()
         do {
             while Task.isCancelled == false {
-                guard let chunk = try await stdoutHandle.read(upToCount: 4096), chunk.isEmpty == false else {
+                guard let chunk = try stdoutHandle.read(upToCount: 4096), chunk.isEmpty == false else {
                     break
                 }
                 try parser.append(chunk)
