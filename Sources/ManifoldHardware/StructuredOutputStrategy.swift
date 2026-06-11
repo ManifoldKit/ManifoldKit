@@ -1,7 +1,9 @@
 import Foundation
 
 /// Backend-specific mechanism used to request structured model output.
-public enum StructuredOutputStrategy: Sendable, Equatable {
+// `any Decodable.Type` is a metatype — safely shareable across concurrency
+// boundaries since metatypes carry no mutable instance state.
+public enum StructuredOutputStrategy: @unchecked Sendable, Equatable {
     /// GBNF grammar string for sampler-level constrained decoding.
     case gbnf(String)
     /// Foundation guided-generation target type.
@@ -28,7 +30,7 @@ public enum StructuredOutputStrategy: Sendable, Equatable {
 }
 
 /// Payload a caller wants a backend to produce in structured form.
-public struct StructuredOutputTarget: Sendable, Equatable {
+public struct StructuredOutputTarget: @unchecked Sendable, Equatable {
     public var gbnfGrammar: String?
     public var guidedType: (any Decodable.Type)?
     public var jsonSchema: String?

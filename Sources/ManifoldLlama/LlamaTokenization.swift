@@ -44,12 +44,10 @@ enum LlamaTokenization {
         }
 
         // Try to form a valid UTF-8 string
-        invalidUTF8Buffer.append(0) // null-terminate
-        if let str = String(validatingUTF8: invalidUTF8Buffer) {
+        if let str = String(validating: invalidUTF8Buffer.map { UInt8(bitPattern: $0) }, as: UTF8.self) {
             invalidUTF8Buffer.removeAll()
             return str.isEmpty ? nil : str
         }
-        invalidUTF8Buffer.removeLast() // remove null terminator, keep accumulating
         return nil
     }
 }

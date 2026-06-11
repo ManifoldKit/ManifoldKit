@@ -46,16 +46,24 @@ public enum DefaultBackends {
     /// without instantiating hardware-dependent backends.
     static func backendTypeName(for modelType: ModelType) -> String? {
         switch modelType {
-        #if Llama
-        case .gguf:       return "LlamaBackend"
-        #endif
-        #if MLX
-        case .mlx:        return "MLXBackend"
-        #endif
-        #if canImport(FoundationModels)
-        case .foundation: return "FoundationBackend"
-        #endif
-        default:          return nil
+        case .gguf:
+            #if Llama
+            return "LlamaBackend"
+            #else
+            return nil
+            #endif
+        case .mlx:
+            #if MLX
+            return "MLXBackend"
+            #else
+            return nil
+            #endif
+        case .foundation:
+            #if canImport(FoundationModels)
+            return "FoundationBackend"
+            #else
+            return nil
+            #endif
         }
     }
 
