@@ -2,6 +2,7 @@
 import Foundation
 import os
 import ManifoldInference
+import ManifoldCloudCore
 
 /// Decoded subset of Ollama's `/api/show` response we actually consume.
 struct OllamaShowProbe {
@@ -42,7 +43,10 @@ enum OllamaModelProbe {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await urlSession.data(for: request)
+            // Connect-time IP pinning: a probe that rebinds to a private address
+            // is cancelled and surfaced as a throw here, degrading to non-thinking
+            // (the safe direction) rather than reaching an internal host.
+            (data, response) = try await ConnectAddressPinningDelegate.pinnedData(for: request, on: urlSession)
         } catch {
             Log.network.info("OllamaBackend /api/show probe failed (\(error.localizedDescription, privacy: .public)) — treating \(modelName, privacy: .public) as non-thinking")
             return .empty

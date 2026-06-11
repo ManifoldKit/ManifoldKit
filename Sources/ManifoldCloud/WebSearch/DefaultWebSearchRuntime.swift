@@ -61,7 +61,7 @@ public final class DefaultWebSearchRuntime: WebSearchRuntime {
             "max_tokens": 1000
         ])
 
-        let (responseData, response) = try await urlSession.data(for: request)
+        let (responseData, response) = try await ConnectAddressPinningDelegate.pinnedData(for: request, on: urlSession)
         let httpStatus = (response as? HTTPURLResponse)?.statusCode
         guard httpStatus == 200 else {
             throw WebSearchRuntimeError.httpFailure(status: httpStatus)

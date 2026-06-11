@@ -72,7 +72,10 @@ public final class OllamaModelListService: Sendable {
         var request = URLRequest(url: tagsURL)
         request.httpMethod = "GET"
 
-        let (data, response) = try await urlSession.data(for: request)
+        // Connect-time IP pinning closes the DNS-rebinding TOCTOU the pre-flight
+        // `DNSRebindingGuard.validate(url:)` above cannot — it checks the address
+        // URLSession actually connected to (see ConnectAddressPinningDelegate).
+        let (data, response) = try await ConnectAddressPinningDelegate.pinnedData(for: request, on: urlSession)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw CloudBackendError.networkError(

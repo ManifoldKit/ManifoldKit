@@ -19,3 +19,19 @@ final class WeakBox<T: AnyObject>: @unchecked Sendable {
     weak var value: T?
     init(_ value: T?) { self.value = value }
 }
+
+/// Sendable wrapper for a strong, lock-guarded reference to a non-Sendable class.
+///
+/// Used to hand the successful connection's `ConnectAddressPinningDelegate` from
+/// the retry closure (which runs off the runner's task) back to the `run` catch
+/// path so a mid-stream DNS-rebinding cancellation can be distinguished from a
+/// user cancellation. The reference must be *strong* — a weak box could drop the
+/// delegate before the catch path reads its violation flag.
+final class StrongBox<T: AnyObject>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: T?
+    var value: T? {
+        get { lock.withLock { _value } }
+        set { lock.withLock { _value = newValue } }
+    }
+}
