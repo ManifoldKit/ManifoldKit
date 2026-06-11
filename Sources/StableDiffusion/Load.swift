@@ -118,6 +118,23 @@ public struct StableDiffusionConfiguration: Sendable {
         @Sendable (HubApi, StableDiffusionConfiguration, LoadConfiguration) throws ->
             StableDiffusion
 
+    /// When set, weight/config files are resolved directly under this directory
+    /// instead of `HubApi.localRepoLocation(repo)`. This lets a caller point the
+    /// generator at an arbitrary on-disk model directory whose layout does not
+    /// match Hub's `<downloadBase>/models/<org>/<name>` convention (e.g. a flat
+    /// `.../<org>__<name>/` install). When `nil`, resolution falls back to the
+    /// Hub layout, preserving the original `download(hub:)` + `localRepoLocation`
+    /// behaviour.
+    var localDirectory: URL? = nil
+
+    /// Returns a copy of this configuration whose files resolve directly under
+    /// `directory` rather than via `HubApi.localRepoLocation`. See ``localDirectory``.
+    public func resolvingFiles(in directory: URL) -> StableDiffusionConfiguration {
+        var copy = self
+        copy.localDirectory = directory
+        return copy
+    }
+
     public func download(
         hub: HubApi = HubApi(), progressHandler: @escaping (Progress) -> Void = { _ in }
     ) async throws {
@@ -379,8 +396,9 @@ func loadWeights(
 func resolve(hub: HubApi, configuration: StableDiffusionConfiguration, key: FileKey) -> URL {
     precondition(
         configuration.files[key] != nil, "configuration \(configuration.id) missing key: \(key)")
-    let repo = Hub.Repo(id: configuration.id)
-    let directory = hub.localRepoLocation(repo)
+    // Prefer an explicit on-disk directory when supplied (flat `<org>__<name>`
+    // installs); otherwise fall back to Hub's `<downloadBase>/models/<org>/<name>`.
+    let directory = configuration.localDirectory ?? hub.localRepoLocation(Hub.Repo(id: configuration.id))
     return directory.appending(component: configuration.files[key]!)
 }
 
