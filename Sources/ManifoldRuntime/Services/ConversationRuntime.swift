@@ -249,6 +249,62 @@ public final class ConversationRuntime: Sendable {
     /// Test-only init that lets the caller observe the empty-assistant drop
     /// path and configure the hook timeout. Wrapped in `package` so test
     /// targets can reach it without widening the public surface.
+    ///
+    /// This overload preserves the original 19-parameter signature (no
+    /// `turnDriver:`) so the package ABI surface is additive. It delegates
+    /// to the ``TurnDriver``-seam overload with `turnDriver: nil`, which
+    /// selects ``SingleTurnDriver`` and reproduces pre-P3 linear behaviour.
+    package convenience init(
+        messageStore: any MessageStore,
+        sessionStore: (any SessionStore)? = nil,
+        inferenceService: InferenceService,
+        pipeline: PromptContextPipeline? = nil,
+        budgetPlanner: ContextBudgetPlanner? = nil,
+        ragService: RAGService? = nil,
+        auxiliaryInferenceService: InferenceService? = nil,
+        usageStore: (any UsageStore)? = nil,
+        emptyResponseObserver: (@Sendable (EmptyResponseDiagnostic) -> Void)?,
+        generationHooks: [any GenerationHook] = [],
+        compressionPolicy: (any CompressionPolicy)? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil,
+        hookTimeout: Duration = .seconds(30),
+        historyShaper: (any HistoryShaper)? = nil,
+        historyProviders: [any HistoryProvider] = [],
+        hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
+        turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
+        sessionToolSources: [any SessionToolSource] = [],
+        hookRegistry: HookRegistry? = nil
+    ) {
+        self.init(
+            messageStore: messageStore,
+            sessionStore: sessionStore,
+            inferenceService: inferenceService,
+            pipeline: pipeline,
+            budgetPlanner: budgetPlanner,
+            ragService: ragService,
+            auxiliaryInferenceService: auxiliaryInferenceService,
+            usageStore: usageStore,
+            emptyResponseObserver: emptyResponseObserver,
+            generationHooks: generationHooks,
+            compressionPolicy: compressionPolicy,
+            preTurnCompressionPolicy: preTurnCompressionPolicy,
+            hookTimeout: hookTimeout,
+            historyShaper: historyShaper,
+            historyProviders: historyProviders,
+            hostTurnContextProvider: hostTurnContextProvider,
+            turnContextProvider: turnContextProvider,
+            sessionToolSources: sessionToolSources,
+            hookRegistry: hookRegistry,
+            turnDriver: nil
+        )
+    }
+
+    /// Designated test-and-power-user init that exposes the ``TurnDriver``
+    /// seam. Pass a ``ResumableRunDriver`` to enable checkpointed multi-step
+    /// runs; pass `nil` (or omit) to fall back to ``SingleTurnDriver``.
+    ///
+    /// Wrapped in `package` so test targets and framework-internal call
+    /// sites can reach it without widening the public surface.
     package init(
         messageStore: any MessageStore,
         sessionStore: (any SessionStore)? = nil,
@@ -269,7 +325,7 @@ public final class ConversationRuntime: Sendable {
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
         hookRegistry: HookRegistry? = nil,
-        turnDriver: (any TurnDriver)? = nil
+        turnDriver: (any TurnDriver)?
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
