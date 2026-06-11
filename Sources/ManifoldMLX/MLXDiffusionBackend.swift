@@ -179,7 +179,7 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
                     // This prevents UNet activations and VAE activations from
                     // competing for GPU memory simultaneously.
                     let decode = generator.detachedDecoder()
-                    MLX.GPU.set(cacheLimit: 0)
+                    MLX.Memory.cacheLimit = 0
 
                     let decoded = decode(finalLatent)
                     // decode() returns float32 in [0, 1]; Image expects uint8 [0, 255].
@@ -225,7 +225,7 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
         // MLX.GPU.set(cacheLimit:) before any MLX work triggers Metal
         // initialisation and crashes in test environments.
         if wasLoaded {
-            MLX.GPU.set(cacheLimit: 0)
+            MLX.Memory.cacheLimit = 0
         }
     }
 

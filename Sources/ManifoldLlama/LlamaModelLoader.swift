@@ -294,7 +294,7 @@ final class LlamaModelLoader: @unchecked Sendable {
             llama_model_meta_val_str(model, key, ptr.baseAddress, ptr.count)
         }
         guard written > 0 else { return nil }
-        return String(cString: buffer)
+        return buffer.withUnsafeBytes { ptr in String(decoding: ptr.prefix(Int(written)), as: UTF8.self) }
     }
 
     /// Reads `general.architecture` from the loaded GGUF model's metadata.
@@ -313,7 +313,7 @@ final class LlamaModelLoader: @unchecked Sendable {
             llama_model_meta_val_str(model, key, ptr.baseAddress, ptr.count)
         }
         guard written > 0 else { return nil }
-        return String(cString: buffer)
+        return buffer.withUnsafeBytes { ptr in String(decoding: ptr.prefix(Int(written)), as: UTF8.self) }
     }
 }
 #endif

@@ -85,7 +85,7 @@ extension CompositeURLSessionDelegate: URLSessionDelegate {
     public func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
         // The pinning delegate (when present) owns the response — its
         // `urlSession(_:didReceive:completionHandler:)` is required to call
@@ -228,7 +228,7 @@ extension CompositeURLSessionDelegate: URLSessionDataDelegate {
         _ session: URLSession,
         dataTask: URLSessionDataTask,
         didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
     ) {
         if let dataDelegate {
             dataDelegate.urlSession?(

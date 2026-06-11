@@ -52,7 +52,7 @@ package final class NetworkActivityTrackingDelegate: NSObject, URLSessionDataDel
         _ session: URLSession,
         dataTask: URLSessionDataTask,
         didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
     ) {
         ensureBegin(for: dataTask)
         if let downstream {

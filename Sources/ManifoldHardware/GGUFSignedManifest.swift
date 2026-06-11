@@ -133,6 +133,7 @@ public struct GGUFSignedManifestVerifier: Sendable {
         }
     }
 
+    @discardableResult
     private func requireAcceptedSignature(for manifest: GGUFSignedManifest) throws -> GGUFSignedManifest.Signature {
         guard let signature = manifest.signature else {
             throw GGUFSignedManifestVerificationError.unsignedManifest

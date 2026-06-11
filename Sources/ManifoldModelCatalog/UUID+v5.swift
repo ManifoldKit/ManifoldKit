@@ -17,7 +17,7 @@ extension UUID {
         let hash = Array(sha1.finalize())
 
         // Set version (4 bits) to 0101 (v5) and variant (2 bits) to 10.
-        var uuid = (
+        let uuid = (
             hash[0], hash[1], hash[2], hash[3],
             hash[4], hash[5],
             (hash[6] & 0x0F) | 0x50,  // version 5

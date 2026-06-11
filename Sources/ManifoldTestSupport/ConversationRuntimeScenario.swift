@@ -236,9 +236,8 @@ enum ConversationRuntimeScenarioRunner {
         runtime: ConversationRuntime,
         drivingAction: () async throws -> ConversationStreamHandle
     ) async -> ConversationRuntimeScenarioResult.StepResult {
-        let handle: ConversationStreamHandle
         do {
-            handle = try await drivingAction()
+            _ = try await drivingAction()
         } catch let caught {
             return ConversationRuntimeScenarioResult.StepResult(
                 action: step.action,
