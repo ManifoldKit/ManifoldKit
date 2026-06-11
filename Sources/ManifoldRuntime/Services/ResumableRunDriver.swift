@@ -119,14 +119,15 @@ public struct FixedGoalRunInputProvider: RunInputProvider, Sendable {
 /// Thin wrapper around ``RunStore`` that exposes best-effort checkpoint
 /// calls with logging. Methods are `@MainActor` because the ``RunStore``
 /// protocol is `@MainActor`-isolated. The `@unchecked Sendable` annotation
-/// is safe because the single `store` property is `@MainActor`-bound and is
-/// never mutated after initialization.
+/// is safe because the single `store` reference is immutable (`let`) and is
+/// only ever dereferenced from the `@MainActor` methods below — the existential
+/// never escapes the main actor.
 private final class RunStoreProxy: @unchecked Sendable {
+    // Immutable after init; every use is gated behind a @MainActor method, so
+    // the @MainActor-isolated `any RunStore` is never touched off the main actor.
     private let store: any RunStore
 
     // nonisolated init so ResumableRunDriver.init (non-actor) can create it.
-    // The store itself is stored via nonisolated(unsafe) because access is
-    // always through @MainActor methods; the unsafe annotation is correct here.
     nonisolated init(_ store: any RunStore) {
         self.store = store
     }

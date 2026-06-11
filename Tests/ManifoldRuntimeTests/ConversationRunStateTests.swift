@@ -247,6 +247,127 @@ final class ConversationRunStateTests: XCTestCase {
                        "No steps should have started when maxSteps=0")
     }
 
+    // MARK: - Multi-step provider
+
+    /// Drives a fixed number of `.send` steps, then returns `nil` to complete.
+    /// Each step's text encodes its index so step attribution is verifiable.
+    private struct CountingProvider: RunInputProvider {
+        let stepCount: Int
+        func nextInput(
+            for run: ConversationRun,
+            stepIndex: Int,
+            prior: RunStep?
+        ) async -> TurnInput? {
+            guard stepIndex < stepCount else { return nil }
+            return TurnInput(
+                sessionID: run.sessionID,
+                kind: .send(text: "step-\(stepIndex)"),
+                config: TurnConfig()
+            )
+        }
+    }
+
+    func test_resumableRunDriver_multiStep_runsEachStepInOrder() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "MultiStepTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        let run = ConversationRun(sessionID: UUID(), goal: "multi")
+        var events: [RunEvent] = []
+        let end = ContinuousClock.now.advanced(by: .seconds(15))
+        for await event in runtime.startRun(run, using: CountingProvider(stepCount: 3)) {
+            events.append(event)
+            if case .runCompleted = event { break }
+            if case .runFailed = event { break }
+            if ContinuousClock.now > end { break }
+        }
+
+        // Three steps must have started, in index order 0,1,2.
+        let startedIndices: [Int] = events.compactMap {
+            if case let .stepStarted(_, idx, _) = $0 { return idx }
+            return nil
+        }
+        XCTAssertEqual(startedIndices, [0, 1, 2], "Steps must run in ascending index order")
+
+        // Persisted step records mirror the three steps.
+        let steps = try await runStore.fetchSteps(for: run.id)
+        XCTAssertEqual(steps.map(\.stepIndex), [0, 1, 2])
+        XCTAssertTrue(steps.allSatisfy(\.isCompleted), "All steps should be marked completed")
+
+        let fetchedRun = try await runStore.fetchRun(run.id)
+        let stored = try XCTUnwrap(fetchedRun)
+        XCTAssertEqual(stored.status, .completed)
+        XCTAssertEqual(stored.stepCount, 3)
+    }
+
+    // MARK: - Cancel
+
+    /// Provider that requests cancellation on the driver once the run reaches
+    /// step 1, then keeps offering steps. Cancellation is deterministic — it
+    /// is driven off the run's own step progression, not a timer.
+    private struct CancelAtStepProvider: RunInputProvider {
+        let driver: ResumableRunDriver
+        func nextInput(
+            for run: ConversationRun,
+            stepIndex: Int,
+            prior: RunStep?
+        ) async -> TurnInput? {
+            if stepIndex == 1 { await driver.cancelRun() }
+            // Keep offering steps so only the cancel can terminate the run.
+            return TurnInput(
+                sessionID: run.sessionID,
+                kind: .send(text: "step-\(stepIndex)"),
+                config: TurnConfig()
+            )
+        }
+    }
+
+    func test_resumableRunDriver_cancel_stopsRunWithCancelledStatus() async throws {
+        let persistenceStack = try InMemoryPersistenceHarness.make()
+        let backend = MockInferenceBackend()
+        backend.isModelLoaded = true
+        backend.tokensToYield = ["ok"]
+        let service = InferenceService(backend: backend, name: "CancelTest")
+
+        let runStore = InMemoryRunStore2()
+        let driver = ResumableRunDriver(runStore: runStore)
+        let runtime = ConversationRuntime(
+            messageStore: persistenceStack.provider,
+            sessionStore: persistenceStack.provider,
+            inferenceService: service,
+            emptyResponseObserver: nil,
+            turnDriver: driver
+        )
+
+        let provider = CancelAtStepProvider(driver: driver)
+        let run = ConversationRun(sessionID: UUID(), goal: "cancel me")
+        var sawCancelled = false
+        let end = ContinuousClock.now.advanced(by: .seconds(15))
+        for await event in runtime.startRun(run, using: provider) {
+            if case .runCancelled = event { sawCancelled = true; break }
+            if case .runCompleted = event { break }
+            if case .runFailed = event { break }
+            if ContinuousClock.now > end { break }
+        }
+
+        XCTAssertTrue(sawCancelled, "Run should terminate via .runCancelled once cancelRun() is requested")
+        let fetchedRun = try await runStore.fetchRun(run.id)
+        let stored = try XCTUnwrap(fetchedRun)
+        XCTAssertEqual(stored.status, .cancelled, "Persisted run must reflect cancelled status")
+    }
+
     // MARK: - startRun on non-ResumableRunDriver runtime
 
     func test_startRun_withoutResumableDriver_returnsEmptyStream() async throws {

@@ -25,7 +25,7 @@ import ManifoldInference
 /// Parallel to ``ConversationEvent`` — run-side events are deliberately a
 /// separate type so exhaustive switches in text consumers stay closed.
 /// ``ResumableRunDriver`` emits these on the ``AsyncStream`` returned by
-/// ``ConversationRuntime/startRun(_:)``.
+/// ``ConversationRuntime/startRun(_:using:)``.
 ///
 /// Invariant: no run-level payload appears as a ``ConversationEvent`` case.
 /// ``GenerationEventClosedAuditTest`` enforces this with a tripwire.
@@ -47,7 +47,7 @@ public enum RunEvent: Sendable, Equatable {
     case stepFailed(runID: UUID, stepIndex: Int, stepID: UUID, reason: String)
 
     /// The run was paused by the host. The current step index is preserved;
-    /// the run can be resumed via ``ConversationRuntime/resumeRun(_:)``.
+    /// the in-process run can be resumed via ``ResumableRunDriver/resumeRun()``.
     case runPaused(runID: UUID, stepCount: Int)
 
     /// A previously-paused run resumed execution.

@@ -32,18 +32,26 @@ public enum RunStatus: String, Sendable, CaseIterable, Equatable {
 /// A multi-step unit above a ``ConversationRuntime`` turn.
 ///
 /// A `ConversationRun` groups one or more ``RunStep`` values into a
-/// resumable, checkpointed execution unit. Runs survive app suspension:
-/// the ``RunStore`` port persists the run record and each step so the
-/// ``ResumableRunDriver`` can pick up exactly where it left off.
+/// checkpointed execution unit. The ``RunStore`` port persists the run
+/// record and each step on every boundary so the run's progress is durable.
+///
+/// - Note: In-process pause/resume/cancel ship in this phase (P3b) via
+///   ``ResumableRunDriver``. Cross-process resume — reloading an interrupted
+///   run from ``RunStore`` and continuing from the last checkpointed step —
+///   requires the SwiftData `RunStore` adapter that is deferred to the P3b
+///   persistence sub-phase. Until that lands, a process that dies mid-run
+///   leaves a durable checkpoint record but does not auto-continue.
 ///
 /// ## Lifecycle
 ///
 /// The host creates a `ConversationRun` with a goal (a text prompt or a
 /// structured goal object) and starts it via
-/// ``ConversationRuntime/startRun(_:)``. The runtime delegates to the
+/// ``ConversationRuntime/startRun(_:using:)``. The runtime delegates to the
 /// wired ``ResumableRunDriver``, which drives the multi-step loop, pausing
-/// and checkpointing on each step boundary. Runs can be paused,
-/// resumed, or cancelled at any time via the runtime's run API.
+/// and checkpointing on each step boundary. The active run can be paused,
+/// resumed, or cancelled via the ``ResumableRunDriver`` instance that was
+/// injected into the runtime (``ResumableRunDriver/pauseRun()``,
+/// ``ResumableRunDriver/resumeRun()``, ``ResumableRunDriver/cancelRun()``).
 ///
 /// ## Identity injection
 ///
