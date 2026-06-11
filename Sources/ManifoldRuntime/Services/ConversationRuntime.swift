@@ -78,6 +78,16 @@ public final class ConversationRuntime: Sendable {
 
     private let executor: ConversationTurnExecutor
 
+    /// The pluggable turn-execution strategy.
+    ///
+    /// Defaults to ``SingleTurnDriver`` which reproduces the pre-P3 linear
+    /// behavior exactly. Pass a ``ResumableRunDriver`` (P3b) when you need
+    /// long-running, checkpointed runs that survive app suspension.
+    ///
+    /// Custom drivers conform to ``TurnDriver`` and add zero engine-core
+    /// edits — EDGE by design.
+    private let turnDriver: any TurnDriver
+
     /// Host-mutable holder for the per-session knobs the executor reads at
     /// the top of each turn. Exposed through the `update*` mutators below
     /// so a host that built the runtime once at app init can swap context
@@ -231,7 +241,8 @@ public final class ConversationRuntime: Sendable {
             hostTurnContextProvider: hostTurnContextProvider,
             turnContextProvider: turnContextProvider,
             sessionToolSources: sessionToolSources,
-            hookRegistry: hookRegistry
+            hookRegistry: hookRegistry,
+            turnDriver: nil
         )
     }
 
@@ -257,7 +268,8 @@ public final class ConversationRuntime: Sendable {
         hostTurnContextProvider: (any HostTurnContextProvider)? = nil,
         turnContextProvider: (@Sendable (UUID) -> (any Sendable)?)? = nil,
         sessionToolSources: [any SessionToolSource] = [],
-        hookRegistry: HookRegistry? = nil
+        hookRegistry: HookRegistry? = nil,
+        turnDriver: (any TurnDriver)? = nil
     ) {
         self.inferenceService = inferenceService
         self.auxiliaryInferenceService = auxiliaryInferenceService
@@ -297,6 +309,9 @@ public final class ConversationRuntime: Sendable {
             turnContextProvider: turnContextProvider,
             bindings: bindings
         )
+        // Default to SingleTurnDriver to preserve pre-P3 linear behavior.
+        // Callers that need resumable runs inject ResumableRunDriver here.
+        self.turnDriver = turnDriver ?? SingleTurnDriver()
     }
 
     // MARK: Host-mutable bindings
@@ -384,44 +399,15 @@ public final class ConversationRuntime: Sendable {
         _ input: TurnInput,
         outcomeCompletion: ConversationTurnOutcomeCompletion?
     ) async throws -> ConversationStreamHandle? {
-        switch input.kind {
-        case let .send(text, attachments):
-            return try await executor.runSendFlow(
-                sessionID: input.sessionID,
-                text: text,
-                attachments: attachments,
-                config: input.config,
-                taskRegistry: turnTasks,
-                outcomeCompletion: outcomeCompletion
-            )
-        case .regenerate:
-            return try await executor.runRegenerateFlow(
-                sessionID: input.sessionID,
-                config: input.config,
-                taskRegistry: turnTasks,
-                outcomeCompletion: outcomeCompletion
-            )
-        case let .edit(messageID, text):
-            return try await executor.runEditFlow(
-                sessionID: input.sessionID,
-                messageID: messageID,
-                text: text,
-                config: input.config,
-                taskRegistry: turnTasks,
-                outcomeCompletion: outcomeCompletion
-            )
-        case let .branch(messageID, newSessionID, newSessionTitle, generateAfter):
-            return try await executor.runBranchFlow(
-                sourceSessionID: input.sessionID,
-                branchMessageID: messageID,
-                newSessionID: newSessionID,
-                newSessionTitle: newSessionTitle,
-                generateAfter: generateAfter,
-                config: input.config,
-                taskRegistry: turnTasks,
-                outcomeCompletion: outcomeCompletion
-            )
-        }
+        // Delegate to the wired TurnDriver. SingleTurnDriver (the default)
+        // reproduces the pre-P3 per-kind switch exactly; ResumableRunDriver
+        // (P3b) adds checkpointed multi-step orchestration on top.
+        try await turnDriver.executeTurn(
+            input,
+            executor: executor,
+            taskRegistry: turnTasks,
+            outcomeCompletion: outcomeCompletion
+        )
     }
 
     // MARK: Bulk cancellation
@@ -456,6 +442,42 @@ public final class ConversationRuntime: Sendable {
         turnTasks.cancel(handle)
         guard let token else { return }
         await inferenceService.cancelAsync(token)
+    }
+
+    // MARK: Resumable run API (P3b)
+
+    /// Starts a ``ConversationRun`` using the wired ``TurnDriver``.
+    ///
+    /// Available only when the runtime was initialised with a
+    /// ``ResumableRunDriver``. Returns an `AsyncStream<RunEvent>` that
+    /// delivers lifecycle events (started / step / paused / resumed /
+    /// completed / cancelled / failed) until the run terminates.
+    ///
+    /// Calling this method when the runtime uses the default
+    /// ``SingleTurnDriver`` logs a warning and returns an immediately-
+    /// finishing stream — hosts should pair ``startRun`` with a
+    /// ``ResumableRunDriver``.
+    ///
+    /// - Parameters:
+    ///   - run:      The run record to start. The driver persists it.
+    ///   - using:    The input provider that drives step synthesis.
+    /// - Returns: A stream of ``RunEvent`` values.
+    public func startRun(
+        _ run: ConversationRun,
+        using provider: any RunInputProvider = FixedGoalRunInputProvider()
+    ) -> AsyncStream<RunEvent> {
+        guard let resumableDriver = turnDriver as? ResumableRunDriver else {
+            Log.inference.warning(
+                "ConversationRuntime.startRun: runtime was not configured with a ResumableRunDriver; ignoring."
+            )
+            return AsyncStream { $0.finish() }
+        }
+        return resumableDriver.startRun(
+            run,
+            using: provider,
+            executor: executor,
+            taskRegistry: turnTasks
+        )
     }
 
     // MARK: Secondary event taps

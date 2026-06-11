@@ -1,7 +1,7 @@
 import Foundation
 import ManifoldInference
 
-struct ConversationTurnExecutor: Sendable {
+package struct ConversationTurnExecutor: Sendable {
     private let persistence: ConversationPersistencePort
     private let inferenceService: InferenceService
     private let pipeline: PromptContextPipeline?
@@ -82,7 +82,7 @@ struct ConversationTurnExecutor: Sendable {
 
     // MARK: Send flow
 
-    func runSendFlow(
+    package func runSendFlow(
         sessionID: UUID,
         text: String,
         attachments rawAttachments: [MessagePart],
@@ -246,7 +246,7 @@ struct ConversationTurnExecutor: Sendable {
 
     // MARK: Regenerate flow
 
-    func runRegenerateFlow(
+    package func runRegenerateFlow(
         sessionID: UUID,
         config: TurnConfig,
         taskRegistry: ConversationTurnTaskRegistry,
@@ -311,7 +311,7 @@ struct ConversationTurnExecutor: Sendable {
 
     // MARK: Edit flow
 
-    func runEditFlow(
+    package func runEditFlow(
         sessionID: UUID,
         messageID: UUID,
         text: String,
@@ -399,7 +399,7 @@ struct ConversationTurnExecutor: Sendable {
 
     // MARK: Branch flow
 
-    func runBranchFlow(
+    package func runBranchFlow(
         sourceSessionID: UUID,
         branchMessageID: UUID,
         newSessionID: UUID,
