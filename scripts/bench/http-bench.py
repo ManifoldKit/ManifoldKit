@@ -22,7 +22,6 @@ Usage:
 import argparse
 import json
 import statistics
-import sys
 import time
 import urllib.request
 
@@ -46,7 +45,6 @@ def bench_openai(url: str, model: str, runs: int) -> list[dict]:
         t_start = time.perf_counter()
         t_first = None
         token_count = 0
-        t_end = t_start
         with urllib.request.urlopen(req, timeout=180) as resp:
             for raw in resp:
                 line = raw.strip()
@@ -65,7 +63,7 @@ def bench_openai(url: str, model: str, runs: int) -> list[dict]:
                                 t_first = time.perf_counter()
                             token_count += 1  # 1 SSE chunk == 1 token
                     except (json.JSONDecodeError, IndexError, KeyError):
-                        pass
+                        continue
         t_end = time.perf_counter()
         return (t_first - t_start) if t_first else 0.0, t_end - t_start, token_count
 
@@ -89,7 +87,7 @@ def bench_ollama(url: str, model: str, runs: int) -> list[dict]:
         )
         t_start = time.perf_counter()
         t_first = None
-        t_end = t_start
+        t_end = t_start  # fallback if stream is empty
         eval_count = 0
         eval_duration_ns = 0
         with urllib.request.urlopen(req, timeout=180) as resp:
@@ -107,8 +105,7 @@ def bench_ollama(url: str, model: str, runs: int) -> list[dict]:
                         eval_count = data.get("eval_count", 0)
                         eval_duration_ns = data.get("eval_duration", 0)
                 except json.JSONDecodeError:
-                    pass
-        tps = eval_count / (eval_duration_ns / 1e9) if eval_duration_ns else 0
+                    continue
         return (t_first - t_start) if t_first else 0.0, t_end - t_start, eval_count
 
     # Warmup
