@@ -56,10 +56,12 @@ struct SSEGenerationTaskRunner {
         defer { context.finishGeneration() }
 
         var streamError: Error?
+        let connectionGuardBox = StrongBox<ConnectAddressPinningDelegate>()
         do {
             try await context.validateEndpoint()
 
-            let bytes = try await openConnection(streamBox: streamBox)
+            let (bytes, connectionGuard) = try await openConnection(streamBox: streamBox)
+            connectionGuardBox.value = connectionGuard
 
             await MainActor.run { streamBox.value?.setPhase(.streaming) }
             try await context.streamParser(bytes, continuation)
@@ -68,7 +70,18 @@ struct SSEGenerationTaskRunner {
             continuation.finish()
         } catch {
             streamError = error
-            if error is CancellationError || Task.isCancelled {
+            // A connection that rebinds to a private address mid-stream is
+            // cancelled by the guard's metrics hook; surface it as a blocked
+            // address rather than a silent finish.
+            if let blocked = connectionGuardBox.value?.blockedConnectedURL {
+                let blockError = CloudBackendError.blockedAddress(
+                    "Connection to \(blocked.host ?? "endpoint") rebound to a private/reserved address mid-stream — blocked"
+                )
+                streamError = blockError
+                Log.network.error("\(context.currentBackendName()) stream blocked: DNS rebinding to private address mid-stream")
+                await MainActor.run { streamBox.value?.setPhase(.failed(blockError.localizedDescription)) }
+                continuation.finish(throwing: blockError)
+            } else if error is CancellationError || Task.isCancelled {
                 continuation.finish()
             } else {
                 Log.network.error("\(context.currentBackendName()) stream error: \(error.localizedDescription, privacy: .private)")
@@ -91,10 +104,10 @@ struct SSEGenerationTaskRunner {
 
     private func openConnection(
         streamBox: WeakBox<GenerationStream>
-    ) async throws -> URLSession.AsyncBytes {
+    ) async throws -> (URLSession.AsyncBytes, ConnectAddressPinningDelegate) {
         let retryCounter = SendableCounter()
 
-        let (bytes, _) = try await withRetry(
+        let (bytes, _, connectionGuard) = try await withRetry(
             strategy: context.retryStrategy,
             sleeper: context.retrySleeper ?? { try await Task.sleep(for: $0) }
         ) {
@@ -109,7 +122,28 @@ struct SSEGenerationTaskRunner {
             if let lastID = context.eventIDTracker.lastEventID {
                 attemptRequest.setValue(lastID, forHTTPHeaderField: "Last-Event-ID")
             }
-            let (bytes, response) = try await context.session.bytes(for: attemptRequest)
+
+            // Connect-time IP pinning closes the DNS-rebinding TOCTOU that the
+            // pre-flight `DNSRebindingGuard` (run in `context.validateEndpoint()`)
+            // cannot: it inspects the address URLSession actually connected to.
+            // A per-task delegate fires `didFinishCollecting` alongside the
+            // session-level composite delegate without displacing it.
+            let connectionGuard = ConnectAddressPinningDelegate()
+            let (bytes, response) = try await context.session.bytes(
+                for: attemptRequest,
+                delegate: connectionGuard
+            )
+
+            // If the connection's metrics already report a private/reserved remote
+            // address by the time the response headers arrive, block before
+            // consuming any stream bytes. The guard also cancels the task on
+            // violation, so a poisoned long-lived SSE connection is torn down and
+            // surfaces as a stream error in the parser below.
+            if let blocked = connectionGuard.blockedConnectedURL {
+                throw CloudBackendError.blockedAddress(
+                    "Connection to \(blocked.host ?? "endpoint") resolved to a private/reserved address (DNS rebinding) — blocked"
+                )
+            }
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 // Carry the rim's `serverError(statusCode: 0, ...)`
@@ -124,9 +158,9 @@ struct SSEGenerationTaskRunner {
             }
 
             try await context.statusValidator(httpResponse, bytes)
-            return (bytes, httpResponse)
+            return (bytes, httpResponse, connectionGuard)
         }
 
-        return bytes
+        return (bytes, connectionGuard)
     }
 }
