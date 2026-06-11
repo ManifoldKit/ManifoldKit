@@ -89,7 +89,6 @@ def bench_ollama(url: str, model: str, runs: int) -> list[dict]:
         t_first = None
         t_end = t_start  # fallback if stream is empty
         eval_count = 0
-        eval_duration_ns = 0
         with urllib.request.urlopen(req, timeout=180) as resp:
             for raw in resp:
                 raw = raw.strip()
@@ -103,7 +102,6 @@ def bench_ollama(url: str, model: str, runs: int) -> list[dict]:
                     if data.get("done"):
                         t_end = time.perf_counter()
                         eval_count = data.get("eval_count", 0)
-                        eval_duration_ns = data.get("eval_duration", 0)
                 except json.JSONDecodeError:
                     continue
         return (t_first - t_start) if t_first else 0.0, t_end - t_start, eval_count
