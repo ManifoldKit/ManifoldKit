@@ -109,7 +109,7 @@ let bootstrap = try ManifoldBootstrap(
         try ModelContainer(
             for: Schema([
                 ChatSession.self, ChatMessage.self, APIEndpoint.self,
-                SamplerPreset.self, Agent.self,
+                SamplerPreset.self, PersistedAgent.self,
                 MyAppModel.self
             ]),
             migrationPlan: ManifoldMigrationPlan.self,
