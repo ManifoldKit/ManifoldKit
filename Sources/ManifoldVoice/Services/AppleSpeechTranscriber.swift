@@ -94,18 +94,25 @@ public final class AppleSpeechTranscriber: NSObject, SpeechTranscribing {
         let inputNode = audioEngine.inputNode
         let format = inputNode.outputFormat(forBus: 0)
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
-        }
+        // Closures defined inside a @MainActor function inherit @MainActor isolation
+        // (SE-0420). AVAudioNodeTap and SFSpeechRecognitionTask both fire on non-main
+        // threads, so both callbacks must be created in nonisolated static factories
+        // where the returned closures are not @MainActor-bound.
+        inputNode.installTap(
+            onBus: 0, bufferSize: 1_024, format: format,
+            block: Self.makeTapBlock(appending: request)
+        )
 
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, _ in
-            guard let self, let result else { return }
-            let transcript = result.bestTranscription.formattedString
-            self.latestTranscript = transcript
-            Task { @MainActor in
-                onUpdate(SpeechTranscriptionUpdate(text: transcript, isFinal: result.isFinal))
-            }
+        let updateTranscript: @MainActor (String) -> Void = { [weak self] t in
+            self?.latestTranscript = t
         }
+        recognitionTask = recognizer.recognitionTask(
+            with: request,
+            resultHandler: Self.makeRecognitionHandler(
+                onUpdate: onUpdate,
+                updateTranscript: updateTranscript
+            )
+        )
 
         do {
             try audioSessionCoordinator.activateRecording()
@@ -127,6 +134,27 @@ public final class AppleSpeechTranscriber: NSObject, SpeechTranscribing {
 
     public func cancelTranscribing() {
         stopInternal(clearTranscript: true)
+    }
+
+    private nonisolated static func makeTapBlock(
+        appending request: SFSpeechAudioBufferRecognitionRequest
+    ) -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, _ in request.append(buffer) }
+    }
+
+    private nonisolated static func makeRecognitionHandler(
+        onUpdate: @escaping @MainActor (SpeechTranscriptionUpdate) -> Void,
+        updateTranscript: @escaping @MainActor (String) -> Void
+    ) -> (SFSpeechRecognitionResult?, Error?) -> Void {
+        { result, _ in
+            guard let result else { return }
+            let transcript = result.bestTranscription.formattedString
+            let isFinal = result.isFinal
+            Task { @MainActor in
+                updateTranscript(transcript)
+                onUpdate(SpeechTranscriptionUpdate(text: transcript, isFinal: isFinal))
+            }
+        }
     }
 
     private func stopInternal(clearTranscript: Bool) {
