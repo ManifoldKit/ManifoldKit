@@ -13,6 +13,9 @@ public typealias PersistedAgent = ManifoldSchemaV9.Agent
 /// Back-compat alias for code that referenced ``Agent`` directly before
 /// the F3 disambiguation. Prefer ``PersistedAgent`` in new code.
 ///
-/// This alias may be deprecated in a future major version once host apps
-/// have migrated to the disambiguated name.
+/// > Deprecated: Renamed to ``PersistedAgent``. The bare name shadows
+/// > ``ManifoldInference/Agent`` when both modules are imported. Migrate to
+/// > `PersistedAgent` now — this alias will be removed in the 1.0-adjacent
+/// > major release (≥2 minors after this annotation was added, 0.x-era).
+@available(*, deprecated, renamed: "PersistedAgent", message: "Use PersistedAgent to avoid shadowing ManifoldInference.Agent. This alias will be removed in the 1.0-adjacent major release.")
 public typealias Agent = ManifoldSchemaV9.Agent

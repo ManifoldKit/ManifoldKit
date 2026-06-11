@@ -47,8 +47,8 @@ final class SchemaMigrationTests: XCTestCase {
         XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self), ObjectIdentifier(ManifoldSchemaV9.ChatMessage.self))
         // ChatSession is redefined at V9 to carry activeAgentID / activeSkillName / agents.
         XCTAssertEqual(ObjectIdentifier(ManifoldSchemaV9.ChatSession.self), ObjectIdentifier(ManifoldSchemaV9.ChatSession.self))
-        // Agent is introduced at V9.
-        XCTAssertEqual(ObjectIdentifier(Agent.self), ObjectIdentifier(ManifoldSchemaV9.Agent.self))
+        // PersistedAgent (formerly the back-compat `Agent` alias) is introduced at V9.
+        XCTAssertEqual(ObjectIdentifier(PersistedAgent.self), ObjectIdentifier(ManifoldSchemaV9.Agent.self))
         // Other model types remain at V4.
         XCTAssertEqual(ObjectIdentifier(SamplerPreset.self), ObjectIdentifier(ManifoldSchemaV4.SamplerPreset.self))
         XCTAssertEqual(ObjectIdentifier(APIEndpoint.self), ObjectIdentifier(ManifoldSchemaV4.APIEndpoint.self))
