@@ -10,6 +10,16 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
     private let lock = NSLock()
     private var requiresApprovalValue: Bool
 
+    /// Default UTF-8 byte ceiling applied to sanitized tool output when no
+    /// ``ToolOutputPolicy`` limit has been pushed in by the owning registry.
+    static let defaultOutputByteLimit = 8_192
+
+    /// UTF-8 byte ceiling for sanitized tool output. Seeded from the owning
+    /// ``ToolRegistry``'s ``ToolOutputPolicy/maxBytes`` at registration time so
+    /// the transport-boundary truncation respects the host's configured policy
+    /// instead of a hardcoded constant. Guarded by `lock`.
+    private var outputByteLimitValue: Int = MCPToolExecutor.defaultOutputByteLimit
+
     public init(definition: ToolDefinition) {
         self.definition = definition
         self.remoteToolName = definition.name
@@ -51,6 +61,24 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Pushes the owning registry's output-size policy into this executor so
+    /// the transport-boundary truncation in ``sanitize(_:limit:)`` matches the
+    /// configured ``ToolOutputPolicy/maxBytes``. A non-positive limit is
+    /// ignored (the executor keeps the 8 KB default) — `0` would otherwise
+    /// erase every tool result before the registry's own policy could act.
+    internal func setOutputByteLimit(_ limit: Int) {
+        guard limit > 0 else { return }
+        lock.lock()
+        outputByteLimitValue = limit
+        lock.unlock()
+    }
+
+    private var outputByteLimit: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return outputByteLimitValue
+    }
+
     public func execute(arguments: JSONSchemaValue) async throws -> ToolResult {
         do {
             try Task.checkCancellation()
@@ -59,7 +87,7 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
             try Task.checkCancellation()
             let parsed = Self.parseResult(response)
             let wrapped = MCPContentSanitizer.wrapForUntrustedSurface(
-                Self.sanitize(parsed.content),
+                sanitize(parsed.content),
                 serverDisplayName: serverDisplayName
             )
             return ToolResult(callId: "", content: wrapped, errorKind: parsed.errorKind)
@@ -68,12 +96,19 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
         } catch let error as MCPError {
             return ToolResult(
                 callId: "",
-                content: Self.sanitize(Self.message(for: error)),
+                content: sanitize(Self.message(for: error)),
                 errorKind: errorKind(for: error)
             )
         } catch {
-            return ToolResult(callId: "", content: Self.sanitize(error.localizedDescription), errorKind: .permanent)
+            return ToolResult(callId: "", content: sanitize(error.localizedDescription), errorKind: .permanent)
         }
+    }
+
+    /// Instance entry point for ``sanitize(_:limit:)`` that applies the
+    /// registry-configured ``outputByteLimit`` and emits a warning when output
+    /// is actually truncated — previously a silent data loss.
+    private func sanitize(_ value: String) -> String {
+        Self.sanitize(value, limit: outputByteLimit, toolName: definition.name)
     }
 
     private static func parseResult(_ value: JSONSchemaValue?) -> (content: String, errorKind: ToolResult.ErrorKind?) {
@@ -150,7 +185,11 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
         }
     }
 
-    private static func sanitize(_ value: String, limit: Int = 8_192) -> String {
+    private static func sanitize(
+        _ value: String,
+        limit: Int = MCPToolExecutor.defaultOutputByteLimit,
+        toolName: String? = nil
+    ) -> String {
         let filtered = value.unicodeScalars.filter { scalar in
             if CharacterSet.controlCharacters.contains(scalar) {
                 return scalar.value == 10 || scalar.value == 13 || scalar.value == 9
@@ -161,9 +200,15 @@ public final class MCPToolExecutor: ToolExecutor, @unchecked Sendable {
         // Compare and truncate by UTF-8 byte count, not grapheme clusters, so
         // multi-byte characters (CJK, emoji) can't be used to smuggle oversized
         // payloads past a grapheme-cluster limit check.
-        if string.utf8.count <= limit {
+        let byteCount = string.utf8.count
+        if byteCount <= limit {
             return string
         }
+        // Truncation is real data loss — surface it rather than silently
+        // dropping the tail. The model only ever sees the truncated prefix.
+        Log.inference.warning(
+            "MCPToolExecutor: truncated tool result for '\(toolName ?? "<unknown>", privacy: .public)' from \(byteCount) to \(limit) bytes"
+        )
         return String(bytes: Array(string.utf8.prefix(limit)), encoding: .utf8) ?? String(string.prefix(limit / 4))
     }
 

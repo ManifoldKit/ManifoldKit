@@ -777,12 +777,57 @@ final class MCPToolBridgeTests: XCTestCase {
         XCTAssertEqual(registeredNames[0].utf8.count, limit,
                        "tool name at exact byte limit must not be truncated")
     }
+
+    // MARK: - Output truncation respects ToolOutputPolicy
+
+    /// By default (no policy override) the executor truncates oversized tool
+    /// output to the 8 KB transport ceiling.
+    func test_output_truncatedToDefaultLimit_whenNoPolicyOverride() async throws {
+        let big = String(repeating: "a", count: 20_000)
+        let executor = MCPToolExecutor(
+            definition: ToolDefinition(name: "dump", description: "Dump", parameters: .object([:])),
+            serverDisplayName: "Docs",
+            remoteToolName: "dump",
+            requiresApproval: false,
+            callTool: { _, _ in .string(big) }
+        )
+
+        let result = try await executor.execute(arguments: .object([:]))
+        // wrapForUntrustedSurface adds a small envelope, so the sanitized body
+        // is bounded by the default 8 KB ceiling — well under the 20 KB input.
+        XCTAssertLessThan(result.content.utf8.count, 20_000)
+        XCTAssertGreaterThanOrEqual(result.content.utf8.count, MCPToolExecutor.defaultOutputByteLimit - 200)
+    }
+
+    /// When the owning registry configures a larger `ToolOutputPolicy.maxBytes`,
+    /// `register(in:)` pushes that limit into the executor so output that fits
+    /// the configured policy is no longer clipped at the hardcoded 8 KB.
+    func test_output_respectsRegistryPolicyLimit() async throws {
+        let body = String(repeating: "b", count: 16_000) // > 8 KB default, < 64 KB policy
+        let source = makeSource(
+            serverID: UUID(),
+            approvalPolicy: .perCall,
+            toolNames: ["dump"],
+            callTool: { _, _ in .string(body) }
+        )
+        let registry = ToolRegistry()
+        registry.outputPolicy = ToolOutputPolicy(maxBytes: 65_536, onOversize: .allow)
+        await source.register(in: registry)
+
+        let executor = try XCTUnwrap(registry.executor(for: "dump") as? MCPToolExecutor)
+        let result = try await executor.execute(arguments: .object([:]))
+        // Sanitize no longer clips at 8 KB — the full 16 KB body survives the
+        // transport boundary because the policy limit (64 KB) was plumbed in.
+        XCTAssertGreaterThan(result.content.utf8.count, 15_000,
+                             "executor must honour the registry's configured output limit, not the 8 KB default")
+    }
 }
 
 private func makeSource(
     serverID: UUID,
     approvalPolicy: MCPApprovalPolicy,
-    toolNames: [String]
+    toolNames: [String],
+    callTool: (@Sendable (_ toolName: String, _ arguments: JSONSchemaValue) async throws -> JSONSchemaValue?)? = nil
 ) -> MCPToolSource {
     MCPToolSource(
         serverID: serverID,
@@ -796,7 +841,7 @@ private func makeSource(
                 "tools": .array(toolNames.map { .object(["name": .string($0), "inputSchema": .object([:])]) }),
             ])
         },
-        callTool: { _, _ in nil }
+        callTool: callTool ?? { _, _ in nil }
     )
 }
 

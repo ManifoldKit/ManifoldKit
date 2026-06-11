@@ -90,7 +90,7 @@ jobs:
       # workflow file changes — the same set that triggers the main `test` job.
       all-traits: ${{ steps.filter.outputs.all-traits }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
@@ -225,7 +225,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # paths-filter needs the parent commit to diff against on `push` events;
           # `pull_request` works with the default shallow clone.
@@ -659,7 +659,7 @@ jobs:
         # watchdog stall snapshots/backtrace tails, plus any xcresult bundles
         # if they exist).
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xcresult-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -679,7 +679,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # paths-filter needs the parent commit to diff against on `push` events;
           # `pull_request` works with the default shallow clone.
@@ -712,7 +712,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xcresult-server-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -731,7 +731,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # paths-filter needs the parent commit to diff against on `push` events;
           # `pull_request` works with the default shallow clone.
@@ -764,7 +764,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xcresult-macros-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -794,7 +794,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
 
@@ -875,7 +875,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
 
@@ -906,7 +906,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
 
@@ -933,7 +933,7 @@ jobs:
 
       - name: Upload test diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xcresult-ios-file-protection-${{ github.run_attempt }}
           if-no-files-found: ignore
@@ -976,7 +976,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
 

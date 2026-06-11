@@ -50,7 +50,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Checkout tagged commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # `release.published` already checks out the tag; for workflow_dispatch
           # we need to fetch and check out the supplied tag explicitly.
@@ -103,12 +103,12 @@ jobs:
           '
 
       - name: Attest SBOM build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: artifacts/sbom.cdx.json
 
       - name: Attest dependency-tree build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: artifacts/dependency-tree.json
 
@@ -126,7 +126,7 @@ jobs:
         # Belt-and-suspenders: if the release upload step is rate-limited or
         # removed, the artifacts (and their attestations in the transparency
         # log) are still recoverable from the workflow run itself.
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-supply-chain-${{ steps.tag.outputs.name }}
           path: artifacts/

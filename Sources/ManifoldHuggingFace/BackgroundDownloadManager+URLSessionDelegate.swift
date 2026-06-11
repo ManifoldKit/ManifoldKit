@@ -112,6 +112,11 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
 
                     try FileManager.default.moveItem(at: tempURL, to: destination)
 
+                    // Harden the at-rest model file on iOS so downloaded weights
+                    // are unreadable until first unlock after reboot. Best-effort:
+                    // never fails the completed download.
+                    DownloadedFileProtection.protect(destination)
+
                     // Verify against a sidecar manifest when one is present next to the
                     // destination file. Missing manifests are silently skipped; verification
                     // failure re-enters the catch block which marks the download failed and
