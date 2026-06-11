@@ -1,7 +1,22 @@
 API breakage: class GenerationStream has been removed
 API breakage: class SSEEventIDTracker has been removed
 API breakage: class StreamingArgumentAccumulator has been removed
-API breakage: enum BackendName has been removed
+API breakage: enum BackendName has been changed to a struct
+API breakage: enum BackendName has removed conformance to CaseIterable
+API breakage: enumelement BackendName.foundation is now static
+API breakage: enumelement BackendName.foundation has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: enumelement BackendName.ollama is now static
+API breakage: enumelement BackendName.ollama has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: enumelement BackendName.claude is now static
+API breakage: enumelement BackendName.claude has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: enumelement BackendName.openAI is now static
+API breakage: enumelement BackendName.openAI has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: enumelement BackendName.mlx is now static
+API breakage: enumelement BackendName.mlx has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: enumelement BackendName.llama is now static
+API breakage: enumelement BackendName.llama has declared type change from (ManifoldContract.BackendName.Type) -> ManifoldContract.BackendName to ManifoldContract.BackendName
+API breakage: constructor BackendName.init(rawValue:) has return type change from ManifoldContract.BackendName? to ManifoldContract.BackendName
+API breakage: typealias BackendName.AllCases has been removed
 API breakage: enum BackendVisionCapability has been removed
 API breakage: enum EmbeddingError has been removed
 API breakage: enum GenerationEvent has been removed
