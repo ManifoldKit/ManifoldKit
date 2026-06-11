@@ -247,4 +247,26 @@ final class OutputParserSessionTests: XCTestCase {
         events += mlx.finalize()
         XCTAssertEqual(visible(events), "done<tool_c")
     }
+
+    // MARK: - Body-size cap (DoS guard)
+
+    func test_oversizedToolBody_withoutClose_isDroppedAndParserRecovers() {
+        var transform = ToolCallTransform(markers: [jsonMarker()])
+        // Open a tool block then stream a body far larger than the 256 KB cap
+        // with no matching close tag (a truncated/adversarial stream).
+        var events = transform.process([.token("<tool_call>")])
+        events += transform.process([.token(String(repeating: "x", count: 300 * 1024))])
+
+        // The oversized, unclosed body must be discarded — never handed to
+        // parseBody — and no ToolCall is emitted.
+        XCTAssertTrue(toolCalls(events).isEmpty,
+            "An unbounded unclosed tool body must be dropped, not parsed")
+
+        // After dropping, the parser must be back outside a block: a subsequent
+        // well-formed call is parsed normally rather than being swallowed.
+        var recovery = transform.process([.token("<tool_call>{\"name\":\"f\"}</tool_call>")])
+        recovery += transform.finalize()
+        XCTAssertEqual(toolCalls(recovery).map(\.toolName), ["f"],
+            "Parser must recover and parse a valid call after dropping an oversized body")
+    }
 }

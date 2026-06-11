@@ -120,7 +120,14 @@ public final class MCPToolSource: @unchecked Sendable {
             }
         }
         let executors = await storage.executors()
+        // Push the registry's configured output-size policy into each executor
+        // so the transport-boundary truncation respects ToolOutputPolicy instead
+        // of a hardcoded 8 KB constant. The registry applies its own oversize
+        // action afterwards; this just stops us silently discarding the tail at
+        // a lower fixed ceiling first.
+        let outputLimit = registry.outputPolicy.maxBytes
         for executor in executors {
+            executor.setOutputByteLimit(outputLimit)
             registry.register(executor)
         }
         let key = ObjectIdentifier(registry)

@@ -80,7 +80,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -93,7 +93,7 @@ jobs:
         # set, so caching .build/checkouts + .build/repositories pays for
         # itself even though the snippet-package's own .build is ephemeral.
         # We key on Package.resolved exactly like ci.yml.
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm

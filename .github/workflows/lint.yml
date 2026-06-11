@@ -75,7 +75,7 @@ jobs:
       # The cost is small on Ubuntu so we pay it unconditionally rather than
       # checking out twice.
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
@@ -89,6 +89,34 @@ jobs:
       - name: actionlint — lint GitHub Actions workflows
         if: always()
         run: ${{ steps.install_actionlint.outputs.executable }} -color
+
+      # ── action-pin-audit ──────────────────────────────────────────────────
+      # Supply-chain guard: every third-party action must be pinned to a full
+      # 40-hex commit SHA, not a mutable tag (`@v4`) or branch (`@main`). A tag
+      # can be silently retargeted at a malicious commit; a SHA cannot. We let
+      # Dependabot (`.github/dependabot.yml`, github-actions ecosystem) bump the
+      # pins weekly so this stays sustainable. Local (`./…`) and reusable
+      # in-repo workflow refs are exempt — they are not third-party.
+      #
+      # NOTE: the `push:` paths filter above includes `.github/workflows/**`, so
+      # this guard runs whenever a workflow changes (gate-validates-itself rule).
+      - name: action-pin-audit — require SHA-pinned third-party actions
+        if: always()
+        run: |
+          set -euo pipefail
+          # Match `uses: <ref>`, skipping local `./` refs. A pinned ref is
+          # owner/repo[/path]@<40 hex chars>. Anything else (a `@vX` tag, a
+          # branch, or a short SHA) is a finding.
+          violations=$(grep -rEn '^\s*-?\s*uses:\s*[^.]' .github/workflows/ \
+            | grep -vE 'uses:\s*\./' \
+            | grep -vE 'uses:\s*[^@]+@[0-9a-fA-F]{40}(\s|$|#)' \
+            || true)
+          if [ -n "$violations" ]; then
+            echo "::error::Unpinned GitHub Actions found. Pin to a 40-char commit SHA (e.g. owner/action@<sha> # vX.Y.Z):"
+            echo "$violations"
+            exit 1
+          fi
+          echo "All third-party actions are SHA-pinned."
 
       # ── changelog-lint ────────────────────────────────────────────────────
       - name: changelog-lint — skip for non-Release-Please PRs
@@ -292,7 +320,7 @@ jobs:
         # Security > Dependency graph). Without it the action exits non-zero and
         # this step hard-fails — that is intentional supply-chain pressure, not
         # a misconfiguration to paper over with continue-on-error.
-        uses: actions/dependency-review-action@v5
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
           vulnerability-check: true

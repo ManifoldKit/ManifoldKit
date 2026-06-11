@@ -172,9 +172,16 @@ func mcpBearerRedacted(_ data: Data) -> String {
 func constantTimeEqual(_ a: String, _ b: String) -> Bool {
     let aBytes = Array(a.utf8)
     let bBytes = Array(b.utf8)
-    guard aBytes.count == bBytes.count else { return false }
-    var diff: UInt8 = 0
-    for (x, y) in zip(aBytes, bBytes) {
+    // Fold the length difference into the accumulator instead of returning
+    // early on a count mismatch, so the comparison time does not leak the
+    // length of the shorter string. We iterate over the max length and index
+    // each array modulo its own count (both non-empty after the XOR seed), so a
+    // shorter input still costs the same number of compares.
+    var diff = UInt8(truncatingIfNeeded: aBytes.count ^ bBytes.count)
+    let maxCount = max(aBytes.count, bBytes.count)
+    for i in 0..<maxCount {
+        let x = aBytes.isEmpty ? 0 : aBytes[i % aBytes.count]
+        let y = bBytes.isEmpty ? 0 : bBytes[i % bBytes.count]
         diff |= x ^ y
     }
     return diff == 0
