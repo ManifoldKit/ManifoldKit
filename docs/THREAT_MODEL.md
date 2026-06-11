@@ -10,9 +10,7 @@ The format is deliberate: every "X is enforced by Y" claim links to the actual f
 workflow. Every "X is not mitigated" row names the tracking issue (or explains why an
 item is permanently out of scope).
 
-For a higher-level narrative — and the corresponding DocC API surface — see the
-[Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md)
-article.
+For a higher-level narrative, see [SECURITY.md](../SECURITY.md).
 
 ## Audience and scope
 
@@ -136,8 +134,8 @@ considered hostile on the far side and what ManifoldKit validates as data crosse
 - **Not mitigated:** semantic prompt injection. **ManifoldKit does not solve
   prompt injection.** System prompts are not a security boundary; tool calls and
   retrieved content are untrusted from the model's perspective. See the
-  [Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md#prompt-injection-explicit-disclaimer)
-  article for guidance.
+  [Threats considered — User content ↔ model](#b4-user-content--model)
+  section above for the explicit disclaimer.
 
 ### B5. UI / framework ↔ host application
 
@@ -319,8 +317,7 @@ Each item is either deferred to a tracked issue or explicitly out of scope.
 
 - [SECURITY.md](../SECURITY.md) — disclosure policy, supported versions, build-mode
   guarantees.
-- [Security Model](../Sources/ManifoldCore/ManifoldCore.docc/Articles/SecurityModel.md)
-  — DocC article covering in-source mitigations at API granularity.
+- [`docs/FIPS.md`](FIPS.md) — cryptographic primitive inventory and FIPS posture.
 - [`TrafficBoundaryAuditTest`](../Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
   — the source-grep audit referenced throughout.
 - [`DenyAllURLProtocol`](../Sources/ManifoldTestSupport/DenyAllURLProtocol.swift)

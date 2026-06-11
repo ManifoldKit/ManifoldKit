@@ -25,13 +25,13 @@ Import `ManifoldRuntime` directly when:
 
 ## When not to use this module
 
-- **You only need to call a backend.** ``InferenceService``, ``Backend``, and ``GenerationConfig`` live in `ManifoldInference`. The runtime adds session, persistence, and hooks on top — if you have none of those, skip the runtime and drive the backend directly.
+- **You only need to call a backend.** ``InferenceService``, ``InferenceBackend``, and ``GenerationConfig`` live in `ManifoldInference`. The runtime adds session, persistence, and hooks on top — if you have none of those, skip the runtime and drive the backend directly.
 - **You are happy with the shipped SwiftUI chat shell.** ``ChatView`` and ``ChatViewModel`` already configure a ``ConversationRuntime`` for you via ``ManifoldBootstrap``; you only need to touch this module if you are driving the runtime yourself.
 - **You want a backend.** Backend family targets do not import `ManifoldRuntime`. Importing this module from inside a backend creates a layering cycle.
 
 ## Beyond chat
 
-`ConversationRuntime` is named for its most common use case but is best understood as a **session-scoped turn-loop shell**: it persists writes, assembles context, calls a ``Backend``, streams events, and tears down on cancel. Anything that fits that shape — interactive agents, classification pipelines that need to record prompts, voice-driven flows, image-generation runs (see ``ImageGenerationRuntime``) — can sit on top of these ports without dragging in `ChatView`. The "chat" word in the surface area names is historical; the orchestration shell is general.
+`ConversationRuntime` is named for its most common use case but is best understood as a **session-scoped turn-loop shell**: it persists writes, assembles context, calls an ``InferenceBackend``, streams events, and tears down on cancel. Anything that fits that shape — interactive agents, classification pipelines that need to record prompts, voice-driven flows, image-generation runs (see ``ImageGenerationRuntime``) — can sit on top of these ports without dragging in `ChatView`. The "chat" word in the surface area names is historical; the orchestration shell is general.
 
 Sibling runtime ports cover non-text surfaces: ``ImageGenerationRuntime`` and ``VideoGenerationRuntime`` insert a placeholder message and drive a progress event stream, while ``WebSearchRuntime`` is request/response — it returns search-result text so a tool can hand it straight back to the model. All three are abstractions here in `ManifoldRuntime`; their concrete network-touching implementations live above the UI layer (e.g. `DefaultWebSearchRuntime` in `ManifoldCloud`), keeping `ManifoldUI` free of backend-family and `URLSession` imports.
 

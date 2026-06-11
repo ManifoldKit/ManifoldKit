@@ -53,8 +53,9 @@ More examples ship alongside new features — see each example's README for deta
 
 ## Customization
 
-To add your own backends, import `ManifoldBackends` and call:
+To add your own backends, import `ManifoldBackends` and call `register` with the `InferenceService` from your bootstrap result:
 
 ```swift
-DefaultBackends.register(with: chatViewModel.inferenceService)
+let result = try await ManifoldKit.quickStart()
+DefaultBackends.register(with: result.bootstrap.inferenceService)
 ```

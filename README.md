@@ -85,9 +85,9 @@ Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExamp
 
 **n-1 OS reach, WWDC-ready.** ManifoldKit serves iOS 18 / macOS 15 — the installed base that Apple Foundation Models (OS-26-only, AI-hardware-gated, 4096-token cap, single fixed model) can't reach — and wraps Foundation Models as just one more backend instead of competing with it. Trait gating means one codebase yields either a ~5 MB `FoundationOnly` App Store build or the full local + cloud + RAG + voice + image-gen stack. Pre-wired stub traits (`SystemAIProviderExtension`, `CoreAI`) mean whatever Apple ships next September is one more backend, not a migration. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy).
 
-**Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 5,700+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
+**Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 6,500+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
 
-ManifoldKit is **decomposable, not monolithic**: 14 trait-gated modules. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
+ManifoldKit is **decomposable, not monolithic**: 25 libraries across a layered module graph. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
 
 ## What's already in the box
 
@@ -196,7 +196,7 @@ Start with [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample) 
 
 ## Architecture
 
-ManifoldKit ships **14 libraries**, **2 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules and test-only targets gated behind SwiftPM traits.
+ManifoldKit ships **25 libraries**, **3 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules and test-only targets gated behind SwiftPM traits.
 
 ```
 ManifoldVoice              ManifoldUIModelManagement
@@ -225,7 +225,7 @@ ManifoldVoice              ManifoldUIModelManagement
 
 ### Turn-loop orchestration
 
-`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the **single turn loop** for chat. It owns `send`, `regenerate`, `edit`, `cancel`, and `branch` — there is no alternative path. Host apps get a configured runtime from `ManifoldBootstrap` (exposed as `bootstrap.conversationRuntime`) and forward user actions to it. See [CONTRIBUTING.md → Architecture invariants](CONTRIBUTING.md#architecture-invariants) for the full list of dependency rules the lint enforces.
+`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the **single turn loop** for chat. It owns all turn-flow operations — send, regenerate, edit, cancel, and branch — dispatched through `processTurn(TurnInput(...))` with the corresponding `TurnKind` case. There is no alternative path. Host apps get a configured runtime from `ManifoldBootstrap` (exposed as `bootstrap.conversationRuntime`) and forward user actions to it. See [CONTRIBUTING.md → Architecture invariants](CONTRIBUTING.md#architecture-invariants) for the full list of dependency rules the lint enforces.
 
 ## Supported Model Types
 
@@ -255,7 +255,7 @@ Discovery additionally surfaces any `.gguf` files (or MLX model directories) in 
 | `SessionManagerViewModel` | Chat session CRUD and selection. |
 | `ModelManagementViewModel` | HuggingFace search, downloads, local model management (`ManifoldUIModelManagement`). |
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend. |
-| `ConversationRuntime` | Single turn loop for send/regenerate/edit/cancel/branch with `ConversationEvent` hooks. |
+| `ConversationRuntime` | Single turn loop — all turn-flow operations dispatched via `processTurn(TurnInput(...))` with `ConversationEvent` hooks. |
 | `ChatView` | Main chat interface with message list and input bar. |
 | `SessionListView` | Sidebar session list with rename/delete. |
 | `ModelManagementSheet` | Combined model browser + storage management. |

@@ -40,7 +40,7 @@ registry.register(AppIntentToolExecutor(AskManifoldDemoIntent.self))
 inferenceService.toolRegistry = registry
 ```
 
-The model now sees `ask_base_chat_demo_intent` in its tool list and can
+The model now sees `ask_manifold_demo_intent` in its tool list and can
 invoke it whenever the conversation calls for it.
 
 `AppIntentToolExecutor` requires per-call approval by default. For explicitly

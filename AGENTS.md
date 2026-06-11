@@ -8,11 +8,11 @@ shorter, recipe-shaped surface for *consumers*.
 ManifoldKit is a Swift package. Install via SwiftPM:
 
 ```swift
-.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.36.0")
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.46.0")
 ```
 
 > **Pre-1.0.** Minor versions can introduce breaking changes. For production,
-> pin to a specific tag (`exact: "0.36.0"`) and read [CHANGELOG.md](CHANGELOG.md)
+> pin to a specific tag (`exact: "0.46.0"`) and read [CHANGELOG.md](CHANGELOG.md)
 > before bumping. The `0.x` line stabilises pieces incrementally; `1.0.0` will
 > be the freeze point.
 
@@ -189,7 +189,7 @@ print(reply.content)
 ```
 
 For scripted drivers / integration tests, `sendMessage(_:)` returns the
-completed `ChatMessageRecord`. Polling `vm.lastTurnState` after the awaited call
+completed `ChatMessage`. Polling `vm.lastTurnState` after the awaited call
 inspects the same outcome:
 
 ```swift
@@ -245,11 +245,11 @@ There are three message-shaped types. Pick the right one:
 
 | Type | Module | When to use |
 |------|--------|-------------|
-| `ChatMessageRecord` | `ManifoldInference` | Transport / app code. The shape `sendMessage(_:)` returns. |
-| `ChatMessage` (`@Model`) | `ManifoldPersistenceSwiftData` | SwiftData row — owned by the persistence layer. |
+| `ChatMessage` (struct) | `ManifoldInference` | Transport / app code. The shape `sendMessage(_:)` returns. (`ChatMessageRecord` is a deprecated alias for this type.) |
+| `ChatMessage` (`@Model`) | `ManifoldPersistenceSwiftData` | SwiftData row — owned by the persistence layer. Disambiguate with the full schema path when both are in scope. |
 | `StructuredMessage` | `ManifoldInference` | Cloud-wire payload assembled by `InferenceService`. Internal — backends consume it. |
 
-App code reads and writes `ChatMessageRecord`. The persistence and wire types
+App code reads and writes `ChatMessage` (the struct). The persistence and wire types
 are managed by ManifoldKit.
 
 ## Tool calling
@@ -277,7 +277,7 @@ on every consumer:
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
+    from: "0.46.0",
     traits: [.trait(name: "Macros")]
 )
 ```
@@ -355,7 +355,7 @@ Cloud backends require **`--traits CloudSaaS`** (default-off):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
+    from: "0.46.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
