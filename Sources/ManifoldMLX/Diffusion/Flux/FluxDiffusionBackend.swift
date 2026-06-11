@@ -175,7 +175,7 @@ public final class FluxDiffusionBackend: ImageGenerationBackend, @unchecked Send
             return had
         }
         if wasLoaded {
-            MLX.GPU.set(cacheLimit: 0)
+            MLX.Memory.cacheLimit = 0
         }
     }
 

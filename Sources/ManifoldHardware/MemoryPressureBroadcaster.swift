@@ -44,7 +44,7 @@ package final class MemoryPressureBroadcaster: @unchecked Sendable {
             }
             continuation.onTermination = { [weak self] _ in
                 self?.lock.withLock { continuations in
-                    continuations.removeValue(forKey: key)
+                    _ = continuations.removeValue(forKey: key)
                 }
             }
         }
