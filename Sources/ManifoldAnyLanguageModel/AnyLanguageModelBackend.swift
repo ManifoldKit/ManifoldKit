@@ -2,7 +2,6 @@ import ManifoldInference
 import Foundation
 import os
 
-#if AnyLanguageModel
 import AnyLanguageModel
 
 /// Thin `InferenceBackend` adapter for HuggingFace's AnyLanguageModel session layer.
@@ -174,4 +173,3 @@ public final class AnyLanguageModelBackend: @unchecked Sendable, InferenceBacken
         return nil
     }
 }
-#endif

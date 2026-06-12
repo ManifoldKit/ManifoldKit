@@ -2,11 +2,12 @@
 
 // Trait reference (full table in README §2.4):
 //   - Defaults: MLX, Llama, HuggingFace.
-//   - Opt-in traits: Server, Macros, Fuzz, AnyLanguageModel.
+//   - Opt-in traits: Server, Macros, Fuzz.
 //   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
-//     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4). Those modules
-//     now compile unconditionally; consumers opt in by importing (or not
-//     importing) the products. See docs/MIGRATION-0.48.md.
+//     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4); AnyLanguageModel
+//     (PR A5 — now the always-compiled ManifoldAnyLanguageModel product).
+//     Those modules now compile unconditionally; consumers opt in by
+//     importing (or not importing) the products. See docs/MIGRATION-0.48.md.
 //   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
 //     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
 //     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
@@ -91,6 +92,13 @@ let package = Package(
         .library(name: "ManifoldOllama", targets: ["ManifoldOllama"]),
         .library(name: "ManifoldCloudSaaS", targets: ["ManifoldCloudSaaS"]),
         .library(name: "ManifoldCloud", targets: ["ManifoldCloud"]),
+        // v0.48 (PR A5): the AnyLanguageModel bridge graduated from the
+        // retired `AnyLanguageModel` trait to a standalone product. The
+        // external AnyLanguageModel package was always resolved (traits gate
+        // compilation, not resolution), so making the edge unconditional
+        // costs consumers nothing; opting in is now an `import
+        // ManifoldAnyLanguageModel` instead of a trait flag.
+        .library(name: "ManifoldAnyLanguageModel", targets: ["ManifoldAnyLanguageModel"]),
         .library(name: "ManifoldUI", targets: ["ManifoldUI"]),
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
@@ -115,7 +123,6 @@ let package = Package(
         .trait(name: "MLX", description: "Enable the MLX inference backend (requires Apple Silicon)"),
         .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
         .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
-        .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
@@ -597,7 +604,6 @@ let package = Package(
                 // ManifoldCloud shim re-exports both.
                 "ManifoldOllama",
                 "ManifoldCloudSaaS",
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
             path: "Sources/ManifoldBackendsUmbrella",
             swiftSettings: [
@@ -605,8 +611,23 @@ let package = Package(
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
-                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
+        ),
+        // AnyLanguageModel provider bridge (v0.48, PR A5 — formerly gated by
+        // the retired `AnyLanguageModel` trait inside the umbrella target).
+        // The dependency on the external AnyLanguageModel package is
+        // deliberately UNCONDITIONAL: the package was always resolved even
+        // when the trait was off, and the compiled library is lightweight.
+        // Consumers opt in by linking/importing this product; nothing else
+        // in the package depends on it, so a consumer that never imports it
+        // never links it. See docs/PROVIDER-BRIDGE.md.
+        .target(
+            name: "ManifoldAnyLanguageModel",
+            dependencies: [
+                "ManifoldInference",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
+            ],
+            path: "Sources/ManifoldAnyLanguageModel"
         ),
         // UI: SwiftUI views and view models — depends on runtime ports, not persistence adapters.
         .target(
@@ -919,14 +940,18 @@ let package = Package(
                 "ManifoldTestSupport",
                 "ManifoldBackendTestKit",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-                .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
+                // AnyLanguageModel bridge suites — unconditional since the
+                // trait was retired in v0.48 (PR A5). The direct edge to the
+                // external AnyLanguageModel package supplies the
+                // LanguageModel protocol the test doubles conform to.
+                "ManifoldAnyLanguageModel",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
             ],
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
-                .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
             ]
         ),
         .testTarget(

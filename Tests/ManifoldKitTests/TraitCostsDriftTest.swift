@@ -209,7 +209,7 @@ final class TraitCostsDriftTest: XCTestCase {
             guard let m = match, let nameRange = Range(m.range(at: 1), in: manifestSource) else { return }
             declaredDeps.insert(String(manifestSource[nameRange]))
         }
-        // Also include path-based packages (like local paths) — covered by "AnyLanguageModel"
+        // Also include path-based packages (declared with `path:` instead of `url:`)
         let pathPattern = #"\.package\s*\([^)]*path:\s*"[^"]*\/([^"\/]+?)""#
         let pathRegex = try NSRegularExpression(pattern: pathPattern)
         pathRegex.enumerateMatches(in: manifestSource, options: [], range: range) { match, _, _ in
@@ -225,7 +225,6 @@ final class TraitCostsDriftTest: XCTestCase {
                 // Some deps have alternate checkout names vs URL basename
                 let knownAlternates: [String: String] = [
                     "llama.swift": "llama.swift",
-                    "AnyLanguageModel": "AnyLanguageModel",
                     "EventSource": "EventSource",
                     "swift-nio-extras": "swift-nio-extras",
                     "hummingbird": "hummingbird",

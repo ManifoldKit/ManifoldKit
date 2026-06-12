@@ -27,7 +27,6 @@
 | `HuggingFace` | ManifoldHuggingFace | `swift-huggingface` | ~2 | — | +5026 | — |
 | `Server` | ManifoldServer + Hummingbird | `EventSource`, `swift-nio`, `swift-crypto`, `swift-collections`, `swift-atomics`, `swift-system` | ~74 | — | +12157 | — |
 | `Macros` | ManifoldMacrosPlugin + @ToolSchema | `swift-syntax` | ~11 | — | +0 | — |
-| `AnyLanguageModel` | AnyLanguageModel bridge | _(none beyond baseline)_ | — | — | — | — |
 | `Fuzz` | fuzz-chat executable (real backends) | _(none beyond baseline)_ | — | — | — | — |
 
 ¹ Checkout weight: disk space in `.build/checkouts/<dep>`. Fetched on first `swift package resolve` **regardless of trait set**.

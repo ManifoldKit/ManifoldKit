@@ -74,7 +74,7 @@ final class TraitAwareServerBackendProviderTests: XCTestCase {
         let selection = ServerBackendSelection(backend: .llama, modelPath: "model.gguf")
 
         XCTAssertThrowsError(try selection.validate(compiledBackends: emptyBuild)) { error in
-            XCTAssertEqual(error as? ServerError, .backendUnavailable("GGUF models require the Llama trait in this build."))
+            XCTAssertEqual(error as? ServerError, .backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. Add the manifold-llama companion package (pre-split builds: the Llama trait) — see docs/MIGRATION-0.48.md."))
         }
     }
 

@@ -13,9 +13,9 @@
 //   - `ManifoldHuggingFace` — Hub browse/download (default-on under
 //     `HuggingFace`, but exposed only via `ManifoldUIModelManagement` UI hooks).
 //   - `ManifoldTools`, `ManifoldAppIntents`, `ManifoldServer`,
-//     `ManifoldFuzz` — specialised opt-in modules. The AnyLanguageModel
-//     bridge ships inside `ManifoldBackends`, gated by the
-//     `AnyLanguageModel` trait.
+//     `ManifoldFuzz` — specialised opt-in modules.
+//   - `ManifoldAnyLanguageModel` — the AnyLanguageModel provider bridge
+//     (its own product since v0.48; the `AnyLanguageModel` trait is retired).
 //
 // `ManifoldInference` is re-exported explicitly because consumers who write a
 // custom backend, register a factory, or read `BackendName` need its surface

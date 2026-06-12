@@ -151,7 +151,6 @@ TRAIT_DEPS["HuggingFace"]="swift-huggingface"
 TRAIT_DEPS["Server"]="EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system"
 TRAIT_DEPS["Macros"]="swift-syntax"
 TRAIT_DEPS["Fuzz"]=""                     # fuzz-chat executable only
-TRAIT_DEPS["AnyLanguageModel"]=""         # AnyLanguageModel package always resolved
 TRAIT_DEPS["FoundationOnly"]=""           # override that removes deps; measured as baseline
 
 # Modules added per trait (informational, shown in the table)
@@ -162,7 +161,6 @@ TRAIT_MODULES["HuggingFace"]="ManifoldHuggingFace"
 TRAIT_MODULES["Server"]="ManifoldServer + Hummingbird"
 TRAIT_MODULES["Macros"]="ManifoldMacrosPlugin + @ToolSchema"
 TRAIT_MODULES["Fuzz"]="fuzz-chat executable (real backends)"
-TRAIT_MODULES["AnyLanguageModel"]="AnyLanguageModel bridge"
 TRAIT_MODULES["FoundationOnly"]="FoundationBackend only (removes MLX+Llama+HuggingFace defaults)"
 
 # Trait flags used for each measurement (added on top of baseline).
@@ -175,7 +173,6 @@ TRAIT_FLAGS["HuggingFace"]="--traits HuggingFace"
 TRAIT_FLAGS["Server"]="--disable-default-traits --traits Server"
 TRAIT_FLAGS["Macros"]="--disable-default-traits --traits Macros"
 TRAIT_FLAGS["Fuzz"]="--disable-default-traits --traits Fuzz,MLX,Llama"
-TRAIT_FLAGS["AnyLanguageModel"]="--disable-default-traits --traits AnyLanguageModel"
 TRAIT_FLAGS["FoundationOnly"]="--traits FoundationOnly"
 
 # Ordered list of traits to measure
@@ -186,7 +183,6 @@ TRAITS_TO_MEASURE=(
     HuggingFace
     Server
     Macros
-    AnyLanguageModel
     Fuzz
 )
 

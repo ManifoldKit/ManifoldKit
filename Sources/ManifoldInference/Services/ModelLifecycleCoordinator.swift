@@ -144,9 +144,11 @@ final class ModelLifecycleCoordinator {
                 + "build rather than unregistered: environment-gated types only resolve "
                 + "when their prerequisites are met (e.g. .foundation requires macOS 26 / "
                 + "iOS 26 with Apple Intelligence enabled; MLX and GGUF require their "
-                + "SwiftPM traits to be on). If you genuinely have not registered a backend "
-                + "for this type, register a BackendFactory (or call DefaultBackends.register) "
-                + "before loading models."
+                + "backend packages to be linked and registered — manifold-mlx / "
+                + "manifold-llama since the v0.48 split, see docs/MIGRATION-0.48.md). "
+                + "If you genuinely have not registered a backend for this type, register "
+                + "a BackendFactory (call DefaultBackends.register, or pass the companion "
+                + "registrar to quickStart(backends:)) before loading models."
             )
         }
 
@@ -183,9 +185,11 @@ final class ModelLifecycleCoordinator {
                 + "build rather than unregistered: environment-gated types only resolve "
                 + "when their prerequisites are met (e.g. .foundation requires macOS 26 / "
                 + "iOS 26 with Apple Intelligence enabled; MLX and GGUF require their "
-                + "SwiftPM traits to be on). If you genuinely have not registered a backend "
-                + "for this type, register a BackendFactory (or call DefaultBackends.register) "
-                + "before loading models."
+                + "backend packages to be linked and registered — manifold-mlx / "
+                + "manifold-llama since the v0.48 split, see docs/MIGRATION-0.48.md). "
+                + "If you genuinely have not registered a backend for this type, register "
+                + "a BackendFactory (call DefaultBackends.register, or pass the companion "
+                + "registrar to quickStart(backends:)) before loading models."
             )
         }
 

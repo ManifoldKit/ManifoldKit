@@ -88,20 +88,7 @@
   "method_version": "1",
   "notes": "IMPORTANT: Macros compiles swift-syntax as a COMPILER PLUGIN (host executable, -tool suffix). Adds ZERO bytes to the final app binary. All ~25 MB of swift-syntax plugin objects are build-time-only. Binary delta = 0 runtime. Build-time overhead: ~60-120s for 647-file swift-syntax tree (not cold-measured)."
 },
-  {
-  "trait": "AnyLanguageModel",
-  "modules_added": "AnyLanguageModel bridge",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "N/A",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "AnyLanguageModel package always resolved (unconditional in Package.resolved). Binary delta not separately measured; the library is lightweight (~100 KB estimated)."
-},{
+ {
   "trait": "Fuzz",
   "modules_added": "fuzz-chat executable (real backends)",
   "transitive_deps": [],

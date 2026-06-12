@@ -33,7 +33,6 @@ ManifoldKit's test targets are conditionally linked on Swift package traits:
 | `MLX` | yes | MLX backend, mlx-swift-lm dependency |
 | `Llama` | yes | LlamaBackend, llama.swift dependency |
 | `HuggingFace` | yes | HF model browser |
-| `AnyLanguageModel` | no | AnyLanguageModel bridge backend target |
 | `Server` | no | ManifoldServer |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 

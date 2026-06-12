@@ -1,7 +1,6 @@
 import ManifoldInference
 import Foundation
 
-#if AnyLanguageModel
 import AnyLanguageModel
 
 enum AnyLanguageModelStreamBridge {
@@ -55,4 +54,3 @@ enum AnyLanguageModelStreamBridge {
         return index < currentChars.count ? String(currentChars[index...]) : ""
     }
 }
-#endif

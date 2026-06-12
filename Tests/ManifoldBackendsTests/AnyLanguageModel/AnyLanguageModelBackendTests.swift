@@ -1,9 +1,8 @@
 import XCTest
 @testable import ManifoldInference
 
-#if AnyLanguageModel
 import AnyLanguageModel
-@testable import ManifoldBackends
+import ManifoldAnyLanguageModel
 
 final class AnyLanguageModelBackendTests: XCTestCase {
     func test_generate_streamsTextDeltas() async throws {
@@ -116,4 +115,3 @@ private struct MockLanguageModel: LanguageModel {
         return LanguageModelSession.ResponseStream(stream: stream)
     }
 }
-#endif

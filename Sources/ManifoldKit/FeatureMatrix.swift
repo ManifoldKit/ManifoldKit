@@ -44,6 +44,10 @@ public enum ManifoldCapability: String, CaseIterable, Sendable {
     case imageGeneration
     case modelDownload           // HuggingFace background download
     case embeddings
+    // providerBridge is no longer unlocked by any trait — the AnyLanguageModel
+    // bridge is the always-compiled ManifoldAnyLanguageModel product as of
+    // v0.48 (AnyLanguageModel trait retired in PR A5). Case stays: removing
+    // public enum cases is a separate API break with no consumer benefit.
     case providerBridge          // additional providers via the AnyLanguageModel bridge
 }
 
@@ -88,11 +92,6 @@ public enum FeatureMatrix {
             name: "HuggingFace",
             description: "Enable HuggingFace Hub search, browse, and download",
             unlocks: [.modelDownload]
-        ),
-        ManifoldTrait(
-            name: "AnyLanguageModel",
-            description: "Reach providers without a native backend (Gemini, xAI, Groq, Mistral, OpenRouter, and others) through the AnyLanguageModel bridge.",
-            unlocks: [.providerBridge]
         ),
         ManifoldTrait(
             name: "Server",
