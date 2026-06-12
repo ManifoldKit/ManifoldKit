@@ -272,8 +272,6 @@ extract_one "docs/QUICKSTART-RAG.md" "quickstart-rag"
 extract_one "docs/QUICKSTART-BRING-YOUR-OWN-UI.md" "quickstart-byo-ui"
 extract_one "docs/QUICKSTART-TOOLS.md" "quickstart-tools"
 extract_one "docs/QUICKSTART-APPINTENTS.md" "quickstart-appintents"
-extract_one "docs/QUICKSTART-IMAGE-GEN.md" "quickstart-image-gen"
-extract_one "docs/QUICKSTART-VIDEO-GEN.md" "quickstart-video-gen"
 extract_one "docs/QUICKSTART-VOICE.md" "quickstart-voice"
 extract_one "docs/WHY-MANIFOLDKIT.md" "why"
 
