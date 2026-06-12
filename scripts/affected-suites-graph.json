@@ -573,10 +573,13 @@
       "type": "test",
       "path": "Tests/APIFreezeTests",
       "deps": [
+        "ManifoldContract",
+        "ManifoldHardware",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
-        "ManifoldTestSupport"
+        "ManifoldTestSupport",
+        "ManifoldUI"
       ]
     },
     "ManifoldKitTests": {
