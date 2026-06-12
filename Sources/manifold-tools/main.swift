@@ -409,7 +409,7 @@ func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> an
         #endif
     case .llama:
         #if Llama
-        let hint = cli.modelPath ?? (model == scenario.backend.model ? nil : model)
+        let hint: String? = model == scenario.backend.model ? nil : model
         guard let modelURL = LocalModelDiscovery.findGGUFModel(pathOverride: cli.modelPath, nameHint: hint) else {
             struct LlamaModelNotFound: Error, CustomStringConvertible {
                 var description: String {
@@ -428,7 +428,7 @@ func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> an
         #endif
     case .mlx:
         #if MLX
-        let hint = cli.modelPath ?? (model == scenario.backend.model ? nil : model)
+        let hint: String? = model == scenario.backend.model ? nil : model
         guard let modelURL = LocalModelDiscovery.findMLXModelDirectory(pathOverride: cli.modelPath, nameHint: hint) else {
             struct MLXModelNotFound: Error, CustomStringConvertible {
                 var description: String {
@@ -477,14 +477,13 @@ enum LocalModelDiscovery {
             return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
         }
         let selector = envHint ?? nameHint
-        return searchModelsDirectory(nameHint: selector, isDirectory: true) { url in
+        return searchModelsDirectory(nameHint: selector) { url in
             isValidMLXDirectory(url)
         }
     }
 
     private static func searchModelsDirectory(
         nameHint: String?,
-        isDirectory: Bool = false,
         isValid: (URL) -> Bool
     ) -> URL? {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
