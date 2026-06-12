@@ -99,6 +99,7 @@ final class InferenceBackendContractTests: XCTestCase {
     )
     #endif
 
+    #if CloudSaaS
     /// OpenAI Responses API participant (Phase 3/Responses). Routes
     /// through ``CloudPayloadHandler/openAIResponses`` for the
     /// extractEvents surface — for the Responses wire shape that means
@@ -143,6 +144,8 @@ final class InferenceBackendContractTests: XCTestCase {
         wireFormat: .sse
     )
 
+    #endif
+
     #if Ollama
     private static let ollamaParticipant = Participant(
         label: "ollama.chat",
@@ -180,6 +183,7 @@ final class InferenceBackendContractTests: XCTestCase {
     )
     #endif
 
+    #if CloudSaaS
     private static let claudeParticipant = Participant(
         label: "anthropic.messages",
         fixtureDirectory: "claude",
@@ -219,6 +223,7 @@ final class InferenceBackendContractTests: XCTestCase {
         ),
         wireFormat: .sse
     )
+    #endif
 
     private static let participants: [Participant] = {
         var list: [Participant] = []

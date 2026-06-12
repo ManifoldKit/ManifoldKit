@@ -169,8 +169,11 @@ final class OpenAIStreamEventExtractorTests: XCTestCase {
 
     func test_makeOpenAIStreamConsumer_returnsNilForOtherProviders() {
         XCTAssertNil(CloudPayloadHandler.claude.makeOpenAIStreamConsumer())
-        XCTAssertNil(CloudPayloadHandler.ollama.makeOpenAIStreamConsumer())
         XCTAssertNil(CloudPayloadHandler.openAIResponses.makeOpenAIStreamConsumer())
+#if Ollama
+        // `.ollama` is published by ManifoldOllama; only reachable when both families build.
+        XCTAssertNil(CloudPayloadHandler.ollama.makeOpenAIStreamConsumer())
+#endif
     }
 
     // MARK: - Helpers
