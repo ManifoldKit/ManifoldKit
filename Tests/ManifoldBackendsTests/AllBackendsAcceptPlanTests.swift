@@ -85,40 +85,7 @@ final class AllBackendsAcceptPlanTests: XCTestCase {
 
     // MARK: - Local Backends (hardware-gated)
 
-    #if Llama
-    func test_llamaBackendAcceptsPlan() async throws {
-        try XCTSkipIf(isSimulator(), "Metal unavailable in simulator")
-        // No fixture available here: the test's contract is that the call
-        // compiles and reaches the backend. Use a bogus URL and expect failure;
-        // the point is that `loadModel(from:plan:)` is the only signature.
-        let backend = LlamaBackend()
-        do {
-            try await backend.loadModel(
-                from: URL(fileURLWithPath: "/tmp/nonexistent.gguf"),
-                plan: .testStub(effectiveContextSize: 512)
-            )
-            XCTFail("Expected load to fail for nonexistent file")
-        } catch {
-            // Acceptable — the protocol signature accepted a plan; load failed on I/O.
-        }
-    }
-    #endif
 
-    #if MLX
-    func test_mlxBackendAcceptsPlan() async throws {
-        try XCTSkipIf(isSimulator(), "Metal unavailable in simulator")
-        let backend = MLXBackend()
-        do {
-            try await backend.loadModel(
-                from: URL(fileURLWithPath: "/tmp/nonexistent-mlx-dir"),
-                plan: .testStub(effectiveContextSize: 512)
-            )
-            XCTFail("Expected load to fail for nonexistent directory")
-        } catch {
-            // Acceptable — the protocol signature accepted a plan; load failed on I/O.
-        }
-    }
-    #endif
 
     // MARK: - Helpers
 

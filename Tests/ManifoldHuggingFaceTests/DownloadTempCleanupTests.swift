@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Integration tests for `BackgroundDownloadManager.cleanupStaleTempFiles()`.
@@ -226,4 +225,3 @@ final class DownloadTempCleanupTests: XCTestCase {
         XCTAssertEqual(BackgroundDownloadManager.tempFileExtension, "download")
     }
 }
-#endif

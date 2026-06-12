@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import HuggingFace
@@ -326,4 +325,3 @@ public final class HuggingFaceService: HuggingFaceServiceProtocol {
             .replacingOccurrences(of: "_", with: " ")
     }
 }
-#endif

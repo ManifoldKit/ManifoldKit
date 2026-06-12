@@ -72,10 +72,12 @@ internal struct ServerBackendSelection: Equatable, Sendable {
 /// Validates the CLI's backend selection against ``CompiledBackends`` and
 /// lazily loads the requested backend.
 ///
-/// Naming note (v0.48): "trait-aware" is only literally true for the local
-/// families — MLX and Llama remain SwiftPM traits until the companion-package
-/// split (C-stream). The Ollama / SaaS families compile unconditionally, so
-/// their `CompiledBackends` members are constant `true` and the injected
+/// Naming note (v0.48): "trait-aware" is historical — no backend trait
+/// survives the C2 companion split. The `mlx` / `llama` selections always
+/// fail with a pointer to the manifold-mlx / manifold-llama companion
+/// packages; `CompiledBackends.current` never contains them in a core build.
+/// The Ollama / SaaS families compile unconditionally, so their
+/// `CompiledBackends` members are constant `true` and the injected
 /// `compiledBackends` value only restricts them in tests.
 internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     internal let selection: ServerBackendSelection
@@ -175,46 +177,15 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     }
 
     private func loadMLXBackend(modelOverride: String?) async throws -> any InferenceBackend {
-        #if MLX
-        let rawPath = selection.modelPath ?? modelOverride ?? selection.model
-        guard let rawPath else {
-            throw ServerError.invalidConfiguration("MLX backend requires --model-path for a local snapshot or --model for a model identifier.")
-        }
-        let url = URL(fileURLWithPath: rawPath).standardizedFileURL
-        guard let modelInfo = ModelInfo(mlxDirectory: url) else {
-            throw ServerError.invalidConfiguration("MLX model path must be a directory containing config.json and .safetensors files: \(url.path)")
-        }
-        let backend = MLXBackend()
-        let plan = ModelLoadPlan.compute(for: modelInfo, requestedContextSize: 4096, strategy: backend.capabilities.memoryStrategy)
-        guard plan.verdict != .deny else {
-            throw ServerError.invalidConfiguration("MLX model does not fit available memory at the requested context size.")
-        }
-        try await backend.loadModel(from: modelInfo.url, plan: plan)
-        return backend
-        #else
-        throw ServerError.backendUnavailable("No MLX backend is compiled into this build. Add the manifold-mlx companion package (pre-split builds: the MLX trait) — see docs/MIGRATION-0.48.md.")
-        #endif
+        // MLXBackend moved to the manifold-mlx companion package (v0.48,
+        // PR C2, #1749) — core's server cannot load it.
+        throw ServerError.backendUnavailable("No MLX backend is compiled into this build. The MLX family lives in the manifold-mlx companion package — see docs/MIGRATION-0.48.md.")
     }
 
     private func loadLlamaBackend() async throws -> any InferenceBackend {
-        #if Llama
-        guard let rawPath = selection.modelPath else {
-            throw ServerError.invalidConfiguration("Llama backend requires --model-path pointing to a .gguf file.")
-        }
-        let url = URL(fileURLWithPath: rawPath).standardizedFileURL
-        guard let modelInfo = ModelInfo(ggufURL: url) else {
-            throw ServerError.invalidConfiguration("Llama model path must point to a valid .gguf file: \(url.path)")
-        }
-        let backend = LlamaBackend()
-        let plan = ModelLoadPlan.compute(for: modelInfo, requestedContextSize: 4096, strategy: backend.capabilities.memoryStrategy)
-        guard plan.verdict != .deny else {
-            throw ServerError.invalidConfiguration("GGUF model does not fit available memory at the requested context size.")
-        }
-        try await backend.loadModel(from: modelInfo.url, plan: plan)
-        return backend
-        #else
-        throw ServerError.backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. Add the manifold-llama companion package (pre-split builds: the Llama trait) — see docs/MIGRATION-0.48.md.")
-        #endif
+        // LlamaBackend moved to the manifold-llama companion package (v0.48,
+        // PR C2, #1749) — core's server cannot load it.
+        throw ServerError.backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. The GGUF family lives in the manifold-llama companion package — see docs/MIGRATION-0.48.md.")
     }
 
     private func loadFoundationBackend() async throws -> any InferenceBackend {

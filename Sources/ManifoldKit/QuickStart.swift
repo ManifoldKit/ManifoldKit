@@ -17,9 +17,7 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldBackends
 import ManifoldUI
-#if HuggingFace
 import ManifoldHuggingFace
-#endif
 
 // MARK: - Backend availability diagnostics
 //
@@ -101,17 +99,12 @@ public enum ManifoldKit {
     /// The download is **skipped** (with a log entry, never an error) when any
     /// of the following is true:
     /// - A model is already available (Foundation or local disk).
-    /// - The `HuggingFace` SwiftPM trait is absent (no download machinery).
     /// - No *registered* backend can load the seed's model type — checked
     ///   against the live ``InferenceService`` registration state, so backends
     ///   injected via ``quickStart(backends:configuration:seed:)`` count.
+    ///   The curated GGUF seed therefore requires the manifold-llama companion
+    ///   package's `LlamaBackends` registrar (see ``QuickStartSeed``).
     /// - A network error occurs (the app launches with the empty state instead).
-    ///
-    /// ### Trait requirements
-    ///
-    /// Seeding requires the `HuggingFace` trait (default-on). Without it the
-    /// `seed` parameter is ignored and this behaves identically to
-    /// ``quickStart(configuration:)``. See ``QuickStartSeed`` for details.
     ///
     /// ### Example
     ///
@@ -197,7 +190,7 @@ public enum ManifoldKit {
     ///     policy runs. Nil skips seeding entirely.
     ///   - makeModelContainer: Factory closure that produces the SwiftData container.
     ///   - downloadManagerOverride: Injectable download manager for tests. When
-    ///     nil and `#if HuggingFace`, a `BackgroundDownloadManager` is created.
+    ///     nil, a `BackgroundDownloadManager` is created.
     ///   - foundationAvailableOverride: Test seam for the seed path's "is a
     ///     zero-cost Foundation model available?" probe, which otherwise
     ///     depends on the host's Apple Intelligence state. Nil uses the live
@@ -239,7 +232,9 @@ public enum ManifoldKit {
             // registrars (companion packages, #1749). Both must run before the
             // registry refresh, the starter seed, and the selection policy —
             // all three consult the live registration state below.
-            DefaultBackends.register(with: bootstrap.inferenceService)
+            // (`_register` is the package-visible twin of the deprecated
+            // public `DefaultBackends.register` — same fold, no warning.)
+            DefaultBackends._register(with: bootstrap.inferenceService)
             for registrar in backends {
                 registrar.register(with: bootstrap.inferenceService)
             }
@@ -375,7 +370,8 @@ public enum ManifoldKit {
                 if !foundationAvailable && !seedCompatibility.isSupported {
                     Log.quickStart.info("quickStart(seed:): no registered backend can load \(String(describing: seed.modelType), privacy: .public) models — seed skipped. Register a compatible backend (e.g. quickStart(backends: [LlamaBackends.self]) with the manifold-llama companion package) to enable the starter download.")
                 } else if !foundationAvailable {
-                    #if HuggingFace
+                    // Download machinery is always compiled in since v0.48
+                    // (PR C2 — the HuggingFace trait is retired).
                     let dm: any BackgroundDownloadManaging = downloadManagerOverride
                         ?? BackgroundDownloadManager()
                     let storageService = storageServiceOverride ?? ModelStorageService()
@@ -384,21 +380,6 @@ public enum ManifoldKit {
                         storageService: storageService,
                         downloadManager: dm
                     )
-                    #else
-                    // HuggingFace trait absent: no download machinery — skip.
-                    // If a downloadManagerOverride was supplied (test injection),
-                    // still honour it so tests work without the real HF trait.
-                    if let dm = downloadManagerOverride {
-                        let storageService = storageServiceOverride ?? ModelStorageService()
-                        _ = await _performSeedDownload(
-                            seed: seed,
-                            storageService: storageService,
-                            downloadManager: dm
-                        )
-                    } else {
-                        Log.quickStart.info("quickStart(seed:): HuggingFace trait not compiled in — seed skipped")
-                    }
-                    #endif
                 }
             }
 

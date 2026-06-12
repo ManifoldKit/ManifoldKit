@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -182,4 +181,3 @@ final class FindingsSinkTests: XCTestCase {
         XCTAssertTrue(md.contains("2 total runs"))
     }
 }
-#endif

@@ -10,6 +10,11 @@
 #   "future direction" mentioned in SE-0450 is not yet implemented (as of
 #   Swift 6.1 / Xcode 26). See docs/TRAIT-COSTS.md for the full story.
 #
+#   v0.48 (PR C2): the MLX / Llama / HuggingFace / Fuzz / FoundationOnly traits
+#   are retired — those families live in the manifold-mlx / manifold-llama
+#   companion packages. Only Server and Macros remain measurable here; the
+#   baseline is a plain (trait-less) `swift build`.
+#
 # Usage:
 #   scripts/measure-trait-costs.sh            # full measurement
 #   scripts/measure-trait-costs.sh --quick    # skip build-time measurements
@@ -48,10 +53,10 @@ log() { echo "==> $*" >&2; }
 # Return stripped binary size in bytes for a given trait flag string.
 # Builds release, strips, then measures the produced library objects.
 # Wipes only per-build state (.build/debug .build/release .build/build.db)
-# but preserves .build/checkouts and .build/artifacts so the xcframework
-# does not need to be re-downloaded on every iteration.
+# but preserves .build/checkouts and .build/artifacts so dependencies do not
+# need to be re-fetched on every iteration.
 measure_binary_kb() {
-    local trait_flags="$1"   # e.g. "--disable-default-traits" or "--traits MLX"
+    local trait_flags="$1"   # e.g. "" (baseline) or "--traits Server"
     local label="$2"
 
     log "Building [$label] release..."
@@ -145,45 +150,25 @@ artifact_size_mb() {
 # attributed somewhere.
 
 declare -A TRAIT_DEPS
-TRAIT_DEPS["MLX"]="mlx-swift mlx-swift-lm"
-TRAIT_DEPS["Llama"]="llama.swift"          # xcframework in artifacts/llama.swift
-TRAIT_DEPS["HuggingFace"]="swift-huggingface"
 TRAIT_DEPS["Server"]="EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system"
 TRAIT_DEPS["Macros"]="swift-syntax"
-TRAIT_DEPS["Fuzz"]=""                     # fuzz-chat executable only
-TRAIT_DEPS["FoundationOnly"]=""           # override that removes deps; measured as baseline
 
 # Modules added per trait (informational, shown in the table)
 declare -A TRAIT_MODULES
-TRAIT_MODULES["MLX"]="ManifoldMLX + StableDiffusion + FluxSwift"
-TRAIT_MODULES["Llama"]="ManifoldLlama"
-TRAIT_MODULES["HuggingFace"]="ManifoldHuggingFace"
 TRAIT_MODULES["Server"]="ManifoldServer + Hummingbird"
 TRAIT_MODULES["Macros"]="ManifoldMacrosPlugin + @ToolSchema"
-TRAIT_MODULES["Fuzz"]="fuzz-chat executable (real backends)"
-TRAIT_MODULES["FoundationOnly"]="FoundationBackend only (removes MLX+Llama+HuggingFace defaults)"
 
 # Trait flags used for each measurement (added on top of baseline).
-# Baseline = --disable-default-traits (no MLX, no Llama, no HuggingFace).
-# Exception: FoundationOnly is a consumer-override trait, not additive.
+# Baseline = plain `swift build` — there are no default traits since v0.48.
 declare -A TRAIT_FLAGS
-TRAIT_FLAGS["MLX"]="--traits MLX"
-TRAIT_FLAGS["Llama"]="--traits Llama"
-TRAIT_FLAGS["HuggingFace"]="--traits HuggingFace"
-TRAIT_FLAGS["Server"]="--disable-default-traits --traits Server"
-TRAIT_FLAGS["Macros"]="--disable-default-traits --traits Macros"
-TRAIT_FLAGS["Fuzz"]="--disable-default-traits --traits Fuzz,MLX,Llama"
-TRAIT_FLAGS["FoundationOnly"]="--traits FoundationOnly"
+TRAIT_FLAGS["Server"]="--traits Server"
+TRAIT_FLAGS["Macros"]="--traits Macros"
 
-# Ordered list of traits to measure
+# Ordered list of traits to measure. MLX/Llama/HuggingFace/Fuzz/FoundationOnly
+# were retired in v0.48 PR C2 (families moved to companion packages).
 TRAITS_TO_MEASURE=(
-    FoundationOnly
-    MLX
-    Llama
-    HuggingFace
     Server
     Macros
-    Fuzz
 )
 
 # ─── main ─────────────────────────────────────────────────────────────────────
@@ -203,11 +188,6 @@ else
     CHECKOUT_TOTAL=$(du -sm "$REPO_ROOT/.build/checkouts" 2>/dev/null | awk '{print $1}')
     ARTIFACT_TOTAL=$(du -sm "$REPO_ROOT/.build/artifacts" 2>/dev/null | awk '{print $1}')
 
-    MLX_SWIFT_MB=$(checkout_size_mb mlx-swift)
-    MLX_SWIFT_LM_MB=$(checkout_size_mb mlx-swift-lm)
-    LLAMA_SWIFT_MB=$(checkout_size_mb llama.swift)
-    LLAMA_ARTIFACT_MB=$(artifact_size_mb llama.swift)
-    HF_MB=$(checkout_size_mb swift-huggingface)
     SYNTAX_MB=$(checkout_size_mb swift-syntax)
     NIO_MB=$(checkout_size_mb swift-nio)
     HB_MB=$(checkout_size_mb hummingbird 2>/dev/null || echo 0)  # may not exist standalone
@@ -218,21 +198,20 @@ else
     METHOD_VERSION="1"
 
     log "Checkout total: ${CHECKOUT_TOTAL} MB"
-    log "Artifact total: ${ARTIFACT_TOTAL} MB (incl. llama.cpp xcframework)"
+    log "Artifact total: ${ARTIFACT_TOTAL} MB"
 
     # ── baseline measurement ──────────────────────────────────────────────────
-    # Baseline = --disable-default-traits.
+    # Baseline = plain `swift build` (no traits — there are no defaults).
     # We measure each trait ADDED TO THIS BASELINE (not combinations).
-    # Deltas don't sum — a consumer adding both MLX and Llama pays less than
-    # the two individual deltas, because shared infrastructure (ManifoldInference,
-    # ManifoldModelCatalog, etc.) is counted once.
+    # Deltas don't sum — adding multiple traits pays shared infrastructure
+    # (ManifoldInference, ManifoldModelCatalog, etc.) once.
 
-    BASELINE_FLAGS="--disable-default-traits"
+    BASELINE_FLAGS=""
 
     if [[ "$QUICK" -eq 0 ]]; then
-        log "Measuring baseline binary size (--disable-default-traits)..."
+        log "Measuring baseline binary size (plain build)..."
         BASELINE_KB=$(measure_binary_kb "$BASELINE_FLAGS" "baseline")
-        log "Measuring baseline build time (--disable-default-traits)..."
+        log "Measuring baseline build time (plain build)..."
         BASELINE_S=$(measure_build_seconds "$BASELINE_FLAGS")
         log "Baseline: ${BASELINE_KB} KB, ${BASELINE_S}s"
     else
@@ -254,18 +233,14 @@ else
         flags="${TRAIT_FLAGS[$trait]}"
         deps="${TRAIT_DEPS[$trait]:-}"
 
-        # Checkout MB: sum attributed checkouts
+        # Checkout MB: sum attributed checkouts. (No binary artifacts remain
+        # in core since v0.48 — the llama.cpp xcframework moved to the
+        # manifold-llama companion package.)
         checkout_mb=0
         artifact_mb=0
         for dep in $deps; do
-            if [[ "$dep" == "llama.swift" ]]; then
-                # llama.swift lands in artifacts, not checkouts
-                mb=$(artifact_size_mb llama.swift)
-                artifact_mb=$((artifact_mb + mb))
-            else
-                mb=$(checkout_size_mb "$dep")
-                checkout_mb=$((checkout_mb + mb))
-            fi
+            mb=$(checkout_size_mb "$dep")
+            checkout_mb=$((checkout_mb + mb))
         done
         TRAIT_CHECKOUT_MB[$trait]=$checkout_mb
         TRAIT_ARTIFACT_MB[$trait]=$artifact_mb
@@ -351,7 +326,7 @@ else
         printf '{\n'
         printf '  "schema_version": "1",\n'
         printf '  "method_version": "%s",\n' "$METHOD_VERSION"
-        printf '  "note": "Deltas are each trait added to the disable-default-traits baseline. They do NOT sum — adding multiple traits pays shared infrastructure once.",\n'
+        printf '  "note": "Deltas are each trait added to the plain (trait-less) build baseline. They do NOT sum — adding multiple traits pays shared infrastructure once.",\n'
         printf '  "checkout_total_mb": %s,\n' "$CHECKOUT_TOTAL"
         printf '  "artifact_total_mb": %s,\n' "$ARTIFACT_TOTAL"
         printf '  "generated_at": "%s",\n' "$MEASURED_AT"
@@ -439,9 +414,9 @@ for trait in traits {
 lines.append("")
 lines.append("¹ Checkout weight: disk space in `.build/checkouts/<dep>`. Fetched on first `swift package resolve` **regardless of trait set**.")
 lines.append("")
-lines.append("² Artifact MB: `.build/artifacts/llama.swift` — the pre-built llama.cpp xcframework. Downloaded on first resolve regardless of trait set.")
+lines.append("² Artifact MB: prebuilt binary artifacts in `.build/artifacts`. None remain in core since v0.48 — the ~617 MB llama.cpp xcframework moved to manifold-llama.")
 lines.append("")
-lines.append("³ Approx. binary delta: sum of stripped `.o` sizes for the specific modules each trait adds, measured from a release build on arm64 macOS. Not the total build delta vs a baseline — shared infrastructure (ManifoldInference, ManifoldRuntime, etc.) is excluded and counted once. Not the final linked binary size — dead-stripping by the app linker typically reduces this further. `Macros` shows 0 because swift-syntax compiles as a build-time compiler plugin (host executable), not a runtime library. `Llama` shows 8 KB because LlamaSwift is a prebuilt xcframework (the 617 MB xcframework column reflects its actual link-time cost).")
+lines.append("³ Approx. binary delta: sum of stripped `.o` sizes for the specific modules each trait adds, measured from a release build on arm64 macOS. Not the total build delta vs a baseline — shared infrastructure (ManifoldInference, ManifoldRuntime, etc.) is excluded and counted once. Not the final linked binary size — dead-stripping by the app linker typically reduces this further. `Macros` shows 0 because swift-syntax compiles as a build-time compiler plugin (host executable), not a runtime library.")
 lines.append("")
 lines.append("⁴ Approx. cold-build delta: wall-clock seconds added to a release build on Apple Silicon (`.build/{debug,release,build.db}` wiped between runs; `.build/checkouts` and `.build/artifacts` kept warm). Variance ±10–20 s on a loaded machine.")
 lines.append("")
@@ -456,14 +431,14 @@ lines.append("## Named build-mode combinations")
 lines.append("")
 lines.append("These map to the modes in `scripts/build-modes.sh`. Costs here are **not** the sum of individual rows — shared infrastructure is compiled once.")
 lines.append("")
-lines.append("| Mode | Traits enabled | Approx. checkout+artifact MB¹ | Notes |")
-lines.append("|------|----------------|-------------------------------|-------|")
-lines.append("| **FoundationOnly** | `FoundationOnly` | ~\(checkoutTotal) cloned, ~0 compiled | ≤5 MB compiled; all ~\(checkoutTotal + artifactTotal) MB fetched once |")
-lines.append("| **local-only** (default) | `MLX`, `Llama`, `HuggingFace` | ~\(checkoutTotal) cloned | Default when no `traits:` override; on-device only |")
-lines.append("| **cloud-only** | _(none — cloud always compiled since v0.48; build the `ManifoldOllama` / `ManifoldCloudSaaS` products)_ | ~\(checkoutTotal) cloned | Pure HTTP; no local model deps compiled |")
-lines.append("| **full** | all non-Fuzz traits | ~\(checkoutTotal) cloned | ~\(artifactTotal) MB xcframework + Metal compile |")
+lines.append("| Mode | Traits enabled | Notes |")
+lines.append("|------|----------------|-------|")
+lines.append("| **default** | _(none — there are no default traits since v0.48)_ | Full core surface: Foundation + Cloud backends, UI, persistence, HuggingFace downloads |")
+lines.append("| **cloud-only** | _(none — build the `ManifoldOllama` / `ManifoldCloudSaaS` products)_ | Pure HTTP; link-out (not compile-out) of unwanted families — see docs/FIPS.md |")
+lines.append("| **server** | `Server` | Adds Hummingbird + the OpenAI-compatible HTTP server executable |")
+lines.append("| **macros** | `Macros` | Adds swift-syntax (~647 files) for the @ToolSchema plugin |")
 lines.append("")
-lines.append("¹ All modes clone the same ~\(checkoutTotal) MB of source checkouts plus the ~\(artifactTotal) MB llama.cpp xcframework on first resolve. The FoundationOnly mode _compiles_ ~5 MB. See footnote 1 in the table above and the resolution note.")
+lines.append("Local inference (MLX / GGUF) is an extra `.package` line, not a trait: see the companion packages.")
 lines.append("")
 lines.append("<!-- END GENERATED COMBINATIONS -->")
 
@@ -497,10 +472,18 @@ write_full_doc() {
 # ManifoldKit — Per-trait cost table
 
 > **Generated document.** The table sections are regenerated from `docs/trait-costs.json`
-> by `scripts/measure-trait-costs.sh`. The "Why the clone is heavy" section is
-> hand-written prose (marked below). Do not edit the `BEGIN GENERATED` … `END GENERATED`
+> by `scripts/measure-trait-costs.sh`. The prose section is
+> hand-written (marked below). Do not edit the `BEGIN GENERATED` … `END GENERATED`
 > regions by hand — re-run the script instead. `TraitCostsDriftTest` fails CI if
 > the generated regions drift from the JSON.
+>
+> **v0.48 (PR C2):** the MLX / Llama / HuggingFace / Fuzz / FoundationOnly traits
+> are retired. The heavy MLX and llama.cpp families (and their mlx-swift /
+> mlx-swift-lm / llama.swift / swift-transformers dependencies) moved to the
+> [manifold-mlx](https://github.com/roryford/manifold-mlx) and
+> [manifold-llama](https://github.com/roryford/manifold-llama) companion
+> packages (#1749). A plain `swift build` of core no longer clones or compiles
+> any of them. Only two genuine build-cost levers remain.
 
 PREAMBLE
 
@@ -512,33 +495,15 @@ PREAMBLE
 
 <!-- BEGIN HAND-WRITTEN — edit freely; drift test does not cover this section -->
 
-## Why the clone is heavy — and what we're doing about it
+## Why the heavy families left — the resolution gap in SwiftPM traits
 
-### The resolution gap in SwiftPM traits
+SwiftPM trait support ([SE-0450](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md), landed Swift 6.1) gates *compilation* and *linking* — whether a target is compiled and whether a library product is linked into your binary. It does **not** gate dependency *resolution*: every `.package(url:)` entry in `Package.swift` is cloned into `.build/checkouts` on first `swift package resolve`, regardless of the active trait set. SE-0450 explicitly calls out fetch-pruning as a descoped "Future direction".
 
-SwiftPM trait support ([SE-0450](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md), landed Swift 6.1) gates *compilation* and *linking* — whether a target is compiled and whether a library product is linked into your binary. It does **not** gate dependency *resolution*: every `.package(url:)` entry in `Package.swift` is cloned into `.build/checkouts` on first `swift package resolve`, regardless of the active trait set.
-
-SE-0450 explicitly calls out fetch-pruning as a "Future direction" that was descoped from the initial implementation. Binary targets ([SE-0305](https://github.com/apple/swift-evolution/blob/main/proposals/0305-swiftpm-binary-target-improvements.md)) download the artifact-bundle index eagerly and fetch xcframeworks unconditionally — the index-based conditional fetch mechanism only helps executable plugins, not Apple-platform libraries.
-
-**What this means in practice:** even a `FoundationOnly` consumer (no MLX, no Llama, no HuggingFace) clones ~259 MB of source checkouts and downloads the ~617 MB llama.cpp xcframework on first resolve. The *compiled* artifact is still ≤5 MB (CI-enforced by `scripts/check-foundation-only-bundle.sh` and the `foundation-only-build` CI gate). The binary you ship to the App Store is bounded by what the linker pulls in — not by what SwiftPM cloned.
+Through v0.47 that meant even a Foundation-only consumer cloned ~259 MB of source checkouts and downloaded the ~617 MB llama.cpp xcframework on first resolve. The only resolution-pruning mechanism SwiftPM has today is moving a dependency into a separate package that consumers opt into explicitly (the Vapor/onnxruntime-gpu pattern) — which is exactly what v0.48 did: the MLX and llama.cpp families live in the manifold-mlx / manifold-llama companion packages, and a core-only consumer never fetches their dependencies at all. (Traits also proved unreliable at the resolution boundary — see the #1737 diagnosis in `docs/MIGRATION-0.48.md`.)
 
 ### App Store reality
 
-The checkout weight is a **one-time developer machine cost** (and a CI cache line), not a user-visible cost. What the user downloads is the stripped, dead-stripped App Store binary. For `FoundationOnly` builds that is verifiably ≤5 MB for the ManifoldBackends module.
-
-**Important runtime note:** Apple's App Store Review Guidelines §2.5.2 prohibit downloading executable code at runtime. Model *weights* are fine; inference *runtimes* must ship in the app bundle. That's why the slim `FoundationOnly` packaging matters for indie apps: the Apple Foundation Models runtime is provided by the OS at zero bundle cost, making it the only inference path where the runtime itself doesn't add to your IPA.
-
-See [docs/AppStoreSubmission.md](AppStoreSubmission.md) for the full submission checklist, including the encryption-export classification and privacy-manifest requirements for each build mode.
-
-### Roadmap candidates under evaluation
-
-These are directions under active evaluation — **not commitments**. ManifoldKit's module seams are already cut to make them tractable:
-
-**(a) Satellite packages for heavy families.** The only resolution-pruning mechanism SwiftPM has today is moving a dependency into a separate package that consumers opt into explicitly (the Vapor/onnxruntime-gpu pattern). `ManifoldMLX`, `ManifoldLlama`, and `ManifoldCloud` already depend on `ManifoldInference` (or `ManifoldContract`) directly and carry zero cross-family symbols — the seams exist. The cost is an extra `.package(url:)` line in consumer manifests and a separate release cadence.
-
-**(b) Prebuilt mlx-swift xcframework.** The dominant cold-build cost on Apple Silicon is compiling mlx-swift's Metal shaders (~117 MB checkout, ~100 MB compiled with Metal shader IR). Firebase/Google ship their ML SDKs as prebuilt xcframeworks to avoid exactly this. If ml-explore publishes a prebuilt xcframework tag, ManifoldKit can switch `mlx-swift` to a binary target and eliminate the Metal compile entirely for consumers. Tracked in umbrella issue #1002.
-
-**(c) Adopt toolchain trait-pruning when it ships.** SE-0450 names fetch-pruning as an explicit future direction. When it lands in a Swift toolchain that ManifoldKit's minimum deployment supports, dependency-attributed checkout weights (the table above) will drop toward zero for traits the consumer hasn't enabled. No code changes required on ManifoldKit's side — the `Package.swift` trait declarations are already the right shape.
+What the user downloads is the stripped, dead-stripped App Store binary; core's compiled overhead without the companion packages is small (no ML runtimes at all). Apple's App Store Review Guidelines §2.5.2 prohibit downloading executable code at runtime — model *weights* are fine; inference *runtimes* must ship in the app bundle. The Apple Foundation Models runtime is provided by the OS at zero bundle cost, making a core-only (Foundation + cloud) app the leanest possible shape. See [docs/AppStoreSubmission.md](AppStoreSubmission.md) for the full submission checklist.
 
 <!-- END HAND-WRITTEN -->
 PROSE

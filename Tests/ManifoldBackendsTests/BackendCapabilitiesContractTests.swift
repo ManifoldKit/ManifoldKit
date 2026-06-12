@@ -77,77 +77,7 @@ final class BackendCapabilitiesContractTests: XCTestCase {
 
     // MARK: - Local backends
 
-#if Llama
-    func test_llamaBackend_reportNotRemote() throws {
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
-                          "LlamaBackend requires Metal (unavailable in simulator)")
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "LlamaBackend requires Apple Silicon")
-        XCTAssertFalse(LlamaBackend().capabilities.isRemote,
-                       "LlamaBackend runs on-device — isRemote must be false")
-    }
 
-    func test_llamaBackend_supportsToolCalling() throws {
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
-                          "LlamaBackend requires Metal (unavailable in simulator)")
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "LlamaBackend requires Apple Silicon")
-        XCTAssertTrue(LlamaBackend().capabilities.supportsToolCalling,
-                      "LlamaBackend advertises tool calling for Gemma 4 and parser-backed local tool-call formats")
-    }
-
-    func test_llamaBackend_doesNotSupportNativeJSONMode() throws {
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
-                          "LlamaBackend requires Metal (unavailable in simulator)")
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "LlamaBackend requires Apple Silicon")
-        XCTAssertFalse(LlamaBackend().capabilities.supportsNativeJSONMode,
-                       "LlamaBackend does not expose a native JSON mode")
-    }
-
-    /// `LlamaGenerationDriver` already filters thinking markers and emits
-    /// `.thinkingToken` / `.thinkingCompleted`, so the capability flag must
-    /// advertise it for consumers gating reasoning UI (#480).
-    func test_llamaBackend_supportsThinking() throws {
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice,
-                          "LlamaBackend requires Metal (unavailable in simulator)")
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "LlamaBackend requires Apple Silicon")
-        XCTAssertTrue(LlamaBackend().capabilities.supportsThinking,
-                      "LlamaBackend emits thinking events via LlamaGenerationDriver — supportsThinking must be true")
-    }
-#endif
-
-#if MLX
-    func test_mlxBackend_reportNotRemote() throws {
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "MLXBackend requires Apple Silicon")
-        XCTAssertFalse(MLXBackend().capabilities.isRemote,
-                       "MLXBackend runs on-device — isRemote must be false")
-        XCTAssertFalse(MLXBackend().capabilities.supportsNativeJSONMode,
-                       "MLXBackend does not expose a native JSON mode")
-    }
-
-    /// MLXBackend routes generation through `ThinkingTransform` when
-    /// `config.thinkingMarkers` is set, emitting `.thinkingToken` /
-    /// `.thinkingCompleted` events. Capability flag must reflect that (#480).
-    func test_mlxBackend_supportsThinking() throws {
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "MLXBackend requires Apple Silicon")
-        XCTAssertTrue(MLXBackend().capabilities.supportsThinking,
-                      "MLXBackend emits thinking events via ThinkingTransform — supportsThinking must be true")
-    }
-
-    /// MLXBackend uses MLX's process-global GPU buffer cache and Metal
-    /// device — it must coordinate with `MLXResourceArbiter` for safe
-    /// multi-backend hosting. See `MLXResourceArbiter.swift` for details.
-    func test_mlxBackend_sharesMLXProcessResources() throws {
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon,
-                          "MLXBackend requires Apple Silicon")
-        XCTAssertTrue(MLXBackend().capabilities.sharesMLXProcessResources,
-                      "MLXBackend uses MLX.Memory.cacheLimit — sharesMLXProcessResources must be true")
-    }
-#endif
 
 #if canImport(FoundationModels)
     @available(iOS 26, macOS 26, *)

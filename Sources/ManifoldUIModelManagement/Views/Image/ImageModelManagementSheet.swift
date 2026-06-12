@@ -1,4 +1,3 @@
-#if HuggingFace
 import SwiftUI
 import ManifoldInference
 import ManifoldHuggingFace
@@ -57,4 +56,3 @@ public struct ImageModelManagementSheet: View {
         #endif
     }
 }
-#endif

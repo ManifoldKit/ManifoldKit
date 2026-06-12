@@ -1,4 +1,3 @@
-#if HuggingFace
 import SwiftUI
 import ManifoldInference
 import ManifoldHuggingFace
@@ -239,4 +238,3 @@ public struct ImageModelInstallView: View {
         installedModels = Dictionary(uniqueKeysWithValues: discovered.map { ($0.id, $0) })
     }
 }
-#endif

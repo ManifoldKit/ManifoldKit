@@ -3,10 +3,18 @@ import Foundation
 /// Inference traits that materially change which backends a build can expose at
 /// runtime.
 ///
-/// `.ollama` and `.cloudSaaS` are retained for Codable stability but are no
-/// longer SwiftPM traits: since v0.48 the cloud families compile
-/// unconditionally, so both members are always present in
-/// ``CompiledBackends/current``.
+/// All members are retained for Codable stability, but none of them are
+/// SwiftPM traits anymore:
+/// - `.ollama` / `.cloudSaaS`: the cloud families compile unconditionally
+///   since v0.48 (PR A4) — always present in ``CompiledBackends/current``.
+/// - `.huggingFace`: unconditional since v0.48 (PR C2) — always present.
+/// - `.mlx` / `.llama`: the families moved to the manifold-mlx /
+///   manifold-llama companion packages in v0.48 (PR C2, #1749) — **never**
+///   present in ``CompiledBackends/current``. Whether MLX / GGUF inference
+///   is available is a *runtime registration* question now: check
+///   `InferenceService.registeredBackendSnapshot()` /
+///   `InferenceService.compatibility(for:)`, which see companion registrars
+///   injected via `quickStart(backends:)`.
 public enum BackendBuildTrait: String, CaseIterable, Codable, Hashable, Sendable {
     case mlx = "MLX"
     case llama = "Llama"
@@ -123,25 +131,22 @@ public struct CompiledBackends: Sendable, Equatable {
         var localModelTypes: Set<ModelType> = []
         var cloudProviders: Set<APIProvider> = []
 
-        #if MLX
-        traits.insert(.mlx)
-        localModelTypes.insert(.mlx)
-        #endif
-
-        #if Llama
-        traits.insert(.llama)
-        localModelTypes.insert(.gguf)
-        #endif
-
-        #if HuggingFace
-        traits.insert(.huggingFace)
-        #endif
+        // .mlx / .llama are NEVER inserted here: the families moved to the
+        // manifold-mlx / manifold-llama companion packages (v0.48, PR C2,
+        // #1749), so by construction no core build compiles them in.
+        // Companion backends register at *runtime* — they are visible to
+        // `InferenceService.registeredBackendSnapshot()`, never to this
+        // compile-time reflection.
 
         #if canImport(FoundationModels)
         if #available(iOS 26, macOS 26, *) {
             localModelTypes.insert(.foundation)
         }
         #endif
+
+        // HuggingFace download machinery compiles unconditionally since
+        // v0.48 (PR C2 — the HuggingFace trait is retired).
+        traits.insert(.huggingFace)
 
         // Cloud families compile unconditionally since v0.48 (the Ollama and
         // CloudSaaS traits are retired), so they are constant members here.

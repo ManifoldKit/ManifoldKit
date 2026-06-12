@@ -1,4 +1,3 @@
-#if HuggingFace
 import Foundation
 import ManifoldInference
 import os
@@ -195,4 +194,3 @@ internal struct DownloadStateMachine: Sendable {
         return (totalDownloaded, totalExpected)
     }
 }
-#endif

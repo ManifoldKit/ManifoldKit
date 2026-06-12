@@ -50,19 +50,19 @@ jobs:
         id: test-large-session-list
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-large-session-list.log
-        run: scripts/test.sh --filter "ManifoldUITests.LargeSessionListPerformanceTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldUITests.LargeSessionListPerformanceTests" --skip-update --min-passed 1
 
       - name: Test — IntegratedStreamingPerformanceTests
         id: test-integrated-streaming
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-integrated-streaming.log
-        run: scripts/test.sh --filter "ManifoldUITests.IntegratedStreamingPerformanceTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldUITests.IntegratedStreamingPerformanceTests" --skip-update --min-passed 1
 
       - name: Test — TrafficBoundaryAuditTest
         id: test-traffic-boundary-audit
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-traffic-boundary-audit.log
-        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldInferenceTests.TrafficBoundaryAuditTest" --skip-update --min-passed 1
 
       - name: Test — Audit sabotage suite
         id: test-audit-sabotage
@@ -71,7 +71,7 @@ jobs:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-audit-sabotage.log
         run: |
           set -euo pipefail
-          scripts/test.sh --filter "ManifoldAuditSabotageSuiteTests" --disable-default-traits --skip-update --min-passed 1
+          scripts/test.sh --filter "ManifoldAuditSabotageSuiteTests" --skip-update --min-passed 1
           echo "Audit sabotage suite proof (SABOTAGE=${SABOTAGE}):"
           grep -E "Test Case '-\\[ManifoldAuditSabotageSuiteTests\\.|TOTAL RUN:|Passed:|RESULT: PASSED" "$MANIFOLD_TEST_OUTPUT_FILE" || true
           if ! grep -qE "Test Case '-\\[ManifoldAuditSabotageSuiteTests\\." "$MANIFOLD_TEST_OUTPUT_FILE"; then
@@ -88,7 +88,7 @@ jobs:
         env:
           RUN_MCP_E2E: "1"
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-mcp-e2e-smoke.log
-        run: scripts/test.sh --filter "ManifoldMCPE2ESmokeTests" --disable-default-traits --skip-update --min-passed 1
+        run: scripts/test.sh --filter "ManifoldMCPE2ESmokeTests" --skip-update --min-passed 1
 
       - name: Test — Operational tier (soak + migration)
         id: test-operational
@@ -97,11 +97,11 @@ jobs:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-operational.log
         run: |
           scripts/test.sh --filter "ManifoldPersistenceSwiftDataTests.SchemaV3MigrationTests" \
-            --disable-default-traits --skip-update --min-passed 1
+            --skip-update --min-passed 1
           scripts/test.sh --filter "ManifoldRuntimeTests.SoakRunnerTests" \
-            --disable-default-traits --skip-update --min-passed 1
+            --skip-update --min-passed 1
           scripts/test.sh --filter "ManifoldRuntimeTests.SessionDiscardOrderingTests" \
-            --disable-default-traits --skip-update --min-passed 1
+            --skip-update --min-passed 1
 
       # Coverage thresholds — runs a fresh swift test with --enable-code-coverage
       # over the four critical modules and verifies each module's line coverage
@@ -123,7 +123,6 @@ jobs:
             --filter ManifoldPersistenceSwiftDataTests \
             --filter ManifoldInferenceTests \
             --filter ManifoldMCPTests \
-            --disable-default-traits \
             --enable-code-coverage \
             --skip-update
           scripts/check-coverage.sh
@@ -134,15 +133,15 @@ jobs:
         # and skips entirely on doc/test/script-only changes — this step
         # catches any API break that slipped through, within 24 h.
         #
-        # `--targets` is REQUIRED: whole-package mode fails on the trait-gated
-        # `llama` C module ("missing required module 'llama'").
+        # `--targets` is kept (rather than whole-package mode) for scope
+        # control; the historical blocker — the trait-gated `llama` C module
+        # ("missing required module 'llama'") — left with the C2 companion
+        # split, so whole-package mode may work again; revisit in C4.
         #
-        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed: it
-        # `@_exported`-re-exports `ManifoldBackends`, which transitively pulls in
-        # the llama-dependent family targets, producing "baseline for ManifoldKit
-        # contains no symbols". The five targets below cover everything
-        # `import ManifoldKit` consumers touch except the backend families,
-        # which are pinned indirectly via the backend contract suite.
+        # The umbrella `ManifoldKit` target is DELIBERATELY NOT listed: the
+        # five targets below cover everything `import ManifoldKit` consumers
+        # touch except the backend families, which are pinned via the backend
+        # seam freeze fixture + companion contract suites.
         id: api-check
         run: |
           set -euo pipefail
@@ -278,20 +277,3 @@ jobs:
         if: success() || failure()
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
-
-  foundation-only-build:
-    runs-on: macos-15
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Setup Swift CI environment
-        uses: ./.github/actions/setup-swift-ci
-        with:
-          cache-key-suffix: "-foundation-only"
-
-      - name: Run FoundationOnly bundle audit
-        timeout-minutes: 10
-        run: scripts/check-foundation-only-bundle.sh

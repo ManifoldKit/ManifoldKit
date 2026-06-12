@@ -1,6 +1,5 @@
 import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 final class PendingDownloadStoreTests: XCTestCase {
@@ -169,4 +168,3 @@ final class PendingDownloadStoreTests: XCTestCase {
             .appendingPathComponent("tmp/test-artifacts", isDirectory: true)
     }
 }
-#endif

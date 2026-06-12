@@ -15,7 +15,7 @@ Skip the `ManifoldKit` umbrella and depend on `ManifoldInference` plus the backe
 ])
 ```
 
-This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph entirely. The backends you get are gated by SwiftPM traits — see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
+This keeps SwiftData, `ManifoldRuntime`, and `ManifoldUI` out of your app graph entirely. Core ships the cloud + Foundation backends; local MLX / llama.cpp backends come from the companion packages — see [QUICKSTART.md → Customizing backends](QUICKSTART.md#customizing-backends).
 
 ## Minimal headless example
 
@@ -156,5 +156,5 @@ For an Ollama, OpenAI-compatible, or Anthropic endpoint, build an `APIEndpointRe
 
 - [`docs/QUICKSTART-TOOLS.md`](QUICKSTART-TOOLS.md) — register tools and handle `.toolCall` events.
 - [`docs/QUICKSTART-CLI.md`](QUICKSTART-CLI.md) — compile-tested `Package.swift` + `main.swift` for Foundation Models, local GGUF, and Ollama / OpenAI endpoints.
-- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full trait → backend → capability table.
+- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full backend → capability table.
 - [`docs/QUICKSTART.md`](QUICKSTART.md) — the full-stack `quickStart()` path if you decide you want `ChatView` after all.

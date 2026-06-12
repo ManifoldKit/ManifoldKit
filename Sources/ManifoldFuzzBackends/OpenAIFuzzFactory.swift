@@ -1,4 +1,3 @@
-#if Fuzz
 import Foundation
 import ManifoldBackends
 import ManifoldFuzz
@@ -75,4 +74,3 @@ public struct OpenAIFuzzFactory: FuzzBackendFactory {
         )
     }
 }
-#endif

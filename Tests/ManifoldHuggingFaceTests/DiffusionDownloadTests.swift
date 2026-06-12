@@ -1,7 +1,6 @@
 import XCTest
 @testable import ManifoldInference
 import ManifoldTestSupport
-#if HuggingFace
 @testable import ManifoldHuggingFace
 import HuggingFace
 
@@ -437,4 +436,3 @@ private final class ProgressRecorder: @unchecked Sendable {
         return events.last
     }
 }
-#endif

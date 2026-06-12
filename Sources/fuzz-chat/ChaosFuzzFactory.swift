@@ -1,4 +1,3 @@
-#if Fuzz
 import Foundation
 import ManifoldFuzz
 import ManifoldInference
@@ -38,4 +37,3 @@ public struct ChaosFuzzFactory: FuzzBackendFactory {
         )
     }
 }
-#endif

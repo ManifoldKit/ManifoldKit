@@ -89,37 +89,10 @@
         "ManifoldRuntime"
       ]
     },
-    "StableDiffusion": {
-      "type": "regular",
-      "path": "Sources/StableDiffusion",
-      "deps": []
-    },
     "ManifoldCloudCore": {
       "type": "regular",
       "path": "Sources/ManifoldCloudCore",
       "deps": [
-        "ManifoldInference"
-      ]
-    },
-    "ManifoldMLX": {
-      "type": "regular",
-      "path": "Sources/ManifoldMLX",
-      "deps": [
-        "FluxSwift",
-        "ManifoldInference",
-        "StableDiffusion"
-      ]
-    },
-    "FluxSwift": {
-      "type": "regular",
-      "path": "Sources/FluxSwift",
-      "deps": []
-    },
-    "ManifoldLlama": {
-      "type": "regular",
-      "path": "Sources/ManifoldLlama",
-      "deps": [
-        "ManifoldHardware",
         "ManifoldInference"
       ]
     },
@@ -165,8 +138,6 @@
         "ManifoldCloudSaaS",
         "ManifoldFoundation",
         "ManifoldInference",
-        "ManifoldLlama",
-        "ManifoldMLX",
         "ManifoldOllama"
       ]
     },
@@ -385,8 +356,6 @@
         "ManifoldFoundation",
         "ManifoldHardware",
         "ManifoldInference",
-        "ManifoldLlama",
-        "ManifoldMLX",
         "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
@@ -458,7 +427,6 @@
         "ManifoldBackends",
         "ManifoldHuggingFace",
         "ManifoldInference",
-        "ManifoldMLX",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldTestSupport",
@@ -563,18 +531,6 @@
       "deps": [
         "ManifoldAppIntents",
         "ManifoldInference"
-      ]
-    },
-    "ManifoldMLXIntegrationTests": {
-      "type": "test",
-      "path": "Tests/ManifoldMLXIntegrationTests",
-      "deps": [
-        "ManifoldBackends",
-        "ManifoldInference",
-        "ManifoldMLX",
-        "ManifoldPersistenceSwiftData",
-        "ManifoldRuntime",
-        "ManifoldTestSupport"
       ]
     },
     "APIFreezeTests": {

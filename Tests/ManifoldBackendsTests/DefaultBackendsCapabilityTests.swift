@@ -65,7 +65,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
 
     func test_register_declaresCloudProvidersOnService() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
 
         // Every built-in cloud provider must be declared after registration
         // (cloud families always compile since v0.48).
@@ -80,7 +80,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
     @available(*, deprecated)
     func test_register_declaresLocalModelTypesConsistentlyWithStaticQuery() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
 
         // Every model type in the static list must also be declared on the service.
         for type_ in DefaultBackends.supportedModelTypes {
@@ -94,7 +94,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
     @available(*, deprecated)
     func test_register_doesNotDeclareUnsupportedModelTypes() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
 
         // Model types not in the static list must not be declared on the service.
         let unsupported = Set<ModelType>([.gguf, .mlx, .foundation])
@@ -110,7 +110,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
 
     func test_register_snapshotContainsAllDeclaredProviders() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
         let snapshot = service.registeredBackendSnapshot()
 
         for provider in APIProvider.availableInBuild {
@@ -124,7 +124,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
     @available(*, deprecated)
     func test_register_snapshotLocalTypesMatchStaticQuery() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
         let snapshot = service.registeredBackendSnapshot()
 
         XCTAssertEqual(snapshot.localModelTypes, DefaultBackends.supportedModelTypes,
@@ -138,7 +138,7 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
     @available(*, deprecated)
     func test_frameworkCapabilityService_afterRegisterAndRefresh_matchesStaticQuery() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
         let capService = FrameworkCapabilityService(inferenceService: service)
         capService.refresh()
 

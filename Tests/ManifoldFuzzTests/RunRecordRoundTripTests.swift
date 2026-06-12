@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -134,4 +133,3 @@ final class RunRecordRoundTripTests: XCTestCase {
         }
     }
 }
-#endif

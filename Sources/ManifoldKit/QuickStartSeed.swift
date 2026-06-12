@@ -10,17 +10,17 @@
 //   - The new surface is a second overload: quickStart(seed:), where `seed` is
 //     a QuickStartSeed value. The caller specifies which model to seed and an
 //     optional progress closure; ManifoldKit handles the rest.
-//   - Gating contract: seeding requires the HuggingFace trait (download
-//     machinery, compile-time) + a registered backend that can load the seed's
-//     model type (checked at runtime against InferenceService, so companion
-//     registrars passed to quickStart(backends:) count). When either is
-//     missing the seed parameter is a logged no-op.
+//   - Gating contract: seeding requires a registered backend that can load
+//     the seed's model type — checked at runtime against InferenceService, so
+//     companion registrars passed to quickStart(backends:) count. (The GGUF
+//     starter seed needs manifold-llama's LlamaBackends.) When no compatible
+//     backend is registered the seed parameter is a logged no-op. The
+//     download machinery itself is always compiled in since v0.48 (PR C2 —
+//     the HuggingFace trait is retired).
 //
 // The implementation uses `BackgroundDownloadManaging` (protocol in
-// ManifoldModelCatalog) so the concrete BackgroundDownloadManager (ManifoldHuggingFace,
-// #if HuggingFace) is referenced only inside the HuggingFace block. Hosts
-// that import ManifoldKit without HuggingFace still compile; they just never
-// have the seed path activate.
+// ManifoldModelCatalog); tests inject a MockDownloadManager through the same
+// seam.
 
 import Foundation
 import ManifoldInference
@@ -35,13 +35,12 @@ import ManifoldInference
 ///
 /// ### Requirements
 ///
-/// Seeding requires the `HuggingFace` SwiftPM trait (default-on) for the
-/// download machinery, **and** a *registered* backend capable of loading the
-/// seed's model type. The backend check is made against the live
+/// Seeding requires a *registered* backend capable of loading the seed's
+/// model type. The check is made against the live
 /// ``ManifoldInference/InferenceService`` registration state — not compile-time
 /// traits — so a Llama-capable backend injected at runtime via
 /// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)``
-/// (e.g. from the manifold-llama companion package) enables the GGUF seed.
+/// (from the manifold-llama companion package) enables the GGUF seed.
 ///
 /// ### Skip conditions
 ///
@@ -49,7 +48,6 @@ import ManifoldInference
 /// following is true:
 /// - A model is already selectable (Foundation available, or a local model on
 ///   disk). Never downloads redundantly.
-/// - `HuggingFace` trait is absent (no download machinery).
 /// - No registered backend can load the seed's model type.
 /// - The device has no internet connectivity (the error is silently swallowed so
 ///   the app still launches with the "No model" empty state rather than crashing).
@@ -126,20 +124,21 @@ public struct QuickStartSeed: Sendable {
 /// so the app still launches. The error cases here reflect programmer-visible
 /// configuration mistakes.
 public enum SeedModelError: Error, LocalizedError, Sendable {
-    /// The HuggingFace trait is not compiled in, so there is no download
-    /// machinery. This error is only thrown when the host explicitly calls the
-    /// `seedIfNeeded` seam directly; `quickStart(seed:)` skips silently.
+    /// Historical: the download machinery used to be gated behind the
+    /// retired `HuggingFace` SwiftPM trait. Since v0.48 (PR C2) it is always
+    /// compiled in, so this condition is unreachable. The case is retained
+    /// only so existing exhaustive switches keep compiling for one release.
+    @available(*, deprecated, message: "Unreachable since v0.48 — the download machinery is always compiled in (the HuggingFace trait is retired). See docs/MIGRATION-0.48.md.")
     case huggingFaceTraitNotAvailable
 
     public var errorDescription: String? {
         switch self {
         case .huggingFaceTraitNotAvailable:
             return """
-                QuickStartSeed requires the HuggingFace SwiftPM trait. \
-                Add \"HuggingFace\" to your traits array, or use the default \
-                trait set (which includes it). If you want a cloud-only or \
-                FoundationOnly build, the seed path is simply unavailable — \
-                present ModelManagementSheet instead.
+                The first-launch seed download machinery is always available \
+                since ManifoldKit v0.48 — this error is never thrown by \
+                current code. If you see it, an outdated host is calling a \
+                pre-0.48 seam. See docs/MIGRATION-0.48.md.
                 """
         }
     }
@@ -163,11 +162,9 @@ public enum SeedModelError: Error, LocalizedError, Sendable {
 ///     Injected so tests can pass a `MockDownloadManager`.
 /// Drives a single seed download, waiting for completion (or failure) in-place.
 ///
-/// This function is the concrete inner loop for the seed path. It is always
-/// compiled in (regardless of the `HuggingFace` trait) so that tests can inject
-/// a `MockDownloadManager` without needing the real trait. The caller
-/// (`_quickStart`) is responsible for ensuring a real `BackgroundDownloadManager`
-/// is only created when `#if HuggingFace`.
+/// This function is the concrete inner loop for the seed path. Tests inject
+/// a `MockDownloadManager`; production callers get a real
+/// `BackgroundDownloadManager` (always compiled in since v0.48, PR C2).
 ///
 /// Returns `true` if a model was downloaded successfully; `false` for all
 /// skip / failure conditions (never throws — the app must launch regardless).

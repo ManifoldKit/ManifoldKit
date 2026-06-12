@@ -100,7 +100,7 @@ public enum ScenarioRegistry {
             KVReuseCoverageScenario(),
             // Registered factory-less so the scenario is discoverable from
             // listings and the registry test. Real-MLX runs construct it
-            // explicitly with `MLXFuzzFactory` from `ManifoldFuzzBackends`.
+            // explicitly with `MLXFuzzFactory` (manifold-mlx companion package since v0.48).
             MLXVLMGateScenario(),
             WarmupCostScenario(),
         ]

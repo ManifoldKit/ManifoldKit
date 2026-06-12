@@ -2,9 +2,7 @@ import Foundation
 import Observation
 import ManifoldRuntime
 import ManifoldInference
-#if HuggingFace
 import ManifoldHuggingFace
-#endif
 
 public enum ModelImportError: LocalizedError, Equatable {
     case unsupportedFormat
@@ -180,7 +178,6 @@ public final class ModelManagementViewModel {
         modelStorage: ModelStorageService = ModelStorageService(),
         diagnostics: DiagnosticsService? = nil
     ) -> ModelManagementViewModel {
-        #if HuggingFace
         let resolvedService = huggingFaceService ?? HuggingFaceService()
         let resolvedDownloadManager = downloadManager ?? BackgroundDownloadManager()
         resolvedDownloadManager.reconnectBackgroundSession()
@@ -191,15 +188,6 @@ public final class ModelManagementViewModel {
             modelStorage: modelStorage,
             diagnostics: diagnostics
         )
-        #else
-        ModelManagementViewModel(
-            huggingFaceService: huggingFaceService,
-            downloadManager: downloadManager,
-            deviceCapability: deviceCapability,
-            modelStorage: modelStorage,
-            diagnostics: diagnostics
-        )
-        #endif
     }
 
     /// Creates a lightweight model manager for Xcode previews.

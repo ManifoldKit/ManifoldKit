@@ -1,7 +1,6 @@
 import XCTest
 @testable import ManifoldInference
 import ManifoldTestSupport
-#if HuggingFace
 @testable import ManifoldHuggingFace
 import HuggingFace
 
@@ -700,4 +699,3 @@ final class HuggingFaceDownloadURLTests: XCTestCase {
         XCTAssertTrue(results.isEmpty, "An empty query against an empty list must return no models")
     }
 }
-#endif

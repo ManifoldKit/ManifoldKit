@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import os
@@ -121,4 +120,3 @@ final class DiffusionDownloadDelegate: NSObject, URLSessionDownloadDelegate, @un
     }
 }
 
-#endif

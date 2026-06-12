@@ -86,10 +86,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Every docs/QUICKSTART-*.md is swept (not just the high-level ones): a doc with
-# no compile gate drifts silently. Blocks needing a trait the gate does not enable
-# (MLX in IMAGE-GEN, ManifoldVoice in VOICE) are tagged ```swift,no-build``` in the
-# doc; package-manifest fragments (APPINTENTS) auto-skip via the .package/.target
+# no compile gate drifts silently. Blocks needing a module the gate does not
+# build (ManifoldVoice in VOICE) are tagged ```swift,no-build``` in the doc;
+# package-manifest fragments (APPINTENTS) auto-skip via the .package/.target
 # heuristic. The workflow `paths:` filter globs docs/QUICKSTART*.md to match.
+# IMAGE-GEN/VIDEO-GEN quickstarts moved to the manifold-mlx companion package
+# with the MLX family in v0.48 PR C2.
 INPUTS=(
     "README.md"
     "docs/QUICKSTART.md"
@@ -98,8 +100,6 @@ INPUTS=(
     "docs/QUICKSTART-BRING-YOUR-OWN-UI.md"
     "docs/QUICKSTART-TOOLS.md"
     "docs/QUICKSTART-APPINTENTS.md"
-    "docs/QUICKSTART-IMAGE-GEN.md"
-    "docs/QUICKSTART-VIDEO-GEN.md"
     "docs/QUICKSTART-VOICE.md"
     "docs/WHY-MANIFOLDKIT.md"
 )

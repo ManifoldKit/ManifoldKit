@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 import ManifoldInference
@@ -228,4 +227,3 @@ final class ToolCallValidityDetectorTests: XCTestCase {
         XCTAssertTrue(DetectorRegistry.all.contains { $0.id == "tool-call-validity" })
     }
 }
-#endif

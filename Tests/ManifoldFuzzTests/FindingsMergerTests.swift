@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -164,4 +163,3 @@ final class FindingsMergerTests: XCTestCase {
         return worker
     }
 }
-#endif

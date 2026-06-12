@@ -36,16 +36,18 @@ swift build
 swift test
 ```
 
-`swift build` resolves package dependencies on first run. `ManifoldBackends` pulls in
-MLX and llama.cpp xcframeworks under default traits, so the initial fetch may take a
-moment.
+`swift build` resolves package dependencies on first run. Since v0.48 core has
+no heavy ML dependencies — the MLX and llama.cpp families live in the
+[manifold-mlx](https://github.com/roryford/manifold-mlx) /
+[manifold-llama](https://github.com/roryford/manifold-llama) companion
+packages — so the initial fetch is light.
 
-The trait set defaults to `MLX, Llama` (the offline build mode) — see
+There are **no default traits**: plain `swift build` / `swift test` is the full
+core build. Opt-in traits are `Server` and `Macros` — see
 [SECURITY.md § Supported Build Modes](SECURITY.md#supported-build-modes) for the
-four blessed configurations and what each one guarantees.
+blessed configurations and what each one guarantees.
 
-For repo-developer build-mode workflow (Xcode trait limitations, common mistakes,
-the `#warning` stub mechanism), see [CLAUDE.md](CLAUDE.md).
+For repo-developer build workflow, see [CLAUDE.md](CLAUDE.md).
 Swift 6 concurrency pitfalls that can compile while racing or deadlocking are
 covered in
 [CLAUDE.md § Swift 6 concurrency gotchas](CLAUDE.md#swift-6-concurrency-gotchas);
@@ -127,14 +129,17 @@ and the `withKnownIssue` policy.
 A backend is anything that conforms to `InferenceBackend` and gets registered with
 `InferenceService`.
 
-1. **Pick the right home** for the file. Local backends are trait-gated:
-   - `MLX` — Apple Silicon MLX backend (`Sources/ManifoldMLX`, wrap in `#if MLX`).
-   - `Llama` — llama.cpp / GGUF (`Sources/ManifoldLlama`, wrap in `#if Llama`).
+1. **Pick the right home** for the file. Heavy local backend families (new ML
+   runtimes) belong in a **companion package** — follow
+   [manifold-llama](https://github.com/roryford/manifold-llama) /
+   [manifold-mlx](https://github.com/roryford/manifold-mlx) as the templates;
+   they consume core's `ManifoldContract`/`ManifoldInference` and
+   `ManifoldBackendTestKit` products from the outside.
 
-   Cloud backends are **not** trait-gated since v0.48 — they live in
-   `Sources/ManifoldOllama` / `Sources/ManifoldCloudSaaS` (shared HTTP/SSE
-   infra in `Sources/ManifoldCloudCore`) and compile unconditionally;
-   consumers exclude them by not linking the products.
+   Cloud backends live in this repo — `Sources/ManifoldOllama` /
+   `Sources/ManifoldCloudSaaS` (shared HTTP/SSE infra in
+   `Sources/ManifoldCloudCore`) — and compile unconditionally; consumers
+   exclude them by not linking the products.
 
 2. **Register via `DefaultBackends.register(with:)`** rather than calling backend
    constructors from app code. The registration helper handles trait gating and
@@ -144,8 +149,9 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
 3. **Update `APIProvider.availableInBuild`** (via `BackendDescriptorRegistry`)
    so the UI provider picker lists the new provider in documented order.
 
-4. **Add tests in `ManifoldBackendsTests`** — with a matching `#if <Trait>`
-   only for trait-gated local backends; cloud backend tests are unconditional.
+4. **Add tests in `ManifoldBackendsTests`** (in-repo backends) or in the
+   companion package's own suite (which adopts the same
+   `ManifoldBackendTestKit` contract mixins).
 
 5. **HTTP I/O goes through `URLSessionProvider`.** Direct `URLSession.shared` use
    is banned by `TrafficBoundaryAuditTest` Rule 1. If your backend speaks HTTP,
@@ -159,11 +165,9 @@ A backend is anything that conforms to `InferenceBackend` and gets registered wi
 
 7. **Run before pushing:**
    ```bash
-   swift test --filter ManifoldBackendsTests --disable-default-traits
-   swift test --filter ManifoldInferenceTests --disable-default-traits   # for the audit
+   swift test --filter ManifoldBackendsTests
+   swift test --filter ManifoldInferenceTests   # for the audit
    ```
-   On Apple Silicon, also run `--traits MLX,Llama` so the actual hardware-bound
-   tests execute.
 
 See [SECURITY.md § Supported Build Modes](SECURITY.md#supported-build-modes) and
 [docs/THREAT_MODEL.md § B1 Network ↔ device](docs/THREAT_MODEL.md#b1-network--device)
@@ -190,8 +194,8 @@ UI lives in `ManifoldUI` and (for model-management surfaces) `ManifoldUIModelMan
 
 4. **Run before pushing:**
    ```bash
-   swift test --filter ManifoldUITests --disable-default-traits
-   swift test --filter ManifoldUIModelManagementTests --disable-default-traits
+   swift test --filter ManifoldUITests
+   swift test --filter ManifoldUIModelManagementTests
    ```
 
 For the UI / framework / host-app trust boundary, see
@@ -225,7 +229,7 @@ dependency.
 
 6. **Run before pushing:**
    ```bash
-   swift test --filter ManifoldInferenceTests --disable-default-traits
+   swift test --filter ManifoldInferenceTests
    ```
 
 See [docs/THREAT_MODEL.md § B3 Build time ↔ run time](docs/THREAT_MODEL.md#b3-build-time--run-time).
@@ -254,9 +258,9 @@ network boundary.
 
 6. **Run before pushing:**
    ```bash
-   swift test --filter ManifoldBackendsTests --disable-default-traits
-   swift test --filter ManifoldInferenceTests --disable-default-traits
-   swift test --filter ManifoldTestSupportTests --disable-default-traits
+   swift test --filter ManifoldBackendsTests
+   swift test --filter ManifoldInferenceTests
+   swift test --filter ManifoldTestSupportTests
    ```
 
 See [SECURITY.md § Supported Build Modes](SECURITY.md#supported-build-modes) for
@@ -280,7 +284,7 @@ shell privileges, so the rules are tighter:
 
 4. **Run before pushing:**
    ```bash
-   swift test --disable-default-traits   # exercises macro tests under all suites
+   swift test   # exercises macro tests under all suites
    ```
 
 See [docs/THREAT_MODEL.md § Build-time exfiltration via macros](docs/THREAT_MODEL.md#build-time-exfiltration-via-macros).
@@ -307,8 +311,8 @@ trait.
 
 5. **Run before pushing:**
    ```bash
-   swift test --filter ManifoldCoreTests --disable-default-traits
-   swift test --filter ManifoldInferenceTests --disable-default-traits
+   swift test --filter ManifoldCoreTests
+   swift test --filter ManifoldInferenceTests
    ```
 
 ## Commit style

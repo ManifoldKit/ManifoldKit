@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 import ManifoldInference
@@ -302,4 +301,3 @@ final class DetectorTests: XCTestCase {
         XCTAssertFalse(findings.contains { $0.subCheck == "unbalanced-thinking-events" })
     }
 }
-#endif

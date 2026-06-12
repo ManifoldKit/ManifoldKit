@@ -30,8 +30,8 @@ scripts/sourcekit-stale-module-diagnostics.sh --run
 The script reuses an isolated scratch path,
 `.build/sourcekit-1109-diagnostics`, across:
 
-1. `swift build --disable-default-traits --target ManifoldKit`
-2. `swift build --target ManifoldKit`
+1. `swift build --target ManifoldKit`
+2. `swift build --target ManifoldKit` (repeated, to mirror a settings change)
 3. `sourcekit-lsp debug index --project .`
 
 It then scans the SourceKit-LSP output for

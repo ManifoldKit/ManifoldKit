@@ -1,6 +1,5 @@
 import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 final class DownloadFileValidatorTests: XCTestCase {
@@ -187,4 +186,3 @@ final class DownloadFileValidatorTests: XCTestCase {
         XCTAssertNil(downloadable.expectedSHA256)
     }
 }
-#endif

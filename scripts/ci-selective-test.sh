@@ -8,10 +8,9 @@
 #   - Suite has a .xcscheme AND is not trait-gated
 #       → xcodebuild test -scheme (compiles only the subgraph, not the full bundle)
 #   - ManifoldBackendsTests
-#       → swift test --disable-default-traits (has ManifoldMLX/ManifoldLlama in its
-#         dep graph; xcodebuild default traits trigger Metal shader compilation;
-#         must run serial — no --parallel — because the claims-registry meta-contract
-#         check requires all backend classes to register before it fires)
+#       → swift test (must run serial — no --parallel — because the
+#         claims-registry meta-contract check requires all backend classes to
+#         register before it fires)
 #   - ManifoldInferenceSwiftTestingTests
 #       → xcodebuild test -scheme (separate scheme = separate process; avoids the
 #         libmalloc SIGABRT that fires when XCTest + Swift Testing share one process)
@@ -74,14 +73,13 @@ run_swift_test() {
 for suite in "$@"; do
   case "$suite" in
     ManifoldBackendsTests)
-      run_swift_test "$suite" --disable-default-traits
+      run_swift_test "$suite"
       ;;
     ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests)
       # No .xcscheme for these suites; their traits were retired in v0.48
-      # (PR A3) so they compile under the shared --disable-default-traits
-      # lane shape and reuse its .build. swift test routing avoids the
-      # no-scheme failure path.
-      run_swift_test "$suite" --disable-default-traits
+      # (PR A3) so they compile under the shared core lane shape and reuse
+      # its .build. swift test routing avoids the no-scheme failure path.
+      run_swift_test "$suite"
       ;;
     *)
       run_xcodebuild "$suite"

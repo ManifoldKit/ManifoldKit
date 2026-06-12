@@ -31,23 +31,28 @@ When ManifoldKit reaches `1.0.0`, this table will switch to a longer support win
 
 ## Supported Build Modes
 
-ManifoldKit ships four pre-blessed build modes, gated by Swift package traits. Each row of
+ManifoldKit ships four pre-blessed build modes. Each row of
 the table below names exactly what is guaranteed for that mode and what enforces the
-guarantee. Consumers in regulated verticals can compile the package in `offline` or
-`ollama` mode and have a mechanically-checked guarantee that no SaaS-cloud code is
+guarantee. Consumers in regulated verticals can build the `offline` or
+`ollama` product graph and have a mechanically-checked guarantee that no SaaS-cloud code is
 linked into the binary.
 
-Since v0.48 the `Ollama` and `CloudSaaS` traits are retired: cloud sources
-always compile in the package. Excluding cloud code from a shipped binary is a
-**link-out** decision — build/link only the products you need — not a compile
-flag. The build modes map to product graphs (see `scripts/build-modes.sh`):
+Since v0.48 the build-mode traits are retired (the `Ollama`/`CloudSaaS` traits
+in PR A4; the `MLX`/`Llama`/`HuggingFace`/`Fuzz`/`FoundationOnly` traits with
+the companion-package split in PR C2): cloud sources always compile in the
+package, and the heavy local backends live in the `manifold-mlx` /
+`manifold-llama` companion packages. Excluding cloud code from a shipped binary
+is a **link-out** decision — build/link only the products you need — not a
+compile flag; excluding the local ML stacks is even stronger — core never
+resolves them. The build modes map to product graphs (see
+`scripts/build-modes.sh`):
 
 | Mode      | Build invocation                                        | Cloud code linked              |
 |-----------|---------------------------------------------------------|--------------------------------|
-| `offline` | `--disable-default-traits --target ManifoldUI`          | none                           |
-| `ollama`  | `--disable-default-traits --target ManifoldOllama`      | Ollama HTTP client + shared TLS-pinning infra (`ManifoldCloudCore`) |
-| `saas`    | `--disable-default-traits --target ManifoldCloudSaaS`   | Claude, OpenAI + shared infra  |
-| `full`    | plain `swift build` (default traits `MLX,Llama,HuggingFace`) | every backend ManifoldKit ships |
+| `offline` | `--target ManifoldUI`                                   | none                           |
+| `ollama`  | `--target ManifoldOllama`                               | Ollama HTTP client + shared TLS-pinning infra (`ManifoldCloudCore`) |
+| `saas`    | `--target ManifoldCloudSaaS`                            | Claude, OpenAI + shared infra  |
+| `full`    | plain `swift build`                                     | every backend ManifoldKit ships |
 
 ### Consumer manifest snippets
 
@@ -56,12 +61,11 @@ flag. The build modes map to product graphs (see `scripts/build-modes.sh`):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
-    traits: [
-        .trait(name: "MLX"),
-        .trait(name: "Llama"),
-    ]
+    from: "0.36.0"
 )
+// For local inference add the companion package(s) and registrars:
+// .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0")
+// .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0")
 ```
 
 **Guarantees** (enforced by [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)
@@ -76,7 +80,7 @@ and the import-graph rule in the same audit):
 
 - A compromised toolchain or `Package.resolved` swap could swap source files; the audit
   only inspects what's checked in.
-- `MLX` and `Llama` may still resolve **DNS** at startup if a host app calls
+- The companion MLX / Llama backends may still resolve **DNS** at startup if a host app calls
   HuggingFace search; the ManifoldKit API only resolves DNS via `URLSessionProvider`, which is
   not invoked from offline backends.
 - A jailbroken device, rooted simulator, or hostile consumer-app code can bypass the
@@ -87,11 +91,7 @@ and the import-graph rule in the same audit):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
-    traits: [
-        .trait(name: "MLX"),
-        .trait(name: "Llama"),
-    ]
+    from: "0.36.0"
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldOllama
 // product (and not ManifoldCloudSaaS) for the ollama-mode link surface.
@@ -118,11 +118,7 @@ Same `offline` guarantees, plus:
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
-    traits: [
-        .trait(name: "MLX"),
-        .trait(name: "Llama"),
-    ]
+    from: "0.36.0"
 )
 // Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
 // product for the SaaS link surface.
@@ -138,13 +134,10 @@ transport-security boundary.
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.36.0",
-    traits: [
-        .trait(name: "MLX"),
-        .trait(name: "Llama"),
-    ]
+    from: "0.36.0"
 )
-// All cloud backends are compiled in; this is the maximum-surface build.
+// All cloud backends are compiled in. Add the manifold-mlx / manifold-llama
+// companion packages for the maximum-surface build.
 ```
 
 `full` is the maximum-surface developer build. Use it for development; pick a
@@ -157,11 +150,7 @@ narrower mode for shipping production binaries.
 | [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)                                | Rule classes 1–7: `URLSession` import allowlist, C interop / dynamic dispatch ban, hostname literals allowlist, privacy-API allowlist, `Package.swift` hygiene, import-graph layering, trait-name validity. |
 | [`DenyAllURLProtocolTests`](Tests/ManifoldTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/ManifoldBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | Runtime network isolation: when `networkDisabled` is set, every URL request fails closed.                          |
 | Per-mode symbol audit in `scripts/build-modes.sh` (nightly, `.github/workflows/build-modes.yml`)                          | Cloud backend code is not *linked* into a product graph that excludes it (link-out claim; the compile-out traits were retired in v0.48). |
-| `--disable-default-traits` swift test invocations in CI (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml))      | At least one CI job exercises the offline trait set on every PR; signature regressions surface as compile errors.   |
-
-There is currently no separate `scripts/build-modes.sh` — that consolidation is tracked
-under the umbrella ([#714](https://github.com/roryford/ManifoldKit/issues/714)) and will
-be added when the build-mode CI matrix lands.
+| Plain `swift test` CI invocations (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)) | Every CI job exercises the full core surface (there are no default traits since v0.48); signature regressions surface as compile errors. |
 
 ### Explicit non-guarantees
 

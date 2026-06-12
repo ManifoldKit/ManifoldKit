@@ -5,14 +5,15 @@ name: Docs (DocC → GitHub Pages)
 # to GitHub Pages.
 #
 # Why `xcodebuild docbuild` and not `swift package generate-documentation`:
-# ManifoldKit's umbrella target `@_exported import`s the backends, which pull in
-# the binary `llama` xcframework (a `.framework`-style slice on macOS). The
-# SwiftPM Swift-DocC plugin invokes `swift-symbolgraph-extract` with `-I`
-# (header search) instead of `-F` (framework search) for that binary slice, so
-# symbol-graph extraction fails with `missing required module 'llama'`.
-# `xcodebuild docbuild` passes framework search paths correctly, builds the whole
-# scheme's catalog set in one pass (so cross-target `<doc:>` links resolve), and
-# emits a single `.doccarchive` we transform for static hosting.
+# historically the umbrella target's `@_exported import`s pulled in the binary
+# `llama` xcframework, whose `.framework`-style slice broke the SwiftPM
+# Swift-DocC plugin's symbol-graph extraction (`-I` vs `-F` search paths →
+# `missing required module 'llama'`). That blocker died with the v0.48 PR C2
+# companion-package split (the llama.cpp xcframework is no longer in the core
+# graph), so switching to the SwiftPM DocC plugin is now viable — deferred to
+# C4 as a follow-up. `xcodebuild docbuild` still builds the whole scheme's
+# catalog set in one pass (so cross-target `<doc:>` links resolve) and emits a
+# single `.doccarchive` we transform for static hosting, so it stays for now.
 #
 # SELF-VALIDATION: the `paths:` filter below MUST list this workflow's own path
 # plus every DocC catalog and `Package.swift`, otherwise edits to a catalog or to

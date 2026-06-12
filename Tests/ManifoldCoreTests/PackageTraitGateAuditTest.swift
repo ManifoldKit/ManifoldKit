@@ -1,47 +1,32 @@
 import XCTest
 
-/// Guards against regressions on issue #951: `Package.swift` must keep the
-/// optional modules that still have declared traits — `ManifoldFuzz` (plus
-/// its `ManifoldFuzzBackends` sibling) — gated behind those traits. Mirrors
-/// the pattern PR #946 established for the `Server` trait around
-/// `ManifoldServer`. (The MCP / MCPBuiltinCatalog traits were retired in
-/// v0.48 PR A2; Voice / Tools / AppIntents / Skills in PR A3; Ollama /
-/// CloudSaaS in PR A4. Former entries are gone, not relaxed.)
+/// Guards the post-split trait surface of `Package.swift`.
 ///
-/// ## Why this matters
+/// History: issue #951 found several declared traits were *decorative* — the
+/// trait existed in the manifest but no `condition: .when(traits:)` clause
+/// was attached to the consuming dependency edges, so every
+/// `swift build` still pulled the modules into the link graph. PR #946
+/// established the gating pattern for the `Server` trait. The MCP /
+/// MCPBuiltinCatalog traits were retired in v0.48 PR A2; Voice / Tools /
+/// AppIntents / Skills in PR A3; Ollama / CloudSaaS in PR A4; and MLX /
+/// Llama / HuggingFace / Fuzz / FoundationOnly in PR C2 (the companion
+/// split, #1749).
 ///
-/// The audit in #951 found that several declared traits (`MCP`, `Voice`,
-/// `Tools`, `AppIntents`, `Fuzz`) were *decorative* — the trait existed in
-/// the manifest but no `condition: .when(traits:)` clause was attached to the
-/// dependency edges that consumed those modules. As a result every
-/// `swift build --disable-default-traits` invocation still pulled the modules
-/// into the link graph, paying the per-PR CI build cost the trait was
-/// supposed to amortise away.
+/// Post-C2 this audit enforces two invariants:
 ///
-/// This test reads `Package.swift` text at runtime and asserts that the
-/// expected dependency declarations carry their gating clause. A drop or
-/// rename in a future Package.swift edit fails this test before CI ever
-/// gets to compilation, surfacing the regression at the smallest signal.
+/// 1. **The surviving traits stay non-decorative.** `Server` and `Macros`
+///    are genuine build-cost levers (Hummingbird; swift-syntax ~647 files);
+///    their consumer edges must keep `condition: .when(traits:)` clauses.
+///    (The WWDC stub traits `SystemAIProviderExtension` / `CoreAI` are
+///    deliberately decorative by design — no targets exist yet.)
+/// 2. **No retired trait reappears.** Neither as a `.trait(name:)`
+///    declaration nor as a `.when(traits:)` condition. The MLX/Llama
+///    families live in the manifold-mlx / manifold-llama companion
+///    packages; resurrecting their traits in core means the split regressed.
 ///
-/// ## What this test enforces
-///
-/// For each consumer→module edge listed in `expectedGates`, a substring
-/// match against `Package.swift` confirms the dependency line contains
-/// `condition: .when(traits: ["<Trait>"])`. The assertion is intentionally
-/// substring-based and not AST-based: a syntactic check is enough to catch
-/// the regression class (someone deleting the `condition:` clause), and
-/// avoids pulling SwiftSyntax into the default-trait test build (~647-file
-/// dep tree gated behind the `Macros` trait).
-///
-/// ## Fixing a violation
-///
-/// Re-add `condition: .when(traits: ["<Trait>"])` to the failing edge. See
-/// PR #946 (the `Server` trait pattern) and the `ManifoldHuggingFaceTests`
-/// declaration block for live examples of the shape.
-///
-/// DO NOT relax the assertion to allow the gap. The whole point of the
-/// audit is that one un-gated edge is enough to reintroduce the dep-graph
-/// inflation issue #951 closed.
+/// The assertions are intentionally substring-based and not AST-based: a
+/// syntactic check is enough to catch the regression class and avoids
+/// pulling SwiftSyntax into the default test build.
 final class PackageTraitGateAuditTest: XCTestCase {
 
     /// Each entry is one expected `condition: .when(traits: [...])` clause
@@ -54,32 +39,38 @@ final class PackageTraitGateAuditTest: XCTestCase {
     }
 
     private static let expectedGates: [ExpectedGate] = [
-        // ManifoldMCP edges are no longer listed here: the MCP and
-        // MCPBuiltinCatalog traits were retired in v0.48 (PR A2) — ManifoldMCP
-        // compiles unconditionally.
+        // Server: the executable's deps are Server-conditional so a trait-off
+        // build compiles the no-op stub without Hummingbird or the backend
+        // graph (PR #946 pattern).
+        .init(description: "ManifoldServer → ManifoldInference", module: "ManifoldInference", trait: "Server"),
+        .init(description: "ManifoldServer → ManifoldBackends", module: "ManifoldBackends", trait: "Server"),
+        .init(description: "ManifoldServer → Hummingbird", module: "Hummingbird", trait: "Server"),
 
-        // The Voice / Tools / AppIntents / Skills traits were retired in
-        // v0.48 (PR A3): their consumer edges are unconditional now, so they
-        // no longer appear here. NOTE: manifold-tools must never regain a
-        // ManifoldBackends (umbrella) edge — the umbrella drags
-        // llama.framework into the auto-generated Xcode scheme twice and
-        // breaks ManifoldMLXIntegrationTests (#982). It links ManifoldOllama
-        // directly instead.
+        // Macros: the @ToolSchema plugin is the only thing that pulls
+        // swift-syntax (~647 files) into the graph.
+        .init(description: "ManifoldInference → ManifoldMacrosPlugin", module: "ManifoldMacrosPlugin", trait: "Macros"),
+        .init(description: "ManifoldMacrosPlugin → SwiftSyntax", module: "SwiftSyntax", trait: "Macros"),
+    ]
 
-        // ManifoldFuzz / ManifoldFuzzBackends — gated by Fuzz at the
-        // consumer edges (fuzz-chat CLI and ManifoldFuzzTests). The
-        // internal edges from ManifoldFuzzBackends to ManifoldFuzz /
-        // ManifoldBackends are intentionally unconditional: ManifoldFuzzBackends
-        // source files `import ManifoldBackends` unconditionally, so gating
-        // those internal edges on Fuzz makes the target fail compilation
-        // under `--traits Macros` (no Fuzz). The target compiles always;
-        // nothing in the default trait set imports it, so it never gets
-        // linked into a default-traits binary.
-        .init(description: "fuzz-chat → ManifoldFuzz", module: "ManifoldFuzz", trait: "Fuzz"),
-        .init(description: "fuzz-chat → ManifoldFuzzBackends", module: "ManifoldFuzzBackends", trait: "Fuzz"),
-        .init(description: "ManifoldFuzzTests → ManifoldFuzz", module: "ManifoldFuzz", trait: "Fuzz"),
-        .init(description: "ManifoldFuzzTests → ManifoldFuzzBackends", module: "ManifoldFuzzBackends", trait: "Fuzz"),
+    /// The complete allowed trait set post-C2. Anything else in the manifest
+    /// is a regression (or needs a deliberate update here in the same PR).
+    private static let allowedTraits: Set<String> = [
+        "Server",
+        "Macros",
+        // WWDC 2026 pre-emptive stubs — no targets, deliberately decorative.
+        "SystemAIProviderExtension",
+        "CoreAI",
+    ]
 
+    /// Traits retired across the v0.48 train. Their reappearance — as a
+    /// declaration or a `.when(traits:)` condition — means a retired gating
+    /// shape crept back in.
+    private static let retiredTraits: Set<String> = [
+        "MCP", "MCPBuiltinCatalog",            // PR A2
+        "Voice", "Tools", "AppIntents", "Skills", // PR A3
+        "Ollama", "CloudSaaS",                 // PR A4
+        "AnyLanguageModel",                    // PR A5
+        "MLX", "Llama", "HuggingFace", "Fuzz", "FoundationOnly", // PR C2
     ]
 
     func test_packageManifestDeclaresExpectedTraitGates() throws {
@@ -88,13 +79,8 @@ final class PackageTraitGateAuditTest: XCTestCase {
 
         var violations: [String] = []
         for gate in Self.expectedGates {
-            // Sample shape (whitespace-loose): `.target(name: "ManifoldVoice", condition: .when(traits: ["Voice"]))`.
-            // We accept either single or double quotes and any reasonable
-            // whitespace inside the `traits: [...]` array; the trait name
-            // must appear inside that array literal on a line that also
-            // names the module.
             if !Self.manifest(manifest, declaresGate: gate) {
-                violations.append("\(gate.description) — missing `condition: .when(traits: [\"\(gate.trait)\"])` on the `.target(name: \"\(gate.module)\", …)` edge")
+                violations.append("\(gate.description) — missing `condition: .when(traits: [\"\(gate.trait)\"])` on the `name: \"\(gate.module)\"` edge")
             }
         }
 
@@ -115,13 +101,54 @@ final class PackageTraitGateAuditTest: XCTestCase {
         }
     }
 
+    /// Post-C2: only the surviving traits may be declared, and no retired
+    /// trait may appear in any `.when(traits:)` condition. One un-gated (or
+    /// re-gated) edge is enough to reintroduce the dep-graph inflation #951
+    /// closed — or, worse, a phantom trait consumers can't satisfy.
+    func test_packageManifestDeclaresOnlySurvivingTraits() throws {
+        let manifestURL = try Self.locatePackageManifest()
+        let manifest = try String(contentsOf: manifestURL, encoding: .utf8)
+
+        var violations: [String] = []
+
+        // Declared traits.
+        for trait in Self.declaredTraits(in: manifest) {
+            if !Self.allowedTraits.contains(trait) {
+                violations.append("`.trait(name: \"\(trait)\")` declared — not in the post-C2 allowed set \(Self.allowedTraits.sorted())")
+            }
+        }
+
+        // `.when(traits:)` conditions referencing retired traits.
+        for rawLine in manifest.components(separatedBy: "\n") {
+            guard rawLine.contains(".when(traits:") else { continue }
+            for retired in Self.retiredTraits where rawLine.contains("\"\(retired)\"") {
+                violations.append("retired trait `\(retired)` referenced in condition: \(rawLine.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+
+        if !violations.isEmpty {
+            let formatted = violations.map { "  - \($0)" }.joined(separator: "\n")
+            XCTFail("""
+                Package.swift references traits outside the post-C2 surface
+                (survivors: Server, Macros + the WWDC stubs). The MLX/Llama
+                families live in the manifold-mlx / manifold-llama companion
+                packages (#1749) — retired traits must not reappear.
+
+                Violations:
+                \(formatted)
+
+                If a new trait is intentional, add it to `allowedTraits` in
+                this test in the same PR with a rationale.
+                """)
+        }
+    }
+
     // MARK: - Helpers
 
-    /// Whether `manifest` contains a `.target(...)` dependency line that
-    /// names `gate.module` AND attaches `condition: .when(traits: ["<trait>"])`.
-    /// The manifest declaration spans one logical line in practice
-    /// (matches `ManifoldHuggingFaceTests`-style formatting), so a single
-    /// line scan is sufficient.
+    /// Whether `manifest` contains a dependency line that names `gate.module`
+    /// AND attaches `condition: .when(traits: ["<trait>"])`. The manifest
+    /// declaration spans one logical line in practice, so a single line scan
+    /// is sufficient. Matches both `.target(name:)` and `.product(name:)`.
     private static func manifest(_ manifest: String, declaresGate gate: ExpectedGate) -> Bool {
         let needleNamePart = "name: \"\(gate.module)\""
         let needleTraitPart = "traits: [\"\(gate.trait)\"]"
@@ -135,6 +162,19 @@ final class PackageTraitGateAuditTest: XCTestCase {
             }
         }
         return false
+    }
+
+    /// Parses `.trait(name: "X", ...)` declarations out of the manifest.
+    private static func declaredTraits(in manifest: String) -> Set<String> {
+        var found: Set<String> = []
+        let pattern = #"\.trait\(\s*name:\s*"([A-Za-z_][A-Za-z0-9_]*)""#
+        let ns = manifest as NSString
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        regex.enumerateMatches(in: manifest, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+            guard let m = match, m.numberOfRanges >= 2 else { return }
+            found.insert(ns.substring(with: m.range(at: 1)))
+        }
+        return found
     }
 
     /// Walks upward from this test file to find the repo root's

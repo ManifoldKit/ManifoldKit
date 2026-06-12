@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import os
@@ -163,4 +162,3 @@ extension DownloadFileValidator {
         }
     }
 }
-#endif

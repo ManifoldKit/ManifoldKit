@@ -13,7 +13,7 @@ brew tap roryford/manifoldkit https://github.com/roryford/ManifoldKit.git
 brew install manifold-server
 ```
 
-The formula builds from source. ManifoldKit pins a ~563 MB llama.cpp xcframework as a SwiftPM binary dependency — even in a `--traits Server`-only build SwiftPM resolves all declared packages, so the xcframework is downloaded. On a cold machine with no local SwiftPM cache allow **10–20 minutes**. Subsequent installs reuse the cache and are faster.
+The formula builds from source. Since v0.48 core ManifoldKit has no heavy ML binary dependencies (the llama.cpp xcframework moved to the manifold-llama companion package), so a cold build is dominated by compiling the Swift sources plus the Hummingbird dependency tree. Subsequent installs reuse the SwiftPM cache and are faster.
 
 ### Alternative: download a pre-built binary
 
@@ -47,7 +47,7 @@ swift build -c release --product ManifoldServer --traits Server
 
 ## Running the server
 
-All examples use Ollama as the backend. Substitute `--backend mlx`, `--backend llama`, or `--backend foundation` for local backends.
+All examples use Ollama as the backend. Substitute `--backend foundation` for the on-device Apple model (macOS 26+). The `mlx` and `llama` selections fail with a pointer to the companion packages since v0.48 — the MLX and llama.cpp backends moved to [manifold-mlx](https://github.com/roryford/manifold-mlx) / [manifold-llama](https://github.com/roryford/manifold-llama) and are no longer compiled into `manifold-server`.
 
 ### Minimal (no auth, localhost only)
 
@@ -144,9 +144,9 @@ In `~/.continue/config.json`:
 | `--port` | `8080` | TCP port. |
 | `--api-key` | _(none)_ | Require this key in `Authorization: Bearer` headers. Omit for unauthenticated localhost. |
 | `--parallel` | `1` | Maximum concurrent generation requests. |
-| `--backend` | `foundation` | `mlx`, `llama`, `foundation`, `ollama`, or `cloud`. |
+| `--backend` | `foundation` | `foundation`, `ollama`, or `cloud`. (`mlx` / `llama` error with a companion-package pointer since v0.48.) |
 | `--model` | _(none)_ | Model name or HuggingFace repo ID for the selected backend. |
-| `--model-path` | _(none)_ | Local path to a `.gguf` file (Llama backend) or MLX model directory. |
+| `--model-path` | _(none)_ | Local model path (only meaningful for backends compiled into the server). |
 | `--ollama-base-url` | `http://localhost:11434` | Ollama server URL. |
 | `--cors-origin` | _(none)_ | Allowed CORS origin (e.g. `https://app.example.com`). |
 | `--unsafe-cors` | `false` | Allow any CORS origin. Development only. |

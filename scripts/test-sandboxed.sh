@@ -119,7 +119,7 @@ SBPL
 cd "$PACKAGE_DIR"
 
 echo "==> building tests (outside sandbox)…"
-swift build --build-tests --disable-default-traits >/dev/null
+swift build --build-tests >/dev/null
 
 # ── Locate test bundle ────────────────────────────────────────────────────────
 

@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -108,4 +107,3 @@ final class MutatorTests: XCTestCase {
         }
     }
 }
-#endif

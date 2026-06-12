@@ -1,6 +1,5 @@
 import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 final class DownloadFileValidatorDiffusionTests: XCTestCase {
@@ -183,4 +182,3 @@ final class DownloadFileValidatorDiffusionTests: XCTestCase {
         return blob
     }
 }
-#endif

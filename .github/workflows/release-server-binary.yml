@@ -53,8 +53,8 @@ jobs:
           xcode-version: "26.3"
 
       - name: Resolve packages
-        # Resolve with only the Server trait to skip unnecessary dependency
-        # resolution for MLX/Llama/etc. that aren't needed for the server binary.
+        # Resolve with the Server trait so the Hummingbird/NIO stack the
+        # server binary needs is in the graph.
         run: swift package --traits Server resolve
 
       - name: Build release binary

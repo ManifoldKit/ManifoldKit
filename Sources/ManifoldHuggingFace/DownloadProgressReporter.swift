@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 
 @MainActor
@@ -47,4 +46,3 @@ internal final class DownloadProgressReporter {
         )
     }
 }
-#endif

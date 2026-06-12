@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -347,4 +346,3 @@ final class SessionContextLeakDetectorContractTests: XCTestCase {
         XCTAssertTrue(detector.inspect([a, b]).isEmpty)
     }
 }
-#endif

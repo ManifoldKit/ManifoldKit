@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 import ManifoldInference
@@ -126,4 +125,3 @@ final class SessionScriptRunnerTests: XCTestCase {
             "only the two enqueue-producing steps should appear in turnRecords")
     }
 }
-#endif

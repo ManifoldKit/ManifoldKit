@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import CryptoKit
 import Foundation
@@ -147,4 +146,3 @@ public struct DownloadFileValidator {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }
-#endif

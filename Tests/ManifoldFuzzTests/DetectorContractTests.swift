@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 import ManifoldInference
@@ -862,4 +861,3 @@ final class TimeoutContractTests: XCTestCase {
         DetectorContractAsserter.assertAdversarial(TimeoutContract.self)
     }
 }
-#endif

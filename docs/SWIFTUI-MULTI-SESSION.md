@@ -193,7 +193,11 @@ want to show an onboarding sheet instead of auto-loading.
 
 ### Local GGUF (llama.cpp) and MLX
 
-Local models need a downloaded weights file before the chat surface can
+Local models need the matching companion backend package —
+[manifold-llama](https://github.com/roryford/manifold-llama) for GGUF,
+[manifold-mlx](https://github.com/roryford/manifold-mlx) for MLX — registered
+via `quickStart(backends:)` (or `LlamaBackends.register(with:)` on a manual
+bootstrap), plus a downloaded weights file before the chat surface can
 generate. Use ``ManifoldUIModelManagement`` (a separate product) to give
 users a model browser, downloader, and storage UI. See
 ``ManifoldUIModelManagement.ModelManagementSheet`` for the canonical sheet.
@@ -270,14 +274,11 @@ It covers:
 Tagged release:
 
 ```swift
-// Package.swift
+// Package.swift — the cloud backends (Ollama, OpenAI, Anthropic, LM Studio)
+// always compile since v0.48; no traits needed.
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.47.0", // x-release-please-version
-    traits: [
-        .trait(name: "Ollama"),     // opt-in: localhost:11434
-        .trait(name: "CloudSaaS"), // opt-in: OpenAI, Anthropic, LM Studio
-    ]
+    from: "0.47.0" // x-release-please-version
 )
 ```
 
@@ -286,11 +287,7 @@ Local SwiftPM path (development / monorepo):
 ```swift
 .package(
     name: "ManifoldKit",
-    path: "../ManifoldKit",      // adjust to your checkout
-    traits: [
-        .trait(name: "Ollama"),
-        .trait(name: "CloudSaaS"),
-    ]
+    path: "../ManifoldKit"      // adjust to your checkout
 )
 ```
 

@@ -27,7 +27,7 @@ import ManifoldInference
 /// factory must produce an MLX backend constructed with
 /// `enableKVCacheReuse: true`. A reuse-disabled backend would also emit zero
 /// `.kvCacheReuse` events and would falsely confirm an "intact" gate. The
-/// canonical wiring lives next to `MLXFuzzFactory` in `ManifoldFuzzBackends`.
+/// canonical wiring lives next to `MLXFuzzFactory` in the manifold-mlx companion package (v0.48, PR C2).
 public struct MLXVLMGateScenario: FuzzScenario {
     public let id = "mlx-vlm-gate"
     public let humanName = "MLX VLM gate currently disables KV-cache reuse"

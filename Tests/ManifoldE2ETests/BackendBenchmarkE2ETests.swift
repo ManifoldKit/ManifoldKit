@@ -12,13 +12,10 @@
 ///   xcrun swift test \
 ///   --filter OllamaBackendBenchmark --skip-update
 ///
-/// # LlamaBackend (set MANIFOLD_BENCH_LLAMA_MODEL to an absolute .gguf path):
-/// MANIFOLD_BENCH_LLAMA_MODEL=~/Documents/Models/llama3.1-8b-instruct-Q4_K_M.gguf \
-///   xcrun swift test --traits Llama \
-///   --filter LlamaBackendBenchmark --skip-update
 /// ```
 ///
-/// MLX requires Xcode — use `scripts/benchmark.sh --mlx` for that path.
+/// The MLX / llama.cpp backend benchmarks moved to the manifold-mlx /
+/// manifold-llama companion packages with the backends (v0.48, PR C2).
 import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
@@ -125,75 +122,6 @@ final class OllamaBackendBenchmark: XCTestCase {
     }
 }
 
-// MARK: - Llama backend
-
-#if Llama
-@MainActor
-final class LlamaBackendBenchmark: XCTestCase {
-
-    // Shared across test methods — llama_backend_init is once-per-process.
-    private nonisolated(unsafe) static var sharedBackend: LlamaBackend?
-    private nonisolated(unsafe) static var sharedModelURL: URL?
-
-    private var backend: LlamaBackend!
-    private var modelURL: URL!
-
-    override func setUp() async throws {
-        try await super.setUp()
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon, "Requires Apple Silicon")
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice, "Requires Metal")
-
-        // MANIFOLD_BENCH_LLAMA_MODEL (absolute path) is set by benchmark.sh.
-        // Fall back to MANIFOLD_DISCOVER_LOCAL_MODELS + LLAMA_TEST_MODEL hint.
-        let url: URL
-        let envPath = ProcessInfo.processInfo.environment["MANIFOLD_BENCH_LLAMA_MODEL"] ?? ""
-        if !envPath.isEmpty, FileManager.default.fileExists(atPath: envPath) {
-            url = URL(fileURLWithPath: envPath)
-        } else if let found = HardwareRequirements.findGGUFModel() {
-            url = found
-        } else {
-            throw XCTSkip(
-                "No GGUF found. Set MANIFOLD_BENCH_LLAMA_MODEL=<path> or " +
-                "MANIFOLD_DISCOVER_LOCAL_MODELS=1 + LLAMA_TEST_MODEL=<name hint>"
-            )
-        }
-
-        if Self.sharedBackend == nil {
-            let fresh = LlamaBackend()
-            try await fresh.loadModel(from: url, plan: .testStub(effectiveContextSize: 4096))
-            Self.sharedBackend = fresh
-            Self.sharedModelURL = url
-        }
-        backend  = Self.sharedBackend
-        modelURL = Self.sharedModelURL
-    }
-
-    override func tearDown() async throws {
-        backend = nil; modelURL = nil
-        try await super.tearDown()
-    }
-
-    func test_throughput() async throws {
-        let config = GenerationConfig(temperature: 0.3, maxOutputTokens: benchTokens)
-        // Warmup
-        let warmup = try backend.generate(prompt: benchPrompt, systemPrompt: nil, config: config)
-        for try await _ in warmup.events {}
-
-        var results: [(ttftMs: Double, totalMs: Double, tokens: Int)] = []
-        for _ in 1...benchRuns {
-            results.append(try await timedGenerate(backend: backend))
-        }
-        printResults(label: "ManifoldKit→Llama", model: modelURL.lastPathComponent, results: results)
-        XCTAssertGreaterThan(results.map { Double($0.tokens) / ($0.totalMs / 1000) }.max() ?? 0, 5)
-    }
-
-    func test_zzz_cleanup() async throws {
-        guard let b = Self.sharedBackend else { return }
-        await b.unloadAndWait()
-        Self.sharedBackend = nil
-    }
-}
-#endif
 
 // MARK: - Foundation backend (Apple Intelligence)
 

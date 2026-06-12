@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 import ManifoldInference
@@ -60,4 +59,3 @@ final class EventRecorderTests: XCTestCase {
         XCTAssertEqual(capture.raw, "response")
     }
 }
-#endif

@@ -1,5 +1,4 @@
 import XCTest
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 final class DownloadHygieneJanitorTests: XCTestCase {
@@ -94,4 +93,3 @@ final class DownloadHygieneJanitorTests: XCTestCase {
             .appendingPathComponent("tmp/test-artifacts", isDirectory: true)
     }
 }
-#endif

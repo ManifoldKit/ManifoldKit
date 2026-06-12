@@ -55,13 +55,13 @@ Heuristic markdown diff; groups findings into Disappeared, Persisted, New.
 
 **Why.** A reviewer's eye is the wrong layer to catch "did this PR add a new `URLSession(...)` outside the allowlist", "did anyone import `ManifoldBackends` from UI again", or "is there a fresh `try?` swallowing errors in production". Each audit codifies a rule that bled into a real bug (or is one Swift compile away from a real bug), then plants a tripwire. The cost is one test file per rule; the payoff is the rule never silently rots back in.
 
-**Run them.** They live in the regular suites and run under `--disable-default-traits` in CI:
+**Run them.** They live in the regular suites and run on every CI build (plain `swift test` — there are no default traits since v0.48):
 
 ```bash
-swift test --filter ManifoldInferenceTests --disable-default-traits   # SilentCatchAudit, TrafficBoundaryAudit, …
-swift test --filter ManifoldBackendsTests   --disable-default-traits   # SessionConstructionAudit, DNSRebindingCoverageAudit, …
-swift test --filter ManifoldCoreTests       --disable-default-traits   # PackageTraitGateAudit, UserDefaultsStandardAudit, …
-swift test --filter ManifoldRuntimeTests    --disable-default-traits   # ProtocolLocationAudit
+swift test --filter ManifoldInferenceTests   # SilentCatchAudit, TrafficBoundaryAudit, …
+swift test --filter ManifoldBackendsTests     # SessionConstructionAudit, DNSRebindingCoverageAudit, …
+swift test --filter ManifoldCoreTests         # PackageTraitGateAudit, UserDefaultsStandardAudit, …
+swift test --filter ManifoldRuntimeTests      # ProtocolLocationAudit
 ```
 
 Failures print the offending file/line plus the allowlist mechanism. Most audits expose a path-based allowlist file (e.g. `silent_catch_allowlist.txt`) sitting beside the test; some also support "idiom" allowlists for globally-approved patterns.
@@ -91,7 +91,7 @@ Failures print the offending file/line plus the allowlist mechanism. Most audits
 
 **Run it.**
 ```bash
-SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests --disable-default-traits
+SABOTAGE=1 swift test --filter ManifoldAuditSabotageSuiteTests
 ```
 Without `SABOTAGE=1` every test skips immediately — the suite is nightly-only because it does temp-dir setup per test. The scheduled `nightly-slow-tests` workflow runs it with `SABOTAGE=1`, `--min-passed 1`, and a log proof check for `ManifoldAuditSabotageSuiteTests` test-case lines so a skipped sabotage lane cannot look green.
 

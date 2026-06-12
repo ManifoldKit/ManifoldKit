@@ -1,6 +1,5 @@
 import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 final class DiffusionPackageValidatorTests: XCTestCase {
@@ -109,4 +108,3 @@ final class DiffusionPackageValidatorTests: XCTestCase {
             .appendingPathComponent("tmp/test-artifacts", isDirectory: true)
     }
 }
-#endif

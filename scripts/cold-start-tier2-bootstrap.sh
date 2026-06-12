@@ -114,9 +114,9 @@ import SwiftData
 
 // MARK: - Inline fake backend
 //
-// Same shape as tier 1: a downstream consumer would normally register MLX /
-// Llama / Foundation backends, but we want zero external dependencies in a
-// conformance run. The fake registers under \`.foundation\` and stops in for
+// Same shape as tier 1: a downstream consumer would normally register
+// Foundation / cloud (or companion-package MLX / Llama) backends, but we
+// want zero external dependencies in a conformance run. The fake registers under \`.foundation\` and stops in for
 // Apple's built-in model so we exercise the same load → generate path real
 // chat apps walk.
 

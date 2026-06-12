@@ -1,4 +1,3 @@
-#if Fuzz
 #if canImport(FoundationModels)
 import XCTest
 import ManifoldBackends
@@ -61,5 +60,4 @@ final class FoundationFuzzFactoryTests: XCTestCase {
         )
     }
 }
-#endif
 #endif

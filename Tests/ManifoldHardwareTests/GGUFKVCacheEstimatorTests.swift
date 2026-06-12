@@ -1,5 +1,6 @@
 import XCTest
 @testable import ManifoldHardware
+@_spi(BackendInternals) import ManifoldHardware
 
 final class GGUFKVCacheEstimatorTests: XCTestCase {
 

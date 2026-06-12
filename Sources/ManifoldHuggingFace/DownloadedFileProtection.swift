@@ -1,4 +1,3 @@
-#if HuggingFace
 import Foundation
 import ManifoldInference
 
@@ -38,4 +37,3 @@ enum DownloadedFileProtection {
         #endif
     }
 }
-#endif

@@ -67,6 +67,28 @@ See [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) for provider URLs and capability li
 
 ---
 
+## package 'manifoldkit' has no trait named 'MLX'
+
+(Also: `has no trait named 'Llama'`, `'HuggingFace'`, `'Fuzz'`, or `'FoundationOnly'` —
+the five traits retired by the companion-package split, PR C2.)
+
+Same shape as the section above — delete the trait from your `traits:` array — but the
+replacements differ:
+
+| Retired trait | v0.48 replacement |
+|---|---|
+| `MLX` | The MLX family moved to the [`manifold-mlx`](https://github.com/roryford/manifold-mlx) companion package — see [no such module 'ManifoldMLX'](#no-such-module-manifoldmlx) below for the install steps. |
+| `Llama` | The llama.cpp/GGUF family moved to [`manifold-llama`](https://github.com/roryford/manifold-llama) — see [no such module 'ManifoldLlama'](#no-such-module-manifoldllama) below. |
+| `HuggingFace` | `ManifoldHuggingFace` (model search/download machinery) compiles unconditionally — drop the trait. |
+| `Fuzz` | `ManifoldFuzz` and the `fuzz-chat` CLI compile unconditionally — drop the trait. `fuzz-chat` now drives Ollama / OpenAI / Foundation / mock / chaos (default backend: ollama); the MLX/Llama fuzz factories moved to the companions. |
+| `FoundationOnly` | The lean build is now the **default**: core has no heavy ML dependencies at all. Don't add the companion packages and you get the former `FoundationOnly` footprint without any flag. See [AppStoreSubmission.md](AppStoreSubmission.md). |
+
+With these gone there are **no default traits left** — plain `swift build` /
+`swift test` is the full core build, and `--disable-default-traits` is a no-op you
+should delete from scripts and CI.
+
+---
+
 ## no such module 'ManifoldMLX'
 
 The MLX backend lives in the companion package
@@ -162,11 +184,16 @@ That failure mode is deliberately loud:
 - The runtime no-backend diagnostic and model-compatibility flagging (below) catch
   the "compiles but can't infer" state at launch, not on the first send.
 
+---
+
+## product 'ManifoldBackends' not found
+
 **Forward notice:** the umbrella shim is scheduled for removal in a later release.
-When that happens the error becomes `product 'ManifoldBackends' not found` — the fix
-is the same as the two sections above: depend on the companion package(s) you need
-and pass their registrars to `quickStart(backends:)`. Prefer migrating now;
-`import ManifoldKit` + explicit companion imports is the supported long-term shape.
+When that happens this is the error you'll see. The fix is the same as the
+`no such module` sections above: depend on the companion package(s) you need
+(`manifold-mlx` / `manifold-llama`) and pass their registrars to
+`quickStart(backends:)`. Prefer migrating now; `import ManifoldKit` + explicit
+companion imports is the supported long-term shape.
 
 ---
 

@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import os
@@ -969,4 +968,3 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
     }
 
 }
-#endif

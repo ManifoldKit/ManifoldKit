@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "method_version": "1",
-  "note": "Binary deltas are per-module stripped .o sizes for each trait's specific modules, NOT total build deltas (shared infrastructure excluded). Macros trait: compiler-plugin only — ZERO runtime binary bytes; build-time overhead only. Deltas do NOT sum — adding multiple traits pays shared infrastructure once.",
+  "note": "Binary deltas are per-module stripped .o sizes for each trait's specific modules, NOT total build deltas (shared infrastructure excluded). Macros trait: compiler-plugin only \u2014 ZERO runtime binary bytes; build-time overhead only. Deltas do NOT sum \u2014 adding multiple traits pays shared infrastructure once.",
   "checkout_total_mb": 259,
   "artifact_total_mb": 617,
   "generated_at": "2026-06-10T19:40:00Z",
@@ -9,98 +9,42 @@
   "machine": "Apple Silicon (arm64)",
   "quick_mode": false,
   "traits": [
-  {
-  "trait": "FoundationOnly",
-  "modules_added": "FoundationBackend only (removes MLX+Llama+HuggingFace defaults)",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "0",
-  "cold_build_delta_s": "-48",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Override trait: replaces defaults (drops MLX/Llama/HuggingFace). Compiles FoundationBackend only. Binary delta vs --disable-default-traits baseline is ~0. Cold build: ~34s vs 82s baseline = 48s faster (no Metal shaders)."
-},{
-  "trait": "MLX",
-  "modules_added": "ManifoldMLX + StableDiffusion + FluxSwift",
-  "transitive_deps": ["mlx-swift", "mlx-swift-lm"],
-  "checkout_attributed_mb": 121,
-  "artifact_mb": 0,
-  "binary_delta_kb": "42652",
-  "cold_build_delta_s": "464",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Dominant cost. Binary delta: Cmlx Metal C backend=25114 KB, MLXLLM=6154 KB, MLXVLM=4671 KB, MLXLMCommon=2328 KB, MLX=1815 KB, MLXNN=975 KB, Tokenizers=696 KB, Hub=707 KB, MLXOptimizers=131 KB. Cold build: 546s total, baseline=82s, delta=464s. Metal shader compilation (Cmlx) dominates. mlx-swift checkout=117 MB, mlx-swift-lm=4 MB."
-},{
-  "trait": "Llama",
-  "modules_added": "ManifoldLlama",
-  "transitive_deps": ["llama.swift"],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 617,
-  "binary_delta_kb": "8",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "LlamaSwift is a prebuilt xcframework (617 MB downloaded, zero compilation). Binary .o delta is the Swift wrapper only (8 KB). The xcframework adds to the final IPA at link time but is NOT reflected in the .o-file delta. llama.swift has no source checkout (binary target)."
-},{
-  "trait": "HuggingFace",
-  "modules_added": "ManifoldHuggingFace",
-  "transitive_deps": ["swift-huggingface"],
-  "checkout_attributed_mb": 2,
-  "artifact_mb": 0,
-  "binary_delta_kb": "5026",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "swift-huggingface: HuggingFace Hub browsing/download library. ManifoldHuggingFace wrapper=9 KB, HuggingFace library=5017 KB stripped."
-},{
-  "trait": "Server",
-  "modules_added": "ManifoldServer + Hummingbird",
-  "transitive_deps": ["EventSource", "swift-nio", "swift-crypto", "swift-collections", "swift-atomics", "swift-system"],
-  "checkout_attributed_mb": 74,
-  "artifact_mb": 0,
-  "binary_delta_kb": "12157",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "ManifoldServer=11 KB, Hummingbird=2226 KB, HummingbirdCore=1370 KB, full NIO stack (NIO/NIOHTTP1/NIOHTTP2/NIOSSL/NIOExtras/…)=8550 KB. Checkout: swift-nio=11 MB, swift-crypto=41 MB, swift-collections=16 MB, swift-atomics=4 MB, swift-system=1 MB, EventSource=1 MB."
-},{
-  "trait": "Macros",
-  "modules_added": "ManifoldMacrosPlugin + @ToolSchema",
-  "transitive_deps": ["swift-syntax"],
-  "checkout_attributed_mb": 11,
-  "artifact_mb": 0,
-  "binary_delta_kb": "0",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "IMPORTANT: Macros compiles swift-syntax as a COMPILER PLUGIN (host executable, -tool suffix). Adds ZERO bytes to the final app binary. All ~25 MB of swift-syntax plugin objects are build-time-only. Binary delta = 0 runtime. Build-time overhead: ~60-120s for 647-file swift-syntax tree (not cold-measured)."
-},
- {
-  "trait": "Fuzz",
-  "modules_added": "fuzz-chat executable (real backends)",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "N/A",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Wires real inference backends into fuzz-chat executable only. Not relevant to app binary sizing."
-}
+    {
+      "trait": "Server",
+      "modules_added": "ManifoldServer + Hummingbird",
+      "transitive_deps": [
+        "EventSource",
+        "swift-nio",
+        "swift-crypto",
+        "swift-collections",
+        "swift-atomics",
+        "swift-system"
+      ],
+      "checkout_attributed_mb": 74,
+      "artifact_mb": 0,
+      "binary_delta_kb": "12157",
+      "cold_build_delta_s": "N/A",
+      "measured_at": "2026-06-10T19:40:00Z",
+      "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
+      "machine": "Apple Silicon (arm64)",
+      "method_version": "1",
+      "notes": "ManifoldServer=11 KB, Hummingbird=2226 KB, HummingbirdCore=1370 KB, full NIO stack (NIO/NIOHTTP1/NIOHTTP2/NIOSSL/NIOExtras/\u2026)=8550 KB. Checkout: swift-nio=11 MB, swift-crypto=41 MB, swift-collections=16 MB, swift-atomics=4 MB, swift-system=1 MB, EventSource=1 MB."
+    },
+    {
+      "trait": "Macros",
+      "modules_added": "ManifoldMacrosPlugin + @ToolSchema",
+      "transitive_deps": [
+        "swift-syntax"
+      ],
+      "checkout_attributed_mb": 11,
+      "artifact_mb": 0,
+      "binary_delta_kb": "0",
+      "cold_build_delta_s": "N/A",
+      "measured_at": "2026-06-10T19:40:00Z",
+      "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
+      "machine": "Apple Silicon (arm64)",
+      "method_version": "1",
+      "notes": "IMPORTANT: Macros compiles swift-syntax as a COMPILER PLUGIN (host executable, -tool suffix). Adds ZERO bytes to the final app binary. All ~25 MB of swift-syntax plugin objects are build-time-only. Binary delta = 0 runtime. Build-time overhead: ~60-120s for 647-file swift-syntax tree (not cold-measured)."
+    }
   ]
 }
