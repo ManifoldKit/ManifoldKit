@@ -70,12 +70,13 @@
 | `StableDiffusion` | Vendored from mlx-swift-examples (MIT). Used by `MLXDiffusionBackend`. | MLX |
 | `FluxSwift` | Vendored from mzbac/flux.swift (MIT). Used by `FluxDiffusionBackend`. | MLX |
 
-### Test support targets (not production products)
+### Test support targets
 
 | Target | Role |
 |--------|------|
-| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`). |
+| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`). Published as a `.library` product so companion backend packages (manifold-mlx / manifold-llama, #1749) can reuse the mocks. |
 | `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary (PR #1409). |
+| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published as a `.library` product for companion backend packages. Links XCTest — same #1409 constraint as `ManifoldContractTestSupport`: never depend on it from an executable target (audit-enforced). Contract suites that use the capability-claims registry must NOT run under `swift test --parallel` (process-global registry — see its DocC catalog). |
 
 ### Umbrella
 

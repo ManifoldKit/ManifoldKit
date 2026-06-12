@@ -175,7 +175,7 @@ Reference adopters live alongside their target:
 5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
 6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
 
-The full assertion shape is documented in `Tests/ManifoldBackendsTests/BackendContractTests.swift`.
+The full assertion shape is documented in `Sources/ManifoldBackendTestKit/BackendContractChecks.swift` — the contract checks and mixins ship as the `ManifoldBackendTestKit` product so companion backend packages (manifold-mlx / manifold-llama, #1749) run the same suite via `import ManifoldBackendTestKit` (no `@testable` access). Its DocC catalog documents the adoption walkthrough, the no-`--parallel` claims-registry rule, and the non-vacuity expectation.
 
 ## Sabotage evidence
 
