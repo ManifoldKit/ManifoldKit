@@ -23,7 +23,7 @@ from test targets**.
 
 Add the products to your package's test target:
 
-```swift
+```swift,no-build
 .testTarget(
     name: "MyBackendTests",
     dependencies: [
@@ -36,7 +36,7 @@ Add the products to your package's test target:
 
 Then declare one `XCTestCase` per backend, adopting the mixins:
 
-```swift
+```swift,no-build
 import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
