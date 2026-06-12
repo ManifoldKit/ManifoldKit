@@ -1,9 +1,10 @@
 #if Llama
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldBackends
+import ManifoldLlama
 
 /// LlamaBackend conformance against the universal backend contract.
 ///

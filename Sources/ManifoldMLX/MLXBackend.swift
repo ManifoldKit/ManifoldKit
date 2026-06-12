@@ -165,7 +165,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Test-only read-side accessor that snapshots `_loadOptions` under the
     /// state lock. Lets plumbing tests assert the setter persisted the value
     /// without needing a real model load.
-    var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
+    @_spi(Testing) public var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
 
     // MARK: - Load Progress
 
@@ -192,7 +192,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// yield occurrences deterministically without timing assertions.
     ///
     /// `nil` in production — the real cooperative yield runs instead.
-    nonisolated(unsafe) static var _yieldHookForTesting: (@Sendable () async -> Void)?
+    @_spi(Testing) public nonisolated(unsafe) static var _yieldHookForTesting: (@Sendable () async -> Void)?
 
     // MARK: - Init
 
@@ -243,7 +243,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// 2.5/β. This forwarder is retained for source-compat with
     /// `MLXBackendHelpersTests`, which exercises marker-resolution policy
     /// through the backend's surface.
-    static func resolveThinkingMarkers(
+    @_spi(Testing) public static func resolveThinkingMarkers(
         config: GenerationConfig,
         autoDetected: ThinkingMarkers?
     ) -> ThinkingMarkers? {
@@ -548,8 +548,8 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// Injects a mock container so unit tests can exercise the generation path
     /// without loading real model weights. Call this before `generate()`.
     ///
-    /// Not part of the public API — visible to `ManifoldBackendsTests` via `@testable import`.
-    func _inject(
+    /// Not part of the public API — @_spi(Testing) seam for backend test targets (#1749).
+    @_spi(Testing) public func _inject(
         _ container: any MLXModelContainerProtocol,
         supportsVision: Bool = false,
         dialect: MLXToolDialect = .unknown
@@ -565,11 +565,11 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
         }
     }
 
-    func _hasPromptCacheSnapshotForTesting() -> Bool {
+    @_spi(Testing) public func _hasPromptCacheSnapshotForTesting() -> Bool {
         withStateLock { _promptCacheState.hasSnapshotOrPending }
     }
 
-    func _isPromptCacheSnapshotReadyForTesting() -> Bool {
+    @_spi(Testing) public func _isPromptCacheSnapshotReadyForTesting() -> Bool {
         withStateLock { _promptCacheState.isSnapshotReady }
     }
 
@@ -578,7 +578,7 @@ public final class MLXBackend: InferenceBackend, @unchecked Sendable {
     /// `tokenizer_config.json`. Tests use this to verify that
     /// `config.thinkingMarkers` correctly overrides auto-detection without
     /// having to stage a real model directory.
-    func _injectAutoDetectedThinkingMarkers(_ markers: ThinkingMarkers?) {
+    @_spi(Testing) public func _injectAutoDetectedThinkingMarkers(_ markers: ThinkingMarkers?) {
         withStateLock { _autoDetectedThinkingMarkers = markers }
     }
 

@@ -1,5 +1,6 @@
 #if CloudSaaS || Ollama
 import XCTest
+import ManifoldBackendTestKit
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.

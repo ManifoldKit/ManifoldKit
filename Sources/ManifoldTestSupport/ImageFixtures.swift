@@ -1,9 +1,9 @@
 import Foundation
 
 /// Shared tiny image fixtures for multimodal and attachment tests.
-enum ImageFixtures {
+public enum ImageFixtures {
     /// A valid 1×1 transparent PNG.
-    static let oneByOnePNGData = Data(
+    public static let oneByOnePNGData = Data(
         base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII="
     )!
 
@@ -17,7 +17,7 @@ enum ImageFixtures {
     /// Used by perf-audit tests that need realistic-size attachments without
     /// the cost of actually encoding image data. `approxBytes < 4` is clamped
     /// to a minimal SOI+EOI pair.
-    static func largeJPEG(approxBytes: Int) -> Data {
+    public static func largeJPEG(approxBytes: Int) -> Data {
         let minimum = 4 // SOI (2) + EOI (2)
         let total = max(approxBytes, minimum)
         var data = Data(count: total)

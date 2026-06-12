@@ -1,4 +1,5 @@
 import XCTest
+import ManifoldBackendTestKit
 @testable import ManifoldInference
 
 #if AnyLanguageModel

@@ -1,6 +1,6 @@
 #if Llama && DEBUG
 import XCTest
-@testable import ManifoldLlama
+@_spi(Testing) import ManifoldLlama
 
 /// Regression coverage for the process-scoped latch in
 /// ``LlamaBackendProcessLifecycle`` (#1319 / #1115).

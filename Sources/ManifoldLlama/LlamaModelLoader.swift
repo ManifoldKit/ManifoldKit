@@ -12,7 +12,8 @@ import ManifoldInference
 /// so every load through this loader is serialized against every other load
 /// through the same loader. `LlamaBackend` keeps a single instance for its
 /// lifetime, so all loads on one backend share this lock.
-final class LlamaModelLoader: @unchecked Sendable {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public final class LlamaModelLoader: @unchecked Sendable {
 
     private static let logger = Logger(
         subsystem: ManifoldConfiguration.shared.logSubsystem,
@@ -266,7 +267,7 @@ final class LlamaModelLoader: @unchecked Sendable {
     ]
 
     /// Returns true when `architecture` is on the non-LM denylist.
-    static func isUnsupportedArchitecture(_ architecture: String) -> Bool {
+    @_spi(Testing) public static func isUnsupportedArchitecture(_ architecture: String) -> Bool {
         unsupportedArchitectures.contains(architecture.lowercased())
     }
 
@@ -278,7 +279,7 @@ final class LlamaModelLoader: @unchecked Sendable {
     /// `llama_model_meta_val_str` returns the byte length the value would
     /// require (excluding the null terminator) when the supplied buffer is
     /// too small, or a negative value when the key is not present.
-    static func readChatTemplateMetadata(model: OpaquePointer) -> String? {
+    @_spi(Testing) public static func readChatTemplateMetadata(model: OpaquePointer) -> String? {
         let key = "tokenizer.chat_template"
         // Probe with a single-byte buffer to learn the required size. The
         // function still returns the value's length even when the buffer

@@ -1,9 +1,9 @@
 #if MLX
 import XCTest
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 /// Real-inference smoke test for `mlx-community/gemma-4-26b-a4b-it-4bit`,
 /// the 26B Mixture-of-Experts Gemma 4 variant. Validates the VLM-factory

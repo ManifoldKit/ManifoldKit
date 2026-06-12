@@ -3,7 +3,8 @@ import Foundation
 import ManifoldInference
 
 /// Probes MLX model directories for architecture, factory routing, and manifest metadata.
-enum MLXModelProbe {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum MLXModelProbe {
     /// Canonical `model_type` values that `mlx-swift-lm`'s `LLMTypeRegistry.shared`
     /// can serve as chat/instruct LMs. Anything outside this set (or the
     /// VLM-specific set below) — CLIP, SigLIP, Whisper, BERT embeddings, etc. —
@@ -52,7 +53,7 @@ enum MLXModelProbe {
     /// is not a chat/instruct LM. If `config.json` is missing or unreadable the
     /// check is a no-op — mlx-swift-lm's own load path will then surface the
     /// real error (missing weights, malformed directory, etc.).
-    static func validateArchitecture(at url: URL) throws {
+    public static func validateArchitecture(at url: URL) throws {
         let configURL = url.appendingPathComponent("config.json")
         guard let data = try? Data(contentsOf: configURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -94,13 +95,13 @@ enum MLXModelProbe {
     /// matches the same conservative default used by `validateArchitecture`. Dense
     /// Gemma 4 models intentionally stay on the LLM factory so we don't pay the
     /// memory cost of resident vision-tower weights.
-    static func requiresVLMFactory(at url: URL) -> Bool {
+    public static func requiresVLMFactory(at url: URL) -> Bool {
         requiresVLMFactory(at: url, precomputedCapabilities: nil)
     }
 
     /// Variant that accepts pre-computed capabilities to avoid re-reading
     /// `config.json` when the caller already ran ``ModelCapabilityProbe``.
-    static func requiresVLMFactory(
+    public static func requiresVLMFactory(
         at url: URL,
         precomputedCapabilities capabilities: ModelCapabilities?
     ) -> Bool {
@@ -192,7 +193,7 @@ enum MLXModelProbe {
     /// On M5 hardware with macOS 26.2 or later, MLX activates Neural Accelerator
     /// dispatch automatically (~3–4× TTFT speedup). Check
     /// ``NeuralAcceleratorProbe/availability`` in ManifoldHardware for informational UI.
-    static func produceManifest(
+    public static func produceManifest(
         at url: URL,
         detectedThinkingMarkers: ThinkingMarkers?,
         supportsVision: Bool

@@ -5,12 +5,13 @@ import MLXLMCommon
 import ManifoldInference
 
 /// Encodes Manifold chat history into the message shapes accepted by MLX.
-enum MLXChatMessageEncoder {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum MLXChatMessageEncoder {
     /// Assembles the prepared chat-message inputs for the MLX container's two
     /// `prepare(...)` overloads. Returns both shapes because the caller picks
     /// `prepare(chat:)` for vision history (non-nil first element) and
     /// `prepare(messages:)` otherwise.
-    static func buildChatMessages(
+    public static func buildChatMessages(
         prompt: String,
         effectiveSystemPrompt: String?,
         conversationHistory: [(role: String, content: String)],
@@ -58,7 +59,7 @@ enum MLXChatMessageEncoder {
     /// Returns the Qwen 2.5 `<tools>…</tools>` block to append to the system
     /// prompt, or `nil` when the dialect doesn't use this mechanism or the
     /// caller supplied no tools.
-    static func buildQwenToolBlock(
+    public static func buildQwenToolBlock(
         config: GenerationConfig,
         dialect: MLXToolDialect
     ) -> String? {

@@ -1,11 +1,12 @@
 #if Llama
 import XCTest
+import ManifoldBackendTestKit
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
-@testable import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 
 /// Tests for LlamaBackend state, capabilities, and error handling.
 ///

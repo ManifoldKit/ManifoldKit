@@ -1,8 +1,9 @@
 #if Ollama
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
+import ManifoldBackends
 
 /// OllamaBackend conformance against the universal BCK backend contract.
 ///

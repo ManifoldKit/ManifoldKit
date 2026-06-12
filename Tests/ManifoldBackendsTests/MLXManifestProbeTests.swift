@@ -1,8 +1,8 @@
 #if MLX
 import XCTest
-@testable import ManifoldBackends
-@testable import ManifoldMLX
-@testable import ManifoldInference
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
+import ManifoldInference
 
 /// Unit tests for ``MLXModelProbe/produceManifest(at:detectedThinkingMarkers:supportsVision:)``.
 ///

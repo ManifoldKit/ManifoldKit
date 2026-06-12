@@ -147,14 +147,14 @@ public actor MLXResourceArbiter {
     /// Test-only read of the active claim count. Used by
     /// `MLXResourceArbiterTests` to verify accounting without exposing the
     /// claims map.
-    func _activeClaimCountForTesting() -> Int {
+    @_spi(Testing) public func _activeClaimCountForTesting() -> Int {
         claims.count
     }
 
     /// Test-only read of the summed claim bytes. Callers that exercise the
     /// arbiter without a live MLX runtime must use this rather than reading
     /// `MLX.Memory.cacheLimit` (which requires the metallib).
-    func _totalClaimedBytesForTesting() -> Int {
+    @_spi(Testing) public func _totalClaimedBytesForTesting() -> Int {
         claims.values.reduce(0, +)
     }
 }

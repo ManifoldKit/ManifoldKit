@@ -3,8 +3,8 @@ import XCTest
 import MLXLMCommon
 import ManifoldInference
 import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 // Conform MockMLXModelContainer to the internal protocol in this test target,
 // where both the internal protocol and the public mock type are visible.

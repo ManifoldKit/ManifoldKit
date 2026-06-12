@@ -28,41 +28,56 @@ import ManifoldInference
 /// `trimPromptCache` contract). Any per-layer failure aborts reuse for the turn
 /// and a fresh cache is allocated for the full prompt — there is no unsafe
 /// partial reuse.
-enum MLXPromptCacheCoordinator {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum MLXPromptCacheCoordinator {
     private static let logger = Logger(
         subsystem: ManifoldConfiguration.shared.logSubsystem,
         category: "inference"
     )
 
-    struct CachedLayerState {
+    public struct CachedLayerState {
         let cacheTypeName: String
         let offset: Int
         let state: [MLXArray]
         let metaState: [String]
+
+        public init(cacheTypeName: String, offset: Int, state: [MLXArray], metaState: [String]) {
+            self.cacheTypeName = cacheTypeName
+            self.offset = offset
+            self.state = state
+            self.metaState = metaState
+        }
     }
 
-    struct Snapshot {
+    public struct Snapshot {
         let promptTokens: [Int]
         let layers: [CachedLayerState]
+
+        public init(promptTokens: [Int], layers: [CachedLayerState]) {
+            self.promptTokens = promptTokens
+            self.layers = layers
+        }
     }
 
-    struct State {
-        var snapshot: Snapshot?
-        var pendingSnapshotTask: Task<Void, Never>?
-        var writeToken: UInt64 = 0
+    public struct State {
+        public var snapshot: Snapshot?
+        public var pendingSnapshotTask: Task<Void, Never>?
+        public var writeToken: UInt64 = 0
 
-        mutating func invalidate() {
+        public init() {}
+
+        public mutating func invalidate() {
             pendingSnapshotTask?.cancel()
             pendingSnapshotTask = nil
             snapshot = nil
             writeToken &+= 1
         }
 
-        var hasSnapshotOrPending: Bool {
+        public var hasSnapshotOrPending: Bool {
             snapshot != nil || pendingSnapshotTask != nil
         }
 
-        var isSnapshotReady: Bool {
+        public var isSnapshotReady: Bool {
             snapshot != nil && pendingSnapshotTask == nil
         }
     }
@@ -78,7 +93,7 @@ enum MLXPromptCacheCoordinator {
     ///
     /// Surfaced (logged) on a miss so a hybrid model that can't reuse fails
     /// *loudly* with a reason rather than silently re-prefilling.
-    enum PromptCacheReuseReason: Equatable, Sendable, CustomStringConvertible {
+    public enum PromptCacheReuseReason: Equatable, Sendable, CustomStringConvertible {
         /// Reuse succeeded: `promptTokensReused` leading tokens were restored.
         case reused(promptTokensReused: Int)
         /// Reuse was not attempted (feature disabled / no eligible snapshot path).
@@ -98,12 +113,12 @@ enum MLXPromptCacheCoordinator {
         /// (e.g. a recurrent/hybrid layer after a divergent edit).
         case layerNotReusable(layerIndex: Int, cacheTypeName: String)
 
-        var didReuse: Bool {
+        public var didReuse: Bool {
             if case .reused = self { return true }
             return false
         }
 
-        var description: String {
+        public var description: String {
             switch self {
             case .reused(let n): return "reused(\(n) prompt tokens)"
             case .notEligible: return "not eligible for reuse this turn"
@@ -152,13 +167,29 @@ enum MLXPromptCacheCoordinator {
     ///
     /// Carries only the non-GPU properties the reuse decision needs, so the
     /// planning rule is unit-testable without touching Metal.
-    struct LayerReusePlanInput: Equatable {
+    public struct LayerReusePlanInput: Equatable {
         let snapshotTypeName: String
         let snapshotOffset: Int
         let snapshotStateIsEmpty: Bool
         let liveTypeName: String
         let liveIsTrimmable: Bool
         let liveIsKVCacheSimple: Bool
+
+        public init(
+            snapshotTypeName: String,
+            snapshotOffset: Int,
+            snapshotStateIsEmpty: Bool,
+            liveTypeName: String,
+            liveIsTrimmable: Bool,
+            liveIsKVCacheSimple: Bool
+        ) {
+            self.snapshotTypeName = snapshotTypeName
+            self.snapshotOffset = snapshotOffset
+            self.snapshotStateIsEmpty = snapshotStateIsEmpty
+            self.liveTypeName = liveTypeName
+            self.liveIsTrimmable = liveIsTrimmable
+            self.liveIsKVCacheSimple = liveIsKVCacheSimple
+        }
     }
 
     /// Result of `prepareInputAndCache(...)`.
@@ -175,7 +206,7 @@ enum MLXPromptCacheCoordinator {
         let reuseReason: PromptCacheReuseReason
     }
 
-    static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
+    public static func longestCommonPrefixLength(_ lhs: [Int], _ rhs: [Int]) -> Int {
         zip(lhs, rhs).prefix(while: { $0 == $1 }).count
     }
 
@@ -187,7 +218,7 @@ enum MLXPromptCacheCoordinator {
     /// Verbatim continuation (`currentOffset == targetOffset`) is valid for any
     /// cache type; otherwise the surplus can only be dropped from a trimmable
     /// cache. Shared by both the capture and restore paths and by `planReuse`.
-    static func layerCanReduce(
+    public static func layerCanReduce(
         currentOffset: Int,
         targetOffset: Int,
         isTrimmable: Bool
@@ -200,7 +231,7 @@ enum MLXPromptCacheCoordinator {
     /// returning `.reused` when every layer is eligible or the first blocking
     /// reason otherwise. Pure — performs no GPU work — so it is the unit-test
     /// seam for type-aware, per-layer eligibility.
-    static func planReuse(
+    public static func planReuse(
         layers: [LayerReusePlanInput],
         liveLayerCount: Int,
         reusedCount: Int
@@ -243,7 +274,7 @@ enum MLXPromptCacheCoordinator {
     /// the freshly-allocated live caches and the recorded snapshot. Lets callers
     /// (and tests with fake `KVCache`s) drive `planReuse` without materialising
     /// tensors.
-    static func planInputs(
+    public static func planInputs(
         live: [any KVCache],
         snapshot: Snapshot
     ) -> [LayerReusePlanInput] {

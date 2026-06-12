@@ -1,6 +1,7 @@
 #if MLX && Llama
 import XCTest
-@testable import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
+import ManifoldBackends
 
 /// Code-level regression guard for the MLX/Llama memory-pressure-handler
 /// asymmetry called out by audit claim #1's neighbour finding:

@@ -3,7 +3,7 @@ import XCTest
 import ManifoldInference
 import ManifoldTestSupport
 import ManifoldBackendTestKit
-import ManifoldMLX
+@_spi(Testing) import ManifoldMLX
 
 /// MLX participant for the local-backend contract suite.
 ///

@@ -1,10 +1,10 @@
 #if MLX && Llama
 import XCTest
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
-@testable import ManifoldLlama
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
+@_spi(Testing) import ManifoldLlama
 
 /// Combined-trait (`#if MLX && Llama`) regression guard for the KV-cache-reuse
 /// race that PR #1382 fixed — issue #1594's "race regression test under

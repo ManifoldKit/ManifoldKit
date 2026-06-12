@@ -3,7 +3,7 @@ import XCTest
 import ManifoldInference
 import ManifoldTestSupport
 import ManifoldBackendTestKit
-import ManifoldLlama
+@_spi(Testing) import ManifoldLlama
 
 /// Llama participant for the local-backend contract suite.
 ///
