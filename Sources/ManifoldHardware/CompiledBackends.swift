@@ -178,9 +178,9 @@ public struct CompiledBackends: Sendable, Equatable {
     private func unavailableReason(for modelType: ModelType) -> String {
         switch modelType {
         case .gguf:
-            return "GGUF models require the Llama trait in this build."
+            return "No llama.cpp (GGUF) backend is compiled into this build. Add the manifold-llama companion package (pre-split builds: the Llama trait) — see docs/MIGRATION-0.48.md."
         case .mlx:
-            return "MLX models require the MLX trait in this build."
+            return "No MLX backend is compiled into this build. Add the manifold-mlx companion package (pre-split builds: the MLX trait) — see docs/MIGRATION-0.48.md."
         case .foundation:
             return "Apple Foundation Models require iOS 26 / macOS 26 or later."
         }

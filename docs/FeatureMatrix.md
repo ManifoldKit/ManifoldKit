@@ -5,7 +5,6 @@ Do not edit by hand — re-run the script.
 
 | Trait | Description | Capabilities Unlocked |
 |-------|-------------|-----------------------|
-| `AnyLanguageModel` | Reach providers without a native backend (Gemini, xAI, Groq, Mistral, OpenRouter, and others) through the AnyLanguageModel bridge. | `providerBridge` |
 | `CoreAI` | Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface. | _(none — harness/build lever)_ |
 | `FoundationOnly` | App Store-lean: Apple Foundation Models only. Pass `traits: ["FoundationOnly"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set. | `foundationBackend` |
 | `Fuzz` | Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test. | _(none — harness/build lever)_ |

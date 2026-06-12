@@ -71,6 +71,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 
 | Doc | Covers |
 |-----|--------|
+| [MIGRATION-0.48.md](MIGRATION-0.48.md) | v0.48 packaging-release migration — retired traits, the manifold-mlx / manifold-llama companion packages, indexed by the literal error strings. |
 | [FeatureMatrix.md](FeatureMatrix.md) | The full trait → backend → capability table (generated from source). |
 | [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact, build-time cost, and dependency weight (generated from measured data). Explains why the checkout is large regardless of trait set. |
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |

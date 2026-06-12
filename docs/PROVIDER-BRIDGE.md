@@ -17,17 +17,16 @@ The bridge is the supported path for providers ManifoldKit does not implement na
 
 OpenAI, Anthropic, and Ollama also resolve through the bridge, but the native backends (always compiled since v0.48) are preferred for those — they add certificate pinning, retry, circuit-breaking, and latest-wins cancellation that the bridge does not.
 
-## Enabling the trait
+## Adding the product
 
-The bridge lives behind the opt-in `AnyLanguageModel` trait. Enable it from the consumer manifest:
+Since v0.48 the bridge is the `ManifoldAnyLanguageModel` library product — the former opt-in `AnyLanguageModel` trait is retired (see [MIGRATION-0.48.md](MIGRATION-0.48.md)). Opt in by linking the product and importing the module; consumers that never import it link neither the bridge nor the AnyLanguageModel library:
 
-```swift
-.package(
-    url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.43.0",
-    traits: ["AnyLanguageModel"]
-)
+```swift,no-build
+// Package.swift target dependencies:
+.product(name: "ManifoldAnyLanguageModel", package: "ManifoldKit")
 ```
+
+In Xcode: **File ▸ Add Package Dependencies… ▸ ManifoldKit**, then tick `ManifoldAnyLanguageModel` in the product list for your app target.
 
 ## Configuring a provider
 
@@ -45,7 +44,7 @@ Models are resolved from a URL whose scheme selects the provider. The model iden
 Common optional query items: `baseURL` (override the provider endpoint — point `openai`/`openai-responses` at xAI, Groq, or Mistral's OpenAI-compatible URL), `apiVersion`, and provider-specific overrides documented inline in `AnyLanguageModelURLResolver`.
 
 ```swift
-import ManifoldBackends
+import ManifoldAnyLanguageModel
 
 let backend = AnyLanguageModelBackend()
 let url = URL(string: "gemini://gemini-2.0-flash?apiKey=\(key)")!
@@ -63,13 +62,12 @@ When a bridged provider grows enough demand to justify reasoning-token fidelity 
 
 ## Testing
 
-`AnyLanguageModelConformanceTests` runs the universal backend contract and the capability meta-contract against the bridge offline (no network) whenever the trait is enabled. A live tier exercises a real provider end-to-end, gated behind an env var like the other live E2E suites:
+`AnyLanguageModelConformanceTests` runs the universal backend contract and the capability meta-contract against the bridge offline (no network) in every default suite run (the suite compiles unconditionally since v0.48). A live tier exercises a real provider end-to-end, gated behind an env var like the other live E2E suites:
 
 ```bash
 RUN_ANYLM_E2E=1 \
 ANYLM_E2E_URL='gemini://gemini-2.0-flash?apiKey=YOUR_KEY' \
-swift test --traits AnyLanguageModel \
-  --filter AnyLanguageModelConformanceTests/test_live_streamsRealCompletion
+swift test --filter AnyLanguageModelConformanceTests/test_live_streamsRealCompletion
 ```
 
 Without `RUN_ANYLM_E2E=1` and `ANYLM_E2E_URL`, the live test skips cleanly.

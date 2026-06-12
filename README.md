@@ -18,12 +18,22 @@ ManifoldKit is a full-stack, multi-backend AI chat framework for iOS 18+ / macOS
 
 ## Hello World
 
-Add the package, then drop this into your app entry point. `ManifoldKit.quickStart()` builds the SwiftData container, registers the compiled-in backends, and wires up a `ChatViewModel` — one call to a wired runtime, then one more step (model selection) for a live chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+Three steps: add **ManifoldKit** (core) plus the **manifold-llama** companion package (the on-device GGUF backend), then drop this into your app entry point. `ManifoldKit.quickStart(backends:seed:)` builds the SwiftData container, registers the compiled-in backends plus the companion registrars you pass, and seeds a curated ~400 MB starter model on first launch — one call to a live, generating chat. Errors surface as [`ManifoldKitError`](Sources/ManifoldModelCatalog/ManifoldKitError.swift).
+
+```swift
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
+// target dependencies: "ManifoldKit", .product(name: "ManifoldLlama", package: "manifold-llama")
+```
+
+> The `manifold-llama` pin goes live with the v0.48 / manifold-llama 0.1.0 release train. On v0.47 and earlier (and on v0.48 pre-release checkouts), `ManifoldLlama` still ships inside ManifoldKit core — `import ManifoldKit` alone suffices and `backends:` may be omitted. See [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md) for the full move.
 
 ```swift
 import SwiftUI
 import SwiftData
 import ManifoldKit
+// + `import ManifoldLlama` once the manifold-llama companion package ships
+// (the v0.48 split — until then LlamaBackends resolves from ManifoldKit core)
 
 @main
 struct MyChatApp: App {
@@ -41,7 +51,12 @@ struct MyChatApp: App {
                 ContentUnavailableView("Failed to start", systemImage: "exclamationmark.triangle", description: Text(error.errorDescription ?? ""))
             } else {
                 ProgressView().task {
-                    do { result = try await ManifoldKit.quickStart() }
+                    do {
+                        result = try await ManifoldKit.quickStart(
+                            backends: [LlamaBackends.self],
+                            seed: .recommendedSmallModel()
+                        )
+                    }
                     catch let e as ManifoldKitError { error = e }
                     catch { self.error = .from(error) }
                 }
@@ -51,22 +66,9 @@ struct MyChatApp: App {
 }
 ```
 
-> **Want a live chat on first launch with zero extra setup?** Pass `seed: .recommendedSmallModel()` — ManifoldKit downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk).
+> **About `seed:`** — `.recommendedSmallModel()` downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk), and it accepts a `{ progress in … }` closure for a progress indicator.
 >
-> ```swift,no-build
-> ProgressView().task {
->     do { result = try await ManifoldKit.quickStart(
->             seed: .recommendedSmallModel { progress in
->                 // update a progress indicator if desired
->             }
->         )
->     }
->     catch let e as ManifoldKitError { error = e }
->     catch { self.error = .from(error) }
-> }
-> ```
->
-> **The chat is inert until you select a model** (without `seed:`). `quickStart()` registers the compiled-in backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or use `seed:` above. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
+> **Don't want the starter download?** Drop `seed:` — the chat is then inert until you select a model. `quickStart` registers the backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or keep `seed:`. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection, traits, and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
@@ -76,6 +78,22 @@ Want the inference layer with a fully custom SwiftUI UI (no `ChatView`)? See [do
 Registering tools the model can call? See [docs/QUICKSTART-TOOLS.md](docs/QUICKSTART-TOOLS.md) — `ToolRegistry`, the local-model tool ceiling, approval gates, and streaming results.
 Exposing an `AppIntent` to the model? See [docs/QUICKSTART-APPINTENTS.md](docs/QUICKSTART-APPINTENTS.md).
 Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample).
+
+## Where each backend lives
+
+As of v0.48 the heavy on-device backends ship as **companion packages**; everything else is a product of the core package. Module names are stable — only the `.package(…)` line differs. Migrating from a trait-based 0.47 setup? **[docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md)** is the error-message-indexed guide.
+
+| You want | Module to import | Package |
+|---|---|---|
+| MLX on-device inference (+ image gen) | `ManifoldMLX` | [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) |
+| llama.cpp / GGUF on-device inference | `ManifoldLlama` | [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama) |
+| Apple Foundation Models (iOS/macOS 26+) | `ManifoldKit` umbrella (or `ManifoldFoundation`) | ManifoldKit (core) |
+| OpenAI / Anthropic / LM Studio / custom endpoints | `ManifoldKit` umbrella (or `ManifoldCloudSaaS`) | ManifoldKit (core) |
+| Ollama / LAN | `ManifoldKit` umbrella (or `ManifoldOllama`) | ManifoldKit (core) |
+| Gemini, xAI, Groq, Mistral, OpenRouter via the bridge | `ManifoldAnyLanguageModel` | ManifoldKit (core, opt-in product) |
+| MCP client / host | `ManifoldMCP` / `ManifoldMCPHost` | ManifoldKit (core) |
+
+Companion backends register through `quickStart(backends: [MLXBackends.self, LlamaBackends.self])` (or `MLXBackends.register(with:)` on a hand-assembled service). The `manifold-mlx` / `manifold-llama` packages tag 0.1.0 alongside the core v0.48.0 release.
 
 ## Why ManifoldKit
 
@@ -136,7 +154,7 @@ The same backend, model-management, persistence, and download infrastructure tha
 
 Pick traits to scope which backends and capabilities ship with your build. The full trait → capability table is generated from `Sources/ManifoldKit/FeatureMatrix.swift` and rendered to [docs/FeatureMatrix.md](docs/FeatureMatrix.md).
 
-Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. The former `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, and `CloudSaaS` traits were retired in v0.48 — those modules (including all cloud backends) now compile unconditionally and you opt in by importing (or, for cloud, simply not linking) their products. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
+v0.48 retires the trait architecture in favour of library products. The surviving traits are `Server` and `Macros` (genuine build-cost levers: Hummingbird and swift-syntax respectively) plus the forward-declared WWDC stubs (`SystemAIProviderExtension`, `CoreAI`). The former `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` traits are retired — those modules now compile unconditionally and you opt in by importing (or simply not linking) their products. The remaining local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) retire when the companion-package split lands at the end of the v0.48 release train — see [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md) for the full mapping and [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for build commands.
 
 For a quantified breakdown of what each trait costs in binary size, build time, and dependency weight — and why the checkout is large regardless of trait set — see [docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md).
 
@@ -174,7 +192,7 @@ Most apps add a single product — the `ManifoldKit` umbrella — which re-expor
 ])
 ```
 
-Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`) stay opt-in — add them explicitly when you need that surface. `ManifoldVoice` in particular is usable outside chat: it wraps Apple `Speech` / `AVFoundation` behind a chat-agnostic `VoiceConversationController`, so anything from an image-gen prompt field to a CLI dictation tool can drive it. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md) for the standalone STT path; the chat composer accessory is the *other* consumer of the same controller. For finer-grained dependency control (e.g. a UI-only target that doesn't link `ManifoldBackends`), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for trait selection and the bring-your-own-UI path.
+Specialised modules (`ManifoldUIModelManagement`, `ManifoldMCP`, `ManifoldVoice`, `ManifoldHuggingFace`, `ManifoldAppIntents`, `ManifoldAnyLanguageModel`) stay opt-in — add them explicitly when you need that surface. `ManifoldVoice` in particular is usable outside chat: it wraps Apple `Speech` / `AVFoundation` behind a chat-agnostic `VoiceConversationController`, so anything from an image-gen prompt field to a CLI dictation tool can drive it. See [docs/QUICKSTART-VOICE.md](docs/QUICKSTART-VOICE.md) for the standalone STT path; the chat composer accessory is the *other* consumer of the same controller. For finer-grained dependency control (e.g. a UI-only target that doesn't link `ManifoldBackends`), depend on the individual products instead. See [docs/QUICKSTART.md](docs/QUICKSTART.md) for trait selection and the bring-your-own-UI path.
 
 ## Requirements
 
@@ -405,7 +423,7 @@ open Advanced.xcodeproj
 
 AnyLanguageModel is HuggingFace's Swift package — it mirrors Apple's `FoundationModels` API and exposes many providers behind a single protocol. ManifoldKit and AnyLanguageModel occupy adjacent niches: AnyLanguageModel optimises for provider coverage and API familiarity; ManifoldKit optimises for production reliability and drop-in chat UI (`ChatView` + `SessionListView` + `ModelManagementSheet` on day one). Pick the one whose axis matches the problem you're solving.
 
-ManifoldKit also **consumes** AnyLanguageModel as a backend: the `AnyLanguageModel` trait is the supported path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint — so they plug into the same `ChatViewModel` and runtime as a native backend. See [docs/PROVIDER-BRIDGE.md](docs/PROVIDER-BRIDGE.md) for the provider list, URL/trait setup, and capability limits.
+ManifoldKit also **consumes** AnyLanguageModel as a backend: the `ManifoldAnyLanguageModel` product (the retired `AnyLanguageModel` trait's replacement since v0.48) is the supported path for providers without a native backend — Gemini, xAI, Groq, Mistral, OpenRouter, and any OpenAI/Anthropic-compatible endpoint — so they plug into the same `ChatViewModel` and runtime as a native backend. See [docs/PROVIDER-BRIDGE.md](docs/PROVIDER-BRIDGE.md) for the provider list, URL setup, and capability limits.
 
 ## Migrating from BaseChatKit
 

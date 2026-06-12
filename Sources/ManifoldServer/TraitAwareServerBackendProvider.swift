@@ -192,7 +192,7 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         try await backend.loadModel(from: modelInfo.url, plan: plan)
         return backend
         #else
-        throw ServerError.backendUnavailable("MLX models require the MLX trait in this build.")
+        throw ServerError.backendUnavailable("No MLX backend is compiled into this build. Add the manifold-mlx companion package (pre-split builds: the MLX trait) — see docs/MIGRATION-0.48.md.")
         #endif
     }
 
@@ -213,7 +213,7 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         try await backend.loadModel(from: modelInfo.url, plan: plan)
         return backend
         #else
-        throw ServerError.backendUnavailable("GGUF models require the Llama trait in this build.")
+        throw ServerError.backendUnavailable("No llama.cpp (GGUF) backend is compiled into this build. Add the manifold-llama companion package (pre-split builds: the Llama trait) — see docs/MIGRATION-0.48.md.")
         #endif
     }
 

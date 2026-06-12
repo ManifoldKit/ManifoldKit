@@ -2,17 +2,17 @@ import XCTest
 import ManifoldBackendTestKit
 @testable import ManifoldInference
 
-#if AnyLanguageModel
 import AnyLanguageModel
-@testable import ManifoldBackends
+import ManifoldAnyLanguageModel
 
 /// Holds the AnyLanguageModel bridge to the same universal backend contract as
 /// the native backends.
 ///
 /// Two tiers:
 ///
-/// 1. **Offline contract + capability mapping** — runs whenever the
-///    `AnyLanguageModel` trait is enabled, with no network access. Exercises
+/// 1. **Offline contract + capability mapping** — runs in every default
+///    suite execution (unconditional since v0.48 retired the
+///    `AnyLanguageModel` trait), with no network access. Exercises
 ///    the universal `InferenceBackend` invariants, the capability
 ///    meta-contract, and the fail-closed mapping between the advertised
 ///    `BackendCapabilities` and `generate()`'s actual behaviour.
@@ -184,4 +184,3 @@ private struct ConformanceMockLanguageModel: LanguageModel {
         return LanguageModelSession.ResponseStream(stream: stream)
     }
 }
-#endif

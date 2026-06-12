@@ -1,7 +1,6 @@
 import ManifoldInference
 import Foundation
 
-#if AnyLanguageModel
 import AnyLanguageModel
 
 public struct AnyLanguageModelDescriptor: Sendable {
@@ -154,4 +153,3 @@ public enum AnyLanguageModelBridgeError: LocalizedError {
         }
     }
 }
-#endif

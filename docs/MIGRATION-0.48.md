@@ -1,0 +1,224 @@
+# Migrating to ManifoldKit v0.48 — "The Packaging Release"
+
+v0.48 retires the SwiftPM trait architecture in favour of **library products**, and moves
+the heavy local-inference backends (MLX, llama.cpp) into **companion packages**:
+
+- [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) — the `ManifoldMLX` module
+- [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama) — the `ManifoldLlama` module
+
+> **This release lands automatically if you depend on ManifoldKit with `from:`.**
+> SwiftPM's `from: "0.47.0"` resolves `0.47.0..<1.0.0` — there is no special pre-1.0
+> caret rule — so your next clean resolve picks up v0.48. If you want opt-in upgrades
+> while ManifoldKit is pre-1.0, pin with
+> `.package(url: "…/ManifoldKit", .upToNextMinor(from: "0.47.0"))` and bump deliberately.
+
+The sections below are headed by the **literal error strings** you will see, so a search
+for the message lands on the fix.
+
+---
+
+## package 'manifoldkit' has no trait named 'MCP'
+
+(Also: `has no trait named 'MCPBuiltinCatalog'`, `'Voice'`, `'Tools'`, `'AppIntents'`,
+`'Skills'`, `'Ollama'`, `'CloudSaaS'`, or `'AnyLanguageModel'` — same fix.)
+
+SwiftPM hard-errors when a consumer manifest enables a trait the package no longer
+declares. These nine traits were retired in v0.48. **Delete them from the `traits:`
+array** in your `.package(…)` line; nothing is lost — every gated module still ships,
+as an always-compiled module or as a product you import explicitly:
+
+| Retired trait | v0.48 replacement |
+|---|---|
+| `MCP` | `ManifoldMCP` compiles unconditionally — keep `import ManifoldMCP`, drop the trait. |
+| `MCPBuiltinCatalog` | Built-in `MCPCatalog` descriptors always compiled — drop the trait. |
+| `Voice` | `ManifoldVoice` product — link/import it, drop the trait. |
+| `Tools` | `ManifoldTools` / `manifold-tools` always available — drop the trait. |
+| `AppIntents` | `ManifoldAppIntents` product — link/import it, drop the trait. |
+| `Skills` | `ManifoldSkills` product — link/import it, drop the trait. |
+| `Ollama` | **`ManifoldOllama` product** — always compiled into `ManifoldKit`/`ManifoldBackends`; link just `ManifoldOllama` if you want only that family. |
+| `CloudSaaS` | **`ManifoldCloudSaaS` product** (OpenAI Chat + Responses, Anthropic, LM Studio / custom endpoints) — always compiled into `ManifoldKit`/`ManifoldBackends`; link just `ManifoldCloudSaaS` for the single family. |
+| `AnyLanguageModel` | **`ManifoldAnyLanguageModel` product** — opt in by importing it (see below). Not part of the `ManifoldKit` umbrella; consumers that never import it never link it. |
+
+```swift,no-build
+// Before (v0.47):
+.package(url: "https://github.com/roryford/ManifoldKit.git",
+         from: "0.47.0",
+         traits: ["MCP", "Voice", "Ollama", "CloudSaaS", "AnyLanguageModel"])
+
+// After (v0.48): traits array gone (or holding only surviving traits)
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0")
+```
+
+For the AnyLanguageModel provider bridge (Gemini, xAI, Groq, Mistral, OpenRouter, …),
+add the product to your target and import the module:
+
+```swift,no-build
+// target dependencies:
+.product(name: "ManifoldAnyLanguageModel", package: "ManifoldKit")
+```
+
+```swift,no-build
+import ManifoldAnyLanguageModel
+
+let backend = AnyLanguageModelBackend()
+```
+
+See [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) for provider URLs and capability limits.
+
+---
+
+## no such module 'ManifoldMLX'
+
+The MLX backend lives in the companion package
+[`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) as of v0.48.
+The module name is unchanged (`import ManifoldMLX` still compiles) — only the package
+that provides it moved, taking the ~700 MB mlx-swift dependency graph with it. Core
+ManifoldKit builds with no MLX checkout at all.
+
+**SwiftPM:**
+
+```swift,no-build
+// Package.swift
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),
+
+// target dependencies:
+"ManifoldKit",
+.product(name: "ManifoldMLX", package: "manifold-mlx"),
+```
+
+**Xcode:** File ▸ Add Package Dependencies… ▸ enter
+`https://github.com/roryford/manifold-mlx` ▸ Add Package ▸ tick the `ManifoldMLX`
+product for your app target. (Xcode consumers never edit a manifest — this is the
+whole migration.)
+
+**Then register the backend.** Companion backends are invisible until registered;
+pass the registrar to `quickStart(backends:)` (registration must happen *before*
+the model-registry refresh and selection policy run, which is exactly what this
+overload guarantees):
+
+```swift,no-build
+import ManifoldKit
+import ManifoldMLX   // from manifold-mlx
+
+let kit = try await ManifoldKit.quickStart(backends: [MLXBackends.self])
+```
+
+Bring-your-own-bootstrap consumers call `MLXBackends.register(with: service)` after
+`DefaultBackends.register(with:)`.
+
+---
+
+## no such module 'ManifoldLlama'
+
+Same move as MLX: the llama.cpp/GGUF backend lives in
+[`roryford/manifold-llama`](https://github.com/roryford/manifold-llama), module name
+unchanged, taking the ~617 MB prebuilt llama.cpp xcframework out of core's resolve.
+
+**SwiftPM:**
+
+```swift,no-build
+// Package.swift
+.package(url: "https://github.com/roryford/ManifoldKit.git", from: "0.48.0"),
+.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
+
+// target dependencies:
+"ManifoldKit",
+.product(name: "ManifoldLlama", package: "manifold-llama"),
+```
+
+**Xcode:** File ▸ Add Package Dependencies… ▸ `https://github.com/roryford/manifold-llama`
+▸ Add Package ▸ tick `ManifoldLlama` for your app target.
+
+**Then register:**
+
+```swift,no-build
+import ManifoldKit
+import ManifoldLlama   // from manifold-llama
+
+let kit = try await ManifoldKit.quickStart(
+    backends: [LlamaBackends.self],
+    seed: .recommendedSmallModel()   // optional: live chat on first launch
+)
+```
+
+Or `LlamaBackends.register(with: service)` on a hand-assembled service.
+
+---
+
+## 'register(with:)' is deprecated — the ManifoldBackends umbrella shim
+
+`import ManifoldBackends` **still compiles in v0.48** — the umbrella survives one
+release as a deprecated shim so existing apps keep building. But it now carries only
+the always-compiled families (Apple Foundation Models + the cloud backends). It can
+no longer hand you MLX or llama.cpp, so a consumer that relied on
+`DefaultBackends.register(with:)` for local inference compiles clean and **silently
+loses local models** unless it adds a companion package.
+
+That failure mode is deliberately loud:
+
+- `DefaultBackends.register` / `DefaultBackends.registrars` emit deprecation warnings
+  pointing at this document.
+- The runtime no-backend diagnostic and model-compatibility flagging (below) catch
+  the "compiles but can't infer" state at launch, not on the first send.
+
+**Forward notice:** the umbrella shim is scheduled for removal in a later release.
+When that happens the error becomes `product 'ManifoldBackends' not found` — the fix
+is the same as the two sections above: depend on the companion package(s) you need
+and pass their registrars to `quickStart(backends:)`. Prefer migrating now;
+`import ManifoldKit` + explicit companion imports is the supported long-term shape.
+
+---
+
+## Traits that survive v0.48
+
+| Trait | Why it survives |
+|---|---|
+| `Server` | Genuine build-cost lever: gates `ManifoldServer` and its Hummingbird/swift-nio dependency tree on a leaf edge. |
+| `Macros` | Gates the `@ToolSchema` macro plugin and its ~647-file swift-syntax tree. Build-time-only cost; off by default. |
+| `SystemAIProviderExtension`, `CoreAI` | WWDC 2026 forward stubs — no targets attached. |
+
+Everything else is products now. If your `traits:` array contains anything not in
+this table, delete it.
+
+---
+
+## What you'll see if you forget a step
+
+All of these are designed to surface at **assembly/launch time**, not on the first send:
+
+- **No backend at all** (core only, pre-iOS 26/macOS 26, no cloud endpoint, no
+  companions): `quickStart` throws `ManifoldKitError.noBackendsRegistered` —
+  *"No inference backends are registered. Call DefaultBackends.register(with:) or
+  quickStart() … pass a companion registrar to quickStart(backends:) — manifold-llama
+  (GGUF) or manifold-mlx (MLX) — or run on iOS 26 / macOS 26+ for the built-in
+  Foundation Models backend."*
+- **On-disk model, missing backend**: the model registry flags the file instead of
+  auto-selecting it, and logs
+  `quickStart: skipping <file> — no registered backend can load <type> models. Add the
+  matching backend package (manifold-llama for GGUF, manifold-mlx for MLX) and pass its
+  registrar to quickStart(backends:).`
+- **Starter seed with no GGUF backend**: the seed download is skipped (never an error)
+  with `quickStart(seed:): no registered backend can load gguf models — seed skipped. …`
+- **Umbrella-shim reliance**: deprecation warnings on `DefaultBackends.register` /
+  `DefaultBackends.registrars` (see the shim section above).
+
+If you see any of these, you're one `.package(…)` line + one `quickStart(backends:)`
+argument away from working local inference.
+
+---
+
+## Staying behind (for now)
+
+Pre-1.0, ManifoldKit can break between minors and `from:` auto-delivers those breaks.
+To adopt v0.48 on your own schedule:
+
+```swift,no-build
+.package(url: "https://github.com/roryford/ManifoldKit.git",
+         .upToNextMinor(from: "0.47.0"))
+```
+
+When you do migrate, do it in one sitting: remove retired traits, add the companion
+package(s), switch to `quickStart(backends:)`, build, and check the launch log for the
+diagnostics above. The companion packages pin core with `.upToNextMinor(from: "0.48.0")`,
+so core patch releases flow to you automatically; companion minors track core minors.
