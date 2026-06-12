@@ -161,7 +161,8 @@ final class AppEntityParameterTests: XCTestCase {
 
     // MARK: schema synthesis
 
-    func testSchemaEmitsIdOnlyObjectForAppEntityParameter() {
+    func testSchemaEmitsIdOnlyObjectForAppEntityParameter() throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             DescribeBookIntent.self,
             approvalPolicy: .readOnlyAutoApprove,
@@ -195,6 +196,7 @@ final class AppEntityParameterTests: XCTestCase {
     // MARK: happy path
 
     func testExecuteResolvesEntityByIdAndRunsPerform() async throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             DescribeBookIntent.self,
             approvalPolicy: .readOnlyAutoApprove,
@@ -219,6 +221,7 @@ final class AppEntityParameterTests: XCTestCase {
     // MARK: unknown id
 
     func testExecuteWithUnknownEntityIdReturnsInvalidArguments() async throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             DescribeBookIntent.self,
             approvalPolicy: .readOnlyAutoApprove,
@@ -248,6 +251,7 @@ final class AppEntityParameterTests: XCTestCase {
     // MARK: resolver throws
 
     func testExecuteWithThrowingResolverSurfacesPermanent() async throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             DescribeBookIntent.self,
             approvalPolicy: .readOnlyAutoApprove,

@@ -395,6 +395,7 @@ final class AppIntentStreamingTests: XCTestCase {
     /// this PR closes that drift — both paths now go through the same
     /// resolve-then-decode sequence.
     func testStreamingResolvesAppEntityParameter() async throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             StreamingDescribeBookIntent.self,
             approvalPolicy: .readOnlyAutoApprove,
@@ -481,6 +482,7 @@ final class AppIntentStreamingTests: XCTestCase {
     /// being installed before `perform()`, and the entity depends on
     /// `decoder.userInfo` being populated before `init(from:)` runs.
     func testStreamingEntityAndProgressBothFlow() async throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(
             StreamingEntityProgressIntent.self,
             approvalPolicy: .readOnlyAutoApprove,
