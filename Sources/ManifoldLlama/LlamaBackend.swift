@@ -4,6 +4,11 @@ import LlamaSwift
 import os
 import Synchronization
 import ManifoldInference
+// BackendInternals SPI: MemoryPressureHandler (ManifoldHardware) and
+// HeuristicTokenizer (ManifoldContract) are part of the frozen backend seam
+// published for the companion family packages (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldContract
 
 /// llama.cpp inference backend for GGUF-format models.
 ///

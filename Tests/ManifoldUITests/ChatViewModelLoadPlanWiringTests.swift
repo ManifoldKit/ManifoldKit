@@ -1,6 +1,9 @@
 @preconcurrency import XCTest
 @testable import ManifoldUI
 @testable import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 private let oneGB: UInt64 = 1_024 * 1_024 * 1_024
 

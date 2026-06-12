@@ -6,6 +6,8 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// Integration tests for context estimation using REAL HeuristicTokenizer and
 /// ContextWindowManager with no mocks on the computation path.

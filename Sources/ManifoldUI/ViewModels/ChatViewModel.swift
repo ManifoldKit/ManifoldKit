@@ -2,6 +2,11 @@ import Foundation
 import Observation
 import ManifoldRuntime
 import ManifoldInference
+// BackendInternals SPI: MemoryPressureHandler / HeuristicTokenizer moved from
+// `package` to `@_spi(BackendInternals) public` for the companion-package
+// split (#1749); in-package consumers import the SPI explicitly.
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldContract
 
 /// Central view model for the chat interface.
 ///
@@ -810,7 +815,10 @@ public final class ChatViewModel {
         )
     }
 
-    package init(
+    // @_spi(BackendInternals): the injected MemoryPressureHandler is itself
+    // SPI (backend seam published for the companion split, #1749), and a
+    // non-SPI `package` signature may not reference an SPI type.
+    @_spi(BackendInternals) public init(
         inferenceService: InferenceService = InferenceService(),
         deviceCapability: DeviceCapabilityService = DeviceCapabilityService(),
         modelStorage: ModelStorageService = ModelStorageService(),

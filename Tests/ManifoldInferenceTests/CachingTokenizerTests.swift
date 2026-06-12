@@ -1,6 +1,8 @@
 import XCTest
 @testable import ManifoldInference
 @testable import ManifoldContract  // #1719: streaming/tokenizer seams moved to Contract
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 // MARK: - Test double
 

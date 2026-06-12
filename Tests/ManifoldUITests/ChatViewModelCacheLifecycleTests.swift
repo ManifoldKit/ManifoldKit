@@ -6,6 +6,9 @@ import ManifoldPersistenceSwiftData
 @testable import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 /// Tests that `ChatViewModel`'s per-message token count cache is invalidated at
 /// the correct moments so stale counts from a previous tokenizer (or previous

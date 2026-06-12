@@ -45,8 +45,8 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
     /// is a short, PII-free description of where decoding failed (e.g.
     /// `"missing field: choices"`).
     case decodingFailure(String)
-    /// No inference backend was compiled into the binary for the active trait /
-    /// OS combination, so the assembled service can never generate. Raised at
+    /// No inference backend is registered (compiled-in, injected, or
+    /// OS-provided), so the assembled service can never generate. Raised at
     /// the assembly boundary (``ManifoldKit/ManifoldKit/quickStart(configuration:)``)
     /// as a fail-fast diagnostic rather than letting the app launch dead and
     /// throw on the first turn.
@@ -85,7 +85,7 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
         case .decodingFailure(let detail):
             return "Couldn't read the server response: \(detail)"
         case .noBackendsRegistered:
-            return "No inference backends are compiled into this build. quickStart() needs at least one backend trait enabled (MLX, Llama, CloudSaaS, Ollama, or Foundation). Check the package traits / build settings."
+            return "No inference backends are registered. Add a local backend package and pass its registrar to quickStart(backends:) — manifold-llama (GGUF) or manifold-mlx (MLX) — or enable a backend trait in this build (MLX, Llama, CloudSaaS, Ollama), or run on iOS 26 / macOS 26+ for the built-in Foundation Models backend."
         case .unknown(let underlyingDescription):
             if underlyingDescription.isEmpty {
                 return "An unexpected error occurred."

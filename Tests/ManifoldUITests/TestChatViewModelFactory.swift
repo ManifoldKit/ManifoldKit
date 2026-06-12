@@ -6,6 +6,9 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 /// Shared `ChatViewModel` test factory. Replaces ~10 copies of the same
 /// `private func makeViewModel(...)` / `private func makeViewModelWithMock(...)`

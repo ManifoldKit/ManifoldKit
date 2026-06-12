@@ -1,6 +1,8 @@
 import XCTest
 @testable import ManifoldRuntime
 @testable import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// Tests for ``ContextBudgetPlanner`` and the backward-compatible
 /// ``PromptContextPipeline/assemble(messageCount:)`` path.

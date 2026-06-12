@@ -10,31 +10,50 @@ import ManifoldInference
 public enum DefaultBackends {
 
     // MARK: - Static Capability Queries
+    //
+    // Disposition (v0.48 packaging release, #1749): these statics describe
+    // *this binary's compile-time contents*. Once backends can be registered
+    // at runtime from companion packages (`quickStart(backends:)`), a
+    // compile-time answer to "can I load this model?" is wrong — only the
+    // build-introspection queries (`compiledBackends` / `buildProfile` /
+    // `enabledTraits`) keep a meaningful compile-time semantic, and they are
+    // documented as such. The load-capability queries are deprecated in favor
+    // of the live registration state on `InferenceService`.
 
     /// The build/trait contract compiled into the current binary.
+    ///
+    /// Compile-time by definition — answers "what is in *this build*", not
+    /// "what can the assembled service load". Backends registered at runtime
+    /// from companion packages (#1749) are invisible here; use
+    /// ``ManifoldInference/InferenceService/registeredBackendSnapshot()`` for
+    /// load decisions.
     public static var compiledBackends: CompiledBackends { .current }
 
-    /// The current binary's runtime-visible build profile.
+    /// The current binary's compile-time build profile.
+    ///
+    /// Compile-time by definition — see ``compiledBackends``.
     public static var buildProfile: BackendBuildProfile { compiledBackends.buildProfile }
 
     /// The inference traits compiled into the current binary.
+    ///
+    /// Compile-time by definition — see ``compiledBackends``.
     public static var enabledTraits: Set<BackendBuildTrait> { compiledBackends.traits }
 
     /// The local model types supported by this build, without requiring
     /// an `InferenceService` instance.
-    ///
-    /// Useful for static checks before service construction (e.g., in unit tests
-    /// or feature-flag evaluation at app startup).
+    @available(*, deprecated, message: "Compile-time reflection cannot see backends registered at runtime (quickStart(backends:), #1749). Use InferenceService.registeredBackendSnapshot().localModelTypes.")
     public static var supportedModelTypes: Set<ModelType> {
         compiledBackends.localModelTypes
     }
 
     /// Returns `true` if this build includes a backend for the given local model type.
+    @available(*, deprecated, message: "Compile-time reflection cannot see backends registered at runtime (quickStart(backends:), #1749). Use InferenceService.compatibility(for:).isSupported.")
     public static func canLoad(modelType: ModelType) -> Bool {
         compiledBackends.compatibility(for: modelType).isSupported
     }
 
     /// Returns `true` if this build includes a backend for the given API provider.
+    @available(*, deprecated, message: "Compile-time reflection cannot see backends registered at runtime (quickStart(backends:), #1749). Use InferenceService.compatibility(for:).isSupported.")
     public static func canLoad(provider: APIProvider) -> Bool {
         compiledBackends.compatibility(for: provider).isSupported
     }
@@ -87,6 +106,11 @@ public enum DefaultBackends {
     /// `CloudBackends`, which calls `PinnedSessionDelegate.loadDefaultPins()`
     /// and must run before any URLSession factory. Local backends are
     /// independent.
+    ///
+    /// This is the *compiled-in* set only. Backends from companion packages
+    /// (#1749) are not listed here — pass their registrars to
+    /// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)``
+    /// or call `register(with:)` on them directly after this fold.
     @MainActor
     public static let registrars: [any BackendRegistrar.Type] = [
         CloudBackends.self,
@@ -103,9 +127,11 @@ public enum DefaultBackends {
     /// nothing — the returned count lets the caller fail fast on an empty,
     /// never-generating service instead of launching a dead app (the footgun
     /// audit's class D — "silent degradation where a fail-fast boundary check
-    /// belongs"). ``ManifoldKit/ManifoldKit/quickStart(configuration:)`` does
-    /// exactly this; hosts driving ``ManifoldBootstrap`` directly should check
-    /// the result too.
+    /// belongs"). Note a bare count is a weak signal once cloud registrars
+    /// register unconditionally: prefer inspecting
+    /// ``ManifoldInference/InferenceService/registeredBackendSnapshot()``
+    /// (`supportsLocalInference` / `cloudProviders`) as
+    /// ``ManifoldKit/ManifoldKit/quickStart(configuration:)`` now does.
     @MainActor
     @discardableResult
     public static func register(with service: InferenceService) -> Int {

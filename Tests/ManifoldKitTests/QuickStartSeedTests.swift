@@ -260,6 +260,10 @@ final class QuickStartSeedTests: XCTestCase {
 
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
+            // The seed gate is runtime-registration-based (#1749): inject a
+            // GGUF-capable registrar so the download path is reachable under
+            // --disable-default-traits builds too.
+            backends: [MockGGUFBackends.self],
             seed: seed,
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
             downloadManagerOverride: manager,
@@ -304,6 +308,8 @@ final class QuickStartSeedTests: XCTestCase {
         // a Foundation model that would otherwise win the selection race).
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
+            // See above: keep the download path reachable in trait-less builds.
+            backends: [MockGGUFBackends.self],
             seed: seed,
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
             downloadManagerOverride: manager,

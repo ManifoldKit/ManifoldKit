@@ -10,10 +10,11 @@
 //   - The new surface is a second overload: quickStart(seed:), where `seed` is
 //     a QuickStartSeed value. The caller specifies which model to seed and an
 //     optional progress closure; ManifoldKit handles the rest.
-//   - Trait contract: seeding requires HuggingFace + at least one local backend
-//     (Llama or MLX). When those traits are absent the seed parameter is a
-//     no-op: quickStart(seed:) behaves exactly like quickStart() and the host
-//     receives a clear thrown error if it calls seedIfNeeded() directly.
+//   - Gating contract: seeding requires the HuggingFace trait (download
+//     machinery, compile-time) + a registered backend that can load the seed's
+//     model type (checked at runtime against InferenceService, so companion
+//     registrars passed to quickStart(backends:) count). When either is
+//     missing the seed parameter is a logged no-op.
 //
 // The implementation uses `BackgroundDownloadManaging` (protocol in
 // ManifoldModelCatalog) so the concrete BackgroundDownloadManager (ManifoldHuggingFace,
@@ -32,22 +33,24 @@ import ManifoldInference
 /// small model **before** the selection policy runs — so on first launch the
 /// composer is live and generating, not stuck at "No model loaded".
 ///
-/// ### Trait requirements
+/// ### Requirements
 ///
-/// Seeding requires the `HuggingFace` SwiftPM trait (default-on) **and** at
-/// least one local backend trait (`Llama` or `MLX`). When the `HuggingFace`
-/// trait is absent the seed is silently skipped (no download, no error) because
-/// there is no download machinery available. When `HuggingFace` is compiled in
-/// but no local backend is present the download would succeed but no backend
-/// could load the file — in that case the download is also skipped.
+/// Seeding requires the `HuggingFace` SwiftPM trait (default-on) for the
+/// download machinery, **and** a *registered* backend capable of loading the
+/// seed's model type. The backend check is made against the live
+/// ``ManifoldInference/InferenceService`` registration state — not compile-time
+/// traits — so a Llama-capable backend injected at runtime via
+/// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)``
+/// (e.g. from the manifold-llama companion package) enables the GGUF seed.
 ///
 /// ### Skip conditions
 ///
-/// The seed is skipped automatically when any of the following is true:
+/// The seed is skipped automatically (logged, never thrown) when any of the
+/// following is true:
 /// - A model is already selectable (Foundation available, or a local model on
 ///   disk). Never downloads redundantly.
-/// - `HuggingFace` trait is absent.
-/// - No local backend trait (`Llama`, `MLX`) is compiled in.
+/// - `HuggingFace` trait is absent (no download machinery).
+/// - No registered backend can load the seed's model type.
 /// - The device has no internet connectivity (the error is silently swallowed so
 ///   the app still launches with the "No model" empty state rather than crashing).
 ///
