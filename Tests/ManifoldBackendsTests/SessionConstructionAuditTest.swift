@@ -87,14 +87,13 @@ final class SessionConstructionAuditTest: XCTestCase {
         for _ in 0..<8 {
             probe.deleteLastPathComponent()
             let sources = probe.appendingPathComponent("Sources", isDirectory: true)
-            let cloud = sources.appendingPathComponent("ManifoldCloud", isDirectory: true)
-            let core = sources.appendingPathComponent("ManifoldCloudCore", isDirectory: true)
-            if FileManager.default.fileExists(atPath: cloud.path) &&
-               FileManager.default.fileExists(atPath: core.path) {
-                return [
-                    SourceRoot(name: "ManifoldCloud", url: cloud),
-                    SourceRoot(name: "ManifoldCloudCore", url: core),
-                ]
+            // v0.48 product split: the audit covers all four cloud targets.
+            let names = ["ManifoldCloud", "ManifoldCloudCore", "ManifoldOllama", "ManifoldCloudSaaS"]
+            let roots = names.map {
+                SourceRoot(name: $0, url: sources.appendingPathComponent($0, isDirectory: true))
+            }
+            if roots.allSatisfy({ FileManager.default.fileExists(atPath: $0.url.path) }) {
+                return roots
             }
         }
         return []

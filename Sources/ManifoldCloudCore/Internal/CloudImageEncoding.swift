@@ -13,12 +13,12 @@ import ManifoldInference
 /// per-turn cap. The cap value itself differs per provider: Anthropic
 /// rejects more than 5 images per turn, OpenAI tolerates more, so each
 /// caller passes its own ``maxImages``.
-enum CloudImageEncoding {
+package enum CloudImageEncoding {
 
     /// MIME types Anthropic's vision endpoint accepts. Matches the
     /// `image/png`, `image/jpeg`, `image/gif`, `image/webp` allowlist
     /// documented for the Messages API.
-    static let anthropicSupportedMimeTypes: Set<String> = [
+    package static let anthropicSupportedMimeTypes: Set<String> = [
         "image/png",
         "image/jpeg",
         "image/jpg",
@@ -29,7 +29,7 @@ enum CloudImageEncoding {
     /// Returns the base64-encoded payload for a `MessagePart.image` using
     /// the same encoding both Anthropic and OpenAI expect (no line breaks,
     /// no padding tweaks).
-    static func base64String(from data: Data) -> String {
+    package static func base64String(from data: Data) -> String {
         let encoded = data.base64EncodedString()
         encodeHook?()
         return encoded
@@ -44,7 +44,7 @@ enum CloudImageEncoding {
     /// `tearDown` to avoid cross-test leakage. See
     /// `CloudImageEncodeCountTests` for the invariant the perf-audit plan
     /// (PR-α work unit α-3) is grounding on.
-    nonisolated(unsafe) static var encodeHook: (@Sendable () -> Void)?
+    package nonisolated(unsafe) static var encodeHook: (@Sendable () -> Void)?
 
     /// Returns a `data:` URI (RFC 2397) suitable for OpenAI's
     /// `image_url.url` field — `data:<mime>;base64,<payload>`. OpenAI also
@@ -56,7 +56,7 @@ enum CloudImageEncoding {
     /// `image/webp`; an exotic value will surface as an upstream 400, which
     /// matches the same failure mode persisted images would already have on
     /// other backends.
-    static func dataURI(data: Data, mimeType: String) -> String {
+    package static func dataURI(data: Data, mimeType: String) -> String {
         "data:\(mimeType);base64,\(base64String(from: data))"
     }
 
@@ -64,7 +64,7 @@ enum CloudImageEncoding {
     /// enforce a per-request image cap (Anthropic = 5 per *turn*, but the
     /// caller decides whether the cap applies turn-by-turn or
     /// across the whole request).
-    static func imageCount(in messages: [StructuredMessage]) -> Int {
+    package static func imageCount(in messages: [StructuredMessage]) -> Int {
         messages.reduce(0) { acc, message in
             acc + message.parts.reduce(0) { count, part in
                 if case .image = part { return count + 1 }
@@ -74,7 +74,7 @@ enum CloudImageEncoding {
     }
 
     /// Counts `.image` parts within a single turn.
-    static func imageCount(in parts: [MessagePart]) -> Int {
+    package static func imageCount(in parts: [MessagePart]) -> Int {
         parts.reduce(0) { count, part in
             if case .image = part { return count + 1 }
             return count

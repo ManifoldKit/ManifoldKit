@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import os
 import ManifoldInference
@@ -490,12 +489,7 @@ public extension CloudPayloadHandler {
     /// wire shape. Returns `nil` for non-Claude cases (mirrors
     /// ``makeOpenAIStreamConsumer()``).
     func makeClaudeStreamConsumer() -> ClaudeStreamEventExtractor? {
-        switch self {
-        case .claude:
-            return ClaudeStreamEventExtractor()
-        default:
-            return nil
-        }
+        guard provider == .claude else { return nil }
+        return ClaudeStreamEventExtractor()
     }
 }
-#endif

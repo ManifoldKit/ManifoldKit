@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import os
 import ManifoldInference
@@ -524,15 +523,10 @@ public extension CloudPayloadHandler {
         config: GenerationConfig,
         autoDetectedMarkers: ThinkingMarkers? = nil
     ) -> OllamaStreamEventExtractor? {
-        switch self {
-        case .ollama:
-            return OllamaStreamEventExtractor(
-                config: config,
-                autoDetectedMarkers: autoDetectedMarkers
-            )
-        default:
-            return nil
-        }
+        guard provider == .ollama else { return nil }
+        return OllamaStreamEventExtractor(
+            config: config,
+            autoDetectedMarkers: autoDetectedMarkers
+        )
     }
 }
-#endif

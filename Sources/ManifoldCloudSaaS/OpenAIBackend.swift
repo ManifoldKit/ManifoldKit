@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import os
 import ManifoldInference
@@ -426,4 +425,3 @@ private final class WeakBackendBox: @unchecked Sendable {
     init(_ value: OpenAIBackend) { self.value = value }
 }
 
-#endif

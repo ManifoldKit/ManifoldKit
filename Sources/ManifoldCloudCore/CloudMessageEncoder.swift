@@ -1,4 +1,3 @@
-#if CloudSaaS || Ollama
 import Foundation
 import os
 import ManifoldInference
@@ -119,23 +118,11 @@ public enum CloudMessageEncoder: Sendable {
         guard !tools.isEmpty else { return [] }
         switch self {
         case .openAI, .openAIResponses:
-            #if CloudSaaS
             return tools.map(OpenAIToolEncoding.encodeToolDefinition)
-            #else
-            return []
-            #endif
         case .claude:
-            #if CloudSaaS
             return tools.map(Self.claudeEncodeToolDefinition)
-            #else
-            return []
-            #endif
         case .ollama:
-            #if Ollama
             return tools.map(Self.ollamaEncodeToolDefinition)
-            #else
-            return []
-            #endif
         }
     }
 
@@ -168,7 +155,6 @@ public enum CloudMessageEncoder: Sendable {
                 ]
             }
         case .claude:
-            #if CloudSaaS
             // Anthropic Messages: bundle every `tool_result` into one user turn.
             let blocks: [[String: Any]] = results.map { result in
                 [
@@ -178,9 +164,6 @@ public enum CloudMessageEncoder: Sendable {
                 ]
             }
             return [["role": "user", "content": blocks]]
-            #else
-            return []
-            #endif
         }
     }
 
@@ -203,7 +186,6 @@ public enum CloudMessageEncoder: Sendable {
         toolEntries: inout [[String: Any]]
     ) {
         guard case .claude = self else { return }
-        #if CloudSaaS
         var remaining = plan.maxBreakpoints
         if plan.cacheSystem, remaining > 0, let systemPrompt, !systemPrompt.isEmpty {
             systemBlock = [
@@ -219,7 +201,6 @@ public enum CloudMessageEncoder: Sendable {
             toolEntries[toolEntries.count - 1]["cache_control"] = ["type": "ephemeral"]
             remaining -= 1
         }
-        #endif
     }
 
     // MARK: - Per-provider routing
@@ -244,11 +225,7 @@ public enum CloudMessageEncoder: Sendable {
         case .openAI:
             return Self.openAIEncodeChatCompletionsContent(for: message)
         case .claude:
-            #if CloudSaaS
             return Self.claudeEncodeMessageContent(for: message)
-            #else
-            return ["role": message.role, "content": message.textContent]
-            #endif
         case .openAIResponses, .ollama:
             // No structured-history support yet on these providers.
             return ["role": message.role, "content": message.textContent]
@@ -258,29 +235,13 @@ public enum CloudMessageEncoder: Sendable {
     private func encodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [[String: Any]] {
         switch self {
         case .openAI:
-            #if CloudSaaS
             return [OpenAIToolEncoding.encodeChatCompletionsEntry(entry)]
-            #else
-            return [["role": entry.role, "content": entry.content]]
-            #endif
         case .openAIResponses:
-            #if CloudSaaS
             return OpenAIToolEncoding.encodeResponsesEntries(entry)
-            #else
-            return [["role": entry.role, "content": entry.content]]
-            #endif
         case .claude:
-            #if CloudSaaS
             return [Self.claudeEncodeToolAwareEntry(entry)]
-            #else
-            return [["role": entry.role, "content": entry.content]]
-            #endif
         case .ollama:
-            #if Ollama
             return [Self.ollamaEncodeToolAwareEntry(entry)]
-            #else
-            return [["role": entry.role, "content": entry.content]]
-            #endif
         }
     }
 
@@ -302,7 +263,7 @@ extension CloudMessageEncoder {
     /// one ``StructuredMessage`` as a Chat Completions `messages[]` entry.
     /// Text-only turns collapse to plain string content; image-bearing
     /// user turns emit a structured `content[]` array.
-    static func openAIEncodeChatCompletionsContent(for message: StructuredMessage) -> [String: Any] {
+    package static func openAIEncodeChatCompletionsContent(for message: StructuredMessage) -> [String: Any] {
         let hasImage = message.parts.contains { part in
             if case .image = part { return true }
             return false
@@ -332,11 +293,10 @@ extension CloudMessageEncoder {
 
 // MARK: - Claude (Anthropic Messages) inlined encoder
 
-#if CloudSaaS
 extension CloudMessageEncoder {
 
     /// Inlined from `ClaudeMessageEncoder.encodeMessageContent(for:)`.
-    static func claudeEncodeMessageContent(for message: StructuredMessage) -> [String: Any] {
+    package static func claudeEncodeMessageContent(for message: StructuredMessage) -> [String: Any] {
         if message.role == "assistant" {
             var blocks: [[String: Any]] = []
 
@@ -393,7 +353,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `ClaudeMessageEncoder.encodeImageBlock`.
-    static func claudeEncodeImageBlock(data: Data, mimeType: String) -> [String: Any] {
+    package static func claudeEncodeImageBlock(data: Data, mimeType: String) -> [String: Any] {
         let normalised = mimeType.lowercased()
         let mediaType = CloudImageEncoding.anthropicSupportedMimeTypes.contains(normalised)
             ? normalised
@@ -409,7 +369,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `ClaudeMessageEncoder.encodeToolDefinition`.
-    static func claudeEncodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
+    package static func claudeEncodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
         var entry: [String: Any] = [
             "name": tool.name,
             "description": tool.description,
@@ -423,7 +383,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `ClaudeMessageEncoder.encodeToolAwareEntry`.
-    static func claudeEncodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
+    package static func claudeEncodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
         if entry.role == "tool", let callId = entry.toolCallId {
             return [
                 "role": "user",
@@ -461,7 +421,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `ClaudeMessageEncoder.decodeArgumentsForReplay`.
-    static func claudeDecodeArgumentsForReplay(_ arguments: String) -> [String: Any] {
+    package static func claudeDecodeArgumentsForReplay(_ arguments: String) -> [String: Any] {
         guard let data = arguments.data(using: .utf8) else {
             return [:]
         }
@@ -482,15 +442,13 @@ extension CloudMessageEncoder {
         }
     }
 }
-#endif
 
 // MARK: - Ollama inlined encoder
 
-#if Ollama
 extension CloudMessageEncoder {
 
     /// Inlined from `OllamaMessageEncoder.encodeToolDefinition`.
-    static func ollamaEncodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
+    package static func ollamaEncodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
         var function: [String: Any] = [
             "name": tool.name,
             "description": tool.description,
@@ -507,7 +465,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `OllamaMessageEncoder.encodeToolAwareEntry`.
-    static func ollamaEncodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
+    package static func ollamaEncodeToolAwareEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
         var obj: [String: Any] = [
             "role": entry.role,
             "content": entry.content,
@@ -522,7 +480,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `OllamaMessageEncoder.encodeToolCall`.
-    static func ollamaEncodeToolCall(_ call: ToolCall) -> [String: Any] {
+    package static func ollamaEncodeToolCall(_ call: ToolCall) -> [String: Any] {
         let argumentsValue: Any = ollamaParseArgumentString(call.arguments)
         return [
             "id": call.id,
@@ -535,7 +493,7 @@ extension CloudMessageEncoder {
     }
 
     /// Inlined from `OllamaMessageEncoder.parseArgumentString`.
-    static func ollamaParseArgumentString(_ arguments: String) -> Any {
+    package static func ollamaParseArgumentString(_ arguments: String) -> Any {
         guard let data = arguments.data(using: .utf8) else {
             Log.inference.warning(
                 "CloudMessageEncoder.ollama: tool arguments string was not valid UTF-8 — substituting empty object in history."
@@ -554,7 +512,7 @@ extension CloudMessageEncoder {
 
     /// Applies ``GenerationConfig/toolChoice`` to an Ollama request body.
     /// Inlined from `OllamaMessageEncoder.applyToolChoice`.
-    static func ollamaApplyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
+    package static func ollamaApplyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
         switch choice {
         case .auto:
             break
@@ -570,5 +528,3 @@ extension CloudMessageEncoder {
         }
     }
 }
-#endif
-#endif

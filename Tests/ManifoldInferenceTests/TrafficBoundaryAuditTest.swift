@@ -92,10 +92,10 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // endpoint goes through URLSessionProvider and lives here. Paths
         // updated in initiative I7 when ManifoldBackends split into
         // ManifoldCloudCore + ManifoldCloud.
-        "ManifoldCloud/ClaudeBackend.swift",
-        "ManifoldCloud/OpenAIBackend.swift",
-        "ManifoldCloud/OpenAIResponsesBackend.swift",
-        "ManifoldCloud/OllamaBackend.swift",
+        "ManifoldCloudSaaS/ClaudeBackend.swift",
+        "ManifoldCloudSaaS/OpenAIBackend.swift",
+        "ManifoldCloudSaaS/OpenAIResponsesBackend.swift",
+        "ManifoldOllama/OllamaBackend.swift",
         // Extracted from OllamaBackend in #1163 (issue #1113 decomposition):
         // OllamaModelProbe owns the `/api/show` capability probe. The
         // OllamaStreamProcessor that previously held the NDJSON byte-stream
@@ -103,8 +103,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // `NDJSONTransport` (in `ManifoldCloudCore`) plus
         // `OllamaStreamEventExtractor`. Both inherit OllamaBackend's
         // network-boundary status by extraction — no new network surface.
-        "ManifoldCloud/OllamaModelProbe.swift",
-        "ManifoldCloud/OllamaModelListService.swift",
+        "ManifoldOllama/OllamaModelProbe.swift",
+        "ManifoldOllama/OllamaModelListService.swift",
         "ManifoldCloudCore/SSECloudBackend.swift",
         "ManifoldCloudCore/URLSessionProvider.swift",
         "ManifoldCloudCore/PinnedSessionDelegate.swift",
@@ -126,8 +126,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // design; the security invariant (see file docstring) is that it
         // returns ONLY a `URLRequest` and never a `URLSession`. No
         // network boundary; just a type-system seam.
-        "ManifoldCloud/CloudHTTPProviderAdapter.swift",
-        "ManifoldCloud/OpenAIAdapter.swift",
+        "ManifoldCloudCore/CloudHTTPProviderAdapter.swift",
+        "ManifoldCloudSaaS/OpenAIAdapter.swift",
         // Phase 2/B/iii/α — adapter routing value type. The
         // `buildRequest` closure returns a `URLRequest` (security
         // invariant S1); no `URLSession` is exposed. Same seam as
@@ -149,14 +149,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         // Phase 3/Responses — adapter composition for the OpenAI
         // Responses API. Same `URLRequest`-only contract as
         // `OpenAIAdapter.swift` above.
-        "ManifoldCloud/OpenAIResponsesAdapter.swift",
+        "ManifoldCloudSaaS/OpenAIResponsesAdapter.swift",
         // Phase 3/Ollama — adapter composition for the Ollama NDJSON path.
         // Same `URLRequest`-only contract (security invariant S1); no
         // `URLSession` is exposed.
-        "ManifoldCloud/OllamaAdapter.swift",
+        "ManifoldOllama/OllamaAdapter.swift",
         // Phase 3/Claude — adapter composition for the Anthropic Claude path.
         // Same `URLRequest`-only contract as `OpenAIAdapter.swift` above.
-        "ManifoldCloud/ClaudeAdapter.swift",
+        "ManifoldCloudSaaS/ClaudeAdapter.swift",
         // WebSearch runtime-boundary refactor — concrete `WebSearchRuntime`
         // that performs the OpenAI-Chat-Completions-shaped `search_web` call
         // (POST to `<baseURL>/chat/completions` with `search_parameters`).
@@ -255,7 +255,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
     ///
     /// **Cap: 12 entries.**
     private static let hostnameAllowlist: Set<String> = [
-        "ManifoldCloud/OpenAIBackend.swift",
+        "ManifoldCloudSaaS/OpenAIBackend.swift",
         "ManifoldHuggingFace/HuggingFaceService.swift",
         "ManifoldHuggingFace/BackgroundDownloadManager.swift",
         "ManifoldTestSupport/MockHuggingFaceService.swift",

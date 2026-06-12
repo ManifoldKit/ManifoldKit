@@ -72,7 +72,6 @@ public enum URLSessionProvider {
     /// CDN redirects without leaving room for an extended SSRF chain.
     public static let defaultHopCap: Int = 3
 
-    #if CloudSaaS
     /// Cached session shared by all SaaS backends — created once on first call.
     ///
     /// Wires both the certificate-pinning delegate and the redirect guard
@@ -117,9 +116,7 @@ public enum URLSessionProvider {
         }
         return _pinned
     }
-    #endif
 
-    #if Ollama || CloudSaaS
     /// Cached session shared by LAN / unpinned callers.
     ///
     /// No pinning, but the redirect guard still fires. LAN endpoints can
@@ -162,7 +159,6 @@ public enum URLSessionProvider {
         }
         return _unpinned
     }
-    #endif
 
     /// Builds a background `URLSession` with the redirect guard installed.
     ///

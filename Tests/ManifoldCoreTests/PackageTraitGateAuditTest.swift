@@ -89,6 +89,15 @@ final class PackageTraitGateAuditTest: XCTestCase {
         .init(description: "fuzz-chat → ManifoldFuzzBackends", module: "ManifoldFuzzBackends", trait: "Fuzz"),
         .init(description: "ManifoldFuzzTests → ManifoldFuzz", module: "ManifoldFuzz", trait: "Fuzz"),
         .init(description: "ManifoldFuzzTests → ManifoldFuzzBackends", module: "ManifoldFuzzBackends", trait: "Fuzz"),
+
+        // v0.48 product split (PR A1): the Ollama / CloudSaaS traits moved
+        // from gating source compilation inside the old mixed ManifoldCloud
+        // target to gating the consumer→family edges. The substring check
+        // can't distinguish the three consumers (umbrella, shim, tests) —
+        // each gated edge shape appears at least once, which is what the
+        // audit can enforce.
+        .init(description: "consumers → ManifoldOllama", module: "ManifoldOllama", trait: "Ollama"),
+        .init(description: "consumers → ManifoldCloudSaaS", module: "ManifoldCloudSaaS", trait: "CloudSaaS"),
     ]
 
     func test_packageManifestDeclaresExpectedTraitGates() throws {

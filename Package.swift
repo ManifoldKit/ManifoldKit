@@ -81,6 +81,13 @@ let package = Package(
         .library(name: "ManifoldMLX", targets: ["ManifoldMLX"]),
         .library(name: "ManifoldLlama", targets: ["ManifoldLlama"]),
         .library(name: "ManifoldFoundation", targets: ["ManifoldFoundation"]),
+        // v0.48 product split (PR A1): the Ollama and SaaS backend families
+        // are real products so consumers can take exactly one provider
+        // family without traits. `ManifoldCloud` below is the deprecated
+        // re-export shim that keeps `import ManifoldCloud` compiling for
+        // one release.
+        .library(name: "ManifoldOllama", targets: ["ManifoldOllama"]),
+        .library(name: "ManifoldCloudSaaS", targets: ["ManifoldCloudSaaS"]),
         .library(name: "ManifoldCloud", targets: ["ManifoldCloud"]),
         .library(name: "ManifoldUI", targets: ["ManifoldUI"]),
         .library(name: "ManifoldUIModelManagement", targets: ["ManifoldUIModelManagement"]),
@@ -411,17 +418,15 @@ let package = Package(
         // ─────────────────────────────────────────────────────────────────
 
         // ManifoldCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
-        // infrastructure. Always linked — the file bodies are themselves
-        // gated by `#if Ollama || CloudSaaS` so a FoundationOnly build still
-        // compiles this target to empty objects (cheap) and links them.
+        // infrastructure, plus the provider-agnostic encoding/parsing surface
+        // (`CloudMessageEncoder`, `CloudPayloadHandler`, the OpenAI-compatible
+        // Chat Completions parsing) shared by `ManifoldOllama` and
+        // `ManifoldCloudSaaS`. Always linked; compiles unconditionally since
+        // the v0.48 product split removed its `#if Ollama / CloudSaaS` gates.
         .target(
             name: "ManifoldCloudCore",
             dependencies: ["ManifoldInference"],
-            path: "Sources/ManifoldCloudCore",
-            swiftSettings: [
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-            ]
+            path: "Sources/ManifoldCloudCore"
         ),
 
         // ManifoldMLX: MLX inference backend, resource arbiter, capability
@@ -517,20 +522,48 @@ let package = Package(
             path: "Sources/ManifoldFoundation"
         ),
 
-        // ManifoldCloud: SaaS + LAN cloud backends (OpenAI Chat Completions,
-        // OpenAI Responses, Anthropic Claude, Ollama). Inherits the shared
-        // SSE / TLS / DNS-rebind plumbing from ManifoldCloudCore.
+        // ManifoldOllama: the Ollama (self-hosted / LAN) backend family.
+        // Compiles unconditionally — the Ollama trait gates the
+        // consumer→ManifoldOllama edges (umbrella, shim, tests), not source
+        // compilation inside the target. Split out of ManifoldCloud in the
+        // v0.48 packaging release (PR A1).
+        .target(
+            name: "ManifoldOllama",
+            dependencies: [
+                // Same P2a rationale as the former ManifoldCloud target
+                // (#1719): backend bodies compile against the Contract
+                // surface; ManifoldCloudCore transitively links
+                // ManifoldInference for the registrar.
+                "ManifoldContract",
+                "ManifoldCloudCore",
+            ],
+            path: "Sources/ManifoldOllama"
+        ),
+
+        // ManifoldCloudSaaS: the SaaS backend family (Anthropic Claude,
+        // OpenAI Chat Completions, OpenAI Responses, LM Studio / custom
+        // OpenAI-compatible endpoints). Compiles unconditionally — the
+        // CloudSaaS trait gates the consumer→ManifoldCloudSaaS edges. Split
+        // out of ManifoldCloud in the v0.48 packaging release (PR A1).
+        .target(
+            name: "ManifoldCloudSaaS",
+            dependencies: [
+                "ManifoldContract",
+                "ManifoldCloudCore",
+            ],
+            path: "Sources/ManifoldCloudSaaS"
+        ),
+
+        // ManifoldCloud: deprecated re-export shim (v0.48 product split).
+        // `@_exported import`s ManifoldOllama / ManifoldCloudSaaS (each
+        // behind its trait, mirroring these gated edges) so existing
+        // `import ManifoldCloud` consumers keep compiling for one release.
+        // Also still hosts DefaultWebSearchRuntime — the one cloud file that
+        // conforms to a ManifoldRuntime port, an edge neither provider
+        // family target wants.
         .target(
             name: "ManifoldCloud",
             dependencies: [
-                // Repointed from ManifoldInference to ManifoldContract in P2a
-                // (#1719): the SaaS/LAN backend bodies compile against the
-                // Contract surface only — every InferenceService/ToolRegistry/
-                // ContextWindowManager/GenerationQueue mention in this target is
-                // a docstring, not code. (ManifoldCloudCore + ManifoldRuntime
-                // still transitively link ManifoldInference, so the engine
-                // surface remains resolvable where docs reference it.)
-                "ManifoldContract",
                 "ManifoldCloudCore",
                 // DefaultWebSearchRuntime conforms to the WebSearchRuntime port
                 // declared in ManifoldRuntime. This is a library→library edge
@@ -538,9 +571,14 @@ let package = Package(
                 // trait-gating rule. ManifoldRuntime is SwiftData-free, so this
                 // does not drag SwiftData into the family target.
                 "ManifoldRuntime",
+                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
+                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
             ],
             path: "Sources/ManifoldCloud",
             swiftSettings: [
+                // The shim is the one target that still needs per-trait
+                // compilation conditions: a per-trait `@_exported import`
+                // inside one file requires `#if`.
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
             ]
@@ -565,6 +603,12 @@ let package = Package(
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                // Direct edges to the v0.48 family products: CloudBackends
+                // forwards to OllamaBackends / CloudSaaSBackends, and an
+                // explicit `import` requires a declared edge even though the
+                // ManifoldCloud shim re-exports both.
+                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
+                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
             path: "Sources/ManifoldBackendsUmbrella",
@@ -885,6 +929,12 @@ let package = Package(
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                // Direct edges for `@testable import ManifoldOllama` /
+                // `@testable import ManifoldCloudSaaS` — @testable requires a
+                // direct declared edge; the shim's re-export only carries
+                // public symbols.
+                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
+                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",

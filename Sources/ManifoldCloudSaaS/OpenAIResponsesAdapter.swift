@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -102,4 +101,3 @@ public struct OpenAIResponsesFunctionCallItems: ToolResultEncoding {
     public init() {}
     public var encodingName: String { "openai_responses.function_call_items" }
 }
-#endif

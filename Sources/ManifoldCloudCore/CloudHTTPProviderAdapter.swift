@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -90,4 +89,3 @@ extension CloudHTTPProviderAdapter {
         capabilities
     }
 }
-#endif

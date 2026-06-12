@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -15,19 +14,19 @@ import ManifoldCloudCore
 /// one place — the architect review of PR #1272 called the prior
 /// arrangement (parsers as `static` methods on the backend class) an
 /// orphaned responsibility that bloated `OpenAIBackend.swift` by ~140 LOC.
-enum OpenAIChatCompletionsPayloadParsing {
+package enum OpenAIChatCompletionsPayloadParsing {
 
     // MARK: - Stateless SSEPayloadHandler surface
 
     /// Extract `choices[0].delta.content` from a streaming chunk.
-    static func extractToken(from payload: String) -> String? {
+    package static func extractToken(from payload: String) -> String? {
         parseToken(from: payload)
     }
 
     /// Stateless event extraction. The full event vocabulary
     /// (tool calls, reasoning handoff, usage, prefill progress) lives on
     /// ``OpenAIStreamEventExtractor`` because it requires cross-frame state.
-    static func extractEvents(from payload: String) -> [GenerationEvent] {
+    package static func extractEvents(from payload: String) -> [GenerationEvent] {
         if let token = extractToken(from: payload) {
             return [.token(token)]
         }
@@ -36,7 +35,7 @@ enum OpenAIChatCompletionsPayloadParsing {
 
     /// Extract `usage.{prompt_tokens, completion_tokens}` from the terminal
     /// chunk (`stream_options.include_usage = true`).
-    static func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
+    package static func extractUsage(from payload: String) -> (promptTokens: Int?, completionTokens: Int?)? {
         guard let usage = parseUsage(from: payload) else { return nil }
         return (promptTokens: usage.promptTokens, completionTokens: usage.completionTokens)
     }
@@ -49,7 +48,7 @@ enum OpenAIChatCompletionsPayloadParsing {
     /// ```json
     /// {"choices":[{"delta":{"content":"token"}}]}
     /// ```
-    static func parseToken(from json: String) -> String? {
+    package static func parseToken(from json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = parsed["choices"] as? [[String: Any]],
@@ -73,7 +72,7 @@ enum OpenAIChatCompletionsPayloadParsing {
     /// OpenAI-hosted reasoning deployments. Anything else — including plain
     /// `content` — returns `nil` so the caller can fall back to the standard
     /// token extractor.
-    static func parseReasoningDelta(from json: String) -> String? {
+    package static func parseReasoningDelta(from json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = parsed["choices"] as? [[String: Any]],
@@ -93,19 +92,19 @@ enum OpenAIChatCompletionsPayloadParsing {
     // MARK: - Tool-call delta parsing
 
     /// Decoded shape of one streaming `tool_calls[]` entry inside a `delta`.
-    struct ToolCallDelta {
-        let index: Int
-        let id: String?
-        let name: String?
-        let argumentsDelta: String?
+    package struct ToolCallDelta {
+        package let index: Int
+        package let id: String?
+        package let name: String?
+        package let argumentsDelta: String?
     }
 
     /// Decoded shape of one whole `message.tool_calls[]` entry (non-streaming
     /// path or compat servers that deliver completed calls in a single chunk).
-    struct WholeToolCall {
-        let id: String
-        let name: String
-        let arguments: String
+    package struct WholeToolCall {
+        package let id: String
+        package let name: String
+        package let arguments: String
     }
 
     /// Parses `choices[0].delta.tool_calls[]` from a streaming chunk.
@@ -115,7 +114,7 @@ enum OpenAIChatCompletionsPayloadParsing {
     /// `function.arguments` fragment (typically on subsequent deltas).
     /// Compat servers vary on whether `id` is repeated; the accumulator
     /// handles that by stickying the first non-empty value seen per index.
-    static func parseToolCallDeltas(from json: String) -> [ToolCallDelta] {
+    package static func parseToolCallDeltas(from json: String) -> [ToolCallDelta] {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = parsed["choices"] as? [[String: Any]],
@@ -144,7 +143,7 @@ enum OpenAIChatCompletionsPayloadParsing {
 
     /// Parses a whole `choices[0].message.tool_calls[]` array from a
     /// non-streaming response chunk.
-    static func parseWholeToolCalls(from json: String) -> [WholeToolCall] {
+    package static func parseWholeToolCalls(from json: String) -> [WholeToolCall] {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = parsed["choices"] as? [[String: Any]],
@@ -168,7 +167,7 @@ enum OpenAIChatCompletionsPayloadParsing {
     }
 
     /// Parses `choices[0].finish_reason` (e.g. `"stop"`, `"tool_calls"`).
-    static func parseFinishReason(from json: String) -> String? {
+    package static func parseFinishReason(from json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = parsed["choices"] as? [[String: Any]],
@@ -186,7 +185,7 @@ enum OpenAIChatCompletionsPayloadParsing {
     /// ```json
     /// {"choices":[...],"usage":{"prompt_tokens":25,"completion_tokens":100,"total_tokens":125}}
     /// ```
-    static func parseUsage(from json: String) -> (promptTokens: Int, completionTokens: Int)? {
+    package static func parseUsage(from json: String) -> (promptTokens: Int, completionTokens: Int)? {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let usage = parsed["usage"] as? [String: Any],
@@ -199,13 +198,13 @@ enum OpenAIChatCompletionsPayloadParsing {
 
     // MARK: - Prefill progress
 
-    struct PrefillProgress {
-        let nPast: Int
-        let nTotal: Int
-        let tokensPerSecond: Double
+    package struct PrefillProgress {
+        package let nPast: Int
+        package let nTotal: Int
+        package let tokensPerSecond: Double
     }
 
-    static func parsePrefillProgress(from json: String) -> PrefillProgress? {
+    package static func parsePrefillProgress(from json: String) -> PrefillProgress? {
         guard let data = json.data(using: .utf8) else {
             return nil
         }
@@ -237,4 +236,3 @@ enum OpenAIChatCompletionsPayloadParsing {
         )
     }
 }
-#endif
