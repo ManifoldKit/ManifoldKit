@@ -1,5 +1,7 @@
 import XCTest
 import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 // MARK: - Thread-safe counter for @Sendable callback closures
 

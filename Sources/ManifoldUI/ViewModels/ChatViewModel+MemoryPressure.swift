@@ -1,6 +1,8 @@
 import Foundation
 import ManifoldRuntime
 import ManifoldInference
+// MemoryPressureHandler is @_spi(BackendInternals) — published backend seam (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 // MARK: - ChatViewModel + Memory Pressure
 

@@ -13,6 +13,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
 
     // MARK: - Static supportedModelTypes
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_supportedModelTypes_isSubsetOfAllModelTypes() {
         // Every value in supportedModelTypes must be a valid ModelType.
         // This catches accidental duplicates or phantom values.
@@ -22,6 +25,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
                       "supportedModelTypes contains unexpected values: \(supported.subtracting(valid))")
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_canLoad_modelType_matchesSupportedModelTypes() {
         // canLoad(modelType:) must agree with supportedModelTypes.
         for type_ in [ModelType.gguf, .mlx, .foundation] {
@@ -31,6 +37,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_canLoad_provider_matchesCompiledContract() {
         let compiled = DefaultBackends.compiledBackends
         for provider in APIProvider.allCases {
@@ -43,6 +52,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_compiledBackends_passthroughsMatchStaticQueries() {
         XCTAssertEqual(DefaultBackends.buildProfile, DefaultBackends.compiledBackends.buildProfile)
         XCTAssertEqual(DefaultBackends.enabledTraits, DefaultBackends.compiledBackends.traits)
@@ -64,6 +76,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_register_declaresLocalModelTypesConsistentlyWithStaticQuery() {
         let service = InferenceService()
         DefaultBackends.register(with: service)
@@ -75,6 +90,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_register_doesNotDeclareUnsupportedModelTypes() {
         let service = InferenceService()
         DefaultBackends.register(with: service)
@@ -102,6 +120,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         }
     }
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_register_snapshotLocalTypesMatchStaticQuery() {
         let service = InferenceService()
         DefaultBackends.register(with: service)
@@ -113,6 +134,9 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
 
     // MARK: - FrameworkCapabilityService integration
 
+    // Exercises APIs deprecated in B2 (#1749) — annotation silences the
+    // in-repo deprecation warning while pinning behavior until A4/C2.
+    @available(*, deprecated)
     func test_frameworkCapabilityService_afterRegisterAndRefresh_matchesStaticQuery() {
         let service = InferenceService()
         DefaultBackends.register(with: service)

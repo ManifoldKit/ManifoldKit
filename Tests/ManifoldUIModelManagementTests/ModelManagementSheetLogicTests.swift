@@ -1,6 +1,9 @@
 @preconcurrency import XCTest
 #if canImport(AppKit)
 import AppKit
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 #endif
 import SwiftUI
 @testable import ManifoldUI

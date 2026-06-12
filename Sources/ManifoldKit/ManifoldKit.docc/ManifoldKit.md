@@ -65,10 +65,14 @@ struct MyChatApp: App {
 > `ManifoldUIModelManagement` module) bound to `showModelManagement`, or seed a
 > model at launch.
 
-> Warning: **The trait cliff.** With no backend trait enabled (`MLX`, `Llama`,
-> `CloudSaaS`, `Ollama`, …), `quickStart()` compiles but throws
-> ``ManifoldKitError`` `.noBackendsRegistered` at runtime — there is nothing to
-> generate with. Enable at least one backend trait for your target.
+> Warning: **The no-backend cliff.** With no backend registered — no backend
+> trait enabled (`MLX`, `Llama`, `CloudSaaS`, `Ollama`, …) and no registrar
+> passed via `quickStart(backends:)` — `quickStart()` compiles but throws
+> ``ManifoldKitError`` `.noBackendsRegistered` at runtime: there is nothing to
+> generate with. Enable a backend trait, or inject a backend package's
+> registrar (e.g. `quickStart(backends: [LlamaBackends.self])`). A cloud-only
+> registration with no configured endpoint launches but logs an actionable
+> warning instead of throwing.
 
 ### The guided path
 

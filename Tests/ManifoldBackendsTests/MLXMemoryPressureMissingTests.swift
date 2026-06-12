@@ -2,6 +2,8 @@
 import XCTest
 @_spi(Testing) import ManifoldMLX
 import ManifoldBackends
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 /// Code-level regression guard for the MLX/Llama memory-pressure-handler
 /// asymmetry called out by audit claim #1's neighbour finding:

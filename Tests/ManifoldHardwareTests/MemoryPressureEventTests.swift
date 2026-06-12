@@ -2,6 +2,8 @@ import XCTest
 @testable import ManifoldHardware
 import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 /// Tests for the MemoryPressureEvent stream on InferenceService.
 ///

@@ -3,6 +3,8 @@ import Foundation
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// E2E tests for context overflow behaviour.
 ///

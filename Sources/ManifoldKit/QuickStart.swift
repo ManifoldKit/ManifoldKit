@@ -44,10 +44,11 @@ import ManifoldHuggingFace
 // (`--disable-default-traits`) any of the four non-Foundation backends could
 // be present or absent — we can only fire a *partial* hint here.
 //
-// The authoritative runtime diagnostic is `ManifoldKitError.noBackendsRegistered`,
-// whose `errorDescription` already names the exact fix:
-//   "quickStart() needs at least one backend trait enabled
-//    (MLX, Llama, CloudSaaS, Ollama, or Foundation on iOS 26 / macOS 26+)."
+// The authoritative runtime diagnostics are `ManifoldKitError.noBackendsRegistered`
+// (nothing registered at all) and the cloud-only-without-endpoint warning from
+// `backendAvailabilityDiagnostic(snapshot:configuredEndpointCount:)` — both
+// derived from live registration state, so they see companion-package
+// registrars injected via `quickStart(backends:)`.
 #if !MLX && !Llama && !CloudSaaS && !Ollama && !canImport(FoundationModels)
 // No locally-resolvable backend traits are compiled in AND FoundationModels is
 // not importable on this toolchain. quickStart() will throw
@@ -119,10 +120,13 @@ public enum ManifoldKit {
     /// download the model registry is refreshed and the selection policy picks
     /// the new model automatically — the chat is live.
     ///
-    /// The download is **skipped silently** when any of the following is true:
+    /// The download is **skipped** (with a log entry, never an error) when any
+    /// of the following is true:
     /// - A model is already available (Foundation or local disk).
-    /// - The `HuggingFace` SwiftPM trait is absent.
-    /// - No local backend (`Llama`, `MLX`) is compiled in.
+    /// - The `HuggingFace` SwiftPM trait is absent (no download machinery).
+    /// - No *registered* backend can load the seed's model type — checked
+    ///   against the live ``InferenceService`` registration state, so backends
+    ///   injected via ``quickStart(backends:configuration:seed:)`` count.
     /// - A network error occurs (the app launches with the empty state instead).
     ///
     /// ### Trait requirements
@@ -160,6 +164,50 @@ public enum ManifoldKit {
         )
     }
 
+    /// Bootstraps a working chat runtime with additional, caller-supplied
+    /// backend registrars.
+    ///
+    /// This is the migration path for backends that live outside this package
+    /// (the `manifold-mlx` / `manifold-llama` companion packages, #1749).
+    /// The compiled-in defaults (``DefaultBackends/registrars``) are registered
+    /// first, then every entry in `backends` — **before** the model registry
+    /// refresh, the optional starter-model seed, and the model-selection
+    /// policy run. Registering a backend only after `quickStart` returns is
+    /// too late for all three of those steps: the seed would skip ("no backend
+    /// can load .gguf"), and the selection policy would refuse to pick an
+    /// on-disk model it believes nothing can load.
+    ///
+    /// ```swift
+    /// import ManifoldKit
+    /// import ManifoldMLX   // from the manifold-mlx companion package
+    ///
+    /// let kit = try await ManifoldKit.quickStart(backends: [MLXBackends.self])
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - backends: Registrars to fold into the service after the compiled-in
+    ///     defaults. Order follows array order; registering the same family
+    ///     twice is harmless (last registration wins per model type).
+    ///   - configuration: Framework configuration. Defaults to
+    ///     ``ManifoldInference/ManifoldConfiguration/default``.
+    ///   - seed: Optional starter-model seed, as in
+    ///     ``quickStart(configuration:seed:)``. The seed sees the injected
+    ///     backends: a GGUF seed downloads when any registered backend —
+    ///     compiled-in or injected — can load `.gguf`.
+    /// - Returns: A ``QuickStartResult`` as in ``quickStart(configuration:)``.
+    public static func quickStart(
+        backends: [any BackendRegistrar.Type],
+        configuration: ManifoldConfiguration = .default,
+        seed: QuickStartSeed? = nil
+    ) async throws -> QuickStartResult {
+        try await _quickStart(
+            configuration: configuration,
+            backends: backends,
+            seed: seed,
+            makeModelContainer: { try ModelContainerFactory.makeContainer() }
+        )
+    }
+
     /// Internal seam used by tests to inject a custom (or throwing) model
     /// container factory and an optional selection policy. Production callers
     /// go through ``quickStart(configuration:)`` or ``quickStart(configuration:seed:)``.
@@ -172,15 +220,25 @@ public enum ManifoldKit {
     ///   - makeModelContainer: Factory closure that produces the SwiftData container.
     ///   - downloadManagerOverride: Injectable download manager for tests. When
     ///     nil and `#if HuggingFace`, a `BackgroundDownloadManager` is created.
+    ///   - foundationAvailableOverride: Test seam for the seed path's "is a
+    ///     zero-cost Foundation model available?" probe, which otherwise
+    ///     depends on the host's Apple Intelligence state. Nil uses the live
+    ///     probe.
+    ///   - storageServiceOverride: Test seam for the seed path's "is a model
+    ///     already on disk?" probe, which otherwise scans the host's real
+    ///     models directory. Nil uses the default service.
     ///   - selectionPolicy: An optional closure that receives the populated
     ///     `ModelRegistry` and returns the `ModelInfo` to select, or `nil` to
     ///     leave no model selected. When `nil` (the default), the built-in
     ///     Foundation-first → first-local → labeled-empty-state policy runs.
     static func _quickStart(
         configuration: ManifoldConfiguration,
+        backends: [any BackendRegistrar.Type] = [],
         seed: QuickStartSeed? = nil,
         makeModelContainer: @MainActor @escaping () throws -> ModelContainer,
         downloadManagerOverride: (any BackgroundDownloadManaging)? = nil,
+        foundationAvailableOverride: Bool? = nil,
+        storageServiceOverride: ModelStorageService? = nil,
         selectionPolicy: (@MainActor (ModelRegistry) async -> ModelInfo?)? = nil
     ) async throws -> QuickStartResult {
         do {
@@ -199,14 +257,50 @@ public enum ManifoldKit {
 
             let bootstrap = try await task.value
 
-            // Fail fast when the build compiled in zero backends for the active
-            // trait / OS combination. Without this the app launches fully wired
-            // — persistence, session list, composer enabled — then throws on the
-            // first turn with a confusing "No model loaded". Surfacing it here,
-            // at the assembly boundary, names the actual cause (missing traits).
-            let registeredBackends = DefaultBackends.register(with: bootstrap.inferenceService)
-            guard registeredBackends > 0 else {
+            // Register the compiled-in defaults first, then any caller-supplied
+            // registrars (companion packages, #1749). Both must run before the
+            // registry refresh, the starter seed, and the selection policy —
+            // all three consult the live registration state below.
+            DefaultBackends.register(with: bootstrap.inferenceService)
+            for registrar in backends {
+                registrar.register(with: bootstrap.inferenceService)
+            }
+
+            // Fail fast / warn loudly when the assembled service can never
+            // generate. Without this the app launches fully wired —
+            // persistence, session list, composer enabled — then throws on the
+            // first turn with a confusing "No model loaded". The check is
+            // runtime-registration-based (not trait-based): once cloud
+            // registrars register unconditionally, "some backend registered"
+            // stops implying "local inference works", so the cloud-only case
+            // additionally checks for a configured endpoint.
+            let snapshot = bootstrap.inferenceService.registeredBackendSnapshot()
+            let configuredEndpointCount: Int
+            if snapshot.supportsLocalInference {
+                // Endpoints are irrelevant to the diagnostic when local
+                // inference is available — skip the fetch.
+                configuredEndpointCount = 0
+            } else {
+                do {
+                    configuredEndpointCount = try await bootstrap.endpointStore.fetchEndpoints().count
+                } catch {
+                    Log.quickStart.warning("quickStart: endpoint fetch failed during backend-availability check: \(error, privacy: .public)")
+                    configuredEndpointCount = 0
+                }
+            }
+            switch backendAvailabilityDiagnostic(
+                snapshot: snapshot,
+                configuredEndpointCount: configuredEndpointCount
+            ) {
+            case .noBackends:
                 throw ManifoldKitError.noBackendsRegistered
+            case .cloudOnlyWithoutEndpoint(let message):
+                // Warn rather than throw: endpoints are commonly configured
+                // *after* quickStart() returns (settings UI, first-run flow),
+                // so a cloud-only service is degraded, not necessarily dead.
+                Log.quickStart.warning("\(message, privacy: .public)")
+            case nil:
+                break
             }
 
             let viewModel = ChatViewModel(
@@ -281,18 +375,32 @@ public enum ManifoldKit {
                 // Foundation check: if the Foundation backend is already
                 // available there is a zero-cost model — skip the download so
                 // we never fetch ~400 MB unnecessarily.
+                // `foundationAvailableOverride` is a test seam: the live
+                // probe depends on the host's Apple Intelligence state, which
+                // would make seed-path tests skip on capable machines.
                 var foundationAvailable = false
                 #if canImport(FoundationModels)
                 if #available(iOS 26, macOS 26, *) {
                     foundationAvailable = FoundationBackend.isAvailable
                 }
                 #endif
+                if let foundationAvailableOverride {
+                    foundationAvailable = foundationAvailableOverride
+                }
 
-                if !foundationAvailable {
+                // Runtime backend gate: the seed must be loadable by a backend
+                // that is actually *registered* — compiled-in or injected via
+                // `backends:`. A compile-time trait check here would silently
+                // no-op the GGUF starter seed for consumers whose Llama-capable
+                // backend arrives from a companion package at runtime (#1749).
+                let seedCompatibility = bootstrap.inferenceService.compatibility(for: seed.modelType)
+                if !foundationAvailable && !seedCompatibility.isSupported {
+                    Log.quickStart.info("quickStart(seed:): no registered backend can load \(String(describing: seed.modelType), privacy: .public) models — seed skipped. Register a compatible backend (e.g. quickStart(backends: [LlamaBackends.self]) with the manifold-llama companion package) to enable the starter download.")
+                } else if !foundationAvailable {
                     #if HuggingFace
                     let dm: any BackgroundDownloadManaging = downloadManagerOverride
                         ?? BackgroundDownloadManager()
-                    let storageService = ModelStorageService()
+                    let storageService = storageServiceOverride ?? ModelStorageService()
                     _ = await _performSeedDownload(
                         seed: seed,
                         storageService: storageService,
@@ -303,7 +411,7 @@ public enum ManifoldKit {
                     // If a downloadManagerOverride was supplied (test injection),
                     // still honour it so tests work without the real HF trait.
                     if let dm = downloadManagerOverride {
-                        let storageService = ModelStorageService()
+                        let storageService = storageServiceOverride ?? ModelStorageService()
                         _ = await _performSeedDownload(
                             seed: seed,
                             storageService: storageService,
@@ -350,17 +458,67 @@ public enum ManifoldKit {
         }
     }
 
+    // MARK: - Backend availability diagnostic
+
+    /// The actionable diagnostics ``quickStart(configuration:)`` derives from
+    /// the live registration state. Internal and pure so tests can pin the
+    /// decision table without driving a full bootstrap.
+    enum BackendAvailabilityDiagnostic: Equatable {
+        /// Nothing is registered at all — the service can never generate.
+        /// `quickStart` throws ``ManifoldKitError/noBackendsRegistered``.
+        case noBackends
+        /// Cloud providers are registered but no local backend is, and no
+        /// endpoint has been configured — the service is degraded until the
+        /// host configures one. `quickStart` logs the associated message.
+        case cloudOnlyWithoutEndpoint(message: String)
+    }
+
+    /// Decides which (if any) backend-availability diagnostic applies.
+    ///
+    /// Runtime-registration-based on purpose: compile-time trait checks cannot
+    /// see backends registered by companion packages via
+    /// ``quickStart(backends:configuration:seed:)``, and once cloud registrars
+    /// register unconditionally a bare "count > 0" check goes permanently
+    /// quiet for the local-inference failure mode.
+    static func backendAvailabilityDiagnostic(
+        snapshot: EnabledBackends,
+        configuredEndpointCount: Int
+    ) -> BackendAvailabilityDiagnostic? {
+        if snapshot.isEmpty {
+            return .noBackends
+        }
+        if !snapshot.supportsLocalInference && configuredEndpointCount == 0 {
+            return .cloudOnlyWithoutEndpoint(message: """
+                quickStart: no local inference backend is registered and no cloud \
+                endpoint is configured — the chat surface will launch but cannot \
+                generate. To enable local inference, add a backend package \
+                (manifold-llama for GGUF, manifold-mlx for MLX) and pass its \
+                registrar: ManifoldKit.quickStart(backends: [LlamaBackends.self]). \
+                To use a cloud provider instead, insert an APIEndpointRecord via \
+                bootstrap.endpointStore and select it before the first send.
+                """)
+        }
+        return nil
+    }
+
     // MARK: - Built-in selection policy
 
     /// The default backend-selection policy applied by `quickStart()`.
     ///
     /// Priority order:
     /// 1. Foundation model — selected when running on iOS 26+ / macOS 26+ and
-    ///    the Foundation backend is compiled in and available at runtime.
-    /// 2. First local model — the first entry in `availableModels` (populated
-    ///    by `refresh()`), which skips cloud/endpoint-configured backends that
-    ///    have no `ModelInfo` representation in the registry.
+    ///    a Foundation-capable backend is *registered* and available at runtime.
+    /// 2. First **loadable** local model — the first entry in `availableModels`
+    ///    (populated by `refresh()`) whose ``ModelType`` has a registered
+    ///    backend. On-disk files with no registered backend are skipped: a
+    ///    GGUF on disk with no Llama-capable backend would otherwise be
+    ///    "selected", compile clean, and fail confusingly on the first send.
     /// 3. Nil — no model is pre-selected; the UI must prompt the user to add one.
+    ///
+    /// All compatibility checks go through ``ModelRegistry/compatibility(for:)``
+    /// (live registration state) rather than compile-time trait reflection, so
+    /// backends injected via ``quickStart(backends:configuration:seed:)`` are
+    /// honoured.
     @MainActor
     static func defaultSelectionPolicy(_ registry: ModelRegistry) async -> ModelInfo? {
         // Foundation-first: on Apple-Intelligence-capable devices the built-in
@@ -368,18 +526,25 @@ public enum ManifoldKit {
         // disk space, no endpoint configuration required.
         #if canImport(FoundationModels)
         if #available(iOS 26, macOS 26, *) {
-            if DefaultBackends.canLoad(modelType: .foundation),
+            if registry.compatibility(for: .foundation).isSupported,
                let provider = registry.foundationModelProvider, provider() {
                 return .builtInFoundation
             }
         }
         #endif
 
-        // Fall back to the first local model discovered on disk. All ModelType
-        // cases (.gguf, .mlx, .foundation) represent local backends — there is
-        // no "remote" ModelType in the registry (cloud backends are addressed
-        // through APIEndpointRecord + APIProvider, not ModelInfo).
-        return registry.availableModels.first
+        // Fall back to the first local model discovered on disk *that some
+        // registered backend can load*. All ModelType cases (.gguf, .mlx,
+        // .foundation) represent local backends — there is no "remote"
+        // ModelType in the registry (cloud backends are addressed through
+        // APIEndpointRecord + APIProvider, not ModelInfo).
+        for model in registry.availableModels {
+            if registry.compatibility(for: model.modelType).isSupported {
+                return model
+            }
+            Log.quickStart.info("quickStart: skipping \(model.fileName, privacy: .public) — no registered backend can load \(String(describing: model.modelType), privacy: .public) models. Add the matching backend package (manifold-llama for GGUF, manifold-mlx for MLX) and pass its registrar to quickStart(backends:).")
+        }
+        return nil
     }
 }
 

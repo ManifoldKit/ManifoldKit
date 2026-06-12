@@ -26,13 +26,17 @@ public enum MemoryPressureLevel: String, Sendable {
 /// immediately when pressure is detected, rather than waiting for the next run-loop
 /// cycle. The callback fires from an arbitrary thread; callers must not perform
 /// blocking work inside it.
+// @_spi(BackendInternals): published for the backend family packages
+// (manifold-mlx / manifold-llama, #1749). `LlamaBackend` registers a
+// synchronous pressure callback to abort the decode loop before the OS
+// escalates; cross-package that requires a public (but non-API) symbol.
 @Observable
-package final class MemoryPressureHandler: @unchecked Sendable {
+@_spi(BackendInternals) public final class MemoryPressureHandler: @unchecked Sendable {
 
     // MARK: - Published State
 
     /// The current memory pressure level reported by the OS.
-    package var pressureLevel: MemoryPressureLevel = .nominal
+    public var pressureLevel: MemoryPressureLevel = .nominal
 
     // MARK: - Private State
 
@@ -54,7 +58,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     /// The label is injected rather than read from `ManifoldConfiguration` so that
     /// `ManifoldHardware` remains a zero-dependency module. `InferenceService`
     /// passes `ManifoldConfiguration.shared.memoryPressureQueueLabel` at call-site.
-    package init(queueLabel: String = "com.manifoldkit.memory-pressure") {
+    public init(queueLabel: String = "com.manifoldkit.memory-pressure") {
         self.queue = DispatchQueue(label: queueLabel, qos: .utility)
     }
 
@@ -67,7 +71,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     /// Begins listening for memory pressure notifications from the OS.
     ///
     /// Safe to call multiple times -- subsequent calls are no-ops while monitoring is active.
-    package func startMonitoring() {
+    public func startMonitoring() {
         guard source == nil else { return }
 
         let newSource = DispatchSource.makeMemoryPressureSource(
@@ -116,7 +120,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     /// Stops listening for memory pressure notifications.
     ///
     /// Safe to call multiple times -- subsequent calls are no-ops if not monitoring.
-    package func stopMonitoring() {
+    public func stopMonitoring() {
         source?.cancel()
         source = nil
     }
@@ -135,7 +139,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     ///     registering type and use `removeCallback(for:)` in that type's `deinit`.
     ///   - callback: A `@Sendable` closure that receives the new pressure level.
     ///     Must not perform blocking work — it runs on a utility GCD queue.
-    package func addPressureCallback(
+    public func addPressureCallback(
         for owner: AnyObject,
         _ callback: @escaping @Sendable (MemoryPressureLevel) -> Void
     ) {
@@ -147,7 +151,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     /// Removes the callback previously registered for `owner`.
     ///
     /// Safe to call from `deinit` — no-op if no callback was registered.
-    package func removeCallback(for owner: AnyObject) {
+    public func removeCallback(for owner: AnyObject) {
         callbackLock.lock()
         defer { callbackLock.unlock() }
         _callbacks.removeValue(forKey: ObjectIdentifier(owner))
@@ -161,7 +165,7 @@ package final class MemoryPressureHandler: @unchecked Sendable {
     /// real OS `DispatchSource` firing. Takes a snapshot under the lock so callbacks
     /// run outside the critical section, allowing re-entrant `addPressureCallback` /
     /// `removeCallback` calls from within a callback.
-    package func fireCallbacks(level: MemoryPressureLevel) {
+    public func fireCallbacks(level: MemoryPressureLevel) {
         // Take a snapshot under the lock so callbacks run outside it.
         callbackLock.lock()
         let snapshot = _callbacks.values.map { $0 }
