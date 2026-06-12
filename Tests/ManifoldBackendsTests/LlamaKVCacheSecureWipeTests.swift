@@ -1,7 +1,7 @@
 #if Llama
 import XCTest
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 import ManifoldInference
 
 // Tests for LlamaBackend.secureWipe().

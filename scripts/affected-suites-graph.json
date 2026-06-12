@@ -233,6 +233,14 @@
         "ManifoldTestSupport"
       ]
     },
+    "ManifoldBackendTestKit": {
+      "type": "regular",
+      "path": "Sources/ManifoldBackendTestKit",
+      "deps": [
+        "ManifoldInference",
+        "ManifoldTestSupport"
+      ]
+    },
     "ManifoldCoreTests": {
       "type": "test",
       "path": "Tests/ManifoldCoreTests",
@@ -361,6 +369,7 @@
       "type": "test",
       "path": "Tests/ManifoldBackendsTests",
       "deps": [
+        "ManifoldBackendTestKit",
         "ManifoldBackends",
         "ManifoldCloud",
         "ManifoldCloudCore",

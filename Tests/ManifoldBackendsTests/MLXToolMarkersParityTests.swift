@@ -1,7 +1,7 @@
 #if MLX
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldMLX
+import ManifoldInference
+@_spi(Testing) import ManifoldMLX
 
 /// Unit tests for the unified tool-call transform under MLX markers
 /// (`MLXToolMarkers.markers()`).

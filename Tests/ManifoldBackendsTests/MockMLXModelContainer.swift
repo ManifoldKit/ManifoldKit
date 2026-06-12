@@ -1,5 +1,6 @@
 #if MLX
 import Foundation
+@_spi(Testing) import ManifoldMLX
 import MLXLMCommon
 
 // MARK: - SendableLMInput

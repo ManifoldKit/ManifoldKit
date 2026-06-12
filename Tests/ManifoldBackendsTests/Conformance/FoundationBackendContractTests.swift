@@ -1,9 +1,10 @@
 #if canImport(FoundationModels)
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldFoundation
+import ManifoldBackends
+import ManifoldFoundation
 
 /// FoundationBackend conformance against the universal backend contract.
 ///

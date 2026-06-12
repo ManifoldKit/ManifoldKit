@@ -290,7 +290,7 @@ public final class LlamaReranker: Reranker, @unchecked Sendable {
 
     /// Numerically stable logistic squash. Branches on the sign so neither
     /// `exp(+large)` nor `exp(-large)` overflows.
-    static func sigmoid(_ x: Float) -> Float {
+    @_spi(Testing) public static func sigmoid(_ x: Float) -> Float {
         if x >= 0 {
             return 1 / (1 + expf(-x))
         } else {

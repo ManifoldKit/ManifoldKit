@@ -15,19 +15,22 @@ import ManifoldHardware
 /// `LocalBackendRealDriverCoverageTest`) can introspect the composed
 /// witnesses without instantiating `LlamaBackend`. Sendable explicitly —
 /// the struct has no stored mutable state.
-struct LlamaGenerationDriver: LocalInferenceAdapter {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public struct LlamaGenerationDriver: LocalInferenceAdapter {
+
+    public init() {}
 
     // MARK: - LocalInferenceAdapter conformance
 
-    let adapterName: String = "llama.generation"
-    let toolCallShape: any LocalToolCallShape = InlineXMLToolCallMarkers()
-    let thinkingMarkerStrategy: LocalThinkingMarkerStrategy = .eagerWhenMarkersPresent
+    public let adapterName: String = "llama.generation"
+    public let toolCallShape: any LocalToolCallShape = InlineXMLToolCallMarkers()
+    public let thinkingMarkerStrategy: LocalThinkingMarkerStrategy = .eagerWhenMarkersPresent
     /// Llama's static capability shape published for drift-guard probing.
     /// Mirrors the payload `LlamaBackend.capabilities` returns once a model
     /// is loaded; conformance to `LocalInferenceAdapter` requires a
     /// driver-level snapshot so coverage tests do not have to boot the
     /// backend.
-    let declaredCapabilities: BackendCapabilities = BackendCapabilities(
+    public let declaredCapabilities: BackendCapabilities = BackendCapabilities(
         supportedParameters: [
             .temperature, .topP, .topK, .repeatPenalty,
             .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,
@@ -68,33 +71,33 @@ struct LlamaGenerationDriver: LocalInferenceAdapter {
     /// Capacity of the phrase-detection token buffer (maxPhraseLen × minPhraseRepeats + 1).
     private static let phraseWindowCap = maxPhraseLen * minPhraseRepeats + 1
 
-    struct DRYSamplerDescriptor: Equatable {
-        let nCtxTrain: Int32
-        let options: LlamaDRYSamplerOptions
+    public struct DRYSamplerDescriptor: Equatable {
+        public let nCtxTrain: Int32
+        public let options: LlamaDRYSamplerOptions
 
-        init?(config: GenerationConfig, nCtxTrain: Int32) {
+        public init?(config: GenerationConfig, nCtxTrain: Int32) {
             guard let options = config.llamaDRY else { return nil }
             self.nCtxTrain = nCtxTrain
             self.options = options
         }
     }
 
-    struct XTCSamplerDescriptor: Equatable {
-        let options: LlamaXTCSamplerOptions
-        let resolvedSeed: UInt32
+    public struct XTCSamplerDescriptor: Equatable {
+        public let options: LlamaXTCSamplerOptions
+        public let resolvedSeed: UInt32
 
-        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+        public init?(config: GenerationConfig, fallbackSeed: UInt32) {
             guard let options = config.llamaXTC else { return nil }
             self.options = options
             self.resolvedSeed = options.seed ?? fallbackSeed
         }
     }
 
-    struct MirostatV2SamplerDescriptor: Equatable {
-        let options: LlamaMirostatV2SamplerOptions
-        let resolvedSeed: UInt32
+    public struct MirostatV2SamplerDescriptor: Equatable {
+        public let options: LlamaMirostatV2SamplerOptions
+        public let resolvedSeed: UInt32
 
-        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+        public init?(config: GenerationConfig, fallbackSeed: UInt32) {
             guard let options = config.llamaMirostatV2 else { return nil }
             self.options = options
             self.resolvedSeed = options.seed ?? fallbackSeed

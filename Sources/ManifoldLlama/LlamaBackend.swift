@@ -62,7 +62,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     ///
     /// Accessible via `@testable import ManifoldLlama`. Never call this in
     /// production code — it bypasses the normal `loadModel` lifecycle.
-    func injectArchitectureForTesting(_ architecture: String) {
+    @_spi(Testing) public func injectArchitectureForTesting(_ architecture: String) {
         withStateLock { _architecture = architecture }
     }
 
@@ -123,8 +123,8 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
 
     private var model: OpaquePointer?
     private var context: OpaquePointer?
-    /// Accessible to tests via `@testable import` for vocabulary-level assertions.
-    var vocab: OpaquePointer?
+    /// Accessible to tests via `@_spi(Testing)` for vocabulary-level assertions.
+    @_spi(Testing) public internal(set) var vocab: OpaquePointer?
     private var generationTask: Task<Void, Never>?
     /// Cancellation flag shared between the decode loop (background task) and
     /// `stopGeneration()` / `unloadModel()` (any thread/actor).
@@ -150,7 +150,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// Test-only read-side accessor that snapshots `_loadOptions` under the
     /// state lock. Lets plumbing tests assert the setter persisted the value
     /// without needing a real model load.
-    var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
+    @_spi(Testing) public var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
 
     // MARK: - Multimodal Projector
 

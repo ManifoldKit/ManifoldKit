@@ -1,9 +1,9 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldBackends
-@testable import ManifoldLlama
-@testable import ManifoldTestSupport
+import ManifoldInference
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
+import ManifoldTestSupport
 
 /// Locates a GGUF embedding model on disk for `LlamaEmbeddingBackend` tests.
 ///

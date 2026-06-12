@@ -1,32 +1,34 @@
 #if MLX
 import MLXLMCommon
 
-struct MLXPreparedInput: @unchecked Sendable {
+// @_spi(Testing): published only for backend test targets (companion-package
+// split, #1749) — keeps the underlying MLX types off the supported public API.
+@_spi(Testing) public struct MLXPreparedInput: @unchecked Sendable {
     private let value: LMInput?
     private let promptTokenIdsOverride: [Int]?
 
-    init(_ value: LMInput) {
+    public init(_ value: LMInput) {
         self.value = value
         self.promptTokenIdsOverride = nil
     }
 
-    init(promptTokenIds: [Int]) {
+    public init(promptTokenIds: [Int]) {
         self.value = nil
         self.promptTokenIdsOverride = promptTokenIds
     }
 
-    var lmInput: LMInput {
+    public var lmInput: LMInput {
         guard let value else {
             preconditionFailure("Test-only MLXPreparedInput has no LMInput payload")
         }
         return value
     }
 
-    var promptTokenIds: [Int] {
+    public var promptTokenIds: [Int] {
         promptTokenIdsOverride ?? lmInput.text.tokens.asArray(Int.self)
     }
 
-    func suffix(from reusedPromptTokenCount: Int) -> MLXPreparedInput {
+    public func suffix(from reusedPromptTokenCount: Int) -> MLXPreparedInput {
         guard reusedPromptTokenCount > 0 else { return self }
         if let value {
             let remainingText = value.text[text: reusedPromptTokenCount...]
@@ -38,18 +40,20 @@ struct MLXPreparedInput: @unchecked Sendable {
     }
 }
 
-struct MLXPromptCache: @unchecked Sendable {
-    let value: [any KVCache]
+// @_spi(Testing): see MLXPreparedInput.
+@_spi(Testing) public struct MLXPromptCache: @unchecked Sendable {
+    public let value: [any KVCache]
 
-    init(_ value: [any KVCache]) {
+    public init(_ value: [any KVCache]) {
         self.value = value
     }
 }
 
-struct SendableChatMessages: @unchecked Sendable {
-    let value: [Chat.Message]
+// @_spi(Testing): see MLXPreparedInput.
+@_spi(Testing) public struct SendableChatMessages: @unchecked Sendable {
+    public let value: [Chat.Message]
 
-    init(_ value: [Chat.Message]) {
+    public init(_ value: [Chat.Message]) {
         self.value = value
     }
 }
@@ -59,7 +63,9 @@ struct SendableChatMessages: @unchecked Sendable {
 /// `LMInput` and `[KVCache]` are wrapped so `MLXBackend` can own prompt preparation,
 /// cache creation, prefix reuse, and token streaming while the concrete
 /// `ModelContainer` conformance keeps the underlying MLX types off the public API.
-protocol MLXModelContainerProtocol: Sendable {
+// @_spi(Testing): published so backend test targets can stub the container
+// (MockMLXModelContainer) without @testable access — companion split, #1749.
+@_spi(Testing) public protocol MLXModelContainerProtocol: Sendable {
     func prepare(messages: [[String: String]]) async throws -> MLXPreparedInput
     func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput
     func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache
@@ -70,26 +76,26 @@ protocol MLXModelContainerProtocol: Sendable {
     ) async throws -> AsyncStream<Generation>
 }
 
-extension ModelContainer: MLXModelContainerProtocol {
-    func prepare(messages: [[String: String]]) async throws -> MLXPreparedInput {
+@_spi(Testing) extension ModelContainer: MLXModelContainerProtocol {
+    public func prepare(messages: [[String: String]]) async throws -> MLXPreparedInput {
         let input = try await prepare(input: .init(messages: messages))
         return MLXPreparedInput(input)
     }
 
-    func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
+    public func prepare(chat: SendableChatMessages) async throws -> MLXPreparedInput {
         try await perform(nonSendable: chat.value) { context, chat in
             let input = try await context.processor.prepare(input: .init(chat: chat))
             return MLXPreparedInput(input)
         }
     }
 
-    func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {
+    public func makeCache(parameters: GenerateParameters) async throws -> MLXPromptCache {
         await perform { context in
             MLXPromptCache(context.model.newCache(parameters: parameters))
         }
     }
 
-    func generate(
+    public func generate(
         input: MLXPreparedInput,
         cache: MLXPromptCache?,
         parameters: GenerateParameters

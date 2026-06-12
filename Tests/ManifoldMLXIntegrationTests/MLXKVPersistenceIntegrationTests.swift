@@ -3,9 +3,9 @@ import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 /// Real-model validation for MLX KV-cache prefix reuse.
 ///

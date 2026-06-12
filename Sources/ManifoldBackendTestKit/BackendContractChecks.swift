@@ -1,14 +1,18 @@
 import XCTest
-import ManifoldRuntime
-import ManifoldPersistenceSwiftData
+import Foundation
 import ManifoldInference
 import ManifoldTestSupport
-@testable import ManifoldBackends
 
 /// Shared contract assertions that every InferenceBackend implementation must satisfy.
 /// Called from a single `test_contract_allInvariants()` method declared directly on
 /// each adopting XCTestCase subclass — protocol extension methods are invisible to
 /// XCTest's ObjC runtime and would never run.
+///
+/// Published as part of the ``ManifoldBackendTestKit`` product so companion
+/// backend packages (manifold-mlx / manifold-llama) run the exact same
+/// contract suite against core's published API. See the DocC catalog for the
+/// adoption walkthrough, the no-`--parallel` rule, and the non-vacuity
+/// expectation.
 ///
 /// ## Three-category capability semantics (T1.1)
 ///
@@ -17,8 +21,8 @@ import ManifoldTestSupport
 ///
 /// 1. **Claimed-true** → at least one passing behaviour assertion must run for
 ///    that capability against this backend. Tracked via the claim registry below;
-///    the meta-contract test ``assertCapabilityMetaContract(...)`` fails if any
-///    declared-true tracked flag has no claim.
+///    the meta-contract test ``assertCapabilityMetaContract(backendName:capabilities:file:line:)``
+///    fails if any declared-true tracked flag has no claim.
 /// 2. **Claimed-false** → a fail-closed assertion must run. Disclaiming a
 ///    capability is a promise to fail-closed (e.g. backends with
 ///    ``BackendCapabilities/supportsGrammarConstrainedSampling`` set to false
@@ -34,7 +38,7 @@ import ManifoldTestSupport
 ///
 /// ## Adding a new backend
 ///
-/// 1. Subclass `XCTestCase` under `Tests/ManifoldBackendsTests/Conformance/`.
+/// 1. Subclass `XCTestCase` in your backend package's test target.
 /// 2. Add `test_contract_allInvariants()` calling the universal harness.
 /// 3. Add `test_contract_grammarFailClosed()` calling the false-claim family.
 /// 4. Add a single `test_contract_allCapabilityClaims()` that calls
@@ -43,11 +47,11 @@ import ManifoldTestSupport
 ///    `assertCapabilityMetaContract(...)` — all in one method body.
 ///    This keeps the entire registry lifecycle inside one process, so the
 ///    test is safe under `swift test --parallel`.
-enum BackendContractChecks {
+public enum BackendContractChecks {
 
     // MARK: - Original universal invariants (preserved verbatim)
 
-    static func assertAllInvariants<B: InferenceBackend>(
+    public static func assertAllInvariants<B: InferenceBackend>(
         makingBackend makeBackend: () -> B,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -99,7 +103,7 @@ enum BackendContractChecks {
     /// Records that a per-capability assertion family ran against `backend`
     /// for `flag`. Called from each assertion method below. Idempotent;
     /// recording the same `(backend, flag)` twice is fine.
-    static func recordCapabilityClaim(backend backendName: String, flag capabilityFlag: String) {
+    public static func recordCapabilityClaim(backend backendName: String, flag capabilityFlag: String) {
         claimsLock.lock()
         defer { claimsLock.unlock() }
         claims.insert("\(backendName)::\(capabilityFlag)")
@@ -113,7 +117,7 @@ enum BackendContractChecks {
     /// This is intentionally backend-scoped rather than a full `removeAll()`:
     /// a global clear could race with concurrently-running conformance classes,
     /// wiping their in-flight claims.
-    static func resetCapabilityClaims(forBackend backendName: String) {
+    public static func resetCapabilityClaims(forBackend backendName: String) {
         claimsLock.lock()
         defer { claimsLock.unlock() }
         claims = claims.filter { !$0.hasPrefix("\(backendName)::") }
@@ -121,7 +125,7 @@ enum BackendContractChecks {
 
     /// Snapshot of the current claim set, taken under lock for stability under
     /// `--parallel`.
-    static func capturedClaims() -> Set<String> {
+    public static func capturedClaims() -> Set<String> {
         claimsLock.lock()
         defer { claimsLock.unlock() }
         return claims
@@ -141,7 +145,7 @@ enum BackendContractChecks {
     ///    runtime's `PromptAssembler` tests, not by per-backend conformance.
     /// - `supportsSystemPrompt`, `supportsStreaming` — covered by the
     ///   universal invariants and the existing per-backend cap tests.
-    static let metaContractTrackedFlags: [String] = [
+    public static let metaContractTrackedFlags: [String] = [
         "supportsToolCalling",
         "supportsStructuredOutput",
         "supportsNativeJSONMode",
@@ -161,7 +165,7 @@ enum BackendContractChecks {
     ///
     /// Reflects ``BackendCapabilities`` via Mirror — no per-flag conditional
     /// chain to maintain.
-    static func unprovenClaims(
+    public static func unprovenClaims(
         backendName: String,
         capabilities: BackendCapabilities
     ) -> [String] {
@@ -185,7 +189,7 @@ enum BackendContractChecks {
     /// least one recorded claim. Call this at the end of
     /// `test_contract_allCapabilityClaims()`, after all
     /// `claimWithoutBehaviouralAssertion` calls for the backend.
-    static func assertCapabilityMetaContract(
+    public static func assertCapabilityMetaContract(
         backendName: String,
         capabilities: BackendCapabilities,
         file: StaticString = #filePath,
@@ -219,7 +223,7 @@ enum BackendContractChecks {
     /// (the true side will be claimed by a separate "grammar produces valid
     /// output" family in a future patch).
     @MainActor
-    static func assertGrammarFailClosedContract<B: InferenceBackend>(
+    public static func assertGrammarFailClosedContract<B: InferenceBackend>(
         backendName: String,
         makingBackend makeBackend: () -> B,
         forbiddenRequestURL: URL? = nil,
@@ -240,7 +244,7 @@ enum BackendContractChecks {
         }
 
         try await backend.loadModel(
-            from: URL(string: "unused:")!,
+            from: URL(fileURLWithPath: "/dev/null"),
             plan: .testStub(effectiveContextSize: 512)
         )
 
@@ -289,7 +293,7 @@ enum BackendContractChecks {
     /// future PRs must replace with a real behavioural assertion. The intent
     /// is to bootstrap the meta-contract with the existing static-flag
     /// coverage; it is NOT a permanent escape hatch.
-    static func claimWithoutBehaviouralAssertion(
+    public static func claimWithoutBehaviouralAssertion(
         backendName: String,
         flag capabilityFlag: String
     ) {

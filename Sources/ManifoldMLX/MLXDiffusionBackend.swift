@@ -231,7 +231,7 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
 
     // MARK: - Private helpers
 
-    static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
+    @_spi(Testing) public static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
         let fm = FileManager.default
         // SDXL has a second text encoder; SD 2.1 does not.
         if fm.fileExists(atPath: url.appending(component: "text_encoder_2").path) {

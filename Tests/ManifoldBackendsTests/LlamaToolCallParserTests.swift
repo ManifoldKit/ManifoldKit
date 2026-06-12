@@ -1,8 +1,8 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 
 /// Test shim driving the unified `ToolCallTransform` (configured with
 /// `LlamaToolMarkers.markers()`) through the old `LlamaToolCallParser`-shaped

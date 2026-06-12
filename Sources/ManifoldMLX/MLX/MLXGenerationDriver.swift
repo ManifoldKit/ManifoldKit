@@ -13,8 +13,11 @@ import ManifoldInference
 /// shape but runs `@MainActor` because every MLX call (`prepare`, `makeCache`,
 /// `generate`, KV-cache snapshot capture) shares the single-threaded GPU
 /// scheduler with the rest of the MLX runtime.
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
 @MainActor
-struct MLXGenerationDriver: LocalInferenceAdapter {
+@_spi(Testing) public struct MLXGenerationDriver: LocalInferenceAdapter {
+
+    public nonisolated init() {}
 
     private static let logger = Logger(
         subsystem: ManifoldConfiguration.shared.logSubsystem,
@@ -27,14 +30,14 @@ struct MLXGenerationDriver: LocalInferenceAdapter {
     /// composed witnesses from any actor without hopping onto the main
     /// actor. The values are immutable, so this is race-free by
     /// construction.
-    nonisolated let adapterName: String = "mlx.generation"
-    nonisolated let toolCallShape: any LocalToolCallShape = InlineXMLToolCallMarkers()
-    nonisolated let thinkingMarkerStrategy: LocalThinkingMarkerStrategy = .eagerWhenMarkersPresent
+    public nonisolated let adapterName: String = "mlx.generation"
+    public nonisolated let toolCallShape: any LocalToolCallShape = InlineXMLToolCallMarkers()
+    public nonisolated let thinkingMarkerStrategy: LocalThinkingMarkerStrategy = .eagerWhenMarkersPresent
     /// MLX's static capability shape published for drift-guard probing.
     /// Mirrors `MLXBackend.capabilities` once a model is loaded; the
     /// driver-level snapshot uses the conservative 8 k context fallback
     /// (the backend overrides this from the loaded manifest at runtime).
-    nonisolated let declaredCapabilities: BackendCapabilities = BackendCapabilities(
+    public nonisolated let declaredCapabilities: BackendCapabilities = BackendCapabilities(
         supportedParameters: [
             .temperature, .topP, .topK, .repeatPenalty,
             .minP, .repetitionPenalty, .presencePenalty, .frequencyPenalty,

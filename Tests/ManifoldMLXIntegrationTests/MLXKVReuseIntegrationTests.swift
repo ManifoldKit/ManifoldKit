@@ -1,9 +1,9 @@
 #if MLX
 import XCTest
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 /// Real-MLX measurement of KV-cache prefix reuse across two consecutive turns.
 ///

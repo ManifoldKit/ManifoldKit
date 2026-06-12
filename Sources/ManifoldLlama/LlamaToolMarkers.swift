@@ -17,7 +17,8 @@ import ManifoldInference
 ///    `call:name{key:<|"|>value<|"|>}` brace body.
 /// 2. **JSON fallback** — `<tool_call>` … `</tool_call>` with a
 ///    `{"name":…,"arguments":…}` body (Qwen-style fine-tunes).
-enum LlamaToolMarkers {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum LlamaToolMarkers {
 
     /// Gemma 4 native open token.
     static let gemma4OpenTag = "<|tool_call>"
@@ -33,7 +34,7 @@ enum LlamaToolMarkers {
 
     /// The ordered marker set Llama hands to a `ToolCallTransform`.
     /// Gemma-4 first so it wins ties against the JSON fallback.
-    static func markers() -> [ToolCallMarker] {
+    public static func markers() -> [ToolCallMarker] {
         [
             ToolCallMarker(open: gemma4OpenTag, close: gemma4EndTurn) { body in
                 parseCallBuffer(body)

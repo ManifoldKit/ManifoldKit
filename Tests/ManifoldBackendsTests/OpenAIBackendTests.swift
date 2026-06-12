@@ -3,6 +3,7 @@ import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud

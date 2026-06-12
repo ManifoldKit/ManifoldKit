@@ -1,9 +1,9 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 
 /// Regression tests for the `parse_special: true` fix in `LlamaTokenization.tokenize`
 /// and `LlamaBackend.countTokens`.
@@ -56,8 +56,8 @@ final class LlamaTokenizationTests: XCTestCase {
         XCTAssertTrue(backend.isModelLoaded)
 
         // Snapshot the vocab pointer under the state lock to avoid a use-after-free
-        // race with any concurrent unloadModel(). `vocab` is internal on LlamaBackend
-        // so `@testable import ManifoldBackends` makes it accessible here.
+        // race with any concurrent unloadModel(). `vocab` is read-only outside
+        // ManifoldLlama via the `@_spi(Testing)` seam imported above.
         let currentVocab = backend.vocab
 
         let chatmlToken = "<|im_start|>"

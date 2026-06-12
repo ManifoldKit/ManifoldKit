@@ -9,9 +9,10 @@ import LlamaSwift
 /// thread while the vocab pointer is live. These helpers take `vocab` as an
 /// explicit parameter so callers remain responsible for guarding the pointer's
 /// lifetime against a concurrent `unloadModel()`.
-enum LlamaTokenization {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum LlamaTokenization {
 
-    static func tokenize(
+    public static func tokenize(
         _ text: String,
         vocab: OpaquePointer?,
         addBos: Bool,

@@ -1,9 +1,9 @@
 #if MLX
 import XCTest
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 /// Real-MLX exercise of type-aware, per-layer prompt-cache reuse on a **hybrid
 /// architecture** (mixed cache types across layers — e.g. a Qwen3-Next-style
