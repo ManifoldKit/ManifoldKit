@@ -528,8 +528,8 @@
       "type": "executable",
       "path": "Sources/manifold-tools",
       "deps": [
-        "ManifoldBackends",
         "ManifoldInference",
+        "ManifoldOllama",
         "ManifoldTools"
       ]
     },

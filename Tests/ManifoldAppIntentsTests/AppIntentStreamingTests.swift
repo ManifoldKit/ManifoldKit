@@ -1,4 +1,3 @@
-#if AppIntents
 import XCTest
 import ManifoldInference
 @testable import ManifoldAppIntents
@@ -518,4 +517,3 @@ final class AppIntentStreamingTests: XCTestCase {
 }
 
 #endif // canImport(AppIntents)
-#endif

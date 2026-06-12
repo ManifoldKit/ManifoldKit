@@ -10,10 +10,9 @@
 # Package.swift, accidental removal of public types, and dependency-graph
 # changes that drop ManifoldUI (ManifoldVoice's only required dep).
 #
-# Does NOT require the Voice trait — ManifoldVoice itself compiles
-# unconditionally; the Voice trait only adds a conditional-compilation define
-# (`#if Voice`) used by the umbrella ManifoldKit target to re-export voice
-# surface. The library's own sources always compile.
+# No trait involved — the Voice trait was retired in v0.48 (PR A3);
+# ManifoldVoice compiles unconditionally and consumers opt in by adding the
+# product dependency, exactly as this gate does.
 #
 # Does NOT exercise live speech I/O (requires device microphone + synthesis
 # engine, unavailable in CI). The gate verifies that the import compiles and

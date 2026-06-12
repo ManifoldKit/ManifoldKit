@@ -12,21 +12,18 @@ chat-agnostic primitive that anything can drive.
 
 ---
 
-## 1. Add the `Voice` trait
+## 1. Add the `ManifoldVoice` product
 
-In your consumer `Package.swift`:
+No trait required — the former `Voice` trait was retired in v0.48. In your
+consumer `Package.swift`:
 
 ```swift,no-build
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
         from: "0.47.0", // x-release-please-version
-        traits: [
-            .trait(name: "Voice"),
-            // Drop the defaults if you only want voice and not the
-            // MLX/Llama/HuggingFace backends:
-            // .defaults(disabled: true),
-        ]
+        // Tip: pass `traits: [.defaults(disabled: true)]` if you only want
+        // voice and not the MLX/Llama/HuggingFace backends.
     ),
 ],
 targets: [

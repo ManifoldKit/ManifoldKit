@@ -3,8 +3,11 @@
 // Trait reference (full table in README §2.4):
 //   - Defaults: MLX, Llama, HuggingFace.
 //   - Opt-in heavy/network traits: Ollama, CloudSaaS,
-//     Voice, Tools, AppIntents, Server, Macros, Fuzz, AnyLanguageModel,
-//     HuggingFace.
+//     Server, Macros, Fuzz, AnyLanguageModel, HuggingFace.
+//   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
+//     AppIntents, Skills (PR A3). Those modules now compile unconditionally;
+//     consumers opt in by importing (or not importing) the products.
+//     See docs/MIGRATION-0.48.md.
 //   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
 //     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
 //     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
@@ -109,19 +112,15 @@ let package = Package(
         .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
     ],
     traits: [
-        .default(enabledTraits: ["MLX", "Llama", "HuggingFace", "Skills"]),
+        .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
         .trait(name: "MLX", description: "Enable the MLX inference backend (requires Apple Silicon)"),
         .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
         .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
         .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
         .trait(name: "Ollama", description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major."),
         .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
-        .trait(name: "Voice", description: "Enable the ManifoldVoice speech I/O spike and voice composer UI."),
-        .trait(name: "Tools", description: "Enable the ManifoldTools end-to-end tool-calling validation harness and its `manifold-tools` CLI."),
-        .trait(name: "AppIntents", description: "Enable the ManifoldAppIntents AppIntent ↔ ToolDefinition bridge."),
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
-        .trait(name: "Skills", description: "Enable the ManifoldSkills module (Claude-Code-compatible SKILL.md discovery + invoke_skill dispatcher). Default-on; macOS-only filesystem scan in v1."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
         // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
         // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
@@ -356,10 +355,9 @@ let package = Package(
         ),
         // ManifoldSkills: Claude-Code-compatible SKILL.md filesystem discovery
         // and `invoke_skill` dispatcher. Library target is unconditional
-        // (the body is platform-gated with `#if os(macOS)`); consumer edges
-        // are trait-gated per `feedback_trait_gating_internal_edges` —
-        // wrapping a library-to-library edge in `.when(traits: ["Skills"])`
-        // while sources still import unconditionally is the broken shape.
+        // (the body is platform-gated with `#if os(macOS)`). The Skills trait
+        // was retired in v0.48 (PR A3) — the umbrella re-export and test edges
+        // are unconditional now.
         .target(
             name: "ManifoldSkills",
             dependencies: [
@@ -689,7 +687,7 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldBackends",
                 "ManifoldUI",
-                .target(name: "ManifoldSkills", condition: .when(traits: ["Skills"])),
+                "ManifoldSkills",
                 // Seed-model path: `quickStart(seed:)` drives a background download on
                 // first launch when no model is available. The concrete
                 // BackgroundDownloadManager + HuggingFaceService live in ManifoldHuggingFace
@@ -699,7 +697,6 @@ let package = Package(
             ],
             path: "Sources/ManifoldKit",
             swiftSettings: [
-                .define("Skills", .when(traits: ["Skills"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -707,10 +704,7 @@ let package = Package(
         .target(
             name: "ManifoldVoice",
             dependencies: ["ManifoldUI"],
-            path: "Sources/ManifoldVoice",
-            swiftSettings: [
-                .define("Voice", .when(traits: ["Voice"])),
-            ]
+            path: "Sources/ManifoldVoice"
         ),
         // Shared test mocks and utilities
         .target(
@@ -788,19 +782,13 @@ let package = Package(
                 "ManifoldContractTestSupport",
             ]
         ),
-        // ManifoldSkills tests — consumer edge to ManifoldSkills is trait-gated
-        // (per `feedback_trait_gating_internal_edges`) so default-traits-off
-        // CI lanes don't try to build the module against the empty no-op body.
         .testTarget(
             name: "ManifoldSkillsTests",
             dependencies: [
-                .target(name: "ManifoldSkills", condition: .when(traits: ["Skills"])),
+                "ManifoldSkills",
                 "ManifoldInference",
                 "ManifoldRuntime",
                 "ManifoldContractTestSupport",
-            ],
-            swiftSettings: [
-                .define("Skills", .when(traits: ["Skills"])),
             ]
         ),
         // ManifoldPersistenceSwiftData-only tests: SwiftData @Model schema,
@@ -977,11 +965,8 @@ let package = Package(
         .testTarget(
             name: "ManifoldVoiceTests",
             dependencies: [
-                .target(name: "ManifoldVoice", condition: .when(traits: ["Voice"])),
+                "ManifoldVoice",
                 .product(name: "ViewInspector", package: "ViewInspector"),
-            ],
-            swiftSettings: [
-                .define("Voice", .when(traits: ["Voice"])),
             ]
         ),
         .testTarget(
@@ -1080,7 +1065,7 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
+                "ManifoldTools",
                 .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
             ],
             swiftSettings: [
@@ -1089,7 +1074,6 @@ let package = Package(
                 .define("Ollama", .when(traits: ["Ollama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("Tools", .when(traits: ["Tools"])),
             ]
         ),
         .testTarget(
@@ -1216,30 +1200,31 @@ let package = Package(
                 .copy("Scenarios/built-in"),
             ]
         ),
+        // manifold-tools deliberately does NOT depend on the ManifoldBackends
+        // umbrella: the umbrella drags MLX + llama.framework into the link
+        // graph, and a second llama.framework copy in the auto-generated
+        // Xcode scheme breaks ManifoldMLXIntegrationTests (#982). The CLI
+        // only drives Ollama (or the in-process mock), so it takes the
+        // ManifoldOllama family product directly — still behind the Ollama
+        // trait until that trait retires in PR A4.
         .executableTarget(
             name: "manifold-tools",
             dependencies: [
-                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
-                .target(name: "ManifoldBackends", condition: .when(traits: ["Tools"])),
+                "ManifoldTools",
+                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
                 "ManifoldInference",
             ],
             path: "Sources/manifold-tools",
             swiftSettings: [
-                .define("Tools", .when(traits: ["Tools"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
             name: "ManifoldToolsTests",
             dependencies: [
-                .target(name: "ManifoldTools", condition: .when(traits: ["Tools"])),
+                "ManifoldTools",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-            ],
-            swiftSettings: [
-                .define("Tools", .when(traits: ["Tools"])),
             ]
         ),
         // ManifoldAppIntents: AppIntent ↔ ToolDefinition bridge.
@@ -1255,11 +1240,8 @@ let package = Package(
         .testTarget(
             name: "ManifoldAppIntentsTests",
             dependencies: [
-                .target(name: "ManifoldAppIntents", condition: .when(traits: ["AppIntents"])),
+                "ManifoldAppIntents",
                 "ManifoldInference",
-            ],
-            swiftSettings: [
-                .define("AppIntents", .when(traits: ["AppIntents"])),
             ]
         ),
         // Xcode-only: real MLX model inference requiring Metal shader library.

@@ -1,4 +1,3 @@
-#if AppIntents
 import XCTest
 import ManifoldInference
 @testable import ManifoldAppIntents
@@ -316,4 +315,3 @@ final class AppEntityParameterTests: XCTestCase {
 }
 
 #endif // canImport(AppIntents)
-#endif

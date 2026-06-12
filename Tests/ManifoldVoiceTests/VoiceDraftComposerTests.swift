@@ -1,4 +1,3 @@
-#if Voice
 import XCTest
 @testable import ManifoldVoice
 
@@ -25,4 +24,3 @@ final class VoiceDraftComposerTests: XCTestCase {
         )
     }
 }
-#endif

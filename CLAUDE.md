@@ -41,7 +41,7 @@
 | `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. | None |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. | None |
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. | None |
-| `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Default-on (the `Skills` trait is in the default trait set). Depends on `ManifoldInference` + `ManifoldRuntime`. | None |
+| `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. | None |
 | `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. | None |
 
 ### UI modules
@@ -61,7 +61,7 @@
 | `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. | None |
 | `ManifoldFuzzBackends` | Real-backend factory shim shared by `fuzz-chat` CLI and Xcode-hosted MLX fuzz tests. Depends on `ManifoldFuzz` + `ManifoldBackends`. | MLX, LlamaSwift |
 | `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / Llama / Foundation. Gated on `Fuzz` trait. Run via `scripts/fuzz.sh`. | None |
-| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Gated on `Tools` trait. | None |
+| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` directly (never the `ManifoldBackends` umbrella — #982 dual-llama Xcode-scheme hazard). | None |
 
 ### Vendored sources (not standalone products)
 
@@ -82,7 +82,7 @@
 
 | Target | Role | ML deps |
 |--------|------|---------|
-| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldModelCatalog` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + `ManifoldBackends` + `ManifoldUI` + `ManifoldSkills` (conditional on `Skills` trait). Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. | None |
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldModelCatalog` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + `ManifoldBackends` + `ManifoldUI` + `ManifoldSkills`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. | None |
 
 **Dependency rules:** Never import any backend family target (or the `ManifoldBackends` umbrella) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter.
 

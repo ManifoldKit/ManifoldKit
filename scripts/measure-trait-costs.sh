@@ -150,12 +150,8 @@ TRAIT_DEPS["Llama"]="llama.swift"          # xcframework in artifacts/llama.swif
 TRAIT_DEPS["HuggingFace"]="swift-huggingface"
 TRAIT_DEPS["CloudSaaS"]=""                 # ManifoldCloudCore always compiled; no unique checkout
 TRAIT_DEPS["Ollama"]=""                    # same ManifoldCloudCore path, no unique checkout
-TRAIT_DEPS["Voice"]=""                     # pure AVFoundation/Speech, no external package
-TRAIT_DEPS["Tools"]=""                     # ManifoldTools = pure ManifoldKit sources
-TRAIT_DEPS["AppIntents"]=""               # pure AppIntents framework, no external package
 TRAIT_DEPS["Server"]="EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system"
 TRAIT_DEPS["Macros"]="swift-syntax"
-TRAIT_DEPS["Skills"]=""                   # pure ManifoldKit sources
 TRAIT_DEPS["Fuzz"]=""                     # fuzz-chat executable only
 TRAIT_DEPS["AnyLanguageModel"]=""         # AnyLanguageModel package always resolved
 TRAIT_DEPS["FoundationOnly"]=""           # override that removes deps; measured as baseline
@@ -167,12 +163,8 @@ TRAIT_MODULES["Llama"]="ManifoldLlama"
 TRAIT_MODULES["HuggingFace"]="ManifoldHuggingFace"
 TRAIT_MODULES["CloudSaaS"]="ManifoldCloud (SaaS bodies)"
 TRAIT_MODULES["Ollama"]="ManifoldCloud (Ollama bodies)"
-TRAIT_MODULES["Voice"]="ManifoldVoice"
-TRAIT_MODULES["Tools"]="ManifoldTools + manifold-tools CLI"
-TRAIT_MODULES["AppIntents"]="ManifoldAppIntents"
 TRAIT_MODULES["Server"]="ManifoldServer + Hummingbird"
 TRAIT_MODULES["Macros"]="ManifoldMacrosPlugin + @ToolSchema"
-TRAIT_MODULES["Skills"]="ManifoldSkills"
 TRAIT_MODULES["Fuzz"]="fuzz-chat executable (real backends)"
 TRAIT_MODULES["AnyLanguageModel"]="AnyLanguageModel bridge"
 TRAIT_MODULES["FoundationOnly"]="FoundationBackend only (removes MLX+Llama+HuggingFace defaults)"
@@ -186,12 +178,8 @@ TRAIT_FLAGS["Llama"]="--traits Llama"
 TRAIT_FLAGS["HuggingFace"]="--traits HuggingFace"
 TRAIT_FLAGS["CloudSaaS"]="--disable-default-traits --traits CloudSaaS"
 TRAIT_FLAGS["Ollama"]="--disable-default-traits --traits Ollama"
-TRAIT_FLAGS["Voice"]="--disable-default-traits --traits Voice"
-TRAIT_FLAGS["Tools"]="--disable-default-traits --traits Tools"
-TRAIT_FLAGS["AppIntents"]="--disable-default-traits --traits AppIntents"
 TRAIT_FLAGS["Server"]="--disable-default-traits --traits Server"
 TRAIT_FLAGS["Macros"]="--disable-default-traits --traits Macros"
-TRAIT_FLAGS["Skills"]="--disable-default-traits --traits Skills"
 TRAIT_FLAGS["Fuzz"]="--disable-default-traits --traits Fuzz,MLX,Llama"
 TRAIT_FLAGS["AnyLanguageModel"]="--disable-default-traits --traits AnyLanguageModel"
 TRAIT_FLAGS["FoundationOnly"]="--traits FoundationOnly"
@@ -206,10 +194,6 @@ TRAITS_TO_MEASURE=(
     Ollama
     Server
     Macros
-    Skills
-    Voice
-    Tools
-    AppIntents
     AnyLanguageModel
     Fuzz
 )

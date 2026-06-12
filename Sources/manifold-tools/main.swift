@@ -1,18 +1,18 @@
 // Does not require the Fuzz trait. The Ollama path is gated behind the
-// `Ollama` trait (default-on for now); pass `--disable-default-traits`
-// to drop it. The mock path is always available.
+// `Ollama` trait (not in the default set); pass `--traits Ollama` to enable
+// it. The mock path is always available.
 // For generation fuzzing with real backends, see scripts/fuzz.sh.
 //
-// The body is gated on the `Tools` trait. Without the trait, the executable
-// links to a no-op stub that prints a "trait not enabled" message — this
-// mirrors the ManifoldServer trait pattern (PR #946) and keeps `manifold-tools`
-// out of the default-trait build's link graph for the ManifoldTools and
-// ManifoldBackends symbols.
-#if Tools
+// The `Tools` trait was retired in v0.48 (PR A3) — the CLI body compiles
+// unconditionally now. It links the ManifoldOllama family product directly
+// instead of the ManifoldBackends umbrella so MLX/llama.framework never
+// enter the link graph (the #982 dual-llama Xcode-scheme hazard).
 import Foundation
 import ManifoldInference
-import ManifoldBackends
 import ManifoldTools
+#if Ollama
+import ManifoldOllama
+#endif
 
 /// Hand-rolled argument parser — `swift-argument-parser` would be the right
 /// call in a larger CLI, but pulling in an external SPM dependency for a
@@ -458,8 +458,3 @@ enum MockFactory {
 
 let exitCode = await runCLI()
 exit(exitCode)
-#else
-import Foundation
-print("manifold-tools was built without the `Tools` trait. Re-build with `--traits Tools` to enable.")
-exit(0)
-#endif

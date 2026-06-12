@@ -113,59 +113,8 @@
   "machine": "Apple Silicon (arm64)",
   "method_version": "1",
   "notes": "IMPORTANT: Macros compiles swift-syntax as a COMPILER PLUGIN (host executable, -tool suffix). Adds ZERO bytes to the final app binary. All ~25 MB of swift-syntax plugin objects are build-time-only. Binary delta = 0 runtime. Build-time overhead: ~60-120s for 647-file swift-syntax tree (not cold-measured)."
-},{
-  "trait": "Skills",
-  "modules_added": "ManifoldSkills",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "224",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Pure ManifoldKit sources. macOS-only filesystem scan (#if os(macOS)). Default-on trait."
-},{
-  "trait": "Voice",
-  "modules_added": "ManifoldVoice",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "429",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Pure AVFoundation/Speech wrappers. No external package dependency."
-},{
-  "trait": "Tools",
-  "modules_added": "ManifoldTools + manifold-tools CLI",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "632",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "End-to-end tool-calling validation harness + manifold-tools CLI. Pure ManifoldKit sources."
-},{
-  "trait": "AppIntents",
-  "modules_added": "ManifoldAppIntents",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "279",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "AppIntent ↔ ToolDefinition bridge. Pure AppIntents framework, no external package."
-},{
+},
+  {
   "trait": "AnyLanguageModel",
   "modules_added": "AnyLanguageModel bridge",
   "transitive_deps": [],

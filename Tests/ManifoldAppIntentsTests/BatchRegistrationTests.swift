@@ -1,4 +1,3 @@
-#if AppIntents
 import XCTest
 import ManifoldInference
 @testable import ManifoldAppIntents
@@ -285,4 +284,3 @@ final class BatchRegistrationTests: XCTestCase {
 }
 
 #endif // canImport(AppIntents)
-#endif

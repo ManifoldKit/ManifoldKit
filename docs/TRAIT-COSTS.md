@@ -29,10 +29,6 @@
 | `Ollama` | ManifoldCloud (Ollama bodies) | _(none beyond baseline)_ | — | — | +731 | — |
 | `Server` | ManifoldServer + Hummingbird | `EventSource`, `swift-nio`, `swift-crypto`, `swift-collections`, `swift-atomics`, `swift-system` | ~74 | — | +12157 | — |
 | `Macros` | ManifoldMacrosPlugin + @ToolSchema | `swift-syntax` | ~11 | — | +0 | — |
-| `Skills` | ManifoldSkills | _(none beyond baseline)_ | — | — | +224 | — |
-| `Voice` | ManifoldVoice | _(none beyond baseline)_ | — | — | +429 | — |
-| `Tools` | ManifoldTools + manifold-tools CLI | _(none beyond baseline)_ | — | — | +632 | — |
-| `AppIntents` | ManifoldAppIntents | _(none beyond baseline)_ | — | — | +279 | — |
 | `AnyLanguageModel` | AnyLanguageModel bridge | _(none beyond baseline)_ | — | — | — | — |
 | `Fuzz` | fuzz-chat executable (real backends) | _(none beyond baseline)_ | — | — | — | — |
 

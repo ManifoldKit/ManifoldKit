@@ -1,4 +1,3 @@
-#if Tools
 import XCTest
 import ManifoldInference
 @testable import ManifoldTools
@@ -135,4 +134,3 @@ final class ReferenceToolsTests: XCTestCase {
         return url
     }
 }
-#endif

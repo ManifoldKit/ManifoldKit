@@ -13,8 +13,9 @@
 # Mock backend — no hardware, no Ollama. Useful for CI smoke and local sanity checks.
 swift run --disable-default-traits manifold-tools --backend mock --scenario all
 
-# Real Ollama — requires a local server with tool-capable models installed.
-swift run --disable-default-traits manifold-tools --backend ollama --scenario 02-calc \
+# Real Ollama — requires a local server with tool-capable models installed,
+# and the Ollama trait (the CLI's Ollama path is compiled out without it).
+swift run --disable-default-traits --traits Ollama manifold-tools --backend ollama --scenario 02-calc \
     --ollama-base-url http://localhost:11434 --model llama3.1:8b
 ```
 
@@ -77,7 +78,7 @@ Local developers with Ollama can run the real-model E2E with:
 ```sh
 ollama serve &                          # in another terminal
 ollama pull llama3.1:8b
-swift run --disable-default-traits manifold-tools --backend ollama --scenario all
+swift run --disable-default-traits --traits Ollama manifold-tools --backend ollama --scenario all
 ```
 
 ## Why a dedicated harness?
