@@ -1128,6 +1128,8 @@ let package = Package(
             swiftSettings: [
                 .define("Tools", .when(traits: ["Tools"])),
                 .define("Ollama", .when(traits: ["Ollama"])),
+                .define("MLX", .when(traits: ["MLX"])),
+                .define("Llama", .when(traits: ["Llama"])),
                 .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]

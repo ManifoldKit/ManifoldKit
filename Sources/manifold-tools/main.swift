@@ -23,11 +23,14 @@ struct CLI {
     enum BackendChoice: String {
         case ollama
         case mock
+        case llama
+        case mlx
     }
 
     var scenarioFilter: String = "all"
     var backend: BackendChoice = .ollama
     var modelOverrides: [String] = []
+    var modelPath: String? = nil
     var output: URL = defaultOutputURL()
     var list: Bool = false
     var realNetwork: Bool = false
@@ -61,9 +64,13 @@ struct CLI {
                 i += 1
                 guard i < argv.count else { fail("--backend requires a value") }
                 guard let b = BackendChoice(rawValue: argv[i]) else {
-                    fail("unknown backend '\(argv[i])' — must be ollama or mock")
+                    fail("unknown backend '\(argv[i])' — must be ollama, mock, llama, or mlx")
                 }
                 cli.backend = b
+            case "--model-path":
+                i += 1
+                guard i < argv.count else { fail("--model-path requires a value") }
+                cli.modelPath = argv[i]
             case "--model":
                 i += 1
                 guard i < argv.count else { fail("--model requires a value") }
@@ -99,20 +106,31 @@ struct CLI {
         manifold-tools — end-to-end tool-calling validation harness
 
         USAGE
-          manifold-tools [--scenario <id|all>] [--backend ollama|mock] [--model A,B]
-                    [--output path.jsonl] [--real-network] [--list]
+          manifold-tools [--scenario <id|all>] [--backend ollama|mock|llama|mlx] [--model A,B]
+                    [--model-path /path/to/model] [--output path.jsonl] [--real-network] [--list]
           manifold-tools test-uplift status|pause|resume|stop
 
         FLAGS
           --scenario <id>       Scenario id (matches JSON 'id') or 'all'. Default: all.
-          --backend <kind>      'ollama' (default) or 'mock' (offline, scripted).
+          --backend <kind>      'ollama' (default), 'mock' (offline, scripted),
+                                'llama' (local GGUF via LlamaBackend),
+                                'mlx' (local safetensors via MLXBackend).
           --model <list>        Comma-separated model overrides; each scenario runs once per model.
+                                For llama/mlx this is treated as a name hint for auto-discovery.
+          --model-path <path>   Explicit path to a GGUF file (llama) or safetensors directory (mlx).
+                                Overrides auto-discovery and LLAMA_TEST_MODEL/MLX_TEST_MODEL.
           --output <path>       Transcript JSONL destination. Default: tmp/manifold-tools/<iso>.jsonl.
           --real-network        Allow HttpGetFixtureTool to hit the real internet (requires
                                 MANIFOLD_TOOLS_ALLOW_NETWORK=1). Default: off.
           --ollama-base-url     Override the Ollama base URL. Default: http://localhost:11434.
           --list                Print available scenarios and exit.
           --help                Show this text.
+
+        LOCAL BACKENDS
+          llama: Requires the Llama trait (swift build --traits Llama,Tools).
+                 Discovers GGUF models in ~/Documents/Models/ or via LLAMA_TEST_MODEL env var.
+          mlx:   Requires the MLX trait (swift build --traits MLX,Tools).
+                 Discovers safetensors snapshots in ~/Documents/Models/ or via MLX_TEST_MODEL env var.
 
         SUBCOMMANDS
           test-uplift           Inspect or control ~/.claude/state/bck-test-uplift/.
@@ -353,6 +371,11 @@ func runCLI() async -> Int32 {
                     allPassed = false
                     print("  final answer: \(outcome.finalAnswer.prefix(200))")
                 }
+                #if Llama
+                if let llamaBackend = backend as? LlamaBackend {
+                    await llamaBackend.unloadAndWait()
+                }
+                #endif
             } catch {
                 allPassed = false
                 print("  ERROR \(error)")
@@ -384,6 +407,126 @@ func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> an
         struct OllamaUnavailable: Error, CustomStringConvertible { var description: String { "Ollama backend not available — rebuild with the `Ollama` trait enabled (e.g. `swift build --traits Ollama`)." } }
         throw OllamaUnavailable()
         #endif
+    case .llama:
+        #if Llama
+        let hint = cli.modelPath ?? (model == scenario.backend.model ? nil : model)
+        guard let modelURL = LocalModelDiscovery.findGGUFModel(pathOverride: cli.modelPath, nameHint: hint) else {
+            struct LlamaModelNotFound: Error, CustomStringConvertible {
+                var description: String {
+                    "No GGUF model found. Pass --model-path /path/to/model.gguf, "
+                    + "set LLAMA_TEST_MODEL=<name>, or place a .gguf file in ~/Documents/Models/."
+                }
+            }
+            throw LlamaModelNotFound()
+        }
+        let backend = LlamaBackend()
+        try await backend.loadModel(from: modelURL, plan: .systemManaged(requestedContextSize: 4096))
+        return backend
+        #else
+        struct LlamaUnavailable: Error, CustomStringConvertible { var description: String { "Llama backend not available — rebuild with the `Llama` trait enabled (e.g. `swift build --traits Llama,Tools`)." } }
+        throw LlamaUnavailable()
+        #endif
+    case .mlx:
+        #if MLX
+        let hint = cli.modelPath ?? (model == scenario.backend.model ? nil : model)
+        guard let modelURL = LocalModelDiscovery.findMLXModelDirectory(pathOverride: cli.modelPath, nameHint: hint) else {
+            struct MLXModelNotFound: Error, CustomStringConvertible {
+                var description: String {
+                    "No MLX model found. Pass --model-path /path/to/snapshot, "
+                    + "set MLX_TEST_MODEL=<name>, or place a safetensors snapshot in ~/Documents/Models/."
+                }
+            }
+            throw MLXModelNotFound()
+        }
+        let backend = MLXBackend()
+        try await backend.loadModel(from: modelURL, plan: .systemManaged(requestedContextSize: 4096))
+        return backend
+        #else
+        struct MLXUnavailable: Error, CustomStringConvertible { var description: String { "MLX backend not available — rebuild with the `MLX` trait enabled (e.g. `swift build --traits MLX,Tools`)." } }
+        throw MLXUnavailable()
+        #endif
+    }
+}
+
+// MARK: - Local model discovery
+
+enum LocalModelDiscovery {
+
+    static func findGGUFModel(pathOverride: String?, nameHint: String?) -> URL? {
+        if let path = pathOverride {
+            let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+            return url.pathExtension.lowercased() == "gguf" ? url : nil
+        }
+        let envHint = ProcessInfo.processInfo.environment["LLAMA_TEST_MODEL"]
+        if let raw = envHint, !raw.isEmpty, raw.contains("/") {
+            let url = URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
+            return url.pathExtension.lowercased() == "gguf" ? url : nil
+        }
+        let selector = envHint ?? nameHint
+        return searchModelsDirectory(nameHint: selector) { url in
+            url.pathExtension.lowercased() == "gguf" && (fileSize(url) ?? 0) >= 50 * 1024 * 1024
+        }
+    }
+
+    static func findMLXModelDirectory(pathOverride: String?, nameHint: String?) -> URL? {
+        if let path = pathOverride {
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        }
+        let envHint = ProcessInfo.processInfo.environment["MLX_TEST_MODEL"]
+        if let raw = envHint, !raw.isEmpty, raw.contains("/") {
+            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
+        }
+        let selector = envHint ?? nameHint
+        return searchModelsDirectory(nameHint: selector, isDirectory: true) { url in
+            isValidMLXDirectory(url)
+        }
+    }
+
+    private static func searchModelsDirectory(
+        nameHint: String?,
+        isDirectory: Bool = false,
+        isValid: (URL) -> Bool
+    ) -> URL? {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let modelsDir = docs.appendingPathComponent("Models", isDirectory: true)
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: modelsDir,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+
+        let candidates = contents.filter(isValid).sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+        if let hint = nameHint?.trimmingCharacters(in: .whitespacesAndNewlines), !hint.isEmpty {
+            let lower = hint.lowercased()
+            if let match = candidates.first(where: { $0.lastPathComponent.lowercased().contains(lower) }) {
+                return match
+            }
+        }
+        return candidates.first
+    }
+
+    private static func fileSize(_ url: URL) -> Int64? {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        return values?.fileSize.map(Int64.init)
+    }
+
+    private static func isValidMLXDirectory(_ url: URL) -> Bool {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return false }
+        let configURL = url.appendingPathComponent("config.json")
+        guard FileManager.default.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let modelType = json["model_type"] as? String, !modelType.isEmpty else { return false }
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) else { return false }
+        let names = Set(files.map { $0.lastPathComponent.lowercased() })
+        let hasWeights = files.contains { $0.pathExtension.lowercased() == "safetensors" }
+        let hasTokenizer = names.contains("tokenizer.json") || names.contains("tokenizer.model")
+        return hasWeights && hasTokenizer
     }
 }
 
