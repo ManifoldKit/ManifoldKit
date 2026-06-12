@@ -4,7 +4,7 @@ import ArgumentParser
 @main
 struct ManifoldServerCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "basechat-server",
+        commandName: "manifold-server",
         abstract: "Run an OpenAI-compatible ManifoldKit inference server."
     )
 

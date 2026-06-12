@@ -3,8 +3,8 @@ import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
+import ManifoldTestSupport
+import ManifoldBackends
 
 /// True end-to-end tests using a real MLX model on Apple Silicon.
 ///

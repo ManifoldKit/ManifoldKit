@@ -1,9 +1,9 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldBackends
-@testable import ManifoldLlama
-@testable import ManifoldTestSupport
+import ManifoldInference
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
+import ManifoldTestSupport
 
 /// Preflight-check tests for `LlamaModelLoader` — unsupported GGUF architectures
 /// (vision encoders, embedding-only models, speech/diffusion) must throw

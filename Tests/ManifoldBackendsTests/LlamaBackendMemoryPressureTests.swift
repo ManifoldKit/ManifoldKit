@@ -1,5 +1,7 @@
 import XCTest
-@testable import ManifoldInference
+import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 // MARK: - Thread-safe counter for @Sendable callback closures
 
@@ -167,9 +169,9 @@ final class MemoryPressureCallbackAPITests: XCTestCase {
 }
 
 #if Llama
-@testable import ManifoldBackends
-@testable import ManifoldLlama
-@testable import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
+import ManifoldTestSupport
 
 // MARK: - Hardware-gated tests
 

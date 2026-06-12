@@ -1,40 +1,27 @@
 import ManifoldInference
-#if CloudSaaS || Ollama
-import ManifoldCloudCore
-import ManifoldCloud
+#if Ollama
+import ManifoldOllama
+#endif
+#if CloudSaaS
+import ManifoldCloudSaaS
 #endif
 
+/// Cross-family forwarding registrar for the cloud backends.
+///
+/// The real registration glue moved next to the backends in the v0.48
+/// product split (`OllamaBackends` in `ManifoldOllama`, `CloudSaaSBackends`
+/// in `ManifoldCloudSaaS`). This thin forwarder keeps the
+/// `DefaultBackends.registrars` lineup — and the BackendRegistrar contract
+/// that registration is a no-op when every trait this registrar covers is
+/// disabled — unchanged for one release.
 public enum CloudBackends: BackendRegistrar {
     @MainActor
     public static func register(with service: InferenceService) {
-        // Honour the BackendRegistrar contract: registration is a no-op when
-        // every trait this registrar covers is disabled. Without this gate
-        // we'd attach an always-nil factory and contradict the protocol
-        // docstring.
-        #if CloudSaaS || Ollama
-        #if CloudSaaS
-        PinnedSessionDelegate.loadDefaultPins()
+        #if Ollama
+        OllamaBackends.register(with: service)
         #endif
-
-        service.registerEndpointBackendFactory { provider in
-            switch provider {
-            #if CloudSaaS
-            case .claude:                     return ClaudeBackend()
-            case .openAI, .lmStudio, .custom: return OpenAIBackend()
-            case .openAIResponses:            return OpenAIResponsesBackend()
-            #endif
-            #if Ollama
-            case .ollama:                     return OllamaBackend(_registrar: ())
-            #endif
-            default: return nil
-            }
-        }
-
-        // Declare every provider this build can actually serve — depends on
-        // which of `Ollama` / `CloudSaaS` traits is enabled.
-        for provider in APIProvider.availableInBuild {
-            service.declareSupport(for: provider)
-        }
+        #if CloudSaaS
+        CloudSaaSBackends.register(with: service)
         #endif
     }
 }

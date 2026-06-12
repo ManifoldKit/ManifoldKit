@@ -1,5 +1,37 @@
 # Plan — Target Architecture Migration
 
+> **Superseded (2026-06) — P2 executed differently than written here. Read before using
+> phase labels.**
+>
+> The P2 engine carve took a different path after the persona review. Details in
+> `docs/plans/p2-engine-carve-split.md`; PRs #1722/#1723/#1724. Key deltas:
+>
+> 1. **`ManifoldEngine` was not created.** The "P2a — Create `ManifoldEngine`" step was dropped.
+>    Instead a new `ManifoldContract` leaf was extracted *downward* from `ManifoldInference`
+>    (see p2-engine-carve-split.md for the direction decision). `ManifoldInference` keeps its
+>    name.
+>
+> 2. **P2 was split into three sub-phases (not two).** What this doc called P2a and P2b became:
+>    - **P2a** (#1719/#1723): Extract `ManifoldContract` leaf; repoint `ManifoldFoundation` and
+>      `ManifoldCloud` to Contract-only.
+>    - **P2b** (#1720/#1722): Grow the P0c characterization harness (new goldens for `agentID`,
+>      `sessionID`, token usage, `test_handoff_midStream`). Inserted as a prereq for P2c.
+>    - **P2c** (#1721/#1724): De-tangle `ConversationTurnExecutor` (this doc's original "P2b").
+>
+> 3. **"P2a … move orchestration in (`PromptAssembler`, `ContextWindowManager`,
+>    `GenerationQueue`, …)"** is stale. None of those types moved. They stay in
+>    `ManifoldInference`.
+>
+> 4. **"New test targets: `ManifoldNetworkingTests`, `ManifoldSecretsTests` (P1);
+>    `ManifoldEngineTests` (P2)"** — `ManifoldNetworkingTests` and `ManifoldSecretsTests` are
+>    live (P1 complete). `ManifoldEngineTests` was never created (no `ManifoldEngine` module).
+>
+> 5. **P1c: "Device-capability + GGUF readers → adapter-side (MLX/Llama only)"** is stale.
+>    These landed in the shared `ManifoldHardware` leaf (not adapter-side).
+>
+> The overall sequencing rationale, phase gates, per-phase adopter impact table, and P3–P7
+> plans remain accurate. Phase references from P3 onward use the original numbering.
+
 Sequenced path from today's structure to the end state in
 [`target-architecture.md`](./target-architecture.md). This is a **planning artifact** —
 decisions, sequencing, and test/CI prerequisites before code, so reviewers argue with the
@@ -30,13 +62,15 @@ plan, not the diff. It does not contain implementation.
 
 ```
  [WWDC-independent — start now]        [re-confirm after 2026-06-08 keynote]
- P0 prerequisites ──► P1 thin kernel ─┊─► P2 engine carve ──► P3 driver + resumable Run
- (decisions+bug+P0c)   (leaf evictions)┊   (the real refactor)  (committed: resumable runs)
-        │                              ┊                              │
-        │                              ┊                              └─► multi-agent/plan-exec
-        ▼                              ┊                                  = DEFERRED (seam only)
+ P0 prerequisites ──► P1 thin kernel ─┊─► P2 engine carve ──► P2.5 contract hardening
+ (decisions+bug+P0c)   (leaf evictions)┊   (the real refactor)  (ToolResult shape + BackendName)
+        │                              ┊         │                    │
+        │                              ┊         └──────────────────► P3 driver + resumable Run
+        ▼                              ┊              (P2.5 small; can run in parallel with P3)
  P6 usability ── pull forward (WWDC-independent, high adopter value) ──┐
                                                                        │
+                                       ┊                              └─► multi-agent/plan-exec
+                                       ┊                                  = DEFERRED (seam only)
  P4 modality generify ── parallelizable; re-confirm post-WWDC ─────────│
  P5 trait→product ── after products are independent ───────────────────┘
  P7 retire shims ── final breaking release, after deprecation window
@@ -44,15 +78,18 @@ plan, not the diff. It does not contain implementation.
 
 **Ordering rationale:** leaves first (P1) shrink the kernel with zero cycle risk and de-risk
 the hard carve. P2 is the only true refactor and is gated on the P0a decision **and the P0c
-characterization harness**. P3 rides P2. P4 (modality) touches a disjoint file set, so it can
-run in parallel. P5 (traits) needs satellites to already be independent products. P6
-(usability) is structurally independent and high-value — **pull it forward**. P7 is last.
+characterization harness**. P2.5 (contract extensibility hardening) is small and
+WWDC-independent; it must precede the 1.0 vocabulary freeze and can run in parallel with P3.
+P3 rides P2. P4 (modality) touches a disjoint file set, so it can run in parallel. P5 (traits)
+needs satellites to already be independent products. P6 (usability) is structurally independent
+and high-value — **pull it forward**. P7 is last.
 
 ## Per-phase adopter impact
 
 | Phase | Adopter-affecting? | Why |
 |---|---|---|
 | P0, P1, P2, P3a | **Transparent** | shims preserve imports; behavior preserved |
+| P2.5 (contract hardening) | **Additive / source-compatible** | shape changes are additive (new cases/fields); existing decoders kept valid |
 | P3b/c (run model) | **Additive** | new API + schema bump; no removals |
 | P4b (`MessagePart` collapse) | **Breaking (data)** | SwiftData schema migration — ships a migration guide |
 | P5 (trait→product) | **Breaking (build)** | consumers add a product dep instead of a trait — migration guide |
@@ -130,6 +167,45 @@ kernel. Depends on **P0a** and **P0c**.
 
 ---
 
+## Phase 2.5 — Contract extensibility hardening  ·  planned; small; WWDC-independent
+
+**Rationale:** changes whose cost grows with adoption — anything persisted or on-the-wire —
+must be made before the 1.0 vocabulary freeze. P2.5 is small (2 targeted type changes) and
+WWDC-independent; sequence it immediately after P2 and in parallel with early P3 work.
+
+- **P2.5a — `ToolResult` content shape** (`Sources/ManifoldHardware/ToolTypes.swift:187`).
+  `ToolResult.content` is currently `String`-only. Before the 1.0 freeze, change the *shape*
+  so 1.x can extend tool output additively — e.g. multimodal or structured tool results in
+  future minor releases. Two options, both valid:
+  - **Parts payload:** a `parts`-style array with a `.text(String)` case now; additional cases
+    (`.data`, `.image`, …) are purely additive later.
+  - **Optional structured sidecar:** keep the string payload; add an optional `structured`
+    sidecar field following the precedent of the existing `dialog` field.
+  The wire format must remain decodable for existing string-only payloads. v1 behavior may
+  stay string-only; the shape is what is being future-proofed, not the runtime capability.
+
+- **P2.5b — `BackendName` extensibility** (`Sources/ManifoldContract/BackendName.swift:33`).
+  `BackendName` is a `Codable` raw-value `enum` used as a persisted/on-wire dispatch
+  discriminator. In a source-distributed SwiftPM package, `@frozen`/library-evolution do not
+  apply — adding a case breaks consumer `switch` statements AND old decoders simultaneously.
+  Convert to the `Notification.Name` pattern: a `RawRepresentable` struct with `static let`
+  constants, so new backends become purely additive post-1.0. Existing stored data decodes
+  cleanly because the raw string values are unchanged. This dovetails with the registry-driven
+  backend descriptor work (commit 7c44636c). `GenerationParameter`
+  (`Sources/ManifoldHardware/BackendCapabilities.swift`) is a candidate for the same treatment;
+  note it in the P2.5b PR description for a follow-on decision. `MessagePart` extensibility is
+  handled by P4b.
+
+- **Test & CI impact:** P2.5a requires a Codable round-trip test covering the string-payload
+  case decoding into the new shape (backward-compat fixture — mirror the
+  `SchemaMigrationReadBackTests` pattern). P2.5b requires updating `BackendContractChecks` and
+  any `switch backendName` exhaustive-switch consumers; add a `BackendNameExtensibilityTest`
+  confirming a new unknown raw value round-trips without fatalError. Trait-combo build sweep
+  mandatory (switched-enum change). *Risk: low — small, targeted. Gate: full local + trait-combo
+  sweep.*
+
+---
+
 ## Phase 3 — Turn-Driver seam + resumable Run model  ·  re-confirm post-WWDC
 
 Goal: ship the committed resumable-runs capability. Depends on **P2**.
@@ -141,6 +217,11 @@ Goal: ship the committed resumable-runs capability. Depends on **P2**.
   `RunStore` impl + schema bump.
 - *Deferred (not built now):* `MultiAgentDriver`, `PlanExecuteDriver`, agent stack/tree state.
   The seam guarantees they can land as EDGE conformers if an adopter needs them.
+- **Sequencing note — `GenerationEvent` vocabulary freeze gates on P3.** P3b will likely
+  introduce new event vocabulary (run lifecycle, resume markers) on the run-level event type.
+  Freezing the `GenerationEvent` enum *before* P3 and then growing it in 1.1 would undermine the
+  1.0 freeze. Do not declare the `GenerationEvent` vocabulary frozen until after P3b ships and
+  the run-model event boundary is confirmed stable.
 
 - **Test & CI impact:** the test triad for P3b —
   1. **`RunStore` contract conformance** (mirror the existing store-port contracts).
@@ -216,6 +297,47 @@ Goal: make "easier to use" part of the moat. Structurally independent of P1–P5
   (they exist to catch exactly this); `APIFreezeTests` pins the public surface, so `quickStart()`
   signature changes trip it intentionally. *Risk: low–med. Gate: full local + cold-start tiers.*
 
+### P6 — Open decision: `ChatSession`/`ChatMessage` public-name story
+
+The public typealiases currently pin to `ManifoldSchemaV9` types, with deprecated
+`ChatSessionRecord`/`ChatMessageRecord` aliases that remain load-bearing against import-ambiguity
+under `import ManifoldKit` (#1717). Before 1.0, decide between two options:
+
+- **Option A — Stable façade types decoupled from schema version.** Introduce `ChatSession` /
+  `ChatMessage` as stable value types (or protocols) that the schema adapts to, so a schema
+  migration never forces a public-API change.
+- **Option B — Public types track latest schema (documented).** The typealiases follow the
+  schema, schema bumps are documented breaking changes, and the ≥2-minor deprecation window
+  covers adopters. Simpler to maintain but couples the public surface to the persistence layer.
+
+Either way, the deprecated `ChatSessionRecord`/`ChatMessageRecord` aliases must remain until
+the deprecation window closes (Phase 7). Do not remove them as a "cleanup" PR before then.
+
+---
+
+## Cross-cutting note — Deprecation clocks
+
+The ≥2-minor deprecation window is the long pole to 1.0. Clocks must start **now** for anything
+flagged-but-not-formally-deprecated, because the window can only begin once `@available(*, deprecated, renamed:)` is in place and shipped in a tagged minor release.
+
+**Known API pending formal deprecation (start the clock in the next minor release that touches
+each area):**
+
+- `Agent` back-compat alias → `PersistedAgent`
+  (`Sources/ManifoldPersistenceSwiftData/Schema/Agent.swift`).
+
+**Pre-freeze removal sweep (already deprecated — remove at Phase 7 or the next major):**
+
+- `InferenceService.enqueue` — the three overloads scheduled for removal.
+- `TurnUsageRecord` — superseded by the usage model landing in P3b.
+- `MCPOAuthTokenStore.accessToken` — replaced by the structured token API.
+- `StorageManagementView()` / `ModelManagementSheet()` environment-based inits.
+- `Quantization.load(from:)`.
+- `OllamaBackend.init(urlSession:)` / `OllamaBackend.makeChecked`.
+
+Track the surviving-at-1.0 candidates in the Phase 7 PR description so the removal sweep is
+auditable in a single place.
+
 ---
 
 ## Phase 7 — Retire back-compat shims (final breaking release)
@@ -252,7 +374,9 @@ Delete the `@_exported import` facades after the ≥2-minor deprecation window.
 - **New audit tripwires:** `SessionToolSourceDispatchTest` (P0b); `GenerationEventClosedAuditTest`
   for invariant #6 + sabotage entry (P3); an engine framework-isolation lint for `ManifoldEngine`
   (P2); ideally a `DriverAdditiveAuditTest` asserting `TurnDriver` conformers live outside the
-  orchestration-core file set (invariant #7).
+  orchestration-core file set (invariant #7); `BackendNameExtensibilityTest` confirming unknown
+  raw values round-trip without crash (P2.5b); `ToolResultCodableFixtureTest` for the
+  string-payload → new-shape backward-compat decode (P2.5a).
 
 ## Acceptance metrics (per phase — falsifiable "the seam works")
 - **P4:** adding a new modality = ≤3 EDGE files (vs ~14 across 5 modules today).
@@ -277,10 +401,17 @@ Delete the `@_exported import` facades after the ≥2-minor deprecation window.
 4. **P1** thin kernel — now, WWDC-independent; de-risks everything downstream.
 5. **— WWDC keynote 2026-06-08: re-confirm the rest —**
 6. **P2** engine carve — gated on P0a + P0c; persona review.
-7. **P3** driver + resumable Run model — rides P2.
-8. **P4** modality generify — parallel to P2/P3.
-9. **P5** trait→product — after satellites are products.
-10. **P7** retire shims — final breaking release, after the deprecation window.
+7. **P2.5** contract extensibility hardening — immediately after P2; small, WWDC-independent;
+   can run in parallel with early P3 ramp-up. Must complete before the 1.0 vocabulary freeze.
+   Resolve the `ChatSession`/`ChatMessage` public-name decision (P6 open decision) no later than
+   this step, as it informs the freeze boundary.
+8. **P3** driver + resumable Run model — rides P2. **`GenerationEvent` vocabulary freeze gates
+   on P3b completion** — do not declare the event vocabulary frozen until the run-model event
+   boundary is confirmed stable.
+9. **P4** modality generify — parallel to P2/P3.
+10. **P5** trait→product — after satellites are products.
+11. **P7** retire shims — final breaking release, after the deprecation window (removal sweep
+    of already-deprecated API; see Cross-cutting note above).
 - *Deferred (not scheduled): multi-agent / plan-execute drivers — built only on adopter demand,
   as EDGE conformers on the P3 seam.*
 

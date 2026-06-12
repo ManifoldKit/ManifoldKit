@@ -1,4 +1,3 @@
-#if MCP
 import XCTest
 import Security
 @testable import ManifoldMCP
@@ -273,4 +272,3 @@ final class MCPOAuthTokenStoreKeychainTests: XCTestCase {
         )
     }
 }
-#endif

@@ -1,6 +1,7 @@
 #if MLX
 import XCTest
-@testable import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
+import ManifoldBackends
 
 /// Pure-logic tests for `MLXCachePolicy.resolvedBytes()`.
 ///

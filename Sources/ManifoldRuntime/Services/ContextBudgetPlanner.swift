@@ -1,4 +1,7 @@
 import Foundation
+// HeuristicTokenizer is @_spi(BackendInternals) — part of the published
+// backend seam (#1749); in-package consumers import the SPI explicitly.
+@_spi(BackendInternals) import ManifoldContract
 import ManifoldInference
 
 /// An entry in a ``ContextBudgetPlanner``.

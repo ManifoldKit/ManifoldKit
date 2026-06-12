@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -34,7 +33,6 @@ final class ManifoldMCPScaffoldTests: XCTestCase {
         // Sabotage: removing any provider subdirectory (e.g. Fixtures/Providers/github/) or any of the three required JSON files inside it would fail the corresponding FileManager.fileExists XCTAssertTrue
     }
 
-    #if MCPBuiltinCatalog
     func test_builtinCatalogDescriptorsUseHTTPSAndStableIDs() throws {
         let catalog = MCPCatalog.all
         XCTAssertEqual(catalog.count, 3)
@@ -50,6 +48,4 @@ final class ManifoldMCPScaffoldTests: XCTestCase {
             // Sabotage: changing any MCPCatalog descriptor's transport endpoint from https:// to http:// would fail the XCTAssertEqual(endpoint.scheme?.lowercased(), "https") check for that descriptor
         }
     }
-    #endif
 }
-#endif

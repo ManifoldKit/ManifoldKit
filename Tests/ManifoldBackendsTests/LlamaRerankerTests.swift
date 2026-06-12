@@ -1,8 +1,8 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldTestSupport
+@_spi(Testing) import ManifoldLlama
 
 /// Tests for the #1637 local cross-encoder reranker (``LlamaReranker``).
 ///

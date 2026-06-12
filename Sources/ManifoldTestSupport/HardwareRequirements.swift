@@ -7,11 +7,11 @@ import Metal
 ///
 /// Use these with `XCTSkipUnless` / `XCTSkipIf` at the top of tests that
 /// require specific hardware or OS capabilities.
-enum HardwareRequirements {
+public enum HardwareRequirements {
 
     /// `true` when running on Apple Silicon (arm64). MLX and llama.cpp
     /// backends require this architecture.
-    static var isAppleSilicon: Bool {
+    public static var isAppleSilicon: Bool {
         #if arch(arm64)
         return true
         #else
@@ -22,7 +22,7 @@ enum HardwareRequirements {
     /// `true` when running on a physical device rather than the iOS Simulator.
     /// Metal compute is unavailable in the simulator, so backends that use
     /// GPU acceleration (MLX, llama.cpp) will fail there.
-    static var isPhysicalDevice: Bool {
+    public static var isPhysicalDevice: Bool {
         #if targetEnvironment(simulator)
         return false
         #else
@@ -35,7 +35,7 @@ enum HardwareRequirements {
     /// Apple Silicon may still fail to access Metal when running `swift test` via SSH
     /// or in a headless CI environment without a GPU context. Tests that create
     /// `MLXArray` values must gate on this flag, not just `isAppleSilicon`.
-    static var hasMetalDevice: Bool {
+    public static var hasMetalDevice: Bool {
         #if canImport(Metal)
         return MTLCreateSystemDefaultDevice() != nil
         #else
@@ -46,7 +46,7 @@ enum HardwareRequirements {
     /// `true` when the OS version supports Foundation Models (macOS 26+ / iOS 26+).
     /// This does NOT check whether Apple Intelligence is enabled — use
     /// `FoundationBackend.isAvailable` for that.
-    static var hasFoundationModels: Bool {
+    public static var hasFoundationModels: Bool {
         if #available(macOS 26, iOS 26, *) {
             return true
         }
@@ -59,7 +59,7 @@ enum HardwareRequirements {
     ///
     /// Performs a synchronous HTTP GET to `/api/tags` with a short timeout.
     /// Use with `XCTSkipUnless` to skip Ollama E2E tests when the server is down.
-    static var hasOllamaServer: Bool {
+    public static var hasOllamaServer: Bool {
         fetchOllamaModels() != nil
     }
 
@@ -72,7 +72,7 @@ enum HardwareRequirements {
     /// `preferredSizeRange` (e.g. "7.2B" → 7.2). Falls back to the first
     /// available model if none match the range. Returns `nil` only if the
     /// server is unreachable or has no models.
-    static func findOllamaModel(
+    public static func findOllamaModel(
         preferredSizeRange: ClosedRange<Double> = 6.5...9.0,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
@@ -90,7 +90,7 @@ enum HardwareRequirements {
     /// Unlike `findOllamaModel(preferredSizeRange:environment:)`, this matches by
     /// name only and does not consult `parameter_size`. Use for callers that let
     /// the user nominate a specific model by substring.
-    static func findOllamaModel(
+    public static func findOllamaModel(
         nameContains substring: String,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> String? {
@@ -109,7 +109,7 @@ enum HardwareRequirements {
 
     /// Returns the list of installed Ollama model names, or `nil` if the server
     /// is unreachable.
-    static func listOllamaModels() -> [String]? {
+    public static func listOllamaModels() -> [String]? {
         guard let models = fetchOllamaModels() else { return nil }
         return models.compactMap { $0["name"] as? String }
     }
@@ -122,7 +122,7 @@ enum HardwareRequirements {
     /// size-based selection logic. Pass an explicit `environment` dictionary
     /// (e.g. `["OLLAMA_TEST_MODEL": "llama3.1:8b"]`) from tests to avoid
     /// depending on the real process environment.
-    static func selectOllamaModel(
+    public static func selectOllamaModel(
         from models: [[String: Any]],
         preferredSizeRange: ClosedRange<Double> = 6.5...9.0,
         environment: [String: String] = [:]
@@ -188,7 +188,7 @@ enum HardwareRequirements {
     /// discovery runs and the first candidate whose path contains the value wins.
     /// Falls back to `nameContains`, then to the first discovered candidate in
     /// deterministic path order.
-    static func findMLXModelDirectory(
+    public static func findMLXModelDirectory(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL? {
@@ -218,7 +218,7 @@ enum HardwareRequirements {
         )
     }
 
-    static func findMLXModelDirectory(
+    public static func findMLXModelDirectory(
         in searchDirs: [URL],
         nameContains substring: String? = nil,
         environment: [String: String] = [:],
@@ -233,7 +233,7 @@ enum HardwareRequirements {
         )
     }
 
-    static func discoverMLXModelDirectories(
+    public static func discoverMLXModelDirectories(
         in searchDirs: [URL],
         fileManager: FileManager = .default
     ) -> [URL] {
@@ -288,7 +288,7 @@ enum HardwareRequirements {
     /// discovery runs and the first candidate whose path contains the value wins.
     /// Falls back to `nameContains`, then to the smallest discovered candidate
     /// that satisfies the size bounds.
-    static func findGGUFModel(
+    public static func findGGUFModel(
         nameContains substring: String? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         maximumModelSize: Int64? = nil
@@ -320,7 +320,7 @@ enum HardwareRequirements {
         )
     }
 
-    static func findGGUFModel(
+    public static func findGGUFModel(
         in searchDirs: [URL],
         nameContains substring: String? = nil,
         environment: [String: String] = [:],
@@ -342,7 +342,7 @@ enum HardwareRequirements {
         )
     }
 
-    static func discoverGGUFModels(
+    public static func discoverGGUFModels(
         in searchDirs: [URL],
         fileManager: FileManager = .default,
         minimumModelSize: Int64 = 50 * 1024 * 1024,
@@ -406,7 +406,7 @@ enum HardwareRequirements {
     /// - `config.json` with a non-empty `model_type`
     /// - at least one `.safetensors` weight file
     /// - a Hugging Face tokenizer artifact (`tokenizer.json` or `tokenizer.model`)
-    static func isValidMLXDirectory(_ url: URL, fileManager: FileManager = .default) -> Bool {
+    public static func isValidMLXDirectory(_ url: URL, fileManager: FileManager = .default) -> Bool {
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
             return false
@@ -434,7 +434,7 @@ enum HardwareRequirements {
         return hasWeights && hasTokenizer
     }
 
-    static func isValidGGUFModel(
+    public static func isValidGGUFModel(
         _ url: URL,
         minimumModelSize: Int64 = 50 * 1024 * 1024,
         maximumModelSize: Int64? = nil
@@ -446,7 +446,7 @@ enum HardwareRequirements {
         ) != nil
     }
 
-    static func selectFilesystemModel(
+    public static func selectFilesystemModel(
         from candidates: [URL],
         environmentKey: String,
         nameContains substring: String?,
@@ -468,7 +468,7 @@ enum HardwareRequirements {
         return ordered.first
     }
 
-    static func matchingFilesystemModel(_ query: String, in candidates: [URL]) -> URL? {
+    public static func matchingFilesystemModel(_ query: String, in candidates: [URL]) -> URL? {
         if let exact = candidates.first(where: {
             $0.lastPathComponent.caseInsensitiveCompare(query) == .orderedSame
                 || $0.deletingPathExtension().lastPathComponent.caseInsensitiveCompare(query) == .orderedSame

@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 import ManifoldInference
 import ManifoldRuntime
@@ -91,4 +90,3 @@ final class AllowedToolsEnforcementTests: XCTestCase {
         // to return Set() → assertion fails.
     }
 }
-#endif

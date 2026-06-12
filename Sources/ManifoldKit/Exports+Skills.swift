@@ -1,7 +1,5 @@
-// Conditional re-export of ManifoldSkills via the umbrella `ManifoldKit`
-// module. Gated on the `Skills` trait (default-on) so consumers building
-// without the trait (e.g. embedded / FoundationOnly) don't pay for the
-// module link.
-#if Skills
+// Re-export of ManifoldSkills via the umbrella `ManifoldKit` module.
+// Unconditional since v0.48 (the `Skills` trait was retired in PR A3) —
+// the module body is platform-gated with `#if os(macOS)` and compiles to a
+// no-op registry elsewhere, so the link cost is negligible.
 @_exported import ManifoldSkills
-#endif

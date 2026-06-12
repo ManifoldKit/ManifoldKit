@@ -1,8 +1,8 @@
 #if MLX
 import XCTest
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
+import ManifoldTestSupport
+import ManifoldBackends
 
 /// MLX throughput benchmark — local developer use only.
 ///

@@ -1,11 +1,14 @@
 #if Llama
 import XCTest
+import ManifoldBackendTestKit
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
-@testable import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// Tests for LlamaBackend state, capabilities, and error handling.
 ///

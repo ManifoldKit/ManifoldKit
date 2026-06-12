@@ -119,6 +119,7 @@
       "type": "regular",
       "path": "Sources/ManifoldLlama",
       "deps": [
+        "ManifoldHardware",
         "ManifoldInference"
       ]
     },
@@ -129,12 +130,29 @@
         "ManifoldContract"
       ]
     },
+    "ManifoldOllama": {
+      "type": "regular",
+      "path": "Sources/ManifoldOllama",
+      "deps": [
+        "ManifoldCloudCore",
+        "ManifoldContract"
+      ]
+    },
+    "ManifoldCloudSaaS": {
+      "type": "regular",
+      "path": "Sources/ManifoldCloudSaaS",
+      "deps": [
+        "ManifoldCloudCore",
+        "ManifoldContract"
+      ]
+    },
     "ManifoldCloud": {
       "type": "regular",
       "path": "Sources/ManifoldCloud",
       "deps": [
         "ManifoldCloudCore",
-        "ManifoldContract",
+        "ManifoldCloudSaaS",
+        "ManifoldOllama",
         "ManifoldRuntime"
       ]
     },
@@ -144,10 +162,12 @@
       "deps": [
         "ManifoldCloud",
         "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
         "ManifoldFoundation",
         "ManifoldInference",
         "ManifoldLlama",
-        "ManifoldMLX"
+        "ManifoldMLX",
+        "ManifoldOllama"
       ]
     },
     "ManifoldUI": {
@@ -180,8 +200,8 @@
       "path": "Sources/ManifoldKit",
       "deps": [
         "ManifoldBackends",
+        "ManifoldHuggingFace",
         "ManifoldInference",
-        "ManifoldModelCatalog",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSkills",
@@ -210,6 +230,14 @@
       "deps": [
         "ManifoldInference",
         "ManifoldRuntime",
+        "ManifoldTestSupport"
+      ]
+    },
+    "ManifoldBackendTestKit": {
+      "type": "regular",
+      "path": "Sources/ManifoldBackendTestKit",
+      "deps": [
+        "ManifoldInference",
         "ManifoldTestSupport"
       ]
     },
@@ -259,6 +287,7 @@
       "deps": [
         "ManifoldContractTestSupport",
         "ManifoldInference",
+        "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
     },
@@ -340,13 +369,17 @@
       "type": "test",
       "path": "Tests/ManifoldBackendsTests",
       "deps": [
+        "ManifoldBackendTestKit",
         "ManifoldBackends",
         "ManifoldCloud",
         "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
         "ManifoldFoundation",
+        "ManifoldHardware",
         "ManifoldInference",
         "ManifoldLlama",
         "ManifoldMLX",
+        "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSecrets",
@@ -415,12 +448,8 @@
       "path": "Tests/ManifoldE2ETests",
       "deps": [
         "ManifoldBackends",
-        "ManifoldCloud",
-        "ManifoldCloudCore",
-        "ManifoldFoundation",
         "ManifoldHuggingFace",
         "ManifoldInference",
-        "ManifoldLlama",
         "ManifoldMLX",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
@@ -499,8 +528,8 @@
       "type": "executable",
       "path": "Sources/manifold-tools",
       "deps": [
-        "ManifoldBackends",
         "ManifoldInference",
+        "ManifoldOllama",
         "ManifoldTools"
       ]
     },
@@ -544,17 +573,24 @@
       "type": "test",
       "path": "Tests/APIFreezeTests",
       "deps": [
+        "ManifoldContract",
+        "ManifoldHardware",
         "ManifoldInference",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
-        "ManifoldTestSupport"
+        "ManifoldTestSupport",
+        "ManifoldUI"
       ]
     },
     "ManifoldKitTests": {
       "type": "test",
       "path": "Tests/ManifoldKitTests",
       "deps": [
-        "ManifoldKit"
+        "ManifoldInference",
+        "ManifoldKit",
+        "ManifoldPersistenceSwiftData",
+        "ManifoldRuntime",
+        "ManifoldTestSupport"
       ]
     },
     "ManifoldAuditSabotageSuiteTests": {

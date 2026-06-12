@@ -4,14 +4,13 @@ Define one or more MCP server descriptors, then connect them through ``MCPClient
 
 For a shortest-path setup, see <doc:MCPQuickStart>.
 
-> Important: Enable the `MCP` trait in your package dependency before importing
-> `ManifoldMCP`.
+> Note: No trait is required — the `MCP` trait was retired in v0.48. Add the
+> `ManifoldMCP` product to your target's dependencies and import it.
 >
 > ```swift
 > .package(
 >     url: "https://github.com/roryford/ManifoldKit.git",
->     from: "0.36.0",
->     traits: [.trait(name: "MCP")]
+>     from: "0.48.0"
 > )
 > ```
 

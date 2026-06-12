@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -256,4 +255,3 @@ private actor RetryingAuthorization: MCPAuthorization {
         return .retry
     }
 }
-#endif

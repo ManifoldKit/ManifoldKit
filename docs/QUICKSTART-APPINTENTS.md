@@ -8,17 +8,16 @@ The full reference — parameter-type coverage, the `Decodable` boilerplate AppI
 
 This page is a thin pointer to it plus the package wiring.
 
-## Module and trait
+## Module
 
-`ManifoldAppIntents` is a non-default, opt-in module. It depends only on `ManifoldInference` (and AppIntents, which ships with the OS), so apps that don't need SwiftData persistence or the chat UI can adopt it with no transitive weight.
+`ManifoldAppIntents` is an opt-in module. It depends only on `ManifoldInference` (and AppIntents, which ships with the OS), so apps that don't need SwiftData persistence or the chat UI can adopt it with no transitive weight.
 
-Add it explicitly to your target, and enable the `AppIntents` trait on the package dependency:
+No trait required — the former `AppIntents` trait was retired in v0.48. Add the product explicitly to your target:
 
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.43.0", // x-release-please-version
-    traits: [.trait(name: "AppIntents")]
+    from: "0.46.0" // x-release-please-version
 )
 ```
 

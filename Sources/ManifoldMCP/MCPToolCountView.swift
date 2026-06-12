@@ -1,3 +1,4 @@
+#if canImport(SwiftUI)
 import SwiftUI
 
 /// A settings-row component that shows how many MCP tools are currently registered
@@ -103,3 +104,4 @@ public struct MCPToolCountView: View {
     }
 }
 #endif
+#endif // canImport(SwiftUI)

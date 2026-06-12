@@ -1,5 +1,7 @@
 import XCTest
 @testable import ManifoldHardware
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
 
 final class MemoryPressureHandlerTests: XCTestCase {
 

@@ -8,7 +8,58 @@ import ManifoldInference
 public final class MockInferenceBackend: InferenceBackend, ConversationHistoryReceiver, StructuredHistoryReceiver, @unchecked Sendable {
     public var isModelLoaded: Bool = false
     public var isGenerating: Bool = false
-    public var capabilities: BackendCapabilities
+
+    /// Enqueue-throw hook (#1606 error path).
+    ///
+    /// `InferenceService.enqueue` never calls into the backend synchronously
+    /// — the only backend read on the enqueue path is `capabilities`, whose
+    /// tool-calling gate rejects tool-carrying requests up front
+    /// (`supportsToolCalling == false` → enqueue throws before any stream or
+    /// token exists). When this flag is `true`, the ``capabilities`` getter
+    /// reports `supportsToolCalling == false` regardless of the configured
+    /// value, so the next tool-carrying enqueue throws synchronously — AFTER
+    /// the runtime has advertised and registered session tool executors.
+    ///
+    /// Use to exercise the register-then-enqueue-fails cleanup path
+    /// (``SessionToolDispatchBinder``'s error-path unregister). Requests
+    /// without tools are unaffected.
+    public var rejectToolCarryingEnqueues: Bool = false
+
+    /// Backing store for ``capabilities``; the getter rewrites
+    /// `supportsToolCalling` when ``rejectToolCarryingEnqueues`` is set.
+    private var storedCapabilities: BackendCapabilities
+
+    public var capabilities: BackendCapabilities {
+        get {
+            guard rejectToolCarryingEnqueues else { return storedCapabilities }
+            let caps = storedCapabilities
+            return BackendCapabilities(
+                supportedParameters: caps.supportedParameters,
+                maxContextTokens: caps.maxContextTokens,
+                requiresPromptTemplate: caps.requiresPromptTemplate,
+                supportsSystemPrompt: caps.supportsSystemPrompt,
+                supportsToolCalling: false,
+                supportsStructuredOutput: caps.supportsStructuredOutput,
+                supportsNativeJSONMode: caps.supportsNativeJSONMode,
+                cancellationStyle: caps.cancellationStyle,
+                supportsTokenCounting: caps.supportsTokenCounting,
+                memoryStrategy: caps.memoryStrategy,
+                maxOutputTokens: caps.maxOutputTokens,
+                supportsStreaming: caps.supportsStreaming,
+                isRemote: caps.isRemote,
+                supportsKVCachePersistence: caps.supportsKVCachePersistence,
+                supportsGrammarConstrainedSampling: caps.supportsGrammarConstrainedSampling,
+                supportsThinking: caps.supportsThinking,
+                supportsVision: caps.supportsVision,
+                streamsToolCallArguments: caps.streamsToolCallArguments,
+                supportsParallelToolCalls: caps.supportsParallelToolCalls,
+                supportsGuidedStructuredOutput: caps.supportsGuidedStructuredOutput,
+                sharesMLXProcessResources: caps.sharesMLXProcessResources,
+                maxAdvertisedToolCount: caps.maxAdvertisedToolCount
+            )
+        }
+        set { storedCapabilities = newValue }
+    }
 
     // Configurable behavior
     public var tokensToYield: [String] = ["Hello", " world"]
@@ -153,7 +204,7 @@ public final class MockInferenceBackend: InferenceBackend, ConversationHistoryRe
         cancellationStyle: .cooperative,
         supportsTokenCounting: false
     )) {
-        self.capabilities = capabilities
+        self.storedCapabilities = capabilities
     }
 
     public func loadModel(from url: URL, plan: ModelLoadPlan) async throws {

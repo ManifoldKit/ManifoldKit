@@ -108,7 +108,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
     /// here — this only owns the agent registry membership.
     private func reconcileAgents(on session: ChatSession, with agents: [ManifoldInference.Agent]) {
         let desiredByID = Dictionary(agents.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
-        var existingByID: [UUID: Agent] = [:]
+        var existingByID: [UUID: PersistedAgent] = [:]
 
         // Remove rows no longer present in the record. Iterate a snapshot so we
         // can mutate `session.agents` while walking it.
@@ -126,7 +126,7 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
 
         // Insert rows for agents the session does not yet have.
         for agent in agents where existingByID[agent.id] == nil {
-            let row = Agent(
+            let row = PersistedAgent(
                 id: agent.id,
                 name: agent.name,
                 systemPrompt: agent.systemPrompt,

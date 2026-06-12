@@ -277,7 +277,7 @@ final class QuickStartTests: XCTestCase {
 
     /// When the built-in policy is in effect (selectionPolicy: nil) and
     /// `availableModels` contains a local model but no Foundation model is
-    /// available, the first local model must be selected.
+    /// available, the first *loadable* local model must be selected.
     ///
     /// We exercise this via a custom policy that:
     /// 1. Clears `foundationModelProvider` to ensure the Foundation-first branch
@@ -285,6 +285,11 @@ final class QuickStartTests: XCTestCase {
     ///    available and would win the priority race).
     /// 2. Seeds `availableModels` with the local model.
     /// 3. Delegates to `defaultSelectionPolicy` to exercise its logic directly.
+    ///
+    /// A GGUF-capable mock registrar is injected via `backends:` because the
+    /// default policy now refuses to select models no registered backend can
+    /// load (#1749) — under `--disable-default-traits` there is no compiled-in
+    /// GGUF backend.
     func test_quickStart_defaultPolicy_selectsFirstLocalModel_whenAvailable() async throws {
         let localModel = ModelInfo(
             id: UUID(),
@@ -297,6 +302,7 @@ final class QuickStartTests: XCTestCase {
 
         let result = try await ManifoldKit._quickStart(
             configuration: .default,
+            backends: [MockGGUFBackends.self],
             makeModelContainer: { try ModelContainerFactory.makeInMemoryContainer() },
             selectionPolicy: { registry in
                 // Suppress Foundation availability so we reach the "first local

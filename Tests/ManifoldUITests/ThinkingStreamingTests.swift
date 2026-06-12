@@ -4,6 +4,9 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 /// Asserts the live-streaming behavior introduced for issue #481: the
 /// reasoning block must mutate multiple times during the streaming phase

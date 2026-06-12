@@ -13,7 +13,7 @@ This directory contains the test suites that gate every PR to ManifoldKit. CI ru
 | `ManifoldPersistenceSwiftDataTests` | Real SwiftData stack, schemas, migrations | Integration tier: hits SwiftData. |
 | `ManifoldBackendsTests` | Per-backend behaviour, capability contracts | Trait-gated; many tests skip without the relevant trait. |
 | `ManifoldBackendsTests/Conformance/` | Per-backend conformance suites against the strengthened contract harness | New in T1.1. |
-| `ManifoldMCPTests` | MCP protocol, transports, OAuth, sanitizers | `#if MCP`-gated. |
+| `ManifoldMCPTests` | MCP protocol, transports, OAuth, sanitizers | Compiles unconditionally (MCP trait retired in v0.48). |
 | `ManifoldTestSupportTests` | Sanity tests for `Sources/ManifoldTestSupport/` mocks/fakes | Lightweight. |
 | `ManifoldUITests` | SwiftUI view models, view-tree contracts via ViewInspector | `@MainActor`-isolated. |
 | `ManifoldUIModelManagementTests` | Model browser/download UI | Depends on `ManifoldUIModelManagement`. |
@@ -33,19 +33,15 @@ ManifoldKit's test targets are conditionally linked on Swift package traits:
 | `MLX` | yes | MLX backend, mlx-swift-lm dependency |
 | `Llama` | yes | LlamaBackend, llama.swift dependency |
 | `HuggingFace` | yes | HF model browser |
-| `Skills` | yes | `ManifoldSkills` module and SKILL.md discovery tests |
 | `AnyLanguageModel` | no | AnyLanguageModel bridge backend target |
 | `Ollama` | no | Ollama backend, requires `localhost:11434` |
 | `CloudSaaS` | no | OpenAI/Claude/Responses backends |
-| `MCP` | no | MCP client + transports |
-| `MCPBuiltinCatalog` | no | Bundled MCP server descriptors |
-| `Tools` | no | `manifold-tools` CLI body |
 | `Server` | no | ManifoldServer |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
 The default-traits build is what CI's per-PR matrix runs against. Running `swift test`
 with no explicit trait flags enables the Package.swift defaults: `MLX`, `Llama`,
-`HuggingFace`, and `Skills`. Use `--disable-default-traits` locally to drop those
+and `HuggingFace`. Use `--disable-default-traits` locally to drop those
 defaults when you want a faster, sim-friendly build.
 
 **When to disable default traits locally:** any iteration that doesn't exercise a hardware backend — `ManifoldRuntimeTests`, `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`, `ManifoldInferenceTests`, `ManifoldMCPTests`, `ManifoldServerTests`. Skipping MLX avoids an mlx-swift source checkout and a Metal shader compilation pass on every rebuild — the dominant cost in a default-traits cold build.
@@ -175,7 +171,7 @@ Reference adopters live alongside their target:
 5. Every `false` flag with a fail-closed contract (today: `supportsGrammarConstrainedSampling`) must run its fail-closed family.
 6. Run `scripts/test.sh --filter ManifoldBackendsTests` and verify the meta-contract test passes.
 
-The full assertion shape is documented in `Tests/ManifoldBackendsTests/BackendContractTests.swift`.
+The full assertion shape is documented in `Sources/ManifoldBackendTestKit/BackendContractChecks.swift` — the contract checks and mixins ship as the `ManifoldBackendTestKit` product so companion backend packages (manifold-mlx / manifold-llama, #1749) run the same suite via `import ManifoldBackendTestKit` (no `@testable` access). Its DocC catalog documents the adoption walkthrough, the no-`--parallel` claims-registry rule, and the non-vacuity expectation.
 
 ## Sabotage evidence
 
@@ -193,7 +189,7 @@ This proves the assertion (a) exercises a real production code path, (b) is valu
 ## Special cases
 
 - **MLX integration**: `scripts/test-mlx-integration.sh` — Xcode-only, metallib required. See #986.
-- **MCP E2E**: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — gated env var + trait. The `everything-server` smoke has hung in past runs; filter to the streamable subset.
+- **MCP E2E**: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — gated by env var (the target compiles unconditionally since the MCP trait was retired in v0.48). The `everything-server` smoke has hung in past runs; filter to the streamable subset.
 - **Ollama**: requires `localhost:11434` and `--traits Ollama`.
 - **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.
 
@@ -296,7 +292,7 @@ Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this r
 | Audience | Suite |
 |---|---|
 | Per-PR CI | All default-trait suites (the two-call shape above) |
-| Per-PR CI (matrix) | Per-trait builds for MCP, Ollama, CloudSaaS |
+| Per-PR CI (matrix) | Per-trait builds for Ollama, CloudSaaS |
 | Nightly | `ManifoldE2ETests`, MLX integration, `Operational` (planned T4) |
 | Pre-push (local) | The two-call shape |
 | Hardware-specific | `ManifoldE2ETests/LlamaThinkingE2ETests` etc. — install fixtures via `~/Library/Caches/ManifoldKit/test-models/manifest.json` |

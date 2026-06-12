@@ -31,6 +31,10 @@ public enum ManifoldCapability: String, CaseIterable, Sendable {
     case toolCalling
     case visionInput
     case voiceIO
+    // mcpClient/mcpHost are no longer unlocked by any trait — ManifoldMCP and
+    // ManifoldMCPHost compile unconditionally as of v0.48 (MCP +
+    // MCPBuiltinCatalog traits retired). Cases stay: removing public enum
+    // cases is a separate API break with no consumer benefit.
     case mcpClient
     case mcpHost
     case ragKnowledgeBase
@@ -98,31 +102,6 @@ public enum FeatureMatrix {
             unlocks: [.cloudOpenAI, .cloudClaude, .toolCalling, .visionInput]
         ),
         ManifoldTrait(
-            name: "MCP",
-            description: "Enable the ManifoldMCP module and MCP client surface.",
-            unlocks: [.mcpClient, .mcpHost]
-        ),
-        ManifoldTrait(
-            name: "MCPBuiltinCatalog",
-            description: "Enable ManifoldMCP's built-in catalog descriptors.",
-            unlocks: [.mcpClient]
-        ),
-        ManifoldTrait(
-            name: "Voice",
-            description: "Enable the ManifoldVoice speech I/O spike and voice composer UI.",
-            unlocks: [.voiceIO]
-        ),
-        ManifoldTrait(
-            name: "Tools",
-            description: "Enable the ManifoldTools end-to-end tool-calling validation harness and its `manifold-tools` CLI.",
-            unlocks: [.toolCalling]
-        ),
-        ManifoldTrait(
-            name: "AppIntents",
-            description: "Enable the ManifoldAppIntents AppIntent ↔ ToolDefinition bridge.",
-            unlocks: [.toolCalling]
-        ),
-        ManifoldTrait(
             name: "Server",
             description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency.",
             unlocks: [.embeddings]
@@ -130,11 +109,6 @@ public enum FeatureMatrix {
         ManifoldTrait(
             name: "Macros",
             description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph.",
-            unlocks: [.toolCalling]
-        ),
-        ManifoldTrait(
-            name: "Skills",
-            description: "Enable the ManifoldSkills target: Claude-Code-compatible filesystem skill discovery (~/.claude/skills/<name>/SKILL.md) plus a single `invoke_skill` dispatch tool. macOS-only in v1 — compiles on iOS as a no-op registry.",
             unlocks: [.toolCalling]
         ),
         ManifoldTrait(

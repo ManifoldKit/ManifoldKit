@@ -22,7 +22,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["calc"],
             existingTests: ["DemoScenarioOllamaE2ETests", "DemoScenarioUITests"],
             missingTestLayers: ["dedicated demo tool-logic unit row"],
-            requiredTraits: ["Ollama", "Tools"],
+            requiredTraits: ["Ollama"],
             environmentGates: ["Ollama localhost:11434", "OLLAMA_TEST_MODEL optional fail-loud pin"],
             notes: "Current P1 arithmetic smoke used by the shared E2E harness."
         ),
@@ -32,7 +32,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["now"],
             existingTests: ["DemoScenarioOllamaE2ETests", "DemoScenarioUITests"],
             missingTestLayers: ["dedicated demo tool-logic unit row"],
-            requiredTraits: ["Ollama", "Tools"],
+            requiredTraits: ["Ollama"],
             environmentGates: ["Ollama localhost:11434", "tool-calling-capable local model"],
             notes: "Asserts Asia/Tokyo argument in the Ollama E2E layer."
         ),
@@ -42,7 +42,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["sample_repo_search"],
             existingTests: ["DemoScenarioOllamaE2ETests", "DemoScenarioUITests"],
             missingTestLayers: ["dedicated demo tool-logic unit row"],
-            requiredTraits: ["Ollama", "Tools"],
+            requiredTraits: ["Ollama"],
             environmentGates: ["Ollama localhost:11434", "seeded sandbox workspace"],
             notes: "Uses a per-test fixture root so search results are deterministic."
         ),
@@ -52,7 +52,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["write_file"],
             existingTests: ["DemoScenarioOllamaE2ETests", "DemoScenarioUITests"],
             missingTestLayers: ["dedicated demo approval unit row"],
-            requiredTraits: ["Ollama", "Tools"],
+            requiredTraits: ["Ollama"],
             environmentGates: ["Ollama localhost:11434", "writable sandbox root"],
             notes: "E2E auto-approves the side effect and asserts the file exists."
         ),
@@ -62,7 +62,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["calc"],
             existingTests: ["DemoScenarios.scriptedTurns(for:)"],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["tool loop enabled"],
             notes: "Current demo card; not part of the Wave 0 four-test E2E set."
         ),
@@ -72,7 +72,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["fakeRateLimited"],
             existingTests: ["DemoScenarios.scriptedTurns(for:)"],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["tool loop enabled"],
             notes: "Current demo card exercising retriable ToolResult.ErrorKind."
         ),
@@ -82,7 +82,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["fakeMCPLookup"],
             existingTests: ["DemoScenarios.scriptedTurns(for:)"],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["tool loop enabled"],
             notes: "Current demo card simulating transient MCP transport failure."
         ),
@@ -92,7 +92,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["everything__echo"],
             existingTests: ["DemoScenarios.scriptedTurns(for:)"],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "MCP for live source", "Ollama for real E2E"],
+            requiredTraits: ["MCP for live source", "Ollama for real E2E"],
             environmentGates: ["macOS", "npx", "connected everything MCP server"],
             notes: "Current demo card; live MCP source must be connected before use."
         ),
@@ -102,7 +102,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["list_dir", "read_file"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["seeded notes fixture", "multi-turn tool loop"],
             notes: "P2 headline agent-loop scenario; #707 reuses this shape."
         ),
@@ -112,7 +112,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["read_file", "calc"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["seeded shopping-list fixture", "multi-turn tool loop"],
             notes: "Mixed-tool chain: text retrieval, arithmetic, synthesis."
         ),
@@ -122,7 +122,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["read_file", "read_file"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["parallel tool-call support", "seeded README fixtures"],
             notes: "P3 scenario bundled with parallel tool-call capability."
         ),
@@ -132,7 +132,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["composeEmail or equivalent large-argument tool"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["tool-call delta streaming support"],
             notes: "P3 UI streaming scenario; tool definition is capability-owned."
         ),
@@ -142,7 +142,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["slow sample_repo_search"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["cancellation contract", "slow fixture search"],
             notes: "P3 cancellation scenario; do not add in Wave 0."
         ),
@@ -152,7 +152,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["read_file"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["oversize fixture", "ToolOutputPolicy configured"],
             notes: "P3 output-policy scenario."
         ),
@@ -162,7 +162,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["slow sample_repo_search"],
             existingTests: [],
             missingTestLayers: ["tool-logic integration", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["SwiftData session reload", "app terminate/relaunch harness"],
             notes: "Recovery test hits persistence; keep separate from pure harness."
         ),
@@ -172,7 +172,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["AppIntent reminder tool"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["AppIntents", "Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["Reminders/EventKit permission", "platform availability"],
             notes: "P3 native API scenario; should ship with AppIntent capability."
         ),
@@ -182,7 +182,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["mcp_fs_read"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["MCP", "Tools", "Ollama for real E2E"],
+            requiredTraits: ["Ollama for real E2E"],
             environmentGates: ["filesystem MCP server fixture", "Ollama localhost:11434"],
             notes: "Still missing per #754 audit; do not implement in Wave 0."
         ),
@@ -192,7 +192,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["list_dir", "read_file"],
             existingTests: ["Ollama leg covered indirectly by current four E2Es only for P1"],
             missingTestLayers: ["Claude E2E", "Foundation E2E", "cross-backend mock contract"],
-            requiredTraits: ["Tools", "Ollama", "CloudSaaS", "Foundation availability"],
+            requiredTraits: ["Ollama", "CloudSaaS", "Foundation availability"],
             environmentGates: ["Ollama server", "Claude credentials", "iOS 26/macOS 26 Foundation Models"],
             notes: "Still missing per #754 audit; later workers should reuse the shared harness."
         ),

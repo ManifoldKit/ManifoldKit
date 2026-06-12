@@ -58,6 +58,9 @@ TEST_JOB_SUITES=(
   ManifoldMCPTests
   ManifoldTestSupportTests
   ManifoldAppIntentsTests
+  ManifoldVoiceTests
+  ManifoldSkillsTests
+  ManifoldToolsTests
   ManifoldInferenceTests
   ManifoldNetworkingTests
   ManifoldTurnLoopCharacterizationTests

@@ -1,4 +1,5 @@
 import XCTest
+import ManifoldBackendTestKit
 @testable import ManifoldInference
 
 /// Phase 1a guard: scans every committed `expected.jsonl` fixture for JSON

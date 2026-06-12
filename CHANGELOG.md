@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.47.0](https://github.com/roryford/ManifoldKit/compare/v0.46.0...v0.47.0) (2026-06-11)
+
+### Highlights
+
+**`BackendName` is now an extensible struct** ([#1742](https://github.com/roryford/ManifoldKit/issues/1742)) — `BackendName` was a closed `enum`; it is now a `struct` with a `String` raw value so third-party backends can register names without forking the library. `CaseIterable` is removed — use `BackendName.wellKnown` (or the `allCases` alias). `BackendName(rawValue:)` is now non-failable. Exhaustive `switch` statements must add a `default:` arm.
+
+```swift
+// Before — exhaustive switch compiled; BackendName(rawValue:) returned Optional
+switch backendName {
+case .ollama: …
+case .anthropic: …
+}  // ❌ now needs default:
+
+// After
+switch backendName {
+case .ollama: …
+case .anthropic: …
+default: …  // required for extensibility
+}
+
+// Non-failable init
+let name = BackendName(rawValue: "my-backend")  // BackendName, not BackendName?
+```
+
+**TurnDriver seam and resumable ConversationRun** ([#1744](https://github.com/roryford/ManifoldKit/issues/1744)) — The turn loop is now driven through a `TurnDriver` protocol so the execution strategy can be swapped or tested independently of `ConversationRuntime`. Runs are represented as a `ConversationRun` value that carries enough state to be resumed after an interruption (background kill, context window swap).
+
+**Seed a starter model on first launch** ([#1735](https://github.com/roryford/ManifoldKit/issues/1735)) — `ManifoldBootstrap.quickStart()` now writes a default model entry into the model registry the first time it executes, so new app installs have a working model without any extra setup.
+
+```swift
+// One-call bootstrap now includes a starter model
+let runtime = try await ManifoldBootstrap.quickStart()
+// Model registry is pre-populated — no additional seeding required
+```
+
+### Features
+
+* **ManifoldHardware:** add structured content sidecar to `ToolResult` ([#1741](https://github.com/roryford/ManifoldKit/issues/1741))
+* **ManifoldServer:** `brew install manifold-server` support and command rename ([#1734](https://github.com/roryford/ManifoldKit/issues/1734))
+* Start pre-1.0 deprecation clocks for flagged back-compat aliases ([#1743](https://github.com/roryford/ManifoldKit/issues/1743))
+
+### Fixes
+
+* **ManifoldVoice:** fix `@MainActor` isolation crash in `AppleSpeechTranscriber` on first Voice tap ([#1758](https://github.com/roryford/ManifoldKit/issues/1758))
+* Close connect-time DNS-rebinding TOCTOU in cloud transport ([#1756](https://github.com/roryford/ManifoldKit/issues/1756))
+* Close DNS-rebinding TOCTOU in MCP HTTP/SSE transport
+* Security hardening bundle — action pins, file protection, output bounds ([#1750](https://github.com/roryford/ManifoldKit/issues/1750))
+* **ManifoldMLX:** load diffusion model from its correct directory
+* Extract slow-to-type-check SwiftUI bodies (478ms/292ms/272ms → <200ms)
+* Inline MLX tokenizer loader to drop `swift-syntax` from default builds
+
+## [0.46.0](https://github.com/roryford/ManifoldKit/compare/v0.45.0...v0.46.0) (2026-06-10)
+
+Deprecated turn-input and cloud-backend APIs are removed, the turn loop is decomposed into per-turn seams behind a thin `ManifoldContract` leaf, and background generation lands a `BGContinuedProcessingTask` bridge for iOS.
+
+### Highlights
+
+**Remove deprecated turn-input and cloud-backend API surface** ([#1717](https://github.com/roryford/ManifoldKit/issues/1717)) — The `SendInput`/`RegenerateInput`/`EditInput`/`BranchInput` structs and their `ConversationRuntime` overloads are removed; use `processTurn(TurnInput(...))`. `InferenceService`'s `currentCloudBackend`/`registerCloudBackendFactory`/`loadCloudBackend(from:)` and `CloudBackendFactory` are removed; use the `…EndpointBackend…` equivalents. `NoResponseError` is renamed `SendMessageError`.
+
+```swift
+// Before (removed)
+try await runtime.send(SendInput(text: "hello"))
+
+// After
+try await runtime.processTurn(TurnInput(text: "hello"))
+```
+
+**`ManifoldContract` extracted as a thin leaf module** ([#1723](https://github.com/roryford/ManifoldKit/issues/1723)) — The core turn-loop contract (`TurnInput`, `TurnOutput`, `TurnDriver`) now lives in a dependency-free `ManifoldContract` target that sits below `ManifoldRuntime`. This lets local backends, MCP, and voice components depend on the contract without pulling in SwiftData or persistence ports.
+
+**Background generation bridge for iOS** ([#1715](https://github.com/roryford/ManifoldKit/issues/1715)) — `BGContinuedProcessingTask` is wired into `ConversationRuntime` so long-running inference requests can survive an app moving to the background on iOS 26. The bridge requests background processing time via `BGContinuedProcessingTask` when a turn starts and cancels it cleanly on completion or cancellation.
+
+### Features
+
+* **ManifoldHardware:** expose M5 Neural Accelerator availability probe ([#1714](https://github.com/roryford/ManifoldKit/issues/1714))
+* **ManifoldHardware:** registry-driven backend descriptor routing — `BackendDescriptorRegistry` replaces per-site `switch` statements on `ModelType`/`APIProvider` for display and routing metadata ([#1733](https://github.com/roryford/ManifoldKit/issues/1733))
+
+### Fixes
+
+* Declare missing target dependencies, drop dead edges, capability-based cloud detection ([#1727](https://github.com/roryford/ManifoldKit/issues/1727))
+
 ## [0.45.0](https://github.com/roryford/ManifoldKit/compare/v0.44.0...v0.45.0) (2026-06-07)
 
 Glass Box observability wiring completes across the full turn loop and media timelines, the framework ships a unified DocC documentation site, and the fuzz harness gains cloud targeting and block-rotation for broader coverage.
@@ -1120,7 +1199,7 @@ Several `basechat`/`com.basechat.*` identifiers are kept for backward compatibil
 - **OAuth callback scheme `basechat://`** — registered with GitHub / Linear / Notion as the redirect URL for MCP server OAuth flows. Flipping it would break every existing user's MCP authorization.
 - **Keychain account `com.basechat.resumedata.hmac`** — HMAC key for HuggingFace background-download resume blobs. Renaming orphans every existing resumable download.
 - **Prometheus metric prefix `basechat_*`** — exported by `ManifoldServer`. Metric-name change would break customer dashboards / alerting rules.
-- **CLI command name `basechat-server`** — user-facing binary invocation in `ManifoldServer`. Stays for muscle memory.
+- **CLI command name** — renamed from `basechat-server` to `manifold-server` in v0.46.0; pre-1.0 so the rename is safe. See `Formula/manifold-server.rb` for the Homebrew formula.
 - **OAuth dynamic-client-registration softwareID `basechat-client`** — identifier sent to upstream IdPs during DCR.
 - **SQLite migration filename prefix `basechat-v3-…`** — referenced in test fixtures that exercise V3-era persisted file shapes; renaming buys nothing.
 

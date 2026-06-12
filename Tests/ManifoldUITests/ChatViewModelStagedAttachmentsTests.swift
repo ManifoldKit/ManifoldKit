@@ -3,6 +3,9 @@ import Foundation
 @testable import ManifoldUI
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 /// Coverage for the public staged-attachment API on `ChatViewModel` introduced
 /// in issue #1302. Verifies that consumers building custom composers reach the

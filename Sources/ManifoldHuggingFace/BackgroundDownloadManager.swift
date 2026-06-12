@@ -746,6 +746,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
             try DiffusionPackageValidator.writePackageManifest(for: packageModel, files: Array(snapshot.files.keys), in: snapshot.stagingDirectory)
         }
         try FileManager.default.moveItem(at: snapshot.stagingDirectory, to: finalURL)
+        // Harden the at-rest snapshot package on iOS once it reaches its final
+        // location. Best-effort: never fails the completed download.
+        DownloadedFileProtection.protect(finalURL)
         activeDownloads[modelID]?.markCompleted(localURL: finalURL)
         removePendingDownload(id: modelID)
         _ = downloadStateMachine.removeSnapshotDownload(modelID: modelID)

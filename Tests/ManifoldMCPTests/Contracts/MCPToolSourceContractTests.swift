@@ -1,4 +1,3 @@
-#if MCP
 import XCTest
 import ManifoldInference
 @testable import ManifoldMCP
@@ -111,4 +110,3 @@ final class MCPToolSourceContractTests: XCTestCase {
         await source.invalidateApprovals(toolName: nil)
     }
 }
-#endif

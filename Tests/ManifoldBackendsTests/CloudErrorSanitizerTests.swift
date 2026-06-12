@@ -3,6 +3,14 @@ import Testing
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+// v0.48 product split: internal symbols moved into the family targets and
+// ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
+#if Ollama
+@testable import ManifoldOllama
+#endif
+#if CloudSaaS
+@testable import ManifoldCloudSaaS
+#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
@@ -353,7 +361,7 @@ struct CloudErrorSanitizerInStreamTests {
     @Test func openAIResponsesSSE_htmlInErrorMessage_isSanitized() throws {
         let innerJSON = #"{"error":{"message":"<script>alert(1)</script>"}}"#
         let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
-        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        let error = CloudPayloadHandler.openAIResponses.extractStreamError(from: envelope)
         guard let cloud = error as? CloudBackendError,
               case .serverError(_, let msg) = cloud else {
             Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")
@@ -366,7 +374,7 @@ struct CloudErrorSanitizerInStreamTests {
     @Test func openAIResponsesSSE_jwtInErrorMessage_isRedacted() throws {
         let innerJSON = #"{"error":{"message":"leaked eyJhbGciOiJIUzI1NiJ9.abc.def"}}"#
         let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
-        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        let error = CloudPayloadHandler.openAIResponses.extractStreamError(from: envelope)
         guard let cloud = error as? CloudBackendError,
               case .serverError(_, let msg) = cloud else {
             Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")
@@ -379,7 +387,7 @@ struct CloudErrorSanitizerInStreamTests {
     @Test func openAIResponsesSSE_plainMessage_passesThroughUnchanged() throws {
         let innerJSON = #"{"error":{"message":"Service temporarily unavailable"}}"#
         let envelope = try makeNamedEnvelope(event: "response.error", data: innerJSON)
-        let error = OpenAIResponsesPayloadParsing.extractStreamError(from: envelope)
+        let error = CloudPayloadHandler.openAIResponses.extractStreamError(from: envelope)
         guard let cloud = error as? CloudBackendError,
               case .serverError(_, let msg) = cloud else {
             Issue.record("Expected CloudBackendError.serverError, got \(String(describing: error))")

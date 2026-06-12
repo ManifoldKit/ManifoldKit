@@ -1,4 +1,3 @@
-#if AppIntents
 import XCTest
 import ManifoldInference
 @testable import ManifoldAppIntents
@@ -678,7 +677,8 @@ final class AppIntentToolExecutorTests: XCTestCase {
 
     // MARK: title + default emission
 
-    func testSchemaEmitsParameterTitleAsDescription() {
+    func testSchemaEmitsParameterTitleAsDescription() throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(DecoratedIntent.self)
         guard case .object(let root) = executor.definition.parameters,
               case .object(let properties) = root["properties"],
@@ -717,7 +717,8 @@ final class AppIntentToolExecutorTests: XCTestCase {
         )
     }
 
-    func testSchemaOmitsDefaultAndDescriptionWhenNoneProvided() {
+    func testSchemaOmitsDefaultAndDescriptionWhenNoneProvided() throws {
+        try skipUnlessAppIntents26Runtime()
         let executor = AppIntentToolExecutor(DecoratedIntent.self)
         guard case .object(let root) = executor.definition.parameters,
               case .object(let properties) = root["properties"],
@@ -866,4 +867,3 @@ final class AppIntentToolExecutorTests: XCTestCase {
 }
 
 #endif // canImport(AppIntents)
-#endif

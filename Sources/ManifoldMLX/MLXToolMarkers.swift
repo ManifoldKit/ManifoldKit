@@ -11,13 +11,14 @@ import ManifoldInference
 ///
 /// MLX models (Qwen 2.5 / Qwen 3 format) wrap tool calls in
 /// `<tool_call>` / `</tool_call>` with a `{"name":…,"arguments":…}` JSON body.
-enum MLXToolMarkers {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum MLXToolMarkers {
 
     private static let openTag  = "<tool_call>"
     private static let closeTag = "</tool_call>"
 
     /// The single-dialect marker set MLX hands to a `ToolCallTransform`.
-    static func markers() -> [ToolCallMarker] {
+    public static func markers() -> [ToolCallMarker] {
         [
             ToolCallMarker(open: openTag, close: closeTag) { body in
                 parseToolCall(body)

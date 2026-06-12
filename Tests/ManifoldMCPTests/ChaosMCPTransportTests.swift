@@ -1,4 +1,3 @@
-#if MCP
 import XCTest
 @testable import ManifoldMCP
 
@@ -208,4 +207,3 @@ final class ChaosMCPTransportTests: XCTestCase {
     }
 }
 
-#endif

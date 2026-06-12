@@ -1,6 +1,8 @@
 import XCTest
 @testable import ManifoldUI
 @testable import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// Unit tests for the pure `ContextEstimator` struct extracted from
 /// `ChatViewModel.updateContextEstimate()`. No ChatViewModel, no persistence.

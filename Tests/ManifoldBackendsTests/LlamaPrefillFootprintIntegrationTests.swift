@@ -1,10 +1,10 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldHardware
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldHardware
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 
 /// Real-model coverage for adaptive prefill footprint learning (issue #1592).
 ///

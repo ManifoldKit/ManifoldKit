@@ -114,6 +114,50 @@ final class ContractTestSupportSplitAuditTest: XCTestCase {
         )
     }
 
+    /// `ManifoldBackendTestKit` (v0.48, #1749) links XCTest just like
+    /// `ManifoldContractTestSupport` — the same dyld constraint applies. No
+    /// executable target may depend on either XCTest-linking target.
+    func test_executableTargets_doNotDependOnXCTestLinkingTargets() throws {
+        let repoRoot = try Self.repoRoot()
+        let packageURL = repoRoot.appendingPathComponent("Package.swift")
+        let manifest = try String(contentsOf: packageURL, encoding: .utf8)
+
+        // Extract each .executableTarget(...) block by brace matching from the
+        // declaration to the matching close paren, then scan its dependency
+        // text for the XCTest-linking target names.
+        var offenders: [String] = []
+        var searchRange = manifest.startIndex..<manifest.endIndex
+        while let declRange = manifest.range(of: ".executableTarget(", range: searchRange) {
+            var depth = 1
+            var index = declRange.upperBound
+            while index < manifest.endIndex, depth > 0 {
+                let char = manifest[index]
+                if char == "(" { depth += 1 }
+                if char == ")" { depth -= 1 }
+                index = manifest.index(after: index)
+            }
+            let block = String(manifest[declRange.lowerBound..<index])
+            for tainted in ["\"ManifoldContractTestSupport\"", "\"ManifoldBackendTestKit\""]
+            where block.contains(tainted) {
+                let name = block.range(of: "name: \"").flatMap { nameStart in
+                    block[nameStart.upperBound...].split(separator: "\"").first.map(String.init)
+                } ?? "<unknown>"
+                offenders.append("\(name) depends on \(tainted)")
+            }
+            searchRange = index..<manifest.endIndex
+        }
+
+        XCTAssertTrue(
+            offenders.isEmpty,
+            """
+            Executable targets must never depend on XCTest-linking targets
+            (ManifoldContractTestSupport, ManifoldBackendTestKit) — dyld cannot
+            resolve libXCTestSwiftSupport.dylib outside an xctest host (#1409).
+            Offenders: \(offenders)
+            """
+        )
+    }
+
     // MARK: - Helpers
 
     private static func repoRoot() throws -> URL {

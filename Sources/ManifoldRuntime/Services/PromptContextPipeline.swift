@@ -10,10 +10,13 @@ import ManifoldInference
 /// out of ``assemble(messageCount:)`` and abort assembly — the pipeline does
 /// not return a partial result.
 ///
-/// Providers are queried sequentially in registration order. Concurrent fan-out
-/// would invent ordering risk for ties (positions that share a sort index rely
-/// on the input array's order to remain stable across runs); the sequential
-/// hop is cheap because providers are typically I/O-light.
+/// Providers are queried concurrently (fanned out via a throwing task group),
+/// but their contributions are reassembled in registration order before
+/// sorting. This preserves the tie-break contract — positions that share a
+/// sort index keep registration order — while collapsing wall time from the
+/// sum of provider latencies to roughly the slowest single provider. Providers
+/// are typically I/O-bound (retrieval, DB reads, RPC), so the fan-out is a
+/// direct latency win.
 ///
 /// ## Topology
 ///
@@ -62,10 +65,8 @@ public final class PromptContextPipeline: Sendable {
     /// - Throws: Whatever a provider throws. The pipeline aborts immediately
     ///   on the first failure and does not return a partial result.
     public func assemble(messageCount: Int) async throws -> [PromptSlot] {
-        var merged: [PromptSlot] = []
-        for provider in providers {
-            let contribution = try await provider.contributeSlots(messageCount: messageCount)
-            merged.append(contentsOf: contribution)
+        let merged = try await fanOut { provider in
+            try await provider.contributeSlots(messageCount: messageCount)
         }
         return merged.sorted { lhs, rhs in
             lhs.position.sortIndex(messageCount: messageCount) <
@@ -97,15 +98,57 @@ public final class PromptContextPipeline: Sendable {
         contextSize: Int,
         context: TurnContext
     ) async throws -> [PromptSlot] {
-        var merged: [PromptSlot] = []
         let budget = ProviderBudget(allocated: totalBudget, totalContextSize: contextSize)
-        for provider in providers {
-            let contribution = try await provider.contributeSlots(budget: budget, context: context)
-            merged.append(contentsOf: contribution)
+        let merged = try await fanOut { provider in
+            try await provider.contributeSlots(budget: budget, context: context)
         }
         let mc = context.messageCount
         return merged.sorted {
             $0.position.sortIndex(messageCount: mc) < $1.position.sortIndex(messageCount: mc)
         }
+    }
+
+    /// Runs `contribute` against every provider concurrently, then reassembles
+    /// the per-provider contributions in registration order and flattens them.
+    ///
+    /// Ordering is preserved by tagging each task with the provider's index and
+    /// reordering completion results by that index before flattening — the
+    /// task group yields results in completion order, which is non-deterministic.
+    /// Restoring registration order keeps the tie-break contract that callers
+    /// rely on (slots sharing a sort index stay in registration order).
+    ///
+    /// `contribute` is `@Sendable`: each provider runs in its own child task, so
+    /// the closure and its captures cross the task-group isolation boundary.
+    private func fanOut(
+        _ contribute: @Sendable @escaping (any PromptContextProvider) async throws -> [PromptSlot]
+    ) async throws -> [PromptSlot] {
+        // Single-provider (and empty) pipelines skip the task-group overhead.
+        if providers.count <= 1 {
+            var merged: [PromptSlot] = []
+            for provider in providers {
+                merged.append(contentsOf: try await contribute(provider))
+            }
+            return merged
+        }
+
+        let indexed = try await withThrowingTaskGroup(
+            of: (Int, [PromptSlot]).self
+        ) { group in
+            for (index, provider) in providers.enumerated() {
+                group.addTask {
+                    (index, try await contribute(provider))
+                }
+            }
+            var collected: [(Int, [PromptSlot])] = []
+            collected.reserveCapacity(providers.count)
+            for try await result in group {
+                collected.append(result)
+            }
+            return collected
+        }
+
+        return indexed
+            .sorted { $0.0 < $1.0 }
+            .flatMap { $0.1 }
     }
 }

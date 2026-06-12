@@ -8,7 +8,8 @@ import Foundation
 ///
 /// Functions take their inputs (environment, processor count) as parameters
 /// so callers can unit-test the policy without mutating process state.
-internal enum LlamaSamplingPolicy {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum LlamaSamplingPolicy {
 
     /// Returns the `n_gpu_layers` value to use for a llama.cpp model load.
     ///
@@ -21,7 +22,7 @@ internal enum LlamaSamplingPolicy {
     /// - Otherwise we offload all layers (`99`) to Metal.
     ///
     /// See `docs/LLAMA_CONTRACT.md` for the contract around the env var.
-    static func gpuLayerCount(
+    public static func gpuLayerCount(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Int32 {
         #if targetEnvironment(simulator)
@@ -38,7 +39,7 @@ internal enum LlamaSamplingPolicy {
     /// `[1, 8]`. We reserve two cores for the OS / app so the inference loop
     /// does not starve UI updates; the upper clamp avoids diminishing returns
     /// past 8 hardware threads observed in profiling.
-    static func threadCount(
+    public static func threadCount(
         processorCount: Int = ProcessInfo.processInfo.processorCount
     ) -> Int32 {
         Int32(max(1, min(8, processorCount - 2)))

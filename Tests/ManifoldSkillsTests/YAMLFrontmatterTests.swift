@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 @testable import ManifoldSkills
 
@@ -253,4 +252,3 @@ final class YAMLFrontmatterTests: XCTestCase {
         // would surface as literal characters and the assertion fails.
     }
 }
-#endif

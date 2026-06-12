@@ -1,0 +1,83 @@
+name: "Setup Swift CI"
+description: >
+  Selects the pinned Xcode toolchain, restores the SwiftPM dependency cache
+  (.build/artifacts + .build/checkouts + .build/repositories), and optionally
+  verifies that the runner's Swift major.minor is not older than the
+  swift-tools-version declared in Package.swift.
+
+inputs:
+  xcode-version:
+    description: "Xcode version to select (passed to maxim-lobanov/setup-xcode)"
+    default: "26.3"
+  cache-key-suffix:
+    description: >
+      Optional suffix appended to the SwiftPM cache key, e.g. '-foundation-only'.
+      Leave empty for the standard key shared by most jobs.
+    default: ""
+  verify-toolchain:
+    description: >
+      Set to 'true' to run the swift-tools-version vs. runner Swift version
+      check.  Only the test, server-tests, and macros-tests jobs need this.
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Select Xcode
+      # SHA-pinned to ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 (v1) for
+      # reproducible toolchain selection without the version-discovery API call
+      # that `latest-stable` requires.
+      uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+      with:
+        xcode-version: ${{ inputs.xcode-version }}
+
+    - name: Cache SwiftPM dependencies
+      uses: actions/cache@v5
+      with:
+        # Keep dependency material in the broad Package.resolved cache:
+        # .build/artifacts holds the prebuilt llama.cpp xcframework (~100 MB,
+        # the real win), and .build/checkouts + .build/repositories save the
+        # per-dep clone phase. .build/debug is intentionally NOT cached — path
+        # fingerprints make restored objects invalid; tried and reverted twice
+        # (#961/#1045 → #1036). See ci.yml for the full rationale.
+        path: |
+          .build/artifacts
+          .build/checkouts
+          .build/repositories
+        key: ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm${{ inputs.cache-key-suffix }}-${{ hashFiles('Package.resolved') }}
+        # With an empty cache-key-suffix the first two restore-keys render
+        # identically; the duplicate lookup is a harmless no-op. Kept so the
+        # suffixed variant (-foundation-only) falls back to the standard key.
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm${{ inputs.cache-key-suffix }}-
+          ${{ runner.os }}-${{ runner.arch }}-xcode-${{ inputs.xcode-version }}-spm-
+          ${{ runner.os }}-${{ runner.arch }}-spm-
+
+    - name: Verify Swift toolchain matches Package.swift tools-version
+      # The runner's Xcode (pinned above) ships a specific Swift version. If
+      # `swift-tools-version` in Package.swift exceeds that, `swift package
+      # resolve` and every subsequent build will fail with a confusing error.
+      # Catch the mismatch here with a clear message naming both versions.
+      if: inputs.verify-toolchain == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools_line=$(head -n 1 Package.swift)
+        tools_version=$(printf '%s\n' "$tools_line" | sed -E 's|^//[[:space:]]*swift-tools-version:[[:space:]]*([0-9]+\.[0-9]+).*|\1|')
+        if ! [[ "$tools_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "Could not parse swift-tools-version from first line of Package.swift: $tools_line"
+          exit 1
+        fi
+        swift_version_full=$(xcrun swift -version | head -n 1)
+        swift_version=$(printf '%s\n' "$swift_version_full" | sed -E 's|.*Swift version ([0-9]+\.[0-9]+).*|\1|')
+        if ! [[ "$swift_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "Could not parse Swift major.minor from: $swift_version_full"
+          exit 1
+        fi
+        tools_major=${tools_version%.*}; tools_minor=${tools_version#*.}
+        swift_major=${swift_version%.*}; swift_minor=${swift_version#*.}
+        if (( tools_major > swift_major )) || { (( tools_major == swift_major )) && (( tools_minor > swift_minor )); }; then
+          echo "::error::Package.swift requires swift-tools-version $tools_version but runner has Swift $swift_version. Lower swift-tools-version or upgrade the pinned Xcode."
+          exit 1
+        fi
+        echo "swift-tools-version=$tools_version OK against runner Swift $swift_version"

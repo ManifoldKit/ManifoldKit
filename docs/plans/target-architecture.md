@@ -1,5 +1,42 @@
 # Plan — Target Architecture ("The Manifold")
 
+> **Superseded (2026-06) — read before acting on module names or ring assignments.**
+>
+> Several structural decisions in this document were revised after the P2 persona review.
+> The changes are recorded in `docs/plans/p2-engine-carve-split.md` and implemented in PRs
+> #1722/#1723/#1724. Key deltas:
+>
+> 1. **`ManifoldEngine` was dropped.** The plan originally called for a new `ManifoldEngine`
+>    module (= today's `ManifoldRuntime` + orchestration evicted from the kernel). The P2
+>    review found that moving the engine *up* required 246 lockstep edits across 35 modules.
+>    Instead, the Contract was extracted *downward* as a new `ManifoldContract` leaf. No
+>    module was renamed: `ManifoldInference` keeps its name and remains the engine.
+>
+> 2. **The kernel is `ManifoldContract`, not a slimmed `ManifoldInference`.** `ManifoldContract`
+>    is the new leaf that holds backend protocols, generation events, message/tool contracts,
+>    and streaming transforms. It depends on `ManifoldHardware` + `ManifoldModelCatalog` (the
+>    P1 leaves). `ManifoldInference` `@_exported import`s it for source compatibility.
+>
+> 3. **"RING 0 — CONTRACT … product: `ManifoldInference` (target ~3.4k LOC)"** is stale.
+>    The Contract product is now `ManifoldContract`. `ManifoldInference` is the engine (RING 1).
+>
+> 4. **"RING 1 — ENGINE · product: `ManifoldEngine`"** is stale. The engine ring is served by
+>    `ManifoldInference` (orchestration) + `ManifoldRuntime` (turn loop + ports) — no new
+>    product was created.
+>
+> 5. **The migration's "P2b de-tangle" was renumbered P2c.** A grow-the-golden-harness step
+>    was inserted as the new P2b (#1722) before the de-tangle (now P2c, #1724). The migration
+>    doc's P2a/P2b labels no longer match the executed sequence.
+>
+> 6. **"Utility leaves → Device-capability + GGUF readers → adapter-side (MLX/Llama only)"**
+>    is stale. These landed in the shared `ManifoldHardware` leaf (P1c #1610), not adapter-side.
+>    Both `ManifoldMLX` and `ManifoldLlama` consume `ManifoldHardware` via `ManifoldInference`'s
+>    transitive dep — the leaf is shared, not duplicated per-family.
+>
+> The Consumption Ladder's `ManifoldEngine` column is stale; substitute `ManifoldInference` for
+> the engine row. Everything else in this document — the manifold metaphor, ring model, invariants,
+> moat thesis, expansion axes, and trait disposition — remains accurate.
+
 This is a **planning artifact**, not user-facing documentation and not an implementation
 plan. It captures the agreed *end state* for ManifoldKit's module architecture so a
 subsequent migration plan can be argued against a fixed target. When the structure

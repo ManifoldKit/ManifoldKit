@@ -1,6 +1,6 @@
 #if Llama
 import XCTest
-@testable import ManifoldLlama
+@_spi(Testing) import ManifoldLlama
 
 /// Unit tests for `LlamaSamplingPolicy` — verifies the consolidated
 /// hardware-selection logic shared between `LlamaModelLoader` and

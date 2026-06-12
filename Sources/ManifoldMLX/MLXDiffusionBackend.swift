@@ -42,13 +42,15 @@ public enum MLXDiffusionError: Error, LocalizedError {
 ///
 /// Other layouts throw ``MLXDiffusionError/unsupportedModelLayout``.
 ///
-/// ## Hub directory convention
+/// ## Directory convention
 ///
-/// `HuggingFaceService.downloadDiffusionModel` writes snapshots into Hub's
-/// `<root>/models/<org>/<name>` layout (e.g.
-/// `<root>/models/stabilityai/sdxl-turbo/unet/...`). `loadModel(from:)`
-/// derives the Hub `downloadBase` by walking three components up from the
-/// supplied `url` — no bridging symlink is required.
+/// `loadModel(from:)` loads weights directly from the directory it is given —
+/// the `directoryURL` carried by `ImageModelInfo`. That directory holds the
+/// diffusers submodules (`unet/`, `vae/`, `scheduler/`, …) at its top level and
+/// may be either a flat install (`.../<org>__<name>/`) or a Hub leaf
+/// (`.../models/<org>/<name>/`). Files are resolved relative to that directory
+/// via `StableDiffusionConfiguration.resolvingFiles(in:)`, so no particular Hub
+/// `downloadBase` shape — and no bridging symlink — is required.
 ///
 /// ## Concurrency
 ///
@@ -96,19 +98,21 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
             throw MLXDiffusionError.insufficientMemory(plan.reasons)
         }
 
-        // `url` is the Hub leaf (`.../models/<org>/<name>`). Walk three
-        // components up — `<name>`, `<org>`, `models` — to recover the
-        // `downloadBase` Hub uses to resolve `localRepoLocation`. The
-        // download path already produces this layout (see
-        // `DiffusionDownload.hubLeafDirectory(in:repoID:)`), which is
-        // why no symlink bridge is needed.
-        let hubBase = url
-            .deletingLastPathComponent() // drop <name>
-            .deletingLastPathComponent() // drop <org>
-            .deletingLastPathComponent() // drop "models"
-
-        let hub = HubApi(downloadBase: hubBase, useOfflineMode: true)
-        guard let generator = try preset.textToImageGenerator(
+        // `url` is the actual model directory handed to us by the storage
+        // layer — `ImageGenerationService` passes `ImageModelInfo.directoryURL`.
+        // That directory can be either a Hub leaf (`.../models/<org>/<name>`)
+        // or a flat install (`.../<org>__<name>/`); both carry the diffusers
+        // submodules (`unet/`, `vae/`, `scheduler/`, …) directly inside it.
+        //
+        // Resolve weights relative to `url` itself rather than reconstructing a
+        // Hub `downloadBase` by walking three components up and assuming a
+        // `models/<org>/<name>` shape — that assumption breaks for flat installs
+        // (walking up lands at `~/Library/Application Support`, where Hub then
+        // looks for a non-existent `models/<org>/<name>` tree). An offline
+        // `HubApi` is still supplied so nothing attempts a network fetch; its
+        // `localRepoLocation` is overridden by `resolvingFiles(in:)`.
+        let hub = HubApi(useOfflineMode: true)
+        guard let generator = try preset.resolvingFiles(in: url).textToImageGenerator(
             hub: hub, configuration: .init(quantize: true)
         ) else {
             throw MLXDiffusionError.unsupportedModelLayout(url)
@@ -227,7 +231,7 @@ public final class MLXDiffusionBackend: ImageGenerationBackend, @unchecked Senda
 
     // MARK: - Private helpers
 
-    static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
+    @_spi(Testing) public static func detectPreset(at url: URL) throws -> StableDiffusionConfiguration {
         let fm = FileManager.default
         // SDXL has a second text encoder; SD 2.1 does not.
         if fm.fileExists(atPath: url.appending(component: "text_encoder_2").path) {

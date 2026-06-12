@@ -11,10 +11,8 @@
 # Package.swift, accidental removal of public types, and dependency-graph
 # changes that drop ManifoldInference (ManifoldMCP's only required dep).
 #
-# Does NOT require the MCP trait — ManifoldMCP itself compiles unconditionally;
-# the MCP trait only gates the ManifoldMCPTests → ManifoldMCP dependency edge
-# so the test target can declare the dep conditionally without pulling it
-# into every non-MCP build.
+# No trait flags needed — ManifoldMCP compiles unconditionally (the MCP-related
+# traits were retired in v0.48).
 #
 # Runs in CI on every PR. ~30s on a warm cache.
 

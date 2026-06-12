@@ -17,7 +17,7 @@ Add ManifoldKit to your `Package.swift` (or Xcode's *Package Dependencies*):
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.45.0" // x-release-please-version
+    from: "0.47.0" // x-release-please-version
 )
 ```
 
@@ -101,7 +101,65 @@ struct SeedSessionExample {
 
 `quickStart()` registers every compiled-in backend with the inference service, but **it does not pick one for you**. The composer is enabled (a session exists), but no model is loaded — `ChatViewModel.isModelLoaded` is `false`, the composer placeholder reads "No model loaded", and the empty-state surfaces a "Select Model" button that flips the `showModelManagement` binding (see [`showModelManagement` binding](#showmodelmanagement-binding) below — by itself the binding doesn't present anything).
 
-This section shows the three documented paths to get a model loaded on first launch.
+This section shows the four documented paths to get a model loaded on first launch — starting with the new zero-setup seed path.
+
+### Seeding a starter model (recommended for new apps)
+
+Pass `seed: .recommendedSmallModel()` and ManifoldKit handles the rest: it downloads Qwen3-0.6B-Instruct Q4\_K\_M (~400 MB) before returning, runs the selection policy, and leaves `ChatViewModel.isModelLoaded == true` the moment the view appears. No model-management UI required.
+
+```swift,no-build
+@main
+struct MyChatApp: App {
+    @State private var result: QuickStartResult?
+    @State private var error: ManifoldKitError?
+    @State private var downloadProgress: Double = 0
+
+    var body: some Scene {
+        WindowGroup {
+            if let result {
+                ChatView()
+                    .environment(result.viewModel)
+                    .modelContainer(result.bootstrap.modelContainer)
+            } else if let error {
+                ContentUnavailableView(
+                    "Failed to start",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error.errorDescription ?? "")
+                )
+            } else {
+                VStack {
+                    ProgressView("Downloading starter model…", value: downloadProgress)
+                        .padding()
+                    Text("\(Int(downloadProgress * 100))%")
+                        .foregroundStyle(.secondary)
+                }
+                .task {
+                    do {
+                        result = try await ManifoldKit.quickStart(
+                            seed: .recommendedSmallModel { progress in
+                                downloadProgress = progress
+                            }
+                        )
+                    }
+                    catch let e as ManifoldKitError { error = e }
+                    catch { self.error = .from(error) }
+                }
+            }
+        }
+    }
+}
+```
+
+**Seed skip conditions.** The seed is skipped silently when any of the following is true — the app still launches, just with the "No model loaded" empty state instead:
+
+| Condition | Outcome |
+|-----------|---------|
+| Foundation Models available (iOS/macOS 26+) | Skip — zero-cost built-in model wins |
+| A local GGUF or MLX model is already on disk | Skip — never downloads redundantly |
+| `HuggingFace` trait absent from your build | Skip — no download machinery compiled in |
+| Network failure during the download | Skip silently — app launches in empty state |
+
+**Trait requirement.** The `HuggingFace` trait (default-on) must be compiled in. The downloaded model is a GGUF, so either the `Llama` or `MLX` trait is required for inference (also default-on). `FoundationOnly` builds skip the seed automatically.
 
 ### What "available immediately" actually means
 
@@ -255,7 +313,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.45.0", // x-release-please-version
+    from: "0.47.0", // x-release-please-version
     traits: [
         .trait(name: "MLX"),           // default-on
         .trait(name: "Llama"),         // default-on

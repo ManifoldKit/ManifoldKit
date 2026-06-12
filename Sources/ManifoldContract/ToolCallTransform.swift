@@ -51,6 +51,15 @@ public struct ToolCallMarker: Sendable {
 public struct ToolCallTransform: StreamTransform {
     public let markers: [ToolCallMarker]
 
+    /// Upper bound (in UTF-8 bytes) on a single buffered tool-call body before
+    /// the active block is abandoned as malformed. A well-formed tool call is a
+    /// small JSON object; an unbounded body means we never saw a close tag (a
+    /// truncated, runaway, or adversarial stream). Without this cap the body
+    /// buffer grows for the whole remaining stream and is then handed to an
+    /// O(n)+ `parseBody`. 256 KB is far above any legitimate call and well
+    /// below a memory-pressure threat.
+    private static let maxBodyBytes = 256 * 1024
+
     private var buffer = ""
     /// Index into `markers` of the dialect whose open tag is currently active,
     /// or `nil` when not inside a tool-call block.
@@ -99,6 +108,18 @@ public struct ToolCallTransform: StreamTransform {
                     if buffer.count > holdLen {
                         bodyBuffer += String(buffer.prefix(buffer.count - holdLen))
                         buffer = holdLen > 0 ? String(buffer.suffix(holdLen)) : ""
+                    }
+                    // Guard against an unbounded body: a close tag that never
+                    // arrives would otherwise buffer the entire rest of the
+                    // stream. Drop the malformed call and resume scanning the
+                    // held-back buffer for a fresh open tag.
+                    if bodyBuffer.utf8.count > Self.maxBodyBytes {
+                        Log.inference.warning(
+                            "ToolCallTransform: dropping tool-call body exceeding \(Self.maxBodyBytes)-byte cap without a close tag"
+                        )
+                        bodyBuffer = ""
+                        activeMarker = nil
+                        continue
                     }
                     break
                 }

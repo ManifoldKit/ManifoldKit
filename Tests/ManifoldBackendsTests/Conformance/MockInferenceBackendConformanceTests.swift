@@ -1,7 +1,8 @@
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
+import ManifoldBackends
 
 /// Exercises the `BackendContractChecks` harness against `MockInferenceBackend`,
 /// the canary backend used by the rest of the runtime tests. If the meta-contract

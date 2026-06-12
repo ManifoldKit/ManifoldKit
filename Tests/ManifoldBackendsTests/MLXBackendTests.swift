@@ -3,9 +3,10 @@ import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldBackendTestKit
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldMLX
 
 /// Tests for MLXBackend state, capabilities, and lifecycle.
 ///

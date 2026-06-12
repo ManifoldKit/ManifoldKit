@@ -167,6 +167,76 @@ public struct ToolCall: Sendable, Codable, Equatable, Hashable {
     }
 }
 
+// MARK: - ToolResultPart
+
+/// A typed content part carried by ``ToolResult/structuredContent``.
+///
+/// ## v1 vocabulary
+///
+/// The only case today is ``text(_:)``, which mirrors the existing string
+/// carried by ``ToolResult/content``. Future 1.x releases will add cases such
+/// as `image(data:mimeType:)` and `json(_:)` without breaking the existing
+/// wire format, because this enum is decoded with tolerance for unknown types.
+///
+/// ## Vocabulary growth (1.x)
+///
+/// New cases will be added in minor releases. Consumers **must** handle
+/// ``unknown(type:)`` — either by ignoring it or by forwarding the raw `type`
+/// string to the host for logging. When switching over this enum in your code,
+/// always include a `default:` branch or an explicit `case .unknown:` arm so
+/// your app does not need to be updated every time a new part type ships.
+///
+/// ## Decode tolerance
+///
+/// Payloads carrying a `type` value that is not yet known to this SDK are
+/// decoded into ``unknown(type:)`` rather than throwing, keeping old readers
+/// forward-compatible with payloads produced by newer tool executors.
+public enum ToolResultPart: Sendable, Codable, Equatable, Hashable {
+
+    /// A plain-text content part. The `text` value is the literal string the
+    /// tool produced — equivalent to ``ToolResult/content`` for text-only tools.
+    case text(String)
+
+    /// A part whose `type` discriminator is not recognised by this SDK version.
+    ///
+    /// The raw `type` string is preserved so callers can log or forward it.
+    /// The payload beyond the `type` field is not decoded and is silently
+    /// discarded — this is the intentional trust-boundary optional-decode
+    /// exception: we prefer decode-to-unknown over a thrown error that would
+    /// break forward compatibility.
+    case unknown(type: String)
+
+    // MARK: Codable
+
+    private enum CodingKeys: String, CodingKey {
+        case type, text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let typeString = try container.decode(String.self, forKey: .type)
+        switch typeString {
+        case "text":
+            let text = try container.decode(String.self, forKey: .text)
+            self = .text(text)
+        default:
+            // Forward-compatible: unknown part types are preserved, not thrown.
+            self = .unknown(type: typeString)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .text(let text):
+            try container.encode("text", forKey: .type)
+            try container.encode(text, forKey: .text)
+        case .unknown(let typeString):
+            try container.encode(typeString, forKey: .type)
+        }
+    }
+}
+
 // MARK: - ToolResult
 
 /// The outcome of executing a ``ToolCall``.
@@ -184,6 +254,20 @@ public struct ToolCall: Sendable, Codable, Equatable, Hashable {
 /// host UI can speak or render verbatim to the user. Tools that don't
 /// produce a separate dialog leave the field `nil`, and the on-wire JSON
 /// omits the key entirely so existing consumers see no shape change.
+///
+/// ## Structured content sidecar
+///
+/// ``structuredContent`` is an optional typed payload that future 1.x releases
+/// will use to carry multimodal or richly-typed tool output (images, JSON
+/// objects, citations, etc.). In v1 it is always `nil` at runtime — the
+/// canonical model-facing value remains ``content``. When non-`nil`, the array
+/// is encoded on the wire; when `nil` the key is absent, keeping the wire
+/// shape identical to pre-sidecar payloads for all existing producers and
+/// consumers.
+///
+/// See ``ToolResultPart`` for the part vocabulary and its forward-compatibility
+/// contract (new cases land as minor releases; consumers must handle
+/// ``ToolResultPart/unknown(type:)``).
 public struct ToolResult: Sendable, Codable, Equatable, Hashable {
 
     /// Categorises why a tool call failed.
@@ -314,31 +398,56 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
     /// format.
     public let dialog: String?
 
+    /// Forward-compatible typed content parts, or `nil` for v1 string-only tools.
+    ///
+    /// This sidecar locks a shape before the 1.0 freeze so that 1.x releases
+    /// can carry multimodal or richly-typed tool output (images, JSON objects,
+    /// citations) without a breaking wire-format change.
+    ///
+    /// **v1 behaviour:** always `nil` at runtime. The model-facing canonical
+    /// value remains ``content`` — backends read that string today and will
+    /// continue to do so until a future release activates the typed path.
+    ///
+    /// **Forward compatibility:** when non-`nil`, the array is encoded under
+    /// `"structuredContent"`. When `nil` the key is absent entirely, so
+    /// existing producers and consumers see no wire-shape change. Old decoders
+    /// that don't know this key will silently ignore it, and new decoders
+    /// receiving a payload without it will decode `nil` — both directions are
+    /// safe.
+    ///
+    /// See ``ToolResultPart`` for the part vocabulary and the
+    /// ``ToolResultPart/unknown(type:)`` forward-compatibility contract.
+    public let structuredContent: [ToolResultPart]?
+
     /// Creates a tool result.
     ///
     /// - Parameters:
     ///   - callId: The ``ToolCall/id`` this result belongs to.
-    ///   - content: The tool's output string.
+    ///   - content: The tool's output string (model-facing canonical value).
     ///   - errorKind: Failure classification, or `nil` on success. Defaults to `nil`.
     ///   - dialog: Optional human-facing speech/display text, e.g. the
     ///     resolved string from an AppIntent's `ProvidesDialog` channel.
     ///     Defaults to `nil`.
+    ///   - structuredContent: Optional typed content parts for forward-compatible
+    ///     multimodal output. Defaults to `nil` (v1 behaviour: string-only).
     public init(
         callId: String,
         content: String,
         errorKind: ErrorKind? = nil,
-        dialog: String? = nil
+        dialog: String? = nil,
+        structuredContent: [ToolResultPart]? = nil
     ) {
         self.callId = callId
         self.content = content
         self.errorKind = errorKind
         self.dialog = dialog
+        self.structuredContent = structuredContent
     }
 
     // MARK: Codable
 
     private enum CodingKeys: String, CodingKey {
-        case callId, content, errorKind, isError, dialog
+        case callId, content, errorKind, isError, dialog, structuredContent
     }
 
     public init(from decoder: Decoder) throws {
@@ -356,6 +465,7 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
             errorKind = nil
         }
         dialog = try c.decodeIfPresent(String.self, forKey: .dialog)
+        structuredContent = try c.decodeIfPresent([ToolResultPart].self, forKey: .structuredContent)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -368,6 +478,9 @@ public struct ToolResult: Sendable, Codable, Equatable, Hashable {
         // `dialog` uses encodeIfPresent so non-dialog tools emit the exact
         // pre-dialog JSON shape (no `"dialog"` key at all).
         try c.encodeIfPresent(dialog, forKey: .dialog)
+        // `structuredContent` uses encodeIfPresent so v1 string-only results
+        // emit no extra key, keeping the wire shape backward-compatible.
+        try c.encodeIfPresent(structuredContent, forKey: .structuredContent)
     }
 }
 

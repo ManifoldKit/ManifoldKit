@@ -1,8 +1,9 @@
 #if CloudSaaS
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
+import ManifoldBackends
 
 /// ClaudeBackend conformance against the universal BCK backend contract.
 ///

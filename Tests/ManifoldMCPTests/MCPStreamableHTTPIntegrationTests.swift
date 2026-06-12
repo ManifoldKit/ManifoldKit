@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -82,4 +81,3 @@ final class MCPStreamableHTTPIntegrationTests: XCTestCase {
         XCTAssertEqual(firstToolName, "ping")
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 @testable import ManifoldSkills
 
@@ -63,4 +62,3 @@ final class SkillRegistryTests: XCTestCase {
         // a placeholder → assertion fails.
     }
 }
-#endif

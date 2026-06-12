@@ -4,6 +4,7 @@ import FoundationModels
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 import ManifoldInference
+import ManifoldBackendTestKit
 @testable import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldFoundation

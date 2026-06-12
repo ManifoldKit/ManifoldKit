@@ -51,11 +51,27 @@ struct MyChatApp: App {
 }
 ```
 
-> **The chat is inert until you select a model.** `quickStart()` registers the compiled-in backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or seed a model at launch. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
+> **Want a live chat on first launch with zero extra setup?** Pass `seed: .recommendedSmallModel()` — ManifoldKit downloads Qwen3-0.6B (~400 MB) in the background before returning, so the composer is generating the moment the view appears. The download is skipped when a model is already available (Foundation on iOS/macOS 26+, or a local model on disk).
+>
+> ```swift,no-build
+> ProgressView().task {
+>     do { result = try await ManifoldKit.quickStart(
+>             seed: .recommendedSmallModel { progress in
+>                 // update a progress indicator if desired
+>             }
+>         )
+>     }
+>     catch let e as ManifoldKitError { error = e }
+>     catch { self.error = .from(error) }
+> }
+> ```
+>
+> **The chat is inert until you select a model** (without `seed:`). `quickStart()` registers the compiled-in backends but loads none, so on first run the composer reads "No model loaded" and the empty-state **Select Model** button only flips `showModelManagement` — nothing is presented until you attach a sheet to that binding. Fastest route: present `ModelManagementSheet` (from the opt-in `ManifoldUIModelManagement` module) with `.sheet(isPresented: $showModelManagement)`, or use `seed:` above. Step-by-step: [First-launch backend selection](docs/QUICKSTART.md#first-launch-backend-selection).
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for backend selection, traits, and configuration.
 Building a multi-session SwiftUI app with a sidebar, persisted chats, and relaunch restore? See [docs/SWIFTUI-MULTI-SESSION.md](docs/SWIFTUI-MULTI-SESSION.md) — the canonical end-to-end guide.
 Building a CLI, server, or non-SwiftUI consumer? See [docs/QUICKSTART-CLI.md](docs/QUICKSTART-CLI.md) — compile-tested Foundation Models, local GGUF, and Ollama / OpenAI examples.
+Running ManifoldKit as a standalone OpenAI-compatible server (for Cursor, Continue, or any OpenAI SDK)? Install via `brew tap roryford/manifoldkit https://github.com/roryford/ManifoldKit.git && brew install manifold-server` and see [docs/QUICKSTART-SERVER.md](docs/QUICKSTART-SERVER.md).
 Want the inference layer with a fully custom SwiftUI UI (no `ChatView`)? See [docs/QUICKSTART-BRING-YOUR-OWN-UI.md](docs/QUICKSTART-BRING-YOUR-OWN-UI.md).
 Registering tools the model can call? See [docs/QUICKSTART-TOOLS.md](docs/QUICKSTART-TOOLS.md) — `ToolRegistry`, the local-model tool ceiling, approval gates, and streaming results.
 Exposing an `AppIntent` to the model? See [docs/QUICKSTART-APPINTENTS.md](docs/QUICKSTART-APPINTENTS.md).
@@ -69,9 +85,9 @@ Full runnable: [`Example/Examples/MinimalExample`](Example/Examples/MinimalExamp
 
 **n-1 OS reach, WWDC-ready.** ManifoldKit serves iOS 18 / macOS 15 — the installed base that Apple Foundation Models (OS-26-only, AI-hardware-gated, 4096-token cap, single fixed model) can't reach — and wraps Foundation Models as just one more backend instead of competing with it. Trait gating means one codebase yields either a ~5 MB `FoundationOnly` App Store build or the full local + cloud + RAG + voice + image-gen stack. Pre-wired stub traits (`SystemAIProviderExtension`, `CoreAI`) mean whatever Apple ships next September is one more backend, not a migration. See [CLAUDE.md → Platform policy](CLAUDE.md#platform-policy).
 
-**Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 5,700+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
+**Reliability and security as product.** TLS pinning, SSRF and DNS-rebind guards, a throwing Keychain, a documented [threat model](docs/THREAT_MODEL.md), a fuzz harness, 6,500+ tests, capability-routed structured output, human-in-the-loop tool approval (`ToolApprovalGate`), and cost/metrics observability ship in the box. These are the things that go wrong between the demo and App Store review — see [docs/RELIABILITY.md](docs/RELIABILITY.md) for the implementation-backed guarantees.
 
-ManifoldKit is **decomposable, not monolithic**: 14 trait-gated modules. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
+ManifoldKit is **decomposable, not monolithic**: 25 libraries across a layered module graph. Take just the engine ([CLI / server path](docs/QUICKSTART-CLI.md)), just the UI (bring-your-own-runtime), or the whole stack — the umbrella is a convenience, not a requirement.
 
 ## What's already in the box
 
@@ -120,7 +136,9 @@ The same backend, model-management, persistence, and download infrastructure tha
 
 Pick traits to scope which backends and capabilities ship with your build. The full trait → capability table is generated from `Sources/ManifoldKit/FeatureMatrix.swift` and rendered to [docs/FeatureMatrix.md](docs/FeatureMatrix.md).
 
-Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `MCP`, `Voice`, `Tools`, `AppIntents`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
+Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. The former `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, and `Skills` traits were retired in v0.48 — those modules now compile unconditionally and you opt in by adding their products. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
+
+For a quantified breakdown of what each trait costs in binary size, build time, and dependency weight — and why the checkout is large regardless of trait set — see [docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md).
 
 ## ManifoldKit vs. the field
 
@@ -144,7 +162,7 @@ Each row is genuinely strong at its own layer — a UI kit renders beautiful bub
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.45.0" // x-release-please-version
+    from: "0.47.0" // x-release-please-version
 )
 ```
 
@@ -178,11 +196,11 @@ Start with [`Example/Examples/MinimalExample`](Example/Examples/MinimalExample) 
 
 ## Architecture
 
-ManifoldKit ships **14 libraries**, **2 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules and test-only targets gated behind SwiftPM traits.
+ManifoldKit ships **25 libraries**, **3 executables**, and **1 macro plugin**. The core runtime stack is six libraries; the rest are optional sibling modules and test-only targets gated behind SwiftPM traits.
 
 ```
 ManifoldVoice              ManifoldUIModelManagement
-(Voice trait)              (model browser + endpoint UI)
+(speech I/O)               (model browser + endpoint UI)
         │                          │
         └────────► ManifoldUI ◄────┘
                        │
@@ -207,7 +225,7 @@ ManifoldVoice              ManifoldUIModelManagement
 
 ### Turn-loop orchestration
 
-`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the **single turn loop** for chat. It owns `send`, `regenerate`, `edit`, `cancel`, and `branch` — there is no alternative path. Host apps get a configured runtime from `ManifoldBootstrap` (exposed as `bootstrap.conversationRuntime`) and forward user actions to it. See [CONTRIBUTING.md → Architecture invariants](CONTRIBUTING.md#architecture-invariants) for the full list of dependency rules the lint enforces.
+`ConversationRuntime` (`Sources/ManifoldRuntime/Services/ConversationRuntime.swift`) is the **single turn loop** for chat. It owns all turn-flow operations — send, regenerate, edit, cancel, and branch — dispatched through `processTurn(TurnInput(...))` with the corresponding `TurnKind` case. There is no alternative path. Host apps get a configured runtime from `ManifoldBootstrap` (exposed as `bootstrap.conversationRuntime`) and forward user actions to it. See [CONTRIBUTING.md → Architecture invariants](CONTRIBUTING.md#architecture-invariants) for the full list of dependency rules the lint enforces.
 
 ## Supported Model Types
 
@@ -237,7 +255,7 @@ Discovery additionally surfaces any `.gguf` files (or MLX model directories) in 
 | `SessionManagerViewModel` | Chat session CRUD and selection. |
 | `ModelManagementViewModel` | HuggingFace search, downloads, local model management (`ManifoldUIModelManagement`). |
 | `InferenceService` | Backend orchestrator — selects and delegates to the right backend. |
-| `ConversationRuntime` | Single turn loop for send/regenerate/edit/cancel/branch with `ConversationEvent` hooks. |
+| `ConversationRuntime` | Single turn loop — all turn-flow operations dispatched via `processTurn(TurnInput(...))` with `ConversationEvent` hooks. |
 | `ChatView` | Main chat interface with message list and input bar. |
 | `SessionListView` | Sidebar session list with rename/delete. |
 | `ModelManagementSheet` | Combined model browser + storage management. |
@@ -393,7 +411,7 @@ ManifoldKit also **consumes** AnyLanguageModel as a backend: the `AnyLanguageMod
 
 This package was renamed from `BaseChatKit` to `ManifoldKit` in v0.20. The old GitHub URL redirects, but:
 
-- Update SPM dependencies to `.package(url: "https://github.com/roryford/ManifoldKit.git", ...)` with `from: "0.45.0"` <!-- x-release-please-version -->
+- Update SPM dependencies to `.package(url: "https://github.com/roryford/ManifoldKit.git", ...)` with `from: "0.47.0"` <!-- x-release-please-version -->
 - Update imports: `import BaseChatKit` → `import ManifoldKit` (and similarly for sub-modules).
 - Renamed public types: `BaseChatBootstrap` → `ManifoldBootstrap`, `BaseChatConfiguration` → `ManifoldConfiguration`, `BaseChatSchemaV3/4/5` → `ManifoldSchemaV3/4/5`, `BaseChatMigrationPlan` → `ManifoldMigrationPlan`, `BaseChatBackgroundTaskIdentifiers` → `ManifoldBackgroundTaskIdentifiers`.
 - **BREAKING — local SwiftData stores reset.** Apps upgrading from 0.19.x create fresh databases on first launch. We chose this clean break over preserving data with `@Model.originalName` because v0.20 is pre-1.0.

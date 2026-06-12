@@ -4,6 +4,9 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldHardware
+@_spi(BackendInternals) import ManifoldUI
 
 /// Tests for #482 / #604: two ``GenerationEvent/thinkingCompleted`` events
 /// on a single assistant turn must produce two distinct ``MessagePart/thinking``

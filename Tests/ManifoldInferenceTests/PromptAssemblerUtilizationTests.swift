@@ -1,5 +1,7 @@
 import XCTest
 @testable import ManifoldInference
+// BackendInternals SPI: seam published for the companion split (#1749).
+@_spi(BackendInternals) import ManifoldContract
 
 /// Coverage for ``AssembledPrompt/contextUtilization`` — the fraction of the
 /// context window consumed by a prompt assembly pass.

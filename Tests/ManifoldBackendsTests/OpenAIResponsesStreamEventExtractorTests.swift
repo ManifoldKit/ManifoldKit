@@ -3,6 +3,14 @@ import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+// v0.48 product split: internal symbols moved into the family targets and
+// ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
+#if Ollama
+@testable import ManifoldOllama
+#endif
+#if CloudSaaS
+@testable import ManifoldCloudSaaS
+#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
@@ -127,7 +135,10 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
     func test_makeOpenAIResponsesStreamConsumer_returnsNilForOtherProviders() {
         XCTAssertNil(CloudPayloadHandler.openAI.makeOpenAIResponsesStreamConsumer())
         XCTAssertNil(CloudPayloadHandler.claude.makeOpenAIResponsesStreamConsumer())
+#if Ollama
+        // `.ollama` is published by ManifoldOllama; only reachable when both families build.
         XCTAssertNil(CloudPayloadHandler.ollama.makeOpenAIResponsesStreamConsumer())
+#endif
     }
 
     // MARK: - Helpers

@@ -41,6 +41,7 @@ on:
       - "Sources/ManifoldUI/**"
       - "scripts/cold-start-human.sh"
       - ".github/workflows/cold-start-human.yml"
+      - ".github/actions/setup-swift-ci/**"
   pull_request:
     branches: [main]
     paths:
@@ -52,6 +53,7 @@ on:
       - "Sources/ManifoldUI/**"
       - "scripts/cold-start-human.sh"
       - ".github/workflows/cold-start-human.yml"
+      - ".github/actions/setup-swift-ci/**"
 
 concurrency:
   group: cold-start-human-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -69,26 +71,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 2
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
-        with:
-          xcode-version: "26.3"
-
-      - name: Cache SwiftPM build
-        uses: actions/cache@v5
-        with:
-          path: |
-            .build/artifacts
-            .build/checkouts
-            .build/repositories
-          key: ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-${{ hashFiles('Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-xcode-26.3-spm-
-            ${{ runner.os }}-${{ runner.arch }}-spm-
+      # Match the macos-15 runner the tier-1/2/3 cold-start jobs use so SwiftPM
+      # cache keys collide and we share the warm checkouts cache.
+      - name: Setup Swift CI environment
+        uses: ./.github/actions/setup-swift-ci
 
       # Cache the cold-start consumer's own build path across runs. The script
       # honors MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR by passing it as SwiftPM's
@@ -108,7 +98,7 @@ jobs:
       # contents (a script change can shift the consumer's Package.swift
       # shape, which would invalidate cached dep object files).
       - name: Cache cold-start consumer build path
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cache/manifoldkit-cold-start-human

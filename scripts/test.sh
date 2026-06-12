@@ -72,9 +72,8 @@ HARDWARE_TRAIT_SUITES=(
 #             This is the default when --profile is omitted (back-compat).
 #   local   — Apple-Silicon pre-push: all traits on (minus Fuzz which is
 #             build-only), the full hardened suite list (including
-#             ManifoldKitTests / ManifoldHuggingFaceTests / ManifoldToolsTests
-#             that PR #1382 proved we need), and --num-workers tuned to the
-#             host core count.
+#             ManifoldKitTests / ManifoldHuggingFaceTests that PR #1382
+#             proved we need), and --num-workers tuned to the host core count.
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:
@@ -96,7 +95,6 @@ DISABLE_DEFAULT_TRAITS_PRESENT=0
 NUM_WORKERS_PRESENT=0
 SKIP_UPDATE_PRESENT=0
 MCP_FILTER_REQUESTED=0
-MCP_TRAIT_REQUESTED=0
 TRAITS_ARG_INDEX=-1
 SPIKE_MODULE=""
 while [[ $# -gt 0 ]]; do
@@ -174,18 +172,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --traits)
             traits="${2:?'--traits requires a comma-separated trait list'}"
-            if [[ ",$traits," == *",MCP,"* ]]; then
-                MCP_TRAIT_REQUESTED=1
-            fi
             TRAITS_ARG_INDEX=$((${#SWIFT_ARGS[@]} + 1))
             SWIFT_ARGS+=("$1" "$traits")
             shift 2
             ;;
         --traits=*)
-            traits="${1#--traits=}"
-            if [[ ",$traits," == *",MCP,"* ]]; then
-                MCP_TRAIT_REQUESTED=1
-            fi
             TRAITS_ARG_INDEX=${#SWIFT_ARGS[@]}
             SWIFT_ARGS+=("$1")
             shift
@@ -225,6 +216,11 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldAppIntentsTests
     ManifoldServerTests
     ManifoldTurnLoopCharacterizationTests
+    # Voice / Skills / Tools traits retired in v0.48 (PR A3): these suites
+    # compile in every trait shape now, so they run in the CI shape too.
+    ManifoldVoiceTests
+    ManifoldSkillsTests
+    ManifoldToolsTests
 )
 # Local-profile filters extend the CI list with the suites PR #1382 proved
 # we need to hit when traits are on (KV cache reuse race, etc.).
@@ -232,12 +228,11 @@ PROFILE_LOCAL_XCTEST_FILTERS=(
     "${PROFILE_CI_XCTEST_FILTERS[@]}"
     ManifoldKitTests
     ManifoldHuggingFaceTests
-    ManifoldToolsTests
 )
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
 # Local profile trait set: every trait minus Fuzz (which is build-only).
-PROFILE_LOCAL_TRAITS="MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros"
+PROFILE_LOCAL_TRAITS="MLX,Llama,Ollama,CloudSaaS,HuggingFace,Macros"
 
 if [[ -n "$PROFILE" ]]; then
     case "$PROFILE" in
@@ -382,16 +377,6 @@ if [[ -n "$PROFILE" ]]; then
         RC2=$?
         set -e
         exit $RC2
-    fi
-fi
-
-if [[ $MCP_FILTER_REQUESTED -eq 1 && $MCP_TRAIT_REQUESTED -eq 0 ]]; then
-    # ManifoldMCP test sources are #if MCP-gated; without the trait SwiftPM
-    # builds an empty target and reports a false-green 0-test run.
-    if [[ $TRAITS_ARG_INDEX -ge 0 ]]; then
-        SWIFT_ARGS[$TRAITS_ARG_INDEX]="${SWIFT_ARGS[$TRAITS_ARG_INDEX]},MCP"
-    else
-        SWIFT_ARGS+=("--traits" "MCP")
     fi
 fi
 
@@ -601,7 +586,7 @@ elif [[ $SWIFT_EXIT -ne 0 ]]; then
     echo "  RESULT: FAILED (swift test exit code $SWIFT_EXIT)"
     FINAL_EXIT=$SWIFT_EXIT
 elif [[ $MCP_FILTER_REQUESTED -eq 1 && $mcp_test_events -eq 0 ]]; then
-    echo "  RESULT: TRIPWIRE — MCP filter matched 0 MCP test cases; ensure --traits MCP compiled the target"
+    echo "  RESULT: TRIPWIRE — MCP filter matched 0 MCP test cases (target dropped from the build, or filter typo)"
     FINAL_EXIT=3
 elif [[ $total_passed -eq 0 && $total_skipped -gt 0 && $total_failed -eq 0 && $total_crashed_count -eq 0 ]]; then
     echo "  RESULT: TRIPWIRE — 0 tests passed, $total_skipped skipped (entire suite silently skipped)"

@@ -2,38 +2,105 @@
 
 ## Targets
 
+### Core / leaf modules (no ML deps, no SwiftData)
+
 | Target | Role | ML deps |
 |--------|------|---------|
-| `ManifoldKit` | Umbrella library that re-exports `ManifoldInference` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + `ManifoldBackends` + `ManifoldUI` so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Specialised modules (UIModelManagement, MCP, Voice, …) stay explicit imports. | None |
-| `ManifoldInference` | Inference orchestration — backend protocols, generation events, prompt assembly, conversation records (no persistence ports) | None |
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, tool bridge (`MCPClient`, `MCPToolSource`) | None |
-| `ManifoldRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration | None |
-| `ManifoldPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `ManifoldBootstrap` | None |
-| `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) | None |
-| `ManifoldMLX` | MLX inference backend, resource arbiter, capability probe, MLX tool dialect (depends on `ManifoldInference`) | MLX |
-| `ManifoldLlama` | llama.cpp (GGUF) inference, generation driver, embedding backend, GGUF tool-call parser (depends on `ManifoldInference`) | LlamaSwift |
-| `ManifoldFoundation` | Apple Foundation Models bridge — gated by OS availability (iOS 26 / macOS 26+), no trait | None |
-| `ManifoldCloud` | SaaS + LAN cloud backends: OpenAI Chat Completions, OpenAI Responses, Anthropic Claude, Ollama (depends on `ManifoldCloudCore`) | None |
-| `ManifoldBackends` | Umbrella re-export module backed by `Sources/ManifoldBackendsUmbrella/`. Hosts cross-family glue (`DefaultBackends`, per-family `BackendRegistrar` conformances) and `@_exported import`s the four family targets so existing `import ManifoldBackends` consumers keep compiling. | MLX, LlamaSwift |
-| `ManifoldUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here) | None |
-| `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors | None |
-| `ManifoldVoice` | Optional speech I/O adapters and voice composer accessory (depends on `ManifoldUI`) | None |
-| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.) | None |
-| `ManifoldMLXIntegrationTests` | Xcode-only real MLX model E2E tests | MLX |
+| `ManifoldNetworking` | Leaf networking primitives (P1a #1608): `NetworkActivity` observability funnel, `PrivateIPClassifier`. Pure Foundation, zero upward deps. | None |
+| `ManifoldSecrets` | Leaf security primitives (P1b #1609): `KeychainService`, `SecureEnclaveKeyManager`, `SecureBytes`. Pure Security framework, zero upward deps. | None |
+| `ManifoldHardware` | Leaf device-capability + GGUF primitives (P1c #1610): device probing, memory-pressure broadcasting, GGUF parsing, load-plan logic. Zero deps. | None |
+| `ManifoldModelCatalog` | Model discovery/catalog/benchmark + image/video-gen records (P1d #1611): `ModelInfo`, `ModelManifest`, `ModelCatalog`, `ModelStorageService`, `DiagnosticsService`, `SettingsService`, `ModelBenchmarkRunner`. Depends on `ManifoldHardware`, `ManifoldNetworking`, `ManifoldSecrets`. | None |
+| `ManifoldContract` | The Contract kernel (P2a #1719): backend protocols (`InferenceBackend`, `EmbeddingBackend`), value/stream types (`GenerationConfig`, `GenerationEvent`, `Message`, `ToolDefinition`/`ToolCall`/`ToolResult`, streaming transforms). Depends on `ManifoldHardware` + `ManifoldModelCatalog` (`@_exported import`s both). Must NOT depend on `ManifoldInference` — `ManifoldContractNoEngineDependencyTests` is the tripwire. | None |
 
-**Dependency rules:** Never import any backend family target (or the `ManifoldBackends` umbrella) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter. The four family targets (`ManifoldMLX`, `ManifoldLlama`, `ManifoldFoundation`, `ManifoldCloud`) and `ManifoldMCP` depend on `ManifoldInference` directly (not `ManifoldRuntime`), keeping them free of SwiftData. `ManifoldCloud → ManifoldCloudCore` is unconditional (always linked together); the consumer→family edge is trait-gated (`MLX` for `ManifoldMLX`, `Llama` for `ManifoldLlama`, `CloudSaaS || Ollama` for `ManifoldCloud`; `ManifoldCloudCore` and `ManifoldFoundation` are always linked). The umbrella `ManifoldBackends` re-exports each family conditionally so `import ManifoldBackends` keeps working in any trait combination. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`.
+### Inference engine + runtime
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldInference` | Inference orchestration engine: `InferenceService`, `GenerationQueue`, `ModelRegistry`, tool subsystem (`ToolExecutor`, `ToolRegistry`, `GenerationToolDispatchLoop`), `PromptAssembler`, `ContextWindowManager`, `TranscriptHealer`, streaming. Depends on `ManifoldContract` (which it `@_exported import`s for source compatibility) + the four P1 leaves. No persistence ports. | None |
+| `ManifoldRuntime` | Persistence ports (`MessageStore`, `SessionStore`, `EndpointStore`, `SamplerPresetStore`, `BenchmarkCache`, `WebSearchRuntime`), use cases (`PromptContextPipeline`, `ChatExportService`, `SessionListService`, `ConversationRuntime`), and session-list orchestration. Depends on `ManifoldInference`. | None |
+| `ManifoldPersistenceSwiftData` | SwiftData schema, `@Model` types, container factory, adapter implementations, and the full-stack `ManifoldBootstrap`. | None |
+
+### Backend families (inlets)
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldMLX` | MLX inference backend, resource arbiter, capability probe, MLX tool dialect, diffusion backends (`MLXDiffusionBackend`, `FluxDiffusionBackend`). Depends on `ManifoldInference`. | MLX |
+| `ManifoldLlama` | llama.cpp (GGUF) inference, generation driver, embedding backend, GGUF tool-call parser. Depends on `ManifoldInference`. | LlamaSwift |
+| `ManifoldFoundation` | Apple Foundation Models bridge — gated by OS availability (`#if canImport(FoundationModels)`, iOS 26 / macOS 26+), no trait. **Repointed to `ManifoldContract` only** (P2a #1719) — no engine-state dependency. | None |
+| `ManifoldOllama` | Ollama (self-hosted / LAN) backend family: `OllamaBackend`, model list/probe services, NDJSON stream extractor, `OllamaBackends` registrar. Compiles unconditionally — the `Ollama` trait gates consumer→`ManifoldOllama` edges, not source compilation. Depends on `ManifoldContract` + `ManifoldCloudCore`. Split out of `ManifoldCloud` in v0.48 (PR A1). | None |
+| `ManifoldCloudSaaS` | SaaS backend family: Anthropic Claude, OpenAI Chat Completions, OpenAI Responses, LM Studio / custom OpenAI-compatible endpoints, `CloudSaaSBackends` registrar. Compiles unconditionally — the `CloudSaaS` trait gates consumer→`ManifoldCloudSaaS` edges. Depends on `ManifoldContract` + `ManifoldCloudCore`. Split out of `ManifoldCloud` in v0.48 (PR A1). | None |
+| `ManifoldCloud` | **Deprecated re-export shim** (v0.48 product split): `@_exported import`s `ManifoldCloudCore` plus `ManifoldOllama` / `ManifoldCloudSaaS` behind their traits so `import ManifoldCloud` keeps compiling for one release. Still hosts `DefaultWebSearchRuntime` — its `ManifoldRuntime` dep is a deliberate library→library edge (`WebSearchRuntime` port conformance); a defending comment in Package.swift explains why it stays un-gated. | None |
+| `ManifoldCloudCore` | Shared SSE / TLS-pinning / DNS-rebind / URLSession infrastructure (`SSECloudBackend`, `PinnedSessionDelegate`, `DNSRebindingGuard`, `URLSessionProvider`, `CloudErrorSanitizer`, `ThinkingBlockManager`) plus the provider-agnostic encoding/parsing surface shared by both cloud families (`CloudMessageEncoder`, `CloudPayloadHandler`, `CloudHTTPProviderAdapter`, OpenAI-compatible Chat Completions parsing). Always linked; compiles unconditionally since v0.48 removed its trait gates. Depends on `ManifoldInference`. | None |
+| `ManifoldBackends` | Umbrella re-export shim (`Sources/ManifoldBackendsUmbrella/`). Hosts cross-family glue (`DefaultBackends`, per-family `BackendRegistrar` conformances) and `@_exported import`s the four family targets so existing `import ManifoldBackends` consumers keep compiling. | MLX, LlamaSwift |
+
+### MCP + tool + app-extension modules
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48 (catalog descriptors included). Depends on `ManifoldInference`. | None |
+| `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. | None |
+| `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. | None |
+| `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. | None |
+| `ManifoldSkills` | Claude-Code-compatible SKILL.md filesystem discovery and `invoke_skill` dispatcher (macOS-only via `#if os(macOS)`). Depends on `ManifoldInference` + `ManifoldRuntime`. | None |
+| `ManifoldMacrosPlugin` | Swift macro compiler plugin implementing `@ToolSchema`. Runs at build time (not linked into app binaries). Trait-gated behind `Macros` (off by default) to keep swift-syntax's ~647 files out of default builds. | None |
+
+### UI modules
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldUI` | SwiftUI chat-runtime views and view models (chat-only consumer stops here). Depends on `ManifoldRuntime` + `ManifoldInference`. | None |
+| `ManifoldUIModelManagement` | Model browser/download/storage UI + cloud API endpoint editors. Depends on `ManifoldUI`. | None |
+| `ManifoldVoice` | Optional speech I/O adapters and voice composer accessory. Depends on `ManifoldUI`. | None |
+
+### Discovery + server + fuzz
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldHuggingFace` | HuggingFace Hub search, browse, and download integration. Depends on `ManifoldInference`. | None |
+| `ManifoldServer` | OpenAI-compatible HTTP server executable (Hummingbird). Trait-gated behind `Server`. | None |
+| `ManifoldFuzz` | Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic; depends on `ManifoldInference`. | None |
+| `ManifoldFuzzBackends` | Real-backend factory shim shared by `fuzz-chat` CLI and Xcode-hosted MLX fuzz tests. Depends on `ManifoldFuzz` + `ManifoldBackends`. | MLX, LlamaSwift |
+| `fuzz-chat` | Executable driver for fuzz campaigns against Ollama / Llama / Foundation. Gated on `Fuzz` trait. Run via `scripts/fuzz.sh`. | None |
+| `manifold-tools` | CLI executable for running tool-call validation scenarios from `ManifoldTools`. Links `ManifoldOllama` directly (never the `ManifoldBackends` umbrella — #982 dual-llama Xcode-scheme hazard). | None |
+
+### Vendored sources (not standalone products)
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `StableDiffusion` | Vendored from mlx-swift-examples (MIT). Used by `MLXDiffusionBackend`. | MLX |
+| `FluxSwift` | Vendored from mzbac/flux.swift (MIT). Used by `FluxDiffusionBackend`. | MLX |
+
+### Test support targets
+
+| Target | Role |
+|--------|------|
+| `ManifoldTestSupport` | Shared mocks and fakes (`MockInferenceBackend`, `CharTokenizer`, etc.). No XCTest dependency (see `ManifoldContractTestSupport`). Published as a `.library` product so companion backend packages (manifold-mlx / manifold-llama, #1749) can reuse the mocks. |
+| `ManifoldContractTestSupport` | XCTest-dependent protocol contract mixins. Kept separate from `ManifoldTestSupport` so `fuzz-chat` can depend on the latter without pulling XCTest into a non-test binary (PR #1409). |
+| `ManifoldBackendTestKit` | Importable backend contract-check machinery (`BackendContractChecks`, backend contract mixins, `FixtureComparator`, local-backend contract runner). Published as a `.library` product for companion backend packages. Links XCTest — same #1409 constraint as `ManifoldContractTestSupport`: never depend on it from an executable target (audit-enforced). Contract suites that use the capability-claims registry must NOT run under `swift test --parallel` (process-global registry — see its DocC catalog). |
+
+### Umbrella
+
+| Target | Role | ML deps |
+|--------|------|---------|
+| `ManifoldKit` | Umbrella re-export so app code can `import ManifoldKit` instead of stitching together 4–6 imports. Re-exports `ManifoldInference` + `ManifoldModelCatalog` + `ManifoldRuntime` + `ManifoldPersistenceSwiftData` + `ManifoldBackends` + `ManifoldUI` + `ManifoldSkills`. Specialised modules (UIModelManagement, MCP, Voice, AppIntents, …) stay explicit imports. | None |
+
+**Dependency rules:** Never import any backend family target (or the `ManifoldBackends` umbrella) from UI; never import `ManifoldUIModelManagement` from `ManifoldUI` (CI lint enforces this). `ManifoldUIModelManagement` depends on `ManifoldUI` — cycle dissolved by closure-injecting `APIConfigurationView` via `@ViewBuilder` parameter.
+
+**Backend family deps (post-P2a #1719, post-v0.48 A1):** `ManifoldMLX` and `ManifoldLlama` depend on `ManifoldInference` (real engine use: `extension InferenceService`, `ToolRegistry`, `BackendRegistrar`). `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` compile against `ManifoldContract` (+ `ManifoldCloudCore` for the two cloud families) without touching the engine directly. The `ManifoldCloud` shim depends on `ManifoldCloudCore`, `ManifoldRuntime` (for `DefaultWebSearchRuntime`'s `WebSearchRuntime` port conformance — un-gated library→library edge; see Package.swift comment), and trait-gated edges to the two cloud families. `ManifoldMCP` depends on `ManifoldInference` (uses `ToolExecutor`, `ToolRegistry`). The consumer→family edge is trait-gated: `MLX` for `ManifoldMLX`, `Llama` for `ManifoldLlama`, `Ollama` for `ManifoldOllama`, `CloudSaaS` for `ManifoldCloudSaaS` (and `CloudSaaS || Ollama` for the `ManifoldCloud` shim); `ManifoldCloudCore` and `ManifoldFoundation` are always linked.
+
+The umbrella `ManifoldBackends` re-exports each family conditionally so `import ManifoldBackends` keeps working in any trait combination. `ManifoldMCP` (including the `MCPCatalog` descriptors) compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48.
 
 ## Running tests
 
 Use `scripts/test.sh` — it runs configured suites and prints an honest summary. Key flags:
 - `--disable-default-traits` — excludes MLX/Llama/hardware-gated tests (required for CI)
 - `--skip-update` — skips per-invocation git-remote contact (drop only if you edited Package.swift)
-- `--traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace` — for full-traits builds
+- `--traits MLX,Llama,Ollama,CloudSaaS,HuggingFace` — for full-traits builds
 
 **Special cases:**
 - MLX integration tests require Xcode (Metal shaders): `scripts/test-mlx-integration.sh`
 - Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
-- MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
+- MCP E2E: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — MCP test targets compile unconditionally (MCP trait retired in v0.48); the `RUN_MCP_E2E=1` env var still gates execution. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
 - Llama: in-process runs are safe — `LlamaBackendProcessLifecycle` latches `llama_backend_init` exactly once per process (was a per-class isolation script pre-#1319)
 - `ManifoldE2ETests`: bare form `swift test --filter ManifoldE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'ManifoldE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
@@ -125,7 +192,7 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 scripts/test.sh --profile local
 ```
 
-Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism can surface process-global state races in `BackendContractChecks` when backend test classes interleave (fixed for claim-methods in #1601, but implicit scheduling matches historical behavior — keep it).
+Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism can surface process-global state races in `BackendContractChecks` when backend test classes interleave (fixed for claim-methods in #1601, but implicit scheduling matches historical behavior — keep it).
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 
@@ -141,7 +208,7 @@ Both profiles respect explicit caller flags: `scripts/test.sh --profile local --
 
 **Trait-combo sweep** (whenever modifying a switched enum, a `GenerationEvent` / `GenerationConfig` / `BackendCapabilities`-shaped type, or any trait-gated source file):
 ```bash
-swift build --build-tests --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz
+swift build --build-tests --traits MLX,Llama,Ollama,CloudSaaS,HuggingFace,Fuzz
 ```
 Default-trait builds won't catch CloudSaaS- or Ollama-gated switch exhaustiveness. The all-traits-on `--build-tests` is the cheapest single check.
 

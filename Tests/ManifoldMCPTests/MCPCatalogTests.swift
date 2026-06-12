@@ -1,9 +1,7 @@
-#if MCP
 import XCTest
 import ManifoldMCP
 
 final class MCPCatalogTests: XCTestCase {
-    #if MCPBuiltinCatalog
     func test_eachCatalogEntryEndpointIsHTTPS() {
         for descriptor in MCPCatalog.all {
             if case .streamableHTTP(let endpoint, _) = descriptor.transport {
@@ -65,6 +63,4 @@ final class MCPCatalogTests: XCTestCase {
             }
         }
     }
-    #endif
 }
-#endif

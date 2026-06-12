@@ -35,6 +35,9 @@ Branch points:
 - [QUICKSTART-CLI.md](QUICKSTART-CLI.md) — building a CLI, server, or other
   non-SwiftUI consumer. Compile-tested `Package.swift` + `main.swift` for
   Foundation Models, local GGUF, and Ollama / OpenAI-compatible endpoints.
+- [QUICKSTART-SERVER.md](QUICKSTART-SERVER.md) — running ManifoldKit as a
+  standalone OpenAI-compatible HTTP server (`manifold-server`). Install via
+  Homebrew, run, and point Cursor / Continue / any OpenAI SDK at `127.0.0.1:8080/v1`.
 - [QUICKSTART-BRING-YOUR-OWN-UI.md](QUICKSTART-BRING-YOUR-OWN-UI.md) — the
   inference layer with your own SwiftUI surface (no `ChatView`). The canonical,
   single-source BYO-UI walkthrough.
@@ -69,6 +72,7 @@ Already have chat working? Layer these on, in roughly increasing specialisation.
 | Doc | Covers |
 |-----|--------|
 | [FeatureMatrix.md](FeatureMatrix.md) | The full trait → backend → capability table (generated from source). |
+| [TRAIT-COSTS.md](TRAIT-COSTS.md) | Per-trait binary impact, build-time cost, and dependency weight (generated from measured data). Explains why the checkout is large regardless of trait set. |
 | [PROVIDER-BRIDGE.md](PROVIDER-BRIDGE.md) | The AnyLanguageModel bridge — Gemini, xAI, Groq, Mistral, OpenRouter, and OpenAI/Anthropic-compatible endpoints. |
 | [CLOUD-OAUTH.md](CLOUD-OAUTH.md) | OAuth flows for cloud providers. |
 | [LOCAL-GGUF.md](LOCAL-GGUF.md) | Local model storage contract and discovery. |

@@ -1,9 +1,10 @@
 #if MLX
 import XCTest
 import ManifoldInference
+import ManifoldBackendTestKit
 import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldMLX
+import ManifoldBackends
+import ManifoldMLX
 
 /// MLXBackend conformance against the universal backend contract.
 ///

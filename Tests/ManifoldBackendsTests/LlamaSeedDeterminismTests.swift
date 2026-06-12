@@ -1,9 +1,9 @@
 #if Llama
 import XCTest
-@testable import ManifoldInference
-@testable import ManifoldTestSupport
-@testable import ManifoldBackends
-@testable import ManifoldLlama
+import ManifoldInference
+import ManifoldTestSupport
+import ManifoldBackends
+@_spi(Testing) import ManifoldLlama
 
 /// Verifies that ``GenerationConfig/seed`` makes ``LlamaBackend`` token streams
 /// reproducible across runs. The driver feeds the seed into

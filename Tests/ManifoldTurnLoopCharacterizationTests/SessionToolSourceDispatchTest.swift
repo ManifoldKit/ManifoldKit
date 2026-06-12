@@ -152,9 +152,11 @@ final class SessionToolSourceDispatchTest: XCTestCase {
 
         let registry = ToolRegistry()
         let service = InferenceService(backend: backend, name: "DispatchMock", toolRegistry: registry)
+        // sessionStore: nil so touchSession() is a no-op — this test only cares
+        // about the tool registry and must not race SwiftData against stack deallocation.
         let runtime = ConversationRuntime(
             messageStore: stack.provider,
-            sessionStore: stack.provider,
+            sessionStore: nil,
             inferenceService: service
         )
         await runtime.updateSessionToolSources([StubGenerateImageToolSource()])
@@ -168,6 +170,57 @@ final class SessionToolSourceDispatchTest: XCTestCase {
         XCTAssertFalse(
             leaked,
             "session-scoped executor must be unregistered when the turn ends; a leak would bind later turns to a stale session"
+        )
+    }
+
+    /// Register-then-enqueue-fails (#1725 step C): when `enqueueAsync` throws
+    /// AFTER the session tool executors were registered (#1606 ordering puts
+    /// registration strictly before enqueue), the error-path unregister in
+    /// the turn loop must still run — otherwise the failed turn leaks a
+    /// session-scoped executor into the shared registry.
+    ///
+    /// The failure is driven by ``MockInferenceBackend/rejectToolCarryingEnqueues``:
+    /// the queue's capability gate reads `backend.capabilities` at enqueue
+    /// time and rejects tool-carrying requests synchronously, before any
+    /// stream exists — so no stream-drain cleanup path can mask a missing
+    /// enqueue-failure unregister.
+    func test_sessionToolExecutor_unregisteredWhenEnqueueThrows() async throws {
+        let stack = try InMemoryPersistenceHarness.make()
+        let session = ManifoldInference.ChatSession(id: UUID(), title: "enqueue-fail")
+        try await stack.provider.insertSession(session)
+
+        let backend = Self.toolCapableBackend()
+        backend.rejectToolCarryingEnqueues = true
+
+        let registry = ToolRegistry()
+        let service = InferenceService(backend: backend, name: "DispatchMock", toolRegistry: registry)
+        // sessionStore wired so the executor fetches a real session record —
+        // registration only happens with a non-nil record, and the unregister
+        // assertion below would be vacuous without it.
+        let runtime = ConversationRuntime(
+            messageStore: stack.provider,
+            sessionStore: stack.provider,
+            inferenceService: service
+        )
+        await runtime.updateSessionToolSources([StubGenerateImageToolSource()])
+
+        let handle = try await runtime.processTurnWithOutcome(
+            TurnInput(sessionID: session.id, kind: .send(text: "should fail at enqueue"))
+        )
+        let outcome = await handle?.outcome
+
+        // The turn must have failed at enqueue (capability gate), proving the
+        // failure happened on the enqueue path — i.e. after register, before
+        // any stream existed — rather than the turn quietly succeeding.
+        guard case .inference = outcome?.error else {
+            XCTFail("expected an enqueue-time inference failure, got \(String(describing: outcome?.error))")
+            return
+        }
+
+        let leaked = service.toolRegistry?.contains(name: StubGenerateImageToolSource.toolName) ?? false
+        XCTAssertFalse(
+            leaked,
+            "enqueue failure must still unregister the session tool executors registered before enqueueAsync (#1606 error path)"
         )
     }
 }

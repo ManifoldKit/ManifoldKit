@@ -71,7 +71,8 @@ private func _llamaWarnOnlyCallback(
 ///
 /// NSLock is intentional: init/deinit are synchronous, so actor isolation
 /// would require fire-and-forget Tasks with no ordering guarantee.
-enum LlamaBackendProcessLifecycle {
+// @_spi(Testing): published only for backend test targets (companion-package split, #1749).
+@_spi(Testing) public enum LlamaBackendProcessLifecycle {
     nonisolated(unsafe) private static var refCount = 0
     nonisolated(unsafe) private static var didInitialize = false
     /// Current process-global log level. Guarded by `lock`.
@@ -85,7 +86,7 @@ enum LlamaBackendProcessLifecycle {
         return _currentLogLevel
     }
 
-    static func retain() {
+    public static func retain() {
         lock.lock()
         defer { lock.unlock() }
         if !didInitialize {
@@ -96,7 +97,7 @@ enum LlamaBackendProcessLifecycle {
         refCount += 1
     }
 
-    static func release() {
+    public static func release() {
         lock.lock()
         defer { lock.unlock() }
         precondition(refCount > 0, "LlamaBackendProcessLifecycle.release() called without a matching retain() — retain/release imbalance")
@@ -141,13 +142,13 @@ enum LlamaBackendProcessLifecycle {
 #if DEBUG
     /// Test-only accessors. Exposed under `DEBUG` so regression tests can pin
     /// the latch invariant without giving production code a mutation surface.
-    static var _isInitializedForTesting: Bool {
+    public static var _isInitializedForTesting: Bool {
         lock.lock()
         defer { lock.unlock() }
         return didInitialize
     }
 
-    static var _refCountForTesting: Int {
+    public static var _refCountForTesting: Int {
         lock.lock()
         defer { lock.unlock() }
         return refCount

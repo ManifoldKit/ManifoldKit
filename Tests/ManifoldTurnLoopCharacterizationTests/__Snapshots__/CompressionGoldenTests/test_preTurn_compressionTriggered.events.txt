@@ -1,0 +1,10 @@
+0  compressionTriggered  removed:1 reason:contextWindowExceeded
+1  historyCompressed  session:<uuid:1> inserted:1
+2  messageInserted  id:<uuid:2> role:user content:"New turn after compression"
+3  beforeContextAssembly  session:<uuid:1> prompt:"New turn after compression" msgCount:2
+4  contextAssembled  slots:0
+5  streamStarted  id:<uuid:3>
+6  tokenEmitted  id:<uuid:3> delta:"Pre-turn response."
+7  messageInserted  id:<uuid:3> role:assistant content:"Pre-turn response."
+8  streamFinished  id:<uuid:3> reason:stop
+9  afterGeneration  id:<uuid:3> finalText:"Pre-turn response."
