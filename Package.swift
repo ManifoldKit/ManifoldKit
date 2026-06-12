@@ -1277,6 +1277,14 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldTestSupport",
+                // Backend-seam freeze (Fixtures/BackendSeamConsumer.swift,
+                // #1749): the cross-repo surface the companion family
+                // packages compile against spans the Contract kernel, the
+                // Hardware seam types, and the @_spi(BackendInternals)
+                // ChatViewModel initializer in ManifoldUI.
+                "ManifoldContract",
+                "ManifoldHardware",
+                "ManifoldUI",
             ]
         ),
         // ManifoldKitTests: tests against the umbrella module's own public
