@@ -244,7 +244,7 @@ public enum BackendContractChecks {
         }
 
         try await backend.loadModel(
-            from: URL(string: "unused:")!,
+            from: URL(fileURLWithPath: "/dev/null"),
             plan: .testStub(effectiveContextSize: 512)
         )
 
