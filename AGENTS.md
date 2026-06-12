@@ -350,16 +350,16 @@ await vm.loadCloudEndpoint(endpoint)
 let reply = try await vm.sendMessage("hello")
 ```
 
-Cloud backends require **`--traits CloudSaaS`** (default-off):
+Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
+`Ollama` traits were retired) — no trait flags needed:
 
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.46.0",
+    from: "0.48.0",
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
-        .trait(name: "CloudSaaS"),
     ]
 )
 ```

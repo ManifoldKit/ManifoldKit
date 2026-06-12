@@ -11,8 +11,8 @@
 # changes that drop ManifoldUI / ManifoldRuntime / ManifoldInference (all of
 # which ManifoldUIModelManagement depends on unconditionally).
 #
-# ManifoldUIModelManagement compiles unconditionally — HuggingFace / Ollama /
-# CloudSaaS traits only add conditional-compilation defines that expand model
+# ManifoldUIModelManagement compiles unconditionally — the HuggingFace
+# trait only adds conditional-compilation defines that expand model
 # source and API-key editor surface. The gate runs without those traits so it
 # exercises the baseline, always-present slice.
 #

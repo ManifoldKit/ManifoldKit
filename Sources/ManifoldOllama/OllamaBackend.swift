@@ -197,7 +197,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     /// ``URLSessionProvider/networkDisabled`` is set, the underlying property
     /// access traps. Use ``makeChecked(urlSession:)`` for a throwing variant
     /// that surfaces the kill-switch as a recoverable error.
-    @available(*, deprecated, message: "OllamaBackend remains available; this is a build-mode migration notice. Before the next major, add the `Ollama` trait to package dependencies or register via DefaultBackends.register(_:); see README 'Build modes' and #714.")
+    @available(*, deprecated, message: "Direct construction bypasses registration. Register via DefaultBackends.register(with:) or quickStart(), or use makeChecked(urlSession:) for kill-switch-safe construction; see docs/MIGRATION-0.48.md.")
     public init(urlSession: URLSession? = nil) {
         // Adapter capabilities mirror what `OllamaBackend.capabilities`
         // resolves before any /api/show probe has run. The dynamic
@@ -321,7 +321,7 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
 
     /// Throwing factory that propagates ``URLSessionProvider/networkDisabled``
     /// as ``CloudBackendError/networkDisabled`` instead of trapping.
-    @available(*, deprecated, message: "OllamaBackend remains available; this is a build-mode migration notice. Before the next major, add the `Ollama` trait to package dependencies or register via DefaultBackends.register(_:); see README 'Build modes' and #714.")
+    @available(*, deprecated, message: "Direct construction bypasses registration. Register via DefaultBackends.register(with:) or quickStart(), or use makeChecked(urlSession:) for kill-switch-safe construction; see docs/MIGRATION-0.48.md.")
     public static func makeChecked(urlSession: URLSession? = nil) throws -> OllamaBackend {
         let session: URLSession
         if let urlSession {

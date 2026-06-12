@@ -10,10 +10,9 @@
 // `ManifoldCloudCore`.
 //
 // `import ManifoldCloud` keeps compiling for one release via these
-// re-exports; new code should import the specific module it needs. The
-// `#if` gates mirror the trait-gated consumer→product edges in
-// Package.swift (this shim is the one place a per-trait `@_exported
-// import` still needs a compilation condition).
+// re-exports; new code should import the specific module it needs. Since
+// v0.48 PR A4 (Ollama/CloudSaaS traits retired) both family re-exports are
+// unconditional — the families always compile.
 //
 // `DefaultWebSearchRuntime` (WebSearch/) still lives here: it conforms to
 // the `WebSearchRuntime` port from ManifoldRuntime, an edge neither
@@ -22,10 +21,6 @@
 
 @_exported import ManifoldCloudCore
 
-#if Ollama
 @_exported import ManifoldOllama
-#endif
 
-#if CloudSaaS
 @_exported import ManifoldCloudSaaS
-#endif

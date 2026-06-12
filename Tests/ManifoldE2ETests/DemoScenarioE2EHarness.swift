@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import XCTest
 import ManifoldInference
@@ -288,4 +287,3 @@ enum DemoScenarioE2EFixtures {
         }
     }
 }
-#endif

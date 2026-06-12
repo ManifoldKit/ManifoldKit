@@ -35,9 +35,12 @@ final class PromptContextPipelineConcurrencyTests: XCTestCase {
     }
 
     /// Three 50 ms providers run concurrently; total wall time is ~the slowest
-    /// single provider (~50 ms), not the sum (~150 ms). Asserts < 120 ms, which
-    /// is comfortably below the 140 ms sequential floor while leaving generous
-    /// scheduling-jitter slack for loaded CI runners.
+    /// single provider (~50 ms), not the sum (~150 ms). The assertion is
+    /// relative — pipeline wall time vs a same-process sequential walk of the
+    /// identical providers — because an absolute ceiling cannot tolerate
+    /// loaded CI runners (a 120 ms ceiling flaked twice at ~160 ms while the
+    /// fan-out was demonstrably still concurrent). Scheduler load inflates
+    /// both measurements together; the ratio survives it.
     func test_threeProvidersRunConcurrently() async throws {
         let providers: [any PromptContextProvider] = [
             SleepingProvider(sleep: .milliseconds(50)),
@@ -47,23 +50,30 @@ final class PromptContextPipelineConcurrencyTests: XCTestCase {
         let pipeline = PromptContextPipeline(providers: providers)
 
         let clock = ContinuousClock()
-        let elapsed = try await clock.measure {
+        let concurrent = try await clock.measure {
             _ = try await pipeline.assemble(messageCount: 0)
         }
+        // Sequential baseline: the same three providers awaited back-to-back
+        // under the same scheduler conditions (~150 ms unloaded).
+        let sequential = try await clock.measure {
+            for provider in providers {
+                _ = try await provider.contributeSlots(messageCount: 0)
+            }
+        }
 
-        // Concurrent fan-out: three 50 ms sleeps overlap = ~50 ms.
-        // Sequential execution would land at ~150 ms.
-        // The 120 ms ceiling distinguishes the two and tolerates scheduling
-        // jitter on loaded CI runners.
+        // True fan-out lands near 1/3 of the sequential walk; a regression to
+        // sequential execution lands near 1.0. 0.75 splits them with generous
+        // jitter slack in both directions.
         // Tracked by https://github.com/roryford/ManifoldKit/issues/1684
+        let ratio = concurrent / sequential
         XCTAssertLessThan(
-            elapsed,
-            .milliseconds(120),
+            ratio,
+            0.75,
             """
-            PromptContextPipeline ran in \(elapsed) — expected < 120 ms for \
-            concurrent execution of three 50 ms providers. If this exceeded \
-            120 ms, the pipeline is no longer running providers concurrently \
-            (regressed to the sequential ~150 ms walk).
+            PromptContextPipeline ran in \(concurrent) vs \(sequential) for the \
+            sequential walk of the same providers (ratio \(ratio)) — expected \
+            < 0.75 for concurrent fan-out. A ratio near 1.0 means the pipeline \
+            is no longer running providers concurrently.
             """
         )
     }

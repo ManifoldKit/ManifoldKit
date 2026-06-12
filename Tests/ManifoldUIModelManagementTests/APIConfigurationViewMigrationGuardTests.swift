@@ -14,25 +14,12 @@ import SwiftUI
 /// )
 /// ```
 ///
-/// The cloud-API content is gated behind `#if Ollama || CloudSaaS`, but the
-/// **type and `init()`** must remain public under disabled traits so the
-/// migration call-site compiles for chat-only consumers (e.g. Fireside,
-/// which builds without `Ollama`/`CloudSaaS`). The view body falls back to
-/// `EmptyView()` when the traits are off.
-///
-/// This file is intentionally **not** wrapped in `#if Ollama || CloudSaaS`
-/// — that's the whole point. It runs in the
-/// `swift test --filter ManifoldUIModelManagementTests --disable-default-traits`
-/// CI lane, which is exactly the configuration where Fireside lives.
-///
-/// ## Sabotage verification
-///
-/// To confirm the test actually catches a regression, restore whole-file
-/// `#if Ollama || CloudSaaS` gating around `APIConfigurationView` (the
-/// pre-fix layout) and re-run with default traits disabled. The build —
-/// and therefore this test — must fail to compile, because
-/// `APIConfigurationView` would no longer exist as a symbol. Restore the
-/// always-public layout before committing. (Verified 2026-04-26.)
+/// The **type and `init()`** must remain public in every build shape so the
+/// migration call-site compiles for chat-only consumers (e.g. Fireside).
+/// Historically the view body was gated behind the Ollama / CloudSaaS
+/// traits; those retired in v0.48 (PR A4) and the view now compiles whole
+/// in every configuration — this guard keeps the symbol public under
+/// `--disable-default-traits`, the lane where Fireside lives.
 final class APIConfigurationViewMigrationGuardTests: XCTestCase {
 
     @MainActor

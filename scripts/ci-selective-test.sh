@@ -74,13 +74,14 @@ run_swift_test() {
 for suite in "$@"; do
   case "$suite" in
     ManifoldBackendsTests)
-      run_swift_test "$suite" --disable-default-traits --traits CloudSaaS
+      run_swift_test "$suite" --disable-default-traits
       ;;
     ManifoldVoiceTests|ManifoldSkillsTests|ManifoldToolsTests|ManifoldAppIntentsTests)
       # No .xcscheme for these suites; their traits were retired in v0.48
-      # (PR A3) so they compile under the shared MCP,CloudSaaS lane shape and
-      # reuse its .build. swift test routing avoids the no-scheme failure path.
-      run_swift_test "$suite" --disable-default-traits --traits MCP,CloudSaaS
+      # (PR A3) so they compile under the shared --disable-default-traits
+      # lane shape and reuse its .build. swift test routing avoids the
+      # no-scheme failure path.
+      run_swift_test "$suite" --disable-default-traits
       ;;
     *)
       run_xcodebuild "$suite"

@@ -208,14 +208,14 @@ struct FuzzChatCLI {
         let factory: any FuzzBackendFactory
         switch backend {
         case .ollama:
-            #if Fuzz && Ollama
+            #if Fuzz
             do {
                 factory = try OllamaFuzzFactory.makeCampaignFactory(modelHint: modelHint, blockSize: rotateEvery)
             } catch {
                 fail(String(describing: error))
             }
             #else
-            fail("Ollama backend requires the Fuzz and Ollama build traits. Run via: scripts/fuzz.sh")
+            fail("Ollama backend requires the Fuzz build trait. Run via: scripts/fuzz.sh")
             #endif
         case .mock:
             factory = MockFuzzFactory()
@@ -238,7 +238,7 @@ struct FuzzChatCLI {
             fail("Foundation backend requires macOS 26+ with FoundationModels and the Fuzz build trait. Run via: scripts/fuzz.sh")
             #endif
         case .openai:
-            #if CloudSaaS && Fuzz
+            #if Fuzz
             factory = makeOpenAIFactory(
                 baseURLString: baseURLString,
                 apiKeyArg: apiKeyArg,
@@ -246,7 +246,7 @@ struct FuzzChatCLI {
                 requestTimeout: requestTimeout
             )
             #else
-            fail("openai backend requires the Fuzz and CloudSaaS build traits. Run via: swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
+            fail("openai backend requires the Fuzz build trait. Run via: swift run --traits Fuzz,MLX,Llama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
             #endif
         case .mlx:
             fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh --with-mlx or --backend mlx.")
@@ -574,7 +574,7 @@ struct FuzzChatCLI {
         }
     }
 
-    #if CloudSaaS && Fuzz
+    #if Fuzz
     /// Builds the OpenAI-compatible cloud factory, validating the base URL and
     /// resolving the API key. The key is read from `--api-key` when present,
     /// otherwise from the environment (`OPENROUTER_API_KEY` preferred, then
@@ -620,15 +620,15 @@ struct FuzzChatCLI {
         let lines = [
             "fuzz-chat — chat anomaly fuzzer",
             "",
-            "Usage: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat [options]",
+            "Usage: swift run --traits Fuzz,MLX,Llama fuzz-chat [options]",
             "",
             "Options:",
             "  --backend ollama|mock|chaos|llama|foundation|mlx|openai|all   default: llama",
             "                      mock   = MockInferenceBackend (hardware-free, used by PR-tier CI)",
             "                      chaos  = ChaosBackend (hardware-free; injects stream failures)",
             "                      openai = OpenAI-compatible cloud endpoint (OpenRouter, OpenAI, …)",
-            "                               via OpenAIBackend. Needs the CloudSaaS trait:",
-            "                               swift run --traits Fuzz,CloudSaaS,MLX,Llama,Ollama fuzz-chat",
+            "                               via OpenAIBackend:",
+            "                               swift run --traits Fuzz,MLX,Llama fuzz-chat",
             "                               --backend openai --base-url <url> --model <slug>",
             "                               Replay/shrink are unavailable (cloud is non-deterministic).",
             "  --minutes N         time budget (default 5 if neither flag set)",

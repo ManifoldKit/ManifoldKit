@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import XCTest
 import ManifoldInference
 @testable import ManifoldBackends
@@ -21,7 +20,6 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         super.tearDown()
     }
 
-    #if CloudSaaS
     func test_pinned_throws_whenNetworkDisabled() {
         URLSessionProvider.networkDisabled = true
 
@@ -44,7 +42,6 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         let session = try URLSessionProvider.throwingPinned()
         XCTAssertNotNil(session.delegate, "pinned session should still install its delegate when network is enabled")
     }
-    #endif
 
     func test_unpinned_throws_whenNetworkDisabled() {
         URLSessionProvider.networkDisabled = true
@@ -70,7 +67,6 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
     }
 
     func test_killSwitch_propagates_throughOllamaBackendMakeChecked() throws {
-        #if Ollama
         URLSessionProvider.networkDisabled = true
         do {
             _ = try OllamaBackend.makeChecked()
@@ -84,12 +80,8 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
         } catch {
             XCTFail("Expected CloudBackendError.networkDisabled but got \(error)")
         }
-        #else
-        throw XCTSkip("Ollama trait not enabled in this build.")
-        #endif
     }
 
-    #if CloudSaaS
     func test_killSwitch_propagates_throughOpenAIBackendMakeChecked() throws {
         URLSessionProvider.networkDisabled = true
         do {
@@ -121,6 +113,4 @@ final class URLSessionProviderNetworkDisabledTests: XCTestCase {
             XCTFail("Expected CloudBackendError.networkDisabled but got \(error)")
         }
     }
-    #endif
 }
-#endif

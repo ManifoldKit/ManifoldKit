@@ -1,6 +1,5 @@
 import Foundation
 import ManifoldInference
-import ManifoldCloudCore
 
 /// Wire-shape parsing for the OpenAI Chat Completions streaming format.
 ///

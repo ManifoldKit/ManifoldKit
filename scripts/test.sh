@@ -232,7 +232,7 @@ PROFILE_LOCAL_XCTEST_FILTERS=(
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
 # Local profile trait set: every trait minus Fuzz (which is build-only).
-PROFILE_LOCAL_TRAITS="MLX,Llama,Ollama,CloudSaaS,HuggingFace,Macros"
+PROFILE_LOCAL_TRAITS="MLX,Llama,HuggingFace,Macros"
 
 if [[ -n "$PROFILE" ]]; then
     case "$PROFILE" in

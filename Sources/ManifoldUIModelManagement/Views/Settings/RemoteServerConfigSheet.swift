@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
@@ -230,4 +229,3 @@ private extension String {
 #Preview("Remote Server Config") {
     RemoteServerConfigSheet()
 }
-#endif

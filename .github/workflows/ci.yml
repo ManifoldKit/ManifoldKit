@@ -556,17 +556,15 @@ jobs:
       # diagnostic signal about which test stalled. See the script header for
       # the design rationale.
       #
-      # All three test invocations below pass the SAME trait set
-      # (`CloudSaaS`). `swift test --filter` always builds the whole test
-      # tree (the filter only gates execution), so a different trait set per
-      # invocation means a different conditional-compilation config and forces a
-      # full recompile each time — measured ~63s rebuilt on the Swift Testing
-      # step alone (CI log, run 26705440802). Using one superset trait set lets
-      # steps 2–3 reuse step 1's `.build` and drop to test-execution-only. The
-      # set is a superset (step 3 needs CloudSaaS, steps 1–2 need
-      # nothing) — traits only ADD compiled code, so no suite's behavior changes.
-      # Keep all three in sync; diverging the traits silently reintroduces the
-      # redundant rebuilds.
+      # All three test invocations below pass the SAME build shape
+      # (`--disable-default-traits`, no extra traits — the cloud families
+      # compile unconditionally since v0.48 PR A4). `swift test --filter`
+      # always builds the whole test tree (the filter only gates execution),
+      # so a different trait set per invocation means a different
+      # conditional-compilation config and forces a full recompile each time —
+      # measured ~63s rebuilt on the Swift Testing step alone (CI log, run
+      # 26705440802). Keep all three in sync; diverging the traits silently
+      # reintroduces the redundant rebuilds.
       - name: Test — XCTest suites (Core + Runtime + PersistenceSwiftData + UI + UIModelManagement + MCP + TestSupport + AppIntents + Voice + Skills + Tools + Inference + Networking + TurnLoopCharacterization, parallel) [full]
         id: test-xctest-suites
         if: steps.test-mode.outputs.mode == 'full'
@@ -574,7 +572,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --disable-default-traits --traits CloudSaaS --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --disable-default-traits --skip-update --parallel
 
       # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
       # above. Under --parallel, swift-test schedules XCTest classes across workers
@@ -593,7 +591,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --traits CloudSaaS --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --skip-update
 
       # `if: (success() || failure())` so a failing XCTest step still surfaces
       # Swift Testing failures in the same run — otherwise breakage in both
@@ -606,7 +604,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --traits CloudSaaS --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
 
       # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
       # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
@@ -948,7 +946,7 @@ jobs:
   # trait-combo breakage is therefore invisible to per-PR CI.  Two canonical
   # failure shapes have already burned CI time:
   #   - #1382: a KV-cache reuse race that only manifests under `--traits MLX,Llama`
-  #   - #1660: a BackendRegistrar break that only manifests under `--traits Ollama`
+  #   - #1660: a BackendRegistrar break that only manifested under `--traits Ollama` (trait retired in v0.48)
   # Both merged green on the `--disable-default-traits` lane and were caught by
   # the nightly all-traits build — *after* landing on main.
   #
@@ -1001,4 +999,4 @@ jobs:
         timeout-minutes: 25
         run: |
           swift build --build-tests \
-            --traits MLX,Llama,Ollama,CloudSaaS,HuggingFace,Fuzz
+            --traits MLX,Llama,HuggingFace,Fuzz

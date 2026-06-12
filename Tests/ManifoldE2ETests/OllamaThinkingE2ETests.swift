@@ -1,4 +1,3 @@
-#if Ollama
 import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
@@ -293,4 +292,3 @@ final class OllamaThinkingE2ETests: XCTestCase {
         )
     }
 }
-#endif

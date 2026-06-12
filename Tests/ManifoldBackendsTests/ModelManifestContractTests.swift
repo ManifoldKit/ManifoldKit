@@ -14,7 +14,6 @@ final class ModelManifestContractTests: XCTestCase {
 
     // MARK: - Cloud backends — supportsThinking matches the manifest table
 
-    #if CloudSaaS
     func test_claude_sonnet4_manifestReflectsThinking() throws {
         let backend = ClaudeBackend()
         backend.modelName = "claude-sonnet-4-5"
@@ -60,7 +59,6 @@ final class ModelManifestContractTests: XCTestCase {
         XCTAssertEqual(manifest.supportsSeed, false,
                        "Unknown OpenAI model must not advertise seed")
     }
-    #endif
 
     // MARK: - MockInferenceBackend — invariant scaffolding
 

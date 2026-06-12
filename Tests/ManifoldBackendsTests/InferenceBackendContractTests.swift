@@ -1,15 +1,10 @@
-#if CloudSaaS || Ollama
 import XCTest
 import ManifoldBackendTestKit
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 
@@ -64,7 +59,6 @@ final class InferenceBackendContractTests: XCTestCase {
         }
     }
 
-    #if CloudSaaS
     private static let openAIParticipant = Participant(
         label: "openai.chat_completions",
         fixtureDirectory: "openai",
@@ -98,9 +92,7 @@ final class InferenceBackendContractTests: XCTestCase {
         ),
         wireFormat: .sse
     )
-    #endif
 
-    #if CloudSaaS
     /// OpenAI Responses API participant (Phase 3/Responses). Routes
     /// through ``CloudPayloadHandler/openAIResponses`` for the
     /// extractEvents surface — for the Responses wire shape that means
@@ -145,9 +137,7 @@ final class InferenceBackendContractTests: XCTestCase {
         wireFormat: .sse
     )
 
-    #endif
 
-    #if Ollama
     private static let ollamaParticipant = Participant(
         label: "ollama.chat",
         fixtureDirectory: "ollama",
@@ -182,9 +172,7 @@ final class InferenceBackendContractTests: XCTestCase {
         ),
         wireFormat: .ndjson
     )
-    #endif
 
-    #if CloudSaaS
     private static let claudeParticipant = Participant(
         label: "anthropic.messages",
         fixtureDirectory: "claude",
@@ -224,18 +212,13 @@ final class InferenceBackendContractTests: XCTestCase {
         ),
         wireFormat: .sse
     )
-    #endif
 
     private static let participants: [Participant] = {
         var list: [Participant] = []
-        #if CloudSaaS
         list.append(openAIParticipant)
         list.append(openAIResponsesParticipant)
         list.append(claudeParticipant)
-        #endif
-        #if Ollama
         list.append(ollamaParticipant)
-        #endif
         return list
     }()
 
@@ -290,16 +273,12 @@ final class InferenceBackendContractTests: XCTestCase {
             case "openai.chat_completions":
                 let shape = OpenAIDeltaToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai.delta")
-            #if CloudSaaS
             case "openai.responses":
                 let shape = OpenAIResponsesItemIdToolCalls()
                 XCTAssertEqual(shape.shapeName, "openai_responses.item_id")
-            #endif
-            #if Ollama
             case "ollama.chat":
                 let shape = OllamaWholeToolCalls()
                 XCTAssertEqual(shape.shapeName, "ollama.whole")
-            #endif
             case "anthropic.messages":
                 let shape = AnthropicBlockToolCalls()
                 XCTAssertEqual(shape.shapeName, "anthropic.block")
@@ -465,4 +444,3 @@ final class InferenceBackendContractTests: XCTestCase {
         ])
     }
 }
-#endif

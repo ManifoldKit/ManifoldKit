@@ -1,16 +1,11 @@
-#if CloudSaaS || Ollama
 import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 
@@ -65,7 +60,6 @@ final class CrossBackendReplayParityTests: XCTestCase {
     /// and asserts the resulting call matches the expected shape.
     ///
     /// Sabotage: change fixture 'name' to 'get_weather_wrong', confirm XCTAssertEqual on name fails.
-#if CloudSaaS
     func test_openai_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "openai_tool_call.json")
 
@@ -80,14 +74,12 @@ final class CrossBackendReplayParityTests: XCTestCase {
         let args = try parseArgs(call.arguments)
         XCTAssertEqual(args["city"], "Dublin", "arguments must contain city=Dublin")
     }
-#endif
 
     // MARK: - Anthropic fixture replay
 
     /// Decodes `anthropic_tool_use.json` through
     /// ``ClaudeBackend/parseWholeMessageToolUseBlocks(from:)`` and asserts
     /// the resulting block matches the expected shape.
-#if CloudSaaS
     func test_anthropic_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "anthropic_tool_use.json")
 
@@ -102,13 +94,11 @@ final class CrossBackendReplayParityTests: XCTestCase {
         let args = try parseArgs(block.serializedInput)
         XCTAssertEqual(args["city"], "Dublin", "serializedInput must contain city=Dublin")
     }
-#endif
 
     // MARK: - Ollama fixture replay
 
     /// Decodes `ollama_tool_call.json` through ``OllamaBackend/parseLine(_:)``
     /// and asserts the resulting ``ToolCall`` matches the expected shape.
-#if Ollama
     func test_ollama_fixtureReplay_producesExpectedToolCall() throws {
         let json = try loadFixture(named: "ollama_tool_call.json")
 
@@ -124,7 +114,6 @@ final class CrossBackendReplayParityTests: XCTestCase {
         let args = try parseArgs(call.arguments)
         XCTAssertEqual(args["city"], "Dublin", "arguments must contain city=Dublin")
     }
-#endif
 
     // MARK: - Cross-backend parity gate
 
@@ -136,7 +125,6 @@ final class CrossBackendReplayParityTests: XCTestCase {
     ///
     /// This is the cross-cutting assertion: different wire formats from
     /// three vendors must all resolve to `["city": "Dublin"]`.
-#if CloudSaaS && Ollama
     func test_allVendors_argumentParity_cityDublin() throws {
         // OpenAI
         let openAIJson = try loadFixture(named: "openai_tool_call.json")
@@ -164,6 +152,4 @@ final class CrossBackendReplayParityTests: XCTestCase {
         // as "all equal" (e.g. all empty).
         XCTAssertEqual(openAIArgs["city"], "Dublin")
     }
-#endif
 }
-#endif

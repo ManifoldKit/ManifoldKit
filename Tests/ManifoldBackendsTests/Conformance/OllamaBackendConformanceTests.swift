@@ -1,4 +1,3 @@
-#if Ollama
 import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
@@ -82,4 +81,3 @@ final class OllamaBackendConformanceTests: XCTestCase {
         )
     }
 }
-#endif

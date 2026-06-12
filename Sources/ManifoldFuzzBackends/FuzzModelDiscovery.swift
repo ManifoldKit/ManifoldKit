@@ -1,7 +1,5 @@
 import Foundation
-#if Ollama
 import ManifoldBackends
-#endif
 
 /// Fuzz-local model discovery utilities.
 ///
@@ -11,7 +9,6 @@ enum FuzzModelDiscovery {
 
     // MARK: - Ollama
 
-#if Ollama
     static func listOllamaModels(baseURL: URL) -> [String]? {
         guard let models = fetchOllamaModels(baseURL: baseURL) else { return nil }
         return models.map(\.name)
@@ -49,7 +46,6 @@ enum FuzzModelDiscovery {
         let result = semaphore.wait(timeout: .now() + 5)
         return result == .success ? box.value : nil
     }
-#endif
 
     // MARK: - MLX Models
 

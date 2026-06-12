@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldCloudCore
@@ -237,4 +236,3 @@ final class DNSRebindingGuardTests: XCTestCase {
         }
     }
 }
-#endif

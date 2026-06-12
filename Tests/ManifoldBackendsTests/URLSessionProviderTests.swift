@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldCloudCore
@@ -6,7 +5,6 @@ import ManifoldInference
 
 final class URLSessionProviderTests: XCTestCase {
 
-    #if CloudSaaS
     func test_pinnedSession_hasExpectedTimeouts() {
         let session = URLSessionProvider.pinned
         // Sabotage check: changing timeoutIntervalForRequest in URLSessionProvider causes this to fail
@@ -35,7 +33,6 @@ final class URLSessionProviderTests: XCTestCase {
         XCTAssertNotNil(composite?.redirectGuard,
                         "Pinned session composite should always carry a RedirectGuardDelegate")
     }
-    #endif
 
     func test_unpinnedSession_hasExpectedTimeouts() {
         let session = URLSessionProvider.unpinned
@@ -68,12 +65,9 @@ final class URLSessionProviderTests: XCTestCase {
                      "Unpinned session composite must not carry a serverTrustHandler — pinning is reserved for the pinned session")
     }
 
-    #if CloudSaaS
     func test_pinnedAndUnpinned_areDifferentInstances() {
         // Sabotage check: returning the same session instance for both causes this to fail
         XCTAssertFalse(URLSessionProvider.pinned === URLSessionProvider.unpinned,
                        "Pinned and unpinned sessions should be different instances")
     }
-    #endif
 }
-#endif

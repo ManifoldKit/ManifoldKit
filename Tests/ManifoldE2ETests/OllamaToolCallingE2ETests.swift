@@ -1,4 +1,3 @@
-#if Ollama
 import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
@@ -186,4 +185,3 @@ final class OllamaToolCallingE2ETests: XCTestCase {
         )
     }
 }
-#endif

@@ -9,9 +9,10 @@
 //
 // Trait-gating rule (per CLAUDE.md): we gate the consumer→family edge in
 // `Package.swift` (and the `@_exported import` here), not the
-// family→library edge inside the family targets. Family targets always
-// compile when their trait is on; the umbrella stays buildable in any
-// trait combination.
+// family→library edge inside the family targets. Only the MLX / Llama
+// edges remain trait-gated; the cloud edges are unconditional since the
+// Ollama / CloudSaaS traits retired in v0.48 (PR A4). The umbrella stays
+// buildable in any trait combination.
 
 @_exported import ManifoldInference
 @_exported import ManifoldCloudCore
@@ -26,6 +27,4 @@
 
 @_exported import ManifoldFoundation
 
-#if CloudSaaS || Ollama
 @_exported import ManifoldCloud
-#endif

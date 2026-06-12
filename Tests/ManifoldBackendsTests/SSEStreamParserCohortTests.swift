@@ -1,15 +1,10 @@
-#if CloudSaaS
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 
@@ -104,4 +99,3 @@ final class SSEStreamParserCohortTests: XCTestCase {
 }
 
 extension OpenAIResponsesBackend.ResponsesEventKind: Equatable {}
-#endif

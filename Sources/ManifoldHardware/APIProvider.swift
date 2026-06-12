@@ -49,11 +49,11 @@ public enum APIProvider: String, Codable, CaseIterable, Identifiable, Sendable {
 
     /// The providers actually available in this build.
     ///
-    /// Iterates the cases compatible with the `Ollama` and `CloudSaaS` traits.
-    /// Use this when a UI or registration loop should only present providers
-    /// the build can actually instantiate. ``allCases`` stays unconditional —
-    /// it's data, not behaviour, and `ConversationRecords.selectedEndpointID`
-    /// must be able to decode any case regardless of build flavour.
+    /// Since v0.48 the cloud families compile unconditionally, so this is
+    /// every built-in provider (plus registry-registered third parties), in
+    /// documented sort order. Kept as the single registration/UI iteration
+    /// point: whether an endpoint is *configured* for a provider is a
+    /// runtime question, answered by the endpoint store — not this list.
     public static var availableInBuild: [APIProvider] {
         CompiledBackends.current.orderedCloudProviders
     }

@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import ManifoldBackends
 import ManifoldFuzz
@@ -133,4 +132,3 @@ public struct OllamaFuzzFactory: FuzzBackendFactory {
         return models.first { $0.lowercased().contains(lowered) }
     }
 }
-#endif

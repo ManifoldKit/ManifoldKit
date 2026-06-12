@@ -69,7 +69,7 @@ struct MyChatApp: App {
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
 > [!IMPORTANT]
-> **The trait cliff: no backend trait → a *runtime* throw, not a compile error.** If your build compiles in **zero** inference backends for the active trait / OS combination, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) when you call it — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause ("no backend traits enabled") at the assembly boundary instead of a confusing "No model loaded" on the first turn. The defaults (`MLX`, `Llama`, `HuggingFace`) always include at least one backend, so you only hit this if you pass a custom `traits:` array that selects no inference backend, or build with `--disable-default-traits`. Pick at least one of `MLX`, `Llama`, `CloudSaaS`, `Ollama`, or `FoundationOnly` — see [Customizing backends](#customizing-backends) for the per-profile trait sets.
+> **The trait cliff: no backend trait → a *runtime* throw, not a compile error.** If your build compiles in **zero** inference backends for the active trait / OS combination, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) when you call it — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause ("no backend traits enabled") at the assembly boundary instead of a confusing "No model loaded" on the first turn. The defaults (`MLX`, `Llama`, `HuggingFace`) always include at least one backend, so you only hit this if you pass a custom `traits:` array that selects no inference backend, or build with `--disable-default-traits`. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a registered build always has cloud support — the throw only fires if nothing was *registered* (e.g. you skipped `quickStart()`/`DefaultBackends.register(with:)`). For local inference pick at least one of `MLX`, `Llama`, or `FoundationOnly` — see [Customizing backends](#customizing-backends) for the per-profile trait sets.
 
 > **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
@@ -217,7 +217,7 @@ struct MyChatApp: App {
 
 For cloud / LAN backends (Ollama, OpenAI Chat Completions, OpenAI Responses, Anthropic Claude), the host inserts an `APIEndpointRecord` into the endpoint store *before* the view appears. `quickStart()` exposes the store on `result.bootstrap.endpointStore`; `ChatViewModel.refreshAvailableEndpointsFromStore()` is wired up automatically and will pick up the new endpoint. If you want a seeded endpoint to be live immediately (single-endpoint apps, scripted demos, kiosk flows), also set `selectedEndpoint` and call `loadSelectedEndpoint()` before exposing the view model.
 
-⚠️ Ollama is gated behind the `Ollama` SwiftPM trait — see [Customizing backends](#customizing-backends) for the manifest snippet. Without that trait, no Ollama backend is registered for the seeded endpoint.
+Ollama support is always compiled in since v0.48 (the `Ollama` trait was retired) — the seeded endpoint is the only configuration step.
 
 ```swift,no-build
 import SwiftUI
@@ -308,7 +308,7 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 
 ## Customizing backends
 
-`quickStart()` registers every backend that's compiled into your build (gated by SwiftPM traits). To control which backends ship, pass a `traits:` array on your `.package(...)` dependency:
+`quickStart()` registers every backend that's compiled into your build. The cloud backends (Ollama, OpenAI, Claude) always compile since v0.48; the local backends are gated by SwiftPM traits. To control which local backends ship, pass a `traits:` array on your `.package(...)` dependency:
 
 ```swift
 .package(
@@ -317,8 +317,6 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
     traits: [
         .trait(name: "MLX"),           // default-on
         .trait(name: "Llama"),         // default-on
-        .trait(name: "CloudSaaS"),     // opt-in: OpenAI, Claude
-        .trait(name: "Ollama"),        // opt-in: localhost:11434
     ]
 )
 ```
@@ -329,9 +327,8 @@ Common profiles:
 |----------|--------|
 | Default consumer app | leave defaults (`MLX`, `Llama`, `HuggingFace`) |
 | App Store-lean (Foundation Models only) | `["FoundationOnly"]` — see [docs/AppStoreSubmission.md](AppStoreSubmission.md) |
-| SaaS-only | `["CloudSaaS"]` (drop MLX/Llama if you don't need local models) |
-| Self-hosted / private datacenter | `["MLX", "Llama", "Ollama"]` |
-| Full | `["MLX", "Llama", "Ollama", "CloudSaaS"]` |
+| Cloud-only (no local models) | `["FoundationOnly"]` or `--disable-default-traits` — cloud is always compiled in |
+| Full | leave defaults (`MLX`, `Llama`, `HuggingFace`) — cloud included automatically |
 
 See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capability table.
 

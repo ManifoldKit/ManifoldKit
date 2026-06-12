@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
@@ -59,4 +58,3 @@ final class CloudBackendErrorSanitizedFactoryTests: XCTestCase {
         XCTAssertEqual(viaFactory.errorDescription?.contains(once), true)
     }
 }
-#endif

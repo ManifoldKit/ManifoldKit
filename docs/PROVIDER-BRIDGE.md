@@ -15,7 +15,7 @@ The bridge is the supported path for providers ManifoldKit does not implement na
 - **OpenRouter** (and any OpenAI-compatible `/responses` endpoint)
 - Any OpenAI- or Anthropic-API-compatible endpoint
 
-OpenAI, Anthropic, and Ollama also resolve through the bridge, but the native `CloudSaaS` / `Ollama` backends are preferred for those — they add certificate pinning, retry, circuit-breaking, and latest-wins cancellation that the bridge does not.
+OpenAI, Anthropic, and Ollama also resolve through the bridge, but the native backends (always compiled since v0.48) are preferred for those — they add certificate pinning, retry, circuit-breaking, and latest-wins cancellation that the bridge does not.
 
 ## Enabling the trait
 

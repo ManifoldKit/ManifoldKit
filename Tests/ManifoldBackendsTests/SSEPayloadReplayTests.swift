@@ -1,15 +1,10 @@
-#if CloudSaaS
 import XCTest
 @testable import ManifoldBackends
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
@@ -386,4 +381,3 @@ final class SSEPayloadReplayTests: XCTestCase {
         XCTAssertEqual(tokens[2], " \u{4F60}\u{597D}") // Chinese characters (你好)
     }
 }
-#endif

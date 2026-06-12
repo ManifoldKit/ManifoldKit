@@ -69,6 +69,14 @@ internal struct ServerBackendSelection: Equatable, Sendable {
     }
 }
 
+/// Validates the CLI's backend selection against ``CompiledBackends`` and
+/// lazily loads the requested backend.
+///
+/// Naming note (v0.48): "trait-aware" is only literally true for the local
+/// families — MLX and Llama remain SwiftPM traits until the companion-package
+/// split (C-stream). The Ollama / SaaS families compile unconditionally, so
+/// their `CompiledBackends` members are constant `true` and the injected
+/// `compiledBackends` value only restricts them in tests.
 internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     internal let selection: ServerBackendSelection
     internal let compiledBackends: CompiledBackends
@@ -221,7 +229,6 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
     }
 
     private func loadOllamaBackend(modelOverride: String?) async throws -> any InferenceBackend {
-        #if Ollama
         let modelName = modelOverride ?? selection.model ?? APIProvider.ollama.defaultModelName
         guard let baseURL = URL(string: selection.ollamaBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw ServerError.invalidConfiguration("--ollama-base-url must be a valid URL.")
@@ -230,9 +237,6 @@ internal actor TraitAwareServerBackendProvider: ServerBackendProvider {
         backend.configure(baseURL: baseURL, modelName: modelName)
         try await backend.loadModel(from: baseURL, plan: .cloud(requestedContextSize: 8192))
         return backend
-        #else
-        throw ServerError.backendUnavailable("Ollama endpoints require the Ollama trait in this build.")
-        #endif
     }
 }
 

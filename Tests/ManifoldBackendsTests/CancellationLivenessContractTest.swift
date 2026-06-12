@@ -1,4 +1,3 @@
-#if CloudSaaS || Ollama
 import XCTest
 @testable import ManifoldCloudCore
 
@@ -135,4 +134,3 @@ final class CancellationLivenessContractTest: XCTestCase {
         return contents.filter { $0.pathExtension == "swift" }
     }
 }
-#endif

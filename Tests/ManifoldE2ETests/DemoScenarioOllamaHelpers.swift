@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import XCTest
 import ManifoldInference
@@ -236,4 +235,3 @@ private enum FakeMCPLookupTool {
         }
     }
 }
-#endif

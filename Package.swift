@@ -2,12 +2,11 @@
 
 // Trait reference (full table in README §2.4):
 //   - Defaults: MLX, Llama, HuggingFace.
-//   - Opt-in heavy/network traits: Ollama, CloudSaaS,
-//     Server, Macros, Fuzz, AnyLanguageModel, HuggingFace.
+//   - Opt-in traits: Server, Macros, Fuzz, AnyLanguageModel.
 //   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
-//     AppIntents, Skills (PR A3). Those modules now compile unconditionally;
-//     consumers opt in by importing (or not importing) the products.
-//     See docs/MIGRATION-0.48.md.
+//     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4). Those modules
+//     now compile unconditionally; consumers opt in by importing (or not
+//     importing) the products. See docs/MIGRATION-0.48.md.
 //   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
 //     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
 //     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
@@ -117,8 +116,6 @@ let package = Package(
         .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
         .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
         .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
-        .trait(name: "Ollama", description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major."),
-        .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
         // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
@@ -314,8 +311,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Macros", .when(traits: ["Macros"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
@@ -403,10 +398,11 @@ let package = Package(
         // file `#if`s smeared across the body.
         //
         // Trait-gating rule (per CLAUDE.md): gate the consumer→family edge,
-        // not the family→library edge. `ManifoldCloud → ManifoldCloudCore` is
-        // unconditional (always linked together); `Consumer → ManifoldCloud`
-        // is gated by `CloudSaaS || Ollama` so a `FoundationOnly` build never
-        // pulls Cloud sources at all.
+        // not the family→library edge. Since v0.48 (PR A4) the cloud edges
+        // are unconditional — the Ollama / CloudSaaS traits are retired and
+        // the families always compile. Consumers that don't want SaaS code
+        // in a shipped binary depend on the specific products they need
+        // instead of the umbrella (link-out, not compile-out; docs/FIPS.md).
         //
         // The legacy `ManifoldBackends` target/module is preserved as a thin
         // re-export shim (sources moved to `Sources/ManifoldBackendsUmbrella/`
@@ -523,10 +519,9 @@ let package = Package(
         ),
 
         // ManifoldOllama: the Ollama (self-hosted / LAN) backend family.
-        // Compiles unconditionally — the Ollama trait gates the
-        // consumer→ManifoldOllama edges (umbrella, shim, tests), not source
-        // compilation inside the target. Split out of ManifoldCloud in the
-        // v0.48 packaging release (PR A1).
+        // Compiles unconditionally; all consumer edges are unconditional too
+        // since the Ollama trait retired (PR A4). Split out of ManifoldCloud
+        // in the v0.48 packaging release (PR A1).
         .target(
             name: "ManifoldOllama",
             dependencies: [
@@ -542,9 +537,10 @@ let package = Package(
 
         // ManifoldCloudSaaS: the SaaS backend family (Anthropic Claude,
         // OpenAI Chat Completions, OpenAI Responses, LM Studio / custom
-        // OpenAI-compatible endpoints). Compiles unconditionally — the
-        // CloudSaaS trait gates the consumer→ManifoldCloudSaaS edges. Split
-        // out of ManifoldCloud in the v0.48 packaging release (PR A1).
+        // OpenAI-compatible endpoints). Compiles unconditionally; all
+        // consumer edges are unconditional too since the CloudSaaS trait
+        // retired (PR A4). Split out of ManifoldCloud in the v0.48
+        // packaging release (PR A1).
         .target(
             name: "ManifoldCloudSaaS",
             dependencies: [
@@ -555,8 +551,7 @@ let package = Package(
         ),
 
         // ManifoldCloud: deprecated re-export shim (v0.48 product split).
-        // `@_exported import`s ManifoldOllama / ManifoldCloudSaaS (each
-        // behind its trait, mirroring these gated edges) so existing
+        // `@_exported import`s ManifoldOllama / ManifoldCloudSaaS so existing
         // `import ManifoldCloud` consumers keep compiling for one release.
         // Also still hosts DefaultWebSearchRuntime — the one cloud file that
         // conforms to a ManifoldRuntime port, an edge neither provider
@@ -571,17 +566,10 @@ let package = Package(
                 // trait-gating rule. ManifoldRuntime is SwiftData-free, so this
                 // does not drag SwiftData into the family target.
                 "ManifoldRuntime",
-                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
-                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
             ],
-            path: "Sources/ManifoldCloud",
-            swiftSettings: [
-                // The shim is the one target that still needs per-trait
-                // compilation conditions: a per-trait `@_exported import`
-                // inside one file requires `#if`.
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-            ]
+            path: "Sources/ManifoldCloud"
         ),
 
         // ManifoldBackends: the legacy umbrella module, now a thin re-export
@@ -602,21 +590,19 @@ let package = Package(
                 "ManifoldFoundation",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                "ManifoldCloud",
                 // Direct edges to the v0.48 family products: CloudBackends
                 // forwards to OllamaBackends / CloudSaaSBackends, and an
                 // explicit `import` requires a declared edge even though the
                 // ManifoldCloud shim re-exports both.
-                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
-                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
             path: "Sources/ManifoldBackendsUmbrella",
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
@@ -631,8 +617,6 @@ let package = Package(
             ],
             path: "Sources/ManifoldUI",
             swiftSettings: [
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -653,8 +637,6 @@ let package = Package(
             ],
             path: "Sources/ManifoldUIModelManagement",
             swiftSettings: [
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -719,8 +701,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -925,13 +905,13 @@ let package = Package(
                 "ManifoldHardware",
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
-                .target(name: "ManifoldCloud", condition: .when(traits: ["CloudSaaS", "Ollama"])),
+                "ManifoldCloud",
                 // Direct edges for `@testable import ManifoldOllama` /
                 // `@testable import ManifoldCloudSaaS` — @testable requires a
                 // direct declared edge; the shim's re-export only carries
                 // public symbols.
-                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
-                .target(name: "ManifoldCloudSaaS", condition: .when(traits: ["CloudSaaS"])),
+                "ManifoldOllama",
+                "ManifoldCloudSaaS",
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
@@ -944,8 +924,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
                 .define("AnyLanguageModel", .when(traits: ["AnyLanguageModel"])),
@@ -1027,8 +1005,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Server", .when(traits: ["Server"])),
             ]
@@ -1071,8 +1047,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -1089,8 +1063,6 @@ let package = Package(
             ],
             exclude: ["__Snapshots__"],
             swiftSettings: [
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
@@ -1137,8 +1109,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
@@ -1159,8 +1129,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
@@ -1177,8 +1145,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
@@ -1205,19 +1171,16 @@ let package = Package(
         // graph, and a second llama.framework copy in the auto-generated
         // Xcode scheme breaks ManifoldMLXIntegrationTests (#982). The CLI
         // only drives Ollama (or the in-process mock), so it takes the
-        // ManifoldOllama family product directly — still behind the Ollama
-        // trait until that trait retires in PR A4.
+        // ManifoldOllama family product directly (unconditional since the
+        // Ollama trait retired in PR A4).
         .executableTarget(
             name: "manifold-tools",
             dependencies: [
                 "ManifoldTools",
-                .target(name: "ManifoldOllama", condition: .when(traits: ["Ollama"])),
+                "ManifoldOllama",
                 "ManifoldInference",
             ],
-            path: "Sources/manifold-tools",
-            swiftSettings: [
-                .define("Ollama", .when(traits: ["Ollama"])),
-            ]
+            path: "Sources/manifold-tools"
         ),
         .testTarget(
             name: "ManifoldToolsTests",
@@ -1260,8 +1223,6 @@ let package = Package(
             swiftSettings: [
                 .define("MLX", .when(traits: ["MLX"])),
                 .define("Llama", .when(traits: ["Llama"])),
-                .define("Ollama", .when(traits: ["Ollama"])),
-                .define("CloudSaaS", .when(traits: ["CloudSaaS"])),
                 .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),

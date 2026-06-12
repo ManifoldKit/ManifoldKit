@@ -67,9 +67,8 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
         let service = InferenceService()
         DefaultBackends.register(with: service)
 
-        // Cloud providers compiled into this build must be declared after
-        // registration. Providers gated out by `Ollama` / `CloudSaaS` traits
-        // intentionally stay un-declared.
+        // Every built-in cloud provider must be declared after registration
+        // (cloud families always compile since v0.48).
         for provider in APIProvider.availableInBuild {
             XCTAssertTrue(service.canLoad(provider: provider),
                           "Expected \(provider) to be declared after DefaultBackends.register")
@@ -147,9 +146,8 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
                        DefaultBackends.supportedModelTypes,
                        "FrameworkCapabilityService.enabledBackends should match static query after refresh")
 
-        // Cloud inference support tracks whichever providers the build's
-        // traits compiled in. Offline builds (neither `Ollama` nor
-        // `CloudSaaS`) declare none, so `supportsCloudInference` is false.
+        // Cloud families always compile since v0.48, so the provider list is
+        // never empty and cloud inference support is always reported.
         let expected = !APIProvider.availableInBuild.isEmpty
         XCTAssertEqual(capService.enabledBackends.supportsCloudInference, expected,
                        "Cloud inference support should match the trait-gated provider list")
@@ -159,8 +157,6 @@ final class DefaultBackendsCapabilityTests: XCTestCase {
     func test_withoutRegister_cloudProvidersNotDeclared_sabotageCheck() {
         let service = InferenceService()
         // Do NOT call register(with:).
-        // Use whichever provider the current build can build, falling back to
-        // `.claude` purely so the assertion compiles in offline builds.
         let probe = APIProvider.availableInBuild.first ?? .claude
         XCTAssertFalse(service.canLoad(provider: probe),
                        "Without registration, no provider should be declared")

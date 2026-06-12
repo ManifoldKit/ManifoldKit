@@ -23,12 +23,11 @@ public enum CloudSaaSBackends: BackendRegistrar {
             }
         }
 
-        // Declare support via `availableInBuild` (not unconditionally) to
-        // preserve the pre-split coupling to `CompiledBackends.current`:
-        // in a build whose trait set excludes CloudSaaS, registration stays
-        // a no-op on the declared-support side. The registration-derived
-        // redesign of `CompiledBackends` is deliberately deferred (v0.48
-        // plan, PR A4).
+        // Declare support via `availableInBuild` to stay coupled to
+        // `CompiledBackends.current` — compile-time truth for what is in
+        // this binary. Since v0.48 (traits retired) the SaaS providers are
+        // always compiled in, so this loop always declares them; whether an
+        // endpoint is *configured* is a runtime question the UI answers.
         for provider in APIProvider.availableInBuild where provider != .ollama {
             service.declareSupport(for: provider)
         }

@@ -13,7 +13,6 @@ final class BackendCapabilitiesContractTests: XCTestCase {
 
     // MARK: - Remote backends
 
-    #if Ollama && CloudSaaS
     func test_cloudBackends_reportIsRemote() {
         XCTAssertTrue(ClaudeBackend().capabilities.isRemote,
                       "ClaudeBackend makes network calls — isRemote must be true")
@@ -22,11 +21,9 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(OllamaBackend().capabilities.isRemote,
                       "OllamaBackend makes network calls — isRemote must be true")
     }
-    #endif
 
     // MARK: - Tool Calling
 
-    #if Ollama && CloudSaaS
     func test_cloudBackends_toolCallingCapabilities() {
         // Tool calling is advertised by every cloud backend now that the
         // per-vendor wire-format work in #435 has landed:
@@ -43,18 +40,14 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(OllamaBackend().capabilities.supportsToolCalling,
                       "OllamaBackend advertises tool calling since Wave 2 dispatch wiring")
     }
-    #endif
 
-    #if CloudSaaS
     func test_cloudBackends_structuredOutputCapabilities() {
         XCTAssertTrue(ClaudeBackend().capabilities.supportsStructuredOutput,
                       "ClaudeBackend supports structured output")
         XCTAssertTrue(OpenAIBackend().capabilities.supportsStructuredOutput,
                       "OpenAIBackend supports structured output via json_schema")
     }
-    #endif
 
-    #if Ollama && CloudSaaS
     func test_backends_nativeJSONModeCapabilities() {
         XCTAssertFalse(ClaudeBackend().capabilities.supportsNativeJSONMode,
                        "ClaudeBackend does not advertise a dedicated native JSON mode")
@@ -63,7 +56,6 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertTrue(OllamaBackend().capabilities.supportsNativeJSONMode,
                       "OllamaBackend supports format=json")
     }
-    #endif
 
     // MARK: - supportsThinking
 
@@ -74,7 +66,6 @@ final class BackendCapabilitiesContractTests: XCTestCase {
     /// `OpenAIBackend`'s default `gpt-4o-mini` is a chat model (no thinking),
     /// and `OllamaBackend` resolves at load time via `/api/show` so an
     /// unloaded instance reports the manifest-default `false`.
-    #if Ollama && CloudSaaS
     func test_cloudBackends_advertiseThinkingFromManifest() {
         XCTAssertTrue(ClaudeBackend().capabilities.supportsThinking,
                       "ClaudeBackend default model is claude-sonnet-4, which the manifest table reports as a thinking model")
@@ -83,7 +74,6 @@ final class BackendCapabilitiesContractTests: XCTestCase {
         XCTAssertFalse(OllamaBackend().capabilities.supportsThinking,
                        "OllamaBackend reports thinking only after /api/show probe runs at loadModel time")
     }
-    #endif
 
     // MARK: - Local backends
 

@@ -148,8 +148,6 @@ declare -A TRAIT_DEPS
 TRAIT_DEPS["MLX"]="mlx-swift mlx-swift-lm"
 TRAIT_DEPS["Llama"]="llama.swift"          # xcframework in artifacts/llama.swift
 TRAIT_DEPS["HuggingFace"]="swift-huggingface"
-TRAIT_DEPS["CloudSaaS"]=""                 # ManifoldCloudCore always compiled; no unique checkout
-TRAIT_DEPS["Ollama"]=""                    # same ManifoldCloudCore path, no unique checkout
 TRAIT_DEPS["Server"]="EventSource swift-nio swift-crypto swift-collections swift-atomics swift-system"
 TRAIT_DEPS["Macros"]="swift-syntax"
 TRAIT_DEPS["Fuzz"]=""                     # fuzz-chat executable only
@@ -161,8 +159,6 @@ declare -A TRAIT_MODULES
 TRAIT_MODULES["MLX"]="ManifoldMLX + StableDiffusion + FluxSwift"
 TRAIT_MODULES["Llama"]="ManifoldLlama"
 TRAIT_MODULES["HuggingFace"]="ManifoldHuggingFace"
-TRAIT_MODULES["CloudSaaS"]="ManifoldCloud (SaaS bodies)"
-TRAIT_MODULES["Ollama"]="ManifoldCloud (Ollama bodies)"
 TRAIT_MODULES["Server"]="ManifoldServer + Hummingbird"
 TRAIT_MODULES["Macros"]="ManifoldMacrosPlugin + @ToolSchema"
 TRAIT_MODULES["Fuzz"]="fuzz-chat executable (real backends)"
@@ -176,8 +172,6 @@ declare -A TRAIT_FLAGS
 TRAIT_FLAGS["MLX"]="--traits MLX"
 TRAIT_FLAGS["Llama"]="--traits Llama"
 TRAIT_FLAGS["HuggingFace"]="--traits HuggingFace"
-TRAIT_FLAGS["CloudSaaS"]="--disable-default-traits --traits CloudSaaS"
-TRAIT_FLAGS["Ollama"]="--disable-default-traits --traits Ollama"
 TRAIT_FLAGS["Server"]="--disable-default-traits --traits Server"
 TRAIT_FLAGS["Macros"]="--disable-default-traits --traits Macros"
 TRAIT_FLAGS["Fuzz"]="--disable-default-traits --traits Fuzz,MLX,Llama"
@@ -190,8 +184,6 @@ TRAITS_TO_MEASURE=(
     MLX
     Llama
     HuggingFace
-    CloudSaaS
-    Ollama
     Server
     Macros
     AnyLanguageModel
@@ -472,7 +464,7 @@ lines.append("| Mode | Traits enabled | Approx. checkout+artifact MB¹ | Notes |
 lines.append("|------|----------------|-------------------------------|-------|")
 lines.append("| **FoundationOnly** | `FoundationOnly` | ~\(checkoutTotal) cloned, ~0 compiled | ≤5 MB compiled; all ~\(checkoutTotal + artifactTotal) MB fetched once |")
 lines.append("| **local-only** (default) | `MLX`, `Llama`, `HuggingFace` | ~\(checkoutTotal) cloned | Default when no `traits:` override; on-device only |")
-lines.append("| **cloud-only** | `CloudSaaS` or `Ollama` | ~\(checkoutTotal) cloned | Pure HTTP; no local model deps compiled |")
+lines.append("| **cloud-only** | _(none — cloud always compiled since v0.48; build the `ManifoldOllama` / `ManifoldCloudSaaS` products)_ | ~\(checkoutTotal) cloned | Pure HTTP; no local model deps compiled |")
 lines.append("| **full** | all non-Fuzz traits | ~\(checkoutTotal) cloned | ~\(artifactTotal) MB xcframework + Metal compile |")
 lines.append("")
 lines.append("¹ All modes clone the same ~\(checkoutTotal) MB of source checkouts plus the ~\(artifactTotal) MB llama.cpp xcframework on first resolve. The FoundationOnly mode _compiles_ ~5 MB. See footnote 1 in the table above and the resolution note.")

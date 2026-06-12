@@ -216,9 +216,8 @@ struct InMemoryMetricSinkTests {
     }
 }
 
-// MARK: - SSECloudBackend integration tests (require CloudSaaS or Ollama trait)
+// MARK: - SSECloudBackend integration tests
 
-#if Ollama || CloudSaaS
 
 // Minimal SSE payload handler for tests that exercise SSECloudBackend directly.
 private struct TestPayloadHandler: SSEPayloadHandler {
@@ -368,4 +367,3 @@ struct SSECloudBackendMetricTests {
     }
 }
 
-#endif // Ollama || CloudSaaS

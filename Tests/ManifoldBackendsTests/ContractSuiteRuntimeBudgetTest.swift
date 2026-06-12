@@ -1,4 +1,3 @@
-#if CloudSaaS || Ollama
 import XCTest
 @testable import ManifoldInference
 
@@ -12,9 +11,8 @@ import XCTest
 /// pathological regression (e.g. reading an accidentally huge fixture file
 /// in a loop).
 ///
-/// Gated on `#if CloudSaaS || Ollama` because that is the same condition
-/// wrapping ``InferenceBackendContractTests``. Without cloud traits, there
-/// are no cloud participants and nothing to measure.
+/// Compiles unconditionally since v0.48 — the cloud families (and therefore
+/// the cloud contract participants) are always built in.
 final class ContractSuiteRuntimeBudgetTest: XCTestCase {
 
     func test_cloudTierContractSuite_completesUnder15Seconds() throws {
@@ -74,7 +72,6 @@ final class ContractSuiteRuntimeBudgetTest: XCTestCase {
 
     private func buildParticipants() throws -> [BudgetParticipant] {
         var list: [BudgetParticipant] = []
-        #if CloudSaaS
         list.append(BudgetParticipant(
             label: "openai.chat_completions",
             fixtureDirectory: "openai",
@@ -93,15 +90,12 @@ final class ContractSuiteRuntimeBudgetTest: XCTestCase {
             wireFormat: .sse,
             supportsToolCalling: true
         ))
-        #endif
-        #if Ollama
         list.append(BudgetParticipant(
             label: "ollama.chat",
             fixtureDirectory: "ollama",
             wireFormat: .ndjson,
             supportsToolCalling: true
         ))
-        #endif
         return list
     }
 
@@ -158,4 +152,3 @@ final class ContractSuiteRuntimeBudgetTest: XCTestCase {
         ])
     }
 }
-#endif

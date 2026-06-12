@@ -1,6 +1,5 @@
 import Foundation
 import ManifoldInference
-import ManifoldCloudCore
 
 /// Composition root for cloud HTTP backends.
 ///

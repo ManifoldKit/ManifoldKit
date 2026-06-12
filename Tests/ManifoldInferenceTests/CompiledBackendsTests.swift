@@ -5,10 +5,10 @@ final class CompiledBackendsTests: XCTestCase {
 
     // MARK: - Profile mapping (trait-set → build profile)
     //
-    // These exercise every combination of (Ollama, CloudSaaS) against the
-    // statically-defined `BackendBuildProfile` values, independently of which
-    // SwiftPM traits the test binary itself was compiled with. Sabotaging the
-    // mapping in `CompiledBackends.buildProfile(for:)` will break these.
+    // `buildProfile(for:)` is a pure function over hand-constructed trait
+    // sets, so every combination stays testable even though
+    // `CompiledBackends.current` always carries both cloud members since
+    // v0.48. Sabotaging `CompiledBackends.buildProfile(for:)` breaks these.
 
     func test_buildProfile_offline_whenNoNetworkTraits() {
         XCTAssertEqual(CompiledBackends.buildProfile(for: []), .offline)
@@ -34,22 +34,28 @@ final class CompiledBackendsTests: XCTestCase {
 
     // MARK: - Concrete shape under the current build configuration
 
-    // The shipped CI invocation uses `--disable-default-traits`, which means
-    // none of MLX/Llama/Ollama/CloudSaaS are compiled in. Foundation Models
-    // remain conditionally available based on the host OS. The assertions
-    // below check the *concrete* set, not a derivation that mirrors the
-    // production code.
+    // Since v0.48 (PR A4) the cloud families compile unconditionally, so
+    // `CompiledBackends.current` always reports the full cloud surface in
+    // every lane, including `--disable-default-traits`. Only MLX / Llama /
+    // HuggingFace remain build-dependent until the companion split (C2).
+    // Foundation Models remain conditionally available based on the host OS.
 
-    func test_current_offlineBuild_hasNoCloudProvidersAndNoLlamaOrMLX() {
+    func test_current_alwaysIncludesCloudFamilies() {
         let compiled = CompiledBackends.current
 
-        // Cloud providers come exclusively from Ollama + CloudSaaS traits.
-        if !compiled.traits.contains(.ollama) && !compiled.traits.contains(.cloudSaaS) {
-            XCTAssertEqual(compiled.cloudProviders, [],
-                "Build with neither Ollama nor CloudSaaS must compile zero cloud providers")
-            XCTAssertEqual(compiled.orderedCloudProviders, [],
-                "orderedCloudProviders must be empty when cloudProviders is empty")
-        }
+        XCTAssertTrue(compiled.traits.contains(.ollama),
+            "Ollama is always compiled in since v0.48 — its trait is retired")
+        XCTAssertTrue(compiled.traits.contains(.cloudSaaS),
+            "CloudSaaS is always compiled in since v0.48 — its trait is retired")
+        XCTAssertEqual(compiled.buildProfile, .full,
+            "With both cloud families constant, the current profile is always .full")
+        XCTAssertTrue(compiled.supportsCloudInference)
+        XCTAssertTrue(compiled.shouldPresentCloudAPIManagement,
+            "Cloud API management UI is always presentable; endpoint configuration is the runtime gate")
+    }
+
+    func test_current_localModelTypes_trackHardwareTraits() {
+        let compiled = CompiledBackends.current
 
         // GGUF support requires the Llama trait.
         if !compiled.traits.contains(.llama) {
@@ -64,8 +70,7 @@ final class CompiledBackendsTests: XCTestCase {
         }
     }
 
-    #if CloudSaaS
-    func test_current_cloudSaaSBuild_includesClaudeAndOpenAI() {
+    func test_current_cloudBuild_includesClaudeAndOpenAI() {
         let compiled = CompiledBackends.current
 
         XCTAssertTrue(compiled.cloudProviders.contains(.claude))
@@ -74,13 +79,10 @@ final class CompiledBackendsTests: XCTestCase {
         XCTAssertTrue(compiled.cloudProviders.contains(.lmStudio))
         XCTAssertTrue(compiled.cloudProviders.contains(.custom))
     }
-    #endif
 
-    #if Ollama
     func test_current_ollamaBuild_includesOllamaProvider() {
         XCTAssertTrue(CompiledBackends.current.cloudProviders.contains(.ollama))
     }
-    #endif
 
     #if Llama
     func test_current_llamaBuild_includesGGUF() {

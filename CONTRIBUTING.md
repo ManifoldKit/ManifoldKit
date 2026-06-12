@@ -127,25 +127,25 @@ and the `withKnownIssue` policy.
 A backend is anything that conforms to `InferenceBackend` and gets registered with
 `InferenceService`.
 
-1. **Pick the right trait** for the file. The four trait gates are:
-   - `MLX` — Apple Silicon MLX backend.
-   - `Llama` — llama.cpp / GGUF.
-   - `Ollama` — self-hosted HTTP (in defaults today; opt-in next major).
-   - `CloudSaaS` — third-party SaaS (Claude, OpenAI). Off by default.
+1. **Pick the right home** for the file. Local backends are trait-gated:
+   - `MLX` — Apple Silicon MLX backend (`Sources/ManifoldMLX`, wrap in `#if MLX`).
+   - `Llama` — llama.cpp / GGUF (`Sources/ManifoldLlama`, wrap in `#if Llama`).
 
-   Wrap the backend file's contents in `#if <Trait>` so it does not compile in
-   modes that exclude it.
+   Cloud backends are **not** trait-gated since v0.48 — they live in
+   `Sources/ManifoldOllama` / `Sources/ManifoldCloudSaaS` (shared HTTP/SSE
+   infra in `Sources/ManifoldCloudCore`) and compile unconditionally;
+   consumers exclude them by not linking the products.
 
 2. **Register via `DefaultBackends.register(with:)`** rather than calling backend
    constructors from app code. The registration helper handles trait gating and
    default-backend wiring; direct constructor calls bypass that and emit
    deprecation warnings.
 
-3. **Update `APIProvider.availableInBuild`** so the UI provider picker doesn't
-   list a backend whose code isn't linked. Match the existing `#if` gating.
+3. **Update `APIProvider.availableInBuild`** (via `BackendDescriptorRegistry`)
+   so the UI provider picker lists the new provider in documented order.
 
-4. **Add tests in `ManifoldBackendsTests`** with the matching `#if <Trait>` so
-   they don't run in trait sets that exclude the backend.
+4. **Add tests in `ManifoldBackendsTests`** — with a matching `#if <Trait>`
+   only for trait-gated local backends; cloud backend tests are unconditional.
 
 5. **HTTP I/O goes through `URLSessionProvider`.** Direct `URLSession.shared` use
    is banned by `TrafficBoundaryAuditTest` Rule 1. If your backend speaks HTTP,
@@ -179,8 +179,9 @@ UI lives in `ManifoldUI` and (for model-management surfaces) `ManifoldUIModelMan
    `ManifoldInference`'s service protocols.
 
 2. **Cloud-config UI** (anything that talks to `APIEndpoint`, lists API providers,
-   or reads/writes Keychain entries) goes behind `#if Ollama || CloudSaaS`. In
-   the offline build mode, the cloud-config UI compiles out entirely.
+   or reads/writes Keychain entries) compiles unconditionally since v0.48. If an
+   affordance should hide for a given deployment, key it on runtime endpoint
+   configuration state — not a compile flag.
 
 3. **Pasteboard writes** must use `localOnly: true` or be added to the
    `privacyAPIAllowlist` with an explicit justification entry. Default

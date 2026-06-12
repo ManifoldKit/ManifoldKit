@@ -8,14 +8,13 @@ import ManifoldInference
 /// All backends continue to accept a `urlSession:` init parameter for
 /// test injection via `MockURLProtocol`.
 ///
-/// ## Trait gating
+/// ## Availability
 ///
-/// The factories are conditionally compiled:
-/// - ``pinned`` / ``pinned()`` are only available with the `CloudSaaS` trait —
-///   no SaaS backend means no pinning is needed.
-/// - ``unpinned`` / ``unpinned()`` are available whenever `Ollama` or
-///   `CloudSaaS` is enabled — used by Ollama (LAN) and as the LM-Studio /
-///   `.custom` provider session under `CloudSaaS`.
+/// All factories compile unconditionally since v0.48 (the Ollama/CloudSaaS
+/// traits are retired):
+/// - ``pinned`` / ``pinned()`` — used by the SaaS backends (Claude, OpenAI).
+/// - ``unpinned`` / ``unpinned()`` — used by Ollama (LAN) and as the
+///   LM-Studio / `.custom` provider session.
 /// - ``background(identifier:hopCap:additionalDownloadDelegate:)`` is
 ///   always available; it is the seam used by `BackgroundDownloadManager`
 ///   (under the `HuggingFace` trait) and any other long-running

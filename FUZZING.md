@@ -37,10 +37,10 @@ The wrapper prints a preflight line showing which backends it found (Llama via `
 Direct invocation works too — the wrapper just adds the preflight and the MLX xcodebuild bridge:
 
 ```bash
-swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --minutes 5
-swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --iterations 200 --backend ollama --quiet
-swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --single --seed 42 --model qwen3.5
-swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat --backend mock --iterations 200 --workers 4 --corpus-subset smoke --quiet
+swift run --traits Fuzz,MLX,Llama fuzz-chat --minutes 5
+swift run --traits Fuzz,MLX,Llama fuzz-chat --iterations 200 --backend ollama --quiet
+swift run --traits Fuzz,MLX,Llama fuzz-chat --single --seed 42 --model qwen3.5
+swift run --traits Fuzz,MLX,Llama fuzz-chat --backend mock --iterations 200 --workers 4 --corpus-subset smoke --quiet
 ```
 
 Common flags:
@@ -120,7 +120,7 @@ cat tmp/fuzz/index.json | jq '.[].model_id' | sort | uniq -c
 `--workers N` runs multiple isolated `fuzz-chat` child processes, then merges their findings into the parent output directory. This is intentionally process-level rather than an in-process `TaskGroup`: each worker owns its backend instance, RNG state, reporter, and `FindingsSink`, avoiding cross-worker interference and backend-specific global state.
 
 ```bash
-swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat \
+swift run --traits Fuzz,MLX,Llama fuzz-chat \
   --backend mock \
   --iterations 200 \
   --workers 4 \

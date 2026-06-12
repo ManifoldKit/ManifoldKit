@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import XCTest
 @testable import ManifoldCloudCore
 import ManifoldInference
@@ -142,7 +141,6 @@ final class URLSessionProviderContractTests: XCTestCase, URLSessionProviderContr
         )
     }
 
-    #if CloudSaaS
     /// The pinned session must differ from the unpinned session (they serve
     /// distinct trust policies).
     func test_pinnedAndUnpinned_areDifferentObjects() {
@@ -161,6 +159,4 @@ final class URLSessionProviderContractTests: XCTestCase, URLSessionProviderContr
             "Pinned session composite must carry a PinnedSessionDelegate"
         )
     }
-    #endif
 }
-#endif

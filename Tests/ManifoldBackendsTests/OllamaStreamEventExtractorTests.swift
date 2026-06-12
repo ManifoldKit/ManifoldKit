@@ -1,16 +1,11 @@
-#if Ollama
 import XCTest
 import Foundation
 @testable import ManifoldBackends
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 import ManifoldTestSupport
@@ -138,13 +133,11 @@ final class OllamaStreamEventExtractorTests: XCTestCase {
         XCTAssertNotNil(CloudPayloadHandler.ollama.makeOllamaStreamConsumer(config: GenerationConfig()))
     }
 
-    #if CloudSaaS
     func test_makeOllamaStreamConsumer_returnsNilForOtherProviders() {
         XCTAssertNil(CloudPayloadHandler.openAI.makeOllamaStreamConsumer(config: GenerationConfig()))
         XCTAssertNil(CloudPayloadHandler.claude.makeOllamaStreamConsumer(config: GenerationConfig()))
         XCTAssertNil(CloudPayloadHandler.openAIResponses.makeOllamaStreamConsumer(config: GenerationConfig()))
     }
-    #endif
 
     // MARK: - Helpers
 
@@ -338,4 +331,3 @@ final class OllamaStreamEventExtractorParityTests: XCTestCase {
         ])
     }
 }
-#endif

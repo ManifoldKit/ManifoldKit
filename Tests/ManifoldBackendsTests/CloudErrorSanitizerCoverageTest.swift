@@ -1,4 +1,3 @@
-#if CloudSaaS || Ollama
 import XCTest
 @testable import ManifoldCloudCore
 
@@ -120,4 +119,3 @@ final class CloudErrorSanitizerCoverageTest: XCTestCase {
         return contents.filter { $0.pathExtension == "swift" }
     }
 }
-#endif

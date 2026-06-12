@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
@@ -194,4 +193,3 @@ final class RetryPolicyIntegrationTests: XCTestCase {
                           "Retry should complete well under 5s for a 0.1s Retry-After")
     }
 }
-#endif

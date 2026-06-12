@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import SwiftData
 @testable import ManifoldBackends
@@ -656,4 +655,3 @@ private final class ConfiguringClaudeCloudBackend: InferenceBackend,
     func unloadModel() { backend.unloadModel() }
     func resetConversation() { backend.resetConversation() }
 }
-#endif
