@@ -11,7 +11,7 @@ import ManifoldInference
 /// test classes (which are `@MainActor`) satisfy Swift 6's isolation boundary
 /// checks without wrapping factory calls in extra closures.
 @MainActor
-protocol BackendContractMixin: AnyObject {
+public protocol BackendContractMixin: AnyObject {
     associatedtype BackendUnderContract: InferenceBackend
 
     var contractBackendName: String { get }
@@ -20,7 +20,7 @@ protocol BackendContractMixin: AnyObject {
 
 extension BackendContractMixin where Self: XCTestCase {
     @MainActor
-    func assertUniversalBackendContract(
+    public func assertUniversalBackendContract(
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
@@ -32,11 +32,11 @@ extension BackendContractMixin where Self: XCTestCase {
     }
 }
 
-protocol GrammarFailClosedContractMixin: BackendContractMixin {}
+public protocol GrammarFailClosedContractMixin: BackendContractMixin {}
 
 extension GrammarFailClosedContractMixin where Self: XCTestCase {
     @MainActor
-    func assertGrammarFailClosedContract(
+    public func assertGrammarFailClosedContract(
         forbiddenRequestURL: URL? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -52,11 +52,11 @@ extension GrammarFailClosedContractMixin where Self: XCTestCase {
 }
 
 @MainActor
-protocol ConversationHistoryReceiverContractMixin: BackendContractMixin where BackendUnderContract: ConversationHistoryReceiver {}
+public protocol ConversationHistoryReceiverContractMixin: BackendContractMixin where BackendUnderContract: ConversationHistoryReceiver {}
 
 extension ConversationHistoryReceiverContractMixin where Self: XCTestCase {
     @MainActor
-    func assertConversationHistoryReceiverContract(
+    public func assertConversationHistoryReceiverContract(
         readHistory: (BackendUnderContract) -> [(role: String, content: String)]?,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -96,11 +96,11 @@ extension ConversationHistoryReceiverContractMixin where Self: XCTestCase {
 }
 
 @MainActor
-protocol StructuredHistoryReceiverContractMixin: BackendContractMixin where BackendUnderContract: StructuredHistoryReceiver {}
+public protocol StructuredHistoryReceiverContractMixin: BackendContractMixin where BackendUnderContract: StructuredHistoryReceiver {}
 
 extension StructuredHistoryReceiverContractMixin where Self: XCTestCase {
     @MainActor
-    func assertStructuredHistoryReceiverContract(
+    public func assertStructuredHistoryReceiverContract(
         readHistory: (BackendUnderContract) -> [StructuredMessage]?,
         file: StaticString = #filePath,
         line: UInt = #line

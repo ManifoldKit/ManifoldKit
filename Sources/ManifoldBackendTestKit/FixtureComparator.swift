@@ -1,5 +1,5 @@
 import XCTest
-@testable import ManifoldInference
+import ManifoldInference
 
 /// Phase 1a infrastructure shared by every future backend contract test.
 ///

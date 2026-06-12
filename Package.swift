@@ -94,6 +94,13 @@ let package = Package(
         .library(name: "ManifoldHuggingFace", targets: ["ManifoldHuggingFace"]),
         .library(name: "ManifoldVoice", targets: ["ManifoldVoice"]),
         .library(name: "ManifoldFuzz", targets: ["ManifoldFuzz"]),
+        // Test-support products: published so companion backend packages
+        // (manifold-mlx / manifold-llama, #1749) can run the same mocks and
+        // contract checks out-of-package. ManifoldBackendTestKit links XCTest
+        // and must stay a SEPARATE product from ManifoldTestSupport — see the
+        // ManifoldContractTestSupport target comment (#1409 dyld lesson).
+        .library(name: "ManifoldTestSupport", targets: ["ManifoldTestSupport"]),
+        .library(name: "ManifoldBackendTestKit", targets: ["ManifoldBackendTestKit"]),
         .executable(name: "fuzz-chat", targets: ["fuzz-chat"]),
         .library(name: "ManifoldTools", targets: ["ManifoldTools"]),
         .executable(name: "manifold-tools", targets: ["manifold-tools"]),
@@ -750,6 +757,20 @@ let package = Package(
             ],
             path: "Sources/ManifoldContractTestSupport"
         ),
+        // Backend contract-check kit, published as a product so companion
+        // backend packages (manifold-mlx / manifold-llama, #1749) can run the
+        // same capability-claim contract suite against core's published API.
+        // Links XCTest — the same dyld constraint as ManifoldContractTestSupport
+        // applies: never merge into ManifoldTestSupport and never depend on it
+        // from an executable target (#1409).
+        .target(
+            name: "ManifoldBackendTestKit",
+            dependencies: [
+                "ManifoldTestSupport",
+                "ManifoldInference",
+            ],
+            path: "Sources/ManifoldBackendTestKit"
+        ),
         .testTarget(
             name: "ManifoldCoreTests",
             dependencies: [
@@ -940,6 +961,7 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
+                "ManifoldBackendTestKit",
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel", condition: .when(traits: ["AnyLanguageModel"])),
             ],
