@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -178,4 +177,3 @@ final class MCPErrorMappingTests: XCTestCase {
         }
     }
 }
-#endif

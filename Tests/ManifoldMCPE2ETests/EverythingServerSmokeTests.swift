@@ -1,4 +1,3 @@
-#if MCP
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import Foundation
 import XCTest
@@ -110,5 +109,4 @@ final class EverythingServerSmokeTests: XCTestCase {
             || FileManager.default.fileExists(atPath: "/opt/homebrew/bin/npx")
     }
 }
-#endif
 #endif

@@ -27,8 +27,6 @@
 | `HuggingFace` | ManifoldHuggingFace | `swift-huggingface` | ~2 | — | +5026 | — |
 | `CloudSaaS` | ManifoldCloud (SaaS bodies) | _(none beyond baseline)_ | — | — | +731 | — |
 | `Ollama` | ManifoldCloud (Ollama bodies) | _(none beyond baseline)_ | — | — | +731 | — |
-| `MCP` | ManifoldMCP + ManifoldMCPHost | _(none beyond baseline)_ | — | — | +1914 | — |
-| `MCPBuiltinCatalog` | ManifoldMCP built-in catalog | _(none beyond baseline)_ | — | — | +31 | — |
 | `Server` | ManifoldServer + Hummingbird | `EventSource`, `swift-nio`, `swift-crypto`, `swift-collections`, `swift-atomics`, `swift-system` | ~74 | — | +12157 | — |
 | `Macros` | ManifoldMacrosPlugin + @ToolSchema | `swift-syntax` | ~11 | — | +0 | — |
 | `Skills` | ManifoldSkills | _(none beyond baseline)_ | — | — | +224 | — |

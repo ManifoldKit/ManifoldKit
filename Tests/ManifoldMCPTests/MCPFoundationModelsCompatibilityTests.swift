@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -326,4 +325,3 @@ final class MCPFoundationModelsCompatibilityTests: XCTestCase {
         )
     }
 }
-#endif

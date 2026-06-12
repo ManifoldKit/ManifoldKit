@@ -8,7 +8,7 @@ Model Context Protocol (MCP) client primitives for ManifoldKit.
 
 - transport/auth/capability types (`MCPServerDescriptor`, `MCPTransportKind`, `MCPAuthorizationDescriptor`)
 - connection + source lifecycle (`MCPClient`, `MCPToolSource`)
-- catalog presets (`MCPCatalog`, gated by `MCPBuiltinCatalog`)
+- catalog presets (`MCPCatalog`)
 
 Use this module to model and audit tool boundaries before wiring concrete transport internals.
 

@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -73,7 +72,6 @@ final class MCPProviderFixtureContractTests: XCTestCase {
         }
     }
 
-    #if MCPBuiltinCatalog
     func test_serverFixturesMatchBuiltinCatalogContracts() throws {
         for provider in providers {
             let fixture = try loadServerFixture(provider: provider)
@@ -102,7 +100,6 @@ final class MCPProviderFixtureContractTests: XCTestCase {
             // Sabotage: changing the UUID or endpoint URL in MCPCatalog.github/linear/notion without updating the corresponding server.json fixture would cause the catalog.id or catalog.transport.endpoint equality checks to fail
         }
     }
-    #endif
 
     private func fixtureURL(provider: String, file: String) throws -> URL {
         guard let base = Bundle.module.resourceURL else {
@@ -179,7 +176,6 @@ final class MCPProviderFixtureContractTests: XCTestCase {
         )
     }
 
-    #if MCPBuiltinCatalog
     private func descriptor(for provider: String) -> MCPServerDescriptor {
         switch provider {
         case "github":
@@ -192,7 +188,6 @@ final class MCPProviderFixtureContractTests: XCTestCase {
             fatalError("Unhandled provider: \(provider)")
         }
     }
-    #endif
 
     private func requireJSONObject(data: Data, file: String, provider: String) throws -> [String: Any] {
         let raw = try JSONSerialization.jsonObject(with: data)
@@ -301,4 +296,3 @@ private struct ServerFixture: Decodable {
         }
     }
 }
-#endif

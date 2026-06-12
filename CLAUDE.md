@@ -37,7 +37,7 @@
 
 | Target | Role | ML deps |
 |--------|------|---------|
-| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Always compiles; the `MCP` trait gates test edges and the `MCPBuiltinCatalog` define only — the module itself is unconditional. Depends on `ManifoldInference`. | None |
+| `ManifoldMCP` | Model Context Protocol client surface, descriptors, transports, OAuth, tool bridge (`MCPClient`, `MCPToolSource`). Compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48 (catalog descriptors included). Depends on `ManifoldInference`. | None |
 | `ManifoldMCPHost` | Runtime-backed MCP server boundary: exposes sessions, messages, RAG documents, and send-message tools to external MCP clients. Depends on `ManifoldMCP` + `ManifoldRuntime`. | None |
 | `ManifoldTools` | End-to-end tool-calling validation harness: fixed reference toolset, declarative scenario runner, JSONL transcript logger. Depends on `ManifoldInference`. | None |
 | `ManifoldAppIntents` | AppIntent ↔ ToolDefinition bridge. Depends on `ManifoldInference`. | None |
@@ -88,19 +88,19 @@
 
 **Backend family deps (post-P2a #1719, post-v0.48 A1):** `ManifoldMLX` and `ManifoldLlama` depend on `ManifoldInference` (real engine use: `extension InferenceService`, `ToolRegistry`, `BackendRegistrar`). `ManifoldFoundation`, `ManifoldOllama`, and `ManifoldCloudSaaS` compile against `ManifoldContract` (+ `ManifoldCloudCore` for the two cloud families) without touching the engine directly. The `ManifoldCloud` shim depends on `ManifoldCloudCore`, `ManifoldRuntime` (for `DefaultWebSearchRuntime`'s `WebSearchRuntime` port conformance — un-gated library→library edge; see Package.swift comment), and trait-gated edges to the two cloud families. `ManifoldMCP` depends on `ManifoldInference` (uses `ToolExecutor`, `ToolRegistry`). The consumer→family edge is trait-gated: `MLX` for `ManifoldMLX`, `Llama` for `ManifoldLlama`, `Ollama` for `ManifoldOllama`, `CloudSaaS` for `ManifoldCloudSaaS` (and `CloudSaaS || Ollama` for the `ManifoldCloud` shim); `ManifoldCloudCore` and `ManifoldFoundation` are always linked.
 
-The umbrella `ManifoldBackends` re-exports each family conditionally so `import ManifoldBackends` keeps working in any trait combination. `MCPCatalog` descriptors are trait-gated behind `MCPBuiltinCatalog`; the `ManifoldMCP` module itself is unconditional (the `MCP` trait only gates test edges and the built-in catalog define).
+The umbrella `ManifoldBackends` re-exports each family conditionally so `import ManifoldBackends` keeps working in any trait combination. `ManifoldMCP` (including the `MCPCatalog` descriptors) compiles unconditionally — the `MCP` and `MCPBuiltinCatalog` traits were retired in v0.48.
 
 ## Running tests
 
 Use `scripts/test.sh` — it runs configured suites and prints an honest summary. Key flags:
 - `--disable-default-traits` — excludes MLX/Llama/hardware-gated tests (required for CI)
 - `--skip-update` — skips per-invocation git-remote contact (drop only if you edited Package.swift)
-- `--traits MLX,Llama,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace` — for full-traits builds
+- `--traits MLX,Llama,Ollama,CloudSaaS,HuggingFace` — for full-traits builds
 
 **Special cases:**
 - MLX integration tests require Xcode (Metal shaders): `scripts/test-mlx-integration.sh`
 - Swift Testing must run in a separate process from XCTest (mixing causes libmalloc SIGABRT — see #681)
-- MCP E2E: `RUN_MCP_E2E=1 swift test --traits MCP --filter ManifoldMCPE2ESmokeTests` — `MCP` isn't in the default trait set (defaults are MLX/Llama/HuggingFace), so the trait flag is required or the filter matches zero compiled tests and the build emits `error: fatalError`. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
+- MCP E2E: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — MCP test targets compile unconditionally (MCP trait retired in v0.48); the `RUN_MCP_E2E=1` env var still gates execution. Filter to the streamable suite; `EverythingServerSmokeTests` has hung 28+ min in past runs.
 - Ollama E2E requires Ollama at localhost:11434 and `--traits Ollama` (dropped from defaults in v2.0)
 - Llama: in-process runs are safe — `LlamaBackendProcessLifecycle` latches `llama_backend_init` exactly once per process (was a per-class isolation script pre-#1319)
 - `ManifoldE2ETests`: bare form `swift test --filter ManifoldE2ETests --disable-default-traits` runs the full suite; for narrower targeting anchor the regex (`--filter 'ManifoldE2ETests\.'` then test name). Bare-vs-anchored behavior shifted in swift-test post-v2.
@@ -192,7 +192,7 @@ When Apple ships a new major OS each September, bump both minimums and remove `#
 scripts/test.sh --profile local
 ```
 
-Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,MCP,MCPBuiltinCatalog,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism can surface process-global state races in `BackendContractChecks` when backend test classes interleave (fixed for claim-methods in #1601, but implicit scheduling matches historical behavior — keep it).
+Runs all-traits XCTest + Swift Testing on the full trait surface (`MLX,Llama,Ollama,CloudSaaS,HuggingFace,Macros`). This catches the trait-combo bugs CI cannot see (see PR #1382 for the canonical example: a KV cache reuse race that only fails under `--traits MLX,Llama`). Two-invocation shape is preserved internally (XCTest filters, then `ManifoldInferenceSwiftTestingTests` in a separate process — mixing the two runners in one process triggers libmalloc SIGABRT, #681). The profile deliberately does NOT pass `--parallel` or `--num-workers`: explicit parallelism can surface process-global state races in `BackendContractChecks` when backend test classes interleave (fixed for claim-methods in #1601, but implicit scheduling matches historical behavior — keep it).
 
 **Pre-push (CI repro — only when chasing a CI failure):**
 
@@ -208,7 +208,7 @@ Both profiles respect explicit caller flags: `scripts/test.sh --profile local --
 
 **Trait-combo sweep** (whenever modifying a switched enum, a `GenerationEvent` / `GenerationConfig` / `BackendCapabilities`-shaped type, or any trait-gated source file):
 ```bash
-swift build --build-tests --traits MLX,Llama,Ollama,CloudSaaS,MCP,MCPBuiltinCatalog,HuggingFace,Fuzz
+swift build --build-tests --traits MLX,Llama,Ollama,CloudSaaS,HuggingFace,Fuzz
 ```
 Default-trait builds won't catch CloudSaaS- or Ollama-gated switch exhaustiveness. The all-traits-on `--build-tests` is the cheapest single check.
 

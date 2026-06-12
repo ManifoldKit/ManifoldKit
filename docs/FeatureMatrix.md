@@ -14,8 +14,6 @@ Do not edit by hand — re-run the script.
 | `HuggingFace` | Enable HuggingFace Hub search, browse, and download | `modelDownload` |
 | `Llama` | Enable the llama.cpp (GGUF) inference backend | `localInference`, `llamaBackend`, `embeddings` |
 | `Macros` | Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph. | `toolCalling` |
-| `MCP` | Enable the ManifoldMCP module and MCP client surface. | `mcpClient`, `mcpHost` |
-| `MCPBuiltinCatalog` | Enable ManifoldMCP's built-in catalog descriptors. | `mcpClient` |
 | `MLX` | Enable the MLX inference backend (requires Apple Silicon) | `localInference`, `mlxBackend`, `visionInput`, `imageGeneration` |
 | `Ollama` | Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major. | `ollama`, `toolCalling`, `embeddings` |
 | `Server` | Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency. | `embeddings` |

@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -886,4 +885,3 @@ private actor AsyncGate {
         continuation = nil
     }
 }
-#endif

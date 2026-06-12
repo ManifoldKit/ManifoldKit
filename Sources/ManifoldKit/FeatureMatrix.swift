@@ -31,6 +31,10 @@ public enum ManifoldCapability: String, CaseIterable, Sendable {
     case toolCalling
     case visionInput
     case voiceIO
+    // mcpClient/mcpHost are no longer unlocked by any trait — ManifoldMCP and
+    // ManifoldMCPHost compile unconditionally as of v0.48 (MCP +
+    // MCPBuiltinCatalog traits retired). Cases stay: removing public enum
+    // cases is a separate API break with no consumer benefit.
     case mcpClient
     case mcpHost
     case ragKnowledgeBase
@@ -96,16 +100,6 @@ public enum FeatureMatrix {
             name: "CloudSaaS",
             description: "Third-party SaaS providers (Claude, OpenAI). Off by default.",
             unlocks: [.cloudOpenAI, .cloudClaude, .toolCalling, .visionInput]
-        ),
-        ManifoldTrait(
-            name: "MCP",
-            description: "Enable the ManifoldMCP module and MCP client surface.",
-            unlocks: [.mcpClient, .mcpHost]
-        ),
-        ManifoldTrait(
-            name: "MCPBuiltinCatalog",
-            description: "Enable ManifoldMCP's built-in catalog descriptors.",
-            unlocks: [.mcpClient]
         ),
         ManifoldTrait(
             name: "Voice",
