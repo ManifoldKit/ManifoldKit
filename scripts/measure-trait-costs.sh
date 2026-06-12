@@ -150,8 +150,6 @@ TRAIT_DEPS["Llama"]="llama.swift"          # xcframework in artifacts/llama.swif
 TRAIT_DEPS["HuggingFace"]="swift-huggingface"
 TRAIT_DEPS["CloudSaaS"]=""                 # ManifoldCloudCore always compiled; no unique checkout
 TRAIT_DEPS["Ollama"]=""                    # same ManifoldCloudCore path, no unique checkout
-TRAIT_DEPS["MCP"]=""                       # pure ManifoldKit sources, no external package
-TRAIT_DEPS["MCPBuiltinCatalog"]=""         # compile flag only
 TRAIT_DEPS["Voice"]=""                     # pure AVFoundation/Speech, no external package
 TRAIT_DEPS["Tools"]=""                     # ManifoldTools = pure ManifoldKit sources
 TRAIT_DEPS["AppIntents"]=""               # pure AppIntents framework, no external package
@@ -169,8 +167,6 @@ TRAIT_MODULES["Llama"]="ManifoldLlama"
 TRAIT_MODULES["HuggingFace"]="ManifoldHuggingFace"
 TRAIT_MODULES["CloudSaaS"]="ManifoldCloud (SaaS bodies)"
 TRAIT_MODULES["Ollama"]="ManifoldCloud (Ollama bodies)"
-TRAIT_MODULES["MCP"]="ManifoldMCP + ManifoldMCPHost"
-TRAIT_MODULES["MCPBuiltinCatalog"]="ManifoldMCP built-in catalog"
 TRAIT_MODULES["Voice"]="ManifoldVoice"
 TRAIT_MODULES["Tools"]="ManifoldTools + manifold-tools CLI"
 TRAIT_MODULES["AppIntents"]="ManifoldAppIntents"
@@ -190,8 +186,6 @@ TRAIT_FLAGS["Llama"]="--traits Llama"
 TRAIT_FLAGS["HuggingFace"]="--traits HuggingFace"
 TRAIT_FLAGS["CloudSaaS"]="--disable-default-traits --traits CloudSaaS"
 TRAIT_FLAGS["Ollama"]="--disable-default-traits --traits Ollama"
-TRAIT_FLAGS["MCP"]="--disable-default-traits --traits MCP"
-TRAIT_FLAGS["MCPBuiltinCatalog"]="--disable-default-traits --traits MCP,MCPBuiltinCatalog"
 TRAIT_FLAGS["Voice"]="--disable-default-traits --traits Voice"
 TRAIT_FLAGS["Tools"]="--disable-default-traits --traits Tools"
 TRAIT_FLAGS["AppIntents"]="--disable-default-traits --traits AppIntents"
@@ -210,8 +204,6 @@ TRAITS_TO_MEASURE=(
     HuggingFace
     CloudSaaS
     Ollama
-    MCP
-    MCPBuiltinCatalog
     Server
     Macros
     Skills

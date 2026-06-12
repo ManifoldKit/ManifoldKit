@@ -1,4 +1,3 @@
-#if MCP
 import XCTest
 @testable import ManifoldMCP
 
@@ -104,4 +103,3 @@ final class MCPContentSanitizerCorpusTests: XCTestCase {
         }
     }
 }
-#endif

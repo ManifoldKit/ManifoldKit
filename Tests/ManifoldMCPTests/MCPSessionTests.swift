@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -370,4 +369,3 @@ private actor MockSessionTransport: MCPTransport {
         sent
     }
 }
-#endif

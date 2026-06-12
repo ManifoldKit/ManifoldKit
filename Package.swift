@@ -2,7 +2,7 @@
 
 // Trait reference (full table in README §2.4):
 //   - Defaults: MLX, Llama, HuggingFace.
-//   - Opt-in heavy/network traits: Ollama, CloudSaaS, MCP, MCPBuiltinCatalog,
+//   - Opt-in heavy/network traits: Ollama, CloudSaaS,
 //     Voice, Tools, AppIntents, Server, Macros, Fuzz, AnyLanguageModel,
 //     HuggingFace.
 //   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
@@ -116,8 +116,6 @@ let package = Package(
         .trait(name: "AnyLanguageModel", description: "Enable the AnyLanguageModel bridge backend target."),
         .trait(name: "Ollama", description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major."),
         .trait(name: "CloudSaaS", description: "Third-party SaaS providers (Claude, OpenAI). Off by default."),
-        .trait(name: "MCP", description: "Enable the ManifoldMCP module and MCP client surface."),
-        .trait(name: "MCPBuiltinCatalog", description: "Enable ManifoldMCP's built-in catalog descriptors."),
         .trait(name: "Voice", description: "Enable the ManifoldVoice speech I/O spike and voice composer UI."),
         .trait(name: "Tools", description: "Enable the ManifoldTools end-to-end tool-calling validation harness and its `manifold-tools` CLI."),
         .trait(name: "AppIntents", description: "Enable the ManifoldAppIntents AppIntent ↔ ToolDefinition bridge."),
@@ -331,10 +329,7 @@ let package = Package(
         .target(
             name: "ManifoldMCP",
             dependencies: ["ManifoldInference"],
-            path: "Sources/ManifoldMCP",
-            swiftSettings: [
-                .define("MCPBuiltinCatalog", .when(traits: ["MCPBuiltinCatalog"])),
-            ]
+            path: "Sources/ManifoldMCP"
         ),
         // ManifoldMCPHost: runtime-backed MCP server boundary. Exposes
         // sessions, messages, RAG documents, and send-message tools to external
@@ -908,26 +903,20 @@ let package = Package(
         .testTarget(
             name: "ManifoldMCPTests",
             dependencies: [
-                .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
-                .target(name: "ManifoldMCPHost", condition: .when(traits: ["MCP"])),
+                "ManifoldMCP",
+                "ManifoldMCPHost",
                 "ManifoldInference",
                 "ManifoldRuntime",
                 "ManifoldTestSupport",
             ],
-            resources: [.copy("Fixtures")],
-            swiftSettings: [
-                .define("MCP", .when(traits: ["MCP"])),
-            ]
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "ManifoldMCPE2ETests",
             dependencies: [
-                .target(name: "ManifoldMCP", condition: .when(traits: ["MCP"])),
+                "ManifoldMCP",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-            ],
-            swiftSettings: [
-                .define("MCP", .when(traits: ["MCP"])),
             ]
         ),
         // Umbrella test target — covers every family target via per-trait

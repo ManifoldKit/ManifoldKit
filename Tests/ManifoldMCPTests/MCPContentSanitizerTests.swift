@@ -1,4 +1,3 @@
-#if MCP
 import XCTest
 @testable import ManifoldMCP
 
@@ -45,4 +44,3 @@ final class MCPContentSanitizerTests: XCTestCase {
         XCTAssertTrue(textResult.contains("trust=\"untrusted\""))
     }
 }
-#endif

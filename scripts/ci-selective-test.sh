@@ -7,9 +7,6 @@
 # Routing rules:
 #   - Suite has a .xcscheme AND is not trait-gated
 #       → xcodebuild test -scheme (compiles only the subgraph, not the full bundle)
-#   - ManifoldMCPTests
-#       → swift test --traits MCP  (xcodebuild cannot activate non-default traits;
-#         running without MCP silently drops all test sources → 0 compiled tests)
 #   - ManifoldBackendsTests
 #       → swift test --disable-default-traits (has ManifoldMLX/ManifoldLlama in its
 #         dep graph; xcodebuild default traits trigger Metal shader compilation;
@@ -76,11 +73,8 @@ run_swift_test() {
 
 for suite in "$@"; do
   case "$suite" in
-    ManifoldMCPTests)
-      run_swift_test "$suite" --disable-default-traits --traits MCP,CloudSaaS
-      ;;
     ManifoldBackendsTests)
-      run_swift_test "$suite" --disable-default-traits --traits MCP,CloudSaaS
+      run_swift_test "$suite" --disable-default-traits --traits CloudSaaS
       ;;
     *)
       run_xcodebuild "$suite"

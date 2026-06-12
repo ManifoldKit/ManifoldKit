@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import Synchronization
 @testable import ManifoldMCP
@@ -252,6 +251,4 @@ final class ChaosMCPTransport: MCPTransport, @unchecked Sendable {
         }
     }
 }
-
-#endif
 

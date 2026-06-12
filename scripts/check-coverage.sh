@@ -165,7 +165,7 @@ for i in $SORTED_INDEXES; do
     status="NO DATA"
     printf "  %-36s %10s %9d%% %8s\n" "$module" "--" "$threshold" "$status"
     # No data means the module wasn't in the profdata — treat as warning not failure
-    # (e.g. MCP tests require --traits MCP, which the coverage run may not include)
+    # (e.g. the coverage run's --filter set may not have exercised the module)
     continue
   fi
 

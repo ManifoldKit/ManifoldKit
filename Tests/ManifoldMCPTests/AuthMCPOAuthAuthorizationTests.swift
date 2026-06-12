@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -1573,4 +1572,3 @@ private func XCTAssertThrowsErrorAsync<T>(
         handler(error)
     }
 }
-#endif

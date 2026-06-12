@@ -1,10 +1,11 @@
 import XCTest
 
 /// Guards against regressions on issue #951: `Package.swift` must keep the
-/// five optional modules — `ManifoldMCP`, `ManifoldVoice`, `ManifoldTools`,
-/// `ManifoldAppIntents`, and `ManifoldFuzz` (plus its `ManifoldFuzzBackends`
-/// sibling) — gated behind their declared traits. Mirrors the pattern PR #946
-/// established for the `Server` trait around `ManifoldServer`.
+/// optional modules — `ManifoldVoice`, `ManifoldTools`, `ManifoldAppIntents`,
+/// and `ManifoldFuzz` (plus its `ManifoldFuzzBackends` sibling) — gated
+/// behind their declared traits. Mirrors the pattern PR #946 established for
+/// the `Server` trait around `ManifoldServer`. (`ManifoldMCP` left this list
+/// in v0.48 when the MCP trait was retired.)
 ///
 /// ## Why this matters
 ///
@@ -52,9 +53,9 @@ final class PackageTraitGateAuditTest: XCTestCase {
     }
 
     private static let expectedGates: [ExpectedGate] = [
-        // ManifoldMCP — gated by MCP across both test consumers.
-        .init(description: "ManifoldMCPTests → ManifoldMCP", module: "ManifoldMCP", trait: "MCP"),
-        .init(description: "ManifoldMCPE2ETests → ManifoldMCP", module: "ManifoldMCP", trait: "MCP"),
+        // ManifoldMCP edges are no longer listed here: the MCP and
+        // MCPBuiltinCatalog traits were retired in v0.48 (PR A2) — ManifoldMCP
+        // compiles unconditionally.
 
         // ManifoldVoice — gated by Voice on the test target. The library
         // target's product declaration stays unconditional (apps importing
@@ -106,7 +107,7 @@ final class PackageTraitGateAuditTest: XCTestCase {
 
         var violations: [String] = []
         for gate in Self.expectedGates {
-            // Sample shape (whitespace-loose): `.target(name: "ManifoldMCP", condition: .when(traits: ["MCP"]))`.
+            // Sample shape (whitespace-loose): `.target(name: "ManifoldVoice", condition: .when(traits: ["Voice"]))`.
             // We accept either single or double quotes and any reasonable
             // whitespace inside the `traits: [...]` array; the trait name
             // must appear inside that array literal on a line that also

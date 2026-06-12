@@ -182,7 +182,7 @@ enum DemoScenarioCoverageInventory {
             toolset: ["mcp_fs_read"],
             existingTests: [],
             missingTestLayers: ["tool-logic unit", "mock XCUITest", "real Ollama E2E"],
-            requiredTraits: ["MCP", "Tools", "Ollama for real E2E"],
+            requiredTraits: ["Tools", "Ollama for real E2E"],
             environmentGates: ["filesystem MCP server fixture", "Ollama localhost:11434"],
             notes: "Still missing per #754 audit; do not implement in Wave 0."
         ),

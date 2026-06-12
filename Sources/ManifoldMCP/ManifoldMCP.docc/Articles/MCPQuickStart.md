@@ -53,9 +53,7 @@ try await source.refreshTools()
 
 ## Built-in templates
 
-> **Trait requirement:** Built-in catalog entries (`MCPCatalog.notion`, `.linear`, `.github`) require the `MCPBuiltinCatalog` trait. In your `Package.swift` dependency: `.product(name: "ManifoldMCP", package: "ManifoldKit", condition: .when(traits: ["MCPBuiltinCatalog"]))`. Or enable globally: `.trait(name: "MCPBuiltinCatalog")`.
-
-When `MCPBuiltinCatalog` is enabled, start from ``MCPCatalog``:
+Built-in catalog entries (`MCPCatalog.notion`, `.linear`, `.github`) are always available — the `MCPBuiltinCatalog` trait was retired in v0.48. Start from ``MCPCatalog``:
 
 ```swift,no-build
 var notion = MCPCatalog.notion

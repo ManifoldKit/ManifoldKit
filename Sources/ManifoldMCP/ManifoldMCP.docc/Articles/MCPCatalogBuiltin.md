@@ -1,12 +1,6 @@
 # Built-in MCP Catalog
 
-`MCPCatalog` is compiled only when the `MCPBuiltinCatalog` trait is enabled.
-
-## Trait
-
-```bash
-swift test --filter ManifoldMCPTests --disable-default-traits --traits MCPBuiltinCatalog
-```
+`MCPCatalog` compiles unconditionally — the `MCPBuiltinCatalog` trait was retired in v0.48, so the built-in descriptors are always available wherever `ManifoldMCP` is.
 
 ## Purpose
 

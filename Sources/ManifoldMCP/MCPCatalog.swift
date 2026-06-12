@@ -1,7 +1,6 @@
 import Foundation
 import ManifoldInference
 
-#if MCPBuiltinCatalog
 
 // MARK: - Static server spec
 
@@ -200,4 +199,3 @@ public enum MCPCatalog {
         return url
     }
 }
-#endif

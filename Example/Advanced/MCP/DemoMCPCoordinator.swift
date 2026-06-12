@@ -37,11 +37,12 @@ final class DemoMCPCoordinator {
         self.isFoundationModelsActive = isFoundationModelsActive
 
         // Catalog composition rationale (PR #921 / `feat/demo-mcp-server`):
-        // - The MCPBuiltinCatalog trait is enabled in the demo's pbxproj so
-        //   `MCPCatalog.all` (Notion / Linear / GitHub) is non-empty out of
-        //   the box. These OAuth-gated entries are useful for users who have
-        //   accounts with those providers, but they aren't a no-config happy
-        //   path for someone just kicking the tyres.
+        // - `MCPCatalog.all` (Notion / Linear / GitHub) compiles
+        //   unconditionally (the MCPBuiltinCatalog trait was retired in
+        //   v0.48), so the catalog is non-empty out of the box. These
+        //   OAuth-gated entries are useful for users who have accounts with
+        //   those providers, but they aren't a no-config happy path for
+        //   someone just kicking the tyres.
         // - To give every macOS user a working tap-to-connect server with
         //   zero credentials, we prepend a stdio descriptor that launches
         //   `@modelcontextprotocol/server-everything` via `npx`. The server
@@ -53,13 +54,11 @@ final class DemoMCPCoordinator {
         #if os(macOS) && !targetEnvironment(macCatalyst)
         assembled.append(Self.demoEchoDescriptor)
         #endif
-        #if MCPBuiltinCatalog
         assembled.append(contentsOf: MCPCatalog.all)
-        #endif
         self.catalog = assembled
 
         if assembled.isEmpty {
-            self.catalogHelpText = "No services configured. Enable the MCPBuiltinCatalog trait or run on macOS to see the demo Echo server."
+            self.catalogHelpText = "No services configured."
         } else {
             self.catalogHelpText = "Tap Connect on a service to start its session."
         }

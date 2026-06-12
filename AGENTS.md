@@ -33,7 +33,7 @@ Specialised modules stay opt-in and are imported by name when you need them:
 | `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
 | `ManifoldHuggingFace` *(optional, `HuggingFace` trait, default-on)* | Hub search, browse, background downloads. |
 | `ManifoldVoice` *(optional, `Voice` trait)* | Speech I/O composer accessory. |
-| `ManifoldMCP` *(optional, `MCP` trait)* | Model Context Protocol client + tool bridge. |
+| `ManifoldMCP` *(optional)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
 | `ManifoldAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
 
 Contributors changing ManifoldKit internals can still import the individual products
@@ -407,8 +407,6 @@ that bite consumers:
 - **`CloudSaaS` (default-off)** — required for OpenAI / Claude. Off in regulated
   builds.
 - **`Ollama` (default-off)** — required for `OllamaBackend`. Self-hosted only.
-- **`MCPBuiltinCatalog` (default-off)** — required for the built-in MCP catalog
-  (`notion`, `linear`, `github` descriptors).
 - **`Voice` (default-off)** — required for `ManifoldVoice` speech I/O.
 
 When you `--disable-default-traits`, you must explicitly add the ones you want

@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -88,4 +87,3 @@ final class ManifoldMCPE2ESmokeTests: XCTestCase {
         XCTAssertEqual(firstToolName, "ping")
     }
 }
-#endif

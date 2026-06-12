@@ -1,4 +1,3 @@
-#if MCP
 import Foundation
 import XCTest
 @testable import ManifoldMCP
@@ -500,4 +499,3 @@ private actor LoopbackHostTransport: MCPHostTransport {
         continuation.resume(returning: value)
     }
 }
-#endif

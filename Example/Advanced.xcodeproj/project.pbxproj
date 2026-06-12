@@ -909,7 +909,6 @@
 				MLX,
 				Llama,
 				HuggingFace,
-				MCPBuiltinCatalog,
 			);
 		};
 /* End XCLocalSwiftPackageReference section */
