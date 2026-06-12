@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 @testable import ManifoldSkills
 
@@ -177,4 +176,3 @@ final class SkillLoaderTests: XCTestCase {
         // and suffix assert fail.
     }
 }
-#endif

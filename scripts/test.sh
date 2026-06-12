@@ -72,9 +72,8 @@ HARDWARE_TRAIT_SUITES=(
 #             This is the default when --profile is omitted (back-compat).
 #   local   — Apple-Silicon pre-push: all traits on (minus Fuzz which is
 #             build-only), the full hardened suite list (including
-#             ManifoldKitTests / ManifoldHuggingFaceTests / ManifoldToolsTests
-#             that PR #1382 proved we need), and --num-workers tuned to the
-#             host core count.
+#             ManifoldKitTests / ManifoldHuggingFaceTests that PR #1382
+#             proved we need), and --num-workers tuned to the host core count.
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:
@@ -217,6 +216,11 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldAppIntentsTests
     ManifoldServerTests
     ManifoldTurnLoopCharacterizationTests
+    # Voice / Skills / Tools traits retired in v0.48 (PR A3): these suites
+    # compile in every trait shape now, so they run in the CI shape too.
+    ManifoldVoiceTests
+    ManifoldSkillsTests
+    ManifoldToolsTests
 )
 # Local-profile filters extend the CI list with the suites PR #1382 proved
 # we need to hit when traits are on (KV cache reuse race, etc.).
@@ -224,7 +228,6 @@ PROFILE_LOCAL_XCTEST_FILTERS=(
     "${PROFILE_CI_XCTEST_FILTERS[@]}"
     ManifoldKitTests
     ManifoldHuggingFaceTests
-    ManifoldToolsTests
 )
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 

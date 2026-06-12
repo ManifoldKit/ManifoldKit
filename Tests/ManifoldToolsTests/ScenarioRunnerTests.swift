@@ -1,4 +1,3 @@
-#if Tools
 import XCTest
 import ManifoldInference
 @testable import ManifoldTools
@@ -525,4 +524,3 @@ private actor ReminderRecorder {
         recorded
     }
 }
-#endif

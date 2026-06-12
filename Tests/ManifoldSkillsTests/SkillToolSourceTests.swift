@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 import ManifoldInference
 import ManifoldRuntime
@@ -155,4 +154,3 @@ final class SkillToolSourceTests: XCTestCase, SessionToolSourceContract {
         // closure — postAllowed stays nil.
     }
 }
-#endif

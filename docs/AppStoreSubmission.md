@@ -79,10 +79,11 @@ Justify with: "the app talks to a user-installed Ollama daemon at
 the network." Apple has approved this pattern for other on-device LLM
 shells.
 
-## 4. Microphone / speech entitlements (Voice trait only)
+## 4. Microphone / speech entitlements (ManifoldVoice consumers only)
 
-If you build with the `Voice` trait, add both usage-description strings.
-Apps without `Voice` should not ship these keys.
+If your app depends on the `ManifoldVoice` product (the former `Voice`
+trait was retired in v0.48), add both usage-description strings.
+Apps that don't link `ManifoldVoice` should not ship these keys.
 
 ```xml
 <key>NSMicrophoneUsageDescription</key>

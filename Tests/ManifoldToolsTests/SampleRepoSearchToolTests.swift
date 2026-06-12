@@ -1,4 +1,3 @@
-#if Tools
 import XCTest
 import ManifoldInference
 @testable import ManifoldTools
@@ -231,4 +230,3 @@ final class SampleRepoSearchToolTests: XCTestCase {
         return url
     }
 }
-#endif

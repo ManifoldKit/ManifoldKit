@@ -9,7 +9,7 @@
 //     Many apps don't ship the management surface; keeping it out of the
 //     umbrella lets chat-only consumers compile without the 1,800+ LOC.
 //   - `ManifoldMCP` — Model Context Protocol client (no trait since v0.48).
-//   - `ManifoldVoice` — speech I/O composer (trait `Voice`).
+//   - `ManifoldVoice` — speech I/O composer.
 //   - `ManifoldHuggingFace` — Hub browse/download (default-on under
 //     `HuggingFace`, but exposed only via `ManifoldUIModelManagement` UI hooks).
 //   - `ManifoldTools`, `ManifoldAppIntents`, `ManifoldServer`,

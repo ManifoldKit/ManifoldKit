@@ -1,4 +1,3 @@
-#if Voice
 import XCTest
 @testable import ManifoldVoice
 
@@ -226,4 +225,3 @@ private final class ControlledToastSleeper {
         continuation = nil
     }
 }
-#endif

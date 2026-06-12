@@ -1,11 +1,12 @@
 import XCTest
 
 /// Guards against regressions on issue #951: `Package.swift` must keep the
-/// optional modules — `ManifoldVoice`, `ManifoldTools`, `ManifoldAppIntents`,
-/// and `ManifoldFuzz` (plus its `ManifoldFuzzBackends` sibling) — gated
-/// behind their declared traits. Mirrors the pattern PR #946 established for
-/// the `Server` trait around `ManifoldServer`. (`ManifoldMCP` left this list
-/// in v0.48 when the MCP trait was retired.)
+/// optional modules that still have declared traits — `ManifoldFuzz` (plus
+/// its `ManifoldFuzzBackends` sibling) and the Ollama/CloudSaaS family
+/// products — gated behind those traits. Mirrors the pattern PR #946
+/// established for the `Server` trait around `ManifoldServer`. (The MCP /
+/// MCPBuiltinCatalog traits were retired in v0.48 PR A2; Voice / Tools /
+/// AppIntents / Skills in PR A3. Former entries are gone, not relaxed.)
 ///
 /// ## Why this matters
 ///
@@ -57,25 +58,13 @@ final class PackageTraitGateAuditTest: XCTestCase {
         // MCPBuiltinCatalog traits were retired in v0.48 (PR A2) — ManifoldMCP
         // compiles unconditionally.
 
-        // ManifoldVoice — gated by Voice on the test target. The library
-        // target's product declaration stays unconditional (apps importing
-        // it must opt the trait in via their consumer manifest), but the
-        // in-tree test consumer must carry the gate so swift test
-        // --disable-default-traits doesn't link Voice symbols.
-        .init(description: "ManifoldVoiceTests → ManifoldVoice", module: "ManifoldVoice", trait: "Voice"),
-
-        // ManifoldTools — gated by Tools across the manifold-tools CLI, the test
-        // target, and the ManifoldE2ETests scenario consumer. The
-        // ManifoldBackends edge inside manifold-tools is also Tools-gated so the
-        // executable doesn't pull llama.framework into the auto-generated
-        // Xcode scheme when Tools is off.
-        .init(description: "manifold-tools → ManifoldTools", module: "ManifoldTools", trait: "Tools"),
-        .init(description: "manifold-tools → ManifoldBackends", module: "ManifoldBackends", trait: "Tools"),
-        .init(description: "ManifoldToolsTests → ManifoldTools", module: "ManifoldTools", trait: "Tools"),
-        .init(description: "ManifoldE2ETests → ManifoldTools", module: "ManifoldTools", trait: "Tools"),
-
-        // ManifoldAppIntents — gated by AppIntents on the test target.
-        .init(description: "ManifoldAppIntentsTests → ManifoldAppIntents", module: "ManifoldAppIntents", trait: "AppIntents"),
+        // The Voice / Tools / AppIntents / Skills traits were retired in
+        // v0.48 (PR A3): their consumer edges are unconditional now, so they
+        // no longer appear here. NOTE: manifold-tools must never regain a
+        // ManifoldBackends (umbrella) edge — the umbrella drags
+        // llama.framework into the auto-generated Xcode scheme twice and
+        // breaks ManifoldMLXIntegrationTests (#982). It links ManifoldOllama
+        // directly instead.
 
         // ManifoldFuzz / ManifoldFuzzBackends — gated by Fuzz at the
         // consumer edges (fuzz-chat CLI and ManifoldFuzzTests). The

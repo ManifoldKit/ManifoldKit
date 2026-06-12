@@ -1,4 +1,3 @@
-#if Skills
 import XCTest
 @testable import ManifoldSkills
 
@@ -64,4 +63,3 @@ final class SampleSkillBundleTests: XCTestCase {
         #endif
     }
 }
-#endif

@@ -136,7 +136,7 @@ The same backend, model-management, persistence, and download infrastructure tha
 
 Pick traits to scope which backends and capabilities ship with your build. The full trait → capability table is generated from `Sources/ManifoldKit/FeatureMatrix.swift` and rendered to [docs/FeatureMatrix.md](docs/FeatureMatrix.md).
 
-Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `Voice`, `Tools`, `AppIntents`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
+Defaults (`MLX`, `Llama`, `HuggingFace`) are enabled when you don't pass `--disable-default-traits` or a custom `traits:` array. Opt-in traits include `CloudSaaS`, `Ollama`, `Server`, `Macros`, `Fuzz`, and the App Store-lean `FoundationOnly`. The former `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, and `Skills` traits were retired in v0.48 — those modules now compile unconditionally and you opt in by adding their products. See [docs/QUICKSTART.md → Customizing backends](docs/QUICKSTART.md#customizing-backends) for the per-trait build commands.
 
 For a quantified breakdown of what each trait costs in binary size, build time, and dependency weight — and why the checkout is large regardless of trait set — see [docs/TRAIT-COSTS.md](docs/TRAIT-COSTS.md).
 
@@ -200,7 +200,7 @@ ManifoldKit ships **25 libraries**, **3 executables**, and **1 macro plugin**. T
 
 ```
 ManifoldVoice              ManifoldUIModelManagement
-(Voice trait)              (model browser + endpoint UI)
+(speech I/O)               (model browser + endpoint UI)
         │                          │
         └────────► ManifoldUI ◄────┘
                        │

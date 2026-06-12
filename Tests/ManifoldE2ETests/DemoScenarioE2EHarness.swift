@@ -1,4 +1,4 @@
-#if Ollama && Tools
+#if Ollama
 import Foundation
 import XCTest
 import ManifoldInference

@@ -33,17 +33,15 @@ ManifoldKit's test targets are conditionally linked on Swift package traits:
 | `MLX` | yes | MLX backend, mlx-swift-lm dependency |
 | `Llama` | yes | LlamaBackend, llama.swift dependency |
 | `HuggingFace` | yes | HF model browser |
-| `Skills` | yes | `ManifoldSkills` module and SKILL.md discovery tests |
 | `AnyLanguageModel` | no | AnyLanguageModel bridge backend target |
 | `Ollama` | no | Ollama backend, requires `localhost:11434` |
 | `CloudSaaS` | no | OpenAI/Claude/Responses backends |
-| `Tools` | no | `manifold-tools` CLI body |
 | `Server` | no | ManifoldServer |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
 The default-traits build is what CI's per-PR matrix runs against. Running `swift test`
 with no explicit trait flags enables the Package.swift defaults: `MLX`, `Llama`,
-`HuggingFace`, and `Skills`. Use `--disable-default-traits` locally to drop those
+and `HuggingFace`. Use `--disable-default-traits` locally to drop those
 defaults when you want a faster, sim-friendly build.
 
 **When to disable default traits locally:** any iteration that doesn't exercise a hardware backend — `ManifoldRuntimeTests`, `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`, `ManifoldInferenceTests`, `ManifoldMCPTests`, `ManifoldServerTests`. Skipping MLX avoids an mlx-swift source checkout and a Metal shader compilation pass on every rebuild — the dominant cost in a default-traits cold build.
