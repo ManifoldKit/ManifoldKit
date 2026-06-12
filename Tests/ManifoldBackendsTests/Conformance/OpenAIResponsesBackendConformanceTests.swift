@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
@@ -90,4 +89,3 @@ final class OpenAIResponsesBackendConformanceTests: XCTestCase {
         )
     }
 }
-#endif

@@ -2,11 +2,11 @@ import XCTest
 
 /// Guards against regressions on issue #951: `Package.swift` must keep the
 /// optional modules that still have declared traits — `ManifoldFuzz` (plus
-/// its `ManifoldFuzzBackends` sibling) and the Ollama/CloudSaaS family
-/// products — gated behind those traits. Mirrors the pattern PR #946
-/// established for the `Server` trait around `ManifoldServer`. (The MCP /
-/// MCPBuiltinCatalog traits were retired in v0.48 PR A2; Voice / Tools /
-/// AppIntents / Skills in PR A3. Former entries are gone, not relaxed.)
+/// its `ManifoldFuzzBackends` sibling) — gated behind those traits. Mirrors
+/// the pattern PR #946 established for the `Server` trait around
+/// `ManifoldServer`. (The MCP / MCPBuiltinCatalog traits were retired in
+/// v0.48 PR A2; Voice / Tools / AppIntents / Skills in PR A3; Ollama /
+/// CloudSaaS in PR A4. Former entries are gone, not relaxed.)
 ///
 /// ## Why this matters
 ///
@@ -80,14 +80,6 @@ final class PackageTraitGateAuditTest: XCTestCase {
         .init(description: "ManifoldFuzzTests → ManifoldFuzz", module: "ManifoldFuzz", trait: "Fuzz"),
         .init(description: "ManifoldFuzzTests → ManifoldFuzzBackends", module: "ManifoldFuzzBackends", trait: "Fuzz"),
 
-        // v0.48 product split (PR A1): the Ollama / CloudSaaS traits moved
-        // from gating source compilation inside the old mixed ManifoldCloud
-        // target to gating the consumer→family edges. The substring check
-        // can't distinguish the three consumers (umbrella, shim, tests) —
-        // each gated edge shape appears at least once, which is what the
-        // audit can enforce.
-        .init(description: "consumers → ManifoldOllama", module: "ManifoldOllama", trait: "Ollama"),
-        .init(description: "consumers → ManifoldCloudSaaS", module: "ManifoldCloudSaaS", trait: "CloudSaaS"),
     ]
 
     func test_packageManifestDeclaresExpectedTraitGates() throws {

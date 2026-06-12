@@ -14,7 +14,7 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 
 Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
 
-> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names). `traits:` works on this form too — `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit", traits: [.trait(name: "Ollama")])` for the §3 cloud snippet.
+> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names). `traits:` works on this form too — `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit", traits: [.trait(name: "Llama")])` for the §2 local snippet.
 
 ---
 
@@ -45,16 +45,16 @@ dependencies: [
         url: "https://github.com/roryford/ManifoldKit.git",
         from: "0.47.0", // x-release-please-version
         traits: [
-            .trait(name: "Ollama"),     // local Ollama server
-            .trait(name: "CloudSaaS"),  // OpenAI / Anthropic
             // Omit "MLX" / "Llama" to skip those backends entirely
-            // (saves compile time if you're cloud-only).
+            // (saves compile time if you're cloud-only — cloud backends
+            // always compile since v0.48; no trait needed).
+            .trait(name: "Llama"),
         ]
     ),
 ],
 ```
 
-> **Both forms are composable.** A local-path dependency can specify traits too: `.package(name: "ManifoldKit", path: "../ManifoldKit", traits: [.trait(name: "Ollama")])`.
+> **Both forms are composable.** A local-path dependency can specify traits too: `.package(name: "ManifoldKit", path: "../ManifoldKit", traits: [.trait(name: "Llama")])`.
 
 ---
 
@@ -369,7 +369,7 @@ If you're not sure whether your GGUF is a reasoning model, the simplest test is 
 
 For any HTTP-speaking provider — Ollama at `localhost:11434`, OpenAI, Anthropic, LM Studio, or a custom OpenAI-compatible endpoint — the entry point is `InferenceService.loadEndpointBackend(from:)` with an `APIEndpointRecord` describing the endpoint.
 
-> **Trait requirement.** Cloud backends are trait-gated. Add `Ollama` to your `traits:` for `localhost:11434`, or `CloudSaaS` for OpenAI / Claude. The default trait set (`MLX`, `Llama`, `HuggingFace`) does **not** include either. See [docs/FeatureMatrix.md](FeatureMatrix.md).
+> **No trait required.** Cloud backends (Ollama, OpenAI, Claude, LM Studio, custom endpoints) always compile since v0.48 — the former `Ollama`/`CloudSaaS` traits are retired. See [docs/FeatureMatrix.md](FeatureMatrix.md).
 
 **`Package.swift`:**
 
@@ -387,10 +387,7 @@ let package = Package(
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
             from: "0.47.0", // x-release-please-version
-            traits: [
-                .trait(name: "Ollama"),     // for localhost:11434
-                .trait(name: "CloudSaaS"),  // for OpenAI / Anthropic
-            ]
+            traits: []  // cloud backends need no traits since v0.48
         ),
     ],
     targets: [

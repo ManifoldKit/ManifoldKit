@@ -31,29 +31,24 @@ final class ProviderParityFixtureCoverageTest: XCTestCase {
 
     /// All registered backends with their fixture directory names.
     ///
-    /// Cloud entries are guarded by `#if CloudSaaS` / `#if Ollama` so the
-    /// manifest only grows when a trait that compiles the backend is active.
-    /// Local entries are unconditional because their fixture stub directories
-    /// exist even without hardware traits — the directories hold `.gitkeep`
+    /// Cloud and local entries are all unconditional: the cloud families
+    /// compile in every build since v0.48, and the local fixture stub
+    /// directories exist even without hardware traits — they hold `.gitkeep`
     /// files that satisfy the coverage check.
     private static var manifest: [(backendName: String, fixtureDirectory: String)] {
         var entries: [(backendName: String, fixtureDirectory: String)] = []
 
-        // Cloud backends — compiled when CloudSaaS trait is enabled.
-        #if CloudSaaS
+        // SaaS backends — always compiled since v0.48.
         entries += [
             (backendName: "openai.chat_completions", fixtureDirectory: "openai"),
             (backendName: "openai.responses",        fixtureDirectory: "openai_responses"),
             (backendName: "anthropic.messages",      fixtureDirectory: "claude"),
         ]
-        #endif
 
-        // Ollama backend — compiled when Ollama trait is enabled.
-        #if Ollama
+        // Ollama backend — always compiled since v0.48.
         entries += [
             (backendName: "ollama.chat", fixtureDirectory: "ollama"),
         ]
-        #endif
 
         // Local backends — always compiled; fixture directories are stubs.
         entries += [

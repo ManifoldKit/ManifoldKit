@@ -8,12 +8,30 @@
 # Usage:
 #   scripts/build-modes.sh <mode> [--build-only|--audit]
 #
-# Modes:
-#   offline   No network backends. `--disable-default-traits`.
-#   ollama    Self-hosted Ollama only. `--disable-default-traits --traits Ollama`.
-#   saas      Cloud SaaS only. `--disable-default-traits --traits CloudSaaS`.
-#   full      Everything. `--traits MLX,Llama,Ollama,CloudSaaS` (default-traits enabled).
+# Modes (v0.48 PR A4 — the Ollama/CloudSaaS traits are retired; cloud sources
+# always compile, so the modes are now PRODUCT-scoped builds. The audit claim
+# shifted from compile-out — "the trait excluded the source" — to link-out —
+# "the product dependency graph never includes the module". Decision #4 of the
+# v0.48 plan accepted this artifact-series discontinuity; the per-mode
+# artifact files keep their names and cadence.):
+#   offline   Chat stack with no backend products: `--disable-default-traits
+#             --target ManifoldUI`. No cloud module in the graph.
+#   ollama    Self-hosted family only: `--disable-default-traits --target
+#             ManifoldOllama`. ManifoldCloudCore (shared TLS-pinning/SSE
+#             infra) IS in this graph; the SaaS backends are not.
+#   saas      SaaS family only: `--disable-default-traits --target
+#             ManifoldCloudSaaS`.
+#   full      Everything: plain `swift build` (default traits MLX/Llama/
+#             HuggingFace; cloud is always compiled).
 #   all       Run every mode in sequence.
+#
+# `--target`, not `--product`: `swift build --product <automatic library>`
+# does NOT prune the build to the product's graph (it compiles every target
+# in the package — verified empirically), which would put SaaS objects in
+# every mode's scan. `--target` builds exactly the target's dependency
+# closure. The audit additionally wipes the release object dir before each
+# build so a scan can never pass (or fail) on stale objects from a previous
+# mode or branch.
 #
 # Subcommands:
 #   --build-only  Build the mode (debug). Default when no subcommand given.
@@ -34,15 +52,16 @@ if [[ -z "$MODE" ]]; then
   exit 2
 fi
 
-# Trait flags per mode. `--disable-default-traits` strips MLX+Llama (the
-# default set) so that offline really means offline. `full` keeps the defaults
-# and layers Ollama+CloudSaaS on top.
-traits_for_mode() {
+# Build arguments per mode. Product-scoped since v0.48 (see header):
+# excluding cloud code is a link-out decision at the product edge, not a
+# compile flag. `--disable-default-traits` additionally strips MLX+Llama so
+# the offline/family graphs stay minimal.
+build_args_for_mode() {
   case "$1" in
-    offline) echo "--disable-default-traits" ;;
-    ollama)  echo "--disable-default-traits --traits Ollama" ;;
-    saas)    echo "--disable-default-traits --traits CloudSaaS" ;;
-    full)    echo "--traits MLX,Llama,Ollama,CloudSaaS" ;;
+    offline) echo "--disable-default-traits --target ManifoldUI" ;;
+    ollama)  echo "--disable-default-traits --target ManifoldOllama" ;;
+    saas)    echo "--disable-default-traits --target ManifoldCloudSaaS" ;;
+    full)    echo "" ;;
     *)
       echo "Unknown mode: $1 (expected offline|ollama|saas|full)" >&2
       exit 2
@@ -50,15 +69,21 @@ traits_for_mode() {
   esac
 }
 
-# Symbols that must NOT appear in modes which exclude the CloudSaaS trait.
+# Symbols that must NOT appear in modes which exclude the SaaS product.
 # Matched against `nm -gU` output, which surfaces both the Swift mangled form
-# (`$s17ManifoldBackends13ClaudeBackendC`) and the Obj-C metaclass form
-# (`_OBJC_CLASS_$_ManifoldBackends.ClaudeBackend`). Catches both runtime
-# entry points (Tin-foil-hat SEV-2.6 in the plan).
-CLOUD_SYMBOLS=(
+# (`$s17ManifoldCloudSaaS13ClaudeBackendC`) and the Obj-C metaclass form.
+# Catches both runtime entry points (Tin-foil-hat SEV-2.6 in the plan).
+SAAS_SYMBOLS=(
   "ClaudeBackend"
   "OpenAIBackend"
   "OpenAIResponsesBackend"
+)
+
+# Additionally banned in OFFLINE mode only. PinnedSessionDelegate lives in
+# ManifoldCloudCore — shared TLS-pinning infrastructure that the Ollama
+# product legitimately links (discontinuity vs the pre-v0.48 trait-mode
+# audit, where the umbrella-scoped scan never saw it at all).
+OFFLINE_ONLY_SYMBOLS=(
   "PinnedSessionDelegate"
 )
 
@@ -85,20 +110,20 @@ ARTIFACT_DIR="${BUILD_MODES_ARTIFACT_DIR:-build-modes-audit}"
 
 build_mode() {
   local mode="$1"
-  local traits
-  traits=$(traits_for_mode "$mode")
+  local build_args
+  build_args=$(build_args_for_mode "$mode")
 
   echo ""
   echo "=== build-modes: building [$mode] (debug) ==="
-  echo "    swift build $traits"
+  echo "    swift build $build_args"
   # shellcheck disable=SC2086
-  swift build $traits
+  swift build $build_args
 }
 
 audit_mode() {
   local mode="$1"
-  local traits
-  traits=$(traits_for_mode "$mode")
+  local build_args
+  build_args=$(build_args_for_mode "$mode")
 
   # The audit relies on Darwin-only flags (`nm -gU`, `otool -L`, `strings -e l`)
   # against Mach-O object files. Refuse to run on non-macOS rather than emit
@@ -111,23 +136,34 @@ audit_mode() {
 
   echo ""
   echo "=== build-modes: auditing [$mode] (release) ==="
-  echo "    swift build -c release $traits"
+
+  # Clean-room scan: wipe the release object dir first so the symbol scan
+  # below can only see objects produced by THIS mode's build. Without this,
+  # a previous mode (or branch) leaves stale .o files in release/ and the
+  # whole-graph scan reports them as violations (or silently vouches for a
+  # graph it didn't build).
+  find .build -maxdepth 2 -type d -name 'release' -path '*-apple-macosx*' -exec rm -rf {} + 2>/dev/null || true
+
+  echo "    swift build -c release $build_args"
   # shellcheck disable=SC2086
-  swift build -c release $traits
+  swift build -c release $build_args
 
   mkdir -p "$ARTIFACT_DIR/$mode"
 
-  # Locate the ManifoldBackends release object directory. SwiftPM emits per-
-  # target build folders under .build/<arch>-apple-macosx/release/<Target>.build/.
-  local backends_dir
-  backends_dir=$(find .build -type d -path '*/release/ManifoldBackends.build' 2>/dev/null | head -n 1 || true)
+  # Scan the ENTIRE product build graph (every <Target>.build directory under
+  # release/), not just the umbrella. Product-scoped modes make the link-out
+  # claim at the product edge: a banned symbol anywhere in the graph means the
+  # product's dependency closure includes a module it must not.
+  local release_dir
+  release_dir=$(find .build -type d -name 'release' -path '*-apple-macosx*' 2>/dev/null | head -n 1 || true)
 
   local audit_failures=0
 
-  if [[ -z "$backends_dir" ]]; then
-    echo "    note: ManifoldBackends.build not found — module excluded from this mode."
+  if [[ -z "$release_dir" ]]; then
+    echo "::error::build-modes audit [$mode]: release build directory not found" >&2
+    return 1
   else
-    echo "    ManifoldBackends.build at: $backends_dir"
+    echo "    scanning release graph at: $release_dir"
 
     # Snapshot per-mode artifacts for the procurement evidence archive.
     # `nm.txt` is the *gating* file: every line in it must be a real symbol
@@ -172,45 +208,69 @@ audit_mode() {
         # surface as UTF-16 when bridged through ObjC NSString or NSURL.
         strings -a -e l "$obj" 2>/dev/null || true
       } >> "$strings_utf16_out"
-    done < <(find "$backends_dir" -name '*.o' -print0)
+    done < <(find "$release_dir" -path '*.build/*' -name '*.o' \
+               ! -name 'APIProvider.swift.o' \
+               ! -name 'BackendDescriptor.swift.o' \
+               ! -name 'APIEndpointRecord.swift.o' -print0)
+    # Excluded objects hold provider hostnames as *data*, not cloud code:
+    # APIProvider.swift / BackendDescriptor.swift (ManifoldHardware) carry
+    # defaultBaseURL metadata for the provider registry; APIEndpointRecord
+    # (ManifoldModelCatalog) carries per-provider endpoint defaults. Every
+    # mode links these leaf modules. Same scoping exemption as the
+    # pre-v0.48 audit documented in SECURITY.md. None of them define any
+    # symbol on the banned lists, so excluding them from the nm scan too
+    # is safe and keeps the find expression single-purpose.
 
-    # otool -L runs against the linked dylib if one was produced; SwiftPM
-    # produces a static archive for libraries by default, so this is a best-
+    # otool -L runs against linked dylibs if any were produced; SwiftPM
+    # produces static archives for libraries by default, so this is a best-
     # effort capture for the artifact rather than a hard gate.
-    local backends_dylib
-    backends_dylib=$(find .build -type f \( -name 'libManifoldBackends.dylib' -o -name 'ManifoldBackends.o' \) 2>/dev/null | head -n 1 || true)
-    if [[ -n "$backends_dylib" ]]; then
+    local linked_dylib
+    linked_dylib=$(find "$release_dir" -maxdepth 1 -type f -name '*.dylib' 2>/dev/null | head -n 1 || true)
+    if [[ -n "$linked_dylib" ]]; then
       {
-        echo "### $backends_dylib"
-        otool -L "$backends_dylib" 2>/dev/null || true
+        echo "### $linked_dylib"
+        otool -L "$linked_dylib" 2>/dev/null || true
       } >> "$otool_out"
     fi
 
-    # Audit gate: in modes WITHOUT CloudSaaS, no cloud symbols must appear.
-    # `grep -F` (fixed strings) avoids regex surprises if a symbol name ever
-    # contains a metacharacter; it also avoids matching the per-object-path
-    # `### …` headers because we wrote a header-free `$nm_out`.
+    # Audit gate: in modes that exclude the SaaS product, no SaaS symbols
+    # must appear anywhere in the product graph. `grep -F` (fixed strings)
+    # avoids regex surprises if a symbol name ever contains a metacharacter;
+    # it also avoids matching the per-object-path `### …` headers because we
+    # wrote a header-free `$nm_out`.
     if [[ "$mode" == "offline" || "$mode" == "ollama" ]]; then
       echo ""
-      echo "    asserting NO cloud symbols in [$mode]"
-      for sym in "${CLOUD_SYMBOLS[@]}"; do
+      echo "    asserting NO SaaS symbols in [$mode]"
+      for sym in "${SAAS_SYMBOLS[@]}"; do
         if grep -Fq "$sym" "$nm_out"; then
-          echo "::error::build-modes audit [$mode]: cloud symbol '$sym' present in ManifoldBackends release objects"
+          echo "::error::build-modes audit [$mode]: SaaS symbol '$sym' present in the [$mode] product graph"
           grep -F "$sym" "$nm_out" | head -n 5 >&2 || true
           audit_failures=$((audit_failures + 1))
         fi
       done
 
-      # Hostname literals in ManifoldBackends. APIProvider.swift in
-      # ManifoldInference legitimately holds these as data — that module is
-      # intentionally out of scope here (see SECURITY.md).
+      if [[ "$mode" == "offline" ]]; then
+        # Offline additionally bans the shared cloud-networking infra that the
+        # ollama product legitimately links via ManifoldCloudCore.
+        for sym in "${OFFLINE_ONLY_SYMBOLS[@]}"; do
+          if grep -Fq "$sym" "$nm_out"; then
+            echo "::error::build-modes audit [offline]: cloud-infra symbol '$sym' present in the offline product graph"
+            grep -F "$sym" "$nm_out" | head -n 5 >&2 || true
+            audit_failures=$((audit_failures + 1))
+          fi
+        done
+      fi
+
+      # Hostname literals anywhere in the offline product graph.
+      # APIProvider.swift (ManifoldHardware) legitimately holds these as
+      # data and is excluded from the scan above (see SECURITY.md).
       if [[ "$mode" == "offline" ]]; then
         echo "    asserting NO cloud hostname literals in [$mode]"
         for host in "${CLOUD_HOSTS[@]}"; do
           # `grep -F` (fixed strings) is required — `$host` contains dots,
           # which would otherwise match arbitrary characters in default BRE.
           if grep -Fq "$host" "$strings_ascii_out" || grep -Fq "$host" "$strings_utf16_out"; then
-            echo "::error::build-modes audit [$mode]: hostname literal '$host' present in ManifoldBackends release objects"
+            echo "::error::build-modes audit [$mode]: hostname literal '$host' present in the offline product graph"
             audit_failures=$((audit_failures + 1))
           fi
         done

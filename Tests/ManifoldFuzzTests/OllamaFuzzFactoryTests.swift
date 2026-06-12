@@ -1,5 +1,4 @@
 #if Fuzz
-#if Ollama
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
@@ -90,5 +89,4 @@ final class OllamaFuzzFactoryTests: XCTestCase {
                        "selectModel must match hints case-insensitively so --model gemma4 finds gemma4:12b-it")
     }
 }
-#endif
 #endif

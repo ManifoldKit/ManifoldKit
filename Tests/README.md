@@ -34,8 +34,6 @@ ManifoldKit's test targets are conditionally linked on Swift package traits:
 | `Llama` | yes | LlamaBackend, llama.swift dependency |
 | `HuggingFace` | yes | HF model browser |
 | `AnyLanguageModel` | no | AnyLanguageModel bridge backend target |
-| `Ollama` | no | Ollama backend, requires `localhost:11434` |
-| `CloudSaaS` | no | OpenAI/Claude/Responses backends |
 | `Server` | no | ManifoldServer |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
@@ -190,7 +188,7 @@ This proves the assertion (a) exercises a real production code path, (b) is valu
 
 - **MLX integration**: `scripts/test-mlx-integration.sh` — Xcode-only, metallib required. See #986.
 - **MCP E2E**: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — gated by env var (the target compiles unconditionally since the MCP trait was retired in v0.48). The `everything-server` smoke has hung in past runs; filter to the streamable subset.
-- **Ollama**: requires `localhost:11434` and `--traits Ollama`.
+- **Ollama**: requires `localhost:11434` (backend always compiled since v0.48).
 - **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.
 
 ### Local fixture manifest
@@ -292,7 +290,7 @@ Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this r
 | Audience | Suite |
 |---|---|
 | Per-PR CI | All default-trait suites (the two-call shape above) |
-| Per-PR CI (matrix) | Per-trait builds for Ollama, CloudSaaS |
+| Per-PR CI (matrix) | Reduced-shape (`--disable-default-traits`) build incl. the always-compiled cloud backends |
 | Nightly | `ManifoldE2ETests`, MLX integration, `Operational` (planned T4) |
 | Pre-push (local) | The two-call shape |
 | Hardware-specific | `ManifoldE2ETests/LlamaThinkingE2ETests` etc. — install fixtures via `~/Library/Caches/ManifoldKit/test-models/manifest.json` |

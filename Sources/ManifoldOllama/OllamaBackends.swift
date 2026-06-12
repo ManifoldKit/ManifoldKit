@@ -13,12 +13,11 @@ public enum OllamaBackends: BackendRegistrar {
             provider == .ollama ? OllamaBackend(_registrar: ()) : nil
         }
 
-        // Declare support via `availableInBuild` (not unconditionally) to
-        // preserve the pre-split coupling to `CompiledBackends.current`:
-        // in a build whose trait set excludes Ollama, registration stays a
-        // no-op on the declared-support side. The registration-derived
-        // redesign of `CompiledBackends` is deliberately deferred (v0.48
-        // plan, PR A4).
+        // Declare support via `availableInBuild` to stay coupled to
+        // `CompiledBackends.current` — compile-time truth for what is in
+        // this binary. Since v0.48 (traits retired) Ollama is always
+        // compiled in, so this loop always declares `.ollama`; whether an
+        // endpoint is *configured* is a runtime question the UI answers.
         for provider in APIProvider.availableInBuild where provider == .ollama {
             service.declareSupport(for: provider)
         }

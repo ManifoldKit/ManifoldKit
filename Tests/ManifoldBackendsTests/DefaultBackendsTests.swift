@@ -38,43 +38,23 @@ final class DefaultBackendsRoutingTests: XCTestCase {
     }
 
     func test_routing_openAI_mapsToOpenAIBackend() {
-        #if CloudSaaS
         XCTAssertEqual(DefaultBackends.backendTypeName(for: .openAI), "OpenAIBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .openAI))
-        #endif
     }
 
     func test_routing_claude_mapsToClaudeBackend() {
-        #if CloudSaaS
         XCTAssertEqual(DefaultBackends.backendTypeName(for: .claude), "ClaudeBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .claude))
-        #endif
     }
 
     func test_routing_ollama_mapsToOllamaBackend() {
-        #if Ollama
         XCTAssertEqual(DefaultBackends.backendTypeName(for: .ollama), "OllamaBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .ollama))
-        #endif
     }
 
     func test_routing_lmStudio_mapsToOpenAIBackend() {
-        #if CloudSaaS
         XCTAssertEqual(DefaultBackends.backendTypeName(for: .lmStudio), "OpenAIBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .lmStudio))
-        #endif
     }
 
     func test_routing_custom_mapsToOpenAIBackend() {
-        #if CloudSaaS
         XCTAssertEqual(DefaultBackends.backendTypeName(for: .custom), "OpenAIBackend")
-        #else
-        XCTAssertNil(DefaultBackends.backendTypeName(for: .custom))
-        #endif
     }
 }
 
@@ -151,10 +131,11 @@ final class DefaultBackendsTests: XCTestCase {
 /// 1. **Drop a local declareSupport.** In `MLXBackends.swift` comment out
 ///    `service.declareSupport(for: .mlx)`. With `--traits MLX`,
 ///    `test_mlxRegistrar_declaresMLX` must fail.
-/// 2. **Drop a cloud declareSupport.** In `CloudBackends.swift` comment out
-///    the `for provider in APIProvider.availableInBuild { ... }` loop. With
-///    `--traits CloudSaaS` or `--traits Ollama`,
-///    `test_cloudRegistrar_declaresAvailableProviders` must fail.
+/// 2. **Drop a cloud declareSupport.** In `OllamaBackends.swift` /
+///    `CloudSaaSBackends.swift` comment out the
+///    `for provider in APIProvider.availableInBuild { ... }` loop.
+///    `test_cloudRegistrar_declaresAvailableProviders` must fail in any
+///    build shape (cloud always compiles since v0.48).
 /// 3. **Drop a registrar from the fold.** In `DefaultBackends.swift` remove
 ///    `LlamaBackends.self` from `registrars`. With `--traits Llama`,
 ///    `test_defaultRegister_equalsExplicitFold` must fail on `localModelTypes`
@@ -264,7 +245,6 @@ final class DefaultBackendsRegistrarTests: XCTestCase {
 
 // MARK: - Cloud Pin Loading (CloudSaaS only)
 
-#if CloudSaaS
 /// Verifies `CloudBackends.register(with:)` loads default certificate pins
 /// before any URLSession factory could be exercised. The `_defaultPinsLoaded`
 /// guard makes `loadDefaultPins()` idempotent across multiple calls but the
@@ -302,4 +282,3 @@ final class CloudBackendsPinLoadingTests: XCTestCase {
                                     "CloudBackends.register must populate OpenAI pins (at minimum: intermediate + root)")
     }
 }
-#endif

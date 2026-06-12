@@ -9,7 +9,7 @@
 /// ```bash
 /// # Ollama backend (requires Ollama at localhost:11434):
 /// MANIFOLD_BENCH_OLLAMA_MODEL=llama3.1:8b \
-///   xcrun swift test --traits Ollama \
+///   xcrun swift test \
 ///   --filter OllamaBackendBenchmark --skip-update
 ///
 /// # LlamaBackend (set MANIFOLD_BENCH_LLAMA_MODEL to an absolute .gguf path):
@@ -80,7 +80,6 @@ private func printResults(
 
 // MARK: - Ollama backend
 
-#if Ollama
 @MainActor
 final class OllamaBackendBenchmark: XCTestCase {
 
@@ -125,7 +124,6 @@ final class OllamaBackendBenchmark: XCTestCase {
         XCTAssertGreaterThan(results.map { Double($0.tokens) / ($0.totalMs / 1000) }.max() ?? 0, 5)
     }
 }
-#endif
 
 // MARK: - Llama backend
 

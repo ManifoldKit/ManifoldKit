@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -6,12 +5,8 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 
 /// Tests for #604: structured multi-turn replay against the Anthropic
@@ -265,4 +260,3 @@ final class ClaudeStructuredReplayTests: XCTestCase {
             "Signature must precede thinkingCompleted so the consumer has it before applying the finalize")
     }
 }
-#endif

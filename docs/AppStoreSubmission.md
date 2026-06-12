@@ -18,7 +18,7 @@ backends. That counts as encryption under U.S. export law.
 - **FoundationOnly / offline build** (`traits: ["FoundationOnly"]` or no
   cloud backends compiled in): set `ITSAppUsesNonExemptEncryption=false` in
   your `Info.plist`. No further filing needed.
-- **Cloud backends compiled in** (`CloudSaaS`, `Ollama`): set
+- **Cloud backends linked in** (always compiled since v0.48; linked unless you exclude the cloud products): set
   `ITSAppUsesNonExemptEncryption=true` and complete the annual
   self-classification form on App Store Connect. Most developers qualify
   for the "uses encryption only for app-specific authentication and HTTPS
@@ -141,9 +141,9 @@ ManifoldKit's overhead in your final IPA varies by build profile:
 | Profile | ManifoldKit overhead | Notes |
 |---------|--------------|-------|
 | `traits: ["FoundationOnly"]` | < 5 MB | Foundation Models only. Enforced by CI. |
-| Cloud-only (`CloudSaaS`, no MLX/Llama) | ~10 MB | Adds OpenAI / Claude SSE clients. |
+| Cloud-only (no MLX/Llama traits) | ~10 MB | Adds OpenAI / Claude SSE clients. |
 | Default (`MLX`, `Llama`, `HuggingFace`) | ~700 MB | MLX checkout (~100 MB) + LlamaSwift xcframework (~563 MB). |
-| Full (`MLX`, `Llama`, `Ollama`, `CloudSaaS`, `HuggingFace`) | ~700 MB | Same — Ollama and CloudSaaS are ~MB-scale text. |
+| Full (`MLX`, `Llama`, `HuggingFace`) | ~700 MB | Same — the always-compiled Ollama and SaaS clients are ~MB-scale text. |
 
 The MLX and Llama figures are checkout sizes; what lands in your IPA is
 smaller after dead-code stripping but still substantial. If your app

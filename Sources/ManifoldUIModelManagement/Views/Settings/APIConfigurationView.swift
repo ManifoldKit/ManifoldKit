@@ -1,8 +1,6 @@
 import SwiftUI
-#if Ollama || CloudSaaS
 import ManifoldRuntime
 import ManifoldInference
-#endif
 
 /// Main settings view for managing cloud API endpoints.
 ///
@@ -14,15 +12,12 @@ import ManifoldInference
 /// the SwiftUI environment (typically `ManifoldBootstrap.endpointStore`); the
 /// view itself does not import SwiftData.
 ///
-/// The type itself is **always public** — even when neither `Ollama` nor
-/// `CloudSaaS` traits are enabled — so that consumer migration code like
-/// `apiConfiguration: { APIConfigurationView() }` compiles for chat-only
-/// apps that don't pull in cloud backends. With the traits off the body
-/// renders an `EmptyView`, so the unused sheet content has zero visual
-/// footprint. This mirrors the `BackendRegistrar` idiom in `ManifoldBackends`.
+/// Compiles unconditionally since v0.48 (the Ollama / CloudSaaS traits are
+/// retired — cloud support is always built in). Whether to *show* cloud UI
+/// is a runtime decision for the host, keyed on endpoint configuration
+/// state, not a compile flag.
 public struct APIConfigurationView: View {
 
-    #if Ollama || CloudSaaS
     @Environment(\.dismiss) private var dismiss
     @Environment(\.endpointStore) private var endpointStore
 
@@ -31,12 +26,10 @@ public struct APIConfigurationView: View {
     @State private var endpointToEdit: APIEndpointRecord?
     @State private var showDeleteConfirmation = false
     @State private var endpointToDelete: APIEndpointRecord?
-    #endif
 
     public init() {}
 
     public var body: some View {
-        #if Ollama || CloudSaaS
         NavigationStack {
             Form {
                 Section("Endpoints") {
@@ -110,15 +103,8 @@ public struct APIConfigurationView: View {
                 }
             }
         }
-        #else
-        // Cloud APIs are not available in this build configuration. Keeping
-        // the type public-but-empty lets host apps wire `apiConfiguration:`
-        // unconditionally without a per-trait `#if` at the call site.
-        EmptyView()
-        #endif
     }
 
-    #if Ollama || CloudSaaS
     private func refresh() async {
         guard let endpointStore else { return }
         do {
@@ -148,13 +134,10 @@ public struct APIConfigurationView: View {
             Log.persistence.error("Failed to delete endpoint: \(error)")
         }
     }
-    #endif
 }
 
 // MARK: - Preview
 
-#if Ollama || CloudSaaS
 #Preview("API Configuration") {
     APIConfigurationView()
 }
-#endif

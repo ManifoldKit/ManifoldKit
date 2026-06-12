@@ -2,6 +2,11 @@ import Foundation
 
 /// Inference traits that materially change which backends a build can expose at
 /// runtime.
+///
+/// `.ollama` and `.cloudSaaS` are retained for Codable stability but are no
+/// longer SwiftPM traits: since v0.48 the cloud families compile
+/// unconditionally, so both members are always present in
+/// ``CompiledBackends/current``.
 public enum BackendBuildTrait: String, CaseIterable, Codable, Hashable, Sendable {
     case mlx = "MLX"
     case llama = "Llama"
@@ -12,9 +17,12 @@ public enum BackendBuildTrait: String, CaseIterable, Codable, Hashable, Sendable
 
 /// The network/profile posture of the current build.
 ///
-/// This maps the trait combinations documented in README / SECURITY into a
-/// runtime-visible contract that host apps can switch over without reproducing
-/// SwiftPM trait logic in their own shims.
+/// Since v0.48 the cloud families compile unconditionally, so
+/// ``CompiledBackends/current`` always reports `.full`. The other cases
+/// remain for hand-constructed ``CompiledBackends`` values (tests,
+/// ManifoldServer's injectable provider) and Codable stability. Excluding
+/// cloud code from a shipped binary is now a *link-time* decision — depend
+/// on the products you want (see docs/FIPS.md) — not a compile flag.
 public enum BackendBuildProfile: String, CaseIterable, Codable, Sendable {
     /// No networked inference backends are compiled in.
     case offline
@@ -135,15 +143,14 @@ public struct CompiledBackends: Sendable, Equatable {
         }
         #endif
 
-        #if Ollama
+        // Cloud families compile unconditionally since v0.48 (the Ollama and
+        // CloudSaaS traits are retired), so they are constant members here.
+        // Whether a cloud endpoint is *usable* is a runtime configuration
+        // question — see APIEndpointStore / the endpoint editors in UIMM.
         traits.insert(.ollama)
         cloudProviders.insert(.ollama)
-        #endif
-
-        #if CloudSaaS
         traits.insert(.cloudSaaS)
         cloudProviders.formUnion([.claude, .openAI, .openAIResponses, .lmStudio, .custom])
-        #endif
 
         return Self(
             buildProfile: buildProfile(for: traits),
@@ -181,10 +188,12 @@ public struct CompiledBackends: Sendable, Equatable {
 
     private func unavailableReason(for provider: APIProvider) -> String {
         switch provider {
+        // Unreachable via `CompiledBackends.current` since v0.48 (cloud is
+        // always compiled in); still reachable for hand-constructed values.
         case .ollama:
-            return "Ollama endpoints require the Ollama trait in this build."
+            return "Ollama support is not included in this CompiledBackends value."
         case .openAI, .openAIResponses, .claude, .lmStudio, .custom:
-            return "Cloud API endpoints require the CloudSaaS trait in this build."
+            return "Cloud API support is not included in this CompiledBackends value."
         }
     }
 }

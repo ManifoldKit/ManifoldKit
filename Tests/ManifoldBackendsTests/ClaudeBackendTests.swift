@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
@@ -9,12 +8,8 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 
 /// Tests for ClaudeBackend configuration, state, and capabilities.
@@ -568,4 +563,3 @@ extension ClaudeBackendTests {
     }
 }
 
-#endif

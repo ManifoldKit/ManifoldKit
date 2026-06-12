@@ -21,43 +21,21 @@ import ManifoldUI
 import ManifoldHuggingFace
 #endif
 
-// MARK: - Compile-time backend diagnostics (Deliverable B)
+// MARK: - Backend availability diagnostics
 //
-// Goal: emit a warning at compile time when no inference backend will be
-// available so `quickStart()` never silently throws `noBackendsRegistered`
-// at launch.
-//
-// Why a full "no backends" warning is NOT safe to emit here
-// ──────────────────────────────────────────────────────────
-// `ManifoldFoundation` / `FoundationBackend` is *unconditionally* linked into
-// the `ManifoldBackends` umbrella — it is NOT behind a SwiftPM trait.
-// Whether the backend fires at runtime depends only on the OS version
-// (`#available(iOS 26, macOS 26, *)`). A consumer building with *zero* traits
-// on a macOS 26 machine still gets a working Foundation backend; emitting
-// `#warning("no backends")` in that case would be a false alarm.
-//
-// We therefore limit the warning to the one subset we CAN detect at compile
-// time without risk of false alarms: builds that explicitly suppress the
-// FoundationOnly trait AND compile in none of the other four backend traits.
-// Under `FoundationOnly` the MLX/Llama/HuggingFace defaults are intentionally
-// absent; the Foundation backend is expected. Under zero traits
-// (`--disable-default-traits`) any of the four non-Foundation backends could
-// be present or absent — we can only fire a *partial* hint here.
+// There is intentionally no compile-time "no backends" `#warning` here (one
+// existed pre-v0.48). Since v0.48 the cloud families (Ollama + SaaS) compile
+// unconditionally, so the "zero backends compiled in" condition the old
+// warning guarded is no longer expressible. Whether a backend can actually
+// *generate* is a runtime question: a cloud backend needs a configured
+// endpoint, FoundationBackend needs iOS 26 / macOS 26+, and local backends
+// need a downloaded model.
 //
 // The authoritative runtime diagnostics are `ManifoldKitError.noBackendsRegistered`
 // (nothing registered at all) and the cloud-only-without-endpoint warning from
 // `backendAvailabilityDiagnostic(snapshot:configuredEndpointCount:)` — both
 // derived from live registration state, so they see companion-package
 // registrars injected via `quickStart(backends:)`.
-#if !MLX && !Llama && !CloudSaaS && !Ollama && !canImport(FoundationModels)
-// No locally-resolvable backend traits are compiled in AND FoundationModels is
-// not importable on this toolchain. quickStart() will throw
-// ManifoldKitError.noBackendsRegistered at launch unless the host device is
-// running iOS 26 / macOS 26+ (where FoundationBackend activates dynamically).
-// Add at least one of: MLX, Llama, CloudSaaS, Ollama to your traits array, or
-// target iOS 26+ / macOS 26+ to rely on the built-in Foundation Models backend.
-#warning("ManifoldKit: no backend traits compiled in and FoundationModels not importable. quickStart() will throw noBackendsRegistered unless the device runs iOS 26 / macOS 26+. Enable MLX, Llama, CloudSaaS, or Ollama, or target iOS 26+ / macOS 26+.")
-#endif
 
 /// The umbrella namespace for ManifoldKit's high-level entry points.
 ///

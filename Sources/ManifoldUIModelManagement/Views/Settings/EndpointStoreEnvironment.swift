@@ -5,7 +5,7 @@ import ManifoldRuntime
 /// ``APIConfigurationView``, ``APIEndpointEditorView``, and
 /// ``RemoteServerConfigSheet``.
 ///
-/// Declared unconditionally (not behind the `Ollama` / `CloudSaaS` traits) so
+/// Declared unconditionally (cloud support is always compiled in since v0.48) so
 /// host apps can wire `runtime.endpointStore` via `.environment(\.endpointStore, …)`
 /// without per-trait `#if`s at the call site. The endpoint editor views
 /// themselves remain trait-gated; they no-op (render `EmptyView`) when the

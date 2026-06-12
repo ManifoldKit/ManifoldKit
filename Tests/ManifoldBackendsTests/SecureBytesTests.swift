@@ -4,7 +4,6 @@ import Foundation
 @testable import ManifoldSecrets
 @testable import ManifoldBackends
 
-#if Ollama || CloudSaaS
 // Minimal payload handler for tests that exercise SSECloudBackend state directly.
 private struct NoOpPayloadHandler: SSEPayloadHandler {
     func extractToken(from payload: String) -> String? { nil }
@@ -12,7 +11,6 @@ private struct NoOpPayloadHandler: SSEPayloadHandler {
     func isStreamEnd(_ payload: String) -> Bool { false }
     func extractStreamError(from payload: String) -> Error? { nil }
 }
-#endif
 
 @Suite("SecureBytes")
 struct SecureBytesTests {
@@ -77,7 +75,6 @@ struct SecureBytesTests {
     #endif
 }
 
-#if Ollama || CloudSaaS
 @Suite("SSECloudBackend ephemeralAPIKey")
 struct EphemeralAPIKeyTests {
 
@@ -129,4 +126,3 @@ struct EphemeralAPIKeyTests {
         #expect(backend.ephemeralAPIKey == nil)
     }
 }
-#endif

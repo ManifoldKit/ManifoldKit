@@ -4,9 +4,8 @@
 //
 // Why this exists: until now, "which trait do I need for X?" was prose
 // scattered across README §2.4, CONTRIBUTING, and DefaultBackends comments.
-// Drifting prose meant the answer to "do I need `CloudSaaS` or `Ollama` for
-// OpenAI?" required reading three files. This file is the machine-readable
-// matrix; `scripts/render-feature-matrix.sh` renders it to
+// Drifting prose meant the answer to "which trait unlocks X?" required
+// reading three files. This file is the machine-readable matrix; `scripts/render-feature-matrix.sh` renders it to
 // `docs/FeatureMatrix.md`, and `FeatureMatrixTests` asserts every trait in
 // `Package.swift` has an entry here (failing CI when someone adds a trait
 // without updating the matrix).
@@ -19,12 +18,16 @@ import Foundation
 /// A user-facing capability that one or more traits unlock.
 ///
 /// Capabilities are the *outcome* a consumer wants ("I want to call Claude")
-/// rather than the lever they need to flip (the `CloudSaaS` trait).
+/// rather than the lever they need to flip (a SwiftPM trait).
 public enum ManifoldCapability: String, CaseIterable, Sendable {
     case localInference          // run a model on-device
     case mlxBackend
     case llamaBackend
     case foundationBackend
+    // cloudOpenAI/cloudClaude/ollama are no longer unlocked by any trait —
+    // the cloud families compile unconditionally as of v0.48 (Ollama +
+    // CloudSaaS traits retired in PR A4). Cases stay: removing public enum
+    // cases is a separate API break with no consumer benefit.
     case cloudOpenAI
     case cloudClaude
     case ollama
@@ -90,16 +93,6 @@ public enum FeatureMatrix {
             name: "AnyLanguageModel",
             description: "Reach providers without a native backend (Gemini, xAI, Groq, Mistral, OpenRouter, and others) through the AnyLanguageModel bridge.",
             unlocks: [.providerBridge]
-        ),
-        ManifoldTrait(
-            name: "Ollama",
-            description: "Self-hosted / private-datacenter HTTP inference. Moves out of defaults in next major.",
-            unlocks: [.ollama, .toolCalling, .embeddings]
-        ),
-        ManifoldTrait(
-            name: "CloudSaaS",
-            description: "Third-party SaaS providers (Claude, OpenAI). Off by default.",
-            unlocks: [.cloudOpenAI, .cloudClaude, .toolCalling, .visionInput]
         ),
         ManifoldTrait(
             name: "Server",

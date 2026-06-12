@@ -1,15 +1,10 @@
-#if CloudSaaS || Ollama
 import XCTest
 import ManifoldInference
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 
 /// Phase 1b/B contract suite for ``CloudMessageEncoder``.
@@ -33,14 +28,10 @@ final class CloudMessageEncoderContractTests: XCTestCase {
     /// source for test parameterisation.
     private static var allCases: [(name: String, encoder: CloudMessageEncoder)] {
         var cases: [(String, CloudMessageEncoder)] = []
-        #if CloudSaaS
         cases.append(("openAI", .openAI))
         cases.append(("openAIResponses", .openAIResponses))
         cases.append(("claude", .claude))
-        #endif
-        #if Ollama
         cases.append(("ollama", .ollama))
-        #endif
         return cases
     }
 
@@ -91,11 +82,9 @@ final class CloudMessageEncoderContractTests: XCTestCase {
                 plainHistory: nil
             )
             switch encoder {
-            #if CloudSaaS
             case .claude:
                 XCTAssertEqual(messages.first?["role"] as? String, "user",
                                "\(name): Claude must NOT inline a system entry — caller hoists it to the top-level system field")
-            #endif
             default:
                 XCTAssertEqual(messages.first?["role"] as? String, "system",
                                "\(name): expected an inline system entry as the first message")
@@ -137,13 +126,11 @@ final class CloudMessageEncoderContractTests: XCTestCase {
             let entry = encoded[0]
 
             switch encoder {
-            #if CloudSaaS
             case .claude:
                 XCTAssertEqual(entry["name"] as? String, "get_weather", "\(name): top-level name")
                 XCTAssertEqual(entry["description"] as? String, "Get the current weather for a location")
                 XCTAssertNotNil(entry["input_schema"], "\(name): Anthropic uses input_schema, not parameters")
                 XCTAssertNil(entry["type"], "\(name): Anthropic shape has no top-level type")
-            #endif
             default:
                 XCTAssertEqual(entry["type"] as? String, "function", "\(name): OpenAI-shape tools require type:function")
                 let function = entry["function"] as? [String: Any]
@@ -178,7 +165,6 @@ final class CloudMessageEncoderContractTests: XCTestCase {
             let encoded = encoder.encodeToolResults(results)
 
             switch encoder {
-            #if CloudSaaS
             case .claude:
                 XCTAssertEqual(encoded.count, 1, "\(name): Claude bundles all tool results into one user turn")
                 XCTAssertEqual(encoded.first?["role"] as? String, "user", "\(name): Claude tool_result turns are role=user")
@@ -193,7 +179,6 @@ final class CloudMessageEncoderContractTests: XCTestCase {
                 XCTAssertEqual(encoded[0]["call_id"] as? String, "call_1",
                                "\(name): Responses uses call_id (not tool_call_id)")
                 XCTAssertEqual(encoded[0]["output"] as? String, "{\"temperature\": 72}")
-            #endif
             default:
                 // .openAI, .ollama
                 XCTAssertEqual(encoded.count, 2, "\(name): one tool turn per result")
@@ -250,7 +235,6 @@ final class CloudMessageEncoderContractTests: XCTestCase {
     /// Claude with both cacheSystem + cacheToolsTail must rewrite the
     /// system block to a content-array form (so it has a slot for
     /// `cache_control`) AND tag the last tool entry.
-    #if CloudSaaS
     func test_annotateCacheBreakpoints_claude_addsExplicitMarkers() throws {
         var systemBlock: Any? = "you are helpful"
         var toolEntries: [[String: Any]] = [
@@ -295,6 +279,4 @@ final class CloudMessageEncoderContractTests: XCTestCase {
         XCTAssertNil(toolEntries[0]["cache_control"],
                      "second breakpoint must be suppressed once maxBreakpoints is exhausted")
     }
-    #endif
 }
-#endif

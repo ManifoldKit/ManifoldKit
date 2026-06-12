@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import XCTest
 @testable import ManifoldCloudCore
 import ManifoldInference
@@ -115,4 +114,3 @@ final class ConnectAddressPinningDelegateTests: XCTestCase {
         )
     }
 }
-#endif

@@ -226,10 +226,15 @@ language in its ATO (Authority to Operate) or vendor questionnaire response:
 3. **Distribute via MDM** with a configuration profile that locks the OS
    version, disables jailbreak, and (if required by the cert) enables FIPS
    mode.
-4. **Disable cloud backends** if your deployment is local-only. Use the
-   `Ollama` and `CloudSaaS` traits to compile out SaaS code paths entirely
-   (see #714 Phases 1–4). This shrinks the audit surface for "data leaves
-   the device" review.
+4. **Exclude cloud backends** if your deployment is local-only. Since v0.48
+   the `Ollama`/`CloudSaaS` traits are retired and SaaS code paths are no
+   longer compiled out by a flag — exclusion is a **link-out** decision:
+   depend only on the products you need (e.g. `ManifoldInference` +
+   `ManifoldUI`, never `ManifoldBackends`/`ManifoldCloudSaaS`) and verify via
+   the per-mode symbol audit (`scripts/build-modes.sh <mode> --audit`), which
+   asserts no SaaS symbols or cloud hostname literals appear in the product
+   graph. This is a deliberate discontinuity from the pre-v0.48 compile-out
+   story (v0.48 plan decision #4); the audit artifact series continues.
 5. **Consider Keychain access groups + the Data Protection class
    `NSFileProtectionComplete`** for any persisted data adjacent to ManifoldKit
    (SwiftData stores, exports). ManifoldKit uses
@@ -274,8 +279,9 @@ Use this when responding to a procurement security review:
       CMVP certificate for Apple corecrypto.
 - [ ] If FIPS mode is required by the cert, an MDM configuration profile
       activates it on managed devices.
-- [ ] Cloud backends are either disabled (via `Ollama`/`CloudSaaS` traits) or
-      explicitly approved for the data classification in scope.
+- [ ] Cloud backends are either linked out (product-scoped dependency graph,
+      verified by the `scripts/build-modes.sh` symbol audit) or explicitly
+      approved for the data classification in scope.
 - [ ] The application code's own crypto usage (your code, not ManifoldKit's) has
       been audited against the same boundary criteria as §3 above.
 - [ ] The gap list (§"Gap list") has been reviewed and any

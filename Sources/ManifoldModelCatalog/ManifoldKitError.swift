@@ -85,7 +85,7 @@ public enum ManifoldKitError: Error, Sendable, LocalizedError, Equatable {
         case .decodingFailure(let detail):
             return "Couldn't read the server response: \(detail)"
         case .noBackendsRegistered:
-            return "No inference backends are registered. Add a local backend package and pass its registrar to quickStart(backends:) — manifold-llama (GGUF) or manifold-mlx (MLX) — or enable a backend trait in this build (MLX, Llama, CloudSaaS, Ollama), or run on iOS 26 / macOS 26+ for the built-in Foundation Models backend."
+            return "No inference backends are registered. Call DefaultBackends.register(with:) or quickStart() to register the built-in backends (cloud backends are always compiled in since v0.48), pass a companion registrar to quickStart(backends:) — manifold-llama (GGUF) or manifold-mlx (MLX) — or run on iOS 26 / macOS 26+ for the built-in Foundation Models backend."
         case .unknown(let underlyingDescription):
             if underlyingDescription.isEmpty {
                 return "An unexpected error occurred."

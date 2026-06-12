@@ -1,4 +1,3 @@
-#if Ollama || CloudSaaS
 import SwiftUI
 import ManifoldRuntime
 import ManifoldInference
@@ -239,4 +238,3 @@ public struct APIEndpointEditorView: View {
 #Preview("Add Endpoint") {
     APIEndpointEditorView(endpoint: nil)
 }
-#endif

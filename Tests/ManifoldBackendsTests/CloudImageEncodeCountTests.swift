@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -6,12 +5,8 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 
 /// Grounds audit claim #4 ("raw image bytes live in `MessagePart.image`,
@@ -173,4 +168,3 @@ final class CloudImageEncodeCountTests: XCTestCase {
         )
     }
 }
-#endif

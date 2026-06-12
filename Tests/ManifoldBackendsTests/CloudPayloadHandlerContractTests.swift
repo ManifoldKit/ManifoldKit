@@ -1,15 +1,10 @@
-#if CloudSaaS || Ollama
 import XCTest
 import ManifoldBackendTestKit
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 @testable import ManifoldInference
 
@@ -67,7 +62,6 @@ final class CloudPayloadHandlerContractTests: XCTestCase {
 
     // `.claude` / `.openAIResponses` are published by ManifoldCloudSaaS;
     // this file also compiles in Ollama-only builds where they don't exist.
-#if CloudSaaS
     func test_openAIResponses_extractEvents_outputTextDelta() {
         // Responses API delivers the per-token text under `delta` for
         // both reasoning and visible-text named events. The handler
@@ -143,11 +137,9 @@ final class CloudPayloadHandlerContractTests: XCTestCase {
         // surfaced verbatim at this layer (CloudErrorSanitizer runs
         // envelope-level on HTTP errors, not stream events).
     }
-#endif
 
     // MARK: - Ollama
 
-#if Ollama
     func test_ollama_extractEvents_chatMessageContent() {
         // `/api/chat` shape: content under `message.content`.
         let payload = #"{"model":"llama3","message":{"role":"assistant","content":"Hi"},"done":false}"#
@@ -185,18 +177,15 @@ final class CloudPayloadHandlerContractTests: XCTestCase {
         let payload = #"{"message":{"content":"streaming"},"done":false}"#
         XCTAssertNil(CloudPayloadHandler.ollama.extractUsage(from: payload))
     }
-#endif
 
     // MARK: - Sabotage-style cross-provider isolation
 
-#if CloudSaaS
     func test_handlerCases_doNotCrossContaminate_eventClassification() {
         // OpenAI shape MUST NOT be parsed as Claude content delta.
         let openAIShape = #"{"choices":[{"delta":{"content":"hello"}}]}"#
         XCTAssertNil(CloudPayloadHandler.claude.extractToken(from: openAIShape))
         XCTAssertTrue(CloudPayloadHandler.claude.extractEvents(from: openAIShape).isEmpty)
     }
-#endif
 }
 
 // MARK: - StreamFinalizer contract
@@ -261,7 +250,6 @@ final class StreamFinalizerContractTests: XCTestCase {
         XCTAssertEqual(f.finalize(frame: frame), .streamContinue)
     }
 
-#if Ollama
     func test_ollamaDoneFlag_doneTrueTerminatesWithUsage() {
         let f = OllamaDoneFlagFinalizer()
         let frame = data(#"{"done":true,"eval_count":50,"prompt_eval_count":10}"#)
@@ -277,18 +265,12 @@ final class StreamFinalizerContractTests: XCTestCase {
         let frame = data(#"{"done":false,"message":{"content":"x"}}"#)
         XCTAssertEqual(f.finalize(frame: frame), .streamContinue)
     }
-#endif
 
     func test_anyFinalizer_malformedJSONReturnsNil() {
         let frame = data("not json")
         XCTAssertNil(OpenAIDoneSentinelFinalizer().finalize(frame: frame))
-#if CloudSaaS
         XCTAssertNil(ClaudeMessageStopFinalizer().finalize(frame: frame))
         XCTAssertNil(OpenAIResponsesEventFinalizer().finalize(frame: frame))
-#endif
-#if Ollama
         XCTAssertNil(OllamaDoneFlagFinalizer().finalize(frame: frame))
-#endif
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if Ollama
 import XCTest
 import ManifoldInference
 import ManifoldTools
@@ -434,4 +433,3 @@ final class DemoScenarioOllamaE2ETests: XCTestCase {
         try content.write(to: destination, atomically: true, encoding: .utf8)
     }
 }
-#endif

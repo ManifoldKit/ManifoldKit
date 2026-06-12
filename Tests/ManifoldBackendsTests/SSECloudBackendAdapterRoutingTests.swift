@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Testing
 import Foundation
 @testable import ManifoldCloudCore
@@ -466,4 +465,3 @@ private final class UsageRecorder: @unchecked Sendable {
         lock.unlock()
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldInference
 import ManifoldBackendTestKit
@@ -100,4 +99,3 @@ final class ClaudeBackendConformanceTests: XCTestCase {
         )
     }
 }
-#endif

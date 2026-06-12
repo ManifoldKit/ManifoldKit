@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -6,12 +5,8 @@ import ManifoldTestSupport
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 
 /// Tests for #943 (part of #20): `image_url` content parts on the OpenAI
@@ -406,4 +401,3 @@ final class OpenAIBackendImageInputTests: XCTestCase {
             "MIME must pass through verbatim — got \(dataURI.prefix(40))")
     }
 }
-#endif

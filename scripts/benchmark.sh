@@ -44,7 +44,7 @@
 #
 # ## First-run note
 #
-# On a clean checkout, run `xcrun swift build --traits Ollama,Llama,MLX` once
+# On a clean checkout, run `xcrun swift build --traits Llama,MLX` once
 # before invoking this script. The warm-up step below does this automatically.
 
 set -euo pipefail
@@ -94,7 +94,7 @@ fi
 # Ensures _NumericsShims and all module interfaces are cached before the
 # parallel xcrun swift test compilations start. No-op on subsequent runs.
 log "Warming up build artifacts (xcrun swift build)…"
-xcrun swift build --traits Ollama,Llama,MLX 2>&1 | { grep -E "Build complete|^error:" || true; } | head -3 || true
+xcrun swift build --traits Llama,MLX 2>&1 | { grep -E "Build complete|^error:" || true; } | head -3 || true
 
 # ── Backend detection ─────────────────────────────────────────────────────────
 OLLAMA_AVAILABLE=0
@@ -184,7 +184,7 @@ if [[ $OLLAMA_AVAILABLE -eq 1 ]] && \
    [[ -z "$ONLY_PATH" || "$ONLY_PATH" == "sdk-ollama" ]]; then
     head_ "ManifoldKit SDK → OllamaBackend"
     SDK_OUT=$(MANIFOLD_BENCH_OLLAMA_MODEL="$OLLAMA_MODEL" \
-        xcrun swift test --traits Ollama \
+        xcrun swift test \
             --filter OllamaBackendBenchmark \
             --skip-update 2>&1)
     echo "$SDK_OUT" | grep -E "ManifoldKit→Ollama run|BENCH_RESULT" || true
@@ -255,7 +255,7 @@ run_server_bench() {
 if [[ $OLLAMA_AVAILABLE -eq 1 ]] && \
    [[ -z "$ONLY_PATH" || "$ONLY_PATH" == "server-ollama" ]]; then
     head_ "ManifoldKit server → OllamaBackend"
-    run_server_bench "Server,Ollama" "ollama" \
+    run_server_bench "Server" "ollama" \
         "--model $OLLAMA_MODEL --ollama-base-url $OLLAMA_URL" \
         "ManifoldKit server→Ollama"
 fi

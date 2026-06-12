@@ -1,5 +1,4 @@
 #if Fuzz
-#if CloudSaaS
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
@@ -75,5 +74,4 @@ final class OpenAIFuzzFactoryTests: XCTestCase {
         )
     }
 }
-#endif
 #endif

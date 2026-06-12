@@ -1,4 +1,3 @@
-#if CloudSaaS
 import XCTest
 import CommonCrypto
 import Security
@@ -481,4 +480,3 @@ private final class StubChallengeSender: NSObject, URLAuthenticationChallengeSen
     func continueWithoutCredential(for challenge: URLAuthenticationChallenge) {}
     func cancel(_ challenge: URLAuthenticationChallenge) {}
 }
-#endif

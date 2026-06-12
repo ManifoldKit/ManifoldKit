@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/fuzz.sh — Run the ManifoldFuzz harness with a friendly preflight.
 #
-# Default behaviour (no args): runs `swift run --traits Fuzz,MLX,Llama,Ollama
+# Default behaviour (no args): runs `swift run --traits Fuzz,MLX,Llama
 # fuzz-chat --minutes 5` against llama.cpp. Discovers which backends are usable and
 # prints a one-line summary before kicking off the harness.
 #
@@ -25,7 +25,7 @@ for arg in "$@"; do
         --with-mlx) WITH_MLX=1 ;;
         -h|--help)
             cd "$PACKAGE_DIR"
-            echo "scripts/fuzz.sh — wrapper around \`swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat\` (default backend: llama)"
+            echo "scripts/fuzz.sh — wrapper around \`swift run --traits Fuzz,MLX,Llama fuzz-chat\` (default backend: llama)"
             echo ""
             echo "Local flags:"
             echo "  --with-mlx   Also run the MLX XCTest fuzz suite via xcodebuild"
@@ -36,7 +36,7 @@ for arg in "$@"; do
             echo "  export OPENROUTER_API_KEY=sk-or-...   # preferred; or OPENAI_API_KEY"
             echo "  scripts/fuzz.sh --backend openai --base-url https://openrouter.ai/api \\"
             echo "                  --model deepseek/deepseek-r1:free --minutes 5"
-            echo "  Adds the CloudSaaS trait automatically. Caveats: replay/shrink unavailable"
+            echo "  Caveats: replay/shrink unavailable"
             echo "  (non-deterministic); free models are rate-limited (429) and ':free' slugs may"
             echo "  404 on data-policy gating; --base-url must omit /v1 (backend appends it)."
             echo "  --request-timeout N   per-request HTTP idle timeout in seconds (default 90)."
@@ -44,9 +44,9 @@ for arg in "$@"; do
             echo "                        per request; detectors flag >60s, so 90s loses no signal"
             echo "                        while protecting throughput. openai path only."
             echo ""
-            echo "Forwarding to: swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h"
+            echo "Forwarding to: swift run --traits Fuzz,MLX,Llama fuzz-chat -h"
             echo "─────────────────────────────────────────────────────────────"
-            swift run --traits Fuzz,MLX,Llama,Ollama fuzz-chat -h || true
+            swift run --traits Fuzz,MLX,Llama fuzz-chat -h || true
             exit 0
             ;;
         *) FORWARDED_ARGS+=("$arg") ;;
@@ -83,13 +83,12 @@ if ! [[ "$REQUESTED_WORKERS" =~ ^[0-9]+$ ]] || (( REQUESTED_WORKERS < 1 )); then
     exit 2
 fi
 
-# Trait set forwarded to `swift run`. The openai (OpenAI-compatible cloud)
-# backend additionally needs the CloudSaaS trait so ManifoldCloud's
-# OpenAIBackend links into fuzz-chat.
-TRAITS="Fuzz,MLX,Llama,Ollama"
+# Trait set forwarded to `swift run`. The Ollama and CloudSaaS traits were
+# retired in v0.48 (PR A4) — the cloud families (including the openai
+# OpenAI-compatible backend) always compile into fuzz-chat under Fuzz.
+TRAITS="Fuzz,MLX,Llama"
 CLOUD_BACKEND=0
 if [[ "$REQUESTED_BACKEND" == "openai" ]]; then
-    TRAITS="Fuzz,CloudSaaS,MLX,Llama,Ollama"
     CLOUD_BACKEND=1
 fi
 

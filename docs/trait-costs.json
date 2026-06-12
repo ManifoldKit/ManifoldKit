@@ -62,32 +62,6 @@
   "method_version": "1",
   "notes": "swift-huggingface: HuggingFace Hub browsing/download library. ManifoldHuggingFace wrapper=9 KB, HuggingFace library=5017 KB stripped."
 },{
-  "trait": "CloudSaaS",
-  "modules_added": "ManifoldCloud (SaaS bodies)",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "731",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "ManifoldCloud SaaS bodies (Claude, OpenAI Chat, OpenAI Responses) + ManifoldCloudCore. ManifoldCloud=140 KB + ManifoldCloudCore=591 KB. No unique external checkout."
-},{
-  "trait": "Ollama",
-  "modules_added": "ManifoldCloud (Ollama bodies)",
-  "transitive_deps": [],
-  "checkout_attributed_mb": 0,
-  "artifact_mb": 0,
-  "binary_delta_kb": "731",
-  "cold_build_delta_s": "N/A",
-  "measured_at": "2026-06-10T19:40:00Z",
-  "toolchain": "swift-driver version: 1.148.6 Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
-  "machine": "Apple Silicon (arm64)",
-  "method_version": "1",
-  "notes": "Same ManifoldCloud + ManifoldCloudCore modules as CloudSaaS; Ollama HTTP dialect compiled in instead of SaaS endpoints."
-},{
   "trait": "Server",
   "modules_added": "ManifoldServer + Hummingbird",
   "transitive_deps": ["EventSource", "swift-nio", "swift-crypto", "swift-collections", "swift-atomics", "swift-system"],

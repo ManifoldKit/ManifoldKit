@@ -1,6 +1,6 @@
-// Does not require the Fuzz trait. The Ollama path is gated behind the
-// `Ollama` trait (not in the default set); pass `--traits Ollama` to enable
-// it. The mock path is always available.
+// Does not require the Fuzz trait. The Ollama and mock paths are always
+// available — the Ollama trait was retired in v0.48 (PR A4) and
+// ManifoldOllama now compiles unconditionally.
 // For generation fuzzing with real backends, see scripts/fuzz.sh.
 //
 // The `Tools` trait was retired in v0.48 (PR A3) — the CLI body compiles
@@ -10,9 +10,7 @@
 import Foundation
 import ManifoldInference
 import ManifoldTools
-#if Ollama
 import ManifoldOllama
-#endif
 
 /// Hand-rolled argument parser — `swift-argument-parser` would be the right
 /// call in a larger CLI, but pulling in an external SPM dependency for a
@@ -375,15 +373,10 @@ func makeBackend(cli: CLI, scenario: Scenario, model: String) async throws -> an
     case .mock:
         return MockFactory.make(for: scenario)
     case .ollama:
-        #if Ollama
         let backend = OllamaBackend(_registrar: ())
         backend.configure(baseURL: cli.ollamaBaseURL, modelName: model)
         try await backend.loadModel(from: cli.ollamaBaseURL, plan: .cloud())
         return backend
-        #else
-        struct OllamaUnavailable: Error, CustomStringConvertible { var description: String { "Ollama backend not available — rebuild with the `Ollama` trait enabled (e.g. `swift build --traits Ollama`)." } }
-        throw OllamaUnavailable()
-        #endif
     }
 }
 

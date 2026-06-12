@@ -43,7 +43,6 @@ final class AllBackendsAcceptPlanTests: XCTestCase {
 
     // MARK: - Cloud Backends
 
-    #if CloudSaaS
     func test_openAIBackendAcceptsPlan() async throws {
         let backend = OpenAIBackend()
         backend.configure(
@@ -73,9 +72,7 @@ final class AllBackendsAcceptPlanTests: XCTestCase {
             // Acceptable — the test's contract is the signature, not the outcome.
         }
     }
-    #endif
 
-    #if Ollama
     func test_ollamaBackendAcceptsPlan() async throws {
         let backend = OllamaBackend()
         backend.configure(
@@ -85,7 +82,6 @@ final class AllBackendsAcceptPlanTests: XCTestCase {
         try await backend.loadModel(from: URL(string: "unused:")!, plan: .cloud())
         XCTAssertTrue(backend.isModelLoaded)
     }
-    #endif
 
     // MARK: - Local Backends (hardware-gated)
 

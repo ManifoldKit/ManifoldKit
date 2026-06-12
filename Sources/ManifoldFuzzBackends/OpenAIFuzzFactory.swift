@@ -1,4 +1,4 @@
-#if CloudSaaS && Fuzz
+#if Fuzz
 import Foundation
 import ManifoldBackends
 import ManifoldFuzz

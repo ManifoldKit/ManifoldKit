@@ -88,15 +88,10 @@ public enum DefaultBackends {
 
     static func backendTypeName(for provider: APIProvider) -> String? {
         switch provider {
-        #if CloudSaaS
         case .claude:                     return "ClaudeBackend"
         case .openAI, .lmStudio, .custom: return "OpenAIBackend"
         case .openAIResponses:            return "OpenAIResponsesBackend"
-        #endif
-        #if Ollama
         case .ollama:                     return "OllamaBackend"
-        #endif
-        default: return nil
         }
     }
 
@@ -123,12 +118,9 @@ public enum DefaultBackends {
     /// how many backend capabilities (local model types + cloud providers) were
     /// actually wired.
     ///
-    /// Each registrar is trait-gated internally, so a minimal build can register
-    /// nothing — the returned count lets the caller fail fast on an empty,
-    /// never-generating service instead of launching a dead app (the footgun
-    /// audit's class D — "silent degradation where a fail-fast boundary check
-    /// belongs"). Note a bare count is a weak signal once cloud registrars
-    /// register unconditionally: prefer inspecting
+    /// Since v0.48 the cloud registrars register unconditionally (the Ollama
+    /// and CloudSaaS traits are retired), so the count is always non-zero —
+    /// a bare count is a weak signal. Prefer inspecting
     /// ``ManifoldInference/InferenceService/registeredBackendSnapshot()``
     /// (`supportsLocalInference` / `cloudProviders`) as
     /// ``ManifoldKit/ManifoldKit/quickStart(configuration:)`` now does.

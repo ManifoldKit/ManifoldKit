@@ -1,4 +1,3 @@
-#if Ollama
 import Testing
 import XCTest
 import Foundation
@@ -6,12 +5,8 @@ import Foundation
 @testable import ManifoldCloud
 // v0.48 product split: internal symbols moved into the family targets and
 // ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
-#if Ollama
 @testable import ManifoldOllama
-#endif
-#if CloudSaaS
 @testable import ManifoldCloudSaaS
-#endif
 @testable import ManifoldCloudCore
 import ManifoldRuntime
 import ManifoldPersistenceSwiftData
@@ -1926,4 +1921,3 @@ private func extractBody(from request: URLRequest?) throws -> Data {
     Issue.record("Request has neither httpBody nor httpBodyStream")
     return Data()
 }
-#endif

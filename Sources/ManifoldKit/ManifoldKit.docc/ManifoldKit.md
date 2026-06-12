@@ -109,7 +109,8 @@ install to first token, follow the loose-markdown front door:
 Every engine sits behind one ``InferenceBackend`` protocol; ``DefaultBackends``
 registers the ones compiled in for the active traits. The on-device families are
 re-exported here. Cloud backends (OpenAI, Anthropic, Ollama, LAN) live in
-`ManifoldCloud` and appear once the `CloudSaaS` / `Ollama` traits are enabled.
+`ManifoldOllama` / `ManifoldCloudSaaS` and are always compiled in since v0.48
+(the `CloudSaaS` / `Ollama` traits were retired).
 
 - ``InferenceBackend``
 - ``DefaultBackends``

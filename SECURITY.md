@@ -37,15 +37,17 @@ guarantee. Consumers in regulated verticals can compile the package in `offline`
 `ollama` mode and have a mechanically-checked guarantee that no SaaS-cloud code is
 linked into the binary.
 
-| Mode      | Default? | Traits enabled                | Backends linked                 |
-|-----------|----------|-------------------------------|---------------------------------|
-| `offline` | **Yes**  | `MLX`, `Llama`                | MLX, llama.cpp, Foundation      |
-| `ollama`  | No       | `MLX`, `Llama`, `Ollama`      | + Ollama HTTP client            |
-| `saas`    | No       | `MLX`, `Llama`, `CloudSaaS`   | + Claude, OpenAI                |
-| `full`    | No       | all of the above              | every backend ManifoldKit ships         |
+Since v0.48 the `Ollama` and `CloudSaaS` traits are retired: cloud sources
+always compile in the package. Excluding cloud code from a shipped binary is a
+**link-out** decision — build/link only the products you need — not a compile
+flag. The build modes map to product graphs (see `scripts/build-modes.sh`):
 
-The default trait set today is `MLX, Llama` (per `Package.swift`), which corresponds
-to the `offline` build profile. `Ollama` and `CloudSaaS` are both opt-in.
+| Mode      | Build invocation                                        | Cloud code linked              |
+|-----------|---------------------------------------------------------|--------------------------------|
+| `offline` | `--disable-default-traits --target ManifoldUI`          | none                           |
+| `ollama`  | `--disable-default-traits --target ManifoldOllama`      | Ollama HTTP client + shared TLS-pinning infra (`ManifoldCloudCore`) |
+| `saas`    | `--disable-default-traits --target ManifoldCloudSaaS`   | Claude, OpenAI + shared infra  |
+| `full`    | plain `swift build` (default traits `MLX,Llama,HuggingFace`) | every backend ManifoldKit ships |
 
 ### Consumer manifest snippets
 
@@ -89,9 +91,10 @@ and the import-graph rule in the same audit):
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
-        .trait(name: "Ollama"),
     ]
 )
+// Cloud backends always compile since v0.48; depend on the ManifoldOllama
+// product (and not ManifoldCloudSaaS) for the ollama-mode link surface.
 ```
 
 Same `offline` guarantees, plus:
@@ -119,9 +122,10 @@ Same `offline` guarantees, plus:
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
-        .trait(name: "CloudSaaS"),
     ]
 )
+// Cloud backends always compile since v0.48; depend on the ManifoldCloudSaaS
+// product for the SaaS link surface.
 ```
 
 `saas` adds Claude and OpenAI backends. Pinning is **on by default** for both
@@ -138,10 +142,9 @@ transport-security boundary.
     traits: [
         .trait(name: "MLX"),
         .trait(name: "Llama"),
-        .trait(name: "Ollama"),
-        .trait(name: "CloudSaaS"),
     ]
 )
+// All cloud backends are compiled in; this is the maximum-surface build.
 ```
 
 `full` is the maximum-surface developer build. Use it for development; pick a
@@ -153,7 +156,7 @@ narrower mode for shipping production binaries.
 |--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
 | [`TrafficBoundaryAuditTest`](Tests/ManifoldInferenceTests/TrafficBoundaryAuditTest.swift)                                | Rule classes 1–7: `URLSession` import allowlist, C interop / dynamic dispatch ban, hostname literals allowlist, privacy-API allowlist, `Package.swift` hygiene, import-graph layering, trait-name validity. |
 | [`DenyAllURLProtocolTests`](Tests/ManifoldTestSupportTests/DenyAllURLProtocolTests.swift) and [`URLSessionProviderNetworkDisabledTests`](Tests/ManifoldBackendsTests/URLSessionProviderNetworkDisabledTests.swift) | Runtime network isolation: when `networkDisabled` is set, every URL request fails closed.                          |
-| `#if Ollama` / `#if CloudSaaS` conditional compilation in `Sources/ManifoldBackends/`                                    | Trait-gated backend code is not compiled into the binary if the trait is absent.                                    |
+| Per-mode symbol audit in `scripts/build-modes.sh` (nightly, `.github/workflows/build-modes.yml`)                          | Cloud backend code is not *linked* into a product graph that excludes it (link-out claim; the compile-out traits were retired in v0.48). |
 | `--disable-default-traits` swift test invocations in CI (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml))      | At least one CI job exercises the offline trait set on every PR; signature regressions surface as compile errors.   |
 
 There is currently no separate `scripts/build-modes.sh` — that consolidation is tracked

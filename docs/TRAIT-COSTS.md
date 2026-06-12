@@ -25,8 +25,6 @@
 | `MLX` | ManifoldMLX + StableDiffusion + FluxSwift | `mlx-swift`, `mlx-swift-lm` | ~121 | — | +42652 | +464 |
 | `Llama` | ManifoldLlama | `llama.swift` | — | ~617 | +8 | — |
 | `HuggingFace` | ManifoldHuggingFace | `swift-huggingface` | ~2 | — | +5026 | — |
-| `CloudSaaS` | ManifoldCloud (SaaS bodies) | _(none beyond baseline)_ | — | — | +731 | — |
-| `Ollama` | ManifoldCloud (Ollama bodies) | _(none beyond baseline)_ | — | — | +731 | — |
 | `Server` | ManifoldServer + Hummingbird | `EventSource`, `swift-nio`, `swift-crypto`, `swift-collections`, `swift-atomics`, `swift-system` | ~74 | — | +12157 | — |
 | `Macros` | ManifoldMacrosPlugin + @ToolSchema | `swift-syntax` | ~11 | — | +0 | — |
 | `AnyLanguageModel` | AnyLanguageModel bridge | _(none beyond baseline)_ | — | — | — | — |
@@ -52,7 +50,7 @@ These map to the modes in `scripts/build-modes.sh`. Costs here are **not** the s
 |------|----------------|-------------------------------|-------|
 | **FoundationOnly** | `FoundationOnly` | ~259 cloned, ~0 compiled | ≤5 MB compiled; all ~876 MB fetched once |
 | **local-only** (default) | `MLX`, `Llama`, `HuggingFace` | ~259 cloned | Default when no `traits:` override; on-device only |
-| **cloud-only** | `CloudSaaS` or `Ollama` | ~259 cloned | Pure HTTP; no local model deps compiled |
+| **cloud-only** | _(none — cloud always compiled since v0.48; build the `ManifoldOllama` / `ManifoldCloudSaaS` products)_ | ~259 cloned | Pure HTTP; no local model deps compiled |
 | **full** | all non-Fuzz traits | ~259 cloned | ~617 MB xcframework + Metal compile |
 
 ¹ All modes clone the same ~259 MB of source checkouts plus the ~617 MB llama.cpp xcframework on first resolve. The FoundationOnly mode _compiles_ ~5 MB. See footnote 1 in the table above and the resolution note.
