@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.48.0](https://github.com/roryford/ManifoldKit/compare/v0.47.0...v0.48.0) (2026-06-12)
+
+ManifoldKit's packaging is rebuilt. SwiftPM traits are retired in favor of library products, and the heavy MLX and llama.cpp backends move to companion packages — `swift build` just works, in every configuration, with no trait matrix. Full upgrade guide: [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md).
+
+> **This release lands automatically if you depend on ManifoldKit with `from:`.** SwiftPM resolves `from: "0.47.0"` as `0.47.0..<1.0.0` — there is no 0.x minor-pinning special case. Pin `.upToNextMinor(from: "0.47.0")` to stay behind; follow the migration guide to move forward.
+
+### Highlights
+
+**Traits are gone — products are the new build switch** ([#1764](https://github.com/roryford/ManifoldKit/issues/1764), [#1765](https://github.com/roryford/ManifoldKit/issues/1765), [#1768](https://github.com/roryford/ManifoldKit/issues/1768), [#1769](https://github.com/roryford/ManifoldKit/issues/1769)) — The `MCP`, `MCPBuiltinCatalog`, `Voice`, `Tools`, `AppIntents`, `Skills`, `Ollama`, `CloudSaaS`, and `AnyLanguageModel` traits no longer exist; passing any of them in a `traits:` array is now a resolve error. Those modules either compile unconditionally (MCP, Voice, Tools, AppIntents, Skills) or became products you opt into by importing (`ManifoldOllama`, `ManifoldCloudSaaS`, `ManifoldAnyLanguageModel`). Only `Server` and `Macros` remain as build switches.
+
+```swift
+// Before (v0.47)
+.package(url: "…/ManifoldKit", from: "0.47.0",
+         traits: ["CloudSaaS", "Ollama", "MCP"])
+
+// After (v0.48) — no traits; pick products instead
+.package(url: "…/ManifoldKit", from: "0.48.0"),
+// target deps: "ManifoldKit", .product(name: "ManifoldOllama", package: "ManifoldKit")
+```
+
+**MLX and llama.cpp move to companion packages** ([#1771](https://github.com/roryford/ManifoldKit/issues/1771), [#1749](https://github.com/roryford/ManifoldKit/issues/1749)) — `ManifoldMLX` (with the vendored FluxSwift/StableDiffusion diffusion backends) and `ManifoldLlama` now live at [`roryford/manifold-mlx`](https://github.com/roryford/manifold-mlx) and [`roryford/manifold-llama`](https://github.com/roryford/manifold-llama), tagged 0.1.0 alongside this release. They plug back in through one registration call. The `ManifoldBackends` umbrella remains for one release as a deprecated Foundation+Cloud shim.
+
+```swift
+// Package.swift
+.package(url: "https://github.com/roryford/ManifoldKit", from: "0.48.0"),
+.package(url: "https://github.com/roryford/manifold-llama", from: "0.1.0"),
+
+// App entry point
+import ManifoldKit
+import ManifoldLlama
+
+let kit = try await ManifoldKit.quickStart(backends: [LlamaBackends.self])
+```
+
+**`quickStart(backends:)` and runtime capability checks** ([#1766](https://github.com/roryford/ManifoldKit/issues/1766)) — `quickStart` accepts companion registrars and folds them in before the availability guard, starter-model seed, and model selection run. Capability checks that used to reflect compile-time traits now reflect live registration: on-disk models with no registered backend are flagged instead of auto-selected, the starter seed gates on whether a registered backend can actually load it, and a configuration with no usable backend produces an actionable diagnostic naming the companion packages.
+
+**A frozen seam and a TestKit for backend authors** ([#1762](https://github.com/roryford/ManifoldKit/issues/1762), [#1767](https://github.com/roryford/ManifoldKit/issues/1767)) — `ManifoldBackendTestKit` and `ManifoldTestSupport` are now products: third-party backends run the same `BackendContractChecks` conformance suite the built-in families do. The cross-package seam (registration surface, Contract kernel, and the `@_spi(BackendInternals)` internals the families need) is pinned by a compile-time freeze fixture, and `scripts/split-proof.sh` proves the family sources build and pass their contracts out-of-package.
+
+**Why: SwiftPM traits can't do this job** — The investigation of [#1737](https://github.com/roryford/ManifoldKit/issues/1737) showed trait-conditional product edges are evaluated inconsistently between resolution and test-graph derivation upstream ([swift-package-manager#8350](https://github.com/swiftlang/swift-package-manager/issues/8350)), Xcode's trait support is broken through 26.x, and the per-combination build matrix could only ever be sampled. Products and companion packages eliminate the bug class structurally.
+
+### Features
+
+**`ManifoldOllama` and `ManifoldCloudSaaS` products** ([#1761](https://github.com/roryford/ManifoldKit/issues/1761)) — the cloud families are now real products with explicit registrars; shared SSE/TLS plumbing stays in `ManifoldCloudCore`.
+
+**Faster prompt assembly** ([#1759](https://github.com/roryford/ManifoldKit/issues/1759)) — `PromptContextPipeline` queries its providers concurrently; wall time is now the slowest provider, not the sum.
+
+### Fixes
+
+**`Package.resolved` freshness for the unconditional AnyLanguageModel edge** ([#1770](https://github.com/roryford/ManifoldKit/issues/1770)) — lockfile updated alongside the trait retirement, plus README Hello World gate repairs.
+
 ## [0.47.0](https://github.com/roryford/ManifoldKit/compare/v0.46.0...v0.47.0) (2026-06-11)
 
 ### Highlights
