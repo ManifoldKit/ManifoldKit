@@ -71,33 +71,33 @@ import ManifoldHardware
     /// Capacity of the phrase-detection token buffer (maxPhraseLen × minPhraseRepeats + 1).
     private static let phraseWindowCap = maxPhraseLen * minPhraseRepeats + 1
 
-    struct DRYSamplerDescriptor: Equatable {
-        let nCtxTrain: Int32
-        let options: LlamaDRYSamplerOptions
+    public struct DRYSamplerDescriptor: Equatable {
+        public let nCtxTrain: Int32
+        public let options: LlamaDRYSamplerOptions
 
-        init?(config: GenerationConfig, nCtxTrain: Int32) {
+        public init?(config: GenerationConfig, nCtxTrain: Int32) {
             guard let options = config.llamaDRY else { return nil }
             self.nCtxTrain = nCtxTrain
             self.options = options
         }
     }
 
-    struct XTCSamplerDescriptor: Equatable {
-        let options: LlamaXTCSamplerOptions
-        let resolvedSeed: UInt32
+    public struct XTCSamplerDescriptor: Equatable {
+        public let options: LlamaXTCSamplerOptions
+        public let resolvedSeed: UInt32
 
-        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+        public init?(config: GenerationConfig, fallbackSeed: UInt32) {
             guard let options = config.llamaXTC else { return nil }
             self.options = options
             self.resolvedSeed = options.seed ?? fallbackSeed
         }
     }
 
-    struct MirostatV2SamplerDescriptor: Equatable {
-        let options: LlamaMirostatV2SamplerOptions
-        let resolvedSeed: UInt32
+    public struct MirostatV2SamplerDescriptor: Equatable {
+        public let options: LlamaMirostatV2SamplerOptions
+        public let resolvedSeed: UInt32
 
-        init?(config: GenerationConfig, fallbackSeed: UInt32) {
+        public init?(config: GenerationConfig, fallbackSeed: UInt32) {
             guard let options = config.llamaMirostatV2 else { return nil }
             self.options = options
             self.resolvedSeed = options.seed ?? fallbackSeed

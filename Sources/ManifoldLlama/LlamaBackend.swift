@@ -150,7 +150,7 @@ public final class LlamaBackend: InferenceBackend, @unchecked Sendable {
     /// Test-only read-side accessor that snapshots `_loadOptions` under the
     /// state lock. Lets plumbing tests assert the setter persisted the value
     /// without needing a real model load.
-    var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
+    @_spi(Testing) public var loadOptionsForTesting: BackendLoadOptions { withStateLock { _loadOptions } }
 
     // MARK: - Multimodal Projector
 

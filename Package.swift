@@ -931,12 +931,11 @@ let package = Package(
             ]
         ),
         // Umbrella test target — covers every family target via per-trait
-        // conditional deps so `@testable import ManifoldMLX`,
-        // `@testable import ManifoldLlama`, etc. resolve from the same
-        // suite. The `ManifoldBackends` dep also keeps
-        // `@testable import ManifoldBackends` working for tests that exercise
-        // the umbrella's cross-family glue (DefaultBackends, BackendRegistrar
-        // conformances).
+        // conditional deps so `@_spi(Testing) import ManifoldMLX`,
+        // `@_spi(Testing) import ManifoldLlama`, etc. resolve from the same
+        // suite. Family test files (MLX*/Llama*/Conformance) are @testable-free
+        // so they can move to the companion packages (#1749); non-family files
+        // may still use `@testable import` for in-repo modules.
         .testTarget(
             name: "ManifoldBackendsTests",
             dependencies: [
@@ -1082,7 +1081,7 @@ let package = Package(
                 // so tests reach all family symbols via this single dep.
                 "ManifoldBackends",
                 // ManifoldMLX kept as a direct dep: VisionE2ETests.swift does
-                // `@testable import ManifoldMLX` to reach the internal MLXModelProbe.
+                // `@_spi(Testing) import ManifoldMLX` to reach MLXModelProbe.
                 .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
                 // ManifoldCloudCore, ManifoldFoundation, ManifoldLlama, ManifoldCloud
                 // removed: no E2E test file imports them directly — accessed via the

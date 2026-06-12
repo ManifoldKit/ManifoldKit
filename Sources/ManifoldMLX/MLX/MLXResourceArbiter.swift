@@ -79,7 +79,7 @@ public actor MLXResourceArbiter {
     /// Test-only initialiser that lets the suite inject its own
     /// `setCacheLimit` / `clearCache` recorders. Not exposed on `shared` —
     /// tests that need an isolated arbiter construct a fresh instance.
-    init(
+    @_spi(Testing) public init(
         setCacheLimit: @escaping @Sendable (Int) -> Void,
         clearCache: @escaping @Sendable () -> Void
     ) {

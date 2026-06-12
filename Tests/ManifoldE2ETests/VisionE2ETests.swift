@@ -3,7 +3,7 @@ import XCTest
 import ManifoldInference
 @testable import ManifoldTestSupport
 @testable import ManifoldBackends
-@testable import ManifoldMLX  // MLXModelProbe is internal to ManifoldMLX, not re-exported by the umbrella
+@_spi(Testing) import ManifoldMLX  // MLXModelProbe is @_spi(Testing) in ManifoldMLX, not re-exported by the umbrella
 
 /// Hardware-gated end-to-end tests for MLX VLM vision inference.
 ///

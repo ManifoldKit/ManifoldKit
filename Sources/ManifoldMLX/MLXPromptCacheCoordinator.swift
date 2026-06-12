@@ -168,12 +168,12 @@ import ManifoldInference
     /// Carries only the non-GPU properties the reuse decision needs, so the
     /// planning rule is unit-testable without touching Metal.
     public struct LayerReusePlanInput: Equatable {
-        let snapshotTypeName: String
-        let snapshotOffset: Int
-        let snapshotStateIsEmpty: Bool
-        let liveTypeName: String
-        let liveIsTrimmable: Bool
-        let liveIsKVCacheSimple: Bool
+        public let snapshotTypeName: String
+        public let snapshotOffset: Int
+        public let snapshotStateIsEmpty: Bool
+        public let liveTypeName: String
+        public let liveIsTrimmable: Bool
+        public let liveIsKVCacheSimple: Bool
 
         public init(
             snapshotTypeName: String,
