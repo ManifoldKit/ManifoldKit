@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import os
 import ManifoldInference
@@ -125,4 +124,3 @@ public final class OllamaModelListService: Sendable {
     }
 }
 
-#endif

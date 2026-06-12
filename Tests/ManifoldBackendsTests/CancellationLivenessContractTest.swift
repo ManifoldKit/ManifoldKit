@@ -55,8 +55,7 @@ final class CancellationLivenessContractTest: XCTestCase {
     ]
 
     func test_everyBackend_observesCancellation() throws {
-        let cloudDir = try Self.locateCloudSourceDir()
-        let files = try Self.enumerateSwiftFiles(under: cloudDir)
+        let files = try Self.locateCloudSourceDirs().flatMap(Self.enumerateSwiftFiles(under:))
 
         var offenders: [String] = []
         for fileURL in files {
@@ -111,15 +110,23 @@ final class CancellationLivenessContractTest: XCTestCase {
 
     // MARK: - Filesystem discovery
 
-    private static func locateCloudSourceDir() throws -> URL {
+    /// The v0.48 product split spread the cloud backends across three
+    /// targets; the audit walks all of them.
+    private static let cloudSourceDirNames = [
+        "Sources/ManifoldCloud",
+        "Sources/ManifoldOllama",
+        "Sources/ManifoldCloudSaaS",
+    ]
+
+    private static func locateCloudSourceDirs() throws -> [URL] {
         var probe = URL(fileURLWithPath: #file)
         for _ in 0..<8 {
             probe.deleteLastPathComponent()
-            let cloud = probe.appendingPathComponent("Sources/ManifoldCloud", isDirectory: true)
-            if FileManager.default.fileExists(atPath: cloud.path) { return cloud }
+            let dirs = cloudSourceDirNames.map { probe.appendingPathComponent($0, isDirectory: true) }
+            if dirs.allSatisfy({ FileManager.default.fileExists(atPath: $0.path) }) { return dirs }
         }
-        XCTFail("Could not locate Sources/ManifoldCloud directory")
-        return URL(fileURLWithPath: "/")
+        XCTFail("Could not locate the cloud source directories")
+        return []
     }
 
     private static func enumerateSwiftFiles(under root: URL) throws -> [URL] {

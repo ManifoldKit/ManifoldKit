@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import os
 import ManifoldInference
@@ -20,13 +19,13 @@ import ManifoldInference
 ///
 /// The encoder for the assistant + tool turns is therefore split across two
 /// helpers (`encodeChatCompletionsHistory`, `encodeResponsesInput`).
-enum OpenAIToolEncoding {
+package enum OpenAIToolEncoding {
 
     // MARK: - Tool definitions
 
     /// Encodes a ``ToolDefinition`` into the `{type:"function", function:{...}}`
     /// envelope used by both Chat Completions and Responses.
-    static func encodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
+    package static func encodeToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
         var function: [String: Any] = [
             "name": tool.name,
             "description": tool.description,
@@ -48,7 +47,7 @@ enum OpenAIToolEncoding {
     /// shape. `auto` omits the field entirely (server default); `.none` /
     /// `.required` are passed as literal strings; `.tool(name:)` produces the
     /// nested function-selection object.
-    static func applyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
+    package static func applyToolChoice(_ choice: ToolChoice, into body: inout [String: Any]) {
         switch choice {
         case .auto:
             break
@@ -72,7 +71,7 @@ enum OpenAIToolEncoding {
     /// Assistant turns with `toolCalls` get an OpenAI-shaped `tool_calls` array;
     /// tool-role turns get `tool_call_id`. Plain turns collapse to the same
     /// `{role, content}` shape.
-    static func encodeChatCompletionsEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
+    package static func encodeChatCompletionsEntry(_ entry: ToolAwareHistoryEntry) -> [String: Any] {
         var obj: [String: Any] = [
             "role": entry.role,
             "content": entry.content,
@@ -96,7 +95,7 @@ enum OpenAIToolEncoding {
     /// Per the OpenAI spec, `arguments` is a stringified JSON blob (not a
     /// pre-parsed object) on Chat Completions. We pass the stored JSON string
     /// through as-is.
-    static func encodeToolCall(_ call: ToolCall) -> [String: Any] {
+    package static func encodeToolCall(_ call: ToolCall) -> [String: Any] {
         return [
             "id": call.id,
             "type": "function",
@@ -115,7 +114,7 @@ enum OpenAIToolEncoding {
     /// assistant turn with `tool_calls` becomes a `function_call` item per
     /// call, and a tool-role turn becomes a `function_call_output` item.
     /// Returns one or more items per entry.
-    static func encodeResponsesEntries(_ entry: ToolAwareHistoryEntry) -> [[String: Any]] {
+    package static func encodeResponsesEntries(_ entry: ToolAwareHistoryEntry) -> [[String: Any]] {
         // Tool-role entry → function_call_output.
         if entry.role == "tool", let callId = entry.toolCallId {
             return [[
@@ -161,15 +160,7 @@ enum OpenAIToolEncoding {
     ///
     /// Delegates to `encodeJSONSchemaToFoundation(_:)` in `ManifoldInference`
     /// so all backends share one implementation.
-    static func foundationJSON(from value: JSONSchemaValue) -> Any? {
+    package static func foundationJSON(from value: JSONSchemaValue) -> Any? {
         encodeJSONSchemaToFoundation(value)
     }
 }
-
-// MARK: - Streaming tool-call accumulator
-
-/// Module-internal typealias so existing call sites in `ManifoldBackends`
-/// compile unchanged after the rename to ``StreamingArgumentAccumulator``
-/// in `ManifoldInference`.
-typealias StreamingToolCallAccumulator = StreamingArgumentAccumulator
-#endif

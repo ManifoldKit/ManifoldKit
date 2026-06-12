@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import os
 import ManifoldInference
@@ -136,12 +135,12 @@ public final class OllamaBackend: SSECloudBackend, EndpointBackendURLModelConfig
     ///
     /// This path is identical to the public `init(urlSession:)` with a `nil` session
     /// but is NOT marked deprecated, so framework-internal callers
-    /// (``CloudBackends``, ``TraitAwareServerBackendProvider``, etc.) don't generate
+    /// (``OllamaBackends``, `TraitAwareServerBackendProvider`, etc.) don't generate
     /// deprecation warnings when following the recommended migration path.
-    /// `package` (not `internal`) because ``CloudBackends`` lives in the
-    /// `ManifoldBackendsUmbrella` module and calls this across the module boundary
-    /// under `#if Ollama`. External consumers building `OllamaBackend` directly
-    /// should use the public init or register via `DefaultBackends.register(_:)`.
+    /// `package` (not `internal`) because `TraitAwareServerBackendProvider` lives
+    /// in the `ManifoldServer` module and calls this across the module boundary.
+    /// External consumers building `OllamaBackend` directly should use the
+    /// public init or register via `DefaultBackends.register(_:)`.
     package init(_registrar: Void) {
         self.adapter = OllamaAdapter(
             capabilities: Self.defaultAdapterCapabilities,
@@ -703,5 +702,4 @@ private final class WeakOllamaBackendBox: @unchecked Sendable {
     weak var value: OllamaBackend?
     init(_ value: OllamaBackend) { self.value = value }
 }
-#endif
 

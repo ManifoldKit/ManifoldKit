@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -104,4 +103,3 @@ public struct ClaudeAdapter: CloudHTTPProviderAdapter {
         try requestBuilder(prompt, systemPrompt, config, history)
     }
 }
-#endif

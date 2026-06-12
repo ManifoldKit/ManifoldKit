@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -121,4 +120,3 @@ public struct OllamaErrorBodyDecoder: ErrorBodyDecoder {
         return DefaultErrorBodyDecoder().extractMessage(from: body)
     }
 }
-#endif

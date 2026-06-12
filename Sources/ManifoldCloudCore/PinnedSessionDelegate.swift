@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import CommonCrypto
 import ManifoldInference
@@ -328,4 +327,3 @@ public final class PinnedSessionDelegate: NSObject, URLSessionDelegate {
     }
 }
 
-#endif

@@ -4,6 +4,14 @@ import ManifoldInference
 import ManifoldTestSupport
 @testable import ManifoldBackends
 @testable import ManifoldCloud
+// v0.48 product split: internal symbols moved into the family targets and
+// ManifoldCloudCore; the ManifoldCloud shim only re-exports public surface.
+#if Ollama
+@testable import ManifoldOllama
+#endif
+#if CloudSaaS
+@testable import ManifoldCloudSaaS
+#endif
 @testable import ManifoldCloudCore
 
 /// Tests for #20 (part): image content blocks on the Anthropic Messages API.

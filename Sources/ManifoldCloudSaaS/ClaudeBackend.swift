@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import os
 import ManifoldInference
@@ -501,5 +500,4 @@ private final class WeakClaudeBackendBox: @unchecked Sendable {
     weak var value: ClaudeBackend?
     init(_ value: ClaudeBackend) { self.value = value }
 }
-#endif
 

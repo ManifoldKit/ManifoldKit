@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -205,12 +204,7 @@ public extension CloudPayloadHandler {
     /// from this factory at stream-open and discard it at stream-end,
     /// keeping the routing bundle stateless and reusable across turns.
     func makeOpenAIStreamConsumer() -> OpenAIStreamEventExtractor? {
-        switch self {
-        case .openAI:
-            return OpenAIStreamEventExtractor()
-        default:
-            return nil
-        }
+        guard provider == .openAI else { return nil }
+        return OpenAIStreamEventExtractor()
     }
 }
-#endif

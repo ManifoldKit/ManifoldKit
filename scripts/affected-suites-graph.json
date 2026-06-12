@@ -130,12 +130,29 @@
         "ManifoldContract"
       ]
     },
+    "ManifoldOllama": {
+      "type": "regular",
+      "path": "Sources/ManifoldOllama",
+      "deps": [
+        "ManifoldCloudCore",
+        "ManifoldContract"
+      ]
+    },
+    "ManifoldCloudSaaS": {
+      "type": "regular",
+      "path": "Sources/ManifoldCloudSaaS",
+      "deps": [
+        "ManifoldCloudCore",
+        "ManifoldContract"
+      ]
+    },
     "ManifoldCloud": {
       "type": "regular",
       "path": "Sources/ManifoldCloud",
       "deps": [
         "ManifoldCloudCore",
-        "ManifoldContract",
+        "ManifoldCloudSaaS",
+        "ManifoldOllama",
         "ManifoldRuntime"
       ]
     },
@@ -145,10 +162,12 @@
       "deps": [
         "ManifoldCloud",
         "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
         "ManifoldFoundation",
         "ManifoldInference",
         "ManifoldLlama",
-        "ManifoldMLX"
+        "ManifoldMLX",
+        "ManifoldOllama"
       ]
     },
     "ManifoldUI": {
@@ -345,11 +364,13 @@
         "ManifoldBackends",
         "ManifoldCloud",
         "ManifoldCloudCore",
+        "ManifoldCloudSaaS",
         "ManifoldFoundation",
         "ManifoldHardware",
         "ManifoldInference",
         "ManifoldLlama",
         "ManifoldMLX",
+        "ManifoldOllama",
         "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldSecrets",

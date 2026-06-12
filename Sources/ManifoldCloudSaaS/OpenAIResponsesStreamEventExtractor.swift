@@ -1,4 +1,3 @@
-#if CloudSaaS
 import Foundation
 import ManifoldInference
 import ManifoldCloudCore
@@ -225,12 +224,7 @@ public extension CloudPayloadHandler {
     /// wire shape. Returns `nil` for cases that route through different
     /// consumer surfaces (`.openAI` → `makeOpenAIStreamConsumer()`).
     func makeOpenAIResponsesStreamConsumer() -> OpenAIResponsesStreamEventExtractor? {
-        switch self {
-        case .openAIResponses:
-            return OpenAIResponsesStreamEventExtractor()
-        default:
-            return nil
-        }
+        guard provider == .openAIResponses else { return nil }
+        return OpenAIResponsesStreamEventExtractor()
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if Ollama
 import Foundation
 import os
 import ManifoldInference
@@ -134,4 +133,3 @@ enum OllamaModelProbe {
         }
     }
 }
-#endif
