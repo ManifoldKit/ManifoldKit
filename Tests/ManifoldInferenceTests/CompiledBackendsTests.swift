@@ -34,10 +34,10 @@ final class CompiledBackendsTests: XCTestCase {
 
     // MARK: - Concrete shape under the current build configuration
 
-    // Since v0.48 (PR A4) the cloud families compile unconditionally, so
-    // `CompiledBackends.current` always reports the full cloud surface in
-    // every lane, including `--disable-default-traits`. Only MLX / Llama /
-    // HuggingFace remain build-dependent until the companion split (C2).
+    // Since v0.48 (PR A4) the cloud families compile unconditionally, and
+    // since PR C2 the MLX / Llama families are NEVER compiled into core —
+    // they live in the manifold-mlx / manifold-llama companion packages and
+    // are only visible at runtime via InferenceService registration.
     // Foundation Models remain conditionally available based on the host OS.
 
     func test_current_alwaysIncludesCloudFamilies() {
@@ -54,20 +54,26 @@ final class CompiledBackendsTests: XCTestCase {
             "Cloud API management UI is always presentable; endpoint configuration is the runtime gate")
     }
 
-    func test_current_localModelTypes_trackHardwareTraits() {
+    func test_current_neverIncludesCompanionFamilies() {
         let compiled = CompiledBackends.current
 
-        // GGUF support requires the Llama trait.
-        if !compiled.traits.contains(.llama) {
-            XCTAssertFalse(compiled.localModelTypes.contains(.gguf),
-                "GGUF must not be compiled in without the Llama trait")
-        }
+        // The MLX / Llama families moved to companion packages (v0.48, PR
+        // C2, #1749). Compile-time reflection must never claim them; runtime
+        // registration (InferenceService.registeredBackendSnapshot()) is the
+        // only honest source for companion-provided capability.
+        XCTAssertFalse(compiled.traits.contains(.llama),
+            "Core never compiles the Llama family — it lives in manifold-llama")
+        XCTAssertFalse(compiled.traits.contains(.mlx),
+            "Core never compiles the MLX family — it lives in manifold-mlx")
+        XCTAssertFalse(compiled.localModelTypes.contains(.gguf),
+            "GGUF must not appear in compile-time localModelTypes post-split")
+        XCTAssertFalse(compiled.localModelTypes.contains(.mlx),
+            "MLX must not appear in compile-time localModelTypes post-split")
+    }
 
-        // MLX support requires the MLX trait.
-        if !compiled.traits.contains(.mlx) {
-            XCTAssertFalse(compiled.localModelTypes.contains(.mlx),
-                "MLX must not be compiled in without the MLX trait")
-        }
+    func test_current_alwaysIncludesHuggingFace() {
+        XCTAssertTrue(CompiledBackends.current.traits.contains(.huggingFace),
+            "HuggingFace download machinery is always compiled in since v0.48 (PR C2)")
     }
 
     func test_current_cloudBuild_includesClaudeAndOpenAI() {
@@ -83,18 +89,6 @@ final class CompiledBackendsTests: XCTestCase {
     func test_current_ollamaBuild_includesOllamaProvider() {
         XCTAssertTrue(CompiledBackends.current.cloudProviders.contains(.ollama))
     }
-
-    #if Llama
-    func test_current_llamaBuild_includesGGUF() {
-        XCTAssertTrue(CompiledBackends.current.localModelTypes.contains(.gguf))
-    }
-    #endif
-
-    #if MLX
-    func test_current_mlxBuild_includesMLX() {
-        XCTAssertTrue(CompiledBackends.current.localModelTypes.contains(.mlx))
-    }
-    #endif
 
     // MARK: - Cross-cutting invariants
 

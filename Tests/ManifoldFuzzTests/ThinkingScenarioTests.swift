@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 @testable import ManifoldFuzz
@@ -155,4 +154,3 @@ final class ThinkingScenarioTests: XCTestCase {
         XCTAssertEqual(finding?.trigger, "because reasons")
     }
 }
-#endif

@@ -1,5 +1,7 @@
 import Foundation
-import ManifoldHardware
+// @_spi(BackendInternals): GGUFKVCacheEstimator was promoted from `package`
+// to SPI-public in v0.48 (PR C2) for the manifold-llama companion package.
+@_spi(BackendInternals) import ManifoldHardware
 
 /// Represents a model available on disk (either a GGUF file or an MLX model directory).
 ///

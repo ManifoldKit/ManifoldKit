@@ -40,11 +40,11 @@ let package = Package(
     ],
     dependencies: [
         // Pin package identity explicitly so worktree directory names do not
-        // change the dependency identity seen by .product(package:). The
-        // FoundationOnly trait keeps this UI composition gate off the
-        // MLX/Llama/HuggingFace dependency path; those backends are covered by
-        // their own tests.
-        .package(name: "ManifoldKit", path: "$REPO_ROOT", traits: ["FoundationOnly"]),
+        // change the dependency identity seen by .product(package:). No
+        // traits: parameter — core has no default traits since v0.48 PR C2,
+        // and the MLX/Llama families live in companion packages, so a bare
+        // dependency is already the lean full-core build.
+        .package(name: "ManifoldKit", path: "$REPO_ROOT"),
     ],
     targets: [
         .executableTarget(

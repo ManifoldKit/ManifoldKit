@@ -4,7 +4,6 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// E2E tests for the download validation pipeline using the real filesystem.
@@ -222,4 +221,3 @@ struct DownloadValidationE2ETests {
         #expect(afterRemoval?.isEmpty == true)
     }
 }
-#endif

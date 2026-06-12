@@ -14,7 +14,7 @@ A one-page tutorial for getting from "empty terminal" to "streaming tokens" with
 
 Each section below is a complete, compile-tested example: a full `Package.swift` plus a full `main.swift`, ready to copy-paste into an empty directory and `swift run`.
 
-> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names). `traits:` works on this form too — `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit", traits: [.trait(name: "Llama")])` for the §2 local snippet.
+> **Evaluating against a local checkout?** Swap the `.package(url:from:)` line in each section for `.package(name: "ManifoldKit", path: "/path/to/ManifoldKit")`. The `name:` argument is required — SwiftPM derives package identity from the last path component of `.package(path:)`, which breaks under non-default checkout paths (e.g. worktrees, custom directory names).
 
 ---
 
@@ -35,26 +35,22 @@ dependencies: [
 
 > **The `name:` argument is not optional here.** Without it, `.package(path: "../ManifoldKit")` derives the package name from `"ManifoldKit"` (the last path component), which happens to work in a standard clone but silently breaks in worktrees and non-default directory names. Always pass `name: "ManifoldKit"` explicitly on local-path dependencies.
 
-### Trait-selection form (opt in to specific backends)
+### Companion-package form (local GGUF / MLX backends)
 
-ManifoldKit uses [SwiftPM package traits](https://github.com/apple/swift-evolution/blob/main/proposals/0394-swiftpm-expression-macros.md) to gate optional backends. The default trait set (`MLX`, `Llama`, `HuggingFace`) is suitable for most consumers, but you can opt in to additional traits — or limit to a subset — by passing `traits:`:
+Since v0.48 the heavy local backends ship as companion packages — core ManifoldKit compiles with no MLX or llama.cpp checkout at all, and the cloud + Foundation backends are always compiled in. To add local inference, depend on the companion package(s) alongside core:
 
 ```swift,no-build
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.47.0", // x-release-please-version
-        traits: [
-            // Omit "MLX" / "Llama" to skip those backends entirely
-            // (saves compile time if you're cloud-only — cloud backends
-            // always compile since v0.48; no trait needed).
-            .trait(name: "Llama"),
-        ]
+        from: "0.47.0" // x-release-please-version
     ),
+    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),  // GGUF
+    // .package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"), // MLX
 ],
 ```
 
-> **Both forms are composable.** A local-path dependency can specify traits too: `.package(name: "ManifoldKit", path: "../ManifoldKit", traits: [.trait(name: "Llama")])`.
+then add `.product(name: "ManifoldLlama", package: "manifold-llama")` (or `ManifoldMLX`) to your target and register the backend with `LlamaBackends.register(with: inference)` after `DefaultBackends.register(with:)` — §2 below shows the full shape. See [MIGRATION-0.48.md](MIGRATION-0.48.md) if you're coming from a trait-based 0.47 setup.
 
 ---
 
@@ -129,7 +125,7 @@ Both `InferenceService.loadModel(...)` and `InferenceService.generate(...)` are 
 
 ## 2. Local GGUF via the Llama backend (macOS 15+)
 
-This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform.
+This is the section that closes the "I'm on macOS 15 and want to evaluate ManifoldKit" gap. The Llama backend loads GGUF files via llama.cpp + Metal and runs on every supported platform. Since v0.48 it ships in the [`manifold-llama`](https://github.com/roryford/manifold-llama) companion package, so this example adds two `.package(...)` lines instead of one (which is why these snippets are not compile-checked against a core-only checkout).
 
 **Get a model first.** Drop any GGUF file into `~/Documents/Models/`. SwiftUI hosts that use `ModelManagementSheet` discover both `~/Documents/Models` and the app-scoped Application Support directory — see [`docs/LOCAL-GGUF.md`](LOCAL-GGUF.md) for the full storage contract. Good starter picks:
 
@@ -141,7 +137,7 @@ This is the section that closes the "I'm on macOS 15 and want to evaluate Manifo
 
 **`Package.swift`:**
 
-```swift
+```swift,no-build
 // swift-tools-version: 6.1
 import PackageDescription
 
@@ -156,6 +152,8 @@ let package = Package(
             url: "https://github.com/roryford/ManifoldKit.git",
             from: "0.47.0" // x-release-please-version
         ),
+        // The GGUF backend lives in the manifold-llama companion package (v0.48).
+        .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
     ],
     targets: [
         .executableTarget(
@@ -163,6 +161,7 @@ let package = Package(
             dependencies: [
                 .product(name: "ManifoldInference", package: "ManifoldKit"),
                 .product(name: "ManifoldBackends", package: "ManifoldKit"),
+                .product(name: "ManifoldLlama", package: "manifold-llama"),
             ]
         ),
     ]
@@ -171,10 +170,11 @@ let package = Package(
 
 **`Sources/ChatCLILlama/main.swift`:**
 
-```swift
+```swift,no-build
 import Foundation
 import ManifoldInference
 import ManifoldBackends
+import ManifoldLlama   // from manifold-llama
 
 @main
 @MainActor
@@ -215,10 +215,11 @@ struct ChatCLILlama {
         )
 
         // 4. Standard service construction. DefaultBackends.register wires
-        // the Llama backend (and every other compiled-in backend) into the
-        // service's routing table.
+        // the compiled-in core backends (cloud + Foundation); the companion
+        // Llama registrar adds GGUF routing on top.
         let inference = InferenceService()
         DefaultBackends.register(with: inference)
+        LlamaBackends.register(with: inference)
 
         try await inference.loadModel(from: model, plan: plan)
 
@@ -386,8 +387,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/roryford/ManifoldKit.git",
-            from: "0.47.0", // x-release-please-version
-            traits: []  // cloud backends need no traits since v0.48
+            from: "0.47.0" // x-release-please-version
         ),
     ],
     targets: [
@@ -489,7 +489,7 @@ The Foundation Models and cloud backends are not affected — the teardown race 
 ## Where to go next
 
 - [`docs/QUICKSTART.md`](QUICKSTART.md) — the SwiftUI hello-world and full `ManifoldKit.quickStart()` flow.
-- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — the full trait → backend → capability table.
+- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — the full backend → capability table.
 - [`Example/Examples/MinimalExample`](../Example/Examples/MinimalExample) — runnable minimum-viable SwiftUI app.
 - [README "Custom Backends"](../README.md#custom-backends) — implementing your own `BackendProtocol` conformance.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — architecture invariants and how to add a backend.

@@ -11,10 +11,9 @@
 # changes that drop ManifoldUI / ManifoldRuntime / ManifoldInference (all of
 # which ManifoldUIModelManagement depends on unconditionally).
 #
-# ManifoldUIModelManagement compiles unconditionally — the HuggingFace
-# trait only adds conditional-compilation defines that expand model
-# source and API-key editor surface. The gate runs without those traits so it
-# exercises the baseline, always-present slice.
+# ManifoldUIModelManagement compiles unconditionally, and since v0.48 PR C2
+# the HuggingFace integration is unconditional too (the trait is retired).
+# The gate exercises the always-present baseline slice.
 #
 # Runs in CI on every PR. ~30s on a warm cache.
 

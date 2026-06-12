@@ -1,4 +1,3 @@
-#if HuggingFace
 import Foundation
 import ManifoldInference
 import os
@@ -118,4 +117,3 @@ internal struct DownloadHygieneJanitor {
         }
     }
 }
-#endif

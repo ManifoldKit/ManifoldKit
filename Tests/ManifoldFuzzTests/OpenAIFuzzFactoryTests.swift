@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldFuzz
 import ManifoldInference
@@ -74,4 +73,3 @@ final class OpenAIFuzzFactoryTests: XCTestCase {
         )
     }
 }
-#endif

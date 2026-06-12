@@ -21,9 +21,9 @@ consumer `Package.swift`:
 dependencies: [
     .package(
         url: "https://github.com/roryford/ManifoldKit.git",
-        from: "0.47.0", // x-release-please-version
-        // Tip: pass `traits: [.defaults(disabled: true)]` if you only want
-        // voice and not the MLX/Llama/HuggingFace backends.
+        from: "0.47.0" // x-release-please-version
+        // Depending on just the ManifoldVoice product keeps the inference
+        // stack out of your app graph — core has no heavy ML deps since v0.48.
     ),
 ],
 targets: [

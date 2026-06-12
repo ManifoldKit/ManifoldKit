@@ -130,6 +130,12 @@ public enum GenerationEvent: Sendable, Equatable {
     /// Emitted at the start of a turn when the backend reused a KV-cache prefix
     /// from the previous turn. `promptTokensReused` is the number of prompt tokens
     /// whose KV state was preserved, saving their re-decode cost.
+    ///
+    /// The byte-exact reuse semantics (and the #1382 stale-snapshot race
+    /// regression guards, formerly `KVCacheReuseRaceRegressionTests` in
+    /// `ManifoldBackendsTests`) are owned by the backend families: see the
+    /// manifold-mlx / manifold-llama companion packages (v0.48, PR C2,
+    /// #1749). Core only defines the event shape.
     case kvCacheReuse(promptTokensReused: Int)
 
     /// Emitted by the orchestrator when generation has been paused for a

@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import HuggingFace
@@ -868,4 +867,3 @@ private extension URL {
         return (attrs?[.size] as? Int64)
     }
 }
-#endif

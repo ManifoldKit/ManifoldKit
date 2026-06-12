@@ -1,6 +1,12 @@
 import Foundation
 
-package struct GGUFKVCacheParameters: Sendable, Equatable {
+// @_spi(BackendInternals): published for the companion family packages
+// (manifold-llama, #1749) — LlamaPrefillFootprintIntegrationTests derives its
+// expected KV footprint from this estimator rather than an inlined constant.
+// Part of the frozen backend seam (Tests/APIFreezeTests/Fixtures/
+// BackendSeamConsumer.swift).
+@_spi(BackendInternals)
+public struct GGUFKVCacheParameters: Sendable, Equatable {
     let blockCount: Int?
     let embeddingLength: Int?
     let attentionHeadCount: Int?
@@ -8,7 +14,7 @@ package struct GGUFKVCacheParameters: Sendable, Equatable {
     let attentionKeyLength: Int?
     let attentionValueLength: Int?
 
-    package init(
+    public init(
         blockCount: Int? = nil,
         embeddingLength: Int? = nil,
         attentionHeadCount: Int? = nil,
@@ -25,11 +31,12 @@ package struct GGUFKVCacheParameters: Sendable, Equatable {
     }
 }
 
-package enum GGUFKVCacheEstimator {
-    package static let defaultBytesPerElement: UInt64 = 2
-    package static let legacyFallbackBytesPerToken: UInt64 = 8_192
+@_spi(BackendInternals)
+public enum GGUFKVCacheEstimator {
+    public static let defaultBytesPerElement: UInt64 = 2
+    public static let legacyFallbackBytesPerToken: UInt64 = 8_192
 
-    package static func estimateBytesPerToken(
+    public static func estimateBytesPerToken(
         from parameters: GGUFKVCacheParameters,
         bytesPerElement: UInt64 = defaultBytesPerElement
     ) -> UInt64? {

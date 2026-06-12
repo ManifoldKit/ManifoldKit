@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Unit tests for resumable download support in BackgroundDownloadManager.
@@ -486,4 +485,3 @@ final class ResumableDownloadTests: XCTestCase {
         )
     }
 }
-#endif

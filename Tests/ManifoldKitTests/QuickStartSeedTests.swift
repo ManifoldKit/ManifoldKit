@@ -347,12 +347,10 @@ final class QuickStartSeedTests: XCTestCase {
     }
 
     // MARK: - SeedModelError
-
-    func test_seedModelError_hasNonEmptyDescription() {
-        let err = SeedModelError.huggingFaceTraitNotAvailable
-        XCTAssertFalse(
-            err.errorDescription?.isEmpty ?? true,
-            "SeedModelError.huggingFaceTraitNotAvailable must have a non-empty error description"
-        )
-    }
+    //
+    // test_seedModelError_hasNonEmptyDescription was removed in v0.48 (PR
+    // C2): the `.huggingFaceTraitNotAvailable` case is deprecated and
+    // unreachable (the download machinery is always compiled in now), so
+    // constructing it in a test would only pin a dead string and emit a
+    // deprecation warning.
 }

@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -372,4 +371,3 @@ final class ReplayTests: XCTestCase {
         XCTAssertEqual(outcome, .nonDeterministicBackend("stub"))
     }
 }
-#endif

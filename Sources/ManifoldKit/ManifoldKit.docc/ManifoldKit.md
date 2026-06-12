@@ -82,7 +82,7 @@ install to first token, follow the loose-markdown front door:
 - **Start here:** [Why ManifoldKit](https://github.com/roryford/ManifoldKit/blob/main/docs/WHY-MANIFOLDKIT.md) · [docs index](https://github.com/roryford/ManifoldKit/blob/main/docs/README.md)
 - **Getting started:** [QUICKSTART](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART.md) → [Multi-session SwiftUI](https://github.com/roryford/ManifoldKit/blob/main/docs/SWIFTUI-MULTI-SESSION.md)
 - **Branch points:** [CLI / server](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-CLI.md) · [Bring your own UI](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-BRING-YOUR-OWN-UI.md)
-- **Add a capability:** [Tools](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-TOOLS.md) · [App Intents](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-APPINTENTS.md) · [RAG](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-RAG.md) · [Voice](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-VOICE.md) · [Image gen](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-IMAGE-GEN.md) · [Video gen](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-VIDEO-GEN.md)
+- **Add a capability:** [Tools](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-TOOLS.md) · [App Intents](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-APPINTENTS.md) · [RAG](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-RAG.md) · [Voice](https://github.com/roryford/ManifoldKit/blob/main/docs/QUICKSTART-VOICE.md) · [Image & video gen (manifold-mlx)](https://github.com/roryford/manifold-mlx)
 
 ## Topics
 

@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -98,4 +97,3 @@ final class FuzzBackendFactoryTests: XCTestCase {
         XCTAssertTrue(report.findings.isEmpty)
     }
 }
-#endif

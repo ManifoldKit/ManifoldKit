@@ -39,7 +39,9 @@ import ManifoldTestSupport
 ///    `ModelCompatibilityResult`, `ModelLoadPlan` (+ `Inputs`/`Outcome`/
 ///    `Verdict`), `APIProvider` registration cases.
 /// 4. **`@_spi(BackendInternals)`**: `MemoryPressureHandler`,
-///    `HeuristicTokenizer`, `ChatViewModel.init(...memoryPressure:...)`.
+///    `HeuristicTokenizer`, `ChatViewModel.init(...memoryPressure:...)`,
+///    `GGUFKVCacheEstimator` + `GGUFKVCacheParameters` (manifold-llama
+///    derives prefill-footprint expectations from the estimator, C2).
 /// 5. **Test-support seam** (`ManifoldTestSupport` /
 ///    `ManifoldBackendTestKit` products): `HardwareRequirements` here;
 ///    `BackendContractChecks` / `LocalBackendContractRunner` shapes are
@@ -302,6 +304,24 @@ enum BackendSeamConsumer {
         let _: any TokenizerProvider = tokenizer
         _ = tokenizer.tokenCount("abcd")
         _ = HeuristicTokenizer.tokenCount("abcd")
+
+        // GGUFKVCacheEstimator — manifold-llama's prefill-footprint
+        // integration tests derive their expected KV bytes/token from this
+        // estimator (C2 seam addition; previously an inlined constant).
+        let _: UInt64 = GGUFKVCacheEstimator.defaultBytesPerElement
+        let _: UInt64 = GGUFKVCacheEstimator.legacyFallbackBytesPerToken
+        let kvParameters = GGUFKVCacheParameters(
+            blockCount: 32,
+            embeddingLength: 4_096,
+            attentionHeadCount: 32,
+            attentionHeadCountKV: 8,
+            attentionKeyLength: nil,
+            attentionValueLength: nil
+        )
+        let _: UInt64? = GGUFKVCacheEstimator.estimateBytesPerToken(
+            from: kvParameters,
+            bytesPerElement: 2
+        )
 
         // ChatViewModel SPI initializer — the injected MemoryPressureHandler
         // is itself SPI, so the full init signature lives behind the same

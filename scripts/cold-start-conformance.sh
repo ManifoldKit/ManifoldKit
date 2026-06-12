@@ -71,7 +71,8 @@ import Foundation
 
 // MARK: - Inline fake backend
 //
-// A real downstream consumer would register MLX / Llama / Foundation. For the
+// A real downstream consumer would register Foundation / cloud (or the
+// companion-package MLX / Llama) backends. For the
 // conformance test we want zero external dependencies (no model files, no OS
 // availability) so we roll a minimal fake here. This is deliberately the
 // *consumer-facing* shape — anything required to conform from outside the

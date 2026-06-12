@@ -12,21 +12,16 @@ import ManifoldInference
 /// These run in CI — no hardware, no backend instantiation.
 final class DefaultBackendsRoutingTests: XCTestCase {
 
-    func test_routing_gguf_mapsToLlamaBackend() {
-        #if Llama
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .gguf), "LlamaBackend")
-        #else
+    func test_routing_gguf_returnsNilPostSplit() {
+        // LlamaBackend lives in the manifold-llama companion package since
+        // v0.48 (PR C2) — core routing must never claim it.
         XCTAssertNil(DefaultBackends.backendTypeName(for: .gguf))
-        #endif
     }
 
-    func test_routing_mlx_mapsToMLXBackend() {
-        #if MLX
-        XCTAssertEqual(DefaultBackends.backendTypeName(for: .mlx), "MLXBackend")
-        #else
-        // MLX trait not enabled in this build — routing returns nil, which is correct.
+    func test_routing_mlx_returnsNilPostSplit() {
+        // MLXBackend lives in the manifold-mlx companion package since
+        // v0.48 (PR C2) — core routing must never claim it.
         XCTAssertNil(DefaultBackends.backendTypeName(for: .mlx))
-        #endif
     }
 
     func test_routing_foundation_mapsToFoundationBackend() {
@@ -60,65 +55,33 @@ final class DefaultBackendsRoutingTests: XCTestCase {
 
 // MARK: - Integration Tests (require hardware)
 
-/// Tests that DefaultBackends.register completes without error and
-/// that the resulting InferenceService can attempt model loads
-/// (which exercises the factory lookup path).
-///
-/// Registration creates LlamaBackend instances, which require Apple Silicon.
+/// Tests that DefaultBackends registration completes without error.
+/// Hardware-free since v0.48 (PR C2): the fold is Foundation + Cloud only;
+/// the LlamaBackend/MLXBackend paths live in the companion packages.
 @MainActor
 final class DefaultBackendsTests: XCTestCase {
 
-    override func setUp() async throws {
-        try await super.setUp()
-        try XCTSkipUnless(HardwareRequirements.isPhysicalDevice, "DefaultBackends registers LlamaBackend which requires Metal")
-        try XCTSkipUnless(HardwareRequirements.isAppleSilicon, "DefaultBackends registers LlamaBackend which requires Apple Silicon")
-    }
-
     func test_register_doesNotCrash() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
         // If we get here, registration succeeded
     }
 
     func test_register_canBeCalledMultipleTimes() {
         let service = InferenceService()
-        DefaultBackends.register(with: service)
-        DefaultBackends.register(with: service)
+        DefaultBackends._register(with: service)
+        DefaultBackends._register(with: service)
         // Should not crash or corrupt state
     }
-
-    #if Llama
-    func test_loadModel_gguf_invalidPath_throwsModelLoadFailed() async {
-        let service = InferenceService()
-        DefaultBackends.register(with: service)
-
-        let fakeModel = ModelInfo(
-            name: "test",
-            fileName: "nonexistent.gguf",
-            url: URL(fileURLWithPath: "/tmp/nonexistent.gguf"),
-            fileSize: 0,
-            modelType: .gguf
-        )
-
-        do {
-            try await service.loadModel(from: fakeModel, plan: .testStub(effectiveContextSize: 2048))
-            XCTFail("Should throw for nonexistent GGUF file")
-        } catch {
-            // Expected — the factory created a LlamaBackend which failed to load
-            XCTAssertFalse(service.isModelLoaded)
-        }
-    }
-    #endif
-
-    // Note: MLX backend tests require Xcode's Metal toolchain and cannot
-    // run under `swift test`. Test MLX through the Xcode scheme instead.
 }
 
 // MARK: - Registrar Tests (no hardware required)
 
 /// Asserts that each per-backend registrar declares the right `ModelType` /
-/// `APIProvider` support, and that `DefaultBackends.register(with:)` is
-/// equivalent to invoking the four registrars explicitly.
+/// `APIProvider` support, and that `DefaultBackends._register(with:)` is
+/// equivalent to invoking the surviving registrars (Cloud + Foundation)
+/// explicitly. The MLX / Llama registrars moved to the companion packages
+/// (v0.48, PR C2) — their declaration tests moved with them.
 ///
 /// Runs without hardware: factory closures are appended but never executed,
 /// so `registeredBackendSnapshot()` only reflects `declareSupport` calls.
@@ -128,17 +91,14 @@ final class DefaultBackendsTests: XCTestCase {
 /// To confirm these tests actually catch drift, temporarily edit the production
 /// code as below and re-run — each edit must produce a failure:
 ///
-/// 1. **Drop a local declareSupport.** In `MLXBackends.swift` comment out
-///    `service.declareSupport(for: .mlx)`. With `--traits MLX`,
-///    `test_mlxRegistrar_declaresMLX` must fail.
-/// 2. **Drop a cloud declareSupport.** In `OllamaBackends.swift` /
+/// 1. **Drop a cloud declareSupport.** In `OllamaBackends.swift` /
 ///    `CloudSaaSBackends.swift` comment out the
 ///    `for provider in APIProvider.availableInBuild { ... }` loop.
 ///    `test_cloudRegistrar_declaresAvailableProviders` must fail in any
 ///    build shape (cloud always compiles since v0.48).
-/// 3. **Drop a registrar from the fold.** In `DefaultBackends.swift` remove
-///    `LlamaBackends.self` from `registrars`. With `--traits Llama`,
-///    `test_defaultRegister_equalsExplicitFold` must fail on `localModelTypes`
+/// 2. **Drop a registrar from the fold.** In `DefaultBackends.swift` remove
+///    `CloudBackends.self` from `_registrars` —
+///    `test_defaultRegister_equalsExplicitFold` must fail on `cloudProviders`
 ///    mismatch.
 ///
 /// Restore each edit before committing.
@@ -146,32 +106,6 @@ final class DefaultBackendsTests: XCTestCase {
 final class DefaultBackendsRegistrarTests: XCTestCase {
 
     // MARK: - Per-registrar declarations
-
-    func test_mlxRegistrar_declaresMLX() {
-        let service = InferenceService()
-        MLXBackends.register(with: service)
-        let snapshot = service.registeredBackendSnapshot()
-        #if MLX
-        XCTAssertTrue(snapshot.localModelTypes.contains(.mlx),
-                      "MLXBackends.register must declareSupport(for: .mlx) when MLX trait is enabled")
-        #else
-        XCTAssertFalse(snapshot.localModelTypes.contains(.mlx),
-                       "MLXBackends.register must be a no-op when MLX trait is disabled")
-        #endif
-    }
-
-    func test_llamaRegistrar_declaresGGUF() {
-        let service = InferenceService()
-        LlamaBackends.register(with: service)
-        let snapshot = service.registeredBackendSnapshot()
-        #if Llama
-        XCTAssertTrue(snapshot.localModelTypes.contains(.gguf),
-                      "LlamaBackends.register must declareSupport(for: .gguf) when Llama trait is enabled")
-        #else
-        XCTAssertFalse(snapshot.localModelTypes.contains(.gguf),
-                       "LlamaBackends.register must be a no-op when Llama trait is disabled")
-        #endif
-    }
 
     func test_foundationRegistrar_declaresFoundationWhenAvailable() {
         let service = InferenceService()
@@ -203,43 +137,36 @@ final class DefaultBackendsRegistrarTests: XCTestCase {
 
     func test_defaultRegister_equalsExplicitFold() {
         let viaFacade = InferenceService()
-        DefaultBackends.register(with: viaFacade)
+        DefaultBackends._register(with: viaFacade)
 
         let viaExplicit = InferenceService()
-        // Explicit list — independent of `DefaultBackends.registrars` so a
+        // Explicit list — independent of `DefaultBackends._registrars` so a
         // drop from that list surfaces here as a snapshot mismatch.
         CloudBackends.register(with: viaExplicit)
-        MLXBackends.register(with: viaExplicit)
-        LlamaBackends.register(with: viaExplicit)
         FoundationBackends.register(with: viaExplicit)
 
         XCTAssertEqual(
             viaFacade.registeredBackendSnapshot(),
             viaExplicit.registeredBackendSnapshot(),
-            "DefaultBackends.register must match an explicit fold over all four BackendRegistrars."
+            "DefaultBackends.register must match an explicit fold over the surviving BackendRegistrars (Cloud + Foundation)."
         )
     }
 
-    func test_localRegistrars_declareDisjointModelTypes() {
-        let mlxService = InferenceService()
-        MLXBackends.register(with: mlxService)
-
-        let llamaService = InferenceService()
-        LlamaBackends.register(with: llamaService)
+    func test_cloudAndFoundationRegistrars_declareDisjointSurfaces() {
+        let cloudService = InferenceService()
+        CloudBackends.register(with: cloudService)
 
         let foundationService = InferenceService()
         FoundationBackends.register(with: foundationService)
 
-        let mlx = mlxService.registeredBackendSnapshot().localModelTypes
-        let llama = llamaService.registeredBackendSnapshot().localModelTypes
+        let cloudLocal = cloudService.registeredBackendSnapshot().localModelTypes
         let foundation = foundationService.registeredBackendSnapshot().localModelTypes
 
-        XCTAssertTrue(mlx.intersection(llama).isEmpty,
-                      "MLX and Llama registrars must declare disjoint model types — overlap: \(mlx.intersection(llama))")
-        XCTAssertTrue(mlx.intersection(foundation).isEmpty,
-                      "MLX and Foundation registrars must declare disjoint model types — overlap: \(mlx.intersection(foundation))")
-        XCTAssertTrue(llama.intersection(foundation).isEmpty,
-                      "Llama and Foundation registrars must declare disjoint model types — overlap: \(llama.intersection(foundation))")
+        XCTAssertTrue(cloudLocal.isEmpty,
+                      "Cloud registrars must not declare local model types — got: \(cloudLocal)")
+        XCTAssertTrue(foundationService.registeredBackendSnapshot().cloudProviders.isEmpty,
+                      "Foundation registrar must not declare cloud providers")
+        XCTAssertTrue(cloudLocal.intersection(foundation).isEmpty)
     }
 }
 

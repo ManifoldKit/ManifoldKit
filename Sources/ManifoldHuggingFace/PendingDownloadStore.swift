@@ -1,4 +1,3 @@
-#if HuggingFace
 import CryptoKit
 import Foundation
 import ManifoldInference
@@ -281,4 +280,3 @@ internal final class PendingDownloadStore {
         resumeHMACLock.unlock()
     }
 }
-#endif

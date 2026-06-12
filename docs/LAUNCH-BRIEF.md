@@ -144,7 +144,7 @@ band, where it lands as **one more node labeled "+1 backend"** (not a crater
 labeled "rewrite"). Three supporting callout chips below:
 
 - **n-1 reach:** *"serves iOS 18 / macOS 15 that Foundation Models can't touch."*
-- **FoundationOnly build:** *"~5 MB lean App-Store build, OR the full stack — same package."*
+- **Lean core build:** *"MB-scale lean App-Store build, OR the full stack — add the companion packages."*
 - **Pre-wired stub traits:** `SystemAIProviderExtension` · `CoreAI` — *"the slots are already cut."*
 
 Contrast device: a faint crossed-out "REWRITE" ghost behind the "+1 backend"
@@ -212,8 +212,9 @@ persistence + multi-backend inference into one drop-in chat product.**
    for Gemini / xAI / Groq / Mistral. One `GenerationStream` protocol, identical
    features — streaming, tools, structured output, thinking tokens.
 3. **n-1 OS reach, WWDC-ready.** Serves iOS 18 / macOS 15 that Foundation Models
-   can't reach, wraps FM as just one backend, and ships either a ~5 MB
-   `FoundationOnly` build or the whole stack.
+   can't reach, wraps FM as just one backend, and ships either a lean
+   core-only build (no heavy ML deps) or the whole stack via the companion
+   packages.
 4. **Reliability & security as a product.** TLS pinning, SSRF/DNS guards,
    throwing Keychain, a published threat model, a fuzz harness, 6,500+ tests,
    capability-routed structured output, and tool-approval gating.

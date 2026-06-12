@@ -173,8 +173,8 @@ let package = Package(
     dependencies: [
         // Pin name explicitly so worktree directory names do not change the
         // dependency identity seen by .product(package:). The Hello World
-        // snippet imports the umbrella module ManifoldKit + ManifoldUI; with
-        // default traits both come from ManifoldKit's product list.
+        // snippet imports the umbrella module ManifoldKit + ManifoldUI; both
+        // come from ManifoldKit's product list.
         .package(name: "ManifoldKit", path: "${REPO_ROOT}"),
     ],
     targets: [
@@ -211,9 +211,10 @@ SWIFT_ENV=(
 # resolved dep checkouts + compiled object files keyed under .build/arm64-apple-
 # macosx survive the next invocation. We accept that SwiftPM path-fingerprints
 # make the consumer-target object cache invalid (snippet path changes each run
-# under mktemp), but the dependency graph's checkouts and prebuilt artifacts
-# (notably the llama.cpp xcframework) still warm-restore — see PR body for the
-# measurement of where the win lands.
+# under mktemp), but the dependency graph's checkouts still warm-restore — see
+# PR body for the measurement of where the win lands. (Pre-v0.48-C2 the big
+# win was the llama.cpp xcframework artifact; that dependency now lives in the
+# manifold-llama companion package.)
 BUILD_PATH_FLAG=()
 if [[ -n "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR:-}" ]]; then
     mkdir -p "${MANIFOLDKIT_COLD_START_BUILD_CACHE_DIR}"

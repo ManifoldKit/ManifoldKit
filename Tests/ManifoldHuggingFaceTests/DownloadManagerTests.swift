@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 @MainActor
@@ -756,4 +755,3 @@ final class DownloadManagerTests: XCTestCase {
         )
     }
 }
-#endif

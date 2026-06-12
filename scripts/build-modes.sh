@@ -13,16 +13,18 @@
 # shifted from compile-out — "the trait excluded the source" — to link-out —
 # "the product dependency graph never includes the module". Decision #4 of the
 # v0.48 plan accepted this artifact-series discontinuity; the per-mode
-# artifact files keep their names and cadence.):
-#   offline   Chat stack with no backend products: `--disable-default-traits
-#             --target ManifoldUI`. No cloud module in the graph.
-#   ollama    Self-hosted family only: `--disable-default-traits --target
-#             ManifoldOllama`. ManifoldCloudCore (shared TLS-pinning/SSE
-#             infra) IS in this graph; the SaaS backends are not.
-#   saas      SaaS family only: `--disable-default-traits --target
-#             ManifoldCloudSaaS`.
-#   full      Everything: plain `swift build` (default traits MLX/Llama/
-#             HuggingFace; cloud is always compiled).
+# artifact files keep their names and cadence. Since v0.48 PR C2 the MLX/Llama
+# families live in companion packages (manifold-mlx / manifold-llama) and the
+# package has no default traits, so a bare `swift build` is the full core
+# graph — no trait flags anywhere below.):
+#   offline   Chat stack with no backend products: `--target ManifoldUI`.
+#             No cloud module in the graph.
+#   ollama    Self-hosted family only: `--target ManifoldOllama`.
+#             ManifoldCloudCore (shared TLS-pinning/SSE infra) IS in this
+#             graph; the SaaS backends are not.
+#   saas      SaaS family only: `--target ManifoldCloudSaaS`.
+#   full      Everything: plain `swift build` (the full core graph; cloud is
+#             always compiled).
 #   all       Run every mode in sequence.
 #
 # `--target`, not `--product`: `swift build --product <automatic library>`
@@ -54,13 +56,13 @@ fi
 
 # Build arguments per mode. Product-scoped since v0.48 (see header):
 # excluding cloud code is a link-out decision at the product edge, not a
-# compile flag. `--disable-default-traits` additionally strips MLX+Llama so
-# the offline/family graphs stay minimal.
+# compile flag. There are no default traits (MLX/Llama moved to companion
+# packages in C2), so `--target` alone keeps the offline/family graphs minimal.
 build_args_for_mode() {
   case "$1" in
-    offline) echo "--disable-default-traits --target ManifoldUI" ;;
-    ollama)  echo "--disable-default-traits --target ManifoldOllama" ;;
-    saas)    echo "--disable-default-traits --target ManifoldCloudSaaS" ;;
+    offline) echo "--target ManifoldUI" ;;
+    ollama)  echo "--target ManifoldOllama" ;;
+    saas)    echo "--target ManifoldCloudSaaS" ;;
     full)    echo "" ;;
     *)
       echo "Unknown mode: $1 (expected offline|ollama|saas|full)" >&2

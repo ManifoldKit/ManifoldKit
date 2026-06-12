@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Integrity tests for the HMAC-tagged resume blob.
@@ -157,4 +156,3 @@ final class BackgroundDownloadManagerHMACTests: XCTestCase {
     }
 }
 
-#endif

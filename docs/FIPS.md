@@ -200,13 +200,16 @@ off. It is exhaustive as of v0.12.2.
    pipeline (the source is on GitHub at a tagged commit; `Package.resolved`
    pins all transitive dependencies).
 5. **Binary xcframeworks** (`llama.swift`, `mlx-swift`) are pre-built and
-   shipped via Swift Package Manager. They contain no ManifoldKit-supplied
+   shipped via Swift Package Manager — since v0.48 only via the
+   `manifold-llama` / `manifold-mlx` companion packages; core ManifoldKit
+   resolves no binary ML artifacts at all. They contain no ManifoldKit-supplied
    cryptography, but they do contain Metal compute shaders and inference code.
    See [Binary Dependencies](../README.md#binary-dependencies) in the README.
 6. **Secure Enclave** is not currently used (see §6 above). API keys live in
    the standard Keychain, not the SEP. A deployment that requires SEP-bound
    credentials is outside ManifoldKit's current capability.
-7. **KV-cache residue** from local inference (MLX, llama.cpp) is held in
+7. **KV-cache residue** from local inference (the MLX / llama.cpp companion
+   backends) is held in
    process memory and may be paged to disk by the OS. There is no in-memory
    wipe at conversation end. Sensitive prompts in a high-assurance environment
    should be paired with platform-level memory protection (e.g., disabling
@@ -235,6 +238,10 @@ language in its ATO (Authority to Operate) or vendor questionnaire response:
    asserts no SaaS symbols or cloud hostname literals appear in the product
    graph. This is a deliberate discontinuity from the pre-v0.48 compile-out
    story (v0.48 plan decision #4); the audit artifact series continues.
+   The converse exclusion is even simpler: to keep the local ML stacks
+   (MLX, llama.cpp) out of a deployment, just don't add the
+   `manifold-mlx` / `manifold-llama` companion packages — core never
+   resolves them, so there is nothing to link out.
 5. **Consider Keychain access groups + the Data Protection class
    `NSFileProtectionComplete`** for any persisted data adjacent to ManifoldKit
    (SwiftData stores, exports). ManifoldKit uses

@@ -13,7 +13,6 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
-      - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
@@ -41,7 +40,6 @@ on:
       - "scripts/ci-test-with-watchdog.sh"
       - "scripts/example-ui-tests.sh"
       - "scripts/cold-start*.sh"
-      - "scripts/check-foundation-only-bundle.sh"
       - "scripts/test-ios-simulator.sh"
       - "scripts/lint-no-new-force-unwraps.sh"
       # Tier 0 selective-testing gate (issue #1588). Listed so edits to the
@@ -74,7 +72,6 @@ jobs:
       macros: ${{ steps.filter.outputs.macros }}
       cold-start: ${{ steps.filter.outputs.cold-start }}
       persistence: ${{ steps.filter.outputs.persistence }}
-      foundation-only: ${{ steps.filter.outputs.foundation-only }}
       # Tier 0 (issue #1588): the affected per-PR test-job suite list, or the
       # sentinel FULL / NONE. DRY-RUN — published for a later PR to wire into the
       # test --filter; nothing consumes it to change execution yet.
@@ -86,9 +83,6 @@ jobs:
       api-cloudcore: ${{ steps.filter.outputs.api-cloudcore }}
       api-persistence: ${{ steps.filter.outputs.api-persistence }}
       api-ui: ${{ steps.filter.outputs.api-ui }}
-      # Consumed by `all-traits-build`: true when Sources, Package.swift, or this
-      # workflow file changes — the same set that triggers the main `test` job.
-      all-traits: ${{ steps.filter.outputs.all-traits }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -139,12 +133,6 @@ jobs:
               - 'Package.resolved'
               - '.github/workflows/ci.yml'
               - 'scripts/test-ios-simulator.sh'
-            foundation-only:
-              - 'Package.swift'
-              - 'Package.resolved'
-              - 'Sources/ManifoldFoundation/**'
-              - 'scripts/check-foundation-only-bundle.sh'
-              - '.github/workflows/ci.yml'
             # Per-module API surface filters — used to gate and narrow the
             # per-PR diagnose-api-breaking-changes check to only the targets
             # that actually changed. Intentionally omit Package.swift /
@@ -163,23 +151,13 @@ jobs:
               - 'Sources/ManifoldPersistenceSwiftData/**'
             api-ui:
               - 'Sources/ManifoldUI/**'
-            # Used by the `all-traits-build` job below. Matches any Swift source,
-            # Package.swift, and ci.yml itself so the job self-validates on edits
-            # (per CI path-filter self-validation rule: a gate that doesn't track
-            # its own workflow file bypasses the gate when the file is changed).
-            all-traits:
-              - 'Sources/**'
-              - 'Package.swift'
-              - 'Package.resolved'
-              - '.github/workflows/ci.yml'
 
       # Tier 0 selective testing (issue #1588).
       #
       # Maps the diff to the subset of per-PR `test`-job suites it could affect,
       # using the committed SwiftPM target-graph snapshot
       # (scripts/affected-suites-graph.json) so this 1×-billed ubuntu job needs
-      # only jq — no Swift toolchain (ubuntu-latest has none; resolving the graph
-      # on Linux fails on the Apple-only MLX/llama deps anyway). The snapshot is
+      # only jq — no Swift toolchain (ubuntu-latest has none). The snapshot is
       # derived purely from Package.swift and its freshness is guarded in the
       # `test` job.
       #
@@ -441,7 +419,7 @@ jobs:
           # swift-api-digester analyses each target's own emitted interface and
           # does NOT follow `@_exported` re-exports, so a relocated-but-still-
           # source-reachable symbol reads as "removed" against the pre-merge
-          # baseline. The all-traits build proves source-compat is intact. Each
+          # baseline. The build gates prove source-compat is intact. Each
           # entry self-expires: once the relocation lands on main the baseline
           # no longer sees the symbol in ManifoldInference, the digester stops
           # emitting that message, and the unmatched allowlist line becomes an
@@ -457,17 +435,18 @@ jobs:
       #   + ManifoldMCPTests + ManifoldUITests + ManifoldBackendsTests + ManifoldTestSupportTests.
       # - ManifoldInferenceTests contains XCTest suites only; Swift Testing suites live in
       #   ManifoldInferenceSwiftTestingTests to prevent a libmalloc SIGABRT from mixed harnesses.
-      # - --disable-default-traits skips MLX (default-enabled) to avoid metallib
-      #   crashes in CI — Metal shaders are only compiled by Xcode.
-      # - ManifoldBackendsTests without traits runs only CI-safe cloud/SSE tests.
+      # - No trait flags: since v0.48 (PR C2) there are no default traits —
+      #   the heavy MLX/Llama families live in the manifold-mlx /
+      #   manifold-llama companion packages.
+      # - ManifoldBackendsTests runs the surviving cloud/Foundation/mock tests.
       # - Server tests run in the sibling `server-tests` job behind a paths
       #   filter so Hummingbird only compiles when server code changes.
       # - Macro tests run in the sibling `macros-tests` job behind a paths
       #   filter so swift-syntax (~647 files) only compiles when macro
       #   code changes.
       # Local-only coverage:
-      # - Run `swift test --filter ManifoldBackendsTests --traits MLX,Llama` on
-      #   Apple Silicon for MLX/llama.cpp paths.
+      # - MLX / llama.cpp suites run in the manifold-mlx / manifold-llama
+      #   companion repos (v0.48 split, #1749).
       # - Run `swift test --filter ManifoldE2ETests` on physical hardware.
       # - ManifoldMCPTests compiles unconditionally (MCP trait retired in
       #   v0.48); RUN_MCP_E2E stays unset here, so per-PR CI never requires
@@ -507,8 +486,7 @@ jobs:
           [[ "$affected" == "FULL" || "$affected" == "NONE" || -z "$affected" ]] \
             && emit_full "affected=${affected:-unset} (NONE falls back to full as conservative measure)"
           # Count suites that require a full swift-test bundle compile (can't use xcodebuild):
-          # ManifoldBackendsTests (ManifoldMLX/ManifoldLlama in subgraph → Metal shaders
-          # with xcodebuild defaults).
+          # ManifoldBackendsTests (umbrella suite — full bundle compile).
           # Running 2+ such suites separately compiles the full bundle twice, which is always
           # slower than one full run. Also fall back if total suite count is large (≥8)
           # to avoid excessive sequential xcodebuild overhead outweighing the compile savings.
@@ -556,9 +534,9 @@ jobs:
       # diagnostic signal about which test stalled. See the script header for
       # the design rationale.
       #
-      # All three test invocations below pass the SAME build shape
-      # (`--disable-default-traits`, no extra traits — the cloud families
-      # compile unconditionally since v0.48 PR A4). `swift test --filter`
+      # All three test invocations below pass the SAME build shape (no trait
+      # flags — there are no default traits since v0.48 PR C2, and the cloud
+      # families compile unconditionally since PR A4). `swift test --filter`
       # always builds the whole test tree (the filter only gates execution),
       # so a different trait set per invocation means a different
       # conditional-compilation config and forces a full recompile each time —
@@ -572,7 +550,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-xctest-suites.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --disable-default-traits --skip-update --parallel
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests --filter ManifoldVoiceTests --filter ManifoldSkillsTests --filter ManifoldToolsTests --filter ManifoldInferenceTests --filter ManifoldNetworkingTests --filter ManifoldSecretsTests --filter ManifoldHardwareTests --filter ManifoldModelCatalogTests --filter ManifoldTurnLoopCharacterizationTests --skip-update --parallel
 
       # ManifoldBackendsTests is intentionally NOT included in the --parallel batch
       # above. Under --parallel, swift-test schedules XCTest classes across workers
@@ -591,7 +569,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-backends.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --disable-default-traits --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldBackendsTests --skip-update
 
       # `if: (success() || failure())` so a failing XCTest step still surfaces
       # Swift Testing failures in the same run — otherwise breakage in both
@@ -604,7 +582,7 @@ jobs:
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-inference-swift-testing.log
           STALL_SECONDS: "240"
-        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --disable-default-traits --skip-update
+        run: scripts/ci-test-with-watchdog.sh --filter ManifoldInferenceSwiftTestingTests --skip-update
 
       # Coverage thresholds run nightly in nightly-slow-tests.yml — they were
       # moved out of per-main-push CI to reclaim ~130s of wall (~22 billed
@@ -695,7 +673,7 @@ jobs:
         timeout-minutes: 12
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-server.log
-        run: scripts/test.sh --filter ManifoldServerTests --disable-default-traits --traits Server --skip-update
+        run: scripts/test.sh --filter ManifoldServerTests --traits Server --skip-update
 
       - name: Stage test diagnostics
         if: failure()
@@ -747,7 +725,7 @@ jobs:
         timeout-minutes: 12
         env:
           MANIFOLD_TEST_OUTPUT_FILE: ${{ github.workspace }}/test-diagnostics/test-macros.log
-        run: scripts/test.sh --filter ToolSchemaMacro --disable-default-traits --traits Macros --skip-update
+        run: scripts/test.sh --filter ToolSchemaMacro --traits Macros --skip-update
 
       - name: Stage test diagnostics
         if: failure()
@@ -856,40 +834,6 @@ jobs:
         timeout-minutes: 10
         run: scripts/cold-start-specialised-uimodelmanagement.sh
 
-  # FoundationOnly bundle audit — proves the App Store-lean trait set keeps
-  # ManifoldKit overhead under 5 MB and never leaks MLX/Llama framework symbols. One
-  # `swift build --traits FoundationOnly` invocation, no `swift test`, so the
-  # job is cheap. See scripts/check-foundation-only-bundle.sh for the gate
-  # logic and docs/AppStoreSubmission.md for the rationale.
-  #
-  # Per-PR gating: only fires when Package.swift / Package.resolved, the gate
-  # script, or anything in Sources/ManifoldFoundation/** changes (the only
-  # target whose code can flip the FoundationOnly bundle composition).
-  # Nightly runs it unconditionally every day.
-  foundation-only-build:
-    needs: [changes]
-    if: needs.changes.outputs.foundation-only == 'true'
-    runs-on: macos-15  # match the `test` job runner so cache keys collide
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          fetch-depth: 2
-
-      # FoundationOnly resolves a much smaller dep graph than the default set
-      # (no MLX, no llama.swift, no swift-huggingface), but it shares the same
-      # cache key family so a tier-1 / tier-2 / default cache hit can warm-restore
-      # the package metadata.
-      - name: Setup Swift CI environment
-        uses: ./.github/actions/setup-swift-ci
-        with:
-          cache-key-suffix: "-foundation-only"
-
-      - name: Run FoundationOnly bundle audit
-        timeout-minutes: 10
-        run: scripts/check-foundation-only-bundle.sh
-
   # iOS Simulator lane — runs ModelContainerFileProtectionTests on a real iOS
   # Simulator destination so the four tests guarded by `#if os(iOS)` actually
   # execute.  NSFileProtectionComplete / NSFileProtectionCompleteUntilFirst-
@@ -937,66 +881,3 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
           path: test-diagnostics/
-
-  # All-traits build gate (trait-combo exhaustiveness check).
-  #
-  # WHY: The main `test` job and `--profile ci` both run with
-  # `--disable-default-traits`, which compiles only the default-traits-off
-  # subset of the package.  Trait-gated `switch` exhaustiveness and other
-  # trait-combo breakage is therefore invisible to per-PR CI.  Two canonical
-  # failure shapes have already burned CI time:
-  #   - #1382: a KV-cache reuse race that only manifests under `--traits MLX,Llama`
-  #   - #1660: a BackendRegistrar break that only manifested under `--traits Ollama` (trait retired in v0.48)
-  # Both merged green on the `--disable-default-traits` lane and were caught by
-  # the nightly all-traits build — *after* landing on main.
-  #
-  # This job adds a *per-PR* build-only gate: `swift build --build-tests` with the
-  # full trait sweep.  Build only — no `swift test`.  Metal/metallib is only a
-  # test-*run* hazard (the compiler emits valid dylib; the crash happens on load);
-  # build-modes.yml's nightly `full` leg already proves all-traits builds work on
-  # these runners.  The compile step catches switch exhaustiveness gaps,
-  # conditional-compilation errors, and missing conformances before merge.
-  #
-  # `Macros` and `Server` are deliberately excluded: swift-syntax (~647 files)
-  # and Hummingbird have their own path-filtered jobs (`macros-tests`,
-  # `server-tests`) and their build time would dominate the step budget.
-  # The documented trait-combo sweep in CLAUDE.md also omits them.
-  #
-  # Path-gated via the `all-traits` filter, which matches `Sources/**`,
-  # `Package.swift`, `Package.resolved`, and `.github/workflows/ci.yml` — the
-  # same set as the main `test` job.  Including `.github/workflows/ci.yml` is
-  # required per the CI path-filter self-validation rule: a gate that does not
-  # track its own workflow file would bypass itself when this file changes.
-  all-traits-build:
-    needs: [changes]
-    if: needs.changes.outputs.all-traits == 'true'
-    runs-on: macos-15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          fetch-depth: 2
-
-      - name: Setup Swift CI environment
-        uses: ./.github/actions/setup-swift-ci
-        with:
-          # Own cache namespace: this job's dependency slice (llama.cpp
-          # xcframework, mlx-swift checkouts) never appears in the standard
-          # --disable-default-traits cache, so sharing the key would re-download
-          # the heavy artifacts every run AND restore stale bare repos.
-          # restore-keys still falls back to the standard key for the rest.
-          cache-key-suffix: "-all-traits"
-          verify-toolchain: "true"
-
-      # Build-only — no swift test.  Metal/metallib is only a test-run-time
-      # hazard; the compiler produces valid objects on these runners.
-      # No --skip-update: a fallback-restored cache can hold bare repos that
-      # predate a pinned tag (first red run: llama.swift 2.9553.0 unresolvable
-      # from the stale shared cache), and --skip-update suppresses the fetch
-      # that would repair it. The ~10-15s of remote contact is correctness here.
-      - name: Build — all-traits sweep (trait-combo exhaustiveness)
-        timeout-minutes: 25
-        run: |
-          swift build --build-tests \
-            --traits MLX,Llama,HuggingFace,Fuzz

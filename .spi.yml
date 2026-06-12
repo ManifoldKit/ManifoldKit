@@ -3,8 +3,11 @@ builder:
   configs:
     # Document the public-facing target set on the macOS SPM builder. SPI
     # generates DocC archives for each target listed here.
-    # ManifoldBackends is excluded because it requires Apple Silicon
-    # xcframeworks (MLX, llama.cpp) that do not link on Intel CI runners.
+    # ManifoldBackends was originally excluded because it required Apple
+    # Silicon xcframeworks (MLX, llama.cpp). Those moved to the manifold-mlx /
+    # manifold-llama companion packages in v0.48 PR C2, so the umbrella could
+    # now be added — candidate for the C4 follow-up; kept excluded for now to
+    # avoid churning SPI's builder config mid-split.
     # ManifoldCore was renamed to ManifoldInference + ManifoldRuntime +
     # ManifoldPersistenceSwiftData in v2.0.
     - documentation_targets:

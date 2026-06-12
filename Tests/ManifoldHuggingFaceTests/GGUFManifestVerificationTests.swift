@@ -1,7 +1,6 @@
 @preconcurrency import XCTest
 import CryptoKit
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 // MARK: - Helpers
@@ -140,4 +139,3 @@ final class GGUFManifestVerificationTests: XCTestCase {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
-#endif

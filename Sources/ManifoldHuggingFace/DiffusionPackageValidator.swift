@@ -1,4 +1,3 @@
-#if HuggingFace
 import Foundation
 import ManifoldInference
 
@@ -85,4 +84,3 @@ internal enum DiffusionPackageValidator {
         )
     }
 }
-#endif

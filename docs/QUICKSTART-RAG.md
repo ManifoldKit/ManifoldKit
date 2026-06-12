@@ -41,10 +41,11 @@ There are two retrieval modes, picked automatically:
 
 ## 1. Add the dependency
 
-Keyword-fallback RAG needs no extra trait — `ManifoldRuntime` and
+Keyword-fallback RAG needs nothing beyond core — `ManifoldRuntime` and
 `ManifoldPersistenceSwiftData` carry the whole pipeline. Semantic search needs
-the `Llama` trait (the on-device `LlamaEmbeddingBackend` lives in
-`ManifoldLlama`), which is in the default trait set:
+the on-device `LlamaEmbeddingBackend` from `ManifoldLlama`, which since v0.48
+ships in the [`manifold-llama`](https://github.com/roryford/manifold-llama)
+companion package:
 
 ```swift,no-build
 dependencies: [
@@ -52,10 +53,14 @@ dependencies: [
         url: "https://github.com/roryford/ManifoldKit.git",
         from: "0.46.0" // x-release-please-version
     ),
+    // Only needed for semantic search (§3) / reranking (§4) —
+    // keyword-fallback RAG works with core alone.
+    .package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
         .product(name: "ManifoldKit", package: "ManifoldKit"),
+        .product(name: "ManifoldLlama", package: "manifold-llama"),
     ]),
 ],
 ```
@@ -133,7 +138,7 @@ the same turn loop now embed text instead of keyword-matching.
 ```swift,no-build
 import Foundation
 import ManifoldKit
-import ManifoldLlama   // LlamaEmbeddingBackend (requires the `Llama` trait)
+import ManifoldLlama   // LlamaEmbeddingBackend (from the manifold-llama companion package)
 
 @MainActor
 func makeRAGConfiguration() async throws -> RAGConfiguration {
@@ -242,7 +247,7 @@ with the shipped `CitationsView`, or read the array directly.
   session sidebar and relaunch restore.
 - [`docs/QUICKSTART-TOOLS.md`](QUICKSTART-TOOLS.md) — let the model call tools in
   addition to retrieving documents.
-- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full trait → backend → capability table.
+- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full backend → capability table.
 
 ---
 

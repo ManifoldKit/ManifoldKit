@@ -18,7 +18,7 @@
 #
 # Baseline measurements (ManifoldCoreTests + ManifoldRuntimeTests +
 # ManifoldPersistenceSwiftDataTests + ManifoldInferenceTests +
-# ManifoldMCPTests, --disable-default-traits --enable-code-coverage):
+# ManifoldMCPTests, --enable-code-coverage):
 #
 #   ManifoldInference            84.0%  -> threshold 74%
 #   ManifoldRuntime              84.2%  -> threshold 74%

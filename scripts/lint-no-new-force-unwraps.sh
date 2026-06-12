@@ -12,10 +12,6 @@ SOURCES_DIR="${1:-Sources}"
 # whole-module directories.  Add justification + cleanup pointer for each.
 # ---------------------------------------------------------------------------
 ALLOWLIST_PATHS=(
-    # Third-party model code vendored verbatim; reviewed in their own upstreams.
-    "StableDiffusion"
-    "FluxSwift"
-
     # Fuzzing harness + fuzz-chat CLI: force-unwraps are confined to
     # URL(string:)! with hard-coded chaos/mock scheme strings (guaranteed
     # non-nil) and randomElement(using:)! on non-empty literal arrays.
@@ -89,19 +85,10 @@ ALLOWLIST_PATHS=(
     # String values; this is a well-known Swift stdlib guarantee.
     "ManifoldRuntime/Services/MarkdownExportFormat.swift"
 
-    # callbackContextRef!.toOpaque() — ref is set just before this call inside
-    # the same withLock block; and .max()! on a non-empty array literal.
-    "ManifoldLlama/LlamaModelLoader.swift"
-    "ManifoldLlama/LlamaToolCallParser.swift"
-
     # HTTPField.Name("X-Accel-Buffering")! — HTTPFields header name literal
     # known valid at compile time; if the string were malformed it would crash
     # in dev/tests, not in production at runtime.
     "ManifoldServer/ServerApp.swift"
-
-    # CGColorSpace(name: CGColorSpace.sRGB)! — CGColorSpace.sRGB is a
-    # system-provided constant; non-nil on all supported OS versions.
-    "ManifoldMLX/Diffusion/Flux/FluxDiffusionBackend.swift"
 
     # .first! on a non-empty search-path result; the path is constructed
     # immediately above with FileManager and is guaranteed to have at least

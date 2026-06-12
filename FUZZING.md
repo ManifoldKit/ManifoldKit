@@ -32,29 +32,29 @@ Five-minute Ollama run, default detector set, defaults on everything else:
 scripts/fuzz.sh --minutes 5
 ```
 
-The wrapper prints a preflight line showing which backends it found (Llama via `~/Documents/Models/`, MLX via `~/Documents/Models/`, Ollama via `localhost:11434`, Foundation via `sw_vers`). If nothing is usable it exits with install hints. The recommended first model is `qwen3.5:4b` — it is a reasoning model and is the most likely to surface fuzzer-relevant behavior on a fresh machine (`ollama pull qwen3.5:4b`).
+The wrapper prints a preflight line showing which backends it found (Ollama via `localhost:11434`, Foundation via `sw_vers`). If nothing is usable it exits with install hints. The recommended first model is `qwen3.5:4b` — it is a reasoning model and is the most likely to surface fuzzer-relevant behavior on a fresh machine (`ollama pull qwen3.5:4b`).
 
-Direct invocation works too — the wrapper just adds the preflight and the MLX xcodebuild bridge:
+Direct invocation works too — the wrapper just adds the preflight (`fuzz-chat` compiles unconditionally since v0.48; the `Fuzz` trait is retired):
 
 ```bash
-swift run --traits Fuzz,MLX,Llama fuzz-chat --minutes 5
-swift run --traits Fuzz,MLX,Llama fuzz-chat --iterations 200 --backend ollama --quiet
-swift run --traits Fuzz,MLX,Llama fuzz-chat --single --seed 42 --model qwen3.5
-swift run --traits Fuzz,MLX,Llama fuzz-chat --backend mock --iterations 200 --workers 4 --corpus-subset smoke --quiet
+swift run fuzz-chat --minutes 5
+swift run fuzz-chat --iterations 200 --backend ollama --quiet
+swift run fuzz-chat --single --seed 42 --model qwen3.5
+swift run fuzz-chat --backend mock --iterations 200 --workers 4 --corpus-subset smoke --quiet
 ```
 
 Common flags:
 
 | Flag | Purpose |
 |------|---------|
-| `--backend <name>` | `ollama` (default), `llama`, `foundation`, `mlx`, `mock`, `chaos`, `all`. `mlx` runs via the xcodebuild path (see below); `all` is not yet implemented. |
+| `--backend <name>` | `ollama` (default), `openai`, `foundation`, `mock`, `chaos`, `all`. The `llama` / `mlx` selections error with a companion-package pointer since v0.48 (see Backends below); `all` is not yet implemented. |
 | `--minutes N` | Wall-clock budget. Default 5. |
 | `--iterations N` | Iteration cap; runs until either budget is hit. |
 | `--single` | One iteration then exit — useful with `--seed`. |
 | `--seed N` | Deterministic prompt/sampler selection for repro. |
 | `--workers N` | Process-level campaign workers. Iteration budgets are split deterministically; time budgets apply per worker. Defaults to `1`. |
 | `--output-dir PATH` | Findings directory. Defaults to `tmp/fuzz`; parallel workers write isolated subdirectories and merge back here. |
-| `--model <substr>` | Ollama: pin to the first installed model containing `<substr>`; pass `all` (or omit) to rotate through every installed Ollama model. Llama: pin to the first GGUF whose filename contains `<substr>`. `scripts/fuzz.sh --with-mlx` maps the same flag to `MLX_TEST_MODEL` for the xcodebuild-hosted MLX path. |
+| `--model <substr>` | Ollama: pin to the first installed model containing `<substr>`; pass `all` (or omit) to rotate through every installed Ollama model. |
 | `--detector <ids>` | Comma-separated detector IDs to enable. |
 | `--quiet` | Suppress the per-iteration log line. |
 | `--tools` | Inject `SyntheticToolset` so tool-aware backends have something to call. Pairs with `tool-call-validity` ([#627](https://github.com/roryford/ManifoldKit/issues/627)). |
@@ -65,23 +65,12 @@ Common flags:
 
 | Backend | Status | Discovery | Notes |
 |---------|--------|-----------|-------|
-| Ollama | Wired | `curl http://localhost:11434/api/tags` | Default backend in v1. |
-| Llama  | Wired | `~/Documents/Models/**/*.gguf` via `HardwareRequirements` | Single-model only: `llama_backend_init` is a process-global one-shot, so `--model all` is a no-op for this backend. `LLAMA_TEST_MODEL=<substr>` pins a specific file. |
-| MLX    | Wired (xcodebuild path) | `~/Documents/Models/<dir>/{config.json,*.safetensors,tokenizer.*}` | Requires the xcodebuild path because MLX Metal shaders only compile under Xcode — see `--with-mlx` below. `MLX_TEST_MODEL=<substr>` pins a specific snapshot. |
+| Ollama | Wired | `curl http://localhost:11434/api/tags` | Default backend. |
+| OpenAI | Wired | `OPENAI_API_KEY` in the environment | Cloud campaign. |
 | Foundation Models | Wired | `sw_vers -productVersion >= 26` | macOS 26+ only. Requires Apple Intelligence to be enabled; otherwise backend creation fails and the run exits early with an error. |
+| Llama / MLX | Moved (v0.48, #1749) | — | The MLX and llama.cpp fuzz factories moved to the [manifold-mlx](https://github.com/roryford/manifold-mlx) / [manifold-llama](https://github.com/roryford/manifold-llama) companion packages with the backends. `--backend llama` / `--backend mlx` (and `scripts/fuzz.sh --with-mlx`) now error with a pointer; run those campaigns from the companion repos. |
 
-Backend wiring lives behind the `FuzzBackendFactory` protocol. A factory exposes `makeHandle() async throws -> FuzzRunner.BackendHandle`, where `BackendHandle` carries `(backend: any InferenceBackend, modelId: String, modelURL: URL, backendName: String, templateMarkers: RunRecord.MarkerSnapshot)`. The importable real-backend factories live in `Sources/ManifoldFuzzBackends/`, so both `fuzz-chat` and the MLX XCTest host reuse the same bring-up code. Detectors operate on the resulting `RunRecord` and don't care which backend produced it.
-
-### MLX via xcodebuild
-
-`swift run fuzz-chat --backend mlx` cannot work directly because MLX's Metal shaders are not compiled by SwiftPM. The wrapper's `--with-mlx` flag (or `--backend mlx`) runs the MLX XCTest fuzz suite separately while forwarding the shared campaign knobs into the test host via environment variables:
-
-```bash
-scripts/fuzz.sh --with-mlx --minutes 5 --seed 42 --corpus-subset smoke
-scripts/fuzz.sh --backend mlx --iterations 10 --model gemma
-```
-
-The xcodebuild host reads `MANIFOLD_FUZZ_MINUTES`, `MANIFOLD_FUZZ_ITERATIONS`, `MANIFOLD_FUZZ_SEED`, `MANIFOLD_FUZZ_DETECTOR`, `MANIFOLD_FUZZ_CORPUS_SUBSET`, `MANIFOLD_FUZZ_SESSION_SCRIPTS`, `MANIFOLD_FUZZ_TOOLS`, and `MLX_TEST_MODEL`, then feeds the resulting `FuzzConfig` into `FuzzRunner` / `SessionFuzzRunner` with the shared `MLXFuzzFactory`.
+Backend wiring lives behind the `FuzzBackendFactory` protocol. A factory exposes `makeHandle() async throws -> FuzzRunner.BackendHandle`, where `BackendHandle` carries `(backend: any InferenceBackend, modelId: String, modelURL: URL, backendName: String, templateMarkers: RunRecord.MarkerSnapshot)`. The importable real-backend factories live in `Sources/ManifoldFuzzBackends/`; companion packages ship their own factories against the same protocol. Detectors operate on the resulting `RunRecord` and don't care which backend produced it.
 
 ---
 
@@ -94,8 +83,6 @@ Bug shapes diverge per model. The #487 `thinking`-drop only showed up on reasoni
 **Pinning to one model.** `--model <substr>` preserves the pre-#501 behaviour: pick the first installed model whose name contains the substring, and use only that model for the whole campaign.
 
 **Determinism.** The discovered model list is sorted by UTF-8 byte order before rotation, so two invocations on the same machine — regardless of the order Ollama reports its models — produce the same iteration-to-model mapping. This is the contract that keeps `--seed N --replay` (#490) meaningful: given a fixed seed and a fixed installed-model list, the rotation sequence is reproducible.
-
-**Llama opt-out.** `LlamaBackend` calls `llama_backend_init` as a process-global one-shot — only one instance per process is supported. Rotation never applies to Llama. The CLI's Llama path is wired (`--backend llama` discovers the first GGUF in `~/Documents/Models/` via `HardwareRequirements.findGGUFModel`) and stays single-model even under `--model all`; use `--model <substr>` or `LLAMA_TEST_MODEL=<substr>` to pin a specific file.
 
 **Mechanism.** The rotating factory is a `FuzzBackendFactory` conformance that wraps an ordered array of child factories and advances an internal index per `makeHandle()` call. The runner's `init(config:factory:)` contract (#537) is unchanged — rotation is hidden behind the factory boundary. See `RotatingFuzzFactory` in `Sources/ManifoldFuzz/`.
 
@@ -120,7 +107,7 @@ cat tmp/fuzz/index.json | jq '.[].model_id' | sort | uniq -c
 `--workers N` runs multiple isolated `fuzz-chat` child processes, then merges their findings into the parent output directory. This is intentionally process-level rather than an in-process `TaskGroup`: each worker owns its backend instance, RNG state, reporter, and `FindingsSink`, avoiding cross-worker interference and backend-specific global state.
 
 ```bash
-swift run --traits Fuzz,MLX,Llama fuzz-chat \
+swift run fuzz-chat \
   --backend mock \
   --iterations 200 \
   --workers 4 \
@@ -133,16 +120,14 @@ Worker safety is backend-specific:
 | Backend | Worker limit | Reason |
 |---------|--------------|--------|
 | `mock`, `chaos`, `ollama` | 4 | Safe to isolate per child process. |
-| `llama` | 1 | llama.cpp initialization is process-global. |
 | `foundation` | 1 | Apple Intelligence availability/resource transitions should stay single-worker until calibrated. |
-| `mlx` | 1 | MLX runs through the xcodebuild-hosted path, not `swift run fuzz-chat`. |
 | `all` | 1 | `--backend all` is not wired yet. |
 
 Iteration budgets are partitioned deterministically across workers: `--iterations 10 --workers 3` becomes `[4, 3, 3]`, with the remainder assigned to the lowest worker index. Time budgets are not divided; `--minutes 5 --workers 4` runs four five-minute workers so elapsed wall time remains close to five minutes while total backend coverage increases.
 
 Each worker derives a stable seed from the parent seed and worker index, then writes to an isolated directory under `tmp/fuzz/workers/<run-id>/worker-N/fuzz/`. After all workers exit, the parent merges worker `index.json` files, sums `totalRuns`, deduplicates findings by hash, preserves the first-seen `record.json`, and regenerates the root `tmp/fuzz/index.json` plus `tmp/fuzz/INDEX.md`. If any worker exits non-zero, merge still runs so partial findings are retained, and the parent exits non-zero.
 
-`--workers` is campaign-only. It is rejected with `--replay`, `--shrink`, `--backend mlx`, and `scripts/fuzz.sh --with-mlx`; run those paths separately.
+`--workers` is campaign-only. It is rejected with `--replay` and `--shrink`; run those paths separately.
 
 ---
 
@@ -313,7 +298,7 @@ Until [#487](https://github.com/roryford/ManifoldKit/issues/487) is fixed, this 
 Run the gate locally:
 
 ```bash
-swift test --filter ManifoldFuzzTests.CalibrationTests --disable-default-traits
+swift test --filter ManifoldFuzzTests.CalibrationTests
 ```
 
 All ten single-turn detectors pass both gates as of [#488](https://github.com/roryford/ManifoldKit/issues/488). `tool-call-validity` (which landed in [#813](https://github.com/roryford/ManifoldKit/pull/813) after the corpus was authored) ships two `.confirmed` zero-FP-by-construction sub-checks (`id-reuse`, `orphan-result`) and three `.flaky` sub-checks pending follow-up corpus work — it is intentionally exempt from the coverage check via `CalibrationTests.coverageExempt`. Session detectors (`turn-boundary-kv-state`, `cancellation-race`, `session-context-leak`) consume `[SessionCapture]` objects and are not covered by this corpus — they require a separate session-level fixture set.

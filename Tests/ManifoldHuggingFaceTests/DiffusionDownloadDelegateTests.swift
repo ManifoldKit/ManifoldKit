@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Unit tests for `DiffusionDownloadDelegate`.
@@ -238,4 +237,3 @@ final class DiffusionDownloadDelegateTests: XCTestCase {
         )
     }
 }
-#endif

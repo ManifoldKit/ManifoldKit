@@ -111,11 +111,11 @@ Foundation Models as *one backend among many*, so an app gets the on-device
 Apple model where it's available and a different backend everywhere else,
 behind one API.
 
-**Proof point:** the build is trait-gated. A `FoundationOnly` trait produces a
-roughly **5 MB** App Store build with no MLX/llama binaries (CI gates the
-`ManifoldBackends` artifact at ≤5 MB under that trait); the full trait set
-produces the everything-included stack. Same package, same code, two very
-different binary footprints — a manifest choice, not a fork.
+**Proof point:** the packaging is decomposable. Core ManifoldKit ships with
+no MLX/llama binaries at all — a roughly MB-scale, App-Store-lean build is the
+default — while adding the `manifold-mlx` / `manifold-llama` companion packages
+produces the everything-included stack. Same code, two very different binary
+footprints — a `.package(...)` line, not a fork.
 
 ### Pillar 4 — Reliability & security as a product feature
 
@@ -216,15 +216,16 @@ loop, the same streaming contract. Routing is a backend choice, not a fork.
 ### The privacy- / offline-first app
 **Pain:** your value proposition is "your data never leaves the device," so a
 cloud-only or cloud-default SDK is a non-starter.
-**ManifoldKit answer:** fully on-device with MLX, llama.cpp/GGUF, and Apple
-Foundation Models — no network required. Trait-gate the cloud backends out
-entirely and ship a build that *cannot* phone home. The `FoundationOnly` path
-is a ~5 MB, Apple-model-only binary.
+**ManifoldKit answer:** fully on-device with MLX, llama.cpp/GGUF (via the
+companion packages), and Apple Foundation Models — no network required. Link
+out the cloud products entirely and ship a build that *cannot* phone home. The
+core-only path is a lean, Apple-model-only binary with no heavy ML deps.
 
 ### The researcher / tinkerer
 **Pain:** you want to swap models, engines, prompt templates, and tools without
 rebuilding the whole rig each time, and you want a real test seam.
-**ManifoldKit answer:** 14 trait-gated modules you compose à la carte, a custom
+**ManifoldKit answer:** 28 library products (plus two companion backend
+packages) you compose à la carte, a custom
 `InferenceBackend` you register in a closure, and a real `MockInferenceBackend`
 that exercises the actual streaming and cancellation contract without loading a
 model.
@@ -248,8 +249,9 @@ backend, not a rewrite:**
 - **Foundation Models is wrapped as one backend** behind the same protocol as
   everything else — apps get the Apple model where it exists and a fallback
   everywhere else, with no branching in product code.
-- **A ~5 MB `FoundationOnly` build** is one trait flip away for teams that want
-  the lean, Apple-only App Store binary.
+- **A lean core-only build** (no heavy ML dependencies) is the default for
+  teams that want the Apple-only App Store binary — just don't add the
+  companion packages.
 - **The `SystemAIProviderExtension` and `CoreAI` trait stubs are already wired**
   in `Package.swift`, ahead of WWDC. When Apple confirms the real framework and
   entitlement names, activation is a source addition and a `swiftSettings`

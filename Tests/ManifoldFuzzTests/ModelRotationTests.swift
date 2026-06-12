@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -171,4 +170,3 @@ final class ModelRotationTests: XCTestCase {
         XCTAssertEqual(first, ["a", "b", "c", "a", "b", "c", "a", "b", "c"])
     }
 }
-#endif

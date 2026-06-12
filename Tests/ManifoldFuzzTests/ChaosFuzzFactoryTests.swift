@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -93,4 +92,3 @@ final class ChaosFuzzFactoryTests: XCTestCase {
         XCTAssertEqual(report.totalRuns, 1, "runner must absorb stream errors and still tally the iteration")
     }
 }
-#endif

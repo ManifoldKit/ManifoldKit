@@ -1,9 +1,8 @@
-// Body gated on the `Fuzz` trait. Without the trait, the executable links to
-// a no-op stub that prints a "trait not enabled" message — mirrors the
-// ManifoldServer trait pattern (PR #946) and keeps fuzz-chat out of the
-// default-trait build's link graph for the ManifoldFuzz / ManifoldBackends
-// symbols.
-#if Fuzz
+// The Fuzz trait retired in v0.48 (PR C2) — fuzz-chat compiles
+// unconditionally. The MLX / Llama fuzz factories moved to the manifold-mlx /
+// manifold-llama companion packages with the backends; this CLI drives
+// Ollama, OpenAI-compatible, Foundation, and the hardware-free mock/chaos
+// backends.
 import Foundation
 import ManifoldFuzz
 import ManifoldInference
@@ -21,7 +20,7 @@ struct FuzzChatCLI {
             return
         }
 
-        var backend: BackendChoice = .llama
+        var backend: BackendChoice = .ollama
         var minutes: Int?
         var iterations: Int?
         var seed: UInt64 = UInt64.random(in: 0...UInt64.max)
@@ -208,48 +207,36 @@ struct FuzzChatCLI {
         let factory: any FuzzBackendFactory
         switch backend {
         case .ollama:
-            #if Fuzz
             do {
                 factory = try OllamaFuzzFactory.makeCampaignFactory(modelHint: modelHint, blockSize: rotateEvery)
             } catch {
                 fail(String(describing: error))
             }
-            #else
-            fail("Ollama backend requires the Fuzz build trait. Run via: scripts/fuzz.sh")
-            #endif
         case .mock:
             factory = MockFuzzFactory()
         case .chaos:
             factory = ChaosFuzzFactory()
         case .llama:
-            #if Llama && Fuzz
-            factory = LlamaFuzzFactory(modelHint: modelHint)
-            #else
-            fail("Llama backend requires the Fuzz and Llama build traits. Run via: scripts/fuzz.sh")
-            #endif
+            fail("The llama.cpp fuzz factory moved to the manifold-llama companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
         case .foundation:
-            #if canImport(FoundationModels) && Fuzz
+            #if canImport(FoundationModels)
             if #available(macOS 26, iOS 26, *) {
                 factory = FoundationFuzzFactory()
             } else {
                 fail("Foundation backend requires macOS 26 or iOS 26.")
             }
             #else
-            fail("Foundation backend requires macOS 26+ with FoundationModels and the Fuzz build trait. Run via: scripts/fuzz.sh")
+            fail("Foundation backend requires macOS 26+ with FoundationModels.")
             #endif
         case .openai:
-            #if Fuzz
             factory = makeOpenAIFactory(
                 baseURLString: baseURLString,
                 apiKeyArg: apiKeyArg,
                 modelHint: modelHint,
                 requestTimeout: requestTimeout
             )
-            #else
-            fail("openai backend requires the Fuzz build trait. Run via: swift run --traits Fuzz,MLX,Llama fuzz-chat --backend openai ... (or scripts/fuzz.sh --backend openai)")
-            #endif
         case .mlx:
-            fail("MLX cannot run via `swift run` (needs Xcode-compiled metallib). Use scripts/fuzz.sh --with-mlx or --backend mlx.")
+            fail("The MLX fuzz factory moved to the manifold-mlx companion package (v0.48, #1749). Run the fuzzer from that repo, or use --backend ollama|openai|foundation|mock|chaos here.")
         case .all:
             fail("all backend not yet wired in CLI.")
         }
@@ -574,7 +561,6 @@ struct FuzzChatCLI {
         }
     }
 
-    #if Fuzz
     /// Builds the OpenAI-compatible cloud factory, validating the base URL and
     /// resolving the API key. The key is read from `--api-key` when present,
     /// otherwise from the environment (`OPENROUTER_API_KEY` preferred, then
@@ -605,7 +591,6 @@ struct FuzzChatCLI {
         }
         return OpenAIFuzzFactory(baseURL: url, apiKey: apiKey, modelName: model, requestTimeout: requestTimeout)
     }
-    #endif
 
     /// Validates `--replay` argument shape: 12–40 lowercase hex chars. Finding
     /// hashes produced by `Finding.computeHash` are exactly 12 chars today;
@@ -620,15 +605,17 @@ struct FuzzChatCLI {
         let lines = [
             "fuzz-chat — chat anomaly fuzzer",
             "",
-            "Usage: swift run --traits Fuzz,MLX,Llama fuzz-chat [options]",
+            "Usage: swift run fuzz-chat [options]",
             "",
             "Options:",
-            "  --backend ollama|mock|chaos|llama|foundation|mlx|openai|all   default: llama",
+            "  --backend ollama|mock|chaos|foundation|openai|all   default: ollama",
+            "                      llama / mlx moved to the manifold-llama / manifold-mlx",
+            "                      companion packages (v0.48, #1749) — fuzz them from those repos.",
             "                      mock   = MockInferenceBackend (hardware-free, used by PR-tier CI)",
             "                      chaos  = ChaosBackend (hardware-free; injects stream failures)",
             "                      openai = OpenAI-compatible cloud endpoint (OpenRouter, OpenAI, …)",
             "                               via OpenAIBackend:",
-            "                               swift run --traits Fuzz,MLX,Llama fuzz-chat",
+            "                               swift run fuzz-chat",
             "                               --backend openai --base-url <url> --model <slug>",
             "                               Replay/shrink are unavailable (cloud is non-deterministic).",
             "  --minutes N         time budget (default 5 if neither flag set)",
@@ -682,12 +669,3 @@ func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("fuzz-chat: \(message)\n".utf8))
     exit(2)
 }
-#else
-import Foundation
-@main
-struct FuzzChatDisabled {
-    static func main() {
-        print("fuzz-chat was built without the `Fuzz` trait. Re-build with `--traits Fuzz` (or use scripts/fuzz.sh) to enable.")
-    }
-}
-#endif

@@ -6,8 +6,10 @@ README §2 "Build modes"). Every item here is something Apple's review
 automation either checks directly or flags for human review.
 
 If you're targeting iOS 26+ / macOS 26+ exclusively and using only Apple
-Foundation Models, see the **FoundationOnly fast path** at the end — most
-of the items below collapse to a single answer.
+Foundation Models, see the **core-only fast path** at the end — most
+of the items below collapse to a single answer. (The former `FoundationOnly`
+trait was retired in v0.48: core now has no heavy ML dependencies at all, so
+the lean build is simply "don't add the companion packages".)
 
 ## 1. Encryption export classification
 
@@ -15,9 +17,10 @@ Every app submitted to the App Store must answer the encryption-export
 question. ManifoldKit does not ship its own crypto, but it uses HTTPS for cloud
 backends. That counts as encryption under U.S. export law.
 
-- **FoundationOnly / offline build** (`traits: ["FoundationOnly"]` or no
-  cloud backends compiled in): set `ITSAppUsesNonExemptEncryption=false` in
-  your `Info.plist`. No further filing needed.
+- **Offline build** (Foundation Models and/or local companion-package
+  inference only, no cloud endpoints used): set
+  `ITSAppUsesNonExemptEncryption=false` in your `Info.plist`. No further
+  filing needed.
 - **Cloud backends linked in** (always compiled since v0.48; linked unless you exclude the cloud products): set
   `ITSAppUsesNonExemptEncryption=true` and complete the annual
   self-classification form on App Store Connect. Most developers qualify
@@ -26,7 +29,7 @@ backends. That counts as encryption under U.S. export law.
   [encryption export documentation](https://developer.apple.com/documentation/security/complying_with_encryption_export_regulations).
 
 ```xml
-<!-- Info.plist for FoundationOnly / offline builds -->
+<!-- Info.plist for offline builds -->
 <key>ITSAppUsesNonExemptEncryption</key>
 <false/>
 ```
@@ -52,7 +55,7 @@ not in place of it.
 
 ## 3. App Transport Security
 
-Default ATS is fine for SaaS-only and FoundationOnly builds. You only need
+Default ATS is fine for SaaS-only and offline builds. You only need
 an exception block if you bundle a localhost Ollama instance or talk to
 unencrypted self-hosted endpoints.
 
@@ -136,31 +139,23 @@ clears review questions in the first round.
 
 ## 7. Bundle size estimate
 
-ManifoldKit's overhead in your final IPA varies by build profile:
+ManifoldKit's overhead in your final IPA varies by which packages you add:
 
 | Profile | ManifoldKit overhead | Notes |
 |---------|--------------|-------|
-| `traits: ["FoundationOnly"]` | < 5 MB | Foundation Models only. Enforced by CI. |
-| Cloud-only (no MLX/Llama traits) | ~10 MB | Adds OpenAI / Claude SSE clients. |
-| Default (`MLX`, `Llama`, `HuggingFace`) | ~700 MB | MLX checkout (~100 MB) + LlamaSwift xcframework (~563 MB). |
-| Full (`MLX`, `Llama`, `HuggingFace`) | ~700 MB | Same — the always-compiled Ollama and SaaS clients are ~MB-scale text. |
+| Core only (Foundation Models + cloud) | ~10 MB | No heavy ML dependencies at all — the lean build is the default since v0.48. Includes OpenAI / Claude / Ollama clients (MB-scale text). |
+| Core + `manifold-llama` | ~570 MB checkout | The companion pins the ~563 MB prebuilt llama.cpp xcframework. |
+| Core + `manifold-mlx` | ~100 MB+ checkout | mlx-swift source checkout + Metal shaders. |
 
-The MLX and Llama figures are checkout sizes; what lands in your IPA is
+The companion figures are checkout sizes; what lands in your IPA is
 smaller after dead-code stripping but still substantial. If your app
-targets only Apple Foundation Models, use the **FoundationOnly fast
-path** below to keep your IPA App-Store-thin.
-
-> What the FoundationOnly CI gate actually enforces: the
-> [`foundation-only-build`](../.github/workflows/ci.yml) job runs
-> [`scripts/check-foundation-only-bundle.sh`](../scripts/check-foundation-only-bundle.sh),
-> which (1) runs `nm -gU` against the compiled `ManifoldBackends/*.o`
-> objects to assert zero MLX/llama.cpp framework symbols, and (2) caps
-> the compiled `ManifoldBackends.build` directory at 5 MB. SwiftPM's
-> `traits` system gates *compilation* but not *resolution* —
-> `.build/checkouts` still contains every declared `.package(url:)`
-> regardless of trait set, but the linker only pulls in what the
-> compiled objects reference, so the symbol audit and bundle-size cap
-> are what bound your final IPA.
+targets only Apple Foundation Models (and/or cloud), don't add the
+companion packages — core builds with no MLX or llama.cpp checkout at
+all, which is the strongest "link-out" guarantee: there are no MLX or
+llama.cpp symbols to strip because the dependencies are never resolved.
+(This replaces the pre-v0.48 `FoundationOnly` trait and its symbol-audit
+CI gate — compile-out became link-out, and link-out became
+"not-even-resolved".)
 
 ## 8. SwiftPackageIndex submission (maintainer / out-of-tree)
 
@@ -183,22 +178,25 @@ PackageList submission once.
 
 ---
 
-## FoundationOnly fast path
+## Core-only fast path
 
 For indie iOS 26+ / macOS 26+ apps using only Apple Foundation Models, the
 checklist collapses to:
 
-1. **Package**: `traits: ["FoundationOnly"]` on your `.package(url:)` entry.
+1. **Package**: depend on ManifoldKit alone — do **not** add the
+   `manifold-mlx` / `manifold-llama` companion packages. Core has no heavy
+   ML dependencies since v0.48 (this replaces the retired `FoundationOnly`
+   trait).
 2. **Encryption export**: `ITSAppUsesNonExemptEncryption=false`.
 3. **Privacy manifest**: copy `Templates/PrivacyInfo.xcprivacy`. You can
    drop the `NSPrivacyAccessedAPICategoryDiskSpace` and
    `NSPrivacyAccessedAPICategoryFileTimestamp` entries if you don't ship
    any model-storage UI; keep `NSPrivacyAccessedAPICategoryUserDefaults`.
 4. **ATS**: defaults are fine.
-5. **Microphone / speech**: not needed (no `Voice` trait).
+5. **Microphone / speech**: not needed (don't link `ManifoldVoice`).
 6. **Deployment target**: iOS 26 / macOS 26 minimum.
-7. **Bundle size**: < 5 MB ManifoldKit overhead, enforced by CI
-   (`.github/workflows/ci.yml::foundation-only-build`).
+7. **Bundle size**: MB-scale ManifoldKit overhead — no MLX / llama.cpp
+   material is even resolved, let alone linked.
 
 That's the full submission surface. ManifoldKit does not add tracking, analytics,
 identity-API access, or cross-app data sharing in this configuration.

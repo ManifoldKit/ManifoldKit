@@ -15,8 +15,9 @@ permissions:
 jobs:
   rehearsal:
     name: Rehearse release dependency + SBOM generation
-    # Mirrors release-provenance.yml: SwiftPM trait flags are required to
-    # rehearse the release metadata path without pulling default ML traits.
+    # Mirrors release-provenance.yml. (No trait flags since v0.48 PR C2 —
+    # there are no default traits and the ML families live in companion
+    # packages; a bare resolve is the release metadata path.)
     runs-on: macos-15
     steps:
       - name: Checkout PR commit
@@ -31,12 +32,12 @@ jobs:
         run: ./scripts/check-swift-toolchain.sh
 
       - name: Resolve packages
-        run: swift package --disable-default-traits resolve
+        run: swift package resolve
 
       - name: Snapshot dependency tree
         run: |
           mkdir -p artifacts
-          swift package --disable-default-traits show-dependencies --format json \
+          swift package show-dependencies --format json \
             > artifacts/dependency-tree.json
           python3 -c '
           import json

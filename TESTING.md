@@ -74,10 +74,9 @@ UI automation tests that launch the real Example app in a simulator and drive it
 | `ManifoldMCPTests` | Unit, Integration | Yes | None | XCTest |
 | `ManifoldMCPE2ETests` | E2E (explicit opt-in smoke) | Nightly smoke only (requires `RUN_MCP_E2E=1`) | `EverythingServerSmokeTests` also needs npx + network | XCTest |
 | `ManifoldServerTests` | Unit, Integration | Yes | None | XCTest |
-| `ManifoldBackendsTests` | Unit, E2E | Partial | MLX/Llama need Apple Silicon | Mixed |
+| `ManifoldBackendsTests` | Unit, E2E | Yes | None (cloud / Foundation / mock suites; MLX and Llama suites live in the companion repos) | Mixed |
 | `ManifoldTestSupportTests` | Unit | Yes | None | XCTest |
 | `ManifoldE2ETests` | E2E | Yes | None (mock backends) | Swift Testing |
-| `ManifoldMLXIntegrationTests` | E2E | No | Apple Silicon + Metal + local MLX model | XCTest |
 | `AdvancedUITests` | XCUITest | Advisory only (`example-ui-smoke`) | Simulator | XCTest (XCUIApplication) |
 
 ### Running tests
@@ -92,28 +91,21 @@ scripts/test.sh --profile ci
 # Narrow to a specific suite while keeping the profile's trait/worker shape.
 scripts/test.sh --profile local --filter ManifoldCoreTests
 
-# Apple Silicon only
-swift test --filter ManifoldBackendsTests --traits MLX,Llama
-
 # Additional headless E2E coverage (mock backends; no special hardware)
-swift test --filter ManifoldE2ETests --disable-default-traits
+swift test --filter ManifoldE2ETests
 
 # MCP unit tests (incl. built-in catalog descriptors — compile unconditionally)
-scripts/test.sh --filter ManifoldMCPTests --disable-default-traits --skip-update
+scripts/test.sh --filter ManifoldMCPTests --skip-update
 
 # MCP end-to-end smoke tests are explicit opt-in only.
 # Nightly runs the streamable-HTTP smoke; keep the filter narrow so the
 # npx/network-backed EverythingServerSmokeTests suite does not run by default.
 RUN_MCP_E2E=1 scripts/test.sh --filter ManifoldMCPE2ESmokeTests \
-  --disable-default-traits --skip-update --min-passed 1
+  --skip-update --min-passed 1
 
 # Full subprocess E2E, local only: requires npx on PATH and network access to
 # download @modelcontextprotocol/server-everything.
-RUN_MCP_E2E=1 swift test --filter EverythingServerSmokeTests --disable-default-traits
-
-# Xcode-only — real MLX model inference (requires local MLX fixture; see below)
-# Cannot run via swift test; MLX Metal shaders are only compiled by Xcode.
-xcodebuild test -scheme ManifoldKit-Package -only-testing ManifoldMLXIntegrationTests -destination 'platform=macOS'
+RUN_MCP_E2E=1 swift test --filter EverythingServerSmokeTests
 
 # Example app UI tests (preferred debug loop)
 scripts/example-ui-tests.sh build-for-testing
@@ -148,57 +140,15 @@ Available flags (from `ManifoldTestSupport/HardwareRequirements.swift`):
 | `isPhysicalDevice` | Not the iOS Simulator |
 | `hasFoundationModels` | macOS 26+ / iOS 26+ |
 
-### Local MLX model fixture (`ManifoldMLXIntegrationTests`)
+### Real-model MLX / Llama testing (companion repos)
 
-`ManifoldMLXIntegrationTests` runs real GPU inference using a model you provide locally. The harness calls `HardwareRequirements.findMLXModelDirectory()` during `setUp`; if no valid directory is found the entire suite is **skipped**, not failed.
-
-**Required fixture shape**
-
-Each model must live in its own subdirectory and contain all three of the following:
-
-| File | Requirement |
-|------|-------------|
-| `config.json` | Valid JSON with a non-empty `model_type` field |
-| `*.safetensors` | At least one weight shard |
-| `tokenizer.json` or `tokenizer.model` | Hugging Face tokenizer artifact (either form accepted) |
-
-**Where the harness searches** (in order, first valid directory wins):
-
-1. `~/Documents/Models/<model-dir>/`
-2. `~/Library/Containers/*/Data/Documents/Models/<model-dir>/`
-
-Place your MLX snapshot in either location. The harness scans all immediate subdirectories of each `Models/` folder, so a layout like `~/Documents/Models/my-model/` with the files above is sufficient.
-
-**When no fixture is found**
-
-The suite calls `XCTSkip` and is marked skipped — CI sees a green pass, not a failure. You only need a local fixture when you're actively working on `ManifoldMLXIntegrationTests` or `MLXBackend`.
-
-### MLX KV-cache reuse regression checks
-
-Issue #749's prompt-cache reuse path has an extra validation bar beyond "still generates text":
-
-1. **Correctness** — warm second-turn output must match the cold path under deterministic settings.
-2. **Real cache hit** — the warm path must emit `GenerationEvent.kvCacheReuse(...)`.
-3. **Measured improvement** — warm second-turn TTFT must materially beat the cold path for a long shared prefix.
-
-The Xcode-only suite lives in `ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests.swift`. Run it with:
-
-```bash
-xcodebuild test -scheme ManifoldKit-Package \
-  -only-testing:ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
-  -destination 'platform=macOS'
-```
-
-When bumping `mlx-swift-lm` or `mlx-swift`, rerun both MLX integration targets before trusting the update:
-
-```bash
-xcodebuild test -scheme ManifoldKit-Package \
-  -only-testing:ManifoldMLXIntegrationTests/MLXModelE2ETests \
-  -only-testing:ManifoldMLXIntegrationTests/MLXKVPersistenceIntegrationTests \
-  -destination 'platform=macOS'
-```
-
-If the fixture model is VLM/MoE-only, the KV-cache suite skips by design — v1 reuse is intentionally scoped to text-only MLX models.
+The Xcode-hosted real-model MLX integration suites (`ManifoldMLXIntegrationTests`,
+the local model fixture conventions, and the MLX KV-cache reuse regression
+checks) moved with the backends to the
+[manifold-mlx](https://github.com/roryford/manifold-mlx) companion package in
+v0.48; the real-GGUF llama.cpp E2E suites live in
+[manifold-llama](https://github.com/roryford/manifold-llama). See those repos'
+testing docs for fixtures and run commands.
 
 ---
 

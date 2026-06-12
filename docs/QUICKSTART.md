@@ -69,7 +69,7 @@ struct MyChatApp: App {
 Run the app. `quickStart()` will compile, launch, and render a usable composer — but the chat will be inert until a backend is selected. See [First-launch backend selection](#first-launch-backend-selection) for the next step.
 
 > [!IMPORTANT]
-> **The trait cliff: no backend trait → a *runtime* throw, not a compile error.** If your build compiles in **zero** inference backends for the active trait / OS combination, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) when you call it — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause ("no backend traits enabled") at the assembly boundary instead of a confusing "No model loaded" on the first turn. The defaults (`MLX`, `Llama`, `HuggingFace`) always include at least one backend, so you only hit this if you pass a custom `traits:` array that selects no inference backend, or build with `--disable-default-traits`. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a registered build always has cloud support — the throw only fires if nothing was *registered* (e.g. you skipped `quickStart()`/`DefaultBackends.register(with:)`). For local inference pick at least one of `MLX`, `Llama`, or `FoundationOnly` — see [Customizing backends](#customizing-backends) for the per-profile trait sets.
+> **The backend cliff: no registered backend → a *runtime* throw, not a compile error.** If **zero** inference backends are registered when you call it, `ManifoldKit.quickStart()` throws [`ManifoldKitError.noBackendsRegistered`](../Sources/ManifoldModelCatalog/ManifoldKitError.swift) — it compiles fine, then fails at launch. This is deliberate: it surfaces the real cause at the assembly boundary instead of a confusing "No model loaded" on the first turn. Since v0.48 the cloud backends (Ollama, OpenAI, Claude) always compile, so a `quickStart()` build always has cloud support — the throw only fires if nothing was *registered* (e.g. you skipped `quickStart()`/`DefaultBackends.register(with:)`). For **local** inference add a companion package — [manifold-llama](https://github.com/roryford/manifold-llama) (GGUF) or [manifold-mlx](https://github.com/roryford/manifold-mlx) (MLX) — and pass its registrar to `quickStart(backends:)`; on iOS 26 / macOS 26+ the built-in Foundation Models backend is available with no extra package. See [Customizing backends](#customizing-backends).
 
 > **Session bootstrap.** `quickStart()` auto-creates an initial empty `ChatSessionRecord` and activates it on first launch when the persistent store has no sessions yet, so `ChatView`'s composer is enabled the moment the view appears. On subsequent launches the most-recent existing session is selected. Hosts that need finer control over the initial session (custom title, system prompt, restoring from a deep link) can drop down to `ManifoldBootstrap.build(...)` directly and seed through the canonical composite accessor `bootstrap.persistenceStores` before constructing the view model — `quickStart()` only auto-creates when the store is *empty*, so seeding one session first opts out cleanly. The full session-management surface (list sidebar, create/delete/rename) lives on `SessionManagerViewModel` — see the [Building a Chat UI](../Sources/ManifoldUI/ManifoldUI.docc/Articles/BuildingAChatUI.md) DocC article for the worked example.
 
@@ -156,10 +156,10 @@ struct MyChatApp: App {
 |-----------|---------|
 | Foundation Models available (iOS/macOS 26+) | Skip — zero-cost built-in model wins |
 | A local GGUF or MLX model is already on disk | Skip — never downloads redundantly |
-| `HuggingFace` trait absent from your build | Skip — no download machinery compiled in |
+| No registered backend can load GGUF models | Skip — logged as `quickStart(seed:): no registered backend can load gguf models — seed skipped` |
 | Network failure during the download | Skip silently — app launches in empty state |
 
-**Trait requirement.** The `HuggingFace` trait (default-on) must be compiled in. The downloaded model is a GGUF, so either the `Llama` or `MLX` trait is required for inference (also default-on). `FoundationOnly` builds skip the seed automatically.
+**Backend requirement.** The downloaded model is a GGUF, so the seed needs the GGUF backend at runtime: add the [manifold-llama](https://github.com/roryford/manifold-llama) companion package and pass `backends: [LlamaBackends.self]` (as in the README Hello World). Without it the seed logs and skips — never an error. The download machinery itself (`ManifoldHuggingFace`) is always compiled since v0.48.
 
 ### What "available immediately" actually means
 
@@ -308,29 +308,45 @@ If you don't want the full model-management UI (e.g. cloud-only apps that seed a
 
 ## Customizing backends
 
-`quickStart()` registers every backend that's compiled into your build. The cloud backends (Ollama, OpenAI, Claude) always compile since v0.48; the local backends are gated by SwiftPM traits. To control which local backends ship, pass a `traits:` array on your `.package(...)` dependency:
+`quickStart()` registers every backend compiled into your build. Core always ships the cloud backends (Ollama, OpenAI, Claude, LM Studio / custom endpoints) and the Apple Foundation Models bridge (active on iOS 26 / macOS 26+). The heavy local backends ship as **companion packages** since v0.48 — add the package and pass its registrar to `quickStart(backends:)`:
 
-```swift
+```swift,no-build
+// Package.swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.47.0", // x-release-please-version
-    traits: [
-        .trait(name: "MLX"),           // default-on
-        .trait(name: "Llama"),         // default-on
-    ]
+    from: "0.47.0" // x-release-please-version
+),
+.package(url: "https://github.com/roryford/manifold-llama.git", from: "0.1.0"),  // GGUF / llama.cpp
+.package(url: "https://github.com/roryford/manifold-mlx.git", from: "0.1.0"),    // MLX (+ image gen)
+
+// target dependencies:
+"ManifoldKit",
+.product(name: "ManifoldLlama", package: "manifold-llama"),
+.product(name: "ManifoldMLX", package: "manifold-mlx"),
+```
+
+```swift,no-build
+import ManifoldKit
+import ManifoldLlama   // from manifold-llama
+import ManifoldMLX     // from manifold-mlx
+
+result = try await ManifoldKit.quickStart(
+    backends: [LlamaBackends.self, MLXBackends.self]
 )
 ```
 
+(Xcode consumers: File ▸ Add Package Dependencies… ▸ enter the companion URL ▸ tick the product for your app target — no manifest editing.)
+
 Common profiles:
 
-| Use case | Traits |
-|----------|--------|
-| Default consumer app | leave defaults (`MLX`, `Llama`, `HuggingFace`) |
-| App Store-lean (Foundation Models only) | `["FoundationOnly"]` — see [docs/AppStoreSubmission.md](AppStoreSubmission.md) |
-| Cloud-only (no local models) | `["FoundationOnly"]` or `--disable-default-traits` — cloud is always compiled in |
-| Full | leave defaults (`MLX`, `Llama`, `HuggingFace`) — cloud included automatically |
+| Use case | Packages |
+|----------|----------|
+| Default consumer app | ManifoldKit + manifold-llama (GGUF starter-seed path) |
+| Full local inference | ManifoldKit + manifold-llama + manifold-mlx |
+| App Store-lean (Foundation Models + cloud only) | ManifoldKit alone — core has no heavy ML dependencies; see [docs/AppStoreSubmission.md](AppStoreSubmission.md) |
+| Cloud-only (no local models) | ManifoldKit alone — cloud is always compiled in |
 
-See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full trait → capability table.
+See [`docs/FeatureMatrix.md`](FeatureMatrix.md) for the full capability table and [docs/MIGRATION-0.48.md](MIGRATION-0.48.md) if you're migrating from a trait-based 0.47 setup.
 
 ### M5 Neural Accelerator (macOS 26.2+)
 
@@ -401,7 +417,7 @@ do {
 ## Where to go next
 
 - [`docs/SWIFTUI-MULTI-SESSION.md`](SWIFTUI-MULTI-SESSION.md) — **ready to add a session sidebar?** Start here. Covers multi-session UI, relaunch restore, `APIConfigurationView`, and a complete end-to-end recipe that replaces piecemeal fragments from multiple docs.
-- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full trait → backend → capability table.
+- [`docs/FeatureMatrix.md`](FeatureMatrix.md) — full backend → capability table.
 - [`Example/Examples/MinimalExample`](../Example/Examples/MinimalExample) — runnable minimum-viable app.
 - [`Example/Advanced`](../Example/Advanced) — full reference app with sessions, model management, and a custom composer accessory.
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — architecture invariants and how to add a backend.

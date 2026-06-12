@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -195,4 +194,3 @@ final class ReplayDeterminismTests: XCTestCase {
             "the original record's seed must be preserved on disk after replay")
     }
 }
-#endif

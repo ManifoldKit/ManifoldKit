@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -94,4 +93,3 @@ final class InferenceServiceSignatureLockTests: XCTestCase {
         XCTAssertNotNil(tokenType as Any)
     }
 }
-#endif

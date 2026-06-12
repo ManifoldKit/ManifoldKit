@@ -4,7 +4,6 @@ import ManifoldRuntime
 import ManifoldPersistenceSwiftData
 @testable import ManifoldInference
 import ManifoldTestSupport
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// E2E test chaining the full model lifecycle: download files to disk,
@@ -195,4 +194,3 @@ struct DownloadValidateLoadGenerateE2ETests {
         #expect(backend.unloadCallCount == 3)
     }
 }
-#endif

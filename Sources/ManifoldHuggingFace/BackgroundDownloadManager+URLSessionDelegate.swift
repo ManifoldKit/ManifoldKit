@@ -1,4 +1,3 @@
-#if HuggingFace
 import ManifoldInference
 import Foundation
 import os
@@ -261,4 +260,3 @@ private extension BackgroundDownloadManager {
         throw lastError!
     }
 }
-#endif

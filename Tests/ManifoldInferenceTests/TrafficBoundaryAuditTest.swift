@@ -622,7 +622,8 @@ final class TrafficBoundaryAuditTest: XCTestCase {
 
         // Sanity: the traits we know exist on `main` must all be present.
         // If this fails, the parser regressed before we even check Sources/.
-        for expected in ["MLX", "Llama", "Fuzz"] {
+        // (Post-C2 the only surviving non-stub traits are Server and Macros.)
+        for expected in ["Server", "Macros"] {
             XCTAssertTrue(
                 declaredTraits.contains(expected),
                 "parseDeclaredTraits failed to find expected trait '\(expected)' in Package.swift — the .trait(name: \"...\") regex has regressed."

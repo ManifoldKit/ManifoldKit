@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 @testable import ManifoldFuzz
 
@@ -30,4 +29,3 @@ final class SmokeTests: XCTestCase {
         XCTAssertNotEqual(base.hash, differentTrigger.hash, "trigger must influence hash")
     }
 }
-#endif

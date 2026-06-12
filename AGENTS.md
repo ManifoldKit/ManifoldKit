@@ -31,10 +31,11 @@ Specialised modules stay opt-in and are imported by name when you need them:
 |---------|------------------------|
 | **`ManifoldKit`** *(umbrella, the default)* | `ChatView`, `ChatViewModel`, `ManifoldBootstrap`, `DefaultBackends`, `InferenceService`, `BackendName` — the 80%-case surface. |
 | `ManifoldUIModelManagement` | `ModelManagementSheet`, `APIConfigurationView`, model browser/download UI. Not in the umbrella because chat-only consumers can ship without 1,800+ LOC of management surface. |
-| `ManifoldHuggingFace` *(optional, `HuggingFace` trait, default-on)* | Hub search, browse, background downloads. |
-| `ManifoldVoice` *(optional, `Voice` trait)* | Speech I/O composer accessory. |
+| `ManifoldHuggingFace` *(optional)* | Hub search, browse, background downloads. Compiles unconditionally (the `HuggingFace` trait retired in v0.48). |
+| `ManifoldVoice` *(optional)* | Speech I/O composer accessory. |
 | `ManifoldMCP` *(optional)* | Model Context Protocol client + tool bridge. Compiles unconditionally (no trait since v0.48). |
-| `ManifoldAppIntents` *(optional, `AppIntents` trait)* | AppIntent ↔ ToolDefinition bridge. |
+| `ManifoldAppIntents` *(optional)* | AppIntent ↔ ToolDefinition bridge. |
+| `ManifoldMLX` / `ManifoldLlama` *(companion packages)* | MLX / llama.cpp local inference — add `manifold-mlx` / `manifold-llama` as separate package dependencies and pass `MLXBackends.self` / `LlamaBackends.self` to `quickStart(backends:)` (v0.48 split). |
 
 Contributors changing ManifoldKit internals can still import the individual products
 (`ManifoldInference`, `ManifoldRuntime`, `ManifoldPersistenceSwiftData`,
@@ -356,11 +357,7 @@ Cloud backends are always compiled in since v0.48 (the `CloudSaaS` /
 ```swift
 .package(
     url: "https://github.com/roryford/ManifoldKit.git",
-    from: "0.48.0",
-    traits: [
-        .trait(name: "MLX"),
-        .trait(name: "Llama"),
-    ]
+    from: "0.48.0"
 )
 ```
 
@@ -394,24 +391,20 @@ of them:
 
 ## Trait gotchas
 
-ManifoldKit uses SwiftPM traits aggressively to keep dependency graphs small. The ones
-that bite consumers:
+Since v0.48 there are **no default traits** — plain `swift build` is the full
+core build, and the heavy local backends moved to companion packages. What's
+left:
 
-- **`Macros` (default-off)** — required for `@ToolSchema`. See above.
-- **`MLX` (default-on)** — pulls mlx-swift; large checkout. Drop on cloud-only
-  builds. Apple Silicon only at runtime.
-- **`Llama` (default-on)** — pulls llama.cpp xcframework (~200 MB). Drop on
-  Foundation-Models-only or cloud-only builds.
-- **`HuggingFace` (default-on)** — Hub browser/downloader. Drop if you don't
-  ship a model picker.
-- **`CloudSaaS` (default-off)** — required for OpenAI / Claude. Off in regulated
-  builds.
-- **`Ollama` (default-off)** — required for `OllamaBackend`. Self-hosted only.
-- **`Voice` (default-off)** — required for `ManifoldVoice` speech I/O.
-
-When you `--disable-default-traits`, you must explicitly add the ones you want
-back. The "default consumer app" build is `swift build` with no flags —
-`MLX,Llama,HuggingFace`.
+- **`Macros` trait (default-off)** — required for `@ToolSchema`. See above.
+- **`Server` trait (default-off)** — gates the `manifold-server` executable and
+  its Hummingbird dependency tree.
+- **MLX / llama.cpp are packages, not traits** — add
+  `https://github.com/roryford/manifold-mlx` / `…/manifold-llama` as separate
+  `.package(...)` dependencies and pass their registrars to
+  `quickStart(backends:)`. A `traits: ["MLX"]` / `["Llama"]` array now
+  hard-errors at resolve time — see docs/MIGRATION-0.48.md.
+- **Everything else compiles unconditionally** (cloud, MCP, Voice, Tools,
+  AppIntents, Skills, HuggingFace) — opt in by linking/importing the product.
 
 ## Concurrency
 

@@ -17,9 +17,9 @@ final class FeatureMatrixTests: XCTestCase {
     // build-time levers). Listed here so the "non-empty unlocks" assertion
     // doesn't have to lie about them.
     private let pendingMapping: Set<String> = [
-        "Fuzz",
         // WWDC 2026 pre-emptive stubs: no capability mapping until the APIs
         // ship on June 8. Remove from here and add unlocks once confirmed.
+        // (Fuzz left this list in v0.48 PR C2 — the trait is retired.)
         "SystemAIProviderExtension",
         "CoreAI",
     ]

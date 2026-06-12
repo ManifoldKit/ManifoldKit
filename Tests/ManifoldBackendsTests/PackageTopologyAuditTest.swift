@@ -78,8 +78,8 @@ final class PackageTopologyAuditTest: XCTestCase {
         for name in [
             "Exports.swift",
             "DefaultBackends.swift",
-            "MLXBackends.swift",
-            "LlamaBackends.swift",
+            // MLXBackends.swift / LlamaBackends.swift moved to the
+            // manifold-mlx / manifold-llama companion packages (v0.48, PR C2).
             "FoundationBackends.swift",
             "CloudBackends.swift",
         ] {
@@ -90,10 +90,13 @@ final class PackageTopologyAuditTest: XCTestCase {
             )
         }
 
-        // Files that MUST NOT live in the umbrella (they belong in family targets).
+        // Files that MUST NOT live in the umbrella (they belong in family
+        // targets — or, for MLX/Llama since PR C2, in the companion packages).
         for forbidden in [
             "MLXBackend.swift",
             "LlamaBackend.swift",
+            "MLXBackends.swift",
+            "LlamaBackends.swift",
             "FoundationBackend.swift",
             "ClaudeBackend.swift",
             "OpenAIBackend.swift",
@@ -113,8 +116,8 @@ final class PackageTopologyAuditTest: XCTestCase {
 
     private let expectedFamilyTargetNames: [String] = [
         "ManifoldCloudCore",
-        "ManifoldMLX",
-        "ManifoldLlama",
+        // ManifoldMLX / ManifoldLlama left for the companion packages
+        // (v0.48, PR C2, #1749).
         "ManifoldFoundation",
         "ManifoldCloud",
         "ManifoldBackendsUmbrella",

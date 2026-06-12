@@ -78,21 +78,15 @@ public enum FeatureMatrix {
     /// add the name to `FeatureMatrixTests.pendingMapping` — that keeps CI
     /// green while making the gap visible.
     public static let traits: [ManifoldTrait] = [
-        ManifoldTrait(
-            name: "MLX",
-            description: "Enable the MLX inference backend (requires Apple Silicon)",
-            unlocks: [.localInference, .mlxBackend, .visionInput, .imageGeneration]
-        ),
-        ManifoldTrait(
-            name: "Llama",
-            description: "Enable the llama.cpp (GGUF) inference backend",
-            unlocks: [.localInference, .llamaBackend, .embeddings]
-        ),
-        ManifoldTrait(
-            name: "HuggingFace",
-            description: "Enable HuggingFace Hub search, browse, and download",
-            unlocks: [.modelDownload]
-        ),
+        // MLX / Llama / HuggingFace / Fuzz / FoundationOnly retired in v0.48
+        // (PR C2, #1749): the MLX and llama.cpp families live in the
+        // manifold-mlx / manifold-llama companion packages; HuggingFace
+        // download machinery compiles unconditionally; the fuzz harness
+        // compiles unconditionally; FoundationOnly's lean-build job is the
+        // plain default build now. Their capability cases stay on
+        // ManifoldCapability (removing public enum cases is a separate API
+        // break with no consumer benefit) — they are simply no longer
+        // unlocked by any core trait.
         ManifoldTrait(
             name: "Server",
             description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency.",
@@ -102,19 +96,6 @@ public enum FeatureMatrix {
             name: "Macros",
             description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph.",
             unlocks: [.toolCalling]
-        ),
-        ManifoldTrait(
-            name: "Fuzz",
-            description: "Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test.",
-            unlocks: []
-            // TODO(dx-matrix): Fuzz is a test/harness lever, not a runtime
-            // capability. Leaving `unlocks` empty is intentional; pending
-            // mapping allowlist keeps CI green.
-        ),
-        ManifoldTrait(
-            name: "FoundationOnly",
-            description: "App Store-lean: Apple Foundation Models only. Pass `traits: [\"FoundationOnly\"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set.",
-            unlocks: [.foundationBackend]
         ),
         // WWDC 2026 pre-emptive stubs. No targets, no source files — pure
         // compile-condition placeholders until the frameworks ship on June 8.

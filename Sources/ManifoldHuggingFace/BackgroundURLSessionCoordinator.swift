@@ -1,4 +1,3 @@
-#if HuggingFace
 import Foundation
 import ManifoldInference
 
@@ -48,4 +47,3 @@ internal final class BackgroundURLSessionCoordinator: @unchecked Sendable {
         return session
     }
 }
-#endif

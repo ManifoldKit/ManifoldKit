@@ -13,19 +13,10 @@
 #      suites that crashed (started but never completed).
 #   4. Prints a clear summary and exits non-zero if there are failures or crashes.
 #
-# Model env vars (--traits Llama / --traits MLX)
-# -----------------------------------------------
-# Unlike xcodebuild, `swift test` inherits the calling shell's environment
-# directly, so model-discovery env vars work without any special forwarding:
-#
-#   LLAMA_TEST_MODEL=/path/to/model.gguf \
-#     scripts/test.sh --filter ManifoldBackendsTests --traits Llama --skip-update
-#
-#   MLX_TEST_MODEL=gemma-4-mini \
-#     scripts/test.sh --filter ManifoldBackendsTests --traits MLX --skip-update
-#
-# For ManifoldMLXIntegrationTests, use scripts/test-mlx-integration.sh instead
-# (xcodebuild requires PlistBuddy env injection — see that script's header).
+# Backend-family suites (MLX / llama.cpp) moved to the manifold-mlx /
+# manifold-llama companion packages in v0.48 (PR C2, #1749) — run their
+# suites from those repos. Core has no default traits anymore; the only
+# surviving opt-in traits are Server and Macros.
 #
 # Output format understood:
 #   XCTest:
@@ -48,32 +39,19 @@ set -euo pipefail
 OUTPUT_FILE="${MANIFOLD_TEST_OUTPUT_FILE:-${TMPDIR:-/tmp}/test_output.txt}"
 PACKAGE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ── Hardware-trait suites ────────────────────────────────────────────────────
-# Suites that actually exercise MLX or Llama (hardware-trait code paths).
-# `--minimal` keeps SwiftPM's default traits whenever a filter targets one of
-# these; otherwise it injects --disable-default-traits to skip the MLX source
-# dependency. MLX is a *source* dep — building it triggers a Metal shader
-# compile pass through Xcode's toolchain, which is multiple wasted minutes
-# per cold build for runtime/persistence/UI/MCP/server iteration that never
-# touches a backend.
-HARDWARE_TRAIT_SUITES=(
-    ManifoldBackendsTests
-    ManifoldE2ETests
-    ManifoldMLXIntegrationTests
-    ManifoldFuzzTests
-)
-
 # ── Arguments ────────────────────────────────────────────────────────────────
 # Profile precedence
 # ------------------
 # `--profile <name>` selects a canned invocation shape. Two profiles ship today:
 #
-#   ci      — mirrors CI's --disable-default-traits + two-invocation shape.
-#             This is the default when --profile is omitted (back-compat).
-#   local   — Apple-Silicon pre-push: all traits on (minus Fuzz which is
-#             build-only), the full hardened suite list (including
-#             ManifoldKitTests / ManifoldHuggingFaceTests that PR #1382
-#             proved we need), and --num-workers tuned to the host core count.
+#   ci      — mirrors CI's no-traits two-invocation shape. This is the
+#             default when --profile is omitted (back-compat). Since v0.48
+#             (PR C2) there are no default traits, so this is simply the
+#             plain `swift test` shape.
+#   local   — Apple-Silicon pre-push: the surviving opt-in traits (Macros;
+#             Server runs in its own CI job and stays out of the batch, as
+#             before), plus the extended suite list (ManifoldKitTests /
+#             ManifoldHuggingFaceTests).
 #
 # Profile defaults are applied AFTER caller flags are parsed, but only fill
 # slots the caller did not set:
@@ -117,9 +95,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --minimal)
-            # Auto-inject --disable-default-traits when no filter targets a
-            # hardware-trait suite. Resolved after arg parsing so we've seen
-            # the full filter set first.
+            # Deprecated no-op since v0.48 (PR C2): there are no default
+            # traits left to disable — a plain build is already minimal.
             MINIMAL_MODE=1
             shift
             ;;
@@ -222,8 +199,8 @@ PROFILE_CI_XCTEST_FILTERS=(
     ManifoldSkillsTests
     ManifoldToolsTests
 )
-# Local-profile filters extend the CI list with the suites PR #1382 proved
-# we need to hit when traits are on (KV cache reuse race, etc.).
+# Local-profile filters extend the CI list with the umbrella + HuggingFace
+# suites.
 PROFILE_LOCAL_XCTEST_FILTERS=(
     "${PROFILE_CI_XCTEST_FILTERS[@]}"
     ManifoldKitTests
@@ -231,8 +208,10 @@ PROFILE_LOCAL_XCTEST_FILTERS=(
 )
 PROFILE_SWIFT_TESTING_FILTER="ManifoldInferenceSwiftTestingTests"
 
-# Local profile trait set: every trait minus Fuzz (which is build-only).
-PROFILE_LOCAL_TRAITS="MLX,Llama,HuggingFace,Macros"
+# Local profile trait set: the surviving opt-in traits exercised by the batch
+# (Macros only — Server has its own CI job/filter shape). The MLX / Llama /
+# HuggingFace / Fuzz traits retired in v0.48 (PR C2, #1749).
+PROFILE_LOCAL_TRAITS="Macros"
 
 if [[ -n "$PROFILE" ]]; then
     case "$PROFILE" in
@@ -279,10 +258,9 @@ if [[ -n "$PROFILE" ]]; then
         # Narrow override: apply the profile's traits + worker count to a
         # single invocation with the caller's filter.
         if [[ "$PROFILE" == "ci" ]]; then
-            if [[ $DISABLE_DEFAULT_TRAITS_PRESENT -eq 0 && $TRAITS_ARG_INDEX -lt 0 ]]; then
-                SWIFT_ARGS+=("--disable-default-traits")
-                DISABLE_DEFAULT_TRAITS_PRESENT=1
-            fi
+            # No trait injection: since v0.48 there are no default traits, so
+            # the CI shape is the plain build.
+            :
         else
             # local: inject the local trait set if no traits were specified.
             if [[ $TRAITS_ARG_INDEX -lt 0 && $DISABLE_DEFAULT_TRAITS_PRESENT -eq 0 ]]; then
@@ -308,7 +286,7 @@ if [[ -n "$PROFILE" ]]; then
         if [[ "$PROFILE" == "local" ]]; then
             echo "  Traits:  $PROFILE_LOCAL_TRAITS"
         else
-            echo "  Traits:  --disable-default-traits"
+            echo "  Traits:  (none — plain build; no default traits since v0.48)"
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         # Fall through to the single swift-test invocation at the bottom.
@@ -321,9 +299,9 @@ if [[ -n "$PROFILE" ]]; then
         EXTRA_ARGS=("${SWIFT_ARGS[@]}")
         # Build the per-profile flag sets.
         if [[ "$PROFILE" == "ci" ]]; then
-            TRAIT_FLAGS=(--disable-default-traits)
+            TRAIT_FLAGS=()
             FILTERS=("${PROFILE_CI_XCTEST_FILTERS[@]}")
-            BANNER_TRAITS="--disable-default-traits"
+            BANNER_TRAITS="(none — plain build; no default traits since v0.48)"
         else
             TRAIT_FLAGS=(--traits "$PROFILE_LOCAL_TRAITS")
             FILTERS=("${PROFILE_LOCAL_XCTEST_FILTERS[@]}")
@@ -357,9 +335,9 @@ if [[ -n "$PROFILE" ]]; then
         set +e
         "$SCRIPT_PATH" \
             "${XCTEST_FILTER_ARGS[@]}" \
-            "${TRAIT_FLAGS[@]}" \
+            ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
-            "${EXTRA_ARGS[@]}"
+            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
         RC1=$?
         set -e
         if [[ $RC1 -ne 0 ]]; then
@@ -371,9 +349,9 @@ if [[ -n "$PROFILE" ]]; then
         set +e
         "$SCRIPT_PATH" \
             --filter "$PROFILE_SWIFT_TESTING_FILTER" \
-            "${TRAIT_FLAGS[@]}" \
+            ${TRAIT_FLAGS[@]+"${TRAIT_FLAGS[@]}"} \
             --skip-update \
-            "${EXTRA_ARGS[@]}"
+            ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
         RC2=$?
         set -e
         exit $RC2
@@ -381,33 +359,11 @@ if [[ -n "$PROFILE" ]]; then
 fi
 
 # ── --minimal resolution ──────────────────────────────────────────────────────
-# If --minimal was requested and no filter targets a hardware-trait suite,
-# inject --disable-default-traits so SwiftPM skips the MLX source dep (and its
-# Metal shader compile pass). If no filter was passed at all, the user is
-# running the full matrix and the defaults are correct — leave them alone.
+# Deprecated no-op since v0.48 (PR C2): the heavy MLX/Llama source deps left
+# for the companion packages and there are no default traits, so every build
+# is already the minimal shape.
 if [[ $MINIMAL_MODE -eq 1 ]]; then
-    if [[ $DISABLE_DEFAULT_TRAITS_PRESENT -eq 1 ]]; then
-        echo "[--minimal] --disable-default-traits already present; nothing to inject."
-    elif [[ ${#FILTERS_SEEN[@]} -eq 0 ]]; then
-        echo "[--minimal] no --filter passed; running full matrix with default traits."
-    else
-        hw_hit=""
-        for filter in "${FILTERS_SEEN[@]}"; do
-            for suite in "${HARDWARE_TRAIT_SUITES[@]}"; do
-                if [[ "$filter" == *"$suite"* ]]; then
-                    hw_hit="$filter -> $suite"
-                    break 2
-                fi
-            done
-        done
-        if [[ -n "$hw_hit" ]]; then
-            echo "[--minimal] disabled: filter '$hw_hit' requires MLX/Llama traits; keeping defaults."
-        else
-            echo "[--minimal] injecting --disable-default-traits (no hardware-trait suites in filter set)."
-            SWIFT_ARGS+=("--disable-default-traits")
-            DISABLE_DEFAULT_TRAITS_PRESENT=1
-        fi
-    fi
+    echo "[--minimal] no-op since v0.48: no default traits exist; the plain build is already minimal."
 fi
 
 # ── Run ──────────────────────────────────────────────────────────────────────

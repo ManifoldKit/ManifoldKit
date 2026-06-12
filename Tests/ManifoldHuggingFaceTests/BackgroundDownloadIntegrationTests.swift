@@ -1,6 +1,5 @@
 @preconcurrency import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Integration tests for BackgroundDownloadManager using real filesystem.
@@ -574,4 +573,3 @@ final class BackgroundDownloadIntegrationTests: XCTestCase {
         try? FileManager.default.removeItem(at: pendingMetadataURL)
     }
 }
-#endif

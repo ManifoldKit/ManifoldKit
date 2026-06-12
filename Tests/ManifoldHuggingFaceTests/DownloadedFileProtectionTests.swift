@@ -1,5 +1,4 @@
 import XCTest
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Unit coverage for ``DownloadedFileProtection``.
@@ -37,4 +36,3 @@ final class DownloadedFileProtectionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: absent.path))
     }
 }
-#endif

@@ -117,7 +117,8 @@ considered hostile on the far side and what ManifoldKit validates as data crosse
     `NSClassFromString`, `Process(`, `posix_spawn`, etc. are banned across
     `Sources/` (with one narrow `Process(` allowlist for the Fuzz CLI).
 - **Not mitigated:** xcframework checksum pinning (binary deps pulled by revision,
-  not SHA-256); macro plugin sandbox (`Sources/ManifoldMacrosPlugin/` has full
+  not SHA-256 — since v0.48 the binary ML xcframeworks live in the companion
+  packages, shrinking core's binary-dependency surface to zero); macro plugin sandbox (`Sources/ManifoldMacrosPlugin/` has full
   filesystem + network access at build time); SLSA-style build provenance; SBOM.
   All tracked under [#714](https://github.com/roryford/ManifoldKit/issues/714)
   Phase 5.
@@ -278,9 +279,11 @@ Each item is either deferred to a tracked issue or explicitly out of scope.
 - **Macro plugin sandbox.** `Sources/ManifoldMacrosPlugin/` runs at build time with
   full filesystem + network access. Audit Rule 2 currently bans network primitives
   by static grep; a sandbox is the long-term fix.
-- **xcframework checksum pinning.** `llama.swift` and `mlx-swift` xcframeworks are
-  pinned by SwiftPM revision. Binary checksum pinning would defend against a
-  compromised release tarball.
+- **xcframework checksum pinning.** The `llama.swift` and `mlx-swift`
+  xcframeworks are pinned by SwiftPM revision — since v0.48 in the
+  `manifold-llama` / `manifold-mlx` companion packages (core resolves no binary
+  ML artifacts). Binary checksum pinning would defend against a compromised
+  release tarball.
 - **Build-provenance attestation.** No SLSA-style attestation today.
 - **Secure Enclave / FIPS / key zeroization.** *(Partially mitigated.)* The
   Keychain read path now wraps secrets in ``SecureBytes`` (`memset_s` zeroing on

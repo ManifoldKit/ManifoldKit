@@ -1,4 +1,7 @@
 import Foundation
+// @_spi(BackendInternals): GGUFKVCacheEstimator was promoted from `package`
+// to SPI-public in v0.48 (PR C2) for the manifold-llama companion package.
+@_spi(BackendInternals) import ManifoldHardware
 
 // MARK: - ModelLoadPlan convenience overloads for ModelInfo
 

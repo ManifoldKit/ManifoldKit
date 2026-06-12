@@ -15,10 +15,10 @@ name: Build modes + binary symbol audit
 #  - **PR vs schedule matrix split.** On `pull_request`, the matrix runs only
 #    `[saas]`; on `schedule` (and `workflow_dispatch`) it runs all four
 #    `[offline, ollama, saas, full]`. Rationale: `saas` carries a
-#    reduced-shape test step (`ManifoldBackendsTests --disable-default-traits`)
+#    reduced-shape test step (`ManifoldBackendsTests`)
 #    that mirrors ci.yml's lane against the SaaS product graph, so it stays
 #    per-PR. `full`
-#    is a release-config + all-traits build that produces a binary symbol
+#    is a release-config full-graph build that produces a binary symbol
 #    audit; per-PR it cost ~9 min wall-clock (~90 min billed at the 10x
 #    macos-15 multiplier) on every dep-touching PR while catching only
 #    build-graph regressions (not live bugs), so per #953 Lever A it now
@@ -46,7 +46,7 @@ on:
     # nightlies don't contend for the SwiftPM artifact cache. (fuzz-nightly
     # previously held the 05:00 UTC slot but is now dispatch-only pending a
     # self-hosted Apple-Silicon runner.) The `full` mode is nightly-only:
-    # release-config + all-traits build is a 9-min/PR audit; runs nightly
+    # the release-config full-graph build is a 9-min/PR audit; runs nightly
     # because per-PR cost dominated wall-clock without catching live bugs
     # (#953 Lever A).
     - cron: "30 5 * * *"
@@ -55,12 +55,11 @@ on:
     branches: [main]
     paths:
       # Package.resolved only (not Package.swift): a dep-version bump can break
-      # trait-gated compilation (#if MLX / #if Llama), so it warrants the
-      # saas+full build check. Package.swift edits that affect trait defines
-      # always accompany backend source changes (listed below), so
-      # Package.swift alone is dropped — non-backend target additions and platform
-      # floor bumps don't affect trait-gated builds, and the nightly run catches
-      # any gap within 24 hours.
+      # the per-mode product graphs, so it warrants the saas+full build check.
+      # Package.swift edits always accompany backend source changes (listed
+      # below), so Package.swift alone is dropped — non-backend target
+      # additions and platform floor bumps don't affect the product-scoped
+      # builds, and the nightly run catches any gap within 24 hours.
       - "Package.resolved"
       - "Sources/ManifoldBackendsUmbrella/**"
       - "Sources/ManifoldCloudCore/**"
@@ -73,7 +72,6 @@ on:
       - "Sources/ManifoldHardware/APIProvider.swift"
       - "Sources/manifold-tools/main.swift"
       - ".github/workflows/build-modes.yml"
-      - "scripts/build-modes.sh"
       - "scripts/build-modes.sh"
 
 # Cancel earlier in-flight runs of this workflow on the same ref. Scheduled
@@ -128,18 +126,16 @@ jobs:
       # The saas leg additionally runs the backends test slice — the
       # other two legs are build+audit only. Splitting this out keeps the
       # matrix readable and avoids running tests on `full` (already covered
-      # by the per-PR ci.yml suite once MLX/Llama traits are present).
+      # by the per-PR ci.yml suite).
       # `--skip-update` was previously passed here but produced
       # `unable to read tree <sha>` failures when the SwiftPM cache was
-      # restored against a stale repository pack (upstream `mattt/llama.swift`
-      # retags between releases — `from: 2.8772.0` legitimately resolves to
-      # whatever tip of >=2.8772.0 currently exists, and the cached repo
-      # doesn't always have the new revision pack). The flag is also
-      # deprecated in current SwiftPM. Dropping it costs ~1s of `git fetch`
-      # and is the documented escape hatch.
+      # restored against a stale repository pack (upstream deps retag between
+      # releases, and the cached repo doesn't always have the new revision
+      # pack). The flag is also deprecated in current SwiftPM. Dropping it
+      # costs ~1s of `git fetch` and is the documented escape hatch.
       - name: Test [saas] — ManifoldBackends, reduced shape
         if: matrix.mode == 'saas'
-        run: scripts/test.sh --filter ManifoldBackendsTests --disable-default-traits
+        run: scripts/test.sh --filter ManifoldBackendsTests
 
       - name: Build + audit [${{ matrix.mode }}]
         env:

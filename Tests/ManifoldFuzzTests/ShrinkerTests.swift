@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -448,4 +447,3 @@ final class ShrinkerTests: XCTestCase {
         }
     }
 }
-#endif

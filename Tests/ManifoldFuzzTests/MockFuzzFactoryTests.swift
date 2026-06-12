@@ -1,4 +1,3 @@
-#if Fuzz
 import XCTest
 import ManifoldInference
 import ManifoldTestSupport
@@ -91,4 +90,3 @@ final class MockFuzzFactoryTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(smoke.count, 5, "smoke set should have at least a handful of prompts to exercise mutators")
     }
 }
-#endif

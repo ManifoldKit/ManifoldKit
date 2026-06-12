@@ -78,3 +78,36 @@ jobs:
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           gh release edit "$TAG_NAME" --notes-file /tmp/release_notes.md
+
+  # Notify the companion backend packages that a core release shipped.
+  # Their canary workflows listen for `repository_dispatch` of type
+  # `core-release` and re-resolve against the new tag — the one moment a
+  # stale `.upToNextMinor` core pin actually matters (#1749, v0.48 C2).
+  #
+  # NOTE: the default `secrets.GITHUB_TOKEN` is scoped to THIS repository and
+  # cannot fire repository_dispatch cross-repo. `COMPANION_DISPATCH_TOKEN`
+  # must be a fine-grained PAT with `contents: read+write` (Repository
+  # dispatch falls under contents) on roryford/manifold-llama and
+  # roryford/manifold-mlx. Until the maintainer creates that secret this job
+  # fails visibly rather than silently skipping the canaries.
+  notify-companions:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch core-release to companion repos
+        env:
+          GH_TOKEN: ${{ secrets.COMPANION_DISPATCH_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::COMPANION_DISPATCH_TOKEN secret is not set — companion canaries will not re-resolve against $TAG_NAME. Create a fine-grained PAT with contents write on roryford/manifold-llama and roryford/manifold-mlx." >&2
+            exit 1
+          fi
+          for repo in roryford/manifold-llama roryford/manifold-mlx; do
+            gh api -X POST "repos/${repo}/dispatches" \
+              -f event_type=core-release \
+              -f "client_payload[tag]=${TAG_NAME}"
+            echo "Dispatched core-release (${TAG_NAME}) to ${repo}"
+          done

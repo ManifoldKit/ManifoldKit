@@ -1,6 +1,5 @@
 import XCTest
 @testable import ManifoldInference
-#if HuggingFace
 @testable import ManifoldHuggingFace
 
 /// Hermetic coverage for the fp16-vs-full-precision selection rule.
@@ -154,4 +153,3 @@ final class DiffusionFP16DetectionTests: XCTestCase {
         ]))
     }
 }
-#endif

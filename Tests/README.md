@@ -11,8 +11,9 @@ This directory contains the test suites that gate every PR to ManifoldKit. CI ru
 | `ManifoldInferenceSwiftTestingTests` | Swift Testing tests for inference. | Runs in a separate process from XCTest (#681). |
 | `ManifoldRuntimeTests` | `ConversationRuntime`, session services, ports | Uses in-memory `MessageStore` conformers; no SwiftData. |
 | `ManifoldPersistenceSwiftDataTests` | Real SwiftData stack, schemas, migrations | Integration tier: hits SwiftData. |
-| `ManifoldBackendsTests` | Per-backend behaviour, capability contracts | Trait-gated; many tests skip without the relevant trait. |
+| `ManifoldBackendsTests` | Per-backend behaviour, capability contracts | Cloud (Ollama / OpenAI / Claude / LM Studio), Foundation, and mock backend suites. The MLX and llama.cpp suites moved to the companion repos (manifold-mlx / manifold-llama) in v0.48. |
 | `ManifoldBackendsTests/Conformance/` | Per-backend conformance suites against the strengthened contract harness | New in T1.1. |
+| `ManifoldFuzzTests` | Fuzz harness engine tests | Compiles unconditionally since v0.48 (the `Fuzz` trait is retired). |
 | `ManifoldMCPTests` | MCP protocol, transports, OAuth, sanitizers | Compiles unconditionally (MCP trait retired in v0.48). |
 | `ManifoldTestSupportTests` | Sanity tests for `Sources/ManifoldTestSupport/` mocks/fakes | Lightweight. |
 | `ManifoldUITests` | SwiftUI view models, view-tree contracts via ViewInspector | `@MainActor`-isolated. |
@@ -20,48 +21,29 @@ This directory contains the test suites that gate every PR to ManifoldKit. CI ru
 | `ManifoldVoiceTests` | Voice composer + STT/TTS adapters | Skips without microphone. |
 | `ManifoldAppIntentsTests` | App Intent → tool dispatch | iOS 26 / macOS 26 only. |
 | `ManifoldServerTests` | ManifoldServer SSE bridge | `#if Server`-gated. |
-| `ManifoldE2ETests` | Real-model end-to-end on Llama / MLX / Foundation / Cloud | Hardware required. |
-| `ManifoldMLXIntegrationTests` | Real MLX model inference requiring Metal shaders | Xcode-only — `swift test` cannot link the metallib. |
+| `ManifoldE2ETests` | Real-model end-to-end on Ollama / Foundation / Cloud | Requires a live Ollama server or iOS 26 / macOS 26. The Llama/MLX real-model E2E suites moved to the companion repos. |
 | `APIFreezeTests` | Public-API surface freeze | Compilation IS the assertion (T1.5). |
 
 ## Trait conventions
 
-ManifoldKit's test targets are conditionally linked on Swift package traits:
+Since v0.48 there are **no default traits** — plain `swift test` builds and runs the full core surface (`--disable-default-traits` is obsolete). The surviving opt-in traits:
 
 | Trait | Default? | Gates |
 |---|---|---|
-| `MLX` | yes | MLX backend, mlx-swift-lm dependency |
-| `Llama` | yes | LlamaBackend, llama.swift dependency |
-| `HuggingFace` | yes | HF model browser |
-| `Server` | no | ManifoldServer |
+| `Server` | no | ManifoldServer (Hummingbird) and `ManifoldServerTests` |
+| `Macros` | no | `@ToolSchema` macro plugin (swift-syntax) |
 | `Operational` | (planned, T4) | Nightly soak/migration/throughput |
 
-The default-traits build is what CI's per-PR matrix runs against. Running `swift test`
-with no explicit trait flags enables the Package.swift defaults: `MLX`, `Llama`,
-and `HuggingFace`. Use `--disable-default-traits` locally to drop those
-defaults when you want a faster, sim-friendly build.
-
-**When to disable default traits locally:** any iteration that doesn't exercise a hardware backend — `ManifoldRuntimeTests`, `ManifoldPersistenceSwiftDataTests`, `ManifoldUITests`, `ManifoldInferenceTests`, `ManifoldMCPTests`, `ManifoldServerTests`. Skipping MLX avoids an mlx-swift source checkout and a Metal shader compilation pass on every rebuild — the dominant cost in a default-traits cold build.
-
-**When to keep defaults on:** changes under `Sources/ManifoldMLX/` or `Sources/ManifoldLlama/`, the matching `ManifoldBackendsTests` MLX/Llama suites, and `ManifoldE2ETests`. Those tests `XCTSkip` without the trait — the run looks green but exercises nothing.
+The retired local-backend traits (`MLX`, `Llama`, `HuggingFace`, `Fuzz`, `FoundationOnly`) died with the v0.48 companion-package split — the MLX and llama.cpp backend test suites (including the Xcode-hosted MLX integration tests) now live in [manifold-mlx](https://github.com/roryford/manifold-mlx) and [manifold-llama](https://github.com/roryford/manifold-llama). Family-backend test conventions are documented in those repos.
 
 ## Running a single suite
 
 ```bash
-# Fastest — single suite, default traits, no remote refresh:
-scripts/test.sh --filter ManifoldBackendsTests --disable-default-traits --skip-update
+# Fastest — single suite, no remote refresh:
+scripts/test.sh --filter ManifoldBackendsTests --skip-update
 
 # Whole pre-push (mirrors CI's two-call shape):
-scripts/test.sh --filter ManifoldCoreTests --filter ManifoldRuntimeTests \
-  --filter ManifoldPersistenceSwiftDataTests --filter ManifoldUITests \
-  --filter ManifoldUIModelManagementTests --filter ManifoldMCPTests \
-  --filter ManifoldBackendsTests --filter ManifoldInferenceTests \
-  --filter ManifoldTestSupportTests --filter ManifoldAppIntentsTests \
-  --filter ManifoldServerTests \
-  --disable-default-traits --skip-update
-
-scripts/test.sh --filter ManifoldInferenceSwiftTestingTests \
-  --disable-default-traits --skip-update
+scripts/test.sh --profile local
 ```
 
 `--skip-update` is safe unless you touched `Package.swift` (drop it then to refresh resolution).
@@ -125,7 +107,9 @@ Reference adopters live alongside their target:
 
 ## Adding a new backend
 
-1. Implement `InferenceBackend` (and any opt-in protocols) in `Sources/ManifoldBackends/<YourBackend>.swift`.
+> Adding a *heavy local* backend family (new ML runtime)? That belongs in a companion package — follow [manifold-llama](https://github.com/roryford/manifold-llama) / [manifold-mlx](https://github.com/roryford/manifold-mlx) as the templates; they consume the same `ManifoldBackendTestKit` contract harness described below. The steps here cover backends that live in this repo (cloud families, Foundation-class bridges).
+
+1. Implement `InferenceBackend` (and any opt-in protocols) in the relevant family target (e.g. a new `Sources/Manifold<Family>/` target, registered through the `ManifoldBackendsUmbrella` glue).
 2. Add a conformance test class under `Tests/ManifoldBackendsTests/Conformance/<YourBackend>ConformanceTests.swift`. Subclass `XCTestCase` and opt into the relevant contract mixins:
 
    ```swift
@@ -185,90 +169,13 @@ This proves the assertion (a) exercises a real production code path, (b) is valu
 
 ## Special cases
 
-- **MLX integration**: `scripts/test-mlx-integration.sh` — Xcode-only, metallib required. See #986.
 - **MCP E2E**: `RUN_MCP_E2E=1 swift test --filter ManifoldMCPE2ESmokeTests` — gated by env var (the target compiles unconditionally since the MCP trait was retired in v0.48). The `everything-server` smoke has hung in past runs; filter to the streamable subset.
 - **Ollama**: requires `localhost:11434` (backend always compiled since v0.48).
 - **Operational tier** (planned): nightly trait `Operational` for soak/migration/throughput/quality baseline.
 
 ### Local fixture manifest
 
-Several `ManifoldE2ETests` suites discover their model files through a shared
-JSON manifest rather than probing the environment directly. The manifest lives at:
-
-```
-~/Library/Caches/ManifoldKit/test-models/manifest.json
-```
-
-#### Schema
-
-```json
-{
-  "slots": {
-    "MID_THINKING":  "/path/to/thinking-capable.gguf",
-    "Q8_VARIANT":    "/path/to/embedding.gguf",
-    "MLX_VLM":       "/path/to/vlm-model-directory"
-  }
-}
-```
-
-A slot may be `null` or omitted — the consuming test will skip cleanly.
-
-#### Slot definitions
-
-| Slot | Used by | Required model type |
-|------|---------|---------------------|
-| `MID_THINKING` | `LlamaBackendE2EConformanceTests`, `QualityBaselineTests` (T4.4), `ThroughputBaselineTests` (T4.5), `MLXBackendE2EConformanceTests` | Any GGUF ≥ 50 MB (preferably a Qwen3-class thinking model for the thinking suites) |
-| `Q8_VARIANT` | `LlamaEmbeddingBackendE2EConformanceTests` | Embedding-capable GGUF (e.g. nomic-embed-text-Q8) |
-| `MLX_VLM` | `VisionE2ETests` | MLX model directory with `vision_config` in `config.json` (e.g. LLaVA, Phi-3.5-Vision, Qwen2-VL) |
-
-#### Unlocking `ManifoldE2ETests` locally
-
-With all three slots populated and `MANIFOLD_DISCOVER_LOCAL_MODELS=1` set, the
-E2E suite lifts from the CI baseline (~69 passing) toward the full count. The
-canonical local run:
-
-```bash
-MANIFOLD_DISCOVER_LOCAL_MODELS=1 swift test \
-  --traits Llama,MLX \
-  --filter ManifoldE2ETests
-```
-
-#### Operational tests (T4) — `RUN_OPERATIONAL_TESTS=1`
-
-`QualityBaselineTests` and `ThroughputBaselineTests` require an additional
-environment variable to prevent accidental slow runs:
-
-```bash
-RUN_OPERATIONAL_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
-  swift test --traits Llama --filter ManifoldE2ETests/QualityBaselineTests
-
-RUN_OPERATIONAL_TESTS=1 MANIFOLD_DISCOVER_LOCAL_MODELS=1 \
-  swift test --traits Llama --filter ManifoldE2ETests/ThroughputBaselineTests
-```
-
-`QualityBaselineTests` writes a character-level baseline file on first run and
-compares against it on subsequent runs. Baseline files live at:
-
-```
-~/Library/Caches/ManifoldKit/test-models/quality/<prompt-hash>.tokenids.json
-```
-
-Delete a baseline file and re-run to record intentional quality changes
-(e.g. after a quantisation or llama.cpp bump).
-
-#### Vision tests — `VisionE2ETests`
-
-`VisionE2ETests` requires the `MLX_VLM` manifest slot and runs inside Xcode
-(Metal shader compilation requires a `.app` bundle — plain `swift test`
-skips cleanly via the `hasMetalDevice` guard). The recommended runner is:
-
-```bash
-# One-time setup — add MLX_VLM slot, then:
-scripts/test-mlx-integration.sh  # wires discovery env vars into .xctestrun
-```
-
-For standalone targeting via Xcode scheme, set `MLX_VLM` in the manifest and
-run the `ManifoldE2ETests` scheme with the `MLX` trait enabled.
+The shared model-fixture manifest (`~/Library/Caches/ManifoldKit/test-models/manifest.json` with `MID_THINKING` / `Q8_VARIANT` / `MLX_VLM` slots) moved with the real-model E2E conformance suites to the companion repos — see the manifold-llama and manifold-mlx test docs for the slot definitions, the operational (T4) baselines, and the Xcode-hosted vision runs. The surviving core E2E suites (Ollama / Foundation / Cloud) need only a live Ollama server or iOS 26 / macOS 26 — no manifest.
 
 ### Cross-cutting QA practices
 
@@ -288,12 +195,11 @@ Cold-start gates scaffold a fresh SwiftPM consumer in a tmpdir, depend on this r
 
 | Audience | Suite |
 |---|---|
-| Per-PR CI | All default-trait suites (the two-call shape above) |
-| Per-PR CI (matrix) | Reduced-shape (`--disable-default-traits`) build incl. the always-compiled cloud backends |
-| Nightly | `ManifoldE2ETests`, MLX integration, `Operational` (planned T4) |
-| Pre-push (local) | The two-call shape |
-| Hardware-specific | `ManifoldE2ETests/LlamaThinkingE2ETests` etc. — install fixtures via `~/Library/Caches/ManifoldKit/test-models/manifest.json` |
+| Per-PR CI | All suites (the two-call shape above) |
+| Nightly | `ManifoldE2ETests`, `Operational` (planned T4) |
+| Pre-push (local) | `scripts/test.sh --profile local` (the two-call shape) |
+| Backend-hardware E2E | Companion repos (manifold-mlx / manifold-llama) |
 
 ## Pre-push checklist
 
-Before every push: run the two-call shape against `--disable-default-traits`. CI runs on macOS (10× billing). One failed push wastes ~25 billed minutes — test locally first.
+Before every push: run `scripts/test.sh --profile local`. CI runs on macOS (10× billing). One failed push wastes ~25 billed minutes — test locally first.

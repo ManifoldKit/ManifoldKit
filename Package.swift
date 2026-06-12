@@ -1,24 +1,20 @@
 // swift-tools-version: 6.1
 
 // Trait reference (full table in README §2.4):
-//   - Defaults: MLX, Llama, HuggingFace.
-//   - Opt-in traits: Server, Macros, Fuzz.
+//   - There are NO default traits. `swift build` builds the full core surface.
+//   - Opt-in traits: Server, Macros (genuine build-cost levers on leaf edges)
+//     plus the two WWDC 2026 stubs (SystemAIProviderExtension, CoreAI).
 //   - Retired in v0.48: MCP, MCPBuiltinCatalog (PR A2); Voice, Tools,
 //     AppIntents, Skills (PR A3); Ollama, CloudSaaS (PR A4); AnyLanguageModel
-//     (PR A5 — now the always-compiled ManifoldAnyLanguageModel product).
-//     Those modules now compile unconditionally; consumers opt in by
-//     importing (or not importing) the products. See docs/MIGRATION-0.48.md.
-//   - `FoundationOnly` is an explicit "App Store-lean" marker for indie iOS
-//     26+/macOS 26+ apps that only need Apple Foundation Models. Pass
-//     `traits: ["FoundationOnly"]` from the consumer manifest — SwiftPM
-//     treats that as the full enabled-trait set, so the MLX/Llama/HuggingFace
-//     defaults drop out and ManifoldBackends compiles to FoundationBackend +
-//     cloud-stub bodies only (no MLX checkout, no LlamaSwift xcframework, no
-//     swift-huggingface). Mutual exclusion with MLX/Llama/HuggingFace is
-//     enforced by the consumer override semantics, not by the package itself.
-//   - The CI gate `foundation-only-build` (`.github/workflows/ci.yml`)
-//     enforces a ≤ 5 MB ManifoldBackends artifact and zero MLX/Llama symbol
-//     leaks under the FoundationOnly trait.
+//     (PR A5 — now the always-compiled ManifoldAnyLanguageModel product);
+//     MLX, Llama, HuggingFace, Fuzz, FoundationOnly (PR C2 — the MLX and
+//     llama.cpp backend families moved to the manifold-mlx / manifold-llama
+//     companion packages, #1749). See docs/MIGRATION-0.48.md.
+//   - Local inference (MLX / GGUF) now lives in companion packages:
+//       https://github.com/roryford/manifold-mlx
+//       https://github.com/roryford/manifold-llama
+//     Add one as a `.package` dependency and pass its registrar to
+//     `ManifoldKit.quickStart(backends:)`.
 
 import PackageDescription
 import CompilerPluginSupport
@@ -81,8 +77,9 @@ let package = Package(
         // BackendRegistrar conformances).
         .library(name: "ManifoldBackends", targets: ["ManifoldBackends"]),
         .library(name: "ManifoldCloudCore", targets: ["ManifoldCloudCore"]),
-        .library(name: "ManifoldMLX", targets: ["ManifoldMLX"]),
-        .library(name: "ManifoldLlama", targets: ["ManifoldLlama"]),
+        // ManifoldMLX / ManifoldLlama products removed in v0.48 (PR C2):
+        // the families live in the manifold-mlx / manifold-llama companion
+        // packages now (#1749). See docs/MIGRATION-0.48.md.
         .library(name: "ManifoldFoundation", targets: ["ManifoldFoundation"]),
         // v0.48 product split (PR A1): the Ollama and SaaS backend families
         // are real products so consumers can take exactly one provider
@@ -119,25 +116,12 @@ let package = Package(
         .executable(name: "ManifoldServer", targets: ["ManifoldServer"]),
     ],
     traits: [
-        .default(enabledTraits: ["MLX", "Llama", "HuggingFace"]),
-        .trait(name: "MLX", description: "Enable the MLX inference backend (requires Apple Silicon)"),
-        .trait(name: "Llama", description: "Enable the llama.cpp (GGUF) inference backend"),
-        .trait(name: "HuggingFace", description: "Enable HuggingFace Hub search, browse, and download"),
+        // No default traits since v0.48 (PR C2): the heavy MLX / llama.cpp
+        // families moved to companion packages, so a plain `swift build` is
+        // already the lean shape. Server and Macros remain genuine opt-in
+        // build-cost levers on leaf edges (Hummingbird, swift-syntax).
         .trait(name: "Server", description: "Enable ManifoldServer (OpenAI-compatible HTTP server) and its Hummingbird dependency."),
         .trait(name: "Macros", description: "Enable the @ToolSchema macro plugin and its swift-syntax dependency. Off by default — pulls ~647 source files into the build graph."),
-        // Fuzz is intentionally NOT a default trait. Enabling it adds ManifoldBackends
-        // (and transitively LlamaSwift) to fuzz-chat, which conflicts with the MLX
-        // integration test targets in the auto-generated Xcode scheme. Run the fuzzer via
-        // scripts/fuzz.sh, which passes --traits Fuzz,MLX,Llama explicitly.
-        .trait(name: "Fuzz", description: "Enable real inference backends in fuzz-chat (Ollama, Llama, Foundation). Required by scripts/fuzz.sh; not needed for swift test or xcodebuild test."),
-        // FoundationOnly is an explicit App Store-lean marker. Consumers that
-        // pass `traits: ["FoundationOnly"]` override the default trait set
-        // (which is MLX + Llama + HuggingFace), so ManifoldBackends compiles
-        // without MLX, llama.cpp, or swift-huggingface — keeping the BCK
-        // overhead under 5 MB and dropping ~700 MB of binary dependencies
-        // from the resolved graph. Apple Foundation Models still work via
-        // FoundationBackend (iOS 26 / macOS 26+). See docs/AppStoreSubmission.md.
-        .trait(name: "FoundationOnly", description: "App Store-lean: Apple Foundation Models only. Pass `traits: [\"FoundationOnly\"]` from the consumer manifest — overrides the MLX/Llama/HuggingFace default trait set."),
         // WWDC 2026 pre-emptive stubs. No associated targets or source files —
         // these traits exist solely so `#if SystemAIProviderExtension` and
         // `#if CoreAI` conditional blocks can be written today and flip live on
@@ -146,36 +130,13 @@ let package = Package(
         .trait(name: "CoreAI", description: "Placeholder for Apple's rumoured Core AI framework (Core ML successor). No-op until WWDC 2026 confirms the surface."),
     ],
     dependencies: [
-        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.31.3"),
-        // 3.31.3 ships the decoupled MLXHuggingFace target (the original reason for the
-        // manual revision pin) and adds the `gemma4` model_type to LLMTypeRegistry so
-        // mlx-community/gemma-4-* can load.
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", from: "3.31.3"),
-        // flux.swift vendored: mzbac/flux.swift pins swift-transformers 0.1.x
-        // while ManifoldKit needs 1.2.x — same conflict that forced StableDiffusion
-        // to be vendored. Source lives in Sources/FluxSwift (MIT license, 12 files).
-        // mlx-swift-examples was previously a direct dependency for StableDiffusion.
-        // Its package manifest declared platforms: iOS 16 while depending on mlx-swift
-        // which requires iOS 17, causing a SPM platform-validation error for consumers.
-        // The StableDiffusion source (9 files, MIT) is now vendored in Sources/StableDiffusion.
-        // If upstream resolves the platform conflict and cuts a new tag, revert to the
-        // package dependency. Tracked in umbrella issue #1002.
+        // mlx-swift / mlx-swift-lm / mattt/llama.swift / swift-transformers /
+        // swift-log left with the backend families in v0.48 (PR C2) — they now
+        // live in the manifold-mlx / manifold-llama companion packages (#1749).
         // Pin 0.9.0 exactly: this is the verified tag that still exports the
         // `HuggingFace` product consumed by ManifoldHuggingFace and its tests.
         .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.9.0"),
         .package(url: "https://github.com/huggingface/AnyLanguageModel", from: "0.8.0"),
-        // Explicit dep required: mlx-swift-lm no longer pulls swift-transformers transitively.
-        // TransformersTokenizerLoader (hand-expanded MLXHuggingFace macro) calls
-        // `AutoTokenizer.from(modelFolder:)` which lives here.
-        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.2.0"),
-        // Pinned EXACT to 2.9505.0 (Package.resolved rev 11efdff6cfadc8ed2f998dc6f50d68d3e35237f9).
-        // Wraps llama.cpp as a pre-built xcframework binary. mattt/llama.swift auto-tags a new
-        // version per upstream commit; a floating `from:` lets CI resolution drift to the newest
-        // tag, and the cached SwiftPM clone can land in an `unable to read tree` state for a
-        // just-pushed revision — breaking every CI run repo-wide regardless of the lockfile. Exact
-        // pinning keeps resolution deterministic. Bump intentionally (and re-verify the C API
-        // contract) per docs/LLAMA_CONTRACT.md's upgrade procedure.
-        .package(url: "https://github.com/mattt/llama.swift", exact: "2.9553.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
         // Test-only: SwiftUI view-tree inspection for accessibility contract tests.
         // Must never appear in any production target.
@@ -192,9 +153,6 @@ let package = Package(
         // but does not @_exported import it, so an explicit edge is required.
         // Only linked when the `Server` trait is enabled.
         .package(url: "https://github.com/apple/swift-http-types.git", from: "1.0.0"),
-        // swift-log: pulled in by vendored FluxSwift source. Lightweight structured
-        // logging façade; no runtime overhead beyond the backend you install.
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
         // DocC build/host plugin: drives `swift package generate-documentation` for the
         // unified ManifoldKit.docc front door and the GitHub Pages publish workflow.
@@ -316,11 +274,7 @@ let package = Package(
             ],
             path: "Sources/ManifoldInference",
             swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Macros", .when(traits: ["Macros"])),
-                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
         // MCP: Model Context Protocol client surface, descriptors, transports,
@@ -378,46 +332,22 @@ let package = Package(
             ],
             path: "Sources/ManifoldPersistenceSwiftData"
         ),
-        // Vendored StableDiffusion (from mlx-swift-examples, MIT License).
-        // All sources are inside #if MLX guards so non-MLX builds compile to empty files.
-        // Dependencies: MLX + MLXNN from mlx-swift, Hub from swift-transformers (both already direct deps).
-        .target(
-            name: "StableDiffusion",
-            dependencies: [
-                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXNN", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "Hub", package: "swift-transformers", condition: .when(traits: ["MLX"])),
-            ],
-            path: "Sources/StableDiffusion",
-            exclude: ["LICENSE"],
-            swiftSettings: [.define("MLX", .when(traits: ["MLX"]))]
-        ),
         // ─────────────────────────────────────────────────────────────────
-        // Backends — initiative I7 split.
+        // Backends.
         //
-        // The original 11.7k-LOC `ManifoldBackends` target hosted four
-        // unrelated runtimes (MLX / llama.cpp / Foundation / Cloud). Any
-        // single-line change recompiled all 11.7k LOC; cross-runtime symbol
-        // visibility forced 28 `@unchecked Sendable` conformances and three
-        // dummy `*Stub.swift` files to keep the link alive when traits flipped
-        // families off. Splitting per family eliminates the stubs and lets
-        // SwiftPM trait-gate at the consumer→library edge instead of file-by-
-        // file `#if`s smeared across the body.
-        //
-        // Trait-gating rule (per CLAUDE.md): gate the consumer→family edge,
-        // not the family→library edge. Since v0.48 (PR A4) the cloud edges
-        // are unconditional — the Ollama / CloudSaaS traits are retired and
-        // the families always compile. Consumers that don't want SaaS code
-        // in a shipped binary depend on the specific products they need
-        // instead of the umbrella (link-out, not compile-out; docs/FIPS.md).
+        // Since v0.48 (PR C2) the heavy local-inference families live in
+        // companion packages: ManifoldMLX (+ vendored FluxSwift /
+        // StableDiffusion) at https://github.com/roryford/manifold-mlx and
+        // ManifoldLlama at https://github.com/roryford/manifold-llama
+        // (#1749). Core retains Foundation + the cloud families (Ollama,
+        // SaaS). Consumers that don't want SaaS code in a shipped binary
+        // depend on the specific products they need instead of the umbrella
+        // (link-out, not compile-out; docs/FIPS.md).
         //
         // The legacy `ManifoldBackends` target/module is preserved as a thin
-        // re-export shim (sources moved to `Sources/ManifoldBackendsUmbrella/`
-        // to make the role obvious in directory listings) that hosts
-        // cross-family glue (`DefaultBackends`, the per-family
-        // `BackendRegistrar` conformances) and `@_exported import`s the four
-        // family targets so existing `import ManifoldBackends` consumers keep
-        // compiling without edits.
+        // re-export shim (sources under `Sources/ManifoldBackendsUmbrella/`)
+        // hosting the cross-family glue (`DefaultBackends`) and re-exporting
+        // the surviving Foundation + Cloud families.
         // ─────────────────────────────────────────────────────────────────
 
         // ManifoldCloudCore: shared SSE / TLS-pinning / DNS-rebind / URLSession
@@ -430,85 +360,6 @@ let package = Package(
             name: "ManifoldCloudCore",
             dependencies: ["ManifoldInference"],
             path: "Sources/ManifoldCloudCore"
-        ),
-
-        // ManifoldMLX: MLX inference backend, resource arbiter, capability
-        // probe, MLX-specific tool dialect.
-        .target(
-            name: "ManifoldMLX",
-            dependencies: [
-                "ManifoldInference",
-                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXRandom", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXLLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-                // MLXVLM ships the MoE Gemma 4 decoder (Libraries/MLXVLM/Models/Gemma4.swift)
-                // that LLMModelFactory's Gemma4Text.swift lacks. MLXBackend sniffs config.json
-                // and routes models with `text_config.enable_moe_block == true` (e.g.
-                // mlx-community/gemma-4-26b-a4b-it-4bit) to VLMModelFactory.shared.loadContainer.
-                // See issue #752.
-                .product(name: "MLXVLM", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
-                // No MLXHuggingFace product here: its macro plugin pulls swift-syntax into
-                // every default-trait build. The one macro we used is hand-expanded in
-                // Sources/ManifoldMLX/TransformersTokenizerLoader.swift on top of Tokenizers.
-                .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
-                // Hub is consumed directly by the FLUX diffusion backend (merged from
-                // the former ManifoldFlux target) for repository snapshot downloads.
-                .product(name: "Hub", package: "swift-transformers", condition: .when(traits: ["MLX"])),
-                // Vendored StableDiffusion (Sources/StableDiffusion), used by MLXDiffusionBackend.
-                .target(name: "StableDiffusion", condition: .when(traits: ["MLX"])),
-                // Vendored FluxSwift (Sources/FluxSwift), used by FluxDiffusionBackend.
-                // Merged in from the former ManifoldFlux target — same MLX trait, same
-                // vendored dep, single backend class; standalone target was pure overhead.
-                .target(name: "FluxSwift", condition: .when(traits: ["MLX"])),
-            ],
-            path: "Sources/ManifoldMLX",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
-        ),
-
-        // FluxSwift: vendored mzbac/flux.swift (MIT). Provides FLUX.1 transformer,
-        // VAE, text encoders, tokenizer, and quantization utilities.
-        // Vendored instead of a package dependency because flux.swift pins
-        // swift-transformers 0.1.x; ManifoldKit requires 1.2.x.
-        .target(
-            name: "FluxSwift",
-            dependencies: [
-                .product(name: "MLX", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXNN", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "MLXFast", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                // MLXOptimizers removed: grep of Sources/FluxSwift shows zero references.
-                .product(name: "MLXRandom", package: "mlx-swift", condition: .when(traits: ["MLX"])),
-                .product(name: "Tokenizers", package: "swift-transformers", condition: .when(traits: ["MLX"])),
-                // Hub is imported directly in FluxModelCore.swift, FluxConfiguration.swift,
-                // FLUX.swift, and Quantization/Quantization.swift for repository snapshot downloads.
-                .product(name: "Hub", package: "swift-transformers", condition: .when(traits: ["MLX"])),
-                .product(name: "Logging", package: "swift-log", condition: .when(traits: ["MLX"])),
-            ],
-            path: "Sources/FluxSwift",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-            ]
-        ),
-
-        // ManifoldLlama: llama.cpp (GGUF) inference, generation driver,
-        // process-lifecycle refcount, embedding backend, GGUF-specific tool
-        // call parser, tokenizer adapters.
-        .target(
-            name: "ManifoldLlama",
-            dependencies: [
-                "ManifoldInference",
-                // ManifoldHardware provides BackendCapabilities, GGUFParser, and
-                // device-capability types consumed by LlamaGenerationDriver.
-                "ManifoldHardware",
-                .product(name: "LlamaSwift", package: "llama.swift", condition: .when(traits: ["Llama"])),
-            ],
-            path: "Sources/ManifoldLlama",
-            swiftSettings: [
-                .define("Llama", .when(traits: ["Llama"])),
-            ]
         ),
 
         // ManifoldFoundation: Apple Foundation Models bridge. No trait —
@@ -580,11 +431,12 @@ let package = Package(
         ),
 
         // ManifoldBackends: the legacy umbrella module, now a thin re-export
-        // shim. Hosts cross-family registration glue (`DefaultBackends`, the
-        // per-family `BackendRegistrar` conformances `MLXBackends` /
-        // `LlamaBackends` / `FoundationBackends` / `CloudBackends`) and
-        // `@_exported import`s the four family targets so existing
-        // `import ManifoldBackends` consumers keep compiling without edits.
+        // shim over the SURVIVING families only (Foundation + Cloud). Hosts
+        // the cross-family registration glue (`DefaultBackends`,
+        // `FoundationBackends` / `CloudBackends`). The MLX / Llama families
+        // (and their `MLXBackends` / `LlamaBackends` registrars) moved to the
+        // manifold-mlx / manifold-llama companion packages in v0.48 (PR C2,
+        // #1749) — pass their registrars to `quickStart(backends:)`.
         // The target name stays `ManifoldBackends` (module name follows the
         // target) so `@testable import ManifoldBackends` is preserved; the
         // sources live under `Sources/ManifoldBackendsUmbrella/` to make the
@@ -595,8 +447,6 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
-                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 "ManifoldCloud",
                 // Direct edges to the v0.48 family products: CloudBackends
                 // forwards to OllamaBackends / CloudSaaSBackends, and an
@@ -605,13 +455,7 @@ let package = Package(
                 "ManifoldOllama",
                 "ManifoldCloudSaaS",
             ],
-            path: "Sources/ManifoldBackendsUmbrella",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
-            ]
+            path: "Sources/ManifoldBackendsUmbrella"
         ),
         // AnyLanguageModel provider bridge (v0.48, PR A5 — formerly gated by
         // the retired `AnyLanguageModel` trait inside the umbrella target).
@@ -636,10 +480,7 @@ let package = Package(
                 "ManifoldRuntime",
                 "ManifoldInference",
             ],
-            path: "Sources/ManifoldUI",
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            path: "Sources/ManifoldUI"
         ),
         // Model management UI: download/storage browser, API endpoint editors,
         // remote-server configuration. Peeled out of ManifoldUI in v2.0 so a
@@ -654,23 +495,20 @@ let package = Package(
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldInference",
-                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "ManifoldHuggingFace",
             ],
-            path: "Sources/ManifoldUIModelManagement",
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            path: "Sources/ManifoldUIModelManagement"
         ),
+        // ManifoldHuggingFace: the swift-huggingface edge is unconditional
+        // since v0.48 (PR C2) — the HuggingFace trait is retired, and the
+        // conditional `.product` edge was the canonical #1737 SwiftPM hazard.
         .target(
             name: "ManifoldHuggingFace",
             dependencies: [
                 "ManifoldInference",
-                .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
             ],
-            path: "Sources/ManifoldHuggingFace",
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            path: "Sources/ManifoldHuggingFace"
         ),
         // ManifoldKit: umbrella library. Single-file `Exports.swift`
         // re-exports the four most-imported modules so app code can write
@@ -693,15 +531,12 @@ let package = Package(
                 "ManifoldSkills",
                 // Seed-model path: `quickStart(seed:)` drives a background download on
                 // first launch when no model is available. The concrete
-                // BackgroundDownloadManager + HuggingFaceService live in ManifoldHuggingFace
-                // (trait-gated behind `HuggingFace`). Consumers without the HuggingFace
-                // trait still compile — `#if HuggingFace` guards all concrete references.
-                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                // BackgroundDownloadManager + HuggingFaceService live in
+                // ManifoldHuggingFace (unconditional since the HuggingFace
+                // trait retired in v0.48, PR C2).
+                "ManifoldHuggingFace",
             ],
-            path: "Sources/ManifoldKit",
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            path: "Sources/ManifoldKit"
         ),
         // Voice: optional speech-recognition / synthesis adapters plus chat UI accessories.
         .target(
@@ -718,12 +553,7 @@ let package = Package(
                 "ManifoldInference",
             ],
             path: "Sources/ManifoldTestSupport",
-            exclude: ["FuzzCalibrationCorpus"],
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            exclude: ["FuzzCalibrationCorpus"]
         ),
         // XCTest-dependent protocol contract mixins, kept in a separate target
         // so that fuzz-chat (an executable) can depend on ManifoldTestSupport
@@ -837,7 +667,6 @@ let package = Package(
             // ignore it when collecting resources.
             exclude: ["silent_catch_allowlist.txt"],
             swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Macros", .when(traits: ["Macros"])),
             ]
         ),
@@ -908,12 +737,10 @@ let package = Package(
                 "ManifoldTestSupport",
             ]
         ),
-        // Umbrella test target — covers every family target via per-trait
-        // conditional deps so `@_spi(Testing) import ManifoldMLX`,
-        // `@_spi(Testing) import ManifoldLlama`, etc. resolve from the same
-        // suite. Family test files (MLX*/Llama*/Conformance) are @testable-free
-        // so they can move to the companion packages (#1749); non-family files
-        // may still use `@testable import` for in-repo modules.
+        // Umbrella test target — covers the surviving family targets
+        // (Foundation + Cloud). The MLX / Llama family test files moved to
+        // the manifold-mlx / manifold-llama companion packages with the
+        // backends (v0.48, PR C2, #1749).
         .testTarget(
             name: "ManifoldBackendsTests",
             dependencies: [
@@ -921,11 +748,7 @@ let package = Package(
                 "ManifoldCloudCore",
                 "ManifoldFoundation",
                 "ManifoldSecrets",
-                // ManifoldHardware: LlamaPrefillFootprintIntegrationTests.swift does
-                // `@testable import ManifoldHardware`; @testable requires a direct dep.
                 "ManifoldHardware",
-                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                .target(name: "ManifoldLlama", condition: .when(traits: ["Llama"])),
                 "ManifoldCloud",
                 // Direct edges for `@testable import ManifoldOllama` /
                 // `@testable import ManifoldCloudSaaS` — @testable requires a
@@ -939,19 +762,12 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 "ManifoldBackendTestKit",
-                .product(name: "MLXLMCommon", package: "mlx-swift-lm", condition: .when(traits: ["MLX"])),
                 // AnyLanguageModel bridge suites — unconditional since the
                 // trait was retired in v0.48 (PR A5). The direct edge to the
                 // external AnyLanguageModel package supplies the
                 // LanguageModel protocol the test doubles conform to.
                 "ManifoldAnyLanguageModel",
                 .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
-            ],
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("FoundationOnly", .when(traits: ["FoundationOnly"])),
             ]
         ),
         .testTarget(
@@ -981,23 +797,17 @@ let package = Package(
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-            ],
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         .testTarget(
             name: "ManifoldHuggingFaceTests",
             dependencies: [
-                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
+                "ManifoldHuggingFace",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-                .product(name: "HuggingFace", package: "swift-huggingface", condition: .when(traits: ["HuggingFace"])),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
             ],
-            path: "Tests/ManifoldHuggingFaceTests",
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            path: "Tests/ManifoldHuggingFaceTests"
         ),
         // ManifoldServer: OpenAI-compatible HTTP server. Shipped as a single
         // executable target — the routing layer, trait-aware backend provider,
@@ -1006,15 +816,11 @@ let package = Package(
         // target compiles to a no-op stub that prints a "trait not enabled"
         // message (see `ManifoldServerCommand.swift`).
         //
-        // ManifoldBackends and ManifoldInference are also `Server`-conditional
-        // for the same reason `fuzz-chat`'s ManifoldBackends dep is `Fuzz`-
-        // conditional (see comment on the `Fuzz` trait above): an unconditional
-        // ManifoldBackends dep on a second executable in the auto-generated
-        // `ManifoldKit-Package` Xcode scheme produces two `Copy llama.framework`
-        // tasks that collide on the same output path — breaking
-        // `xcodebuild test -only-testing ManifoldMLXIntegrationTests`. Gating
-        // the deps keeps `manifold-tools` as the sole executable that pulls
-        // llama.framework into the auto-scheme. See issue #982.
+        // ManifoldBackends and ManifoldInference are `Server`-conditional so
+        // a trait-off build compiles the no-op stub without dragging the full
+        // backend graph into the executable. (The historical #982
+        // llama.framework copy-collision rationale died with the C2 split —
+        // llama.framework no longer exists in this package's graph.)
         .executableTarget(
             name: "ManifoldServer",
             dependencies: [
@@ -1028,9 +834,6 @@ let package = Package(
             ],
             path: "Sources/ManifoldServer",
             swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
                 .define("Server", .when(traits: ["Server"])),
             ]
         ),
@@ -1052,27 +855,16 @@ let package = Package(
         .testTarget(
             name: "ManifoldE2ETests",
             dependencies: [
-                // ManifoldBackends umbrella re-exports ManifoldMLX/Lama/Foundation/Cloud
-                // so tests reach all family symbols via this single dep.
+                // ManifoldBackends umbrella re-exports Foundation/Cloud so
+                // tests reach the surviving family symbols via this single dep.
                 "ManifoldBackends",
-                // ManifoldMLX kept as a direct dep: VisionE2ETests.swift does
-                // `@_spi(Testing) import ManifoldMLX` to reach MLXModelProbe.
-                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                // ManifoldCloudCore, ManifoldFoundation, ManifoldLlama, ManifoldCloud
-                // removed: no E2E test file imports them directly — accessed via the
-                // ManifoldBackends umbrella.
                 "ManifoldUI",
                 "ManifoldRuntime",
                 "ManifoldPersistenceSwiftData",
                 "ManifoldInference",
                 "ManifoldTestSupport",
                 "ManifoldTools",
-                .target(name: "ManifoldHuggingFace", condition: .when(traits: ["HuggingFace"])),
-            ],
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
+                "ManifoldHuggingFace",
             ]
         ),
         .testTarget(
@@ -1086,10 +878,7 @@ let package = Package(
                 "ManifoldTestSupport",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
             ],
-            exclude: ["__Snapshots__"],
-            swiftSettings: [
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-            ]
+            exclude: ["__Snapshots__"]
         ),
         // Turn-loop golden-transcript harness — gates the P2 engine carve.
         // Snapshots the ConversationEvent stream + persisted records for every
@@ -1111,7 +900,7 @@ let package = Package(
             exclude: ["__Snapshots__"]
         ),
         // Fuzzing engine: corpus, runner, capture, detectors, sink. Backend-agnostic.
-        // Trait-free so it never pulls MLX/Llama transitively — backend selection
+        // Carries no backend deps — backend selection
         // happens in `ManifoldFuzzBackends` (importable real-backend factories),
         // `fuzz-chat` (CLI), and `ManifoldFuzzTests` (XCTest harness).
         .target(
@@ -1120,9 +909,10 @@ let package = Package(
             path: "Sources/ManifoldFuzz",
             resources: [.process("Resources")]
         ),
-        // Importable real-backend factories for fuzz campaigns. Shared by the
-        // CLI and the Xcode-hosted MLX fuzz tests so XCTest can reuse the same
-        // wiring without importing the `fuzz-chat` executable target.
+        // Importable real-backend factories for fuzz campaigns (Ollama,
+        // OpenAI, Foundation). The MLX / Llama fuzz factories moved to the
+        // companion packages with the backends (v0.48, PR C2). Unconditional
+        // since the Fuzz trait retired in the same PR.
         .target(
             name: "ManifoldFuzzBackends",
             dependencies: [
@@ -1130,48 +920,29 @@ let package = Package(
                 "ManifoldInference",
                 "ManifoldBackends",
             ],
-            path: "Sources/ManifoldFuzzBackends",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("Fuzz", .when(traits: ["Fuzz"])),
-            ]
+            path: "Sources/ManifoldFuzzBackends"
         ),
-        // CLI driver. Wires Ollama, Llama, Foundation; MLX runs via xcodebuild fuzz path.
-        // ManifoldBackends is conditional on the Fuzz trait to avoid a llama.framework
-        // copy conflict with ManifoldMLXIntegrationTests in the auto-generated Xcode scheme.
-        // Use scripts/fuzz.sh (which passes --traits Fuzz,MLX,Llama) to run the fuzzer.
+        // CLI driver. Wires Ollama, OpenAI, Foundation. Run via scripts/fuzz.sh.
+        // (The Fuzz trait and the #982 llama.framework scheme-collision gate
+        // died with the C2 split — all edges are unconditional now.)
         .executableTarget(
             name: "fuzz-chat",
             dependencies: [
-                .target(name: "ManifoldFuzz", condition: .when(traits: ["Fuzz"])),
+                "ManifoldFuzz",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-                .target(name: "ManifoldFuzzBackends", condition: .when(traits: ["Fuzz"])),
+                "ManifoldFuzzBackends",
             ],
-            path: "Sources/fuzz-chat",
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("Fuzz", .when(traits: ["Fuzz"])),
-            ]
+            path: "Sources/fuzz-chat"
         ),
         .testTarget(
             name: "ManifoldFuzzTests",
             dependencies: [
-                .target(name: "ManifoldFuzz", condition: .when(traits: ["Fuzz"])),
-                .target(name: "ManifoldFuzzBackends", condition: .when(traits: ["Fuzz"])),
-                .target(name: "ManifoldBackends", condition: .when(traits: ["Fuzz"])),
+                "ManifoldFuzz",
+                "ManifoldFuzzBackends",
+                "ManifoldBackends",
                 "ManifoldInference",
                 "ManifoldTestSupport",
-            ],
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
-                .define("Fuzz", .when(traits: ["Fuzz"])),
             ]
         ),
         // ManifoldTools: end-to-end tool-calling validation harness.
@@ -1191,13 +962,10 @@ let package = Package(
                 .copy("Scenarios/built-in"),
             ]
         ),
-        // manifold-tools deliberately does NOT depend on the ManifoldBackends
-        // umbrella: the umbrella drags MLX + llama.framework into the link
-        // graph, and a second llama.framework copy in the auto-generated
-        // Xcode scheme breaks ManifoldMLXIntegrationTests (#982). The CLI
-        // only drives Ollama (or the in-process mock), so it takes the
-        // ManifoldOllama family product directly (unconditional since the
-        // Ollama trait retired in PR A4).
+        // manifold-tools does NOT depend on the ManifoldBackends umbrella:
+        // the CLI only drives Ollama (or the in-process mock), so it takes
+        // the ManifoldOllama family product directly (unconditional since
+        // the Ollama trait retired in PR A4).
         .executableTarget(
             name: "manifold-tools",
             dependencies: [
@@ -1230,25 +998,6 @@ let package = Package(
             dependencies: [
                 "ManifoldAppIntents",
                 "ManifoldInference",
-            ]
-        ),
-        // Xcode-only: real MLX model inference requiring Metal shader library.
-        // Cannot run via `swift test` — MLX's metallib is only compiled by Xcode.
-        // Run with: xcodebuild test -scheme ManifoldKit-Package -only-testing ManifoldMLXIntegrationTests
-        .testTarget(
-            name: "ManifoldMLXIntegrationTests",
-            dependencies: [
-                "ManifoldBackends",
-                .target(name: "ManifoldMLX", condition: .when(traits: ["MLX"])),
-                "ManifoldRuntime",
-                "ManifoldPersistenceSwiftData",
-                "ManifoldInference",
-                "ManifoldTestSupport",
-            ],
-            swiftSettings: [
-                .define("MLX", .when(traits: ["MLX"])),
-                .define("Llama", .when(traits: ["Llama"])),
-                .define("HuggingFace", .when(traits: ["HuggingFace"])),
             ]
         ),
         // T1.5: public-API surface freeze. The Fixture file consumes every

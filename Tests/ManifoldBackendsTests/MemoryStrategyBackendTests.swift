@@ -19,19 +19,5 @@ final class MemoryStrategyBackendTests: XCTestCase {
 
     // MARK: - Local Backends (hardware gated)
 
-    #if MLX
-    func test_mlxBackend_declaresResidentStrategy() {
-        let backend = MLXBackend()
-        XCTAssertEqual(backend.capabilities.memoryStrategy, .resident)
-    }
-    #endif
 
-    #if Llama
-    func test_llamaBackend_declaresMappableStrategy() throws {
-        let shouldRun = ProcessInfo.processInfo.environment["RUN_LLAMA_TESTS"] == "1"
-        try XCTSkipIf(!shouldRun, "Set RUN_LLAMA_TESTS=1 to run LlamaBackend tests in a supported environment")
-        let backend = LlamaBackend()
-        XCTAssertEqual(backend.capabilities.memoryStrategy, .mappable)
-    }
-    #endif
 }

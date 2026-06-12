@@ -67,7 +67,7 @@ lift into your own project. Most are unusual; a few we haven't seen anywhere els
   stranger would. They catch the "compiles in-tree, broken from outside" failures
   every internal test misses — a forgotten `internal`, a missing export, a broken
   link shape.
-- **Strict, enforced module boundaries.** Fourteen trait-gated modules with
+- **Strict, enforced module boundaries.** A layered graph of 28 library products (plus two companion backend packages) with
   dependency rules the build *enforces* — UI can't import a backend, cross-family
   protocols can't drift out of place. The boundaries an AI agent needs to
   contribute without creating debt aren't a guideline here; they're a failing test

@@ -11,8 +11,11 @@ usage() {
 Usage: scripts/sourcekit-stale-module-diagnostics.sh [--run] [--collect-diagnose] [--scratch-path PATH]
 
 Dry-run by default. The --run path:
-  1. Builds ManifoldKit with --disable-default-traits.
-  2. Builds ManifoldKit again with the default trait set, reusing the same scratch path.
+  1. Builds ManifoldKit.
+  2. Builds ManifoldKit again, reusing the same scratch path. (The original
+     #1109 repro toggled the default trait set between the two builds; the
+     package has no default traits since v0.48 PR C2, so this is now a plain
+     same-scratch-path rebuild.)
   3. Runs sourcekit-lsp debug index against the package with that scratch path.
   4. Scans the SourceKit-LSP output for "No such module 'ManifoldPersistenceSwiftData'".
 
@@ -86,7 +89,7 @@ Commands:
   mkdir -p "$SCRATCH_PATH"
   swift --version
   sourcekit-lsp --version || true
-  swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --disable-default-traits --target ManifoldKit
+  swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --target ManifoldKit
   swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --target ManifoldKit
   sourcekit-lsp --scratch-path "$SCRATCH_PATH" debug index --project "$REPO_ROOT" 2>&1 | tee "$LOG_PATH"
   grep -F "No such module 'ManifoldPersistenceSwiftData'" "$LOG_PATH"
@@ -110,11 +113,11 @@ echo "SourceKit-LSP version:"
 sourcekit-lsp --version || true
 
 echo
-echo "Building ManifoldKit with traits disabled..."
-swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --disable-default-traits --target ManifoldKit
+echo "Building ManifoldKit (first build)..."
+swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --target ManifoldKit
 
 echo
-echo "Building ManifoldKit with default traits, reusing the same scratch path..."
+echo "Building ManifoldKit again, reusing the same scratch path..."
 swift build --package-path "$REPO_ROOT" --scratch-path "$SCRATCH_PATH" --target ManifoldKit
 
 echo

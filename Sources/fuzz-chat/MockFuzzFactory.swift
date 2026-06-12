@@ -1,4 +1,3 @@
-#if Fuzz
 import Foundation
 import ManifoldFuzz
 import ManifoldInference
@@ -40,4 +39,3 @@ public struct MockFuzzFactory: FuzzBackendFactory {
         )
     }
 }
-#endif

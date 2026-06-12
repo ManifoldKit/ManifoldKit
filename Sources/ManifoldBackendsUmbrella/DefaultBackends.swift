@@ -7,6 +7,13 @@ import ManifoldInference
 /// let service = InferenceService()
 /// DefaultBackends.register(with: service)
 /// ```
+///
+/// > Important: Since v0.48 the compiled-in defaults are **Foundation +
+/// > Cloud only**. The MLX and llama.cpp families moved to the
+/// > manifold-mlx / manifold-llama companion packages (#1749) — register
+/// > them explicitly via `ManifoldKit.quickStart(backends:)` or by calling
+/// > `MLXBackends.register(with:)` / `LlamaBackends.register(with:)` from
+/// > the companion packages. See docs/MIGRATION-0.48.md.
 public enum DefaultBackends {
 
     // MARK: - Static Capability Queries
@@ -66,17 +73,13 @@ public enum DefaultBackends {
     static func backendTypeName(for modelType: ModelType) -> String? {
         switch modelType {
         case .gguf:
-            #if Llama
-            return "LlamaBackend"
-            #else
+            // LlamaBackend moved to the manifold-llama companion package
+            // (v0.48, PR C2) — never compiled into core.
             return nil
-            #endif
         case .mlx:
-            #if MLX
-            return "MLXBackend"
-            #else
+            // MLXBackend moved to the manifold-mlx companion package
+            // (v0.48, PR C2) — never compiled into core.
             return nil
-            #endif
         case .foundation:
             #if canImport(FoundationModels)
             return "FoundationBackend"
@@ -102,15 +105,20 @@ public enum DefaultBackends {
     /// and must run before any URLSession factory. Local backends are
     /// independent.
     ///
-    /// This is the *compiled-in* set only. Backends from companion packages
-    /// (#1749) are not listed here — pass their registrars to
+    /// This is the *compiled-in* set only — Foundation + Cloud since v0.48.
+    /// The MLX / llama.cpp registrars live in the manifold-mlx /
+    /// manifold-llama companion packages (#1749); pass them to
     /// ``ManifoldKit/ManifoldKit/quickStart(backends:configuration:seed:)``
     /// or call `register(with:)` on them directly after this fold.
+    @available(*, deprecated, message: "MLX/llama.cpp moved to manifold-mlx / manifold-llama — see docs/MIGRATION-0.48.md. DefaultBackends now registers Foundation + Cloud only; pass companion registrars to quickStart(backends:).")
     @MainActor
-    public static let registrars: [any BackendRegistrar.Type] = [
+    public static var registrars: [any BackendRegistrar.Type] { _registrars }
+
+    /// Non-deprecated twin of ``registrars`` for in-package callers
+    /// (`quickStart` still folds the compiled-in defaults first).
+    @MainActor
+    package static let _registrars: [any BackendRegistrar.Type] = [
         CloudBackends.self,
-        MLXBackends.self,
-        LlamaBackends.self,
         FoundationBackends.self,
     ]
 
@@ -124,10 +132,18 @@ public enum DefaultBackends {
     /// ``ManifoldInference/InferenceService/registeredBackendSnapshot()``
     /// (`supportsLocalInference` / `cloudProviders`) as
     /// ``ManifoldKit/ManifoldKit/quickStart(configuration:)`` now does.
+    @available(*, deprecated, message: "MLX/llama.cpp moved to manifold-mlx / manifold-llama — see docs/MIGRATION-0.48.md. DefaultBackends.register now wires Foundation + Cloud only; local inference requires a companion registrar via quickStart(backends:).")
     @MainActor
     @discardableResult
     public static func register(with service: InferenceService) -> Int {
-        for registrar in registrars {
+        _register(with: service)
+    }
+
+    /// Non-deprecated twin of ``register(with:)`` for in-package callers.
+    @MainActor
+    @discardableResult
+    package static func _register(with service: InferenceService) -> Int {
+        for registrar in _registrars {
             registrar.register(with: service)
         }
         return service.registeredBackendSnapshot().count

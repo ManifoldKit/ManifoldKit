@@ -7,8 +7,8 @@
 # WHY a committed graph snapshot instead of `swift package describe` in CI:
 #   The `changes` job runs on ubuntu-latest (1× billing) specifically to AVOID a
 #   10×-billed macOS runner. ubuntu-latest ships no Swift toolchain, and
-#   resolving ManifoldKit's graph on Linux would fail anyway (MLX / llama.cpp are
-#   Apple-only). The target dependency graph is derived *purely* from the
+#   resolving ManifoldKit's graph on Linux would fail anyway (the package
+#   depends on Apple-only frameworks throughout the UI layer). The target dependency graph is derived *purely* from the
 #   manifest (`swift package dump-package` reads Package.swift, no dependency
 #   resolution, no network), and it can only change when Package.swift changes.
 #   So we commit a normalized snapshot (`affected-suites-graph.json`), read it in
