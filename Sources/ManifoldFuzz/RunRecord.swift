@@ -182,6 +182,27 @@ public struct RunRecord: Codable, Sendable, Equatable {
         public var url: String
         public var fileSHA256: String?
         public var tokenizerHash: String?
+        /// Per-model memory budget in bytes. `MemoryGrowthDetector` compares
+        /// `MemorySnapshot.peakBytes` against this to flag runaway resident
+        /// growth. Optional so capture paths that can't supply a budget leave
+        /// the growth-budget branch a no-op rather than firing on missing data.
+        public var memoryBudgetBytes: UInt64?
+
+        public init(
+            backend: String,
+            id: String,
+            url: String,
+            fileSHA256: String? = nil,
+            tokenizerHash: String? = nil,
+            memoryBudgetBytes: UInt64? = nil
+        ) {
+            self.backend = backend
+            self.id = id
+            self.url = url
+            self.fileSHA256 = fileSHA256
+            self.tokenizerHash = tokenizerHash
+            self.memoryBudgetBytes = memoryBudgetBytes
+        }
     }
 
     public struct ConfigSnapshot: Codable, Sendable, Equatable {
@@ -194,6 +215,11 @@ public struct RunRecord: Codable, Sendable, Equatable {
         /// not configure tools. `ToolCallValidityDetector.toolchoice-violation`
         /// reads this to assert the model honoured the constraint.
         public var toolChoice: String?
+        /// The model's context-window limit in tokens for this run.
+        /// `ContextExhaustionSilentDetector` uses it (with the prompt-token
+        /// estimate) to suppress legitimate exhaustions. Optional so capture
+        /// paths that can't supply a limit leave the guard a no-op.
+        public var contextLimit: Int?
 
         public init(
             seed: UInt64,
@@ -201,7 +227,8 @@ public struct RunRecord: Codable, Sendable, Equatable {
             topP: Float,
             maxTokens: Int?,
             systemPrompt: String?,
-            toolChoice: String? = nil
+            toolChoice: String? = nil,
+            contextLimit: Int? = nil
         ) {
             self.seed = seed
             self.temperature = temperature
@@ -209,10 +236,11 @@ public struct RunRecord: Codable, Sendable, Equatable {
             self.maxTokens = maxTokens
             self.systemPrompt = systemPrompt
             self.toolChoice = toolChoice
+            self.contextLimit = contextLimit
         }
 
         private enum CodingKeys: String, CodingKey {
-            case seed, temperature, topP, maxTokens, systemPrompt, toolChoice
+            case seed, temperature, topP, maxTokens, systemPrompt, toolChoice, contextLimit
         }
 
         public init(from decoder: Decoder) throws {
@@ -223,6 +251,7 @@ public struct RunRecord: Codable, Sendable, Equatable {
             maxTokens = try c.decodeIfPresent(Int.self, forKey: .maxTokens)
             systemPrompt = try c.decodeIfPresent(String.self, forKey: .systemPrompt)
             toolChoice = try c.decodeIfPresent(String.self, forKey: .toolChoice)
+            contextLimit = try c.decodeIfPresent(Int.self, forKey: .contextLimit)
         }
     }
 
@@ -230,10 +259,32 @@ public struct RunRecord: Codable, Sendable, Equatable {
         public var corpusId: String
         public var mutators: [String]
         public var messages: [Message]
+        /// Estimated prompt-token count for this run.
+        /// `ContextExhaustionSilentDetector` compares it against
+        /// `ConfigSnapshot.contextLimit` to suppress legitimate exhaustions.
+        /// Optional so capture paths without a tokenizer leave the guard a no-op.
+        public var estimatedPromptTokens: Int?
+
+        public init(
+            corpusId: String,
+            mutators: [String],
+            messages: [Message],
+            estimatedPromptTokens: Int? = nil
+        ) {
+            self.corpusId = corpusId
+            self.mutators = mutators
+            self.messages = messages
+            self.estimatedPromptTokens = estimatedPromptTokens
+        }
 
         public struct Message: Codable, Sendable, Equatable {
             public var role: String
             public var text: String
+
+            public init(role: String, text: String) {
+                self.role = role
+                self.text = text
+            }
         }
     }
 
