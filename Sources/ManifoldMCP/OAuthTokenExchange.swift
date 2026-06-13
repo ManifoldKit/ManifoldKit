@@ -164,7 +164,7 @@ struct OAuthTokenExchange {
         do {
             rawJSON = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         } catch {
-            Log.inference.warning("OAuthTokenExchange: token response subject metadata was not JSON decodable")
+            Log.inference.warning("OAuthTokenExchange: token response subject metadata was not JSON decodable (\(error.localizedDescription))")
             rawJSON = [:]
         }
         let subjectID = MCPOAuthTokenStore.subjectIdentifier(from: rawJSON)

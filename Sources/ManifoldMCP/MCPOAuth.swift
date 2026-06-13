@@ -98,7 +98,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
                 do {
                     try await tokenStore.delete(serverID)
                 } catch {
-                    Log.inference.warning("MCPOAuthAuthorization: failed to clear token store after invalid_grant")
+                    Log.inference.warning("MCPOAuthAuthorization: failed to clear token store after invalid_grant (\(error.localizedDescription))")
                 }
             }
             return .fail(error)
@@ -152,7 +152,7 @@ public actor MCPOAuthAuthorization: MCPAuthorization {
                     return refreshed
                 } catch {
                     try await tokenStore.delete(serverID)
-                    Log.inference.warning("MCPOAuthAuthorization: refresh failed, forcing full OAuth authorization")
+                    Log.inference.warning("MCPOAuthAuthorization: refresh failed, forcing full OAuth authorization (\(error.localizedDescription))")
                 }
             }
         }
