@@ -180,6 +180,12 @@ final class GenerationQueue {
         /// ``handoffDetector`` for the rationale. `nil` falls back to the
         /// queue-level ``preToolUseHook``.
         let preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)?
+        /// When non-nil, this request dispatches to this host-owned backend
+        /// instead of the primary ``currentBackend`` (the #799 Deep route).
+        /// `nil` (default) routes to the primary backend. The routed backend is
+        /// host-managed and is **not** tracked by the load coordinator, so the
+        /// `isBackendLoaded` gate is skipped for routed requests.
+        let routedBackend: (any InferenceBackend)?
     }
 
     // MARK: - Queue State (Private)
@@ -312,12 +318,17 @@ final class GenerationQueue {
     }
 
     /// Structured-message variant of ``generateWithConfig(messages:...)``.
+    ///
+    /// When `backendOverride` is non-nil the request dispatches to that
+    /// host-owned backend instead of ``currentBackend`` (the #799 Deep route).
+    /// `nil` (default) preserves the existing primary-backend behaviour.
     func generateWithConfig(
         structuredMessages messages: [StructuredMessage],
         systemPrompt: String?,
-        config: GenerationConfig
+        config: GenerationConfig,
+        backendOverride: (any InferenceBackend)? = nil
     ) throws -> GenerationStream {
-        guard let backend = currentBackend else {
+        guard let backend = backendOverride ?? currentBackend else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
 
@@ -463,9 +474,15 @@ final class GenerationQueue {
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
-        preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)? = nil
+        preToolUseHook: (@Sendable (_ toolName: String, _ arguments: String, _ requestGroupID: UUID?) async -> PreToolUseOutcome)? = nil,
+        routedBackend: (any InferenceBackend)? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
-        guard let backend = currentBackend, isBackendLoaded else {
+        // When a routed (Deep, #799) backend is supplied, dispatch there and
+        // skip the `isBackendLoaded` gate — that gate tracks only the primary
+        // backend's load coordinator, whereas the routed backend is host-owned
+        // and lifecycle-managed entirely outside InferenceService.
+        guard let backend = routedBackend ?? currentBackend,
+              routedBackend != nil || isBackendLoaded else {
             throw InferenceError.inferenceFailure("No model loaded")
         }
         guard requestQueue.count < maxQueueDepth else {
@@ -507,7 +524,8 @@ final class GenerationQueue {
             config: config,
             stream: stream,
             handoffDetector: handoffDetector,
-            preToolUseHook: preToolUseHook
+            preToolUseHook: preToolUseHook,
+            routedBackend: routedBackend
         )
 
         if let insertIdx = requestQueue.firstIndex(where: { $0.priority < priority }) {
@@ -580,7 +598,8 @@ final class GenerationQueue {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        routedBackend: (any InferenceBackend)? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
@@ -603,7 +622,8 @@ final class GenerationQueue {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            routedBackend: routedBackend
         )
     }
 
@@ -632,7 +652,8 @@ final class GenerationQueue {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        routedBackend: (any InferenceBackend)? = nil
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages,
@@ -655,7 +676,8 @@ final class GenerationQueue {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            routedBackend: routedBackend
         )
     }
 
@@ -791,6 +813,10 @@ final class GenerationQueue {
         // setPreToolUseHook(_:).
         let effectiveHandoffDetector = request.handoffDetector ?? handoffDetector
         let effectivePreToolUseHook = request.preToolUseHook ?? preToolUseHook
+        // Routed (Deep, #799) backend for this request, if any. When set, both
+        // the tool loop's backend reader and the generate closure dispatch here
+        // instead of the primary backend. nil = primary route (unchanged).
+        let routedBackend = request.routedBackend
 
         // Bind the per-request hook closures explicitly so the type checker
         // doesn't have to infer them inside the giant init expression below.
@@ -803,7 +829,7 @@ final class GenerationQueue {
         let loop = GenerationToolDispatchLoop(
             toolRegistry: toolRegistry,
             toolApprovalGate: toolApprovalGate,
-            currentBackend: { [weak self] in self?.currentBackend },
+            currentBackend: { [weak self] in routedBackend ?? self?.currentBackend },
             generateWithConfig: { [weak self] messages, systemPrompt, config in
                 guard let self else {
                     throw InferenceError.inferenceFailure("Generation queue deallocated")
@@ -811,7 +837,8 @@ final class GenerationQueue {
                 return try self.generateWithConfig(
                     structuredMessages: messages,
                     systemPrompt: systemPrompt,
-                    config: config
+                    config: config,
+                    backendOverride: routedBackend
                 )
             },
             yieldEvent: { [weak self] event in
@@ -850,7 +877,7 @@ final class GenerationQueue {
 
     func cancel(_ token: GenerationRequestToken) {
         if activeRequest?.token == token {
-            currentBackend?.stopGeneration()
+            (activeRequest?.routedBackend ?? currentBackend)?.stopGeneration()
             activeTask?.cancel()
             activeTask = nil
             activeRequest?.stream.setPhase(.failed("Cancelled"))
@@ -889,7 +916,7 @@ final class GenerationQueue {
     }
 
     func stopGeneration() {
-        currentBackend?.stopGeneration()
+        (activeRequest?.routedBackend ?? currentBackend)?.stopGeneration()
         activeTask?.cancel()
         activeTask = nil
         // Don't call `finishAndDiscard` on the active request here: doing
