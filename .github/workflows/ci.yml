@@ -342,11 +342,30 @@ jobs:
         # Gated on the deps-changed filter: Package.resolved can only go stale
         # when Package.swift is edited, so skipping when neither file changed
         # avoids ~47s of wasted resolve work on the typical PR (~15% of total CI).
+        #
+        # The committed Package.resolved is intentionally the PLAIN (no-trait)
+        # resolution, so this gate runs a plain `swift package resolve` and the
+        # two match by construction. Trait-gated deps (hummingbird + the Server
+        # stack via `--traits Server`; swift-syntax is already pinned for Macros)
+        # resolve on demand during trait builds and are NOT committed.
+        #
+        # LANDMINE: `swift build/test --traits Server,Macros` (the optional-traits
+        # sweep CLAUDE.md mandates) MUTATES Package.resolved in your working tree
+        # in place, appending ~163 lines of Server deps. If this gate trips on a
+        # PR, you almost certainly committed that trait-bloated lockfile by
+        # accident. Do NOT "fix" it by stripping lines by hand — just regenerate
+        # with a plain resolve and re-commit:
+        #     git checkout Package.resolved && swift package resolve
         if: steps.deps-changed.outputs.deps == 'true'
         run: |
           swift package resolve
-          git diff --exit-code Package.resolved || \
-            (echo "Package.resolved is stale — run 'swift package resolve' and commit the result." && exit 1)
+          git diff --exit-code Package.resolved || {
+            echo "::error::Package.resolved is stale or carries trait-only deps."
+            echo "The committed lockfile must be the PLAIN resolution. Regenerate with:"
+            echo "    git checkout Package.resolved && swift package resolve"
+            echo "Do NOT commit the lockfile produced by a '--traits Server' build/test."
+            exit 1
+          }
 
       - name: Verify Tier 0 affected-suites graph snapshot is up to date
         # The Tier 0 resolver (scripts/affected-suites.sh, issue #1588) reads a
