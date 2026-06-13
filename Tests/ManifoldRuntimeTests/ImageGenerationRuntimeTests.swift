@@ -277,6 +277,87 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         XCTAssertEqual(storedPayload.imageURL, imageURL)
     }
 
+    // MARK: - Test 1b: Preview events round-trip through runtime translation
+    //
+    // Contract-level proof that the additive `.preview` case flows
+    // backend → service → runtime without an emit source: we synthesize
+    // `.preview` events directly on the mock backend. Verifies the runtime
+    // translates `ImageGenerationEvent.preview(step:total:image:)` into
+    // `ImageRuntimeEvent.preview(messageID:step:totalSteps:image:)` keyed to
+    // the placeholder, carries the in-memory bytes through unchanged, and
+    // does NOT persist previews (only the terminal `.completed` writes through
+    // the store).
+
+    func test_generate_previewEvents_roundTripAndAreNotPersisted() async throws {
+        let outDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("img-preview-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outDir) }
+
+        let imageURL = outDir.appendingPathComponent("out.png")
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: imageURL)
+
+        // Two distinct preview payloads so we can assert the bytes survive
+        // the translation intact and the latest one wins.
+        let previewA = Data([0x01, 0x02, 0x03])
+        let previewB = Data([0x0A, 0x0B, 0x0C, 0x0D])
+
+        let backend = MockImageBackend()
+        backend.setPlan(.init(events: [
+            .progress(step: 1, total: 4),
+            .preview(step: 2, total: 4, image: previewA),
+            .preview(step: 4, total: 4, image: previewB),
+            .completed(imageURL)
+        ]))
+
+        let (runtime, store, _, _) = try await makeRuntime(backend: backend)
+        let sessionID = UUID()
+        // previewStride opts in at the contract level; the mock backend
+        // emits previews unconditionally, so this documents the knob's role
+        // rather than gating the mock.
+        let config = ImageGenerationConfig(
+            steps: 4, width: 64, height: 64, outputDirectory: outDir, previewStride: 2
+        )
+
+        let messageID = try await runtime.generate(
+            prompt: "a fox",
+            config: config,
+            in: sessionID
+        )
+
+        let events = try await collectEvents(from: runtime) { event in
+            if case .completed = event { return true }
+            if case .failed = event { return true }
+            return false
+        }
+
+        // started → progress → preview → preview → completed
+        XCTAssertEqual(events.count, 5)
+
+        let previews: [(step: Int, total: Int, image: Data)] = events.compactMap { event in
+            if case .preview(let id, let step, let total, let image) = event {
+                XCTAssertEqual(id, messageID, "preview keyed to the wrong placeholder")
+                return (step, total, image)
+            }
+            return nil
+        }
+        XCTAssertEqual(previews.count, 2)
+        XCTAssertEqual(previews[0].step, 2)
+        XCTAssertEqual(previews[0].total, 4)
+        XCTAssertEqual(previews[0].image, previewA, "preview bytes mutated in translation")
+        XCTAssertEqual(previews[1].step, 4)
+        XCTAssertEqual(previews[1].image, previewB)
+
+        // Previews are transient — only the terminal `.completed` persists.
+        let stored = try await store.fetchMessages(for: sessionID)
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored.first?.contentParts.count, 1)
+        guard case .generatedImage(let storedPayload) = stored.first?.contentParts.first else {
+            return XCTFail("Expected stored part to be .generatedImage")
+        }
+        XCTAssertEqual(storedPayload.imageURL, imageURL)
+    }
+
     // MARK: - Test 2: Generate without loaded model
 
     func test_generate_withoutLoadedModel_emitsFailed() async throws {
@@ -446,15 +527,15 @@ final class ImageGenerationRuntimeTests: XCTestCase {
         // runtimes (or, more importantly, across message IDs within one).
         for event in collectedA {
             switch event {
-            case .started(let id, _), .progress(let id, _, _), .completed(let id, _),
-                 .failed(let id, _), .cancelled(let id):
+            case .started(let id, _), .progress(let id, _, _), .preview(let id, _, _, _),
+                 .completed(let id, _), .failed(let id, _), .cancelled(let id):
                 XCTAssertEqual(id, idA, "runtimeA emitted event for non-matching messageID")
             }
         }
         for event in collectedB {
             switch event {
-            case .started(let id, _), .progress(let id, _, _), .completed(let id, _),
-                 .failed(let id, _), .cancelled(let id):
+            case .started(let id, _), .progress(let id, _, _), .preview(let id, _, _, _),
+                 .completed(let id, _), .failed(let id, _), .cancelled(let id):
                 XCTAssertEqual(id, idB, "runtimeB emitted event for non-matching messageID")
             }
         }

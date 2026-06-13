@@ -39,6 +39,18 @@ public enum ImageRuntimeEvent: Sendable, Equatable {
     /// minimal until completion.
     case progress(messageID: ChatMessage.ID, step: Int, totalSteps: Int)
 
+    /// Intermediate denoise preview for the placeholder at `messageID`.
+    ///
+    /// Emitted only when the caller opted in via
+    /// ``ImageGenerationConfig/previewStride``; the runtime forwards the
+    /// backend's ``ImageGenerationEvent/preview(step:total:image:)`` without
+    /// touching the store. `image` carries encoded image bytes (PNG/JPEG)
+    /// for a progressively-refining thumbnail — adapters render it directly
+    /// and discard prior previews; previews are **not** persisted (only the
+    /// terminal ``completed(messageID:payload:)`` writes through
+    /// ``MessageStore``).
+    case preview(messageID: ChatMessage.ID, step: Int, totalSteps: Int, image: Data)
+
     /// Generation completed; the persisted message at `messageID` now
     /// carries a single ``MessagePart/generatedImage(_:)`` part with
     /// `payload`. Adapters refresh their view-state for `messageID` from
@@ -70,6 +82,8 @@ public enum ImageRuntimeEvent: Sendable, Equatable {
             return lid == rid && lp == rp
         case let (.progress(lid, ls, lt), .progress(rid, rs, rt)):
             return lid == rid && ls == rs && lt == rt
+        case let (.preview(lid, ls, lt, li), .preview(rid, rs, rt, ri)):
+            return lid == rid && ls == rs && lt == rt && li == ri
         case let (.completed(lid, lp), .completed(rid, rp)):
             return lid == rid && lp == rp
         case let (.failed(lid, le), .failed(rid, re)):
