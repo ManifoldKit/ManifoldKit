@@ -267,23 +267,70 @@ final class ChatGenerationCoordinatorTests: XCTestCase {
 
     func test_awaitStreamCompletion_resumesWhenHandleClears() async {
         let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentMessages = {
+            [ChatMessage(id: msgID, role: .assistant, content: "hi", sessionID: sessionID)]
+        }
 
+        coord.activeConversationMessageID = msgID
         coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
 
-        // Bound the wait so a scheduler-starvation bug fails fast instead of
-        // hanging the entire CI run (awaitStreamCompletion polls with Task.yield).
+        // Bound the wait so a regression that drops the continuation fails fast
+        // instead of hanging the entire CI run.
         let exp = expectation(description: "awaitStreamCompletion returns")
         let awaiter = Task { @MainActor in
             await coord.awaitStreamCompletion()
             exp.fulfill()
         }
 
-        // Clear the handle after one cooperative-scheduler turn.
+        // Let the awaiter park on its continuation, then clear the handle via
+        // the real terminal path so the continuation-resume seam is exercised.
         await Task.yield()
-        coord.activeConversationStreamHandle = nil
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
 
         await fulfillment(of: [exp], timeout: 2)
         _ = awaiter  // keep the task alive until the expectation is met
+        XCTAssertNil(coord.activeConversationStreamHandle)
+    }
+
+    // MARK: - 11b. awaitStreamCompletion resumes all concurrent callers
+
+    func test_awaitStreamCompletion_resumesAllConcurrentCallers() async {
+        let coord = makeSilentCoordinator()
+        let sessionID = UUID()
+        let msgID = UUID()
+        coord.onTransitionPhase = { _ in true }
+        coord.currentActiveSessionID = { sessionID }
+        coord.currentActiveSession = { ChatSession(id: sessionID, title: "Test") }
+        coord.currentMessages = {
+            [ChatMessage(id: msgID, role: .assistant, content: "hi", sessionID: sessionID)]
+        }
+
+        coord.activeConversationMessageID = msgID
+        coord.activeConversationStreamHandle = ConversationStreamHandle(id: UUID())
+
+        // Two callers park on the same handle concurrently. Both must resume
+        // from a single terminal event — proves the waiter array drains fully,
+        // not just the first parked continuation.
+        let bothDone = expectation(description: "both awaitStreamCompletion calls return")
+        let waiters = Task { @MainActor in
+            async let first: Void = coord.awaitStreamCompletion()
+            async let second: Void = coord.awaitStreamCompletion()
+            _ = await (first, second)
+            bothDone.fulfill()
+        }
+
+        // Let both callers park before clearing the handle through the real path.
+        await Task.yield()
+        await Task.yield()
+        await coord.handle(runtimeEvent: .streamFinished(messageID: msgID, reason: .stop))
+
+        await fulfillment(of: [bothDone], timeout: 2)
+        _ = waiters
         XCTAssertNil(coord.activeConversationStreamHandle)
     }
 
