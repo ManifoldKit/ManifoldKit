@@ -260,6 +260,123 @@ final class GGUFMetadataReaderTests: XCTestCase {
         }
     }
 
+    // MARK: - Buffered reads + array seek (#1787)
+
+    func test_readMetadata_stringTokensArray_thenLaterKeys_parse() throws {
+        // The worst case: a large STRING `tokens` array (no array-level byte count,
+        // must be walked element-by-element via skipString) followed by numeric
+        // companions and the keys we extract. Proves the parser lands at the right
+        // offset after skipping a string array.
+        let tokenCount = 5_000
+        let header = makeGGUFV3Header(metadata: [
+            makeStringArrayKV(key: "tokenizer.ggml.tokens", count: tokenCount, element: "tok"),
+            makeFloat32ArrayKV(key: "tokenizer.ggml.scores", count: tokenCount),
+            makeInt32ArrayKV(key: "tokenizer.ggml.token_type", count: tokenCount),
+            makeStringKV(key: "general.name", value: "AfterArrays"),
+            makeStringKV(key: "general.architecture", value: "llama"),
+            makeUInt32KV(key: "llama.context_length", value: 8192)
+        ])
+        let url = try writeTempFile(named: "string-array.gguf", data: header)
+
+        let metadata = try GGUFMetadataReader.readMetadata(from: url)
+
+        XCTAssertEqual(metadata.generalName, "AfterArrays", "Keys after a string array must parse — proves correct post-walk offset")
+        XCTAssertEqual(metadata.generalArchitecture, "llama")
+        XCTAssertEqual(metadata.contextLength, 8192)
+    }
+
+    func test_readMetadata_fixedWidthArray_thenLaterKeys_parse() throws {
+        // A fixed-width (f32) array is skipped via a single seek of count*4 bytes.
+        // The key AFTER it must still parse — proving the seek arithmetic is exact.
+        //
+        // Sabotage proof (verified manually, not committed live): writing a declared
+        // count one element short of the bytes written lands the parser early, so
+        // `general.name` no longer equals "SeekTarget" and the assertion below fails.
+        let count = 50_000
+        let header = makeGGUFV3Header(metadata: [
+            makeFloat32ArrayKV(key: "tokenizer.ggml.scores", count: count),
+            makeStringKV(key: "general.name", value: "SeekTarget"),
+            makeStringKV(key: "general.architecture", value: "llama"),
+            makeUInt32KV(key: "llama.context_length", value: 4096)
+        ])
+        let url = try writeTempFile(named: "fixedwidth-array.gguf", data: header)
+
+        let metadata = try GGUFMetadataReader.readMetadata(from: url)
+        XCTAssertEqual(metadata.generalName, "SeekTarget")
+        XCTAssertEqual(metadata.contextLength, 4096)
+    }
+
+    func test_readMetadata_primitiveStraddlingChunkBoundary_parses() throws {
+        // Force a value to be read across the 64 KiB buffer refill: pad the metadata
+        // region with a filler string larger than one chunk so the keys after it are
+        // served from a later refill, and a multi-byte primitive spans the boundary.
+        //
+        // Sabotage proof (verified manually): if BufferedFileReader.read returned only
+        // the first-chunk bytes instead of reassembling across refills, contextLength
+        // would be garbage and the assertion fails.
+        let chunk = 64 * 1024
+
+        var meta: [Data] = []
+        let fillerValue = String(repeating: "x", count: chunk + 7)  // > one chunk, odd tail
+        meta.append(makeStringKV(key: "filler", value: fillerValue))
+        meta.append(makeStringKV(key: "general.architecture", value: "llama"))
+        meta.append(makeUInt32KV(key: "llama.context_length", value: 123_456))
+        meta.append(makeStringKV(key: "general.name", value: "BoundaryModel"))
+
+        let header = makeGGUFV3Header(metadata: meta)
+        let url = try writeTempFile(named: "boundary.gguf", data: header)
+
+        let metadata = try GGUFMetadataReader.readMetadata(from: url)
+        XCTAssertEqual(metadata.contextLength, 123_456, "uint32 read across a buffer refill must reassemble correctly")
+        XCTAssertEqual(metadata.generalName, "BoundaryModel")
+        XCTAssertEqual(metadata.generalArchitecture, "llama")
+    }
+
+    func test_readMetadata_goldenParity_v2_and_v3() throws {
+        // Golden-parity: a representative metadata set (including a string array +
+        // numeric companion) must produce byte-identical parsed fields across v2 and
+        // v3 envelopes, and match the captured baseline.
+        let kvs: [Data] = [
+            makeStringArrayKV(key: "tokenizer.ggml.tokens", count: 1_000, element: "t"),
+            makeFloat32ArrayKV(key: "tokenizer.ggml.scores", count: 1_000),
+            makeStringKV(key: "general.name", value: "GoldenModel"),
+            makeStringKV(key: "general.architecture", value: "gemma"),
+            makeUInt32KV(key: "general.file_type", value: 15),
+            makeUInt32KV(key: "gemma.context_length", value: 8192),
+            makeUInt32KV(key: "gemma.block_count", value: 28),
+            makeUInt32KV(key: "gemma.embedding_length", value: 3072),
+            makeUInt32KV(key: "gemma.attention.head_count", value: 16),
+            makeUInt32KV(key: "gemma.attention.head_count_kv", value: 8),
+            makeStringKV(key: "tokenizer.chat_template", value: "<|im_start|>{{x}}")
+        ]
+        let v3 = try writeTempFile(named: "golden-v3.gguf", data: makeGGUFV3Header(metadata: kvs))
+        let v2 = try writeTempFile(named: "golden-v2.gguf", data: makeGGUFV2Header(metadata: kvs))
+
+        let m3 = try GGUFMetadataReader.readMetadata(from: v3)
+        let m2 = try GGUFMetadataReader.readMetadata(from: v2)
+
+        // Baseline captured from the same metadata definition.
+        let baseline = GGUFMetadata(
+            generalName: "GoldenModel",
+            generalArchitecture: "gemma",
+            contextLength: 8192,
+            chatTemplate: "<|im_start|>{{x}}",
+            fileType: 15,
+            kvCacheParameters: GGUFKVCacheParameters(
+                blockCount: 28,
+                embeddingLength: 3072,
+                attentionHeadCount: 16,
+                attentionHeadCountKV: 8,
+                attentionKeyLength: nil,
+                attentionValueLength: nil
+            )
+        )
+
+        XCTAssertEqual(m3, baseline, "v3 parse must match the captured baseline")
+        XCTAssertEqual(m2, baseline, "v2 parse must match the captured baseline")
+        XCTAssertEqual(m2, m3, "v2 and v3 envelopes of the same metadata must parse identically")
+    }
+
     func test_isValidGGUF_invalidFile_returnsFalse() throws {
         let data = Data(repeating: 0, count: 64)
         let url = try writeTempFile(named: "invalid.gguf", data: data)
@@ -372,6 +489,53 @@ final class GGUFMetadataReaderTests: XCTestCase {
         appendUInt32(&data, 9)
         appendUInt32(&data, 0)              // element type: uint8
         appendUInt64(&data, count)          // declared count (no actual bytes follow)
+        return data
+    }
+
+    /// Builds a KV pair whose value is a STRING array of `count` identical-prefixed
+    /// elements (`<element>-<i>`). String arrays carry NO array-level byte count, so
+    /// this exercises the per-element `skipString` walk.
+    private func makeStringArrayKV(key: String, count: Int, element: String) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        appendUInt32(&data, 9)   // ARRAY
+        appendUInt32(&data, 8)   // element type: STRING
+        appendUInt64(&data, UInt64(count))
+        for i in 0..<count {
+            let elementBytes = Array("\(element)-\(i)".utf8)
+            appendUInt64(&data, UInt64(elementBytes.count))
+            data.append(contentsOf: elementBytes)
+        }
+        return data
+    }
+
+    /// Builds a KV pair whose value is a FLOAT32 array of `count` zeroed elements.
+    /// Fixed-width (4 bytes) — exercises the single-seek fast path.
+    private func makeFloat32ArrayKV(key: String, count: Int) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        appendUInt32(&data, 9)   // ARRAY
+        appendUInt32(&data, 6)   // element type: FLOAT32
+        appendUInt64(&data, UInt64(count))
+        data.append(Data(repeating: 0x00, count: count * 4))
+        return data
+    }
+
+    /// Builds a KV pair whose value is an INT32 array of `count` zeroed elements.
+    /// Fixed-width (4 bytes) — exercises the single-seek fast path.
+    private func makeInt32ArrayKV(key: String, count: Int) -> Data {
+        var data = Data()
+        let keyBytes = Array(key.utf8)
+        appendUInt64(&data, UInt64(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        appendUInt32(&data, 9)   // ARRAY
+        appendUInt32(&data, 5)   // element type: INT32
+        appendUInt64(&data, UInt64(count))
+        data.append(Data(repeating: 0x00, count: count * 4))
         return data
     }
 

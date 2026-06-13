@@ -168,6 +168,60 @@ final class ModelStorageServiceTests: XCTestCase {
         XCTAssertEqual(match?.fileSize, 1024)
     }
 
+    // MARK: - mmproj companion (single enumeration per scan, #1787)
+
+    func test_discoverModels_resolvesMmprojForEveryModel_withSingleEnumeration() throws {
+        // K text GGUFs + one mmproj sibling in the same directory. Every model's
+        // mmprojURL must resolve to the projector, and the parent directory must be
+        // enumerated exactly ONCE for the whole scan (not once per GGUF as the old
+        // O(K²) self-enumeration did).
+        let counter = CountingFileManager()
+        let scratch = makeIsolatedModelsDirectory()
+        // includeUserDocumentsFallback: false so the scan touches ONLY this scratch
+        // directory — otherwise the dev machine's ~/Documents/Models pollutes both
+        // the model count and the enumeration count.
+        let countingService = ModelStorageService(
+            fileManager: counter,
+            baseDirectory: scratch,
+            includeUserDocumentsFallback: false
+        )
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        try countingService.ensureModelsDirectory()
+        let dir = countingService.modelsDirectory
+
+        func writeGGUF(_ name: String) throws {
+            var data = Data([0x47, 0x47, 0x55, 0x46])
+            data.append(Data(repeating: 0xAA, count: 1020))
+            try data.write(to: dir.appendingPathComponent(name))
+        }
+
+        let k = 5
+        for i in 0..<k {
+            try writeGGUF("model-\(i).gguf")
+        }
+        try writeGGUF("mmproj-vision.gguf")
+
+        // Reset the counter so only the scan's enumerations are measured.
+        counter.contentsOfDirectoryCallCount = 0
+        let models = countingService.discoverModels()
+
+        let textModels = models.filter { !$0.fileName.lowercased().hasPrefix("mmproj") }
+        XCTAssertEqual(textModels.count, k, "All \(k) text models should be discovered")
+        XCTAssertTrue(
+            textModels.allSatisfy { $0.mmprojURL?.lastPathComponent == "mmproj-vision.gguf" },
+            "Every text model must resolve the mmproj companion"
+        )
+
+        // One enumeration for the models directory. The fallback (~/Documents/Models)
+        // is disabled in the isolated service, so no extra enumeration is expected.
+        // Sabotage proof: reverting ModelInfo.load to self-enumerate per file would
+        // make this K (one per GGUF) + 1 instead of 1.
+        XCTAssertEqual(
+            counter.contentsOfDirectoryCallCount, 1,
+            "The scan must enumerate the directory exactly once, not once per GGUF (#1787)"
+        )
+    }
+
     func test_discoverModels_singleFileCompatibilityIgnoresPackageManifest() throws {
         let ggufURL = try createGgufFile()
         try createDiffusionPackage()
@@ -592,5 +646,22 @@ final class ModelStorageServiceTests: XCTestCase {
         let space = service.availableDiskSpace()
 
         XCTAssertGreaterThan(space, 0, "Available disk space should be non-zero on a real system")
+    }
+}
+
+// MARK: - Counting FileManager
+
+/// A `FileManager` subclass that counts `contentsOfDirectory(at:...)` calls so a
+/// test can assert a directory is enumerated exactly once per scan (#1787).
+private final class CountingFileManager: FileManager {
+    var contentsOfDirectoryCallCount = 0
+
+    override func contentsOfDirectory(
+        at url: URL,
+        includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: FileManager.DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        contentsOfDirectoryCallCount += 1
+        return try super.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
     }
 }

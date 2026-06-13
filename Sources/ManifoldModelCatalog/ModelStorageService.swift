@@ -206,11 +206,19 @@ public final class ModelStorageService: @unchecked Sendable {
             return
         }
 
+        // Resolve the companion projector ONCE per directory rather than letting
+        // each GGUF re-enumerate the parent (the old O(K²) self-scan in
+        // ModelInfo.load) — see #1787. A directory ships at most one mmproj.
+        let mmprojCandidate = contents.first {
+            $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
+            $0.pathExtension.lowercased() == "gguf"
+        }
+
         for url in contents {
             // Check for GGUF files.
             if url.pathExtension.lowercased() == "gguf" {
                 do {
-                    let model = try ModelInfo.load(ggufURL: url)
+                    let model = try ModelInfo.load(ggufURL: url, mmprojURL: mmprojCandidate)
                     if seenIDs.insert(model.id).inserted {
                         models.append(model)
                     }

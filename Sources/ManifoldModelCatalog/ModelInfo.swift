@@ -192,7 +192,14 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
     /// context-length fields. Callers that want to react to the metadata
     /// failure can inspect the returned ``ModelInfo/detectedPromptTemplate``
     /// being `nil`.
-    public static func load(ggufURL url: URL) throws -> ModelInfo {
+    ///
+    /// - Parameter mmprojURL: An already-resolved companion projector URL.
+    ///   When a directory scan enumerates the parent directory once and threads
+    ///   the resolved candidate in (see `ModelStorageService.scanDirectory`),
+    ///   the per-file self-enumeration is skipped — turning an O(K²) scan into
+    ///   O(K) (#1787). Pass `nil` from the standalone entry point to keep the
+    ///   self-enumerating fallback.
+    public static func load(ggufURL url: URL, mmprojURL: URL? = nil) throws -> ModelInfo {
         let path = url.path
 
         guard url.pathExtension.lowercased() == "gguf" else {
@@ -264,21 +271,30 @@ public struct ModelInfo: Identifiable, Hashable, Sendable {
         // and optional paths produce equivalent ModelInfo values for the same file.
         info.capabilityTier = ModelCapabilityTier.estimate(fileSize: info.fileSize, modelType: info.modelType)
 
-        // Auto-detect a companion mmproj file in the same directory.
+        // Auto-detect a companion mmproj file in the same directory. A model that
+        // is itself an mmproj projector never carries a companion.
         if !url.lastPathComponent.lowercased().hasPrefix("mmproj") {
-            let parentDir = url.deletingLastPathComponent()
-            do {
-                let candidates = try fileManager.contentsOfDirectory(
-                    at: parentDir,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsHiddenFiles]
-                )
-                info.mmprojURL = candidates.first {
-                    $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
-                    $0.pathExtension.lowercased() == "gguf"
+            if let mmprojURL {
+                // Directory scan already enumerated the parent once and resolved
+                // the candidate — no per-file re-enumeration (#1787).
+                info.mmprojURL = mmprojURL
+            } else {
+                // Standalone entry point (e.g. drag-and-drop import): fall back to
+                // self-enumerating the parent directory.
+                let parentDir = url.deletingLastPathComponent()
+                do {
+                    let candidates = try fileManager.contentsOfDirectory(
+                        at: parentDir,
+                        includingPropertiesForKeys: nil,
+                        options: [.skipsHiddenFiles]
+                    )
+                    info.mmprojURL = candidates.first {
+                        $0.lastPathComponent.lowercased().hasPrefix("mmproj") &&
+                        $0.pathExtension.lowercased() == "gguf"
+                    }
+                } catch {
+                    Log.inference.warning("ModelInfo.load: mmproj companion scan failed in \(parentDir.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 }
-            } catch {
-                Log.inference.warning("ModelInfo.load: mmproj companion scan failed in \(parentDir.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
 
