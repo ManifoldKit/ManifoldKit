@@ -336,19 +336,32 @@ package struct ConversationTurnExecutor: Sendable {
         }
 
         // Copy messages into the new session with fresh IDs and updated
-        // sessionID.
-        for original in slice {
-            let copy = ChatMessage(
+        // sessionID. Drive the copy through the transactional batch API (same
+        // as the edit flow) so a transactional store commits the whole slice
+        // atomically and never exposes a half-copied branch.
+        //
+        // The session insert above commits separately from the message batch
+        // (the adapter's transaction spans messages only), so if the copy
+        // throws we must manually unwind the orphaned session — otherwise a
+        // failed branch strands a ghost/empty session that surfaces as a
+        // phantom in the sidebar. `transaction(block:)` does NOT roll back on
+        // throw in this codebase, so the rollback is an explicit delete.
+        let copyMutations: [MessageStoreMutation] = slice.map { original in
+            .insert(ChatMessage(
                 role: original.role,
                 contentParts: original.contentParts,
                 timestamp: original.timestamp,
                 sessionID: newSessionID
-            )
-            do {
-                try await persistence.insertMessage(copy)
-            } catch {
-                throw ConversationError.persistence(error)
-            }
+            ))
+        }
+        do {
+            try await persistence.performMessageMutations(copyMutations)
+        } catch {
+            // Roll back the session we just inserted before surfacing the copy
+            // failure. `deleteSession` is best-effort and logs on its own
+            // failure so the original copy error stays the caller-visible one.
+            await persistence.deleteSession(newSessionID)
+            throw ConversationError.persistence(error)
         }
 
         emit(.sessionBranched(newSessionID: newSessionID, copiedCount: slice.count))
@@ -828,7 +841,14 @@ package struct ConversationTurnExecutor: Sendable {
                     if var current = sessionRecord {
                         let previousID = current.activeAgentID
                         current.activeAgentID = handoff.targetAgentID
-                        _ = await persistence.updateSession(current)
+                        // Use the narrow single-column write rather than
+                        // rewriting the whole record: a concurrent edit to
+                        // another session field (title, agents, updatedAt) must
+                        // not be clobbered by this stale snapshot mid-stream.
+                        _ = await persistence.setActiveAgent(
+                            sessionID: current.id,
+                            agentID: handoff.targetAgentID
+                        )
                         sessionRecord = current
                         emit(.agentHandoff(from: previousID, to: handoff.targetAgentID))
                     } else {

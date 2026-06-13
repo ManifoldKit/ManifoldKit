@@ -202,11 +202,23 @@ final class ConversationRuntimeTests: XCTestCase {
         /// of performing the insert. Cleared after the throw so subsequent
         /// inserts succeed normally.
         var insertError: (any Error)?
+        /// When set, the insert at this 0-based call index throws instead of
+        /// performing the write — lets a test fail *mid*-batch (e.g. the 2nd
+        /// message of a branch copy) rather than only on the first insert.
+        /// Inserts before the failing index commit normally, exercising the
+        /// non-transactional fallback's partial-write window.
+        var failInsertAtIndex: Int?
+        private(set) var insertCallCount = 0
 
         func insertMessage(_ message: ChatMessage) async throws {
+            let currentIndex = insertCallCount
+            insertCallCount += 1
             if let error = insertError {
                 insertError = nil
                 throw error
+            }
+            if let failIndex = failInsertAtIndex, currentIndex == failIndex {
+                throw ChatPersistenceError.providerNotConfigured
             }
             messages[message.id] = message
             for hook in hooks {
@@ -2513,6 +2525,110 @@ final class ConversationRuntimeTests: XCTestCase {
         XCTAssertEqual(newMessages.count, 0, "No messages copied when insertSession fails")
         // Source unchanged.
         XCTAssertEqual(store.messages.count, 2, "Source session messages unchanged")
+    }
+
+    // MARK: - Branch: mid-copy message-insert failure rolls back the session
+
+    /// Integration test (in-memory SwiftData-shaped fakes): when copying the
+    /// branch slice fails partway through, the new session must NOT be left
+    /// behind as an orphan/phantom in the sidebar — the executor rolls it back
+    /// via `deleteSession` before rethrowing.
+    func test_branch_midCopyInsertFails_rollsBackSessionLeavingNoOrphan() async throws {
+        let sessionStore = RuntimeSessionStore()
+        let (runtime, store, _, _) = makeRuntime(sessionStore: sessionStore)
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        // Seed: user + assistant + user (branch at the last user, index 2 → a
+        // 3-message slice so the failing copy lands mid-batch).
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessage(role: .user, content: "q1", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "a1", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessage(role: .user, content: "q2", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+        try await store.insertMessage(msg2)
+        let sourceSession = ChatSession(id: sessionID, title: "Source")
+        try await sessionStore.insertSession(sourceSession)
+
+        // The three seed inserts above used call indices 0..2; fail the copy
+        // insert at call index 4 (the 2nd of three branch copies) so the first
+        // copy commits and we exercise the partial-write window.
+        store.failInsertAtIndex = 4
+
+        do {
+            _ = try await runtime.processTurn(TurnInput(
+                sessionID: sessionID,
+                kind: .branch(
+                    messageID: msg2.id,
+                    newSessionID: newSessionID,
+                    newSessionTitle: nil,
+                    generateAfter: false
+                )
+            ))
+            XCTFail("Expected ConversationError.persistence to be thrown")
+        } catch let error as ConversationError {
+            if case .persistence = error {
+                // Expected — the mid-copy failure surfaces as a persistence error.
+            } else {
+                XCTFail("Expected .persistence, got \(error)")
+            }
+        }
+
+        // The new session must have been rolled back: no phantom in the store.
+        let survivingSessions = try await sessionStore.fetchSessions()
+        XCTAssertNil(
+            survivingSessions.first { $0.id == newSessionID },
+            "Branch rollback must delete the orphaned session"
+        )
+        // Source session itself untouched.
+        XCTAssertNotNil(
+            survivingSessions.first { $0.id == sessionID },
+            "Source session unchanged by a failed branch"
+        )
+    }
+
+    // MARK: - Branch: successful copy writes the full slice
+
+    /// Integration test: a successful branch copies every message in the slice
+    /// (up to and including the branch point) into the new session.
+    func test_branch_success_copiesEveryMessageInSlice() async throws {
+        let sessionStore = RuntimeSessionStore()
+        let (runtime, store, _, _) = makeRuntime(sessionStore: sessionStore)
+        let sessionID = UUID()
+        let newSessionID = UUID()
+
+        let base = Date(timeIntervalSinceReferenceDate: 0)
+        let msg0 = ChatMessage(role: .user, content: "q1", timestamp: base, sessionID: sessionID)
+        let msg1 = ChatMessage(role: .assistant, content: "a1", timestamp: base.addingTimeInterval(1), sessionID: sessionID)
+        let msg2 = ChatMessage(role: .user, content: "q2", timestamp: base.addingTimeInterval(2), sessionID: sessionID)
+        try await store.insertMessage(msg0)
+        try await store.insertMessage(msg1)
+        try await store.insertMessage(msg2)
+        let sourceSession = ChatSession(id: sessionID, title: "Source")
+        try await sessionStore.insertSession(sourceSession)
+
+        // Branch at the last user (index 2) → all three messages copied.
+        let handle = try await runtime.processTurn(TurnInput(
+            sessionID: sessionID,
+            kind: .branch(
+                messageID: msg2.id,
+                newSessionID: newSessionID,
+                newSessionTitle: nil,
+                generateAfter: false
+            )
+        ))
+        XCTAssertNil(handle, "branch returns nil when generateAfter is false")
+
+        let newMessages = try await store.fetchMessages(for: newSessionID)
+        XCTAssertEqual(newMessages.count, 3, "Full slice copied into the new session")
+        XCTAssertEqual(newMessages.map(\.content), ["q1", "a1", "q2"])
+        // New session exists.
+        let allSessions = try await sessionStore.fetchSessions()
+        XCTAssertNotNil(
+            allSessions.first { $0.id == newSessionID },
+            "New session persisted on a successful branch"
+        )
     }
 
     // MARK: - Regenerate: cancel mid-stream
