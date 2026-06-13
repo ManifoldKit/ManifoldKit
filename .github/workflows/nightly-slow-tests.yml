@@ -3,10 +3,12 @@ name: Nightly slow tests
 # Runs the expensive tests excluded from per-PR CI:
 #  - LargeSessionListPerformanceTests — XCTMeasure perf baselines (~65s)
 #  - IntegratedStreamingPerformanceTests — full pipeline TTFT/cadence/E2E baselines (~20s)
-#  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s)
+#  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s); as of
+#    issue #1706 this also runs per-PR in ci.yml's ManifoldInferenceTests
+#    batch — it is kept here for nightly double-coverage, no longer gated.
 #  - ManifoldAuditSabotageSuiteTests — SABOTAGE=1 audit tripwire proof
 #  - ManifoldMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
-# Most are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
+# The perf suites are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
 # job leaves that unset so they skip there. Local `swift test` runs them
 # unconditionally (CI is also unset locally). The sabotage suite is separately
 # gated by SABOTAGE=1, and MCP E2E remains separately gated by RUN_MCP_E2E=1
