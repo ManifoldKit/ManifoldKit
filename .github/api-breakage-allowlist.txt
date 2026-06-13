@@ -81,3 +81,4 @@ API breakage: var InferenceBackend.isGenerating has been removed
 API breakage: var InferenceBackend.isModelLoaded has been removed
 API breakage: var InferenceBackend.manifest has been removed
 API breakage: constructor ChatViewModel.init(inferenceService:deviceCapability:modelStorage:memoryPressure:toolApprovalGate:userDefaults:conversationRuntime:) is now with @_spi
+API breakage: var CloudImageEncoding.encodeHook has been removed
