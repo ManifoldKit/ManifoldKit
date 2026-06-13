@@ -107,6 +107,42 @@ public final class ModelRegistry {
         }
     }
 
+    /// Off-main equivalent of ``refresh()``: re-scans the models directory on a
+    /// background task and rebuilds ``availableModels`` without stalling the
+    /// main thread on the synchronous GGUF/MLX scan (#1774).
+    ///
+    /// The Foundation-availability flag is read on the main actor *before* the
+    /// `await` so the `@MainActor` provider closure is never sent across an
+    /// isolation boundary; only the directory scan hops off-main (inside
+    /// ``ModelStorageService/discoverModelsOffMain()``). The discovered
+    /// `[ModelInfo]` / `[ModelDiscoveryError]` are `Sendable` and assigned back
+    /// on the main actor on resume. Mirrors ``refresh()`` semantics exactly.
+    ///
+    /// - Throws: A directory-creation error if the underlying models directory
+    ///   could not be ensured (raised before any background work).
+    public func refreshAsync() async throws {
+        try modelStorage.ensureModelsDirectory()
+
+        // Read the @MainActor provider before suspending — do not send the
+        // closure off-actor.
+        let includeFoundation = foundationModelProvider?() ?? false
+
+        let result = await modelStorage.discoverModelsOffMain()
+
+        var models: [ModelInfo] = []
+        if includeFoundation {
+            models.append(.builtInFoundation)
+        }
+        models.append(contentsOf: result.models)
+        availableModels = models
+        lastDiscoveryErrors = result.errors
+
+        if let selected = selectedModel,
+           !availableModels.contains(where: { $0.id == selected.id }) {
+            selectedModel = nil
+        }
+    }
+
     // MARK: - Selection
 
     /// Canonical programmatic entry point for changing ``selectedModel``.
