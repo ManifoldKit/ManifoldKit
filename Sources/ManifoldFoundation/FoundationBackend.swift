@@ -131,12 +131,27 @@ public final class FoundationBackend: InferenceBackend, @unchecked Sendable {
         maxOutputTokens: 4096,
         supportsStreaming: true,
         isRemote: false,
-        // Apple's FoundationModels SDK (Xcode 26.4) exposes no image-input
-        // surface — `Transcript.Segment` is text/structure only, `Prompt`
-        // carries only segments, and there is no `Data`/`CGImage` ingress
-        // anywhere in the public API. See the type-level doc comment above
-        // for the full audit. Flip to `true` and wire MessagePart.image
-        // through the SDK when Apple ships an image-bearing segment.
+        // Apple's FoundationModels SDK (Xcode 26.4, module 1.4.34) exposes no
+        // image-input surface — `Transcript.Segment` is text/structure only,
+        // `Prompt` carries only segments, and there is no `Data`/`CGImage`
+        // ingress anywhere in the public API. See the type-level doc comment
+        // above for the full audit.
+        //
+        // OUTSTANDING (#1710 — multimodal image input, blocked on post-WWDC
+        // Xcode beta): WWDC 2026 announced multimodal AFM 3; a later SDK should
+        // ship `Attachment(UIImage(...))` inside the `respond {}`/`streamResponse`
+        // result builder. When it lands:
+        //   1. Probe the installed SDK first — grep FoundationModels.swiftinterface
+        //      for image/attachment/pixelbuffer ingress; if absent, this stays false.
+        //   2. Make this RUNTIME-conditional, not a static `false`: the backend
+        //      exists on iOS/macOS 26, but vision needs 26.4+, e.g.
+        //        supportsVision: { if #available(iOS 26.4, macOS 26.4, *) { return true }; return false }()
+        //   3. In generate(), map each `MessagePart.image(data:mimeType:)` to an
+        //      `Attachment` and build the multimodal prompt under the same guard.
+        //   4. Confirm whether image requests route to Private Cloud Compute before
+        //      advertising on-device for image inputs (`isRemote`/doc-comment impact).
+        // Flipping this flag auto-enables the composer's PhotoAttachmentButton /
+        // VisionInputButton (they gate on BackendCapabilities.supportsVision).
         supportsVision: false,
         // Whole-call emission only — Apple's GuidedGeneration streams the
         // partially-decoded structure but we do not surface name/argument
