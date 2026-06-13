@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.49.0](https://github.com/roryford/ManifoldKit/compare/v0.48.2...v0.49.0) (2026-06-13)
+
+### Highlights
+
+**Route individual turns to a secondary backend without unloading the primary** ([#1799](https://github.com/roryford/ManifoldKit/issues/1799)) — `InferenceService` gains a `deepBackend` property and a `GenerationRoute` enum. Setting `route: .deep` on any `enqueue` call dispatches that turn through the host-owned secondary backend while the primary model stays loaded; the existing cancel/stop path targets the correct backend automatically. Existing callers are unaffected — `route` defaults to `.primary` and the byte-identical code path is preserved.
+
+```swift
+inferenceService.deepBackend = myCloudBackend
+
+let stream = try await inferenceService.enqueue(
+    messages: history,
+    systemPrompt: systemPrompt,
+    config: config,
+    route: .deep          // primary stays loaded; this turn goes to deepBackend
+)
+```
+
+**Resumable runs are now persisted end-to-end** ([#1795](https://github.com/roryford/ManifoldKit/issues/1795)) — `ConversationRun` is a full SwiftData `@Model` type. Runs are written through `RunStore`, survive app restart, and can be rehydrated via `resume(from:)` on `ConversationRuntime`. The `ResumableRunDriver` wires reconnect logic — partial output already delivered to the UI is not re-streamed.
+
+**Selection-time model profiles for Apple Foundation Models** ([#1783](https://github.com/roryford/ManifoldKit/issues/1783)) — `ModelProfile` is computed at selection time from `DeviceCapability` and the new MoE-aware recommender inputs, giving the Apple FM tier (Tier 0) an accurate capability signal before the model loads. This feeds `hasDeepBackend` detection and will drive auto-routing once Fireside P1 lands.
+
+### Performance
+
+* **Streaming render is O(n) again** ([#1788](https://github.com/roryford/ManifoldKit/issues/1788)) — the UI streaming path was rebuilding the full message array on every token event; it now appends to an existing buffer.
+* **Session fetch by ID instead of full table scan** ([#1789](https://github.com/roryford/ManifoldKit/issues/1789)) — `ConversationRuntime` was scanning the entire sessions table to locate the active session on every turn; it now fetches by primary key.
+* **Cloud stream frames parsed once** ([#1800](https://github.com/roryford/ManifoldKit/issues/1800)) — each SSE frame was decoded 8–12 times through the provider chain; a single parse result is now threaded through.
+* **Model management no longer scans disk on every open** ([#1798](https://github.com/roryford/ManifoldKit/issues/1798)) — `ModelManagementSheet` dropped its per-appear `invalidateModelCache()` call; the GGUF syscall storm on sheet open is gone.
+
+### Fixes
+
+* Branch flow uses a transactional copy with rollback to prevent partial-branch corruption on error ([#1792](https://github.com/roryford/ManifoldKit/issues/1792)).
+* HuggingFace download delegate and path handling hardened against missing-file and redirect edge cases ([#1793](https://github.com/roryford/ManifoldKit/issues/1793)).
+* Model-load memory budgeting now accounts for MoE sparse activation, preventing over-allocation on large mixture models ([#1794](https://github.com/roryford/ManifoldKit/issues/1794)).
+* `CloudImageEncoding.encodeHook` access made race-free under concurrent generation ([#1791](https://github.com/roryford/ManifoldKit/issues/1791)).
+* MCP OAuth and SwiftData encoding errors now surface their underlying message instead of being swallowed ([#1790](https://github.com/roryford/ManifoldKit/issues/1790)).
+
 ## [0.48.2](https://github.com/roryford/ManifoldKit/compare/v0.48.1...v0.48.2) (2026-06-13)
 
 ### Highlights
