@@ -288,7 +288,12 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
 
         if let resumeData {
             Log.download.info("Retrying download \(id) with resume data (\(resumeData.count) bytes)")
-            let task = sessionCoordinator.downloadTask(withResumeData: resumeData)
+            guard let task = sessionCoordinator.downloadTask(withResumeData: resumeData) else {
+                Log.download.error("Cannot retry download \(id): background session unavailable")
+                activeDownloads[model.id]?.markFailed(error: "Download session was torn down; please retry.")
+                endActivityIfNeeded(modelID: model.id)
+                return
+            }
             let context = TaskContext(
                 modelID: model.id,
                 relativePath: nil,
@@ -540,7 +545,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         url: URL,
         expectedChecksum: ModelFileChecksum?
     ) throws {
-        let task = sessionCoordinator.downloadTask(with: url)
+        guard let task = sessionCoordinator.downloadTask(with: url) else {
+            throw HuggingFaceError.invalidDownloadedFile(reason: "Background session unavailable for \(model.id)")
+        }
         let context = TaskContext(
             modelID: model.id,
             relativePath: nil,
@@ -580,7 +587,9 @@ public final class BackgroundDownloadManager: NSObject, @unchecked Sendable, Bac
         var tasks: [URLSessionDownloadTask] = []
         var taskIDs: Set<Int> = []
         for file in files {
-            let task = sessionCoordinator.downloadTask(with: file.url)
+            guard let task = sessionCoordinator.downloadTask(with: file.url) else {
+                throw HuggingFaceError.invalidDownloadedFile(reason: "Background session unavailable for snapshot \(model.id)")
+            }
             let taskContext = TaskContext(
                 modelID: model.id,
                 relativePath: file.relativePath,
