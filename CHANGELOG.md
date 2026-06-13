@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.48.1](https://github.com/roryford/ManifoldKit/compare/v0.48.0...v0.48.1) (2026-06-13)
+
+### Highlights
+
+**Streaming-completion wait no longer busy-polls** ([#1772](https://github.com/roryford/ManifoldKit/issues/1772)) — `ChatGenerationCoordinator.awaitStreamCompletion()` previously spun a 1 ms `Task.sleep` loop on every turn while waiting for the active stream handle to clear. It now suspends on a continuation that resumes the instant the handle is cleared — eliminating the per-turn polling and closing a latent hang where a caller parked across stream teardown would never wake.
+
+### Fixes
+
+* Run the `TrafficBoundaryAuditTest` source-boundary audit on every PR instead of nightly-only, so network- and import-boundary violations are caught before merge rather than days later ([#1706](https://github.com/roryford/ManifoldKit/issues/1706), [#1772](https://github.com/roryford/ManifoldKit/issues/1772)).
+
 ## [0.48.0](https://github.com/roryford/ManifoldKit/compare/v0.47.0...v0.48.0) (2026-06-12)
 
 ManifoldKit's packaging is rebuilt. SwiftPM traits are retired in favor of library products, and the heavy MLX and llama.cpp backends move to companion packages — `swift build` just works, in every configuration, with no trait matrix. Full upgrade guide: [docs/MIGRATION-0.48.md](docs/MIGRATION-0.48.md).
