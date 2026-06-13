@@ -418,6 +418,8 @@ public final class SwiftDataPersistenceProvider: SessionStore, MessageStore, Tra
         // save (proven by SwiftDataTransactionalMutationTests'
         // rollback cases, which fail under a transaction-based rewrite). The
         // manual rollback is what gives the batch its all-or-nothing semantics.
+        // This is a documented WONTFIX (#1682): the transaction-based rewrite
+        // has been evaluated and rejected on those grounds — do not re-litigate.
         var writtenRecords: [ManifoldInference.ChatMessage] = []
         do {
             for mutation in mutations {

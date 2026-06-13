@@ -63,6 +63,18 @@ plan from reality at a glance. Where the prose below still reads as future tense
 > unchanged (`import ManifoldMLX` / `import ManifoldLlama` still compile). The RING 2 prose
 > below lists them as adapter products — they remain so, just sourced from companion packages.
 
+### Companion-boundary audit (2026-06)
+
+A grounded recon pass over the v0.48 split confirms the boundary is **clean** — no
+duplication or shadowing crossed it. The companion packages reuse this repo's shared test
+products (`ManifoldTestSupport`, `ManifoldBackendTestKit`) for their mocks and contract
+checks rather than forking copies, so there is a single source of truth for `MockInferenceBackend`,
+the contract mixins, and `FixtureComparator`. GGUF parsing is **not** duplicated: core
+(`ManifoldHardware`) parses GGUF headers only for capability/load planning, while
+`manifold-llama` does the runtime model load — distinct concerns over the same file format,
+not a forked parser. No cross-boundary type shadowing was found (no duplicate `ManifoldMLX` /
+`ManifoldLlama` symbol definitions split across repos).
+
 This is a **planning artifact**, not user-facing documentation and not an implementation
 plan. It captures the agreed *end state* for ManifoldKit's module architecture so a
 subsequent migration plan can be argued against a fixed target. When the structure

@@ -5,6 +5,10 @@ import Foundation
 /// Useful for catching model "looping" during streaming generation, where the model
 /// repeats the same phrase or sentence indefinitely. ``ChatViewModel`` uses this
 /// automatically when ``ChatViewModel/loopDetectionEnabled`` is `true`.
+///
+/// Perf note (#1796): the tail-bounding fix below was the one high-value §A item from the
+/// perf-grounding pass — it shipped (#1802, O(n²)→O(n) per streamed token). The remaining
+/// §A candidates were judged marginal or contested and were not pursued.
 public enum RepetitionDetector {
 
     /// Returns `true` when the tail of `text` appears to be a contiguous repeated chunk.
