@@ -75,4 +75,19 @@ final class DownloadPathContainmentTests: XCTestCase {
             "An in-bounds destination must remain accepted after the symlink-resolving fix"
         )
     }
+
+    /// A sibling directory sharing a string prefix with the models directory must
+    /// be REJECTED. Guards against the classic `hasPrefix` hole where `/…/Models-evil`
+    /// would slip past a `/…/Models` check done without the trailing-separator anchor.
+    /// The production predicate appends `"/"` to the models path precisely to make the
+    /// comparison path-component-aware rather than raw-string-prefix-vulnerable.
+    func testSiblingDirectorySharingPrefixIsRejected() throws {
+        let evilSibling = modelsDirectory.deletingLastPathComponent()
+            .appendingPathComponent(modelsDirectory.lastPathComponent + "-evil")
+        let destination = evilSibling.appendingPathComponent("model.gguf")
+        XCTAssertFalse(
+            isContained(destination: destination, modelsDirectory: modelsDirectory),
+            "A prefix-sharing sibling directory must not pass the containment check"
+        )
+    }
 }
