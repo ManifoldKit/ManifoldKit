@@ -51,6 +51,32 @@ public struct ImageGenerationProgress: Sendable, Equatable {
     /// replaces the prior value so UI renders only the freshest thumbnail.
     public let previewImage: Data?
 
+    /// Original initializer, preserved unchanged for source compatibility with
+    /// pre-preview callers. Leaves ``previewImage`` `nil`. The mangled symbol of
+    /// this six-argument init must stay identical to its origin/main shape — the
+    /// preview parameter lives on the separate initializer below, not as a
+    /// defaulted argument here (a defaulted addition still changes the symbol and
+    /// trips the public-API source-compatibility gate).
+    public init(
+        messageID: UUID,
+        prompt: String,
+        step: Int,
+        totalSteps: Int,
+        isComplete: Bool,
+        error: String?
+    ) {
+        self.messageID = messageID
+        self.prompt = prompt
+        self.step = step
+        self.totalSteps = totalSteps
+        self.isComplete = isComplete
+        self.error = error
+        self.previewImage = nil
+    }
+
+    /// Preview-aware initializer. Use this overload to thread an intermediate
+    /// denoise ``previewImage`` through; the six-argument init above remains for
+    /// existing callers.
     public init(
         messageID: UUID,
         prompt: String,
@@ -58,7 +84,7 @@ public struct ImageGenerationProgress: Sendable, Equatable {
         totalSteps: Int,
         isComplete: Bool,
         error: String?,
-        previewImage: Data? = nil
+        previewImage: Data?
     ) {
         self.messageID = messageID
         self.prompt = prompt
