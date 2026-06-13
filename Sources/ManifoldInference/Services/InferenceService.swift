@@ -153,6 +153,33 @@ public final class InferenceService {
     /// reset, or otherwise manage the lifecycle of this backend.
     public var fastBackend: (any InferenceBackend)?
 
+    // MARK: - Deep-Backend Routing
+
+    /// Optional secondary backend for Deep-scoped turns (#799). Host-owned and
+    /// NOT registered through the load coordinator — InferenceService never
+    /// unloads/resets it (identical contract to `fastBackend`). When a request
+    /// is enqueued with `route: .deep` and this is set, it dispatches here while
+    /// the primary backend stays loaded. With a cloud backend this coexists at
+    /// zero local-memory cost. nil (default) = Deep falls back to the primary.
+    public var deepBackend: (any InferenceBackend)?
+
+    /// Whether a Deep backend is configured (cheap check for callers deciding
+    /// whether `.deep` routing will actually engage a second engine).
+    public var hasDeepBackend: Bool { deepBackend != nil }
+
+    /// Capabilities of the Deep backend, if configured — callers resolving
+    /// context window / sampler support for a Deep-routed turn must use these,
+    /// not the primary's.
+    public var deepCapabilities: BackendCapabilities? { deepBackend?.capabilities }
+
+    /// Selects which backend a queued generation dispatches to (#799).
+    public enum GenerationRoute: Sendable {
+        /// Primary backend (default — unchanged behavior).
+        case primary
+        /// Host-configured Deep backend (`deepBackend`); falls back to primary when unset.
+        case deep
+    }
+
     // MARK: - Backend Registration
 
     public func registerBackendFactory(_ factory: @escaping BackendFactory) {
@@ -412,15 +439,18 @@ public final class InferenceService {
         systemPrompt: String? = nil,
         config: GenerationConfig,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        route: GenerationRoute = .primary
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
+        let routedBackend: (any InferenceBackend)? = (route == .deep) ? deepBackend : nil
         return try generation.enqueue(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
             config: config,
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            routedBackend: routedBackend
         )
     }
 
@@ -436,9 +466,11 @@ public final class InferenceService {
         priority: GenerationPriority = .normal,
         requestGroupID: UUID? = nil,
         handoffDetector: (@Sendable (UUID?, ToolCall) -> HandoffDetectionResult)? = nil,
-        preToolUseHook: PreToolUseHook? = nil
+        preToolUseHook: PreToolUseHook? = nil,
+        route: GenerationRoute = .primary
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
+        let routedBackend: (any InferenceBackend)? = (route == .deep) ? deepBackend : nil
         return try generation.enqueue(
             structuredMessages: messages,
             systemPrompt: systemPrompt,
@@ -446,7 +478,8 @@ public final class InferenceService {
             priority: priority,
             requestGroupID: requestGroupID,
             handoffDetector: handoffDetector,
-            preToolUseHook: preToolUseHook
+            preToolUseHook: preToolUseHook,
+            routedBackend: routedBackend
         )
     }
 
@@ -474,7 +507,8 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        route: GenerationRoute = .primary
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             messages: messages,
@@ -497,7 +531,8 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            route: route
         )
     }
 
@@ -518,9 +553,11 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        route: GenerationRoute = .primary
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         ensureProviderWired()
+        let routedBackend: (any InferenceBackend)? = (route == .deep) ? deepBackend : nil
         return try generation.enqueue(
             structuredMessages: messages.map { StructuredMessage(role: $0.role, content: $0.content) },
             systemPrompt: systemPrompt,
@@ -542,7 +579,8 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            routedBackend: routedBackend
         )
     }
 
@@ -567,7 +605,8 @@ public final class InferenceService {
         toolChoice: ToolChoice = .auto,
         maxToolIterations: Int = 10,
         priority: GenerationPriority = .normal,
-        requestGroupID: UUID? = nil
+        requestGroupID: UUID? = nil,
+        route: GenerationRoute = .primary
     ) throws -> (token: GenerationRequestToken, stream: GenerationStream) {
         try enqueue(
             structuredMessages: messages,
@@ -590,7 +629,8 @@ public final class InferenceService {
                 maxToolIterations: maxToolIterations
             ),
             priority: priority,
-            requestGroupID: requestGroupID
+            requestGroupID: requestGroupID,
+            route: route
         )
     }
 
