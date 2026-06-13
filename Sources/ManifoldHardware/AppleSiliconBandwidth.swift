@@ -236,8 +236,10 @@ package enum QuantizationBits {
 /// ## Dimensions
 /// - **quality**: capability proxy from `ModelCapabilityTier` (size tier) scaled by
 ///   quantization bits-per-weight. Larger + wider-quant ⇒ higher.
-/// - **speed**: `bandwidthGBs / modelSizeGB × efficiencyFactor`, normalised. Decode
-///   throughput is memory-bandwidth bound, so this approximates tokens/sec.
+/// - **speed**: `bandwidthGBs / activeBytesGB × efficiencyFactor`, normalised. Decode
+///   throughput is memory-bandwidth bound by the bytes streamed per token-pass, so this
+///   approximates tokens/sec. For MoE models the denominator is `activeParameterBytes`
+///   (active experts), not the total weight set — they decode fast despite being large.
 /// - **fit**: derived from `ModelLoadPlan.estimate(...)` — `.allow` ⇒ high, `.warn` ⇒
 ///   mid, `.deny` ⇒ 0. We reuse the load plan rather than recomputing memory math.
 /// - **context**: known context length vs. the use case's `contextNeed`. Neutral
@@ -312,9 +314,17 @@ public struct ModelFitScorer: Sendable {
         // --- quality: size tier × quantization width. ---
         let quality = qualityScore(for: model)
 
-        // --- speed: bandwidth ÷ footprint, scaled, normalised against saturation. ---
-        let modelSizeGB = max(Double(model.sizeBytes) / 1_073_741_824, 0.001)
-        let estimatedTPS = (device.memoryBandwidthGBs / modelSizeGB) * efficiencyFactor
+        // --- speed: bandwidth ÷ active-bytes-per-token, scaled, normalised. ---
+        // why: decode throughput is bound by the bytes streamed through the memory bus
+        // per token-pass, not by the total resident weight set. For a mixture-of-experts
+        // model only the active experts (+ always-on weights) are touched each token, so
+        // `activeParameterBytes` is the correct denominator — an MoE is *big in RAM* (the
+        // fit dimension above still uses ModelLoadPlan with the full footprint, because
+        // every expert must be RAM-resident) yet *fast in decode*. Dense or unknown models
+        // have nil activeParameterBytes and fall back to sizeBytes, preserving prior behavior.
+        let activeBytes = model.activeParameterBytes ?? model.sizeBytes
+        let activeGB = max(Double(activeBytes) / 1_073_741_824, 0.001)
+        let estimatedTPS = (device.memoryBandwidthGBs / activeGB) * efficiencyFactor
         let speed = clamp01(estimatedTPS / speedSaturationTokensPerSecond)
 
         // --- context: known length vs. need; neutral when unknown. ---
@@ -375,6 +385,158 @@ public struct ModelFitScorer: Sendable {
             return (model, s)
         }
         .sorted { $0.1.composite > $1.1.composite }
+    }
+
+    // MARK: - Unified candidate scoring (Apple FM Tier 0)
+
+    /// Conservative active footprint assumed for an OS-resident model whose internals
+    /// are opaque (Apple Foundation Models). Apple FM is a small, on-device, guardrailed
+    /// model; we treat its decode cost as a ~3B-class active size (~1.6 GB at Q4) so it
+    /// lands in the fast/usable speed band rather than fabricating a precise figure.
+    package static let osResidentAssumedActiveBytes: UInt64 = 1_610_612_736 // ~1.5 GiB
+
+    /// Neutral-to-modest quality base for a resident model with no size tier to read.
+    /// Apple FM is a small guardrailed on-device model — capable for everyday tasks but
+    /// not frontier — so we anchor it mid-band rather than scoring it as a large model.
+    package static let osResidentQualityBase: Double = 0.55
+
+    /// Scores a single selection candidate under a use case.
+    ///
+    /// Unifies the downloadable and resident (OS-resident / on-disk) shapes so an
+    /// Apple-Foundation-Models "Tier 0" model ranks head-to-head against downloadable
+    /// upgrades in one list.
+    ///
+    /// - Parameters:
+    ///   - candidate: A `.downloadable` (delegates to `score(_:...)`) or `.resident`.
+    ///   - useCase: Biases the dimension weights and context need.
+    ///   - device: Device profile supplying memory + bandwidth.
+    ///   - requestedContextSize: Context size used by the downloadable fit estimate.
+    ///   - foundationAvailable: Whether the OS-resident provider (Apple FM) is usable
+    ///     right now. An unavailable FM is collapsed to the bottom exactly like a
+    ///     `.deny` downloadable.
+    /// - Returns: A `ModelFitScore`, or `nil` if the candidate cannot be scored.
+    public func score(
+        candidate: ModelSelectionCandidate,
+        useCase: ModelUseCase,
+        device: DeviceProfile = .current,
+        requestedContextSize: Int = 4_096,
+        foundationAvailable: Bool = true
+    ) -> ModelFitScore? {
+        switch candidate {
+        case .downloadable(let model):
+            return score(
+                model,
+                useCase: useCase,
+                requestedContextSize: requestedContextSize,
+                device: device
+            )
+        case .resident(let profile):
+            return scoreResident(
+                profile,
+                useCase: useCase,
+                device: device,
+                foundationAvailable: foundationAvailable
+            )
+        }
+    }
+
+    /// Ranks selection candidates best-first (descending composite). Candidates that
+    /// fail to score are dropped. Mirrors `rank(_:...)`.
+    public func rank(
+        candidates: [ModelSelectionCandidate],
+        useCase: ModelUseCase,
+        device: DeviceProfile = .current,
+        requestedContextSize: Int = 4_096,
+        foundationAvailable: Bool = true
+    ) -> [(ModelSelectionCandidate, ModelFitScore)] {
+        candidates.compactMap { candidate in
+            guard let s = score(
+                candidate: candidate,
+                useCase: useCase,
+                device: device,
+                requestedContextSize: requestedContextSize,
+                foundationAvailable: foundationAvailable
+            ) else { return nil }
+            return (candidate, s)
+        }
+        .sorted { $0.1.composite > $1.1.composite }
+    }
+
+    /// Builds a `ModelFitScore` for a resident model from its selection profile alone —
+    /// no `DownloadableModel`, no `ModelLoadPlan` (the profile carries the footprint the
+    /// plan would have produced). Honest qualitative buckets, no fabricated precision.
+    private func scoreResident(
+        _ profile: ModelSelectionProfile,
+        useCase: ModelUseCase,
+        device: DeviceProfile,
+        foundationAvailable: Bool
+    ) -> ModelFitScore {
+        let weights = useCase.weights
+        let footprint = profile.estimatedFootprintBytes ?? 0
+
+        // --- fit / willRun: residency-aware. ---
+        let willRun: Bool
+        let fit: Double
+        switch profile.residency {
+        case .osResident:
+            // The OS owns loading; the only gate is whether the provider is available.
+            willRun = foundationAvailable
+            fit = foundationAvailable ? 1.0 : 0.0
+        case .downloaded, .downloadable:
+            // Runnable unless the declared footprint exceeds usable device memory.
+            let fits = footprint == 0 || footprint <= device.usableMemoryBytes
+            willRun = fits
+            fit = fits ? 1.0 : 0.0
+        }
+
+        // --- speed: bandwidth ÷ active-bytes-per-token. ---
+        // why: same memory-bandwidth model as downloadable scoring. Use the profile's
+        // activeParameterBytes when known; for an opaque OS-resident model (Apple FM)
+        // assume a small ~3B-class active footprint so it lands in the fast/usable band
+        // rather than inventing a precise figure we cannot read.
+        let activeBytes: UInt64
+        if let active = profile.activeParameterBytes, active > 0 {
+            activeBytes = active
+        } else if case .osResident = profile.residency {
+            activeBytes = Self.osResidentAssumedActiveBytes
+        } else {
+            // Non-FM resident with no active figure: fall back to its footprint.
+            activeBytes = footprint > 0 ? footprint : Self.osResidentAssumedActiveBytes
+        }
+        let activeGB = max(Double(activeBytes) / 1_073_741_824, 0.001)
+        let estimatedTPS = (device.memoryBandwidthGBs / activeGB) * efficiencyFactor
+        let speed = clamp01(estimatedTPS / speedSaturationTokensPerSecond)
+
+        // --- quality: resident models lack a size tier; use an honest mid-band base. ---
+        let quality = Self.osResidentQualityBase
+
+        // --- context: declared length vs. need; neutral when unknown. ---
+        let context: Double
+        if let known = profile.declaredContextLength, known > 0 {
+            context = clamp01(Double(known) / Double(max(useCase.contextNeed, 1)))
+        } else {
+            context = 0.5
+        }
+
+        let weightedSum = quality * weights.quality
+            + speed * weights.speed
+            + fit * weights.fit
+            + context * weights.context
+
+        // Reuse the willRun-collapse convention: an unavailable/over-budget resident
+        // model sinks to the bottom exactly like a `.deny` downloadable.
+        let composite = willRun ? weightedSum : weightedSum * 0.1
+
+        return ModelFitScore(
+            quality: quality,
+            speed: speed,
+            fit: fit,
+            context: context,
+            composite: composite,
+            estimatedTokensPerSecond: estimatedTPS,
+            memoryBytes: footprint,
+            willRun: willRun
+        )
     }
 
     // MARK: - Quality

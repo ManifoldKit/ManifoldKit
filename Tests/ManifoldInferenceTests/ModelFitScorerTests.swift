@@ -229,4 +229,149 @@ final class ModelFitScorerTests: XCTestCase {
             QuantizationBits.neutralBitsPerWeight
         )
     }
+
+    // MARK: - MoE-aware decode speed
+
+    /// A GGUF download with an explicit active-parameter footprint (mixture-of-experts).
+    private func moeModel(
+        totalGB: Double,
+        activeGB: Double,
+        quant: String,
+        name: String = "MoE"
+    ) -> DownloadableModel {
+        DownloadableModel(
+            repoID: "test/\(name)-GGUF",
+            fileName: "\(name).\(quant).gguf",
+            displayName: "\(name) \(quant)",
+            modelType: .gguf,
+            sizeBytes: UInt64(totalGB * Double(oneGB)),
+            activeParameterBytes: UInt64(activeGB * Double(oneGB))
+        )
+    }
+
+    func test_moe_decodesFasterButNotBetterFit_thanDense() {
+        // Big device so both models run and the willRun gate doesn't mask the speed math.
+        let dev = device(ramGB: 96, bandwidthGBs: 400)
+        let env = environment(for: dev)
+        let scorer = ModelFitScorer()
+
+        // MoE: ~60 GB resident, ~10 GB active per token. Dense: ~32 GB, all active.
+        // Dense uses a wider quant (Q6) so it reads as higher quality within the shared
+        // frontier tier — that quality edge is what reasoning rewards.
+        let moe = moeModel(totalGB: 60.0, activeGB: 10.0, quant: "Q4_K_M", name: "Mixtral")
+        let dense = ggufModel(sizeGB: 32.0, quant: "Q6_K", name: "Dense")
+
+        let sMoE = scorer.score(moe, useCase: .general, device: dev, environment: env)!
+        let sDense = scorer.score(dense, useCase: .general, device: dev, environment: env)!
+
+        // Speed is bound by bytes streamed per token: MoE streams 10 GB, dense streams 32 GB.
+        XCTAssertGreaterThan(
+            sMoE.speed, sDense.speed,
+            "MoE decodes faster: active 10 GB beats dense 32 GB on the same bandwidth"
+        )
+        XCTAssertGreaterThan(
+            sMoE.estimatedTokensPerSecond, sDense.estimatedTokensPerSecond,
+            "MoE tok/s should exceed the dense model's"
+        )
+        // But the MoE is bigger in RAM — its fit must NOT be better than the dense model.
+        XCTAssertLessThanOrEqual(
+            sMoE.fit, sDense.fit,
+            "MoE is bigger in RAM (all experts resident); fit must not improve"
+        )
+
+        // Bonus: composite ordering can flip with the use case. chat is speed-weighted
+        // (favours the faster MoE); reasoning is quality-weighted (favours the dense,
+        // which reads a higher size tier).
+        let chatMoE = scorer.score(moe, useCase: .chat, device: dev, environment: env)!
+        let chatDense = scorer.score(dense, useCase: .chat, device: dev, environment: env)!
+        XCTAssertGreaterThan(
+            chatMoE.composite, chatDense.composite,
+            "chat (speed-weighted) should prefer the faster MoE"
+        )
+        let reasonMoE = scorer.score(moe, useCase: .reasoning, device: dev, environment: env)!
+        let reasonDense = scorer.score(dense, useCase: .reasoning, device: dev, environment: env)!
+        XCTAssertGreaterThan(
+            reasonDense.composite, reasonMoE.composite,
+            "reasoning (quality-weighted) should prefer the larger dense model"
+        )
+    }
+
+    func test_nilActiveParameterBytes_matchesSizeBytesDenominator() {
+        // A model with nil activeParameterBytes must score the SAME speed/tok-s as an
+        // otherwise-identical model whose activeParameterBytes equals its sizeBytes —
+        // i.e. the MoE change is a no-op for dense models (no regression).
+        let dev = device(ramGB: 32, bandwidthGBs: 200)
+        let env = environment(for: dev)
+        let scorer = ModelFitScorer()
+
+        let dense = ggufModel(sizeGB: 8.0, quant: "Q4_K_M", name: "Dense")
+        let denseExplicit = moeModel(totalGB: 8.0, activeGB: 8.0, quant: "Q4_K_M", name: "Dense")
+
+        let sNil = scorer.score(dense, useCase: .general, device: dev, environment: env)!
+        let sExplicit = scorer.score(denseExplicit, useCase: .general, device: dev, environment: env)!
+
+        XCTAssertEqual(sNil.speed, sExplicit.speed, accuracy: 0.0001)
+        XCTAssertEqual(
+            sNil.estimatedTokensPerSecond, sExplicit.estimatedTokensPerSecond, accuracy: 0.0001
+        )
+    }
+
+    // MARK: - Apple FM Tier 0 candidate ranking
+
+    /// An OS-resident Apple-FM-style profile.
+    private func fmProfile(contextLength: Int? = 8_192) -> ModelSelectionProfile {
+        ModelSelectionProfile(
+            modelID: "apple.foundation",
+            residency: .osResident,
+            estimatedFootprintBytes: nil,
+            activeParameterBytes: nil,
+            contentFiltering: .applied,
+            declaredContextLength: contextLength
+        )
+    }
+
+    func test_fmTier0_available_runsAndRanksAmongRunnable() {
+        let dev = device(ramGB: 16, bandwidthGBs: 200)
+        let scorer = ModelFitScorer()
+
+        let fm = ModelSelectionCandidate.resident(fmProfile())
+        let download = ModelSelectionCandidate.downloadable(
+            ggufModel(sizeGB: 4.0, quant: "Q4_K_M", name: "Local")
+        )
+
+        let fmScore = scorer.score(candidate: fm, useCase: .chat, device: dev, foundationAvailable: true)!
+        XCTAssertTrue(fmScore.willRun, "available Apple FM must be runnable")
+
+        let ranked = scorer.rank(
+            candidates: [download, fm], useCase: .chat, device: dev, foundationAvailable: true
+        )
+        XCTAssertEqual(ranked.count, 2)
+        // Both runnable: FM (small active footprint) ranks among them, not collapsed.
+        XCTAssertTrue(ranked.allSatisfy { $0.1.willRun }, "both candidates run when FM is available")
+    }
+
+    func test_fmTier0_unavailable_sinksBelowEveryRunnable() {
+        let dev = device(ramGB: 16, bandwidthGBs: 200)
+        let scorer = ModelFitScorer()
+
+        let fm = ModelSelectionCandidate.resident(fmProfile())
+        let download = ModelSelectionCandidate.downloadable(
+            ggufModel(sizeGB: 4.0, quant: "Q4_K_M", name: "Local")
+        )
+
+        let fmScore = scorer.score(candidate: fm, useCase: .chat, device: dev, foundationAvailable: false)!
+        XCTAssertFalse(fmScore.willRun, "unavailable Apple FM must not be runnable")
+
+        let ranked = scorer.rank(
+            candidates: [fm, download], useCase: .chat, device: dev, foundationAvailable: false
+        )
+        XCTAssertEqual(ranked.count, 2)
+        // The unavailable FM must land last, below the runnable download.
+        if case .resident = ranked.last!.0 {
+            // expected: FM sank to the bottom
+        } else {
+            XCTFail("unavailable FM must rank below every runnable candidate")
+        }
+        XCTAssertFalse(ranked.last!.1.willRun, "the last candidate is the non-runnable FM")
+    }
 }
