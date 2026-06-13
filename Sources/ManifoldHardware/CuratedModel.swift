@@ -37,6 +37,13 @@ public struct CuratedModel: Identifiable, Sendable {
     /// unverified.
     public let expectedSHA256: String?
 
+    /// Approximate quantized bytes streamed per decode token-pass — the active
+    /// experts plus always-on weights. For dense models this equals the total
+    /// weight size; `nil` means dense-or-unknown, and callers fall back to total
+    /// size. Used only to rank MoE decode speed, never for memory-fit (all
+    /// experts must be resident).
+    public let activeParameterBytes: UInt64?
+
     public init(
         id: String,
         displayName: String,
@@ -49,7 +56,8 @@ public struct CuratedModel: Identifiable, Sendable {
         promptTemplate: PromptTemplate,
         description: String,
         mmprojFileName: String? = nil,
-        expectedSHA256: String? = nil
+        expectedSHA256: String? = nil,
+        activeParameterBytes: UInt64? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -63,6 +71,7 @@ public struct CuratedModel: Identifiable, Sendable {
         self.description = description
         self.mmprojFileName = mmprojFileName
         self.expectedSHA256 = expectedSHA256
+        self.activeParameterBytes = activeParameterBytes
     }
 
     /// The curated model list to display in model discovery UI.
