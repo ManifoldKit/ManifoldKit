@@ -121,6 +121,50 @@ final class ModelRecommendationRankingTests: XCTestCase {
         XCTAssertEqual(ranked.first?.0.fileName, fastSmall.fileName)
     }
 
+    // MARK: - recommendedModel highlight
+
+    func test_recommendedModel_picksTopRunnableForUseCase() async {
+        let dev = device(ramGB: 32, bandwidthGBs: 200)
+        let fastSmall = ggufModel(sizeGB: 2.0, quant: "Q4_K_M", name: "Small")
+        let capableBig = ggufModel(sizeGB: 14.0, quant: "Q5_K_M", name: "Big")
+
+        let vm = await makeViewModel(results: [fastSmall, capableBig])
+
+        vm.selectedUseCase = .chat
+        XCTAssertEqual(
+            vm.recommendedModel(device: dev)?.fileName, fastSmall.fileName,
+            "recommendedModel should mirror the top of the chat-weighted ranking"
+        )
+
+        vm.selectedUseCase = .reasoning
+        XCTAssertEqual(
+            vm.recommendedModel(device: dev)?.fileName, capableBig.fileName,
+            "recommendedModel should track the use case like rankedVariants"
+        )
+    }
+
+    func test_recommendedModel_excludesUnrunnableModels() async {
+        // A 4 GB phone can't run a 14 GB model; the recommendation must fall to the
+        // only runnable candidate rather than highlighting something that won't load.
+        let phone = device(ramGB: 4, bandwidthGBs: 60)
+        let fits = ggufModel(sizeGB: 1.5, quant: "Q4_K_M", name: "Fits")
+        let tooBig = ggufModel(sizeGB: 14.0, quant: "Q5_K_M", name: "TooBig")
+
+        let vm = await makeViewModel(results: [tooBig, fits])
+        XCTAssertEqual(
+            vm.recommendedModel(device: phone)?.fileName, fits.fileName,
+            "recommendedModel must skip over-budget models and highlight a runnable one"
+        )
+    }
+
+    func test_recommendedModel_nilWhenNothingToRank() async {
+        let vm = await makeViewModel(results: [])
+        XCTAssertNil(
+            vm.recommendedModel(device: device(ramGB: 32, bandwidthGBs: 200)),
+            "with no search results and no curated recommendations there is nothing to recommend"
+        )
+    }
+
     // MARK: - Persistence (injected UserDefaults only)
 
     func test_selectedUseCase_persistsToInjectedDefaults() async {

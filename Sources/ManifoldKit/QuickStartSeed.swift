@@ -113,6 +113,157 @@ public struct QuickStartSeed: Sendable {
             onProgress: onProgress
         )
     }
+
+    // MARK: - Device-aware seed selection
+
+    /// Curated GGUF starter candidates the device-aware seed picker ranks over.
+    ///
+    /// These are widely-used `bartowski` Q4_K_M quantizations spanning the small →
+    /// mid size range so a 64 GB M-series machine and a base iPhone land on
+    /// different seeds. `recommendedSmallModel()`'s Qwen3-0.6B is the floor and is
+    /// *always* in this set, so the picker can never return nothing runnable.
+    ///
+    /// Sizes are approximate download bytes (Q4_K_M). They feed the scorer's
+    /// `ModelLoadPlan`-backed fit dimension, so an over-budget candidate is
+    /// collapsed below every runnable one and the floor wins by construction.
+    static let seedCandidates: [QuickStartSeed] = [
+        // Floor — the existing recommendedSmallModel(). ~0.4 GB, runs anywhere.
+        QuickStartSeed(
+            modelID: "bartowski/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen3-0.6B-GGUF",
+            fileName: "Qwen3-0.6B-Q4_K_M.gguf",
+            displayName: "Qwen3 0.6B (Q4_K_M)",
+            modelType: .gguf,
+            sizeBytes: 416_000_000,
+            promptTemplate: .chatML,
+            onProgress: nil
+        ),
+        // ~2.0 GB — comfortable on a modern phone / base Mac.
+        QuickStartSeed(
+            modelID: "bartowski/Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen3-4B-GGUF",
+            fileName: "Qwen3-4B-Q4_K_M.gguf",
+            displayName: "Qwen3 4B (Q4_K_M)",
+            modelType: .gguf,
+            sizeBytes: 2_500_000_000,
+            promptTemplate: .chatML,
+            onProgress: nil
+        ),
+        // ~4.7 GB — a capable 8B for machines with headroom.
+        QuickStartSeed(
+            modelID: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+            repoID: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+            fileName: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+            displayName: "Llama 3.1 8B (Q4_K_M)",
+            modelType: .gguf,
+            sizeBytes: 4_900_000_000,
+            promptTemplate: .llama3,
+            onProgress: nil
+        ),
+        // ~9.0 GB — frontier-ish local pick for high-memory M-series.
+        QuickStartSeed(
+            modelID: "bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+            repoID: "bartowski/Qwen2.5-14B-Instruct-GGUF",
+            fileName: "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+            displayName: "Qwen2.5 14B (Q4_K_M)",
+            modelType: .gguf,
+            sizeBytes: 9_000_000_000,
+            promptTemplate: .chatML,
+            onProgress: nil
+        ),
+    ]
+
+    /// The Qwen3-0.6B floor — the seed returned when no larger candidate fits the
+    /// device. Always the first entry in ``seedCandidates``.
+    static var floorSeed: QuickStartSeed { seedCandidates[0] }
+
+    /// Picks a first-launch seed model tailored to the host device.
+    ///
+    /// Ranks ``seedCandidates`` with ``ModelFitScorer`` under the host's
+    /// ``DeviceProfile`` (memory + memory bandwidth) for the given use case, then
+    /// returns the best-ranked candidate that will actually run. A 64 GB M-series
+    /// machine lands on a larger, more capable model than a base iPhone; when no
+    /// candidate larger than the floor fits, the Qwen3-0.6B floor is returned — so
+    /// the call never yields a model the device can't load.
+    ///
+    /// This is *additive*: ``recommendedSmallModel(onProgress:)`` still returns the
+    /// fixed 0.6B floor for callers that want the historical behaviour.
+    ///
+    /// - Parameters:
+    ///   - useCase: Biases the scorer's dimension weights. Defaults to `.general`.
+    ///   - device: The device profile to rank against. Defaults to the real host
+    ///     (`.current`); tests inject a fixed profile for determinism.
+    ///   - foundationAvailable: Whether Apple Foundation Models is usable. When
+    ///     `true` the caller already has a zero-download Tier-0 model and would
+    ///     normally skip seeding entirely; the seed picker still returns the floor
+    ///     so a forced seed is well-defined. Defaults to `false` (no FM).
+    ///   - onProgress: Optional main-actor progress closure forwarded to the
+    ///     chosen seed (see ``recommendedSmallModel(onProgress:)``).
+    /// - Returns: A device-appropriate ``QuickStartSeed``.
+    public static func recommended(
+        useCase: ModelUseCase = .general,
+        device: DeviceProfile = .current,
+        foundationAvailable: Bool = false,
+        onProgress: (@Sendable @MainActor (Double) -> Void)? = nil
+    ) -> QuickStartSeed {
+        let scorer = ModelFitScorer()
+        let candidates: [ModelSelectionCandidate] = seedCandidates.map {
+            .downloadable($0.asDownloadableModel())
+        }
+        let ranked = scorer.rank(
+            candidates: candidates,
+            useCase: useCase,
+            device: device,
+            foundationAvailable: foundationAvailable
+        )
+
+        // Find the best-ranked candidate that will actually run on this device.
+        // `rank` already sinks `.deny`/over-budget candidates to the bottom, but we
+        // also gate on `willRun` so a device that can run *nothing but* the floor
+        // (or, hypothetically, not even that) deterministically gets the floor.
+        let chosen = ranked.first(where: { $0.1.willRun })?.0
+
+        let seed: QuickStartSeed
+        if case .downloadable(let model) = chosen,
+           let match = seedCandidates.first(where: { $0.modelID == model.id }) {
+            seed = match
+        } else {
+            seed = floorSeed
+        }
+
+        return seed.withProgress(onProgress)
+    }
+
+    // MARK: - Conversions
+
+    /// Materialises this seed as a ``DownloadableModel`` for scoring / download.
+    func asDownloadableModel() -> DownloadableModel {
+        DownloadableModel(
+            repoID: repoID,
+            fileName: fileName,
+            displayName: displayName,
+            modelType: modelType,
+            sizeBytes: sizeBytes,
+            promptTemplate: promptTemplate
+        )
+    }
+
+    /// Returns a copy of this seed with `onProgress` replaced (no-op when `nil`
+    /// and the seed already has no callback). Used by ``recommended(...)`` so the
+    /// caller's progress closure rides the device-chosen candidate.
+    func withProgress(_ onProgress: (@Sendable @MainActor (Double) -> Void)?) -> QuickStartSeed {
+        guard onProgress != nil else { return self }
+        return QuickStartSeed(
+            modelID: modelID,
+            repoID: repoID,
+            fileName: fileName,
+            displayName: displayName,
+            modelType: modelType,
+            sizeBytes: sizeBytes,
+            promptTemplate: promptTemplate,
+            onProgress: onProgress
+        )
+    }
 }
 
 // MARK: - SeedModelError
