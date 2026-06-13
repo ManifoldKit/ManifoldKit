@@ -19,6 +19,15 @@ extension ChatViewModel {
     /// ensuring the index is never stale. Returns `true` if the message was found.
     @discardableResult
     func mutateMessage(id: UUID, _ body: (inout ChatMessage) -> Void) -> Bool {
+        // Fast path: streaming mutates the trailing message ~30×/sec. The
+        // common case is "mutate the last message", so check the tail in O(1)
+        // before falling back to the O(N) scan. This re-validates the tail id
+        // on every call (no cached index), so branch/edit/cancel that reshape
+        // the tail safely take the scan fallback.
+        if let lastIdx = messages.indices.last, messages[lastIdx].id == id {
+            body(&messages[lastIdx])
+            return true
+        }
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return false }
         body(&messages[idx])
         return true

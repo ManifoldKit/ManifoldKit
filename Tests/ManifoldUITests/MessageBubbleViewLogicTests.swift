@@ -464,6 +464,45 @@ final class MessageBubbleViewLogicTests: XCTestCase {
         )
     }
 
+    /// Parity guard for the #1786 perf fix: `ChatHistoryView` now iterates
+    /// `messages` directly (no `enumerated()`) and resolves handoff chips via
+    /// the id-keyed ``ChatHistoryHandoffResolver/boundaries(messages:session:)``
+    /// precompute. Its output must be byte-for-byte identical to calling the
+    /// per-index ``chip(at:messages:session:)`` across an agent-transition
+    /// fixture.
+    ///
+    /// Sabotage-evidence:
+    ///   M1: off-by-one the boundary loop → a transition is keyed to the wrong id.
+    ///   M2: drop the session guard in `boundaries` → chips appear without agents.
+    func test_handoffBoundaries_matchPerIndexChipResolution() {
+        let (a, b) = agentPair()
+        let session = ManifoldInference.ChatSession(id: sessionID, agents: [a, b])
+        let messages = [
+            ManifoldInference.ChatMessage(role: .user, content: "q1", sessionID: sessionID, agentID: a.id),
+            ManifoldInference.ChatMessage(role: .assistant, content: "a1", sessionID: sessionID, agentID: a.id),
+            ManifoldInference.ChatMessage(role: .assistant, content: "a2", sessionID: sessionID, agentID: b.id),
+            ManifoldInference.ChatMessage(role: .assistant, content: "a3", sessionID: sessionID, agentID: b.id),
+            ManifoldInference.ChatMessage(role: .assistant, content: "a4", sessionID: sessionID, agentID: a.id),
+        ]
+
+        let boundaries = ChatHistoryHandoffResolver.boundaries(messages: messages, session: session)
+
+        for index in messages.indices {
+            let perIndex = ChatHistoryHandoffResolver.chip(at: index, messages: messages, session: session)
+            let keyed = boundaries[messages[index].id]
+            XCTAssertEqual(perIndex?.from?.id, keyed?.from?.id,
+                           "from-agent mismatch at index \(index)")
+            XCTAssertEqual(perIndex?.to?.id, keyed?.to?.id,
+                           "to-agent mismatch at index \(index)")
+        }
+
+        // Exactly the two real transitions (a→b at index 2, b→a at index 4)
+        // produce chips.
+        XCTAssertEqual(boundaries.count, 2, "Only genuine agent transitions get a chip")
+        XCTAssertNotNil(boundaries[messages[2].id])
+        XCTAssertNotNil(boundaries[messages[4].id])
+    }
+
     /// Snapshot the natural arrival ordering of `.tokenEmitted`-style events
     /// vs `.agentHandoff` for a single turn. The chip in our renderer is
     /// derived from the persisted sequence — but the *event* stream must

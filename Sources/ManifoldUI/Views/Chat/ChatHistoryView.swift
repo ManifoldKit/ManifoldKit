@@ -40,8 +40,20 @@ struct ChatHistoryView: View {
                         ChatHistoryEmptyPlaceholder(customContent: customEmptyPlaceholder)
                     }
 
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                        messageRow(at: index, message: message)
+                    // why: iterate `messages` directly (ChatMessage is
+                    // Identifiable) instead of materializing a fresh
+                    // `enumerated()` tuple array on every body eval — that array
+                    // was an O(N) allocation per streaming batch (~30/sec). The
+                    // only index consumer was the handoff chip, which needs the
+                    // PREVIOUS message; we precompute the handoff boundaries in
+                    // one O(N) pass keyed by message id so no per-row scan is
+                    // reintroduced.
+                    let handoffBoundaries = ChatHistoryHandoffResolver.boundaries(
+                        messages: viewModel.messages,
+                        session: viewModel.activeSession
+                    )
+                    ForEach(viewModel.messages) { message in
+                        messageRow(message: message, handoffChip: handoffBoundaries[message.id])
                     }
 
                     Color.clear
@@ -85,13 +97,9 @@ struct ChatHistoryView: View {
     }
 
     @ViewBuilder
-    private func messageRow(at index: Int, message: ChatMessage) -> some View {
-        if let chip = ChatHistoryHandoffResolver.chip(
-            at: index,
-            messages: viewModel.messages,
-            session: viewModel.activeSession
-        ) {
-            chip
+    private func messageRow(message: ChatMessage, handoffChip: HandoffChipView?) -> some View {
+        if let handoffChip {
+            handoffChip
         }
 
         // A host renderer (if any) gets first refusal on the row; it can take
@@ -148,6 +156,29 @@ struct ChatHistoryEmptyPlaceholder: View {
 }
 
 enum ChatHistoryHandoffResolver {
+
+    /// Computes, in a single O(N) pass, the handoff chip to render *above* each
+    /// message — keyed by the message's id.
+    ///
+    /// why: `ChatHistoryView` used to call ``chip(at:messages:session:)`` per
+    /// row, and each call did its own adjacency lookup. Iterating `messages`
+    /// directly (rather than `enumerated()`) means rows no longer carry their
+    /// index, so we resolve every boundary up front. Output is byte-for-byte
+    /// equivalent to calling ``chip(at:messages:session:)`` for each index.
+    @MainActor
+    static func boundaries(
+        messages: [ChatMessage],
+        session: ChatSession?
+    ) -> [UUID: HandoffChipView] {
+        guard let session, messages.count > 1 else { return [:] }
+        var result: [UUID: HandoffChipView] = [:]
+        for index in 1..<messages.count {
+            if let chip = chip(at: index, messages: messages, session: session) {
+                result[messages[index].id] = chip
+            }
+        }
+        return result
+    }
 
     /// Returns a ``HandoffChipView`` when adjacent persisted messages transition
     /// between two agents resolved from the active session.
