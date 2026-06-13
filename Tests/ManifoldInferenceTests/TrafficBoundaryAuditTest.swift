@@ -226,6 +226,14 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         "ManifoldTestSupport/MockURLProtocol.swift",
         "ManifoldTestSupport/DenyAllURLProtocol.swift",
         "ManifoldTestSupport/HardwareRequirements.swift",
+        // Glass Box research-session demo embedding backend (#1575). Posts to
+        // the local Ollama `/api/embed` endpoint (nomic-embed-text) so the
+        // flagship demo + Ollama-gated live RAG integration test exercise the
+        // real retrieval path. A genuine new network boundary, but a local-only
+        // one confined to the demo/live path — it cannot route through
+        // URLSessionProvider because that lives in ManifoldCloudCore and
+        // ManifoldTestSupport is a leaf that must not depend on it.
+        "ManifoldTestSupport/OllamaEmbeddingBackend.swift",
 
         // MCP module transport/auth networking surfaces.
         "ManifoldMCP/InternalMCPTransport.swift",
@@ -355,7 +363,7 @@ final class TrafficBoundaryAuditTest: XCTestCase {
         Self.assertNoOffenders(offenders)
 
         XCTAssertLessThanOrEqual(
-            Self.networkIOAllowlist.count, 49,
+            Self.networkIOAllowlist.count, 50,
             "networkIOAllowlist exceeds cap. Each new entry weakens the rule — re-architect rather than expand the list."
         )
     }

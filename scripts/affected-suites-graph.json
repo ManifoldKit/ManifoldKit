@@ -265,6 +265,7 @@
       "deps": [
         "ManifoldContractTestSupport",
         "ManifoldInference",
+        "ManifoldPersistenceSwiftData",
         "ManifoldRuntime",
         "ManifoldTestSupport"
       ]
