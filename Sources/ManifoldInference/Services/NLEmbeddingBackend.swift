@@ -62,10 +62,17 @@ public final class NLEmbeddingBackend: EmbeddingBackend, @unchecked Sendable {
         result.reserveCapacity(texts.count)
         for text in texts {
             // `vector(for:)` returns nil for an empty/whitespace input or a
-            // string the model cannot embed. A zero vector is the honest
-            // "no signal" representation — `FlatFileVectorStore` L2-normalizes
-            // it to an empty vector and skips it during cosine search rather
-            // than ranking it spuriously.
+            // string the model cannot embed. The `EmbeddingBackend` contract
+            // requires output count == input count with every vector at
+            // `dimensions` length (see `EmbeddingBackendContract`), and
+            // `FlatFileVectorStore.insert` aligns embeddings to chunks
+            // positionally — so a dropped or short-length entry would
+            // mis-pair vectors with chunks. A zero vector is therefore the
+            // honest, contract-correct "no signal" placeholder that preserves
+            // alignment. Its cosine score against any query is 0, so it never
+            // ranks above a genuine match; it can only surface as a trailing
+            // zero-score hit when the store holds fewer real matches than the
+            // requested limit.
             if let vector = embedding.vector(for: text) {
                 result.append(vector.map { Float($0) })
             } else {
