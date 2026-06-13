@@ -87,6 +87,29 @@ final class ImageGenerationFoundationsTests: XCTestCase {
         XCTAssertEqual(config.height, 511)
     }
 
+    // MARK: - previewStride opt-in throttle
+
+    /// `previewStride` defaults to `nil` so existing callers see no behavioural
+    /// change — previews are strictly opt-in.
+    func test_imageGenerationConfig_previewStride_defaultsNil() {
+        XCTAssertNil(ImageGenerationConfig().previewStride)
+        XCTAssertNil(ImageGenerationConfig(resolution: CGSize(width: 64, height: 64)).previewStride)
+    }
+
+    /// A set `previewStride` must round-trip through Codable; an older payload
+    /// that omits it decodes as `nil` rather than throwing.
+    func test_imageGenerationConfig_previewStride_codableRoundtripAndAbsent() throws {
+        let config = ImageGenerationConfig(steps: 8, width: 64, height: 64, previewStride: 2)
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: data)
+        XCTAssertEqual(decoded.previewStride, 2)
+
+        // Legacy payload without the key decodes to nil.
+        let legacy = Data(#"{"steps":8,"width":64,"height":64}"#.utf8)
+        let legacyDecoded = try JSONDecoder().decode(ImageGenerationConfig.self, from: legacy)
+        XCTAssertNil(legacyDecoded.previewStride)
+    }
+
     // MARK: - outputDirectory Codable behaviour
 
     /// Setting `outputDirectory` must round-trip through Codable. Hosts that

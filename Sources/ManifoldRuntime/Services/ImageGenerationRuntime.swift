@@ -268,6 +268,13 @@ public final class ImageGenerationRuntime {
                     let resolvedTotal = total > 0 ? total : totalSteps
                     emit(.progress(messageID: messageID, step: step, totalSteps: resolvedTotal))
 
+                case .preview(let step, let total, let image):
+                    // Forward the in-memory preview without touching the
+                    // store — previews are transient UI affordances; only
+                    // the terminal `.completed` writes through `MessageStore`.
+                    let resolvedTotal = total > 0 ? total : totalSteps
+                    emit(.preview(messageID: messageID, step: step, totalSteps: resolvedTotal, image: image))
+
                 case .completed(let url):
                     let identifier = modelIdentifier()
                     let payload = ImageMessagePayload(

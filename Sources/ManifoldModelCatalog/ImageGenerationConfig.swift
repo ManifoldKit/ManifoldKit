@@ -88,6 +88,22 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     /// then resolves under this directory.
     public var outputDirectory: URL?
 
+    /// Opt-in throttle for intermediate denoise previews.
+    ///
+    /// `nil` (the default) disables previews entirely — backends emit only
+    /// ``ImageGenerationEvent/progress(step:total:)`` ticks and the terminal
+    /// ``ImageGenerationEvent/completed(_:)``, exactly as before this knob
+    /// existed. When set to `N`, backends that support previews emit an
+    /// ``ImageGenerationEvent/preview(step:total:image:)`` every `N` steps so
+    /// hosts can render a progressively-refining thumbnail mid-generation.
+    ///
+    /// Previews carry encoded image bytes in-memory rather than a file URL —
+    /// see ``ImageGenerationEvent/preview(step:total:image:)`` for the
+    /// per-tick-cost rationale. Larger strides trade preview smoothness for
+    /// fewer encode passes; backends without preview support silently ignore
+    /// this field, matching the ``ImageGenerationConfig`` convention.
+    public var previewStride: Int?
+
     public init(
         steps: Int = 20,
         width: Int = 1024,
@@ -95,7 +111,8 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         seed: UInt64? = nil,
         guidanceScale: Float? = nil,
         aspectRatio: String? = nil,
-        outputDirectory: URL? = nil
+        outputDirectory: URL? = nil,
+        previewStride: Int? = nil
     ) {
         self.steps = steps
         self.width = width
@@ -104,6 +121,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         self.guidanceScale = guidanceScale
         self.aspectRatio = aspectRatio
         self.outputDirectory = outputDirectory
+        self.previewStride = previewStride
     }
 
     /// Convenience initializer that accepts a `CGSize`. Rounds to the
@@ -114,7 +132,8 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         resolution: CGSize,
         seed: UInt64? = nil,
         guidanceScale: Float? = nil,
-        outputDirectory: URL? = nil
+        outputDirectory: URL? = nil,
+        previewStride: Int? = nil
     ) {
         self.init(
             steps: steps,
@@ -122,7 +141,8 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
             height: Int(resolution.height.rounded()),
             seed: seed,
             guidanceScale: guidanceScale,
-            outputDirectory: outputDirectory
+            outputDirectory: outputDirectory,
+            previewStride: previewStride
         )
     }
 
@@ -131,7 +151,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
     // Custom Codable so `outputDirectory` rides as `encodeIfPresent` and an
     // older payload that omits it decodes to `nil` rather than failing.
     private enum CodingKeys: String, CodingKey {
-        case steps, width, height, seed, guidanceScale, aspectRatio, outputDirectory
+        case steps, width, height, seed, guidanceScale, aspectRatio, outputDirectory, previewStride
     }
 
     public init(from decoder: any Decoder) throws {
@@ -143,6 +163,7 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         self.guidanceScale = try c.decodeIfPresent(Float.self, forKey: .guidanceScale)
         self.aspectRatio = try c.decodeIfPresent(String.self, forKey: .aspectRatio)
         self.outputDirectory = try c.decodeIfPresent(URL.self, forKey: .outputDirectory)
+        self.previewStride = try c.decodeIfPresent(Int.self, forKey: .previewStride)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -154,5 +175,6 @@ public struct ImageGenerationConfig: Sendable, Codable, Equatable {
         try c.encodeIfPresent(guidanceScale, forKey: .guidanceScale)
         try c.encodeIfPresent(aspectRatio, forKey: .aspectRatio)
         try c.encodeIfPresent(outputDirectory, forKey: .outputDirectory)
+        try c.encodeIfPresent(previewStride, forKey: .previewStride)
     }
 }

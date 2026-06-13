@@ -119,6 +119,10 @@ public struct ArchitectEventEntry: Identifiable, Sendable {
             self.label = "image.progress"
             self.summary = "step:\(step)/\(totalSteps)"
             self.isError = false
+        case .preview(_, let step, let totalSteps, let image):
+            self.label = "image.preview"
+            self.summary = "step:\(step)/\(totalSteps) (\(image.count) bytes)"
+            self.isError = false
         case .completed(_, let payload):
             self.label = "image.completed"
             self.summary = payload.modelIdentifier ?? "completed"

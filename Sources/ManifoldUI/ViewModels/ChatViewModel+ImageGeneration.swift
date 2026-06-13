@@ -44,13 +44,21 @@ public struct ImageGenerationProgress: Sendable, Equatable {
     /// `isComplete = true, error = nil`.
     public let error: String?
 
+    /// Latest intermediate denoise preview as encoded image bytes (PNG/JPEG),
+    /// or `nil` when previews are disabled (the default — see
+    /// ``ImageGenerationConfig/previewStride``) or none has arrived yet.
+    /// Each ``ImageRuntimeEvent/preview(messageID:step:totalSteps:image:)``
+    /// replaces the prior value so UI renders only the freshest thumbnail.
+    public let previewImage: Data?
+
     public init(
         messageID: UUID,
         prompt: String,
         step: Int,
         totalSteps: Int,
         isComplete: Bool,
-        error: String?
+        error: String?,
+        previewImage: Data? = nil
     ) {
         self.messageID = messageID
         self.prompt = prompt
@@ -58,6 +66,7 @@ public struct ImageGenerationProgress: Sendable, Equatable {
         self.totalSteps = totalSteps
         self.isComplete = isComplete
         self.error = error
+        self.previewImage = previewImage
     }
 }
 
@@ -210,6 +219,21 @@ extension ChatViewModel {
                 totalSteps: totalSteps,
                 isComplete: false,
                 error: nil
+            )
+
+        case .preview(let messageID, let step, let totalSteps, let image):
+            // Carry the latest preview thumbnail forward, preserving the
+            // prompt observed at `started`. Like `progress`, recover a
+            // missing entry rather than dropping the event.
+            let existing = imageGenerationProgress[messageID]
+            imageGenerationProgress[messageID] = ImageGenerationProgress(
+                messageID: messageID,
+                prompt: existing?.prompt ?? "",
+                step: step,
+                totalSteps: totalSteps,
+                isComplete: false,
+                error: nil,
+                previewImage: image
             )
 
         case .completed(let messageID, let payload):

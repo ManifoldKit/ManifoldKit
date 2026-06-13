@@ -25,6 +25,30 @@ public enum ImageGenerationEvent: Sendable {
     /// ``ImageGenerationConfig/steps`` (after any backend-side clamping).
     case progress(step: Int, total: Int)
 
+    /// Intermediate preview of the in-progress denoise at step `step` of
+    /// `total`.
+    ///
+    /// Opt-in: backends only emit this when the caller sets
+    /// ``ImageGenerationConfig/previewStride`` (nil disables previews
+    /// entirely, preserving today's `progress` + terminal-`completed`
+    /// shape). When enabled, a preview is emitted every `previewStride`
+    /// steps so hosts can render a progressively-refining thumbnail before
+    /// the terminal ``completed(_:)``.
+    ///
+    /// ## Why `Data`, not `URL`?
+    ///
+    /// Unlike ``completed(_:)`` — which references a single fully-written
+    /// file on disk — previews fire repeatedly during the denoise loop.
+    /// Routing each tick through a disk write (`CGImage → encode → file`)
+    /// just to hand back a `URL` the host immediately re-reads would add a
+    /// per-tick filesystem round-trip on the hot path. Carrying the encoded
+    /// image bytes in-memory (`Data`, the same representation
+    /// ``ImagePlaceholderHash`` already consumes at this layer) keeps the
+    /// preview channel allocation-light and avoids littering the output
+    /// directory with transient intermediates. `image` holds the encoded
+    /// bytes (e.g. PNG/JPEG); it is *not* persisted by the runtime.
+    case preview(step: Int, total: Int, image: Data)
+
     /// Terminal event: generation finished and the image was written to
     /// `url`. The file at `url` is fully closed and safe to read.
     ///
