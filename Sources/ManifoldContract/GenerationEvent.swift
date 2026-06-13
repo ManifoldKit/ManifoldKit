@@ -6,8 +6,25 @@
 ///
 /// ## Vocabulary freeze (1.0)
 ///
-/// The tool-call event vocabulary is locked as of the 1.0 release. Key design
-/// decisions recorded here for Wave 3 consumers:
+/// **The entire `GenerationEvent` vocabulary is frozen as of the 1.0 release** —
+/// not just the tool-call sub-vocabulary. The set of cases is the stable cross-
+/// module contract every backend emits and every consumer switches over; adding
+/// a case is source-breaking for exhaustive `switch` statements (see "Source
+/// compatibility for pattern-match consumers" below), so new cases land only in
+/// a major (`feat!:`) release. Public-facing / cross-module consumers should add
+/// an `@unknown default:` arm to stay resilient to a future major.
+///
+/// Payloads that are expected to grow are modelled as **associated structs**
+/// rather than bare enum parameters so their fields can grow non-breakingly
+/// after the freeze:
+///
+/// - ``ToolProgressEvent`` — payload of ``toolProgress(_:)``.
+/// - ``TokenUsage`` — payload of ``usage(_:)``. Carried as a struct precisely so
+///   future token-accounting fields (cached-prompt tokens, reasoning tokens,
+///   tool-overhead tokens) can arrive as defaulted init parameters without
+///   forcing every `.usage(let usage)` consumer to rewrite its pattern.
+///
+/// Key design decisions recorded here for Wave 3 consumers:
 ///
 /// ### Queue-emitted lifecycle events
 ///
@@ -50,7 +67,11 @@ public enum GenerationEvent: Sendable, Equatable {
     case token(String)
 
     /// Token usage reported by the backend (cloud backends only today).
-    case usage(prompt: Int, completion: Int)
+    ///
+    /// Carries a ``TokenUsage`` struct rather than bare `prompt`/`completion`
+    /// parameters so future token-accounting fields can grow without breaking
+    /// exhaustive consumers — see the "Vocabulary freeze (1.0)" note above.
+    case usage(TokenUsage)
 
     /// A tool invocation requested by the model.
     ///

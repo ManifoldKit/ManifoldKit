@@ -142,7 +142,7 @@ final class SummarisationHookTests: XCTestCase {
                         for try await event in innerStream.events {
                             continuation.yield(event)
                         }
-                        continuation.yield(.usage(prompt: promptTokens, completion: 10))
+                        continuation.yield(.usage(TokenUsage(promptTokens: promptTokens, completionTokens: 10)))
                         continuation.finish()
                     } catch {
                         continuation.finish(throwing: error)

@@ -32,7 +32,7 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
         XCTAssertEqual(tokens, ["Hello", " world"])
 
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 4)
         XCTAssertEqual(usage?.completion, 2)
@@ -60,9 +60,9 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
             XCTFail("expected .toolCallArgumentsDelta second, got \(events[1])")
         }
 
-        if case .usage(let prompt, let completion) = events[2] {
-            XCTAssertEqual(prompt, 12)
-            XCTAssertEqual(completion, 7)
+        if case .usage(let u) = events[2] {
+            XCTAssertEqual(u.promptTokens, 12)
+            XCTAssertEqual(u.completionTokens, 7)
         } else {
             XCTFail("expected .usage third, got \(events[2])")
         }
@@ -101,7 +101,7 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
     func test_extractor_usageBasic_emitsUsageEvent() throws {
         let events = try driveExtractor(scenario: "usage/basic")
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 11)
         XCTAssertEqual(usage?.completion, 1)
@@ -199,7 +199,7 @@ final class OpenAIResponsesStreamEventExtractorTests: XCTestCase {
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName))"
-        case .usage(let p, let c): return "usage(\(p),\(c))"
+        case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"
@@ -323,7 +323,7 @@ final class OpenAIResponsesStreamEventExtractorParityTests: XCTestCase {
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
-        case .usage(let p, let c): return "usage(\(p),\(c))"
+        case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"

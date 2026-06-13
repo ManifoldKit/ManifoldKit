@@ -174,8 +174,8 @@ for try await event in stream {
     case .toolCall(let call):
         let result = try await myToolRegistry.dispatch(call)
         // The queue re-prompts automatically; you only need to observe.
-    case .usage(let prompt, let completion):
-        updateTokenCounter(prompt: prompt, completion: completion)
+    case .usage(let usage):
+        updateTokenCounter(prompt: usage.promptTokens, completion: usage.completionTokens)
     default:
         break
     }

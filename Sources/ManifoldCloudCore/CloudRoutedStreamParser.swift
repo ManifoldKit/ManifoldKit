@@ -75,7 +75,7 @@ package struct CloudRoutedStreamParser: Sendable {
                        let prompt = usage.promptTokens,
                        let completion = usage.completionTokens {
                         handleUsage((promptTokens: prompt, completionTokens: completion))
-                        continuation.yield(.usage(prompt: prompt, completion: completion))
+                        continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                     }
                     break
                 }
@@ -108,8 +108,8 @@ package struct CloudRoutedStreamParser: Sendable {
     ) throws {
         for event in consumer.consume(frame: frame) {
             if Task.isCancelled { break }
-            if case .usage(let prompt, let completion) = event {
-                handleUsage((promptTokens: prompt, completionTokens: completion))
+            if case .usage(let usage) = event {
+                handleUsage((promptTokens: usage.promptTokens, completionTokens: usage.completionTokens))
             }
             try limitTracker.noteEventYielded()
             continuation.yield(event)
@@ -145,7 +145,7 @@ package struct CloudRoutedStreamParser: Sendable {
             handleUsage(usage)
             if let prompt = usage.promptTokens,
                let completion = usage.completionTokens {
-                continuation.yield(.usage(prompt: prompt, completion: completion))
+                continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
             }
         }
     }

@@ -157,7 +157,7 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
         XCTAssertEqual(tokens, ["The", " capital", " of France", " is Paris."])
 
         let usage = events.compactMap { event -> (Int, Int)? in
-            if case .usage(let p, let c) = event { return (p, c) } else { return nil }
+            if case .usage(let u) = event { return (u.promptTokens, u.completionTokens) } else { return nil }
         }
         XCTAssertEqual(usage.count, 1, "expected exactly one .usage event from the done-line")
         XCTAssertEqual(usage.first?.0, 30)
@@ -185,8 +185,8 @@ final class OllamaToolCallLiveReplayTests: XCTestCase {
                     projected.append(ExpectedEvent(event: "token", text: t, tool_name: nil, arguments_contains: nil, prompt: nil, completion: nil))
                 case .toolCall(let call):
                     projected.append(ExpectedEvent(event: "toolCall", text: nil, tool_name: call.toolName, arguments_contains: nil, prompt: nil, completion: nil))
-                case .usage(let p, let c):
-                    projected.append(ExpectedEvent(event: "usage", text: nil, tool_name: nil, arguments_contains: nil, prompt: p, completion: c))
+                case .usage(let u):
+                    projected.append(ExpectedEvent(event: "usage", text: nil, tool_name: nil, arguments_contains: nil, prompt: u.promptTokens, completion: u.completionTokens))
                 case .thinkingToken, .thinkingCompleted, .thinkingSignature:
                     // Not exercised by tool-call fixtures; ignore for
                     // forward-compat with future thinking-in-tool-call

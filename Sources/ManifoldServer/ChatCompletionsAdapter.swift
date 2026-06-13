@@ -756,8 +756,8 @@ internal struct ChatCompletionEventMapper: Sendable {
                 content += text
             case .thinkingToken(let text):
                 reasoningContent += text
-            case .usage(let prompt, let completion):
-                usage = ChatCompletionUsage(promptTokens: prompt, completionTokens: completion)
+            case .usage(let tokenUsage):
+                usage = ChatCompletionUsage(promptTokens: tokenUsage.promptTokens, completionTokens: tokenUsage.completionTokens)
             case .toolCallStart(let callID, let name):
                 _ = index(for: callID)
                 sawToolCall = true

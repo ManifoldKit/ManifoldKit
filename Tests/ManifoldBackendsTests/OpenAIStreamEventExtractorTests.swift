@@ -83,7 +83,7 @@ final class OpenAIStreamEventExtractorTests: XCTestCase {
     func test_extractor_usageBasic_emitsUsageEvent() throws {
         let events = try driveExtractor(scenario: "usage/basic")
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 12)
         XCTAssertEqual(usage?.completion, 48)
@@ -127,7 +127,7 @@ final class OpenAIStreamEventExtractorTests: XCTestCase {
         XCTAssertEqual(tokens, ["Once", " upon"])
 
         let usage: (prompt: Int, completion: Int)? = events.lazy.compactMap {
-            if case .usage(let p, let c) = $0 { return (p, c) } else { return nil }
+            if case .usage(let u) = $0 { return (u.promptTokens, u.completionTokens) } else { return nil }
         }.first
         XCTAssertEqual(usage?.prompt, 7)
         XCTAssertEqual(usage?.completion, 2)
@@ -304,7 +304,7 @@ final class OpenAIStreamEventExtractorParityTests: XCTestCase {
         case .toolCallStart(let id, let name): return "toolCallStart(\(id),\(name))"
         case .toolCallArgumentsDelta(let id, let d): return "toolCallArgumentsDelta(\(id),\(d))"
         case .toolCall(let c): return "toolCall(\(c.id),\(c.toolName),\(c.arguments))"
-        case .usage(let p, let c): return "usage(\(p),\(c))"
+        case .usage(let u): return "usage(\(u.promptTokens),\(u.completionTokens))"
         case .prefillProgress(let n, let t, _): return "prefillProgress(\(n)/\(t))"
         case .toolIterationLimitExceeded(let n): return "toolIterationLimitExceeded(\(n))"
         case .toolResult: return "toolResult"

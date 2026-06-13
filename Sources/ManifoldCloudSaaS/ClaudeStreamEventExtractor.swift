@@ -474,7 +474,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
             if let completion = usage.completionTokens,
                let prompt = pendingPromptTokens,
                !emittedUsage {
-                out.append(.usage(prompt: prompt, completion: completion))
+                out.append(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                 emittedUsage = true
             }
         }

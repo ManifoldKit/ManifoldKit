@@ -198,7 +198,7 @@ public final class OpenAIResponsesStreamEventExtractor: CloudStreamEventConsumer
             if let usage = OpenAIResponsesBackend.parseUsage(from: data) {
                 if let prompt = usage.promptTokens,
                    let completion = usage.completionTokens {
-                    out.append(.usage(prompt: prompt, completion: completion))
+                    out.append(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                 }
             }
             appendFinalisedToolCalls(into: &out)

@@ -724,7 +724,7 @@ open class SSECloudBackend: InferenceBackend, ConversationHistoryReceiver, @unch
                 handleUsage(usage)
                 if let prompt = usage.promptTokens,
                    let completion = usage.completionTokens {
-                    continuation.yield(.usage(prompt: prompt, completion: completion))
+                    continuation.yield(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
                 }
             }
 

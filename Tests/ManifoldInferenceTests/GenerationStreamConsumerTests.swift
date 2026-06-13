@@ -22,7 +22,7 @@ final class GenerationStreamConsumerTests: XCTestCase {
 
     func test_usageEvent_returnsRecordUsage() {
         var consumer = GenerationStreamConsumer()
-        let action = consumer.handle(.usage(prompt: 10, completion: 5))
+        let action = consumer.handle(.usage(TokenUsage(promptTokens: 10, completionTokens: 5)))
         // Sabotage check: swapping prompt/completion in the .usage case causes this to fail
         XCTAssertEqual(action, .recordUsage(prompt: 10, completion: 5))
     }

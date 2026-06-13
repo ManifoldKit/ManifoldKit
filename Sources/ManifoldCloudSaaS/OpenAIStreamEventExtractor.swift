@@ -149,7 +149,7 @@ public final class OpenAIStreamEventExtractor: CloudStreamEventConsumer, @unchec
         if let usage = OpenAIChatCompletionsPayloadParsing.extractUsage(from: payload),
            let prompt = usage.promptTokens,
            let completion = usage.completionTokens {
-            out.append(.usage(prompt: prompt, completion: completion))
+            out.append(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))
         }
 
         if let reason = OpenAIChatCompletionsPayloadParsing.parseFinishReason(from: payload) {

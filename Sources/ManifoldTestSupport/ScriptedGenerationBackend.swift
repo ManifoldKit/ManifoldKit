@@ -63,7 +63,7 @@ public final class ScriptedGenerationBackend: InferenceBackend, @unchecked Senda
 
         /// Emits a `usage` event followed by text tokens.
         public static func withUsage(prompt: Int, completion: Int, tokens: [String]) -> TurnScript {
-            var events: [ScriptedEvent] = [.emit(.usage(prompt: prompt, completion: completion))]
+            var events: [ScriptedEvent] = [.emit(.usage(TokenUsage(promptTokens: prompt, completionTokens: completion)))]
             events += tokens.map { .emit(.token($0)) }
             return TurnScript(events)
         }

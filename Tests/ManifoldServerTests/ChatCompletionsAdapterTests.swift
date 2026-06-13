@@ -112,7 +112,7 @@ final class ChatCompletionsAdapterTests: XCTestCase {
     }
 
     func testUsageEventMapsToFinalUsageChunkWhenRequested() async throws {
-        let backend = EventSequenceBackend(events: [.token("ok"), .usage(prompt: 3, completion: 2)])
+        let backend = EventSequenceBackend(events: [.token("ok"), .usage(TokenUsage(promptTokens: 3, completionTokens: 2))])
         let request = ChatCompletionRequest(
             model: "m",
             messages: [ChatCompletionMessage(role: .user, content: "hi")],
@@ -176,7 +176,7 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         ]
 
         for request in requests {
-            let backend = EventSequenceBackend(events: [.token("ok"), .usage(prompt: 3, completion: 2)])
+            let backend = EventSequenceBackend(events: [.token("ok"), .usage(TokenUsage(promptTokens: 3, completionTokens: 2))])
             let chunks = try await collect(try DefaultChatCompletionsAdapter().chunks(for: request, using: backend))
 
             XCTAssertTrue(chunks.allSatisfy { $0.usage == nil })
@@ -224,7 +224,7 @@ final class ChatCompletionsAdapterTests: XCTestCase {
             .toolCallStart(callId: "call_1", name: "lookup"),
             .toolCallArgumentsDelta(callId: "call_1", textDelta: "{\"q\":"),
             .toolCallArgumentsDelta(callId: "call_1", textDelta: "\"swift\"}"),
-            .usage(prompt: 5, completion: 7)
+            .usage(TokenUsage(promptTokens: 5, completionTokens: 7))
         ])
         let request = ChatCompletionRequest(model: "m", messages: [ChatCompletionMessage(role: .user, content: "hi")])
 
