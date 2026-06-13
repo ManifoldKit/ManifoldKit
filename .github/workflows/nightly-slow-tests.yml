@@ -6,6 +6,10 @@ name: Nightly slow tests
 #  - TrafficBoundaryAuditTest — source-tree boundary audit (~50s); as of
 #    issue #1706 this also runs per-PR in ci.yml's ManifoldInferenceTests
 #    batch — it is kept here for nightly double-coverage, no longer gated.
+#    When this audit fails (e.g. issue #1709: a new file did direct URLSession
+#    I/O), the fix is to route the call through URLSessionProvider or add the
+#    file to TrafficBoundaryAuditTest.networkIOAllowlist with reviewer sign-off
+#    — the audit is doing its job, not flaking.
 #  - ManifoldAuditSabotageSuiteTests — SABOTAGE=1 audit tripwire proof
 #  - ManifoldMCPE2ESmokeTests — explicitly gated MCP streamable-HTTP E2E smoke
 # The perf suites are gated by RUN_SLOW_TESTS=1 in their setUp; the main `ci.yml`
