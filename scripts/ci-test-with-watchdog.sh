@@ -108,11 +108,22 @@ LAST_LINE_COUNT=0
 
 aborted_by_watchdog=0
 
-# Pattern matches BOTH SwiftPM's streaming line ("[N/M] Testing ...") and the
-# Swift Testing harness's per-test pass/fail/skip lines ("✔/✘/↩ Test ...").
-# XCTest's classic "Test Case '...' passed" lines also count. Any one of
-# these proves a worker is alive and making forward progress.
-progress_pattern='^\[[0-9]+/[0-9]+\] Testing |^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
+# Pattern matches forward progress in BOTH phases of `swift test`:
+#
+#   1. Build phase — SwiftPM streams "Building for debugging...",
+#      "[N/M] Compiling ...", "Emitting module ...", "[N/M] Write ...", and
+#      "Build complete!". A cold build of the full parallel test bundle can run
+#      several minutes with *no* test-execution output; without counting these
+#      the watchdog mistakes an advancing-but-slow compile for a stall and
+#      SIGABRTs before a single test starts (TOTAL RUN: 0). A genuinely stuck
+#      build still emits no new "[N/M]" line, so it still trips the watchdog.
+#   2. Test phase — SwiftPM's streaming "[N/M] Testing Module.Suite/test" line
+#      (the only reliable per-worker signal under --parallel), the Swift Testing
+#      harness's per-test "✔/✘/↩ Test ..." lines, and XCTest's classic
+#      "Test Case '...' passed" lines.
+#
+# Any one of these proves a worker is alive and making forward progress.
+progress_pattern='^\[[0-9]+/[0-9]+\] (Testing|Compiling|Write|Emitting) |^Emitting module |^Building for |^Build complete|^Planning build|^Test Case .* (passed|failed|skipped)|^[✔✘↩] (Test|Suite) '
 
 # Snapshot the descendant swift-test / xctest pid set so we can SIGABRT them
 # all on stall without touching unrelated Swift work that may be running on the
