@@ -98,8 +98,12 @@ extension BackgroundDownloadManager: URLSessionDownloadDelegate {
                         expectedChecksum: context.expectedChecksum
                     )
                     let destination = self.storageService.modelsDirectory.appendingPathComponent(model.fileName)
-                    let resolvedDestination = destination.standardized
-                    let resolvedModels = self.storageService.modelsDirectory.standardized
+                    // Resolve symlinks (not just `.standardized`) so a symlink planted
+                    // inside the models directory can't redirect the move past the
+                    // intended boundary. Matches the snapshot containment checks in
+                    // BackgroundDownloadManager (completeSnapshotFile / finalizeSnapshot).
+                    let resolvedDestination = destination.resolvingSymlinksInPath()
+                    let resolvedModels = self.storageService.modelsDirectory.resolvingSymlinksInPath()
                     guard resolvedDestination.path.hasPrefix(resolvedModels.path + "/") else {
                         try? FileManager.default.removeItem(at: tempURL)
                         self.unregisterActiveTempPath(tempURL)

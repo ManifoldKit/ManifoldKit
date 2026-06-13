@@ -48,7 +48,7 @@ internal struct DownloadStateMachine: Sendable {
         taskContexts[taskID] = context
     }
 
-    internal mutating func taskContext(for taskID: Int, taskDescription: String?) -> TaskContext? {
+    internal func taskContext(for taskID: Int, taskDescription: String?) -> TaskContext? {
         if let context = taskContexts[taskID] {
             return context
         }
