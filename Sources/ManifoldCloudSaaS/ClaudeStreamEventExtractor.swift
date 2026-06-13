@@ -31,64 +31,89 @@ enum ClaudePayloadParser {
     }
 
     static func parseEventType(from json: String) -> String? {
-        guard let parsed = parseObject(json) else { return nil }
-        return parsed["type"] as? String
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseEventType(from: parsed)
+    }
+
+    static func parseEventType(from json: JSONValue) -> String? {
+        json["type"]?.stringValue
     }
 
     static func parseToolUseBlockStart(from json: String) -> ToolUseBlockStart? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_start",
-              let index = parsed["index"] as? Int,
-              let block = parsed["content_block"] as? [String: Any],
-              block["type"] as? String == "tool_use",
-              let id = block["id"] as? String, !id.isEmpty,
-              let name = block["name"] as? String, !name.isEmpty else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseToolUseBlockStart(from: parsed)
+    }
+
+    static func parseToolUseBlockStart(from json: JSONValue) -> ToolUseBlockStart? {
+        guard json["type"]?.stringValue == "content_block_start",
+              let index = json["index"]?.intValue,
+              let block = json["content_block"]?.objectValue,
+              block["type"]?.stringValue == "tool_use",
+              let id = block["id"]?.stringValue, !id.isEmpty,
+              let name = block["name"]?.stringValue, !name.isEmpty else {
             return nil
         }
         return ToolUseBlockStart(index: index, id: id, name: name)
     }
 
     static func parseInputJSONDelta(from json: String) -> InputJSONDelta? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_delta",
-              let index = parsed["index"] as? Int,
-              let delta = parsed["delta"] as? [String: Any],
-              delta["type"] as? String == "input_json_delta",
-              let partial = delta["partial_json"] as? String else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseInputJSONDelta(from: parsed)
+    }
+
+    static func parseInputJSONDelta(from json: JSONValue) -> InputJSONDelta? {
+        guard json["type"]?.stringValue == "content_block_delta",
+              let index = json["index"]?.intValue,
+              let delta = json["delta"]?.objectValue,
+              delta["type"]?.stringValue == "input_json_delta",
+              let partial = delta["partial_json"]?.stringValue else {
             return nil
         }
         return InputJSONDelta(index: index, partialJSON: partial)
     }
 
     static func parseContentBlockIndex(from json: String) -> Int? {
-        parseObject(json)?["index"] as? Int
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseContentBlockIndex(from: parsed)
+    }
+
+    static func parseContentBlockIndex(from json: JSONValue) -> Int? {
+        json["index"]?.intValue
     }
 
     static func parseWholeMessageToolUseBlocks(from json: String) -> [WholeToolUseBlock]? {
-        guard let parsed = parseObject(json) else { return nil }
-        guard parsed["type"] as? String == "message",
-              let content = parsed["content"] as? [[String: Any]] else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseWholeMessageToolUseBlocks(from: parsed)
+    }
+
+    static func parseWholeMessageToolUseBlocks(from json: JSONValue) -> [WholeToolUseBlock]? {
+        guard json["type"]?.stringValue == "message",
+              let content = json["content"]?.objectArrayValue else {
             return nil
         }
         var result: [WholeToolUseBlock] = []
         for block in content {
-            guard block["type"] as? String == "tool_use",
-                  let id = block["id"] as? String, !id.isEmpty,
-                  let name = block["name"] as? String, !name.isEmpty else {
+            guard block["type"]?.stringValue == "tool_use",
+                  let id = block["id"]?.stringValue, !id.isEmpty,
+                  let name = block["name"]?.stringValue, !name.isEmpty else {
                 continue
             }
-            let input = block["input"] ?? [String: Any]()
+            let input = block["input"] ?? .object([:])
             result.append(WholeToolUseBlock(id: id, name: name, serializedInput: serializeInputObject(input)))
         }
         return result
     }
 
     static func parseThinkingBlockStartSignature(from json: String) -> String? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_start",
-              let block = parsed["content_block"] as? [String: Any],
-              block["type"] as? String == "thinking",
-              let signature = block["signature"] as? String,
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseThinkingBlockStartSignature(from: parsed)
+    }
+
+    static func parseThinkingBlockStartSignature(from json: JSONValue) -> String? {
+        guard json["type"]?.stringValue == "content_block_start",
+              let block = json["content_block"]?.objectValue,
+              block["type"]?.stringValue == "thinking",
+              let signature = block["signature"]?.stringValue,
               !signature.isEmpty else {
             return nil
         }
@@ -96,11 +121,15 @@ enum ClaudePayloadParser {
     }
 
     static func parseSignatureDelta(from json: String) -> String? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_delta",
-              let delta = parsed["delta"] as? [String: Any],
-              delta["type"] as? String == "signature_delta",
-              let signature = delta["signature"] as? String,
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseSignatureDelta(from: parsed)
+    }
+
+    static func parseSignatureDelta(from json: JSONValue) -> String? {
+        guard json["type"]?.stringValue == "content_block_delta",
+              let delta = json["delta"]?.objectValue,
+              delta["type"]?.stringValue == "signature_delta",
+              let signature = delta["signature"]?.stringValue,
               !signature.isEmpty else {
             return nil
         }
@@ -108,29 +137,37 @@ enum ClaudePayloadParser {
     }
 
     static func parseThinkingDelta(from json: String) -> String? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_delta",
-              let delta = parsed["delta"] as? [String: Any],
-              delta["type"] as? String == "thinking_delta",
-              let thinking = delta["thinking"] as? String else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseThinkingDelta(from: parsed)
+    }
+
+    static func parseThinkingDelta(from json: JSONValue) -> String? {
+        guard json["type"]?.stringValue == "content_block_delta",
+              let delta = json["delta"]?.objectValue,
+              delta["type"]?.stringValue == "thinking_delta",
+              let thinking = delta["thinking"]?.stringValue else {
             return nil
         }
         return thinking
     }
 
     static func parseToken(from json: String) -> String? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "content_block_delta",
-              let delta = parsed["delta"] as? [String: Any],
-              let text = delta["text"] as? String else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseToken(from: parsed)
+    }
+
+    static func parseToken(from json: JSONValue) -> String? {
+        guard json["type"]?.stringValue == "content_block_delta",
+              let delta = json["delta"]?.objectValue,
+              let text = delta["text"]?.stringValue else {
             return nil
         }
         return text
     }
 
     static func parseIsStreamEnd(_ json: String) -> Bool {
-        guard let type = parseObject(json)?["type"] as? String else { return false }
-        return type == "message_stop"
+        guard let parsed = JSONValue.parse(string: json) else { return false }
+        return parsed["type"]?.stringValue == "message_stop"
     }
 
     struct CacheUsage {
@@ -139,22 +176,24 @@ enum ClaudePayloadParser {
     }
 
     static func parseUsage(from json: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-        guard let parsed = parseObject(json),
-              let type = parsed["type"] as? String else {
-            return nil
-        }
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseUsage(from: parsed)
+    }
+
+    static func parseUsage(from json: JSONValue) -> (promptTokens: Int?, completionTokens: Int?)? {
+        guard let type = json["type"]?.stringValue else { return nil }
 
         switch type {
         case "message_start":
-            guard let message = parsed["message"] as? [String: Any],
-                  let usage = message["usage"] as? [String: Any],
-                  let inputTokens = usage["input_tokens"] as? Int else {
+            guard let message = json["message"]?.objectValue,
+                  let usage = message["usage"]?.objectValue,
+                  let inputTokens = usage["input_tokens"]?.intValue else {
                 return nil
             }
             return (promptTokens: inputTokens, completionTokens: nil)
         case "message_delta":
-            guard let usage = parsed["usage"] as? [String: Any],
-                  let outputTokens = usage["output_tokens"] as? Int else {
+            guard let usage = json["usage"]?.objectValue,
+                  let outputTokens = usage["output_tokens"]?.intValue else {
                 return nil
             }
             return (promptTokens: nil, completionTokens: outputTokens)
@@ -169,14 +208,18 @@ enum ClaudePayloadParser {
     /// activity occurred, not a parse failure, so we treat them as optional
     /// with a zero fallback rather than nil-gating the whole result.
     static func parseCacheUsage(from json: String) -> CacheUsage? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "message_start",
-              let message = parsed["message"] as? [String: Any],
-              let usage = message["usage"] as? [String: Any] else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseCacheUsage(from: parsed)
+    }
+
+    static func parseCacheUsage(from json: JSONValue) -> CacheUsage? {
+        guard json["type"]?.stringValue == "message_start",
+              let message = json["message"]?.objectValue,
+              let usage = message["usage"]?.objectValue else {
             return nil
         }
-        let creation = usage["cache_creation_input_tokens"] as? Int ?? 0
-        let read = usage["cache_read_input_tokens"] as? Int ?? 0
+        let creation = usage["cache_creation_input_tokens"]?.intValue ?? 0
+        let read = usage["cache_read_input_tokens"]?.intValue ?? 0
         // Only materialise a CacheUsage when there is actual cache activity to
         // report — avoids a debug log on every non-cached turn.
         guard creation > 0 || read > 0 else { return nil }
@@ -184,30 +227,26 @@ enum ClaudePayloadParser {
     }
 
     static func parseStreamError(from json: String) -> CloudBackendError? {
-        guard let parsed = parseObject(json),
-              parsed["type"] as? String == "error",
-              let error = parsed["error"] as? [String: Any],
-              let message = error["message"] as? String else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseStreamError(from: parsed)
+    }
+
+    static func parseStreamError(from json: JSONValue) -> CloudBackendError? {
+        guard json["type"]?.stringValue == "error",
+              let error = json["error"]?.objectValue,
+              let message = error["message"]?.stringValue else {
             return nil
         }
         return .sanitizedParseError(message)
     }
 
-    private static func parseObject(_ json: String) -> [String: Any]? {
-        guard let data = json.data(using: .utf8) else { return nil }
-        do {
-            return try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        } catch {
-            return nil
-        }
-    }
-
-    private static func serializeInputObject(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject(value) else {
+    private static func serializeInputObject(_ value: JSONValue) -> String {
+        let foundationValue = value.foundationObject
+        guard JSONSerialization.isValidJSONObject(foundationValue) else {
             return "{}"
         }
         do {
-            let data = try JSONSerialization.data(withJSONObject: value, options: [])
+            let data = try JSONSerialization.data(withJSONObject: foundationValue, options: [])
             return String(data: data, encoding: .utf8) ?? "{}"
         } catch {
             Log.inference.warning(
@@ -318,6 +357,19 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     ///      tool_use blocks → flush + uniform start/delta/call triples
     ///   8. usage on `message_start` / `message_delta` → `.usage`
     public func consume(payload: String) -> [GenerationEvent] {
+        guard let json = JSONValue.parse(string: payload) else { return [] }
+        return consume(json: json)
+    }
+
+    /// Parse-once entry point. Reads the already-parsed frame; the
+    /// stringly-typed ``consume(payload:)`` is a thin wrapper retained for
+    /// legacy callers and per-payload tests.
+    public func consume(frame: ParsedFrame) -> [GenerationEvent] {
+        guard let json = frame.json else { return [] }
+        return consume(json: json)
+    }
+
+    private func consume(json payload: JSONValue) -> [GenerationEvent] {
         var out: [GenerationEvent] = []
 
         let eventType = ClaudePayloadParser.parseEventType(from: payload)
@@ -374,7 +426,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
         // 6. Thinking + plain text deltas — route via the stateless handler
         //    surface (it classifies thinking_delta vs. text_delta in one
         //    place) and gate the thinking-handoff transition here.
-        let handlerEvents = CloudPayloadHandler.claude.extractEvents(from: payload)
+        let handlerEvents = Self.claudeHandlerEvents(from: payload)
         for event in handlerEvents {
             switch event {
             case .thinkingToken:
@@ -415,7 +467,7 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
         //    `ClaudeBackend.parseResponseStream` semantics (which got the
         //    same merge for free via `SSECloudBackend.handleUsage`'s
         //    bookkeeping).
-        if let usage = CloudPayloadHandler.claude.extractUsage(from: payload) {
+        if let usage = ClaudePayloadParser.parseUsage(from: payload) {
             if let prompt = usage.promptTokens {
                 pendingPromptTokens = prompt
             }
@@ -460,6 +512,20 @@ public final class ClaudeStreamEventExtractor: CloudStreamEventConsumer, @unchec
     }
 
     // MARK: - Internal helpers
+
+    /// Parse-once mirror of ``ClaudeMessagesPayloadHandler/extractEvents(from:)``
+    /// — thinking_delta → `.thinkingToken`, text_delta → `.token`. Kept here
+    /// so the extractor reads off the already-parsed frame instead of
+    /// round-tripping through the stringly-typed handler surface.
+    private static func claudeHandlerEvents(from json: JSONValue) -> [GenerationEvent] {
+        if let thinking = ClaudePayloadParser.parseThinkingDelta(from: json) {
+            return [.thinkingToken(thinking)]
+        }
+        if let token = ClaudePayloadParser.parseToken(from: json) {
+            return [.token(token)]
+        }
+        return []
+    }
 
     private func flushThinking(into out: inout [GenerationEvent]) {
         guard thinking.isOpen else { return }

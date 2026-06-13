@@ -41,11 +41,17 @@ package struct CloudRoutedStreamParser: Sendable {
 
                 let payload = String(data: frame, encoding: .utf8) ?? ""
 
+                // Parse the frame exactly once. Every downstream consumer
+                // (the stateful extractor, the stateless handler fallback,
+                // and the finalizer) reads off this single parsed structure
+                // instead of re-running `JSONSerialization` 8–12× per frame.
+                let parsedFrame = ParsedFrame.make(from: payload)
+
                 if !payload.isEmpty {
                     if let consumer {
                         try emitConsumerEvents(
                             from: consumer,
-                            payload: payload,
+                            frame: parsedFrame,
                             limitTracker: &limitTracker,
                             continuation: continuation
                         )
@@ -63,7 +69,7 @@ package struct CloudRoutedStreamParser: Sendable {
                     }
                 }
 
-                if case .streamComplete(let usage, _) = finalizer.finalize(frame: frame) {
+                if case .streamComplete(let usage, _) = finalizer.finalize(frame: parsedFrame) {
                     if consumer == nil,
                        let usage,
                        let prompt = usage.promptTokens,
@@ -96,11 +102,11 @@ package struct CloudRoutedStreamParser: Sendable {
 
     private func emitConsumerEvents(
         from consumer: any CloudStreamEventConsumer,
-        payload: String,
+        frame: ParsedFrame,
         limitTracker: inout RoutedStreamLimitTracker,
         continuation: AsyncThrowingStream<GenerationEvent, Error>.Continuation
     ) throws {
-        for event in consumer.consume(payload: payload) {
+        for event in consumer.consume(frame: frame) {
             if Task.isCancelled { break }
             if case .usage(let prompt, let completion) = event {
                 handleUsage((promptTokens: prompt, completionTokens: completion))

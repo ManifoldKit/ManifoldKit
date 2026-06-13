@@ -361,11 +361,12 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
 
     /// Extracts a `delta` string from a Responses-API event payload.
     static func parseDelta(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return parsed["delta"] as? String
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseDelta(from: parsed)
+    }
+
+    static func parseDelta(from json: JSONValue) -> String? {
+        json["delta"]?.stringValue
     }
 
     /// Extracts a usage tuple from a `response.completed` payload.
@@ -375,24 +376,24 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     /// {"response":{"usage":{"input_tokens":12,"output_tokens":8}}}
     /// ```
     static func parseUsage(from json: String) -> (promptTokens: Int?, completionTokens: Int?)? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseUsage(from: parsed)
+    }
+
+    static func parseUsage(from json: JSONValue) -> (promptTokens: Int?, completionTokens: Int?)? {
         // The usage block can sit at the top level (`{"usage":{...}}`) or
         // nested under `response` — accept either.
-        let usage: [String: Any]?
-        if let top = parsed["usage"] as? [String: Any] {
+        let usage: [String: JSONValue]?
+        if let top = json["usage"]?.objectValue {
             usage = top
-        } else if let response = parsed["response"] as? [String: Any],
-                  let nested = response["usage"] as? [String: Any] {
+        } else if let nested = json["response"]?.objectValue?["usage"]?.objectValue {
             usage = nested
         } else {
             usage = nil
         }
         guard let usage else { return nil }
-        let prompt = usage["input_tokens"] as? Int ?? usage["prompt_tokens"] as? Int
-        let completion = usage["output_tokens"] as? Int ?? usage["completion_tokens"] as? Int
+        let prompt = usage["input_tokens"]?.intValue ?? usage["prompt_tokens"]?.intValue
+        let completion = usage["output_tokens"]?.intValue ?? usage["completion_tokens"]?.intValue
         if prompt == nil && completion == nil { return nil }
         return (prompt, completion)
     }
@@ -412,20 +413,21 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     /// `type == "function_call"`. Returns `nil` for unrelated items
     /// (e.g. reasoning, message).
     static func parseFunctionCallItem(from json: String) -> FunctionCallItemInfo? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let item = parsed["item"] as? [String: Any] else {
-            return nil
-        }
-        guard (item["type"] as? String) == "function_call" else { return nil }
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseFunctionCallItem(from: parsed)
+    }
+
+    static func parseFunctionCallItem(from json: JSONValue) -> FunctionCallItemInfo? {
+        guard let item = json["item"]?.objectValue else { return nil }
+        guard item["type"]?.stringValue == "function_call" else { return nil }
         // item.id is the streaming-internal handle; call_id is the value the
         // model used to refer to this call (and what we feed back to the
         // server in `function_call_output.call_id`). Both are required.
-        guard let itemId = item["id"] as? String, !itemId.isEmpty,
-              let callId = item["call_id"] as? String, !callId.isEmpty else {
+        guard let itemId = item["id"]?.stringValue, !itemId.isEmpty,
+              let callId = item["call_id"]?.stringValue, !callId.isEmpty else {
             return nil
         }
-        let name = (item["name"] as? String) ?? ""
+        let name = item["name"]?.stringValue ?? ""
         return FunctionCallItemInfo(itemId: itemId, callId: callId, name: name)
     }
 
@@ -436,14 +438,15 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
     }
 
     static func parseFunctionCallArgumentsDelta(from json: String) -> FunctionCallArgumentsDelta? {
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let parsed = JSONValue.parse(string: json) else { return nil }
+        return parseFunctionCallArgumentsDelta(from: parsed)
+    }
+
+    static func parseFunctionCallArgumentsDelta(from json: JSONValue) -> FunctionCallArgumentsDelta? {
+        guard let itemId = json["item_id"]?.stringValue, !itemId.isEmpty else {
             return nil
         }
-        guard let itemId = parsed["item_id"] as? String, !itemId.isEmpty else {
-            return nil
-        }
-        let delta = (parsed["delta"] as? String) ?? ""
+        let delta = json["delta"]?.stringValue ?? ""
         return FunctionCallArgumentsDelta(itemId: itemId, delta: delta)
     }
 
@@ -500,9 +503,19 @@ public final class OpenAIResponsesBackend: SSECloudBackend, TokenUsageProvider, 
         return [.thinkingToken(delta)]
     }
 
+    static func eventsForReasoningDelta(data: JSONValue) -> [GenerationEvent] {
+        guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
+        return [.thinkingToken(delta)]
+    }
+
     /// Maps a `response.output_text.delta` payload to the events the
     /// dispatcher should yield.
     static func eventsForOutputTextDelta(data: String) -> [GenerationEvent] {
+        guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
+        return [.token(delta)]
+    }
+
+    static func eventsForOutputTextDelta(data: JSONValue) -> [GenerationEvent] {
         guard let delta = parseDelta(from: data), !delta.isEmpty else { return [] }
         return [.token(delta)]
     }

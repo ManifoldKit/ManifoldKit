@@ -99,6 +99,20 @@ public final class OpenAIResponsesStreamEventExtractor: CloudStreamEventConsumer
         return events(forEvent: envelope.name, data: envelope.data)
     }
 
+    /// Parse-once entry point. The envelope (`__event` + `__data`) was
+    /// unwrapped and `__data` parsed in a single pass at the
+    /// ``ParsedFrame`` build site, so this reads `frame.namedEvent` without
+    /// re-parsing.
+    public func consume(frame: ParsedFrame) -> [GenerationEvent] {
+        guard let named = frame.namedEvent else { return [] }
+        guard let dataJSON = named.dataJSON else {
+            // Inner `__data` wasn't JSON — fall back to the string surface so
+            // behaviour matches the legacy path exactly.
+            return events(forEvent: named.name, data: named.dataRaw)
+        }
+        return events(forEvent: named.name, dataJSON: dataJSON)
+    }
+
     /// Flushes pending state at stream end. Yields a trailing
     /// `.thinkingCompleted` if a thinking block is still open and finalises
     /// any buffered tool calls the upstream didn't accompany with a
@@ -119,6 +133,17 @@ public final class OpenAIResponsesStreamEventExtractor: CloudStreamEventConsumer
     // MARK: - Per-event dispatch
 
     func events(forEvent name: String, data: String) -> [GenerationEvent] {
+        guard let json = JSONValue.parse(string: data) else {
+            // Non-JSON data body — only the (no-op) structural / error /
+            // unknown arms can run, and they don't read the body. Route
+            // through the JSONValue path with a null body to keep dispatch
+            // in one place.
+            return events(forEvent: name, dataJSON: .null)
+        }
+        return events(forEvent: name, dataJSON: json)
+    }
+
+    func events(forEvent name: String, dataJSON data: JSONValue) -> [GenerationEvent] {
         var out: [GenerationEvent] = []
         switch OpenAIResponsesBackend.ResponsesEventKind(name: name) {
         case .reasoningDelta:
