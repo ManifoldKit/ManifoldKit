@@ -449,10 +449,31 @@ public final class ManifoldBootstrap {
         return RAGService(
             documentStore: documentStore,
             vectorStore: vectorStore,
-            embeddingBackend: ragConfig.embeddingBackend,
+            embeddingBackend: resolveEmbeddingBackend(ragConfig.embeddingBackend),
             reranker: ragConfig.reranker,
             chunker: chunker
         )
+    }
+
+    /// Resolves the embedding backend RAG will use.
+    ///
+    /// A host-supplied backend always wins. When the host did not inject one,
+    /// this falls back to the bundled on-device ``NLEmbeddingBackend`` so RAG
+    /// performs semantic (vector) retrieval out of the box with zero model
+    /// download. If even that is unavailable (no sentence-embedding model for
+    /// the OS locale), `nil` is returned and ``RAGService`` degrades to
+    /// case-insensitive keyword search — never a crash.
+    static func resolveEmbeddingBackend(
+        _ hostSupplied: (any EmbeddingBackend)?
+    ) -> (any EmbeddingBackend)? {
+        if let hostSupplied { return hostSupplied }
+        #if canImport(NaturalLanguage)
+        if let bundled = NLEmbeddingBackend() {
+            return bundled
+        }
+        Log.persistence.warning("ManifoldBootstrap: bundled NLEmbeddingBackend unavailable for this OS locale — RAG will use keyword-only retrieval until a host backend is supplied.")
+        #endif
+        return nil
     }
 
     public static func build(

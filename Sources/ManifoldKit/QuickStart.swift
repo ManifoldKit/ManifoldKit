@@ -220,8 +220,16 @@ public enum ManifoldKit {
             // milestones from the simple facade — `quickStart()` is the
             // "no progress UI" path. Consumers that want a launch
             // progress bar should call `ManifoldBootstrap.build` directly.
+            // Enable RAG by default. With no embedding backend injected,
+            // `ManifoldBootstrap` resolves the bundled on-device
+            // `NLEmbeddingBackend` (Apple NaturalLanguage, zero download), so a
+            // host gets working semantic retrieval out of the box. Hosts that
+            // want a higher-quality embedder (MLXEmbedders / Llama) or to disable
+            // RAG drop down to `ManifoldBootstrap.build` directly with their own
+            // `RAGConfiguration`.
             let (progress, task) = ManifoldBootstrap.build(
                 configuration: configuration,
+                ragConfiguration: RAGConfiguration(),
                 makeModelContainer: makeModelContainer
             )
             for await _ in progress {
