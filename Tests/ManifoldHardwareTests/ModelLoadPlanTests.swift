@@ -861,6 +861,64 @@ final class ModelLoadPlanTests: XCTestCase {
             "Total estimated bytes must not contain a UInt64 underflow value")
     }
 
+    /// Verdict must budget against effective-available (raw minus app overhead),
+    /// not raw available. Regression guard for the jetsam bug: a model that fits
+    /// under raw `available` but exceeds true usable memory once the ~800 MB iOS
+    /// reserve is subtracted was marked `.allow` and then SIGKILLed on load.
+    ///
+    /// Fixture: 250 MB resident model, 1 GB raw available, 800 MB overhead →
+    /// 200 MB effective. Against raw available the 250 MB total is ~25% (well
+    /// under the 85% allow threshold → `.allow`). Against the 200 MB effective
+    /// budget it overruns entirely → must `.deny` with an insufficient-resident
+    /// reason. The verdict flips, proving the fix budgets the right number.
+    func test_appOverhead_verdictBudgetsAgainstEffectiveAvailable_notRaw() {
+        let rawAvailable: UInt64 = 1_000_000_000
+        let overhead: UInt64 = 800_000_000  // ~iOS jetsam reserve
+        let residentModel: UInt64 = 250_000_000
+
+        let inputs = ModelLoadPlan.Inputs(
+            modelFileSize: residentModel,
+            memoryStrategy: .resident,           // resident budget == file size, not context-clamped
+            requestedContextSize: 256,           // tiny context → KV is negligible
+            trainedContextLength: 4096,
+            kvBytesPerToken: 8,
+            availableMemoryBytes: rawAvailable,
+            physicalMemoryBytes: 8 * oneGB,
+            absoluteContextCeiling: 128_000,
+            headroomFraction: 0.0,               // isolate the overhead effect from headroom
+            appOverheadBytes: overhead
+        )
+        let plan = ModelLoadPlan.compute(inputs: inputs)
+
+        // The impossible-fit gate stays on RAW available; 250 MB / 1 GB ratio 0
+        // does not fire it. The deny here comes purely from effective-budget math.
+        XCTAssertEqual(plan.verdict, .deny,
+            "Model exceeding effective-available (raw − overhead) must deny, not allow into a jetsam kill")
+        let hasInsufficientResident = plan.reasons.contains { reason in
+            if case .insufficientResident = reason { return true }
+            return false
+        }
+        XCTAssertTrue(hasInsufficientResident,
+            "Expected .insufficientResident keyed off effective-available; got \(plan.reasons)")
+
+        // Sanity anchor: the same model with zero overhead is comfortably allowed,
+        // confirming the flip is driven by overhead, not the model being too big.
+        let noOverhead = ModelLoadPlan.compute(inputs: ModelLoadPlan.Inputs(
+            modelFileSize: residentModel,
+            memoryStrategy: .resident,
+            requestedContextSize: 256,
+            trainedContextLength: 4096,
+            kvBytesPerToken: 8,
+            availableMemoryBytes: rawAvailable,
+            physicalMemoryBytes: 8 * oneGB,
+            absoluteContextCeiling: 128_000,
+            headroomFraction: 0.0,
+            appOverheadBytes: 0
+        ))
+        XCTAssertEqual(noOverhead.verdict, .allow,
+            "Without overhead the model fits raw available and must allow — proves overhead drives the flip")
+    }
+
     /// Default `appOverheadBytes: 0` must produce exactly the same
     /// `effectiveContextSize` as inputs constructed without the field — no-op
     /// regression guard for existing callers.

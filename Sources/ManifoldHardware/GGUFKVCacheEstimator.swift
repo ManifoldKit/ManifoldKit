@@ -70,7 +70,21 @@ public enum GGUFKVCacheEstimator {
             return nil
         }
 
-        return UInt64(blockCount) * UInt64(keyWidth + valueWidth) * bytesPerElement
+        // A malformed or crafted GGUF can supply enormous block/width values. An
+        // unchecked UInt64 multiply would wrap to a tiny per-token estimate, so
+        // ModelLoadPlan would report `.allow` and then OOM at inference. On any
+        // overflow, return nil so the caller's conservative no-estimate fallback
+        // (legacyFallbackBytesPerToken) engages instead.
+        let widthSum = keyWidth + valueWidth
+        let (perTokenElements, widthOverflow) = UInt64(blockCount)
+            .multipliedReportingOverflow(by: UInt64(widthSum))
+        guard !widthOverflow else { return nil }
+
+        let (bytesPerToken, byteOverflow) = perTokenElements
+            .multipliedReportingOverflow(by: bytesPerElement)
+        guard !byteOverflow else { return nil }
+
+        return bytesPerToken
     }
 
     package static func estimateBytesPerToken(

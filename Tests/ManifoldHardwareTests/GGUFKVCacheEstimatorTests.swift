@@ -171,4 +171,52 @@ final class GGUFKVCacheEstimatorTests: XCTestCase {
             GGUFKVCacheEstimator.estimateBytesPerToken(from: parameters, bytesPerElement: 0)
         )
     }
+
+    // MARK: - Overflow hardening
+
+    /// A malformed or crafted GGUF can supply enormous block/width values whose
+    /// `block × (K+V)` product exceeds `UInt64.max`. An unchecked multiply would
+    /// wrap to a tiny per-token estimate, ModelLoadPlan would see "KV is cheap"
+    /// and `.allow`, then the load OOMs at inference. The estimator must instead
+    /// return `nil` so the caller's conservative legacy-fallback path engages.
+    ///
+    /// Uses explicit key/value lengths so `gqaWidth` returns
+    /// `explicitHeadLength * kvHeadCount` directly. With kvHeadCount == 1,
+    /// keyWidth == valueWidth == 4_000_000_000 → widthSum == 8_000_000_000.
+    /// 5_000_000_000 × 8_000_000_000 ≈ 4e19 > UInt64.max (~1.8e19) → overflow on
+    /// the block × width multiply.
+    func test_estimateBytesPerToken_blockTimesWidthOverflow_returnsNil() {
+        let parameters = GGUFKVCacheParameters(
+            blockCount: 5_000_000_000,
+            attentionHeadCount: 1,
+            attentionHeadCountKV: 1,
+            attentionKeyLength: 4_000_000_000,
+            attentionValueLength: 4_000_000_000
+        )
+
+        XCTAssertNil(
+            GGUFKVCacheEstimator.estimateBytesPerToken(from: parameters),
+            "block × (K+V) overflowing UInt64 must yield nil, not a wrapped tiny estimate"
+        )
+    }
+
+    /// Overflow on the *second* multiply (`perTokenElements × bytesPerElement`).
+    /// Here block × width fits in UInt64, but scaling by a large bytes-per-element
+    /// pushes it past the ceiling. Both multiply guards must hold, not just the
+    /// first. blockCount 4_000_000_000 × widthSum 4_000_000_000 == 1.6e19 (fits),
+    /// then × 100 overflows.
+    func test_estimateBytesPerToken_bytesPerElementScaleOverflow_returnsNil() {
+        let parameters = GGUFKVCacheParameters(
+            blockCount: 4_000_000_000,
+            attentionHeadCount: 1,
+            attentionHeadCountKV: 1,
+            attentionKeyLength: 2_000_000_000,
+            attentionValueLength: 2_000_000_000
+        )
+
+        XCTAssertNil(
+            GGUFKVCacheEstimator.estimateBytesPerToken(from: parameters, bytesPerElement: 100),
+            "scaling a near-ceiling product by bytesPerElement must guard overflow and yield nil"
+        )
+    }
 }
