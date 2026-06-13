@@ -27,7 +27,7 @@
 
 ### Model Selection
 
-Local backends (MLX, Llama, Foundation) surface choices through ``availableModels`` / ``selectedModel``. Cloud and LAN backends (Ollama, OpenAI-compatible providers, Anthropic, and similar) surface saved endpoint records through ``availableEndpoints`` / ``selectedEndpoint``. Setting either property records the user's selection; call ``dispatchSelectedLoad()`` (or the explicit ``loadSelectedModel()`` / ``loadSelectedEndpoint()`` / ``loadCloudEndpoint(_:)`` entry points) to actually load it.
+On-device backends surface choices through ``availableModels`` / ``selectedModel``: the Foundation Models backend (iOS/macOS 26+) ships in core, while the MLX and llama.cpp backends come from the `manifold-mlx` / `manifold-llama` companion packages (v0.48) once registered. Cloud and LAN backends (Ollama, OpenAI-compatible providers, Anthropic, and similar) surface saved endpoint records through ``availableEndpoints`` / ``selectedEndpoint``. Setting either property records the user's selection; call ``dispatchSelectedLoad()`` (or the explicit ``loadSelectedModel()`` / ``loadSelectedEndpoint()`` / ``loadCloudEndpoint(_:)`` entry points) to actually load it.
 
 - ``selectedModel``
 - ``selectedEndpoint``
