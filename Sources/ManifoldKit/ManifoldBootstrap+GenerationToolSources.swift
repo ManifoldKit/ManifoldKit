@@ -10,11 +10,11 @@ import ManifoldUI
 
 extension ManifoldBootstrap {
 
-    /// Registers ``ImageGenerationToolSource`` and ``VideoGenerationToolSource``
+    /// Registers `ImageGenerationToolSource` and `VideoGenerationToolSource`
     /// on the bootstrap's runtime so the active language model can invoke
-    /// ``generate_image`` and ``generate_video`` tools.
+    /// the `generate_image` and `generate_video` tools.
     ///
-    /// Call after wiring the ``ChatViewModel`` and after the bootstrap has been
+    /// Call after wiring the `ChatViewModel` and after the bootstrap has been
     /// fully configured:
     ///
     /// ```swift
@@ -22,12 +22,12 @@ extension ManifoldBootstrap {
     /// ```
     ///
     /// Each source is only active when the bootstrap has the corresponding
-    /// surface wired: ``ImageGenerationToolSource`` requires
-    /// ``ManifoldBootstrap/imageGenerationService`` to be non-nil;
-    /// ``VideoGenerationToolSource`` requires
-    /// ``ManifoldBootstrap/videoGenerationService`` to be non-nil;
-    /// ``WebSearchToolSource`` requires
-    /// ``ManifoldBootstrap/webSearchRuntime`` to be non-nil. Sources for
+    /// surface wired: `ImageGenerationToolSource` requires
+    /// `imageGenerationService` to be non-nil;
+    /// `VideoGenerationToolSource` requires
+    /// `videoGenerationService` to be non-nil;
+    /// `WebSearchToolSource` requires
+    /// `webSearchRuntime` to be non-nil. Sources for
     /// unwired surfaces are silently skipped so the call is safe to issue
     /// unconditionally regardless of which generation surfaces your app enables.
     ///
