@@ -14,7 +14,7 @@ import Foundation
 /// protocol as an `Actor` would hold isolation across that 6–10s loop and
 /// block ``isLoaded`` / ``stopGeneration()`` / ``unloadModel()`` from the
 /// UI. ``InferenceBackend`` solved this with reference semantics + fine-
-/// grained ``NSLock``; this protocol follows the same pattern so both
+/// grained `NSLock`; this protocol follows the same pattern so both
 /// backend protocols share one isolation strategy.
 ///
 /// Conformers protect mutable state with `NSLock` (or `@unchecked Sendable`

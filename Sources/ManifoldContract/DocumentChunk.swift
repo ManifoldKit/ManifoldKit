@@ -1,6 +1,6 @@
 import Foundation
 
-/// A contiguous passage of text extracted from a ``DocumentRecord``.
+/// A contiguous passage of text extracted from a `DocumentRecord`.
 ///
 /// The `text` is the retrieval unit — what gets embedded and what gets injected
 /// into the context window when retrieved. `chunkIndex` is zero-based within the

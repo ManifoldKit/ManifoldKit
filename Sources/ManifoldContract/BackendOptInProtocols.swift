@@ -19,7 +19,7 @@ public protocol ConversationHistoryReceiver: AnyObject {
 /// One turn in a structured conversation history — a role plus an ordered
 /// list of ``MessagePart`` values.
 ///
-/// This is the inference-layer companion to ``ChatMessage``: it strips
+/// This is the inference-layer companion to `ChatMessage`: it strips
 /// persistence-only fields (timestamp, sessionID, token counts) and exposes
 /// just what the generation pipeline needs to format prompts and serialize
 /// provider-specific request bodies. Crucially, ``parts`` retains
@@ -30,7 +30,7 @@ public protocol ConversationHistoryReceiver: AnyObject {
 ///
 /// Text-only backends collapse a ``StructuredMessage`` back to
 /// `(role, content)` at their boundary — see
-/// ``GenerationQueue`` for the flattening rule (text parts joined,
+/// `GenerationQueue` for the flattening rule (text parts joined,
 /// thinking parts dropped from the prompt).
 public struct StructuredMessage: Sendable, Hashable {
 
@@ -69,7 +69,7 @@ public struct StructuredMessage: Sendable, Hashable {
 /// history — including thinking blocks with their provider signatures and
 /// tool call / result parts.
 ///
-/// ``GenerationQueue`` calls this in addition to (not instead of)
+/// `GenerationQueue` calls this in addition to (not instead of)
 /// ``ConversationHistoryReceiver`` so backends can pick whichever shape
 /// matches their wire format. The Anthropic backend reads the structured
 /// form so it can serialize prior `thinking` content blocks with their
@@ -175,7 +175,7 @@ public protocol LoadProgressReporting: AnyObject {
 /// backends where KV cache overflow is a real concern.
 ///
 /// - Note: `countTokens` must only be called after the model is loaded.
-///   Implementations throw ``InferenceError/modelNotLoaded`` when invoked
+///   Implementations throw ``InferenceError/modelNotFound(path:)`` when invoked
 ///   on an unloaded backend.
 public protocol TokenCountingBackend: AnyObject {
     /// Returns the exact token count for `text` using the loaded model's vocabulary.
@@ -187,14 +187,14 @@ public protocol TokenCountingBackend: AnyObject {
 
 /// Adopted by local backends that support a multimodal projector (mmproj) companion file.
 ///
-/// ``ModelLifecycleCoordinator`` calls ``setMmprojURL(_:)`` with the URL from
+/// `ModelLifecycleCoordinator` calls ``setMmprojURL(_:)`` with the URL from
 /// ``ModelInfo/mmprojURL`` before each ``InferenceBackend/loadModel(from:plan:)`` call.
 /// Conformers should set ``BackendCapabilities/supportsVision`` to `true` only
-/// once they can translate ``MessagePart/image(data:mimeType:)`` into backend
+/// once they can translate ``MessagePart/image(data:mimeType:placeholderHash:)`` into backend
 /// image embeddings, not merely because a projector URL is present.
 ///
 /// - Note: Passing `nil` clears the projector, returning the backend to text-only mode.
-///   ``ModelLifecycleCoordinator`` always calls this before load so the projector state
+///   `ModelLifecycleCoordinator` always calls this before load so the projector state
 ///   stays in sync with the loaded model file.
 public protocol MultimodalProjectorConfigurable: AnyObject {
     /// Sets (or clears) the mmproj companion file URL for the next ``InferenceBackend/loadModel(from:plan:)`` call.

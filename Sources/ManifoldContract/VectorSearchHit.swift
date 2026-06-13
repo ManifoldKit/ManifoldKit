@@ -2,10 +2,10 @@ import Foundation
 
 /// A retrieved chunk with its relevance score and source document title.
 ///
-/// Returned by ``VectorStore/search(embedding:limit:)`` and
-/// ``VectorStore/keywordSearch(query:limit:)``. The `documentTitle` is stored
+/// Returned by `VectorStore.search(embedding:limit:)` and
+/// `VectorStore.keywordSearch(query:limit:)`. The `documentTitle` is stored
 /// alongside the chunk record so context formatters can attribute retrieved
-/// passages without an extra round-trip to ``DocumentStore``.
+/// passages without an extra round-trip to `DocumentStore`.
 public struct VectorSearchHit: Sendable {
     public let chunk: DocumentChunk
     /// Human-readable source label (typically the document file name).

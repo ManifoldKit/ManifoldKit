@@ -2,7 +2,7 @@ import Foundation
 
 /// A ``TokenizerProvider`` that estimates token count using ~4 characters per token.
 ///
-/// This matches the heuristic already used by ``ContextWindowManager`` and is suitable
+/// This matches the heuristic already used by `ContextWindowManager` and is suitable
 /// as a fallback when no model-specific tokenizer is available.
 // @_spi(BackendInternals): published for the backend family packages
 // (manifold-mlx / manifold-llama, #1749). `LlamaBackend` falls back to the

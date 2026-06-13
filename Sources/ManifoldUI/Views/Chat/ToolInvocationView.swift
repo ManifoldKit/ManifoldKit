@@ -1,15 +1,15 @@
 import SwiftUI
 import ManifoldInference
 
-/// Renders a single ``MessagePart/toolCall`` or ``MessagePart/toolResult``
+/// Renders a single `MessagePart.toolCall` or `MessagePart.toolResult`
 /// within a message bubble.
 ///
 /// Four visual states are branched off the `MessagePart` case and the presence
-/// of a completed ``ToolResult``:
+/// of a completed `ToolResult`:
 /// - ``State/pendingApproval`` — tool-name chip + argument preview + Approve/Deny.
 /// - ``State/running`` — spinner while the tool executes.
 /// - ``State/completed`` — collapsed disclosure showing args + content.
-/// - ``State/failed`` — collapsed disclosure with the ``ToolResult/ErrorKind``
+/// - ``State/failed`` — collapsed disclosure with the `ToolResult.ErrorKind`
 ///   chip.
 ///
 /// This view is intentionally "dumb" — it takes the part and optional
@@ -28,8 +28,8 @@ public struct ToolInvocationView: View {
     /// Visual state the view should render.
     ///
     /// The caller decides which state applies based on whether the part is a
-    /// ``MessagePart/toolCall`` that still needs approval, is currently
-    /// running, or already has a matching ``MessagePart/toolResult`` paired
+    /// `MessagePart.toolCall` that still needs approval, is currently
+    /// running, or already has a matching `MessagePart.toolResult` paired
     /// with it. Keeping the state explicit in the API makes the view unit
     /// testable without having to fabricate the whole messages array.
     public enum State: Sendable, Equatable {
@@ -39,13 +39,13 @@ public struct ToolInvocationView: View {
         case failed
     }
 
-    /// The part being rendered. Must be either ``MessagePart/toolCall`` or
-    /// ``MessagePart/toolResult`` — any other case renders as an empty view
+    /// The part being rendered. Must be either `MessagePart.toolCall` or
+    /// `MessagePart.toolResult` — any other case renders as an empty view
     /// so mixed-content bubbles degrade gracefully.
     public let part: MessagePart
 
-    /// Optional paired ``ToolResult`` for ``State/completed`` / ``State/failed``
-    /// renders driven off a ``MessagePart/toolCall`` primary part. Supplying
+    /// Optional paired `ToolResult` for ``State/completed`` / ``State/failed``
+    /// renders driven off a `MessagePart.toolCall` primary part. Supplying
     /// the result alongside the call lets the disclosure group label with
     /// the tool name while still surfacing the result body underneath.
     public let pairedResult: ToolResult?
@@ -59,7 +59,7 @@ public struct ToolInvocationView: View {
 
     /// Invoked when the user taps Deny on a pending approval. The optional
     /// `String` carries an opt-in reason surfaced back to the model via the
-    /// synthesised ``ToolResult/ErrorKind/permissionDenied``.
+    /// synthesised `ToolResult.ErrorKind.permissionDenied`.
     /// Only read when ``state`` is ``State/pendingApproval``.
     public var onDeny: ((String?) -> Void)?
 

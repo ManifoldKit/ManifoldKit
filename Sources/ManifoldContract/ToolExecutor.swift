@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Conformers pair a ``ToolDefinition`` (the JSON-Schema contract the model
 /// sees) with an `execute(arguments:)` hook that runs the tool and returns a
-/// ``ToolResult``. Executors are stored in a ``ToolRegistry`` and dispatched
+/// ``ToolResult``. Executors are stored in a `ToolRegistry` and dispatched
 /// by the orchestration loop when the model emits a ``ToolCall``.
 ///
 /// ## Arguments type
@@ -14,7 +14,7 @@ import Foundation
 /// The protocol intentionally takes ``JSONSchemaValue`` — not a raw `String`
 /// — so adapter layers (MCP bridges, AppIntents, macro-generated tools) can
 /// hand a structured, already-parsed argument tree to the executor without
-/// re-serialising through a string. ``ToolRegistry/dispatch(_:)`` handles the
+/// re-serialising through a string. `ToolRegistry.dispatch(_:)` handles the
 /// `String`→`JSONSchemaValue` parse at the registry boundary.
 ///
 /// ## Typed adapter
@@ -37,7 +37,7 @@ import Foundation
 /// ``executeStreaming(arguments:)`` progress events, but the terminal
 /// ``ToolResult`` remains atomic transcript content.
 ///
-/// When an executor throws mid-work, ``ToolRegistry/dispatch(_:)`` records a
+/// When an executor throws mid-work, `ToolRegistry.dispatch(_:)` records a
 /// ``ToolResult`` with ``ToolResult/ErrorKind/permanent`` and
 /// `String(describing: error)` as the content. Any in-flight state the
 /// executor had accumulated — bytes read, chunks processed, rows fetched — is
@@ -51,7 +51,7 @@ import Foundation
 /// labelling it retry-safe would push agents into loops on permanent
 /// failures (logic bugs, schema mismatches, auth denials) that no amount of
 /// retrying will fix. Executors that *know* a failure is retriable must
-/// return an explicit ``ToolResult/init(callId:content:errorKind:)`` with
+/// return an explicit ``ToolResult/init(callId:content:errorKind:dialog:structuredContent:)`` with
 /// ``ToolResult/ErrorKind/transient`` instead of throwing — same rule for
 /// ``ToolResult/ErrorKind/timeout``, ``ToolResult/ErrorKind/rateLimited``,
 /// ``ToolResult/ErrorKind/cancelled``, and the other specific kinds.
@@ -78,7 +78,7 @@ import Foundation
 /// ## Cooperative cancellation
 ///
 /// `execute(arguments:)` runs inside a `Task` owned by the orchestrator
-/// (``ToolRegistry/dispatch(_:)`` is invoked from a child task in
+/// (`ToolRegistry.dispatch(_:)` is invoked from a child task in
 /// `GenerationQueue`). When the user hits stop mid-generation, the
 /// orchestrator calls `Task.cancel()` on its active generation task and the
 /// cancellation propagates into this executor through structured concurrency.
@@ -96,7 +96,7 @@ import Foundation
 ///   that calls the underlying `cancel()` so the in-flight request is torn
 ///   down. Otherwise the request leaks past the user's stop.
 ///
-/// When the executor cooperates, ``ToolRegistry/dispatch(_:)`` synthesises
+/// When the executor cooperates, `ToolRegistry.dispatch(_:)` synthesises
 /// a ``ToolResult`` with ``ToolResult/ErrorKind/cancelled`` and the fixed
 /// content `"cancelled by user"`. The orchestrator records it in the
 /// transcript and **stops the dispatch loop** — no further backend turn
@@ -109,7 +109,7 @@ import Foundation
 /// handles, in-flight HTTP requests). Cooperate.
 public protocol ToolExecutor: Sendable {
 
-    /// The JSON-Schema contract exposed to the model and the ``ToolRegistry``
+    /// The JSON-Schema contract exposed to the model and the `ToolRegistry`
     /// lookup key. ``ToolDefinition/name`` must be unique within a registry
     /// (case-insensitive).
     var definition: ToolDefinition { get }
@@ -132,17 +132,17 @@ public protocol ToolExecutor: Sendable {
     /// orchestrator dispatches it.
     ///
     /// Side-effecting tools (writes a file, sends a message, calls a paid
-    /// API) should set this to `true` so a UI-layer ``ToolApprovalGate`` is
+    /// API) should set this to `true` so a UI-layer `ToolApprovalGate` is
     /// consulted before execution. Pure-read tools should leave the default
     /// of `false` so they auto-approve regardless of the host's policy. The
     /// generation coordinator queries this flag via
-    /// ``ToolRegistry/requiresApproval(toolName:)`` and skips the gate hop
+    /// `ToolRegistry.requiresApproval(toolName:)` and skips the gate hop
     /// entirely when false — read-only tools never block on a user prompt.
     var requiresApproval: Bool { get }
 
     /// Executes the tool with already-parsed JSON arguments.
     ///
-    /// The returned ``ToolResult/callId`` may be empty — ``ToolRegistry``
+    /// The returned ``ToolResult/callId`` may be empty — `ToolRegistry`
     /// stamps the correct id from the incoming ``ToolCall`` before returning
     /// the result to the caller. Thrown errors are caught by the registry and
     /// turned into ``ToolResult/ErrorKind/permanent`` results; to signal a
@@ -233,7 +233,7 @@ extension ToolExecutor {
 /// registry.register(weather)
 /// ```
 ///
-/// Decode or encode failures throw — ``ToolRegistry/dispatch(_:)`` catches them
+/// Decode or encode failures throw — `ToolRegistry.dispatch(_:)` catches them
 /// and returns a ``ToolResult/ErrorKind/permanent`` result. Malformed JSON in
 /// the raw ``ToolCall/arguments`` string is classified as
 /// ``ToolResult/ErrorKind/invalidArguments`` at the registry boundary before
@@ -244,7 +244,7 @@ extension ToolExecutor {
 /// The adapter is inherently atomic: the handler's `Result` is JSON-encoded
 /// exactly once **after** the handler returns normally. If the handler throws,
 /// nothing is encoded and no ``ToolResult`` is produced — the error bubbles to
-/// ``ToolRegistry/dispatch(_:)`` which records a
+/// `ToolRegistry.dispatch(_:)` which records a
 /// ``ToolResult/ErrorKind/permanent`` result with the error description and
 /// discards any work the handler had performed. See the ``ToolExecutor``
 /// protocol's Atomicity section for the full contract; handlers that perform
@@ -263,7 +263,7 @@ public struct TypedToolExecutor<Arguments: Decodable & Sendable, Result: Encodab
     ///   - definition: The tool contract exposed to the model. ``ToolDefinition/parameters``
     ///     should describe the JSON shape of `Arguments`.
     ///   - requiresApproval: When `true`, the orchestrator routes calls to
-    ///     this tool through a ``ToolApprovalGate`` before execution. Defaults
+    ///     this tool through a `ToolApprovalGate` before execution. Defaults
     ///     to `false` (auto-approve, suitable for pure-read tools).
     ///   - handler: Runs the tool. Thrown errors become ``ToolResult/ErrorKind/permanent``
     ///     results at the registry layer.

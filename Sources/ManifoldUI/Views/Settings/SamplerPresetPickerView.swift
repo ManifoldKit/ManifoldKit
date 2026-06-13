@@ -4,7 +4,7 @@ import ManifoldInference
 
 /// Picker and management UI for sampler presets within `GenerationSettingsView`.
 ///
-/// Reads and writes presets through a ``SamplerPresetStore`` injected via the
+/// Reads and writes presets through a `SamplerPresetStore` injected via the
 /// SwiftUI environment (typically from `ManifoldBootstrap.samplerPresetStore`).
 /// The view does not import SwiftData — the store is the only persistence
 /// surface visible to the UI.
@@ -143,7 +143,7 @@ private struct SamplerPresetStoreKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Injection point for the ``SamplerPresetStore`` consumed by
+    /// Injection point for the `SamplerPresetStore` consumed by
     /// ``SamplerPresetPickerView``.
     public var samplerPresetStore: (any SamplerPresetStore)? {
         get { self[SamplerPresetStoreKey.self] }
