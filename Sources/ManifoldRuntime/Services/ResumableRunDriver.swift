@@ -351,6 +351,22 @@ public final class ResumableRunDriver: TurnDriver, @unchecked Sendable {
     /// point counts only *completed* steps, so the dangling index is always
     /// re-executed.
     ///
+    /// ## Future work: cross-process auto-resume (deferred — no consumer yet)
+    ///
+    /// Today `resume(runID:…)` is host-driven: an interrupted run leaves a
+    /// durable checkpoint (#1784) but nothing detects it on next launch. The
+    /// natural extension is a bootstrap-time scan of ``RunStore`` for runs with a
+    /// dangling-incomplete final step, surfaced for auto- or host-prompted
+    /// resume (app-kill recovery, background-generation continuation). It is
+    /// **intentionally not built**: no host pulls on it, and it must clear two
+    /// bars first — (1) decide replay-from-provider (current M1 design) vs.
+    /// durable content persistence, whose hard half is moving generated
+    /// `GenerationEvent`s across the detached-task / `@Model` (MainActor)
+    /// boundary via JSON columns rather than passing `@Model` instances; and
+    /// (2) honour `RELIABILITY.md` — resume stays an explicit, observable action,
+    /// never a silent mid-stream reconnect. Pick this up only when a concrete
+    /// host need lands.
+    ///
     /// - Parameters:
     ///   - runID:        The id of the persisted run to resume.
     ///   - provider:     Supplies the ``TurnInput`` for each remaining step.

@@ -10,7 +10,7 @@
 
 The only open-source Swift package that bundles UI, turn-loop runtime, persistence, and multi-backend inference into one drop-in chat product for Apple platforms.
 
-![ManifoldKit assembled full-stack hero — one import gives you the SwiftUI ChatView, the ConversationRuntime turn loop, SwiftData persistence, model-management UI, and every backend; competitors own a single band](docs/images/product/layer-cake-hero.svg)
+![ManifoldKit assembled full-stack hero — one import gives you the SwiftUI ChatView, the ConversationRuntime turn loop, SwiftData persistence, model-management UI, and the in-core backends, with the manifold-mlx and manifold-llama companion packages adding on-device MLX and llama.cpp/GGUF](docs/images/product/layer-cake-hero.svg)
 
 **New here?** Start with **[Why ManifoldKit — and how it's built to last](docs/WHY-MANIFOLDKIT.md)** for the honest "what it solves and why trust it" narrative, or jump to the [docs index](docs/README.md) for the full guided path from install to first token. Prefer rendered API reference? The full **[DocC documentation site](https://roryford.github.io/ManifoldKit/documentation/manifoldkit/)** ties every module's reference together under one navigable root.
 

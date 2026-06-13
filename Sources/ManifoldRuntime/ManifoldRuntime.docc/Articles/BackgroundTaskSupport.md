@@ -40,14 +40,15 @@ func applicationDidEnterBackground() {
 
 ### 3. Backend selection
 
-Background GPU access is iPad-only. Check availability before relying on ``MLXBackend``:
+Background GPU access is iPad-only. Check availability before relying on the MLX
+backend (from the `manifold-mlx` companion package):
 
 ```swift,no-build
 if #available(iOS 26, *), ConversationRuntimeBackgroundBridge.backgroundGPUAvailable {
-    // GPU available — MLXBackend will run at full speed
+    // GPU available — the MLX backend (manifold-mlx companion package) runs at full speed
 } else {
     // iPhone or unsupported iPad: GPU unavailable.
-    // ManifoldLlama (CPU) degrades ~4–5× vs. foreground MLX.
+    // The llama.cpp backend (manifold-llama companion package, CPU) degrades ~4–5× vs. foreground MLX.
     // Consider not submitting the task on iPhone if speed is critical.
 }
 ```

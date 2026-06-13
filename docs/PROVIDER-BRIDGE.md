@@ -1,6 +1,6 @@
 # Provider bridge (AnyLanguageModel)
 
-ManifoldKit ships native backends for MLX, llama.cpp/GGUF, Apple Foundation Models, OpenAI (Chat + Responses), Anthropic, and Ollama. Providers without a native backend are reached through the **AnyLanguageModel bridge** — a single `InferenceBackend` adapter over HuggingFace's [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel) package.
+ManifoldKit ships native backends for Apple Foundation Models, OpenAI (Chat + Responses), Anthropic, and Ollama; the local MLX and llama.cpp/GGUF families come from the [manifold-mlx](https://github.com/roryford/manifold-mlx) / [manifold-llama](https://github.com/roryford/manifold-llama) companion packages (v0.48). Providers without a native backend are reached through the **AnyLanguageModel bridge** — a single `InferenceBackend` adapter over HuggingFace's [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel) package.
 
 AnyLanguageModel operates at the model-access altitude (one protocol, many providers). ManifoldKit operates at the application-framework altitude and consumes it as one more backend, so a bridged provider plugs into the same `ChatViewModel`, conversation runtime, and persistence path as a native backend.
 
