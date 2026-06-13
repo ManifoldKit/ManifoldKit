@@ -34,9 +34,22 @@ public struct ModelManagementSheet: View {
         }
     }
 
-    private var availableTabs: [Tab] {
+    private func availableTabs(for modelRegistry: ModelRegistry) -> [Tab] {
         var tabs: [Tab] = [.select]
-        if features.showModelDownload && compiledBackends.shouldPresentModelDownloads { tabs.append(.download) }
+        // Show the Download tab when the build can download AND a downloadable
+        // backend is available. `compiledBackends.shouldPresentModelDownloads`
+        // only reflects COMPILE-TIME backends (Foundation); it never sees the
+        // MLX / llama.cpp families that hosts register at RUNTIME from the
+        // companion packages (manifold-mlx / manifold-llama, #1749). Without the
+        // runtime check the Download tab stays hidden for those hosts even with
+        // a downloadable backend registered. `modelRegistry.compatibility(for:)`
+        // reflects runtime registration (see InferenceService.compatibility).
+        let runtimeDownloadable = modelRegistry.compatibility(for: .mlx).isSupported
+            || modelRegistry.compatibility(for: .gguf).isSupported
+        let canDownload = compiledBackends.shouldPresentModelDownloads || runtimeDownloadable
+        if features.showModelDownload && compiledBackends.traits.contains(.huggingFace) && canDownload {
+            tabs.append(.download)
+        }
         if features.showStorageTab { tabs.append(.storage) }
         return tabs
     }
@@ -104,7 +117,7 @@ public struct ModelManagementSheet: View {
         NavigationStack {
             #if os(macOS)
             VStack(spacing: 0) {
-                tabPickerBar
+                tabPickerBar(modelRegistry: modelRegistry)
                 tabContent(modelRegistry: modelRegistry)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -115,7 +128,7 @@ public struct ModelManagementSheet: View {
             }
             #else
             tabContent(modelRegistry: modelRegistry)
-                .safeAreaInset(edge: .top, spacing: 0) { tabPickerBar }
+                .safeAreaInset(edge: .top, spacing: 0) { tabPickerBar(modelRegistry: modelRegistry) }
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationTitle(selectedTab.rawValue)
                 .toolbar {
@@ -138,7 +151,7 @@ public struct ModelManagementSheet: View {
         .onAppear {
             // Tab selection is cheap and must apply synchronously so the chrome
             // renders correctly on first frame.
-            if !availableTabs.contains(selectedTab) {
+            if !availableTabs(for: modelRegistry).contains(selectedTab) {
                 selectedTab = .select
             } else if selectedTab != initialTab {
                 selectedTab = initialTab
@@ -175,9 +188,9 @@ public struct ModelManagementSheet: View {
         }
     }
 
-    private var tabPickerBar: some View {
+    private func tabPickerBar(modelRegistry: ModelRegistry) -> some View {
         VStack(spacing: 0) {
-            tabPicker
+            tabPicker(modelRegistry: modelRegistry)
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .padding(.bottom, 4)
@@ -196,8 +209,8 @@ public struct ModelManagementSheet: View {
     }
 
     @ViewBuilder
-    private var tabPicker: some View {
-        let tabs = availableTabs
+    private func tabPicker(modelRegistry: ModelRegistry) -> some View {
+        let tabs = availableTabs(for: modelRegistry)
         if tabs.count > 1 {
             Picker("Section", selection: $selectedTab) {
                 ForEach(tabs, id: \.self) { tab in
