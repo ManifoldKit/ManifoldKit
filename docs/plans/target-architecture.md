@@ -102,22 +102,37 @@ tools/data and a bottom port for persistence.
    INLETS (backends)            ┌──── THE CORE MANIFOLD ────┐          OUTLETS (consumers)
    ── adapters plug in ──►      ║                            ║   ──► one event stream ──►
                                 ║   ◆ CONTRACT (kernel)      ║
-   MLX        ┐                 ║   InferenceBackend proto   ║              ┌─ ManifoldUI (drop-in chat)
-   Llama      ├─[Registrar]───► ║   BackendCapabilities      ║ ────────────►├─ your own SwiftUI
+   MLX*       ┐                 ║   InferenceBackend proto   ║              ┌─ ManifoldUI (drop-in chat)
+   Llama*     ├─[Registrar]───► ║   BackendCapabilities      ║ ────────────►├─ your own SwiftUI
    Foundation ├──────────────── ║   GenerationEvent language ║   normalized ├─ ManifoldServer (HTTP)
    Cloud      ┘                 ║   tool & message contracts ║   stream     └─ CLI / headless
    MediaGen   ┐                 ║   ──────────────────────── ║
-   (img/vid/  ├──[generic seam]►║   ◆ ENGINE                 ║
-    audio)    ┘                 ║   Orchestration +          ║
+   (img/vid/  ├──[per-modality]►║   ◆ ENGINE                 ║
+    audio) ‡  ┘                 ║   Orchestration +          ║
                                 ║   ▸ pluggable TURN-DRIVER  ║
-   SIDE PORTS (tools / data)    ║     (single-turn today ·   ║
-   MCP        ┐                 ║      resumable Run next)   ║
+   SIDE PORTS (tools / data)    ║     single-turn = default  ║
+   MCP        ┐                 ║     resumable Run: seam †  ║
    AppIntents ├─[ToolSource]──► ║   over a RUN (resumable)   ║
    RAG / HF   ┘                 ║                            ║
                                 └────────────┬───────────────┘
                                              │ ports (dependency-inverted)
-                              PERSISTENCE (messages · sessions · RUN checkpoints)
+                              PERSISTENCE (messages · sessions · RUN checkpoints †)
 ```
+
+**Status legend (verified against code @ v0.48.2, 2026-06-13):**
+- `*` **MLX / Llama** — shipped, but no longer in this repo: they live in companion packages
+  `manifold-mlx` / `manifold-llama` (C2 #1771; module names unchanged). The image/video media
+  backends moved with `manifold-mlx`.
+- `‡` **MediaGen seam** — still **per-modality**, not the generic seam this diagram targets:
+  `MessagePart.generatedImage` / `.generatedVideo` remain distinct cases in `ManifoldContract`.
+  The `MediaGeneration<Output>` collapse (P4) is **deferred post-WWDC** — WWDC 2026 added no new
+  modality to force it; sequence it just before the 1.0 vocabulary freeze (in-repo).
+- `†` **Resumable Run / RUN checkpoints** — the **seam** shipped (P3 #1744: `TurnDriver`,
+  `ConversationRun`/`RunStep`, `ResumableRunDriver`, `RunStore` port), but it is **PORT ONLY**:
+  no SwiftData adapter, no bootstrap wiring, and `ResumableRunDriver` is test-only. So runs are
+  **not durably persisted** and resumable runs are not yet reachable by hosts — the default and
+  only production path is `SingleTurnDriver`. Completing this (adapter + V9→V10 migration +
+  wiring) is the deferred **P3b** sub-phase, tracked in **#1784**.
 
 A rendered diagram exists (manifold cross-section: colour-coded inlets converging to one
 white stream, nested CONTRACT-inside-ENGINE core, chromed multi-branch outlet header, top
