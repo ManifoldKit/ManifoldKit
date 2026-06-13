@@ -181,10 +181,15 @@ public struct StorageManagementView: View {
     private func deleteModel(_ model: ModelInfo, modelRegistry: ModelRegistry) {
         do {
             try managementViewModel.deleteModel(model)
-            do {
-                try modelRegistry.refresh()
-            } catch {
-                Log.download.warning("StorageManagementView: registry refresh after delete failed: \(error)")
+            // Off-main rescan so a post-delete refresh never re-blocks the main
+            // thread (#1774); `Task {}` inherits @MainActor, the scan hops off
+            // inside `refreshAsync()`.
+            Task {
+                do {
+                    try await modelRegistry.refreshAsync()
+                } catch {
+                    Log.download.warning("StorageManagementView: registry refresh after delete failed: \(error)")
+                }
             }
         } catch {
             Log.download.error("Failed to delete model: \(error)")

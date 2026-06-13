@@ -42,6 +42,10 @@ public struct ModelManagementSheet: View {
     }
 
     @State private var selectedTab: Tab
+    /// True while the first off-main directory scan is in flight. Surfaces a
+    /// small ``ProgressView`` row so the sheet chrome can render immediately
+    /// while the model list fills in asynchronously (#1774).
+    @State private var isScanning = false
 
     /// Canonical init — pass the registry the host already constructed
     /// (typically `chatViewModel.modelRegistry`). The sheet works without
@@ -132,24 +136,30 @@ public struct ModelManagementSheet: View {
         .frame(minWidth: 560, idealWidth: 720, minHeight: 480, idealHeight: 640)
         #endif
         .onAppear {
+            // Tab selection is cheap and must apply synchronously so the chrome
+            // renders correctly on first frame.
             if !availableTabs.contains(selectedTab) {
                 selectedTab = .select
             } else if selectedTab != initialTab {
                 selectedTab = initialTab
             }
+        }
+        .task {
+            // why: the GGUF/MLX directory scan is the ~2s main-thread stall in
+            // #1774. `refreshAsync()` hops the scan off-main inside
+            // `ModelStorageService.discoverModelsOffMain()`, so the sheet chrome
+            // (tab picker, frame) paints immediately and only the model list
+            // waits. `Task {}`/`.task` inherits @MainActor — the off-main hop
+            // happens in the callee, never here. The cache is invalidated only
+            // on real mutations (download/delete/import), so a re-appear with no
+            // change keeps the cache.
+            isScanning = true
+            defer { isScanning = false }
             do {
-                try modelRegistry.refresh()
+                try await modelRegistry.refreshAsync()
             } catch {
                 Log.download.warning("ModelManagementSheet: registry refresh on appear failed: \(error)")
             }
-            // why: do NOT blanket-invalidate the discovery cache here. The old
-            // unconditional invalidateModelCache() forced a full synchronous GGUF
-            // rescan on every sheet open (~2s main-thread stall, #1774). The cache
-            // is now invalidated only on real mutations — download completion
-            // (startDownloadSync), delete (deleteModel), and import (importModel) —
-            // so a re-appear with no change keeps the cache. Deferred follow-up:
-            // move discoverModels() off the main thread so even the first scan
-            // doesn't stall.
         }
     }
 
@@ -206,6 +216,14 @@ public struct ModelManagementSheet: View {
         switch selectedTab {
         case .select:
             ModelSelectionTabView(modelRegistry: modelRegistry, onSelect: { dismiss() })
+                // Lightweight affordance while the first off-main scan lands
+                // (#1774); `availableModels` is @Observable, so the list itself
+                // repaints automatically once the scan resolves.
+                .overlay(alignment: .top) {
+                    if isScanning && modelRegistry.availableModels.isEmpty {
+                        scanningIndicator
+                    }
+                }
         case .download:
             HuggingFaceBrowserView(
                 modelRegistry: modelRegistry,
@@ -216,6 +234,21 @@ public struct ModelManagementSheet: View {
         case .storage:
             LocalModelStorageView(modelRegistry: modelRegistry)
         }
+    }
+
+    private var scanningIndicator: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Scanning for models…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(.bar, in: Capsule())
+        .padding(.top, 8)
+        .accessibilityIdentifier("model-management-scanning-indicator")
     }
 }
 

@@ -165,6 +165,27 @@ public final class ModelStorageService: @unchecked Sendable {
         return models.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// Off-main equivalent of ``discoverModels(reportingErrors:)`` for callers
+    /// (notably `ModelManagementSheet`) that must not stall the main thread on
+    /// the synchronous GGUF/MLX directory scan (~2s cold; #1774).
+    ///
+    /// Hops off the calling actor via `Task.detached` and runs the existing
+    /// synchronous scan body, collecting per-file failures into a returned
+    /// array rather than calling back through an escaping `@Sendable` closure —
+    /// a tuple return sidesteps the Swift 6 non-isolated-async-helper trap (a
+    /// sent closure that closes over `@MainActor` state). Both `ModelInfo` and
+    /// `ModelDiscoveryError` are `Sendable`, so the result crosses the actor
+    /// boundary cleanly.
+    public func discoverModelsOffMain() async -> (models: [ModelInfo], errors: [ModelDiscoveryError]) {
+        await Task.detached(priority: .userInitiated) { [self] in
+            // The error handler fires only synchronously on this detached
+            // task's own thread, so a plain local array needs no lock.
+            var errors: [ModelDiscoveryError] = []
+            let models = discoverModels(reportingErrors: { errors.append($0) })
+            return (models: models, errors: errors)
+        }.value
+    }
+
     /// Per-directory scan used by both the public ``discoverModels()`` and
     /// the diagnostics-reporting overload.
     private func scanDirectory(

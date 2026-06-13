@@ -45,11 +45,17 @@ struct HuggingFaceBrowserView: View {
     /// (the legacy path surfaces them via `errorMessage`, but this view is
     /// invoked only after the directory is already populated, so the error
     /// path is unreachable in practice).
+    ///
+    /// Runs the directory scan off-main via `refreshAsync()` (#1774) so an
+    /// import/download-completion refresh never re-blocks the main thread.
+    /// `Task {}` inherits @MainActor; the off-main hop happens in the callee.
     private func refreshModels() {
-        do {
-            try modelRegistry.refresh()
-        } catch {
-            Log.download.warning("HuggingFaceBrowserView: registry refresh failed: \(error)")
+        Task {
+            do {
+                try await modelRegistry.refreshAsync()
+            } catch {
+                Log.download.warning("HuggingFaceBrowserView: registry refresh failed: \(error)")
+            }
         }
     }
 
@@ -373,10 +379,12 @@ struct HuggingFaceBrowserView: View {
             if let match = modelRegistry.availableModels.first(where: { $0.fileName == model.fileName }) {
                 modelRegistry.selectedModel = match
             } else {
-                // refreshModels() runs synchronously in onChange, so this branch is
-                // only reachable if the file was deleted between download completion
-                // and the user tapping "Use Now".
-                Log.download.warning("Use Now: \(model.fileName) not found in availableModels — file may have been deleted")
+                // refreshModels() now rescans off-main (#1774), so this branch is
+                // reachable either if the file was deleted between download
+                // completion and the tap, or if the user taps before the rescan
+                // lands. Either way the safe action is to log and skip — the model
+                // appears in Select once the rescan completes.
+                Log.download.warning("Use Now: \(model.fileName) not found in availableModels — file may have been deleted or rescan still in flight")
             }
             pendingUseNowModel = nil
         }

@@ -117,6 +117,74 @@ final class ModelRegistryTests: XCTestCase {
         )
     }
 
+    // MARK: - refreshAsync()
+
+    func test_refreshAsync_populatesSameModelsAsSyncRefresh() async throws {
+        try createFakeGgufFile(named: "async-a.gguf")
+        try createFakeGgufFile(named: "async-b.gguf")
+
+        let syncRegistry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try syncRegistry.refresh()
+
+        let asyncRegistry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try await asyncRegistry.refreshAsync()
+
+        XCTAssertEqual(
+            asyncRegistry.availableModels.map(\.id),
+            syncRegistry.availableModels.map(\.id),
+            "refreshAsync() should yield the same availableModels (and order) as refresh()"
+        )
+    }
+
+    func test_refreshAsync_includesFoundationWhenProviderReturnsTrue() async throws {
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage,
+            foundationModelProvider: { true }
+        )
+
+        try await registry.refreshAsync()
+
+        XCTAssertTrue(
+            registry.availableModels.contains(where: { $0.modelType == .foundation }),
+            "Foundation model should be prepended when foundationModelProvider returns true"
+        )
+        XCTAssertEqual(
+            registry.availableModels.first?.modelType,
+            .foundation,
+            "Foundation entry must be prepended, mirroring sync refresh() ordering"
+        )
+    }
+
+    func test_refreshAsync_clearsSelectedModelWhenNoLongerOnDisk() async throws {
+        let modelFile = try createFakeGgufFile(named: "async-ephemeral.gguf")
+
+        let registry = ModelRegistry(
+            inferenceService: inferenceService,
+            modelStorage: modelStorage
+        )
+        try await registry.refreshAsync()
+
+        guard let discovered = registry.availableModels.first(where: { $0.fileName == "async-ephemeral.gguf" }) else {
+            return XCTFail("Pre-condition: model file should be discoverable")
+        }
+        registry.selectedModel = discovered
+
+        try FileManager.default.removeItem(at: modelFile)
+        try await registry.refreshAsync()
+
+        XCTAssertNil(
+            registry.selectedModel,
+            "selectedModel should clear when its model is no longer in availableModels"
+        )
+    }
+
     // MARK: - selectedModel round-trip
 
     func test_selectedModel_writeReadRoundTrip() {

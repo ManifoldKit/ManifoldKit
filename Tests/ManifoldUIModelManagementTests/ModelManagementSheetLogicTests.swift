@@ -140,6 +140,69 @@ final class ModelManagementSheetLogicTests: XCTestCase {
         // In the existing GenerationViewModelTests, actual GGUF files are created.
     }
 
+    // MARK: - Off-main discovery (#1774)
+
+    /// The sheet's `.task` drives `refreshAsync()` so the chrome paints
+    /// immediately and only the model list waits. This proves the registry
+    /// exposes content asynchronously, not via a synchronous main-thread scan:
+    /// the registry starts empty on appear, and is populated only after the
+    /// async refresh resolves.
+    func test_refreshAsync_exposesEmptyListBeforeScanResolves_thenPopulated() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SheetScan-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Write a GGUF-shaped file so a completed scan would find one model.
+        let gguf = dir.appendingPathComponent("sheet-async.gguf")
+        var data = Data([0x47, 0x47, 0x55, 0x46]) // "GGUF"
+        data.append(Data(repeating: 0xAA, count: 4092))
+        try data.write(to: gguf)
+
+        let registry = ModelRegistry(
+            inferenceService: InferenceService(),
+            modelStorage: ModelStorageService(baseDirectory: dir)
+        )
+
+        // The sheet renders its chrome with an empty list on appear.
+        XCTAssertTrue(registry.availableModels.isEmpty, "Registry exposes an empty list before any scan resolves")
+
+        try await registry.refreshAsync()
+
+        XCTAssertTrue(
+            registry.availableModels.contains(where: { $0.fileName == "sheet-async.gguf" }),
+            "availableModels must be populated once the off-main scan resolves"
+        )
+    }
+
+    /// `discoverModelsOffMain()` is the off-main scan that backs `refreshAsync()`
+    /// (#1774). Called from the main actor it returns a `(models, errors)` tuple
+    /// equivalent to the synchronous `discoverModels(reportingErrors:)` overload,
+    /// proving the async API surfaces the same content the sync path would.
+    func test_discoverModelsOffMain_matchesSyncDiscovery() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OffMainScan-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let gguf = dir.appendingPathComponent("offmain.gguf")
+        var data = Data([0x47, 0x47, 0x55, 0x46]) // "GGUF"
+        data.append(Data(repeating: 0xAA, count: 4092))
+        try data.write(to: gguf)
+
+        let storage = ModelStorageService(baseDirectory: dir)
+
+        let sync = storage.discoverModels()
+        let asyncResult = await storage.discoverModelsOffMain()
+
+        XCTAssertEqual(
+            asyncResult.models.map(\.id),
+            sync.map(\.id),
+            "discoverModelsOffMain() must yield the same models (and order) as the synchronous discoverModels()"
+        )
+        XCTAssertTrue(asyncResult.errors.isEmpty, "A clean GGUF directory yields no discovery errors")
+    }
+
     // MARK: - ModelInfo properties
 
     func test_modelInfo_ggufType() {
