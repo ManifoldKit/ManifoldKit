@@ -259,7 +259,14 @@ public struct ModelLoadPlan: Sendable {
             && inputs.modelFileSize / available >= impossibleFitRatio
 
         // Verdict thresholds: allow ≤85% of available, warn up to 100%, deny above.
-        let allowThreshold = UInt64(Double(available) * 0.85)
+        // Budget against `effective_available` (raw available minus app overhead),
+        // NOT raw `available`. The resident/KV math above already subtracts the
+        // platform overhead; budgeting the verdict against raw `available` would
+        // mark a model that exceeds true usable memory as `.allow`/`.warn` and then
+        // jetsam/SIGKILL it on load. The catastrophic `impossibleFit` gate below
+        // intentionally stays on raw `available` (file-vs-RAM ratio, independent of
+        // app overhead). See issue #471.
+        let allowThreshold = UInt64(Double(effective_available) * 0.85)
         let verdict: Verdict
         var finalReasons = reasons
         if impossibleFit {
@@ -270,19 +277,19 @@ public struct ModelLoadPlan: Sendable {
             ))
         } else if total <= allowThreshold {
             verdict = .allow
-        } else if total <= available {
+        } else if total <= effective_available {
             verdict = .warn
         } else {
             verdict = .deny
-            if residentBudget > available {
+            if residentBudget > effective_available {
                 finalReasons.append(.insufficientResident(
                     required: residentBudget,
-                    available: available
+                    available: effective_available
                 ))
             } else {
                 finalReasons.append(.insufficientKVCache(
                     required: total,
-                    available: available
+                    available: effective_available
                 ))
             }
         }
