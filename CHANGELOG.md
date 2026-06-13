@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.1](https://github.com/roryford/ManifoldKit/compare/v0.49.0...v0.49.1) (2026-06-13)
+
+
+### Bug Fixes
+
+* **model-manager:** show Download tab for runtime-registered backends ([#1801](https://github.com/roryford/ManifoldKit/issues/1801)) ([de3c03e](https://github.com/roryford/ManifoldKit/commit/de3c03ee22b382d10f3fefde230fd0526da841a7))
+
 ## [0.49.0](https://github.com/roryford/ManifoldKit/compare/v0.48.2...v0.49.0) (2026-06-13)
 
 ### Highlights
