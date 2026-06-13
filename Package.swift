@@ -553,7 +553,13 @@ let package = Package(
                 "ManifoldInference",
             ],
             path: "Sources/ManifoldTestSupport",
-            exclude: ["FuzzCalibrationCorpus"]
+            exclude: ["FuzzCalibrationCorpus"],
+            resources: [
+                // Sample Markdown corpus the Glass Box research-session demo
+                // ingests into the real RAG stack (#1575). Bundled so the live
+                // integration test can resolve them via Bundle.module.
+                .copy("Fixtures/Documents")
+            ]
         ),
         // XCTest-dependent protocol contract mixins, kept in a separate target
         // so that fuzz-chat (an executable) can depend on ManifoldTestSupport
@@ -647,6 +653,10 @@ let package = Package(
                 // ManifoldRuntime: ConversationEventSubsequenceTests.swift and
                 // RuntimeScenarioRunnerTests.swift import it directly.
                 "ManifoldRuntime",
+                // Live RAG integration test (#1575) wires the real
+                // FlatFileVectorStore + SwiftDataDocumentStore + in-memory
+                // ModelContainer behind an Ollama-gated XCTSkipUnless.
+                "ManifoldPersistenceSwiftData",
             ]
         ),
         .testTarget(

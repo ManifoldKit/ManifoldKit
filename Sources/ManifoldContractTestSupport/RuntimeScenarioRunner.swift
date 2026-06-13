@@ -41,6 +41,12 @@ public enum RuntimeScenarioRunner {
         public let subsequencePassed: Bool
         /// Diagnostic string when ``subsequencePassed`` is `false`.
         public let subsequenceFailureReason: String?
+        /// All messages left in the in-memory store after the run, oldest-first.
+        ///
+        /// Lets callers make structural assertions about the produced records —
+        /// for example that at least one assistant message carries a
+        /// ``Citation`` when a ``RAGService`` was wired in (#1575).
+        public let producedMessages: [ChatMessage]
 
         public enum RunModeKind: Sendable { case scripted, live }
     }
@@ -49,9 +55,23 @@ public enum RuntimeScenarioRunner {
     ///
     /// Does not call `XCTFail` — callers (typically XCTest methods) should
     /// call ``assert(result:file:line:)`` to surface failures.
+    /// Runs `scenario` in `mode`, optionally wiring a real ``RAGService`` and an
+    /// override pre-turn compression policy into the runtime.
+    ///
+    /// - Parameters:
+    ///   - ragService: When non-`nil`, the runtime queries it before each turn
+    ///     and attaches the resulting ``Citation`` list to the assistant
+    ///     message — the live-RAG demo path (#1575). When `nil`, behaviour is
+    ///     identical to the legacy retrieval-free run.
+    ///   - preTurnCompressionPolicy: When non-`nil`, overrides the scenario's
+    ///     own ``RuntimeScenario/preTurnCompressionPolicy``. Lets a live run
+    ///     drive context-window-based compression off real token usage instead
+    ///     of the scenario's deterministic fixed-count policy.
     public static func run(
         _ scenario: RuntimeScenario,
-        mode: RunMode = .scripted
+        mode: RunMode = .scripted,
+        ragService: RAGService? = nil,
+        preTurnCompressionPolicy: (any PreTurnCompressionPolicy)? = nil
     ) async throws -> Result {
         let backend: any InferenceBackend
         let scriptedBackend: ScriptedGenerationBackend?
@@ -96,7 +116,8 @@ public enum RuntimeScenarioRunner {
             messageStore: store,
             sessionStore: nil,
             inferenceService: inferenceService,
-            preTurnCompressionPolicy: scenario.preTurnCompressionPolicy
+            ragService: ragService,
+            preTurnCompressionPolicy: preTurnCompressionPolicy ?? scenario.preTurnCompressionPolicy
         )
 
         let recorder = ConversationEventRecorder()
@@ -118,12 +139,15 @@ public enum RuntimeScenarioRunner {
         let trace = await ConversationEventTrace(recorder: recorder)
         let (passed, reason) = checkSubsequence(trace.kinds, against: scenario.expectedSubsequence)
 
+        let producedMessages = (try? await store.fetchMessages(for: sessionID)) ?? []
+
         return Result(
             scenario: scenario,
             mode: modeKind,
             trace: trace,
             subsequencePassed: passed,
-            subsequenceFailureReason: reason
+            subsequenceFailureReason: reason,
+            producedMessages: producedMessages
         )
     }
 
